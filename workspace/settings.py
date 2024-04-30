@@ -8,7 +8,7 @@ from phi.workspace.settings import WorkspaceSettings
 #
 ws_settings = WorkspaceSettings(
     # Workspace name: used for naming resources
-    ws_name="ai",
+    ws_name="pal-mono",
     # Path to the workspace root
     ws_root=Path(__file__).parent.parent.resolve(),
     # -*- Dev settings
@@ -31,10 +31,13 @@ ws_settings = WorkspaceSettings(
     aws_az1="us-east-1a",
     aws_az2="us-east-1b",
     # Subnet IDs in the aws_region
-    # subnet_ids=["subnet-xyz", "subnet-xyz"],
+    subnet_ids=[
+        "subnet-fea92dd4", # subnet of az us-east-1a
+        "subnet-64661112" # subnet of az us-east-1b
+        ],
     # -*- Image Settings
     # Name of the image
-    image_name="ai-app",
+    image_name="pal-mono",
     # Repository for the image
     # image_repo="phidata",
     # Build images locally
