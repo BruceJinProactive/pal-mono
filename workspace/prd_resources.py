@@ -30,7 +30,7 @@ prd_image = DockerImage(
     tag=ws_settings.prd_env,
     enabled=ws_settings.build_images,
     path=str(ws_settings.ws_root),
-    platforms=["linux/amd64", "linux/arm64"],
+    platforms=["linux/amd64"],
     push_image=True,
 )
 

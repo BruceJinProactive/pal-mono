@@ -39,7 +39,9 @@ ws_settings = WorkspaceSettings(
     # Name of the image
     image_name="pal-mono",
     # Repository for the image
-    # image_repo="phidata",
+    image_repo="494262407686.dkr.ecr.us-east-1.amazonaws.com",
     # Build images locally
-    # build_images=True,
+    build_images=True,
+    # Push images after building
+    push_images=True,
 )
