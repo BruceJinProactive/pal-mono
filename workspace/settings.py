@@ -32,9 +32,9 @@ ws_settings = WorkspaceSettings(
     aws_az2="us-east-1b",
     # Subnet IDs in the aws_region
     subnet_ids=[
-        "subnet-fea92dd4", # subnet of az us-east-1a
-        "subnet-64661112" # subnet of az us-east-1b
-        ],
+        "subnet-fea92dd4",  # subnet of az us-east-1a
+        "subnet-64661112",  # subnet of az us-east-1b
+    ],
     # -*- Image Settings
     # Name of the image
     image_name="pal-mono",
