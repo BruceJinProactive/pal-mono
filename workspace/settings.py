@@ -39,7 +39,8 @@ ws_settings = WorkspaceSettings(
     # Name of the image
     image_name="pal-mono",
     # Repository for the image
-    image_repo="494262407686.dkr.ecr.us-east-1.amazonaws.com",
+    # image_repo="494262407686.dkr.ecr.us-east-1.amazonaws.com",
+    image_repo="local",
     # Build images locally
     build_images=True,
     # Push images after building
