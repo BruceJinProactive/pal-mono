@@ -15,20 +15,17 @@ from ai.assistants.pdf_auto import get_autonomous_pdf_assistant
 from ai.assistants.pdf_rag import get_rag_pdf_assistant
 from utils.log import logger
 
+from typing import List
+from pydantic import BaseModel, Field
+from rich.pretty import pprint
+from phi.assistant import Assistant
+
+
 st.set_page_config(
-    page_title="PDF AI",
-    page_icon=":orange_heart:",
+    page_title="Max's Coffee Shop",
+    page_icon=":coffee:",
 )
-st.title("PDF Assistant")
-st.markdown("##### :orange_heart: built using [phidata](https://github.com/phidatahq/phidata)")
-
-
-def restart_assistant():
-    st.session_state["pdf_assistant"] = None
-    st.session_state["pdf_assistant_run_id"] = None
-    st.session_state["file_uploader_key"] += 1
-    st.rerun()
-
+st.title("Max's Coffee Shop")
 
 def main() -> None:
     # Get OpenAI key from environment variable or user input
@@ -40,40 +37,40 @@ def main() -> None:
         st.sidebar.info(f":technologist: User: {username}")
     else:
         st.markdown("---")
-        st.markdown("#### :technologist: Enter a username, upload a PDF and start chatting")
+        st.markdown("#### :technologist: Enter a username to start. Your profile and chat history will be saved.")
         return
 
-    # Get assistant type
-    pdf_assistant_type = st.sidebar.selectbox("Assistant Type", options=["Autonomous", "RAG"])
-    # Set assistant_type in session state
-    if "pdf_assistant_type" not in st.session_state:
-        st.session_state["pdf_assistant_type"] = pdf_assistant_type
-    # Restart the assistant if assistant_type has changed
-    elif st.session_state["pdf_assistant_type"] != pdf_assistant_type:
-        st.session_state["pdf_assistant_type"] = pdf_assistant_type
-        restart_assistant()
-
     # Get the assistant
-    pdf_assistant: Assistant
-    if "pdf_assistant" not in st.session_state or st.session_state["pdf_assistant"] is None:
-        if st.session_state["pdf_assistant_type"] == "Autonomous":
-            logger.info("---*--- Creating Autonomous Assistant ---*---")
-            pdf_assistant = get_autonomous_pdf_assistant(
-                user_id=username,
-                debug_mode=True,
-            )
-        else:
-            logger.info("---*--- Creating RAG Assistant ---*---")
-            pdf_assistant = get_rag_pdf_assistant(
-                user_id=username,
-                debug_mode=True,
-            )
-        st.session_state["pdf_assistant"] = pdf_assistant
+    pdf_assistant: Assistant = get_autonomous_pdf_assistant(
+        user_id=username,
+        debug_mode=True,
+    )
+    
+    # Get the run id
+    pdf_assistant_run_ids: List[str] = pdf_assistant.storage.get_all_run_ids(user_id=username)
+    pdf_assistant_run_id = None
+    if not pdf_assistant_run_ids or len(pdf_assistant_run_ids) == 0:
+        pdf_assistant_run_id = pdf_assistant.create_run()
     else:
-        pdf_assistant = st.session_state["pdf_assistant"]
+        pdf_assistant_run_id = pdf_assistant_run_ids[0]
+    pdf_assistant.run_id = pdf_assistant_run_id
+
 
     # Create assistant run (i.e. log to database) and save run_id in session state
     st.session_state["pdf_assistant_run_id"] = pdf_assistant.create_run()
+
+    # Check if knowlege base exists
+    if pdf_assistant.knowledge_base and (
+        "pdf_knowledge_base_loaded" not in st.session_state
+        or not st.session_state["pdf_knowledge_base_loaded"]
+    ):
+        if not pdf_assistant.knowledge_base.exists():
+            logger.info("Knowledge base does not exist")
+            loading_container = st.sidebar.info("🧠 Loading knowledge base")
+            pdf_assistant.knowledge_base.load()
+            st.session_state["pdf_knowledge_base_loaded"] = True
+            st.sidebar.success("Knowledge base loaded")
+            loading_container.empty()
 
     # Check if knowlege base exists
     if pdf_assistant.knowledge_base and (
@@ -141,8 +138,8 @@ def main() -> None:
             st.session_state["pdf_knowledge_base_loaded"] = False
             st.sidebar.success("Knowledge base cleared")
 
-    if st.sidebar.button("Auto Rename"):
-        pdf_assistant.auto_rename_run()
+    # if st.sidebar.button("Auto Rename"):
+    #     pdf_assistant.auto_rename_run()
 
     # Upload PDF
     if pdf_assistant.knowledge_base:
@@ -167,33 +164,34 @@ def main() -> None:
                 st.session_state[f"{pdf_name}_uploaded"] = True
             alert.empty()
 
-    if pdf_assistant.storage:
-        pdf_assistant_run_ids: List[str] = pdf_assistant.storage.get_all_run_ids(user_id=username)
-        new_pdf_assistant_run_id = st.sidebar.selectbox("Run ID", options=pdf_assistant_run_ids)
-        if st.session_state["pdf_assistant_run_id"] != new_pdf_assistant_run_id:
-            logger.debug(f"Loading run {new_pdf_assistant_run_id}")
-            if st.session_state["pdf_assistant_type"] == "Autonomous":
-                logger.info("---*--- Loading as Autonomous Assistant ---*---")
-                st.session_state["pdf_assistant"] = get_autonomous_pdf_assistant(
-                    user_id=username,
-                    run_id=new_pdf_assistant_run_id,
-                    debug_mode=True,
-                )
-            else:
-                logger.info("---*--- Loading as RAG Assistant ---*---")
-                st.session_state["pdf_assistant"] = get_rag_pdf_assistant(
-                    user_id=username,
-                    run_id=new_pdf_assistant_run_id,
-                    debug_mode=True,
-                )
-            st.rerun()
+    # # Run id selector
+    # if pdf_assistant.storage:
+    #     pdf_assistant_run_ids: List[str] = pdf_assistant.storage.get_all_run_ids(user_id=username)
+    #     new_pdf_assistant_run_id = st.sidebar.selectbox("Run ID", options=pdf_assistant_run_ids)
+    #     if st.session_state["pdf_assistant_run_id"] != new_pdf_assistant_run_id:
+    #         logger.debug(f"Loading run {new_pdf_assistant_run_id}")
+    #         if st.session_state["pdf_assistant_type"] == "Autonomous":
+    #             logger.info("---*--- Loading as Autonomous Assistant ---*---")
+    #             st.session_state["pdf_assistant"] = get_autonomous_pdf_assistant(
+    #                 user_id=username,
+    #                 run_id=new_pdf_assistant_run_id,
+    #                 debug_mode=True,
+    #             )
+    #         else:
+    #             logger.info("---*--- Loading as RAG Assistant ---*---")
+    #             st.session_state["pdf_assistant"] = get_rag_pdf_assistant(
+    #                 user_id=username,
+    #                 run_id=new_pdf_assistant_run_id,
+    #                 debug_mode=True,
+    #             )
+    #         st.rerun()
 
-    pdf_assistant_run_name = pdf_assistant.run_name
-    if pdf_assistant_run_name:
-        st.sidebar.write(f":thread: {pdf_assistant_run_name}")
+    # pdf_assistant_run_name = pdf_assistant.run_name
+    # if pdf_assistant_run_name:
+    #     st.sidebar.write(f":thread: {pdf_assistant_run_name}")
 
-    # Show reload button
-    reload_button_sidebar()
+    # # Show reload button
+    # reload_button_sidebar()
 
 
 if check_password():
