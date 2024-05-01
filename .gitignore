@@ -153,3 +153,4 @@ cython_debug/
 
 # AWS credentials file
 /.aws
+.DS_Store
