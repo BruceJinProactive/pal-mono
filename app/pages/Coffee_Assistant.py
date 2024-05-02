@@ -7,17 +7,12 @@ from phi.document.reader.pdf import PDFReader
 from phi.tools.streamlit.components import (
     get_openai_key_sidebar,
     check_password,
-    reload_button_sidebar,
     get_username_sidebar,
 )
 
 from ai.assistants.coffee import get_coffee_assistant
 from utils.log import logger
 
-from typing import List
-from pydantic import BaseModel, Field
-from rich.pretty import pprint
-from phi.assistant import Assistant
 
 
 st.set_page_config(

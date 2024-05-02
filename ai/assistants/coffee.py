@@ -2,7 +2,6 @@ from typing import Optional
 
 from phi.assistant import Assistant
 from phi.llm.openai import OpenAIChat
-from phi.llm.openai.like import OpenAILike
 
 from ai.settings import ai_settings
 from ai.storage import pdf_assistant_storage

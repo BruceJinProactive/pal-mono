@@ -1,6 +1,5 @@
 import streamlit as st
 
-from phi.tools.streamlit.components import check_password
 
 st.set_page_config(
     page_title="Proactive AI Demos",
