@@ -48,7 +48,8 @@ prd_secret = SecretsManager(
     name=f"{ws_settings.prd_key}-secret",
     group="app",
     # Create secret from workspace/secrets/prd_app_secrets.yml
-    secret_files=[ws_settings.ws_root.joinpath("workspace/secrets/prd_app_secrets.yml")],
+    secret_files=[ws_settings.ws_root.joinpath(
+        "workspace/secrets/prd_app_secrets.yml")],
     skip_delete=skip_delete,
     save_output=save_output,
 )
@@ -57,7 +58,8 @@ prd_db_secret = SecretsManager(
     name=f"{ws_settings.prd_key}-db-secret",
     group="db",
     # Create secret from workspace/secrets/prd_db_secrets.yml
-    secret_files=[ws_settings.ws_root.joinpath("workspace/secrets/prd_db_secrets.yml")],
+    secret_files=[ws_settings.ws_root.joinpath(
+        "workspace/secrets/prd_db_secrets.yml")],
     skip_delete=skip_delete,
     save_output=save_output,
 )
@@ -149,7 +151,7 @@ prd_db = DbInstance(
     db_instance_class="db.t4g.small",
     db_security_groups=[prd_db_sg],
     db_subnet_group=prd_db_subnet_group,
-    # availability_zone=ws_settings.aws_az1, # DB instance creation fails with availability_zone, reason: "An error occurred (InvalidVPCNetworkStateFault) when calling the CreateDBInstance operation: You can't create a db.t4g.small database instance because there are no subnets with available IP addresses in the specified Availability Zone us-east-1a. Create a new subnet in us-east-1a and target that Availability Zone again, or retry the launch with no availability zone, or choose from these Availability Zones: us-east-1b."
+    availability_zone=ws_settings.aws_az1,
     publicly_accessible=False,
     enable_performance_insights=True,
     aws_secret=prd_db_secret,
