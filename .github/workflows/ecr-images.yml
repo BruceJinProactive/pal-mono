@@ -1,4 +1,4 @@
-name: Build ECR Images
+name: Build and Push ECR Images
 
 on: workflow_dispatch
 
@@ -8,13 +8,13 @@ permissions:
   contents: read # This is required for actions/checkout
 
 env:
-  ECR_REPO: 767398151610.dkr.ecr.us-west-1.amazonaws.com/apl-mono
+  ECR_REPO: 767398151610.dkr.ecr.us-west-1.amazonaws.com/pal-mono
   # Create role using https://aws.amazon.com/blogs/security/use-iam-roles-to-connect-github-actions-to-actions-in-aws/
   AWS_ROLE: arn:aws:iam::767398151610:role/GithubActionsRole
   AWS_REGION: us-west-1
 
 jobs:
-  build-app-image:
+  build-push-app-image:
     runs-on: ubuntu-latest
 
     steps:
