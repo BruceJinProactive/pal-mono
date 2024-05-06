@@ -1,4 +1,4 @@
-name: Build and Push ECR Images
+name: Build and Push prd ECR Images
 
 on: workflow_dispatch
 
