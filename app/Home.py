@@ -14,7 +14,7 @@ def main() -> None:
     st.markdown("#### :coffee: Coffee Assistant")
     st.markdown("A conversational AI assistant for a coffee shop")
 
-    st.sidebar.error("Select demo from above")
+    st.sidebar.success("Select demo from above")
 
 
 # if check_password():
