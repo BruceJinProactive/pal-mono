@@ -1,9 +1,6 @@
-name: Build and Push ECR Images
+name: Build and Push prd ECR Images
 
-on:
-  push:
-    branches:
-      - "main"
+on: workflow_dispatch
 
 permissions:
   # For AWS OIDC Token access as per https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services#updating-your-github-actions-workflow
@@ -17,7 +14,7 @@ env:
   AWS_REGION: us-west-1
 
 jobs:
-  build-push-image:
+  build-push-dev-image:
     runs-on: ubuntu-latest
 
     steps:
@@ -44,4 +41,4 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.ECR_REPO }}/pal-mono
+          tags: ${{ env.ECR_REPO }}/pal-mono:prd
