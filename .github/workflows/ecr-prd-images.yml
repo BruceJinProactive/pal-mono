@@ -46,9 +46,5 @@ jobs:
         run: |
           echo '[{"name":"pal-mono-prd-app","imageUri":"${{ env.ECR_REPO }}/pal-mono:prd"}]' > imagedefinitions.json
       - name: Upload imagedefinitions.json to S3
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
         run: |
           aws s3 cp imagedefinitions.json s3://codepipeline-us-west-1-529920332661/pal-mono-prd-app-pl/SourceArti/imagedefinitions.json
