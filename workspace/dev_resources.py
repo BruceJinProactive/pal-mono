@@ -38,6 +38,7 @@ container_env = {
     "RUNTIME_ENV": "dev",
     # Get the OpenAI API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
+    "LEPTON_API_KEY": getenv("LEPTON_API_KEY"),
     # Database configuration
     "DB_HOST": dev_db.get_db_host(),
     "DB_PORT": dev_db.get_db_port(),
@@ -63,7 +64,8 @@ dev_streamlit = Streamlit(
     env_vars=container_env,
     use_cache=ws_settings.use_cache,
     # Read secrets from secrets/dev_app_secrets.yml
-    secrets_file=ws_settings.ws_root.joinpath("workspace/secrets/dev_app_secrets.yml"),
+    secrets_file=ws_settings.ws_root.joinpath(
+        "workspace/secrets/dev_app_secrets.yml"),
     depends_on=[dev_db],
 )
 
@@ -79,7 +81,8 @@ dev_fastapi = FastApi(
     env_vars=container_env,
     use_cache=ws_settings.use_cache,
     # Read secrets from secrets/dev_app_secrets.yml
-    secrets_file=ws_settings.ws_root.joinpath("workspace/secrets/dev_app_secrets.yml"),
+    secrets_file=ws_settings.ws_root.joinpath(
+        "workspace/secrets/dev_app_secrets.yml"),
     depends_on=[dev_db],
 )
 
