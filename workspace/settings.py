@@ -49,5 +49,5 @@ ws_settings = WorkspaceSettings(
     # Build images locally
     build_images=True,
     # Push images after building
-    push_images=True,
+    push_images=False,
 )
