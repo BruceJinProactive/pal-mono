@@ -2,6 +2,17 @@
 
 TODO
 
+## Setup
+
+### Install dependencies
+
+```jsx
+pip install -U phidata
+phi init
+phi ws setup
+```
+
+
 ## Dev
 
 ### Build and push the image
