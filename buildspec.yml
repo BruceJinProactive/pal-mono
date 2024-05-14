@@ -15,7 +15,7 @@ phases:
       - echo Pushing the Docker image...
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
       - echo Write the image definitions file...
-      - CONTAINER_NAME="${IMAGE_REPO_NAME}-$STAGE_NAME-$SERVICE_NAME"
+      - CONTAINER_NAME="${IMAGE_REPO_NAME}-#{codepipeline.STAGE_NAME}-#{codepipeline.SERVICE_NAME}"
       - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions.json
 
 artifacts:
