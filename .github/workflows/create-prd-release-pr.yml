@@ -1,4 +1,4 @@
-name: Create Pull Request
+name: Create Pull Request for PRD Release
 
 on:
   workflow_dispatch:
