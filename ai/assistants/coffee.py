@@ -31,7 +31,7 @@ def get_coffee_assistant(
         llm=OpenAILike(
             model="gpt-3.5-turbo",
             api_key=getenv("LEPTON_API_KEY"),
-            base_url=getenv("LEPTON_BASE_URL"),
+            base_url="https://kfxrnfa5-pail-test.tin.lepton.run/api/v1/",
         ),
         storage=pdf_assistant_storage,
         knowledge_base=pdf_knowledge_base,
