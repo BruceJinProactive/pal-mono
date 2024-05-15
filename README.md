@@ -14,7 +14,7 @@ python3 -m venv ~/.venvs/aienv
 source ~/.venvs/aienv/bin/activate
 ```
 
-1. [One-time] Install dependencies
+4. [One-time] Install dependencies
 
 ```bash
 pip3 install -U phi
@@ -22,14 +22,14 @@ phi init
 phi ws setup
 ```
 
-1. Setup OpenAI API key in your environment variable
+5. Setup OpenAI API key in your environment variable
 
 ```bash
 export OPENAI_API_KEY=sk-***
 export LEPTON_API_KEY=***
 ```
 
-1. Build and run both API and web app locally
+6. Build and run both API and web app locally
 
 ```bash
 phi ws up
