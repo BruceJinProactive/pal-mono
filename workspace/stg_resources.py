@@ -176,6 +176,7 @@ container_env = {
     "RUNTIME_ENV": "stg",
     # Get the OpenAI API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
+    "LEPTON_API_KEY": getenv("LEPTON_API_KEY"),
     # Database configuration
     "DB_HOST": AwsReference(stg_db.get_db_endpoint),
     "DB_PORT": AwsReference(stg_db.get_db_port),
