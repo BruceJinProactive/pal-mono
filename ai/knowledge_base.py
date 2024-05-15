@@ -9,7 +9,8 @@ from db.session import db_url
 
 pdf_knowledge_base = CombinedKnowledgeBase(
     sources=[
-        PDFUrlKnowledgeBase(urls=["https://phi-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"]),
+        ## removing the RAG example Thai Recipes PDF
+        # PDFUrlKnowledgeBase(urls=["https://phi-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"]),
         PDFKnowledgeBase(path="data/pdfs"),
     ],
     vector_db=PgVector2(
