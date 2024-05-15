@@ -15,12 +15,17 @@ phases:
       - echo Pushing the Docker image...
       - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
       - echo Write the image definitions file...
-      - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-${STAGE_NAME}-api"
+
       - CONTAINER_NAME_APP="${IMAGE_REPO_NAME}-${STAGE_NAME}-app"
-      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG $CONTAINER_NAME_API $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions.json
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions_app.json
+
+      - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-${STAGE_NAME}-api"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions_api.json
 
 artifacts:
-  files: imagedefinitions.json
+  files:
+    - imagedefinitions_app.json
+    - imagedefinitions_api.json
 
 cache:
   paths:
