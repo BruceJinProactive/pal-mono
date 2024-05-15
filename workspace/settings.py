@@ -14,8 +14,6 @@ ws_settings = WorkspaceSettings(
 
     # -*- Dev settings
     dev_env="dev",
-
-    # -*- Dev Apps
     dev_app_enabled=True,
     dev_api_enabled=True,
     dev_db_enabled=True,
@@ -23,11 +21,15 @@ ws_settings = WorkspaceSettings(
 
     # -*- Production settings
     prd_env="prd",
-
-    # -*- Production Apps
     prd_app_enabled=True,
     prd_api_enabled=True,
     prd_db_enabled=True,
+
+    # -*- Staging settings
+    stg_env="stg",
+    stg_app_enabled=True,
+    stg_api_enabled=True,
+    stg_db_enabled=True,
 
     # -*- AWS settings
     # Region for AWS resources
