@@ -7,20 +7,21 @@ phases:
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
   build:
     commands:
+      - IMAGE_URL=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
       - echo Building the Docker image...
       - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
-      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $IMAGE_URL
   post_build:
     commands:
       - echo Pushing the Docker image...
-      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - docker push $IMAGE_URL
       - echo Write the image definitions file...
 
       - CONTAINER_NAME_APP="${IMAGE_REPO_NAME}-${STAGE_NAME}-app"
-      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions_app.json
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $IMAGE_URL > imagedefinitions_app.json
 
       - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-${STAGE_NAME}-api"
-      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions_api.json
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $IMAGE_URL > imagedefinitions_api.json
 
 artifacts:
   files:
