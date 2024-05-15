@@ -1,62 +1,70 @@
 # pal-mono
 
-TODO
+## Development
 
-## Setup
+Follow the next steps to run the pal-mono service on your local computer.
 
-### Pre-req
+1. Pre-req: make sure Python3, Pip3 and Docker are installed on your Mac.
 
-Make sure Python3 and Pip3 are installed on your Mac
+2. Checkout the repo and navigate to the root folder.
+3. Create a python virtual environment
 
-### Install dependencies
-
-Create a virtual environment in the terminal and install dependencies
-
-```jsx
+```bash
 python3 -m venv ~/.venvs/aienv
 source ~/.venvs/aienv/bin/activate
+```
 
-pip install -U phidata
+1. [One-time] Install dependencies
+
+```bash
+pip3 install -U phi
 phi init
 phi ws setup
 ```
 
-### Setup OpenAI API key in your environment variable
+1. Setup OpenAI API key in your environment variable
 
-```jsx
+```bash
 export OPENAI_API_KEY=sk-***
+export LEPTON_API_KEY=***
 ```
 
-## Run both API and web app locally to test and debug
+1. Build and run both API and web app locally
 
-```jsx
+```bash
 phi ws up
 ```
 
-## Dev
+## CI/CD
 
-### Build and push the image
+### Environments
 
-```jsx
-phi ws up --env dev --infra docker --type image
-```
+The CI/CD pipeline is devided into 3 stages:
 
-### Restart all containers
+- dev(development) - The enviroment for your local development. Changes before merged into `main` branch.
+- stg(staging) - The enviroment for internal testing and validation. Changes on the HEAD of `main` branch, before merged into `prd` branch.
+- prd(production) - The enviroment to live customer traffic. Changes on `prd` branch.
 
-```jsx
-phi ws restart --env dev --infra docker --type container
-```
+### Releasing from `dev` to `stg`:
 
-## Prd
+1. Create a feature branch `example-feature` based from `main` and make changes locally.
+2. Make a pull request merging `example-feature` to `main`.
+3. Wait for PR review and approval.
+4. Submit the PR to merge `example-feature` to `main`.
+5. A staging release will be automatically triggered. Join Slack channel #cicd-notifications to receive notificaionts.
 
-### Build and push the image
+### Releasing from `stg` to `prd`:
 
-```jsx
-phi ws up --env prd --infra docker --type image
-```
+[TODO] The process is manual for now.
 
-### Update ECS Service to redeploy
+1. Make a pull request merging `prd` to `main`.
+2. Wait for PR review and approval.
+3. Submit the PR to merge `prd` to `main`.
+4. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notificaionts.
 
-```jsx
-phi ws patch --env prd --infra aws --name service
-```
+## Serving Endpoints
+
+|     | app                                                                | api (Load Balancer)                                                | api (API Gateway)                                          |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------- |
+| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | -                                                          |
+| prd | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/  | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/api |
