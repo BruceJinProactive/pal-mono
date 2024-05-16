@@ -62,7 +62,9 @@ def create_assistant_run(body: CreateRunRequest):
     """Create a new Assistant run and returns the run_id"""
 
     logger.debug(f"CreateRunRequest: {body}")
-    assistant: Assistant = get_assistant(assistant_type=body.assistant, user_id=body.user_id)
+    assistant: Assistant = get_assistant(
+        assistant_type=body.assistant, user_id=body.user_id
+    )
 
     # create_run() will log the run in the database and return the run_id
     # which is returned to the frontend to retrieve the run later

@@ -26,5 +26,7 @@ dev_jupyter_app = Jupyter(
     mount_workspace=True,
     use_cache=ws_settings.use_cache,
     # Read secrets from secrets/dev_jupyter_secrets.yml
-    secrets_file=ws_settings.ws_root.joinpath("workspace/secrets/dev_jupyter_secrets.yml"),
+    secrets_file=ws_settings.ws_root.joinpath(
+        "workspace/secrets/dev_jupyter_secrets.yml"
+    ),
 )
