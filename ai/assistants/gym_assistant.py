@@ -62,14 +62,14 @@ def get_gym_assistant(
         temperature=0.9,
     )
 
-    lepton_chat_llm = OpenAILike(
-        model="gpt-3.5-turbo",
-        api_key=getenv("LEPTON_API_KEY"),
-        base_url="https://kfxrnfa5-pail-test.tin.lepton.run/api/v1/",
-        max_tokens=16384,
-        temperature=0.9,
-        top_p=0.9,
-    )
+    # lepton_chat_llm = OpenAILike(
+    #     model="gpt-3.5-turbo",
+    #     api_key=getenv("LEPTON_API_KEY"),
+    #     base_url="https://kfxrnfa5-pail-test.tin.lepton.run/api/v1/",
+    #     max_tokens=16384,
+    #     temperature=0.9,
+    #     top_p=0.9,
+    # )
 
     # set up assistant with specific storage
     assistant = Assistant(
