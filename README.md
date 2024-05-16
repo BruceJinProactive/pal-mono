@@ -54,7 +54,7 @@ phi ws up
 
 We use several tools to ensure code quality and consistency. These tools are run automatically before every commit.
 
-- Format with `ruff`
+- Format with `black`
 - Lint with `ruff`
 - Type check with `mypy`
 

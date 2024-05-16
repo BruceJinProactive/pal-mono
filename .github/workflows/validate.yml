@@ -34,9 +34,9 @@ jobs:
             mypy ruff
           pip install --no-deps -r requirements.txt
 
-      - name: Format with ruff
+      - name: Format with black
         run: |
-          ruff format .
+          black .
 
       - name: Lint with ruff
         run: |
