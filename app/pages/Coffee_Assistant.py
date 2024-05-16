@@ -10,7 +10,7 @@ from phi.tools.streamlit.components import (
     get_username_sidebar,
 )
 
-from ai.assistants.coffee import get_coffee_assistant
+from ai.assistants.coffee_assistant import get_coffee_assistant
 from utils.log import logger
 
 
@@ -43,7 +43,8 @@ def main() -> None:
     )
 
     # Get the run id
-    coffee_assistant_run_ids: List[str] = coffee_assistant.storage.get_all_run_ids(user_id=username)
+    coffee_assistant_run_ids: List[str] = coffee_assistant.storage.get_all_run_ids(
+        user_id=username)
     coffee_assistant_run_id = None
     if not coffee_assistant_run_ids or len(coffee_assistant_run_ids) == 0:
         coffee_assistant_run_id = coffee_assistant.create_run()
@@ -87,11 +88,13 @@ def main() -> None:
         st.session_state["messages"] = assistant_chat_history
     else:
         logger.debug("No chat history found")
-        st.session_state["messages"] = [{"role": "assistant", "content": "Ask me anything..."}]
+        st.session_state["messages"] = [
+            {"role": "assistant", "content": "Ask me anything..."}]
 
     # Prompt for user input
     if prompt := st.chat_input():
-        st.session_state["messages"].append({"role": "user", "content": prompt})
+        st.session_state["messages"].append(
+            {"role": "user", "content": prompt})
 
     # Display existing chat messages
     for message in st.session_state["messages"]:
@@ -112,7 +115,8 @@ def main() -> None:
                     response += delta  # type: ignore
                     resp_container.markdown(response)
 
-            st.session_state["messages"].append({"role": "assistant", "content": response})
+            st.session_state["messages"].append(
+                {"role": "assistant", "content": response})
 
     # if st.sidebar.button("New Run"):
     #     restart_assistant()
@@ -153,7 +157,8 @@ def main() -> None:
                 reader = PDFReader()
                 pdf_documents: List[Document] = reader.read(uploaded_file)
                 if pdf_documents:
-                    coffee_assistant.knowledge_base.load_documents(pdf_documents)
+                    coffee_assistant.knowledge_base.load_documents(
+                        pdf_documents)
                 else:
                     st.sidebar.error("Could not read PDF")
                 st.session_state[f"{pdf_name}_uploaded"] = True
