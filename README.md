@@ -58,6 +58,12 @@ We use several tools to ensure code quality and consistency. These tools are run
 - Lint with `ruff check .`
 - Type check with `mypy .`
 
+[One-time] Install the following tools locally:
+
+```bash
+pip3 install black isort ruff mypy
+```
+
 Run the following command to validate your code locally:
 
 ```bash
