@@ -10,9 +10,6 @@ st.title("Welcome to Proactive AI Demos!")
 
 def main() -> None:
     st.markdown("---")
-    st.markdown("## Select a Demo to Start:")
-    st.markdown("#### :coffee: Coffee Assistant")
-    st.markdown("A conversational AI assistant for a coffee shop")
 
     st.sidebar.success("Select demo from above")
 
