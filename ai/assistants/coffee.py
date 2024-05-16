@@ -5,6 +5,7 @@ import logging
 
 from phi.assistant import Assistant
 from phi.llm.openai.like import OpenAILike
+from phi.llm.openai import OpenAIChat
 
 from ai.storage import pdf_assistant_storage
 from ai.knowledge_base import pdf_knowledge_base
@@ -65,7 +66,9 @@ def get_coffee_assistant(
         knowledge_base=knowledge_base,
         # Enable monitoring on phidata.app
         # monitoring=True,
-        use_tools=False,
+        use_tools=True,
+        search_knowledge=True,
+        read_chat_history=True,
         debug_mode=debug_mode,
         description="You are a helpful assistant named 'Max' designed to answer questions about Max's Coffee Shop.",
         extra_instructions=[

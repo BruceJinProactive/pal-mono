@@ -43,7 +43,7 @@ orjson==3.10.3
 packaging==24.0
 pandas==2.2.2
 pgvector==0.2.5
-phidata==2.3.89
+git+https://github.com/Proactive-AI-Lab/phidata.git@lepton-fix
 pillow==10.3.0
 protobuf==4.25.3
 psycopg[binary]==3.1.18
