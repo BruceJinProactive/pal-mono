@@ -27,7 +27,6 @@ requests_log.setLevel(logging.DEBUG)
 requests_log.propagate = True
 
 
-
 mindzero_knowledge_base = CombinedKnowledgeBase(
     sources=[
         ## removing the RAG example Thai Recipes PDF
@@ -83,7 +82,6 @@ def get_gym_assistant(
         storage=gym_assistant_storage,
         # knowledge_base=pdf_knowledge_base,
         knowledge_base=mindzero_knowledge_base,
-
         # Enable monitoring on phidata.app
         # monitoring=True,
         use_tools=True,

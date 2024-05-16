@@ -14,7 +14,6 @@ from ai.assistants.gym_assistant import get_gym_assistant
 from utils.log import logger
 
 
-
 st.set_page_config(
     page_title="Gym Assistant",
     page_icon="🏋️‍♂️",
@@ -44,8 +43,7 @@ def main() -> None:
     )
 
     # Get the run id
-    coffee_assistant_run_ids: List[str] = gym_assistant.storage.get_all_run_ids(
-        user_id=username)
+    coffee_assistant_run_ids: List[str] = gym_assistant.storage.get_all_run_ids(user_id=username)
     coffee_assistant_run_id = None
     if not coffee_assistant_run_ids or len(coffee_assistant_run_ids) == 0:
         coffee_assistant_run_id = gym_assistant.create_run()
@@ -89,13 +87,11 @@ def main() -> None:
         st.session_state["messages"] = assistant_chat_history
     else:
         logger.debug("No chat history found")
-        st.session_state["messages"] = [
-            {"role": "assistant", "content": "Ask me anything..."}]
+        st.session_state["messages"] = [{"role": "assistant", "content": "Ask me anything..."}]
 
     # Prompt for user input
     if prompt := st.chat_input():
-        st.session_state["messages"].append(
-            {"role": "user", "content": prompt})
+        st.session_state["messages"].append({"role": "user", "content": prompt})
 
     # Display existing chat messages
     for message in st.session_state["messages"]:
@@ -116,8 +112,7 @@ def main() -> None:
                     response += delta  # type: ignore
                     resp_container.markdown(response)
 
-            st.session_state["messages"].append(
-                {"role": "assistant", "content": response})
+            st.session_state["messages"].append({"role": "assistant", "content": response})
 
     # if st.sidebar.button("New Run"):
     #     restart_assistant()

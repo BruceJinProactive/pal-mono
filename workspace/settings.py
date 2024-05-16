@@ -11,26 +11,22 @@ ws_settings = WorkspaceSettings(
     ws_name="pal-mono",
     # Path to the workspace root
     ws_root=Path(__file__).parent.parent.resolve(),
-
     # -*- Dev settings
     dev_env="dev",
     dev_app_enabled=True,
     dev_api_enabled=True,
     dev_db_enabled=True,
     # dev_jupyter_enabled=True,
-
     # -*- Production settings
     prd_env="prd",
     prd_app_enabled=True,
     prd_api_enabled=True,
     prd_db_enabled=True,
-
     # -*- Staging settings
     stg_env="stg",
     stg_app_enabled=True,
     stg_api_enabled=True,
     stg_db_enabled=True,
-
     # -*- AWS settings
     # Region for AWS resources
     aws_region="us-west-1",
@@ -42,7 +38,6 @@ ws_settings = WorkspaceSettings(
         "subnet-0de9d04f262744f09",  # subnet of az us-west-1a
         "subnet-031217b631485686d",  # subnet of az us-west-1b
     ],
-
     # -*- Image Settings
     # Name of the image
     image_name="pal-mono",

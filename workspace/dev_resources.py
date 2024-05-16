@@ -64,8 +64,7 @@ dev_streamlit = Streamlit(
     env_vars=container_env,
     use_cache=ws_settings.use_cache,
     # Read secrets from secrets/dev_app_secrets.yml
-    secrets_file=ws_settings.ws_root.joinpath(
-        "workspace/secrets/dev_app_secrets.yml"),
+    secrets_file=ws_settings.ws_root.joinpath("workspace/secrets/dev_app_secrets.yml"),
     depends_on=[dev_db],
 )
 
@@ -81,8 +80,7 @@ dev_fastapi = FastApi(
     env_vars=container_env,
     use_cache=ws_settings.use_cache,
     # Read secrets from secrets/dev_app_secrets.yml
-    secrets_file=ws_settings.ws_root.joinpath(
-        "workspace/secrets/dev_app_secrets.yml"),
+    secrets_file=ws_settings.ws_root.joinpath("workspace/secrets/dev_app_secrets.yml"),
     depends_on=[dev_db],
 )
 
