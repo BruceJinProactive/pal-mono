@@ -45,7 +45,7 @@ packaging==24.0
 pandas==2.2.2
 pathspec==0.12.1
 pgvector==0.2.5
-git+https://github.com/Proactive-AI-Lab/phidata.git@lepton-fix
+phidata==2.3.89
 pillow==10.3.0
 platformdirs==4.2.2
 protobuf==4.25.3
