@@ -28,6 +28,7 @@ dependencies = [
   "mypy",
   # Linting and Formatting
   "ruff",
+  "black",
   # phidata
   "phidata==2.3.89",
 ]
