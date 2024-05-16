@@ -66,5 +66,5 @@ The CI/CD pipeline is devided into 3 stages:
 
 |     | app                                                                | api (Load Balancer)                                                | api (API Gateway)                                          |
 | --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------- |
-| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | -                                                          |
+| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/stg-api                                                          |
 | prd | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/  | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/api |
