@@ -1,5 +1,4 @@
 import logging
-from os import getenv
 from typing import Optional
 
 from phi.assistant import Assistant
@@ -7,7 +6,6 @@ from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.pdf import PDFKnowledgeBase
 from phi.llm.openai import OpenAIChat
-from phi.llm.openai.like import OpenAILike
 from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.vectordb.pgvector import PgVector2
 
