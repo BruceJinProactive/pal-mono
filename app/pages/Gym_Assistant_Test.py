@@ -3,14 +3,13 @@ from typing import List
 import streamlit as st
 from phi.assistant import Assistant
 from phi.tools.streamlit.components import (
-    get_openai_key_sidebar,
     check_password,
+    get_openai_key_sidebar,
     get_username_sidebar,
 )
 
 from ai.assistants.gym_assistant import get_gym_assistant
 from utils.log import logger
-
 
 st.set_page_config(
     page_title="Gym Assistant",

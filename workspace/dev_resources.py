@@ -3,8 +3,8 @@ from os import getenv
 from phi.docker.app.fastapi import FastApi
 from phi.docker.app.postgres import PgVectorDb
 from phi.docker.app.streamlit import Streamlit
-from phi.docker.resources import DockerResources
 from phi.docker.resource.image import DockerImage
+from phi.docker.resources import DockerResources
 
 from workspace.jupyter.lab import dev_jupyter_app
 from workspace.settings import ws_settings

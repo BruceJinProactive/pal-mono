@@ -1,14 +1,14 @@
-from typing import Generator, Optional, List, Dict, Any, Literal
+from typing import Any, Dict, Generator, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from phi.assistant import Assistant, AssistantRun
 from pydantic import BaseModel
 
-from api.routes.endpoints import endpoints
-from ai.assistants.pdf_rag import get_rag_pdf_assistant
 from ai.assistants.pdf_auto import get_autonomous_pdf_assistant
+from ai.assistants.pdf_rag import get_rag_pdf_assistant
 from ai.storage import pdf_assistant_storage
+from api.routes.endpoints import endpoints
 from utils.log import logger
 
 ######################################################
