@@ -19,8 +19,7 @@ This is our main monolith service. It is a Python service that serves 2 artifact
 
 Follow the next steps to run the pal-mono service on your local computer.
 
-1. Pre-req: make sure Python3, Pip3 and Docker are installed on your Mac.
-
+1. Pre-req: make sure Python3 (3.11 recommended), Pip3 and Docker are installed on your Mac.
 2. Checkout the repo and navigate to the root folder.
 3. Create a python virtual environment
 
