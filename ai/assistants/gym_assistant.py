@@ -8,8 +8,6 @@ from phi.llm.openai import OpenAIChat
 from phi.llm.openai.like import OpenAILike
 
 from ai.settings import ai_settings
-from ai.storage import pdf_assistant_storage
-from ai.knowledge_base import pdf_knowledge_base
 
 from phi.storage.assistant.postgres import PgAssistantStorage
 

@@ -1,6 +1,6 @@
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
-from phi.knowledge.pdf import PDFUrlKnowledgeBase, PDFKnowledgeBase
+from phi.knowledge.pdf import PDFKnowledgeBase
 from phi.knowledge.website import WebsiteKnowledgeBase
 from phi.vectordb.pgvector import PgVector2
 

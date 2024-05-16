@@ -5,14 +5,10 @@ import logging
 
 from phi.assistant import Assistant
 from phi.llm.openai.like import OpenAILike
-from phi.llm.openai import OpenAIChat
 
-from ai.storage import pdf_assistant_storage
-from ai.knowledge_base import pdf_knowledge_base
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
-from phi.knowledge.pdf import PDFUrlKnowledgeBase, PDFKnowledgeBase
-from phi.knowledge.website import WebsiteKnowledgeBase
+from phi.knowledge.pdf import PDFKnowledgeBase
 from phi.vectordb.pgvector import PgVector2
 
 from ai.settings import ai_settings
