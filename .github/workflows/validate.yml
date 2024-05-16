@@ -38,6 +38,10 @@ jobs:
         run: |
           black .
 
+      - name: Sort imports with isort
+        run: |
+          isort .
+  
       - name: Lint with ruff
         run: |
           ruff check .

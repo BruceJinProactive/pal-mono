@@ -10,11 +10,13 @@ dependencies = [
   "fastapi",
   "typer",
   "uvicorn",
+
   # Database libraries
   "alembic",
   "pgvector",
   "psycopg[binary]",
   "sqlalchemy",
+
   # Project libraries
   "openai",
   "pypdf",
@@ -24,11 +26,13 @@ dependencies = [
   "types-beautifulsoup4",
   "pillow",
   "types-Pillow",
-  # Type checking
-  "mypy",
-  # Linting and Formatting
-  "ruff",
+
+  # Validation
   "black",
+  "isort",
+  "ruff",
+  "mypy",
+
   # phidata
   "phidata==2.3.89",
 ]
@@ -45,6 +49,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 88
+
+[tool.isort]
+profile = "black"
+line_length = 88
 
 [tool.ruff]
 extend-include = ["*.ipynb"]

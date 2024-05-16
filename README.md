@@ -54,9 +54,10 @@ phi ws up
 
 We use several tools to ensure code quality and consistency. These tools are run automatically before every commit.
 
-- Format with `black`
-- Lint with `ruff`
-- Type check with `mypy`
+- Format with `black .`
+- Sort imports with `isort .`
+- Lint with `ruff check .`
+- Type check with `mypy .`
 
 Run the following command to validate your code locally:
 
