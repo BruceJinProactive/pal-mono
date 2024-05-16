@@ -1,5 +1,20 @@
 # pal-mono
 
+## Overview
+
+This is our main monolith service. It is a Python service that serves 2 artifacts:
+
+- api - a RESTful API that serves the main functionality of the service
+
+- app - a web app that demos the functionalities of the service
+
+## Endpoints
+
+|     | app                                                                | api (Load Balancer)                                                | api (API Gateway)                                              |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/stg-api |
+| prd | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/  | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/api     |
+
 ## Development
 
 Follow the next steps to run the pal-mono service on your local computer.
@@ -35,6 +50,20 @@ export LEPTON_API_KEY=***
 phi ws up
 ```
 
+## Validation
+
+We use several tools to ensure code quality and consistency. These tools are run automatically before every commit.
+
+- Format with `ruff`
+- Lint with `ruff`
+- Type check with `mypy`
+
+Run the following command to validate your code locally:
+
+```bash
+./scripts/validate.sh
+```
+
 ## CI/CD
 
 ### Environments
@@ -61,10 +90,3 @@ The CI/CD pipeline is devided into 3 stages:
 2. Wait for PR review and approval.
 3. Submit the PR to merge `prd` to `main`.
 4. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notificaionts.
-
-## Serving Endpoints
-
-|     | app                                                                | api (Load Balancer)                                                | api (API Gateway)                                          |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------- |
-| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/stg-api                                                          |
-| prd | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/  | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/api |
