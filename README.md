@@ -8,18 +8,11 @@ This is our main monolith service. It is a Python service that serves 2 artifact
 
 - app - a web app that demos the functionalities of the service
 
-## Endpoints
-
-|     | app                                                                | api (Load Balancer)                                                | api (API Gateway)                                              |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------- |
-| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/stg-api |
-| prd | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/  | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/api     |
-
 ## Development
 
 Follow the next steps to run the pal-mono service on your local computer.
 
-1. Pre-req: make sure Python3 (3.11 recommended), Pip3 and Docker are installed on your Mac.
+1. Make sure Python3 (3.11 recommended), Pip3 and Docker are installed on your Mac.
 2. Checkout the repo and navigate to the root folder.
 3. Create a python virtual environment
 
@@ -76,9 +69,9 @@ Run the following command to validate your code locally:
 
 The CI/CD pipeline is devided into 3 stages:
 
-- dev(development) - The enviroment for your local development. Changes before merged into `main` branch.
-- stg(staging) - The enviroment for internal testing and validation. Changes on the HEAD of `main` branch, before merged into `prd` branch.
-- prd(production) - The enviroment to live customer traffic. Changes on `prd` branch.
+- dev(development) - The environment for your local development. Changes before merged into `main` branch.
+- stg(staging) - The environment for internal testing and validation. Changes on the HEAD of `main` branch, before merged into `prd` branch.
+- prd(production) - The environment to serve live customer traffic. Changes on `prd` branch.
 
 ### Releasing from `dev` to `stg`:
 
@@ -96,3 +89,10 @@ The CI/CD pipeline is devided into 3 stages:
 2. Wait for PR review and approval.
 3. Submit the PR to merge `prd` to `main`.
 4. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notificaionts.
+
+## Endpoints
+
+|     | app                                                                | api (Load Balancer)                                                | api (API Gateway)                                              |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/stg-api |
+| prd | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/  | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/api     |
