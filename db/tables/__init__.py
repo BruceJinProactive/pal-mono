@@ -1,2 +1,2 @@
 from db.tables.base import Base
-from db.tables.account import AccountsTable
+from db.tables.accounts import AccountsTable
