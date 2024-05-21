@@ -49,9 +49,9 @@ footer: >-
   <{{repositoryUrl}}|{{repositoryName}}> {{workflow}} #{{runNumber}}
 
 colors:
-  success: '#5DADE2'
-  failure: '#884EA0'
-  cancelled: '#A569BD'
+  success: '#6AA84F'
+  failure: '#cc0000'
+  cancelled: '#999999'
   default: '#7D3C98'
 
 icons:
