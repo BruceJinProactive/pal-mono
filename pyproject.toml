@@ -26,6 +26,7 @@ dependencies = [
   "types-beautifulsoup4",
   "pillow",
   "types-Pillow",
+  "streamlit_cognito_auth",
 
   # Validation
   "black",
