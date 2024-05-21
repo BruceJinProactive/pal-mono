@@ -49,3 +49,13 @@ jobs:
       # - name: Type-check with mypy
       #   run: |
       #     mypy .
+
+      # If the job fails, send a message to Slack
+      - name: Notify Slack
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
