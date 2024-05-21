@@ -186,7 +186,7 @@ container_env = {
     # Wait for database to be available before starting the application
     "WAIT_FOR_DB": ws_settings.stg_db_enabled,
     # Migrate database on startup using alembic
-    "MIGRATE_DB": ws_settings.stg_db_enabled,
+    # "MIGRATE_DB": ws_settings.stg_db_enabled,
 }
 
 # -*- Streamlit running on ECS
