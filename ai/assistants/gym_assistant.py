@@ -74,8 +74,11 @@ def get_gym_assistant(
         user_id=user_id,
         llm=lepton_chat_llm,
         storage=gym_assistant_storage,
+        add_chat_history_to_messages=True,
+        num_history_messages=20,
         # knowledge_base=pdf_knowledge_base,
         knowledge_base=mindzero_knowledge_base,
+        add_references_to_prompt=True,
         # Enable monitoring on phidata.app
         # monitoring=True,
         use_tools=False,

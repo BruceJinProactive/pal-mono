@@ -36,7 +36,7 @@ def main() -> None:
     # Get the assistant
     gym_assistant: Assistant = get_gym_assistant(
         user_id=username,
-        debug_mode=True,
+        debug_mode=False,
     )
 
     # Get the run id
