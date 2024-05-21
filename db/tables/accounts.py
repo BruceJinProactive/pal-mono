@@ -2,10 +2,10 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Mapped, mapped_column
-
-from db.tables.base import Base
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import BigInteger, DateTime, String
+
+from db.tables.base import Base
 
 
 class AccountsTable(Base):

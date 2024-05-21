@@ -3,9 +3,9 @@ from typing import Optional
 from phi.assistant import Assistant
 from phi.llm.openai import OpenAIChat
 
+from ai.knowledge_base import website_knowledge_base
 from ai.settings import ai_settings
 from ai.storage import website_assistant_storage
-from ai.knowledge_base import website_knowledge_base
 
 
 def get_autonomous_website_assistant(

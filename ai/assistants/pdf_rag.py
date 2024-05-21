@@ -3,9 +3,9 @@ from typing import Optional
 from phi.assistant import Assistant
 from phi.llm.openai import OpenAIChat
 
+from ai.knowledge_base import pdf_knowledge_base
 from ai.settings import ai_settings
 from ai.storage import pdf_assistant_storage
-from ai.knowledge_base import pdf_knowledge_base
 
 
 def get_rag_pdf_assistant(
