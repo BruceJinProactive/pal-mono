@@ -52,7 +52,7 @@ def get_gym_assistant(
         table_name="gym_assistant",
     )
 
-    openai_chat_llm = OpenAIChat(
+    _ = OpenAIChat(
         model=ai_settings.gpt_3_5,
         max_tokens=4096,
         temperature=0.9,
