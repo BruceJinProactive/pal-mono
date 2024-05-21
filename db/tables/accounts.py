@@ -16,7 +16,7 @@ class AccountsTable(Base):
         BigInteger, primary_key=True, autoincrement=True, nullable=False, index=True
     )
 
-    cognito_user_group_name: Mapped[str] = mapped_column(String)
+    account_name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
