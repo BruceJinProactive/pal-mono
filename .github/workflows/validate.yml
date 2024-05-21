@@ -52,7 +52,7 @@ jobs:
 
       # If the job fails, send a message to Slack
       - name: Notify Slack
-        if: failure()
+        if: always()
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
