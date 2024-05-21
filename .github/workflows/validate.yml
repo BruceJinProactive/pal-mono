@@ -52,10 +52,11 @@ jobs:
 
       # If the job fails, send a message to Slack
       - name: Notify Slack
-        if: always()
-        uses: 8398a7/action-slack@v3
+        uses: act10ns/slack@v2
         with:
           status: ${{ job.status }}
-          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+          steps: ${{ toJson(steps) }}
+          channel: '#workflows'
+        if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
