@@ -1,5 +1,5 @@
 from sqlalchemy.engine import Engine, create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from db.settings import db_settings
 
@@ -9,9 +9,7 @@ db_engine: Engine = create_engine(db_url, pool_pre_ping=True)
 
 # Create a SessionLocal class
 # https://fastapi.tiangolo.com/tutorial/sql-databases/#create-a-sessionlocal-class
-SessionLocal: sessionmaker[Session] = sessionmaker(
-    autocommit=False, autoflush=False, bind=db_engine
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=db_engine)
 
 
 def get_db():

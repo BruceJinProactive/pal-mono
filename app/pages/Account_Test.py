@@ -7,6 +7,9 @@ import streamlit as st
 from jwt.algorithms import RSAAlgorithm
 from streamlit_cognito_auth import CognitoAuthenticator
 
+from db.repositories.account_repository import AccountRepository
+from db.session import get_db
+
 st.set_page_config(
     page_title="Account Test",
     page_icon=":key:",
@@ -77,10 +80,11 @@ is_logged_in = authenticator.login()
 if not is_logged_in:
     st.stop()
 else:
-    st.write("You are logged in!")
+    st.write("---")
+    st.write("## Account info from Cognito")
 
-    st.write("username: ", authenticator.get_username())
-    st.write("email: ", authenticator.get_email())
+    st.write("- username: ", authenticator.get_username())
+    st.write("- email: ", authenticator.get_email())
 
     # Example usage
     credentials = authenticator.get_credentials()
@@ -90,8 +94,33 @@ else:
         id_token = None
     try:
         claims = parse_id_token(id_token)
-        st.write("claims: ", json.dumps(claims, indent=4))
-        st.write("account_name: ", claims["custom:account_name"])
+        st.write("- claims: ", json.dumps(claims, indent=4))
+        st.write("- account_name: ", claims["custom:account_name"])
+
+        st.write("---")
+        st.write("## Account details from RDS")
+
+        db = next(get_db())
+        account_repository = AccountRepository(db)
+
+        account_id = int(st.number_input("Enter Account ID", step=1))
+        account_name = st.text_input("Enter Account Name")
+        if st.button("Get Accounts"):
+            accounts = account_repository.get_accounts()
+            for account in accounts:
+                st.write(account)
+        if st.button("Get Account"):
+            account = account_repository.get_account(account_id, account_name)
+            st.write(account)
+        if st.button("Create Account"):
+            account = account_repository.create_account(account_name)
+            st.write(account)
+        if st.button("Update Account"):
+            account = account_repository.update_account(account_id, account_name)
+            st.write(account)
+        if st.button("Delete Account"):
+            account = account_repository.delete_account(account_id)
+            st.write(account)
 
     except Exception as e:
         st.write(f"Error parsing ID token: {e}")
