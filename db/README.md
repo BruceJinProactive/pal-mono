@@ -59,8 +59,8 @@ TODO
 
 ## DB migration history
 
-| Link to migration version                                                                                                          | Tested on dev? | Deployed to staging? | Deployed to production? |
-| ---------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------------- | ----------------------- |
-| https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/038100802b26_initialize_db.py                        | YES            | YES                  | NO                      |
-| https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/d4c296cb1ca6_rename_and_add_unique_constraint_to_.py | YES            | YES                  | NO                      |
-| Placehold                                                                                                                          | NO             | NO                   | NO                      |
+| Link to migration version                                                                                                                                                       | Tested on dev? | Deployed to staging? | Deployed to production? |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------------- | ----------------------- |
+| [Add initial accounts table](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/038100802b26_initialize_db.py)                                       | YES            | YES                  | NO                      |
+| [Rename to account_name and make it unique](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/d4c296cb1ca6_rename_and_add_unique_constraint_to_.py) | YES            | YES                  | NO                      |
+| Placehold                                                                                                                                                                       | NO             | NO                   | NO                      |
