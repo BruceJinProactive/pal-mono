@@ -111,7 +111,7 @@ def main() -> None:
             with st.spinner("Working..."):
                 response = ""
                 resp_container = st.empty()
-                for delta in coffee_assistant.run(question):
+                for delta in coffee_assistant.run(question, stream=False):
                     response += delta  # type: ignore
                     resp_container.markdown(response)
 
