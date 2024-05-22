@@ -8,7 +8,7 @@ from sqlalchemy.types import BigInteger, DateTime, String
 from db.tables.base import Base
 
 
-class AccountsTable(Base):
+class Account(Base):
 
     __tablename__ = "accounts"
 
