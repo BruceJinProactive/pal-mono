@@ -16,13 +16,13 @@ st.set_page_config(
 )
 st.title("Account Test")
 
-AWS_DEFAULT_REGION = os.environ["AWS_DEFAULT_REGION"]
+AWS_REGION = os.environ["AWS_REGION"]
 AWS_USER_POOL_ID = os.environ["AWS_USER_POOL_ID"]
 AWS_APP_CLIENT_ID = os.environ["AWS_APP_CLIENT_ID"]
 AWS_APP_CLIENT_SECRET = os.environ["AWS_APP_CLIENT_SECRET"]
 
 # Cognito JWKS URL
-JWKS_URL = f"https://cognito-idp.{AWS_DEFAULT_REGION}.amazonaws.com/{AWS_USER_POOL_ID}/.well-known/jwks.json"
+JWKS_URL = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{AWS_USER_POOL_ID}/.well-known/jwks.json"
 
 authenticator = CognitoAuthenticator(
     pool_id=AWS_USER_POOL_ID,
