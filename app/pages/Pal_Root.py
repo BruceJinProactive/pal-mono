@@ -31,7 +31,7 @@ if st.button("Update Account"):
 if st.button("Delete Account"):
     account = account_repository.delete_account(account_id)
     st.write(account)
-if st.button("Create Account with Project"):
+if st.button("Create Account with Defaults"):
     account = account_repository.create_account_with_defaults(account_name)
     st.write(account)
     for project in account.projects:
