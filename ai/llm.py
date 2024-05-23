@@ -30,7 +30,7 @@ def get_llm(llm_name: LLM):
         return OpenAILike(
             model="OpenHermes-2.5-Mistral-7B-dpo",
             api_key=getenv("MODAL_API_KEY"),
-            base_url="https://proactive-ai-lab--openai-b-fastapi-app-dev.modal.run/",
+            base_url="https://proactive-ai-lab--openai-b-fastapi-app.modal.run/",
         )
     else:
         raise ValueError(f"Invalid model name: {llm_name}")
