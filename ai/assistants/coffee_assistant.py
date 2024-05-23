@@ -1,10 +1,11 @@
 import logging
 from typing import Optional
 
-from phi.assistant import Assistant
+from phi.assistant import Assistant, AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.pdf import PDFKnowledgeBase
+from phi.memory.db.postgres import PgMemoryDb
 from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.vectordb.pgvector import PgVector2
 
@@ -37,6 +38,13 @@ storage = PgAssistantStorage(
     table_name="coffee_storage",
 )
 
+memory = AssistantMemory(
+    db=PgMemoryDb(
+        db_url=db_url,
+        table_name="coffee_memory",
+    ),
+)
+
 
 def get_coffee_assistant(
     run_id: Optional[str] = None,
@@ -49,12 +57,19 @@ def get_coffee_assistant(
         name="coffee_assistant",
         run_id=run_id,
         user_id=user_id,
-        llm=get_llm(LLM.MODAL),
+        llm=get_llm(LLM.OPENAI),
         storage=storage,
         knowledge_base=knowledge_base,
+        # Add personalization to the assistant by creating memories
+        create_memories=True,
+        # Update memory after each run
+        update_memory_after_run=True,
+        # Store the memories in a database
+        memory=memory,
         # Enable monitoring on phidata.app
         # monitoring=True,
         use_tools=True,
+        show_tool_calls=True,
         search_knowledge=True,
         read_chat_history=True,
         debug_mode=debug_mode,
