@@ -4,10 +4,12 @@ from db.repositories.account_repository import AccountRepository
 from db.session import get_db
 
 st.set_page_config(
-    page_title="Pal Admin",
-    page_icon=":dashboard:",
+    page_title="Pal Root",
+    page_icon=":exclamation:",
 )
-st.title("Pal Admin")
+st.title("Pal Root")
+
+st.warning("[WARNING] Operations on this page are irreversible.")
 
 st.write("---")
 
@@ -23,12 +25,16 @@ if st.button("Get Accounts"):
 if st.button("Get Account"):
     account = account_repository.get_account(account_id, account_name)
     st.write(account)
-if st.button("Create Account"):
-    account = account_repository.create_account(account_name)
-    st.write(account)
 if st.button("Update Account"):
     account = account_repository.update_account(account_id, account_name)
     st.write(account)
 if st.button("Delete Account"):
     account = account_repository.delete_account(account_id)
     st.write(account)
+if st.button("Create Account with Project"):
+    account = account_repository.create_account_with_defaults(account_name)
+    st.write(account)
+    for project in account.projects:
+        st.write(project)
+        for assistent in project.assistants:
+            st.write(assistent)

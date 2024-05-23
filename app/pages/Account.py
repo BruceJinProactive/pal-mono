@@ -105,6 +105,10 @@ else:
         account_repository = AccountRepository(db)
         account = account_repository.get_account(account_name=account_name)
         st.write(account)
+        for project in account.projects:
+            st.write(project)
+            for assistant in project.assistants:
+                st.write(assistant)
 
     except Exception as e:
         st.write(f"Error parsing ID token: {e}")
