@@ -27,6 +27,8 @@ dependencies = [
   "pillow",
   "types-Pillow",
   "streamlit_cognito_auth",
+  "streamlit_extras",
+  "st_pages",
 
   # Validation
   "black",
