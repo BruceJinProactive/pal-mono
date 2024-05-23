@@ -20,27 +20,23 @@ class AccountRepository:
 
         query = self.db.query(Account)
         if account_id_exists:
-            query = query.filter(Account.account_id == account_id)
+            query = query.filter(Account.id == account_id)
         if account_name_exists:
-            query = query.filter(Account.account_name == account_name)
+            query = query.filter(Account.name == account_name)
 
         return query.first()
 
     def update_account(self, account_id: int, account_name: str = None):
-        db_account = (
-            self.db.query(Account).filter(Account.account_id == account_id).first()
-        )
+        db_account = self.db.query(Account).filter(Account.id == account_id).first()
         if db_account:
             if account_name is not None:
-                db_account.account_name = account_name
+                db_account.name = account_name
             self.db.commit()
             self.db.refresh(db_account)
         return db_account
 
     def delete_account(self, account_id: int):
-        db_account = (
-            self.db.query(Account).filter(Account.account_id == account_id).first()
-        )
+        db_account = self.db.query(Account).filter(Account.id == account_id).first()
         if db_account:
             self.db.delete(db_account)
             self.db.commit()

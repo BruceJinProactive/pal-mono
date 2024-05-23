@@ -12,11 +12,11 @@ class Account(Base):
 
     __tablename__ = "accounts"
 
-    account_id: Mapped[int] = mapped_column(
+    id: Mapped[int] = mapped_column(
         BigInteger, primary_key=True, autoincrement=True, nullable=False, index=True
     )
 
-    account_name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
