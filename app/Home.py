@@ -10,7 +10,6 @@ st.title("Welcome to Proactive AI!")
 
 st.markdown("---")
 
-
 # Sidebar Footer
 footer = """
     <style>
