@@ -4,20 +4,25 @@ from typing import Optional
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import BigInteger, DateTime, String
+from sqlalchemy.types import JSON, BigInteger, DateTime
 
 from db.tables.base import Base
 
 
-class Project(Base):
+class Assistant(Base):
 
-    __tablename__ = "projects"
+    __tablename__ = "assistants"
 
     id: Mapped[int] = mapped_column(
         BigInteger, primary_key=True, autoincrement=True, nullable=False, index=True
     )
 
-    name: Mapped[str] = mapped_column(String, nullable=False, server_default="default")
+    project_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("projects.id"), nullable=False, index=True
+    )
+    project = relationship("Project", back_populates="assistants")
+
+    raw_config: Mapped[Optional[dict]] = mapped_column(JSON)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
@@ -25,10 +30,3 @@ class Project(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), onupdate=text("now()")
     )
-
-    account_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("accounts.id"), nullable=False, index=True
-    )
-    account = relationship("Account", back_populates="projects")
-
-    assistants = relationship("Assistant", back_populates="project")
