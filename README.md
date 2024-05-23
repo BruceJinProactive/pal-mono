@@ -67,7 +67,7 @@ Run the following command to validate your code locally:
 
 ### Environments
 
-The CI/CD pipeline is devided into 3 stages:
+The CI/CD pipeline is divided into 3 stages:
 
 - dev(development) - The environment for your local development. Changes before merged into `main` branch.
 - stg(staging) - The environment for internal testing and validation. Changes on the HEAD of `main` branch, before merged into `prd` branch.
@@ -79,7 +79,7 @@ The CI/CD pipeline is devided into 3 stages:
 2. Make a pull request merging `example-feature` to `main`.
 3. Wait for PR review and approval.
 4. Submit the PR to merge `example-feature` to `main`.
-5. A staging release will be automatically triggered. Join Slack channel #cicd-notifications to receive notificaionts.
+5. A staging release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
 
 ### Releasing from `stg` to `prd`:
 
@@ -88,7 +88,7 @@ The CI/CD pipeline is devided into 3 stages:
 1. Make a pull request merging `prd` to `main`.
 2. Wait for PR review and approval.
 3. Submit the PR to merge `prd` to `main`.
-4. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notificaionts.
+4. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
 
 ## Endpoints
 
