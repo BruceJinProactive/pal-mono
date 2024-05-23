@@ -8,13 +8,13 @@
 2.  Import the SqlAlchemy class in the `db/tables/__init__.py` file.
 3.  Create a database revision using the command below:
 
+> [WARNING] alembic autogenerate is often wrong. Review the migration file before running the upgrade command.
+
 ```bash
 docker exec -it pal-mono-api alembic -c db/alembic.ini revision --autogenerate -m "<replace-with-your-change-message>"
 ```
 
-> **Warning:** alembic won't detect all chnages with autogenerate. Review the migration file before running the upgrade command.
-
-4. Migrate database using the command below:
+1. Migrate database using the command below:
 
 ```bash
 docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
@@ -59,8 +59,12 @@ TODO
 
 ## DB migration history
 
-| Link to migration version                                                                                                                                                       | Tested on dev? | Deployed to staging? | Deployed to production? |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------------- | ----------------------- |
-| [Add initial accounts table](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/038100802b26_initialize_db.py)                                       | YES            | YES                  | NO                      |
-| [Rename to account_name and make it unique](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/d4c296cb1ca6_rename_and_add_unique_constraint_to_.py) | YES            | YES                  | NO                      |
-| Placehold                                                                                                                                                                       | NO             | NO                   | NO                      |
+| Link to migration version                                                                                                                                                                 | Tested on dev? | Deployed to staging? | Deployed to production? |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------------- | ----------------------- |
+| [Initialize DB](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/038100802b26_initialize_db.py)                                                              | YES            | YES                  | NO                      |
+| [Rename and add unique constraint to account_name](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/d4c296cb1ca6_rename_and_add_unique_constraint_to_.py)    | YES            | YES                  | NO                      |
+| [Change column account names](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/541b23a8e944_change_column_account_names.py)                                  | YES            | YES                  | NO                      |
+| [Add projects table](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/c40b5a6e029d_add_projects_table.py)                                                    | YES            | YES                  | NO                      |
+| [Add assistants table and relationship in projects](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/f29d88d5d714_add_assistants_table_and_relationship_.py) | YES            | YES                  | NO                      |
+| [Update updated_at to auto-update](https://github.com/Proactive-AI-Lab/pal-mono/blob/main/db/migrations/versions/fe5c96e5148a_update_updated_at_to_auto_update.py)                        | YES            | YES                  | NO                      |
+| Placehold                                                                                                                                                                                 | NO             | NO                   | NO                      |
