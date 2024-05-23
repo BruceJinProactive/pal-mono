@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from db.tables.accounts import Account
+from db.tables import Account, Project
 
 
 class AccountRepository:
@@ -47,4 +47,21 @@ class AccountRepository:
         self.db.add(db_account)
         self.db.commit()
         self.db.refresh(db_account)
+        return db_account
+
+    def create_account_with_project(self, account_name: str):
+        # Create a new account
+        db_account = Account(name=account_name)
+        self.db.add(db_account)
+        self.db.commit()  # Commit to generate ID for db_account
+
+        # Create a new project associated with the new account
+        db_project = Project(account_id=db_account.id)
+        self.db.add(db_project)
+        self.db.commit()
+
+        # Associate the project with the account (optional if bidirectional relationship is needed)
+        db_account.projects.append(db_project)
+        self.db.commit()
+
         return db_account
