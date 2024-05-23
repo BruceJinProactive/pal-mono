@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import BigInteger, DateTime, String
 
@@ -22,7 +23,7 @@ class Account(Base):
         DateTime(timezone=True), server_default=text("now()")
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), onupdate=text("now()")
+        DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
     )
 
     projects = relationship("Project", back_populates="account")
