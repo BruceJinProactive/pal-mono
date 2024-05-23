@@ -37,7 +37,7 @@ dependencies = [
   "mypy",
 
   # phidata
-  "phidata==2.3.89",
+  "phidata==2.4.14",
 ]
 
 [build-system]
