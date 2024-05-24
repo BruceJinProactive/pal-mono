@@ -1,7 +1,7 @@
 from typing import List
 
 import streamlit as st
-from Auth import user
+from auth import user
 from phi.assistant import Assistant
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader

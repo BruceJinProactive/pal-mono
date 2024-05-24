@@ -1,5 +1,5 @@
 import streamlit as st
-from Auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
+from auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
 from st_pages import Page, show_pages
 from streamlit_cognito_auth import CognitoAuthenticator
 
