@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from ai.assistants.pdf_auto import get_autonomous_pdf_assistant
 from ai.assistants.pdf_rag import get_rag_pdf_assistant
+from ai.assistants.gym_assistant import get_gym_assistant
 from ai.storage import pdf_assistant_storage
 from api.routes.endpoints import endpoints
 from utils.log import logger
@@ -16,7 +17,7 @@ from utils.log import logger
 ######################################################
 
 assistants_router = APIRouter(prefix=endpoints.ASSISTANTS, tags=["Assistants"])
-AssistantType = Literal["AUTO_PDF", "RAG_PDF"]
+AssistantType = Literal["AUTO_PDF", "RAG_PDF", "GYM_MINDZERO"]
 
 
 def get_assistant(
@@ -30,6 +31,8 @@ def get_assistant(
         return get_autonomous_pdf_assistant(run_id=run_id, user_id=user_id)
     elif assistant_type == "RAG_PDF":
         return get_rag_pdf_assistant(run_id=run_id, user_id=user_id)
+    elif assistant_type == "GYM_MINDZERO":
+        return get_gym_assistant(run_id=run_id, user_id=user_id)
 
 
 class LoadKnowledgeBaseRequest(BaseModel):
