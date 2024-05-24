@@ -43,7 +43,7 @@ authenticator = CognitoAuthenticator(
     pool_id=AWS_USER_POOL_ID,
     app_client_id=AWS_APP_CLIENT_ID,
     app_client_secret=AWS_APP_CLIENT_SECRET,
-    use_cookies=True,
+    use_cookies=False,
 )
 
 is_logged_in = authenticator.login()
