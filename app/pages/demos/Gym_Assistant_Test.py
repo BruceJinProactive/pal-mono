@@ -3,6 +3,7 @@ from typing import List
 import streamlit as st
 from Auth import user
 from phi.assistant import Assistant
+from streamlit_extras.switch_page_button import switch_page
 
 from ai.assistants.gym_assistant import get_gym_assistant
 from utils.log import logger
@@ -175,4 +176,7 @@ def main() -> None:
     # reload_button_sidebar()
 
 
-main()
+if user.is_logged_in:
+    main()
+else:
+    switch_page("home")
