@@ -9,6 +9,8 @@ from phi.tools.streamlit.components import get_openai_key_sidebar, get_username_
 from ai.assistants.coffee_assistant import get_coffee_assistant
 from utils.log import logger
 
+from Auth import user
+
 st.set_page_config(
     page_title="Max's Coffee",
     page_icon=":coffee:",
@@ -17,29 +19,15 @@ st.title("Max's Coffee")
 
 
 def main() -> None:
-    # Get OpenAI key from environment variable or user input
-    get_openai_key_sidebar()
-
-    # Get username
-    username = get_username_sidebar()
-    if username:
-        st.sidebar.info(f":technologist: User: {username}")
-    else:
-        st.markdown("---")
-        st.markdown(
-            "#### :technologist: Enter a username to start. Your profile and chat history will be saved."
-        )
-        return
-
     # Get the assistant
     coffee_assistant: Assistant = get_coffee_assistant(
-        user_id=username,
+        user_id=user.username,
         debug_mode=True,
     )
 
     # Get the run id
     coffee_assistant_run_ids: List[str] = coffee_assistant.storage.get_all_run_ids(
-        user_id=username
+        user_id=user.username
     )
     coffee_assistant_run_id = None
     if not coffee_assistant_run_ids or len(coffee_assistant_run_ids) == 0:

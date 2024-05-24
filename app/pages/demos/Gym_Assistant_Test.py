@@ -12,6 +12,7 @@ from streamlit_cognito_auth import CognitoAuthenticator
 
 from ai.assistants.gym_assistant import get_gym_assistant
 from utils.log import logger
+from Auth import user
 
 st.set_page_config(
     page_title="Gym Assistant",
@@ -19,34 +20,17 @@ st.set_page_config(
 )
 st.title("Gym Assistant")
 
-username = None
-
 
 def main() -> None:
-    # Get OpenAI key from environment variable or user input
-    get_openai_key_sidebar()
-
-    # Get username
-    # username = get_username_sidebar()
-
-    if username:
-        st.sidebar.info(f":technologist: User: {username}")
-    else:
-        st.markdown("---")
-        # st.markdown(
-        #     "#### :technologist: Enter a username to start. Your profile and chat history will be saved."
-        # )
-        return
-
     # Get the assistant
     gym_assistant: Assistant = get_gym_assistant(
-        user_id=username,
+        user_id=user.username,
         debug_mode=False,
     )
 
     # Get the run id
     coffee_assistant_run_ids: List[str] = gym_assistant.storage.get_all_run_ids(
-        user_id=username
+        user_id=user.username
     )
     coffee_assistant_run_id = None
     if not coffee_assistant_run_ids or len(coffee_assistant_run_ids) == 0:
