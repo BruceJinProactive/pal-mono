@@ -1,6 +1,6 @@
-import shared as shared
+import app.shared as shared
 import streamlit as st
-from auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
+from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
 from st_pages import Page, show_pages
 from streamlit_cognito_auth import CognitoAuthenticator
 

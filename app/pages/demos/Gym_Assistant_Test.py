@@ -1,8 +1,8 @@
 from typing import List
 
-import shared as shared
+import app.shared as shared
 import streamlit as st
-from auth import user
+from app.auth import user
 from phi.assistant import Assistant
 from streamlit_extras.switch_page_button import switch_page
 

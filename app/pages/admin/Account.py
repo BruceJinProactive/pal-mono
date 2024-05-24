@@ -1,6 +1,6 @@
-import shared as shared
+import app.shared as shared
 import streamlit as st
-from auth import user
+from app.auth import user
 from streamlit_extras.switch_page_button import switch_page
 
 from db.repositories.account_repository import AccountRepository
