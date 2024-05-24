@@ -1,12 +1,12 @@
 from typing import List
 
-import app.shared as shared
 import streamlit as st
-from app.auth import user
 from phi.assistant import Assistant
 from streamlit_extras.switch_page_button import switch_page
 
+import app.shared as shared
 from ai.assistants.gym_assistant import get_gym_assistant
+from app.auth import user
 from utils.log import logger
 
 st.set_page_config(

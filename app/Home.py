@@ -1,8 +1,9 @@
-import app.shared as shared
 import streamlit as st
-from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
 from st_pages import Page, show_pages
 from streamlit_cognito_auth import CognitoAuthenticator
+
+import app.shared as shared
+from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
 
 st.set_page_config(
     page_title="Proactive AI Console",
