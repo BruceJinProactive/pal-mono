@@ -1,11 +1,5 @@
-
 import streamlit as st
-from Auth import (
-    AWS_APP_CLIENT_ID,
-    AWS_APP_CLIENT_SECRET,
-    AWS_USER_POOL_ID,
-    user,
-)
+from Auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
 from st_pages import Page, show_pages
 from streamlit_cognito_auth import CognitoAuthenticator
 
@@ -44,9 +38,6 @@ st.markdown("---")
 # # Injecting the footer HTML into the sidebar
 # st.sidebar.markdown(footer, unsafe_allow_html=True)
 
-
-# Cognito JWKS URL
-
 authenticator = CognitoAuthenticator(
     pool_id=AWS_USER_POOL_ID,
     app_client_id=AWS_APP_CLIENT_ID,
@@ -59,12 +50,21 @@ if not is_logged_in:
     st.stop()
 else:
     user.update(authenticator=authenticator)
+    st.sidebar.write(user)
 
-    # Specify what pages should be shown in the sidebar, and what their titles and icons
-    # should be
-    show_pages(
-        [
-            Page("app/pages/demos/Coffee_Assistant.py", "Coffee Assistant", "☕"),
-            Page("app/pages/demos/Gym_Assistant_Test.py", "Gym Assistant", "🏋️"),
-        ]
-    )
+    home_page = Page("app/Home.py", "Home", "🏠")
+    pal_internal_pages = [
+        # Demo pages
+        Page("app/pages/demos/Coffee_Assistant.py", "Coffee Assistant", "☕"),
+        Page("app/pages/demos/Gym_Assistant_Test.py", "Gym Assistant", "🏋️"),
+    ]
+    pal_root_pages = [
+        Page("app/pages/admin/Account.py", "Account", "👥"),
+        Page("app/pages/admin/Root.py", "Root", "⚠️"),
+    ]
+    pages = [home_page]
+    if user.account_name is not None:
+        pages.extend(pal_internal_pages)
+    if user.account_name == "test":
+        pages.extend(pal_root_pages)
+    show_pages(pages)

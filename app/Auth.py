@@ -67,9 +67,13 @@ def get_account_name(authenticator: CognitoAuthenticator):
 
 class User:
     def __init__(self):
-        pass
+        self.is_logged_in = False
+        self.username = ""
+        self.email = ""
+        self.account_name = ""
 
     def update(self, authenticator: CognitoAuthenticator):
+        self.is_logged_in = authenticator.is_logged_in()
         self.username = authenticator.get_username()
         self.email = authenticator.get_email()
         self.account_name = get_account_name(authenticator)

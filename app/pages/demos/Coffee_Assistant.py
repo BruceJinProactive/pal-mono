@@ -1,15 +1,14 @@
 from typing import List
 
 import streamlit as st
+from Auth import user
 from phi.assistant import Assistant
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
-from phi.tools.streamlit.components import get_openai_key_sidebar, get_username_sidebar
+from streamlit_extras.switch_page_button import switch_page
 
 from ai.assistants.coffee_assistant import get_coffee_assistant
 from utils.log import logger
-
-from Auth import user
 
 st.set_page_config(
     page_title="Max's Coffee",
@@ -178,4 +177,7 @@ def main() -> None:
     # reload_button_sidebar()
 
 
-main()
+if user.is_logged_in:
+    main()
+else:
+    switch_page("home")
