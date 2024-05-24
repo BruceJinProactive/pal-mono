@@ -1,3 +1,4 @@
+import shared as shared
 import streamlit as st
 from auth import user
 from streamlit_extras.switch_page_button import switch_page
@@ -13,7 +14,6 @@ st.title("Account")
 
 
 def main() -> None:
-
     st.write("---")
     st.write("## Cognito")
     st.write(user)
@@ -32,5 +32,6 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
+    shared.user_ui()
 else:
     switch_page("home")

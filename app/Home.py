@@ -1,3 +1,4 @@
+import shared as shared
 import streamlit as st
 from auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
 from st_pages import Page, show_pages
@@ -50,7 +51,6 @@ if not is_logged_in:
     st.stop()
 else:
     user.update(authenticator=authenticator)
-    st.sidebar.write(user)
 
     home_page = Page("app/Home.py", "Home", "🏠")
     pal_internal_pages = [
@@ -68,3 +68,9 @@ else:
     if user.account_name == "test":
         pages.extend(pal_root_pages)
     show_pages(pages)
+
+    shared.user_ui()
+    if st.sidebar.button("Logout", "logout_btn"):
+        user.logout()
+        authenticator.logout()
+        st.experimental_rerun()

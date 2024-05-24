@@ -1,5 +1,6 @@
 from typing import List
 
+import shared as shared
 import streamlit as st
 from auth import user
 from phi.assistant import Assistant
@@ -179,5 +180,6 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
+    shared.user_ui()
 else:
     switch_page("home")
