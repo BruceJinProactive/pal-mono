@@ -8,4 +8,5 @@ class ApiEndpoints:
     ASSISTANTS: str = "/assistants"
     SENDBLUE: str = "/webhooks/sendblue"
 
+
 endpoints = ApiEndpoints()

@@ -5,9 +5,8 @@ from os import getenv
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from api.routes.endpoints import endpoints
 from ai.assistants.text_messaging_assistant_factory import assistant_from_sms
-
+from api.routes.endpoints import endpoints
 
 ######################################################
 ## Router for SMS
@@ -15,11 +14,13 @@ from ai.assistants.text_messaging_assistant_factory import assistant_from_sms
 
 sendblue_router = APIRouter(tags=["Sendblue"])
 
+
 class SendBlueReceivedMessageModel(BaseModel):
     to_number: str
     from_number: str
     content: str
     media_url: str | None = None
+
 
 @sendblue_router.post(endpoints.SENDBLUE)
 async def sms_response(data: SendBlueReceivedMessageModel):
@@ -44,24 +45,26 @@ async def sms_response(data: SendBlueReceivedMessageModel):
 
     return "Acknowledgement"
 
-def send_blue_sms(to_number : str, content : str):
-    body_dictionary = {
-        'number': to_number,
-        'content': content
-    }
+
+def send_blue_sms(to_number: str, content: str):
+    body_dictionary = {"number": to_number, "content": content}
     post_data = json.dumps(body_dictionary)
-    print('send_blue_sms: ' + post_data)
+    print("send_blue_sms: " + post_data)
 
     conn = http.client.HTTPSConnection("api.sendblue.co")
-    conn.request("POST", "/api/send-message", post_data,
-    {
-        'Content-Type': 'application/json',
-        'sb-api-key-id': getenv("SENDBLUE_API_KEY"),
-        'sb-api-secret-key': getenv("SENDBLUE_API_SECRET_KEY")
-    })
+    conn.request(
+        "POST",
+        "/api/send-message",
+        post_data,
+        {
+            "Content-Type": "application/json",
+            "sb-api-key-id": getenv("SENDBLUE_API_KEY"),
+            "sb-api-secret-key": getenv("SENDBLUE_API_SECRET_KEY"),
+        },
+    )
     response = conn.getresponse()
     data = response.read()
     conn.close()
-    print('send_blue_sms: response:'+ data.decode("utf-8"))
+    print("send_blue_sms: response:" + data.decode("utf-8"))
 
     return data

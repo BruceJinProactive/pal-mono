@@ -5,9 +5,9 @@ from fastapi.responses import StreamingResponse
 from phi.assistant import Assistant, AssistantRun
 from pydantic import BaseModel
 
+from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pdf_auto import get_autonomous_pdf_assistant
 from ai.assistants.pdf_rag import get_rag_pdf_assistant
-from ai.assistants.gym_assistant import get_gym_assistant
 from ai.storage import pdf_assistant_storage
 from api.routes.endpoints import endpoints
 from utils.log import logger
