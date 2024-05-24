@@ -5,7 +5,6 @@ from phi.assistant import Assistant
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
 from phi.tools.streamlit.components import (
-    check_password,
     get_openai_key_sidebar,
     get_username_sidebar,
 )
@@ -194,5 +193,4 @@ def main() -> None:
     # reload_button_sidebar()
 
 
-if check_password():
-    main()
+main()

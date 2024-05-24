@@ -7,9 +7,7 @@ import requests
 import streamlit as st
 from jwt.algorithms import RSAAlgorithm
 from phi.assistant import Assistant
-from phi.tools.streamlit.components import (
-    get_openai_key_sidebar,
-)
+from phi.tools.streamlit.components import get_openai_key_sidebar
 from streamlit_cognito_auth import CognitoAuthenticator
 
 from ai.assistants.gym_assistant import get_gym_assistant
