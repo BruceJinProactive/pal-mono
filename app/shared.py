@@ -1,6 +1,6 @@
 import streamlit as st
 
-from app.auth import user
+from .auth import user
 
 
 def user_ui():
