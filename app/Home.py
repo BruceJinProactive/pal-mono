@@ -2,8 +2,13 @@ import streamlit as st
 from st_pages import Page, show_pages
 from streamlit_cognito_auth import CognitoAuthenticator
 
-import app.shared as shared
-from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
+from app.auth import (
+    AWS_APP_CLIENT_ID,
+    AWS_APP_CLIENT_SECRET,
+    AWS_USER_POOL_ID,
+    user,
+    user_ui,
+)
 
 st.set_page_config(
     page_title="Proactive AI Console",
@@ -70,7 +75,7 @@ else:
         pages.extend(pal_root_pages)
     show_pages(pages)
 
-    shared.user_ui()
+    user_ui()
     if st.sidebar.button("Logout", "logout_btn"):
         user.logout()
         authenticator.logout()

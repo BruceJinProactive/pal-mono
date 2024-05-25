@@ -1,8 +1,7 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-import app.shared as shared
-from app.auth import user
+from app.auth import user, user_ui
 from db.repositories.account_repository import AccountRepository
 from db.session import get_db
 
@@ -32,6 +31,6 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
-    shared.user_ui()
+    user_ui()
 else:
     switch_page("home")
