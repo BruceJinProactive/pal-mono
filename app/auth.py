@@ -95,3 +95,28 @@ def user_ui():
         st.info(f":office: Account: {user.account_name}")
         st.info(f":technologist: User: {user.email}")
         # st.write(user)
+
+
+def footer_ui():
+    footer = """
+        <style>
+        .sidebar .sidebar-content {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+        }
+        .footer {
+            text-align: center;
+            padding: 10px 0;
+            font-size: 12px;
+            color: gray;
+        }
+        </style>
+        <div class="footer">
+            <hr>
+            <p>© 2024 Proactive AI Lab</p>
+        </div>
+        """
+
+    st.sidebar.markdown(footer, unsafe_allow_html=True)
