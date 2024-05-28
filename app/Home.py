@@ -59,17 +59,20 @@ else:
     user.update(authenticator=authenticator)
 
     home_page = Page("app/Home.py", "Home", "🏠")
+    customer_specific_pages = [
+        Page("app/pages/admin/Account.py", "Account", "👥"),
+    ]
     pal_internal_pages = [
         # Demo pages
         Page("app/pages/demos/Coffee_Assistant.py", "Coffee Assistant", "☕"),
         Page("app/pages/demos/Gym_Assistant_Test.py", "Gym Assistant", "🏋️"),
     ]
     pal_root_pages = [
-        Page("app/pages/admin/Account.py", "Account", "👥"),
         Page("app/pages/admin/Root.py", "Root", "⚠️"),
     ]
     pages = [home_page]
     if user.account_name is not None:
+        pages.extend(customer_specific_pages)
         pages.extend(pal_internal_pages)
     if user.account_name == "root":
         pages.extend(pal_root_pages)
