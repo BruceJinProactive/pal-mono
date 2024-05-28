@@ -4,6 +4,7 @@ from streamlit_extras.switch_page_button import switch_page
 from app.auth import user, user_ui
 from db.repositories.account_repository import AccountRepository
 from db.session import get_db
+from services.admin_service import create_account_with_defaults
 
 st.set_page_config(
     page_title="Pal Root",
@@ -36,7 +37,7 @@ def main() -> None:
         account = account_repository.delete_account(account_id)
         st.write(account)
     if st.button("Create Account with Defaults"):
-        account = account_repository.create_account_with_defaults(account_name)
+        account = create_account_with_defaults(db, account_name=account_name)
         st.write(account)
         for project in account.projects:
             st.write(project)

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from db.tables import Account, Assistant, Project
+from db.tables import Account
 
 
 class AccountRepository:
@@ -36,33 +36,17 @@ class AccountRepository:
         return db_account
 
     def delete_account(self, account_id: int):
-        db_account = self.db.query(Account).filter(Account.id == account_id).first()
+        query = self.db.query(Account)
+        query = query.filter(Account.id == account_id)
+        db_account = query.first()
         if db_account:
             self.db.delete(db_account)
             self.db.commit()
         return db_account
 
     def create_account(self, account_name: str):
-        db_account = Account(account_name=account_name)
+        db_account = Account(name=account_name)
         self.db.add(db_account)
         self.db.commit()
         self.db.refresh(db_account)
-        return db_account
-
-    def create_account_with_defaults(self, account_name: str):
-        # Create a new account
-        db_account = Account(name=account_name)
-        self.db.add(db_account)
-        self.db.commit()  # Commit to generate ID for db_account
-
-        # Create a new project associated with the new account
-        db_project = Project(account_id=db_account.id)
-        self.db.add(db_project)
-        self.db.commit()
-
-        # Create a new assistant associated with the new project
-        db_assistant = Assistant(project_id=db_project.id)
-        self.db.add(db_assistant)
-        self.db.commit()
-
         return db_account

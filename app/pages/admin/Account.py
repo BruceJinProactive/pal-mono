@@ -2,8 +2,8 @@ import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
 from app.auth import user, user_ui
-from db.repositories.account_repository import AccountRepository
 from db.session import get_db
+from services.admin_service import get_account
 
 st.set_page_config(
     page_title="Account",
@@ -20,11 +20,14 @@ def main() -> None:
     st.write("---")
     st.write("## RDS")
     db = next(get_db())
-    account_repository = AccountRepository(db)
-    account = account_repository.get_account(account_name=user.account_name)
+
+    st.write("### Account")
+    account = get_account(db, account_name=user.account_name)
     st.write(account)
+    st.write("### Project")
     for project in account.projects:
         st.write(project)
+        st.write("### Assistant")
         for assistant in project.assistants:
             st.write(assistant)
 
