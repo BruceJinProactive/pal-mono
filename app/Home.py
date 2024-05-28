@@ -71,7 +71,7 @@ else:
     pages = [home_page]
     if user.account_name is not None:
         pages.extend(pal_internal_pages)
-    if user.account_name == "test":
+    if user.account_name == "root":
         pages.extend(pal_root_pages)
     show_pages(pages)
 
