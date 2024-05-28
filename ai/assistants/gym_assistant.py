@@ -1,5 +1,4 @@
 import logging
-from os import getenv
 from typing import Optional
 
 from phi.assistant import Assistant
@@ -59,9 +58,9 @@ def get_gym_assistant(
     )
 
     lepton_chat_llm = OpenAILike(
-        model="gpt-3.5-turbo",
-        api_key=getenv("LEPTON_API_KEY"),
-        base_url="https://kfxrnfa5-pail-test.tin.lepton.run/api/v1/",
+        model="OpenHermes-2.5-Mistral-7B-dpo",
+        api_key="N/A",
+        base_url="https://proactive-ai-lab--openai-b-fastapi-app.modal.run",
         max_tokens=16384,
         temperature=0.9,
         top_p=0.9,
