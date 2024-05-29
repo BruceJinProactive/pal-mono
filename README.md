@@ -34,6 +34,7 @@ phi ws setup
 ```bash
 export OPENAI_API_KEY=sk-***
 export LEPTON_API_KEY=***
+export MODAL_API_KEY=***
 ```
 
 6. Build and run both API and web app locally
@@ -41,6 +42,9 @@ export LEPTON_API_KEY=***
 ```bash
 phi ws up
 ```
+
+6. You can read the API documentation running in your local host http://localhost:8000/docs#/. and the web app running in your local host http://localhost:8501/.
+
 
 ## Validation
 
