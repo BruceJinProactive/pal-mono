@@ -39,6 +39,8 @@ container_env = {
     # Get the OpenAI API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
     "LEPTON_API_KEY": getenv("LEPTON_API_KEY"),
+    "MODAL_API_KEY": getenv("MODAL_API_KEY"),
+    # Get the SendBlue API key from the local environment
     "SENDBLUE_API_KEY": getenv("SENDBLUE_API_KEY"),
     "SENDBLUE_API_SECRET_KEY": getenv("SENDBLUE_API_SECRET_KEY"),
     # AWS User Pool key for Admin/Demo log in
