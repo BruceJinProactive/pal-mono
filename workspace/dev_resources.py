@@ -41,6 +41,10 @@ container_env = {
     "LEPTON_API_KEY": getenv("LEPTON_API_KEY"),
     "SENDBLUE_API_KEY": getenv("SENDBLUE_API_KEY"),
     "SENDBLUE_API_SECRET_KEY": getenv("SENDBLUE_API_SECRET_KEY"),
+    # AWS User Pool key for Admin/Demo log in
+    "AWS_USER_POOL_ID": getenv("AWS_USER_POOL_ID"),
+    "AWS_APP_CLIENT_ID": getenv("AWS_APP_CLIENT_ID"),
+    "AWS_APP_CLIENT_SECRET": getenv("AWS_APP_CLIENT_SECRET"),
     # Database configuration
     "DB_HOST": dev_db.get_db_host(),
     "DB_PORT": dev_db.get_db_port(),
