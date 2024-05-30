@@ -1,4 +1,3 @@
-from os import getenv
 
 from phi.aws.app.fastapi import FastApi
 from phi.aws.app.streamlit import Streamlit
@@ -13,6 +12,7 @@ from phi.docker.resource.image import DockerImage
 from phi.docker.resources import DockerResources
 
 from workspace.settings import ws_settings
+from workspace.common_resources import common_container_env
 
 #
 # -*- Resources for the Production Environment
@@ -174,9 +174,7 @@ prd_ecs_cluster = EcsCluster(
 # -*- Build container environment
 container_env = {
     "RUNTIME_ENV": "prd",
-    # Get the OpenAI API key from the local environment
-    "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
-    "LEPTON_API_KEY": getenv("LEPTON_API_KEY"),
+
     # Database configuration
     "DB_HOST": AwsReference(prd_db.get_db_endpoint),
     "DB_PORT": AwsReference(prd_db.get_db_port),
@@ -188,6 +186,8 @@ container_env = {
     # Migrate database on startup using alembic
     # "MIGRATE_DB": ws_settings.prd_db_enabled,
 }
+
+container_env.update(common_container_env)
 
 # -*- Streamlit running on ECS
 prd_streamlit = Streamlit(

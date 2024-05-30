@@ -8,6 +8,7 @@ from phi.docker.resources import DockerResources
 
 from workspace.jupyter.lab import dev_jupyter_app
 from workspace.settings import ws_settings
+from workspace.common_resources import common_container_env
 
 #
 # -*- Resources for the Development Environment
@@ -36,13 +37,7 @@ dev_db = PgVectorDb(
 # -*- Build container environment
 container_env = {
     "RUNTIME_ENV": "dev",
-    # Get the OpenAI API key from the local environment
-    "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
-    "LEPTON_API_KEY": getenv("LEPTON_API_KEY"),
-    "MODAL_API_KEY": getenv("MODAL_API_KEY"),
-    # Get the SendBlue API key from the local environment
-    "SENDBLUE_API_KEY": getenv("SENDBLUE_API_KEY"),
-    "SENDBLUE_API_SECRET_KEY": getenv("SENDBLUE_API_SECRET_KEY"),
+
     # AWS User Pool key for Admin/Demo log in
     "AWS_USER_POOL_ID": getenv("AWS_USER_POOL_ID"),
     "AWS_APP_CLIENT_ID": getenv("AWS_APP_CLIENT_ID"),
@@ -58,6 +53,8 @@ container_env = {
     # Migrate database on startup using alembic
     # "MIGRATE_DB": ws_settings.prd_db_enabled,
 }
+
+container_env.update(common_container_env)
 
 # -*- Streamlit running on port 8501:8501
 dev_streamlit = Streamlit(
