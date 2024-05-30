@@ -1,17 +1,26 @@
+import datetime
+import json
 import logging
 from typing import Optional
 
+import httpx
 from phi.assistant import Assistant
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.json import JSONKnowledgeBase
 from phi.knowledge.pdf import PDFKnowledgeBase
+
+# from phi.llm.openai.like import OpenAILike
 from phi.storage.assistant.postgres import PgAssistantStorage
+from phi.tools import Toolkit
 from phi.vectordb.pgvector import PgVector2
 
 from ai.llm import LLM, get_llm
 from ai.settings import ai_settings
 from db.session import db_url
+
+# from phi.llm.openai import OpenAIChat
+
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -36,6 +45,74 @@ mindzero_knowledge_base = CombinedKnowledgeBase(
     # 2 references are added to the prompt
     num_documents=2,
 )
+
+
+class BookingTools(Toolkit):
+    def __init__(self):
+        super().__init__(name="booking_tools")
+        self.register(self.get_class_sessions)
+        # self.register(self.post_class_sessions)
+
+    def get_class_sessions(self, num_days: int = 7) -> str:
+        """Use this function to answer any questions regarding class session availability.
+
+        Args:
+            num_days (int): Number of days in advance to look for. Defaults to 7 if user doesn't supply.
+
+        Returns:
+            str: JSON string of class session availability.
+        """
+        min_date = datetime.datetime.today().strftime("%Y-%m-%d")
+        max_date = datetime.date.today() + datetime.timedelta(days=num_days)
+
+        response = httpx.get(
+            f"https://mindzero.marianatek.com/api/class_sessions?include=employee_public_profiles%2Clayout%2Ctags&location=48717&max_date={max_date}&min_date={min_date}&ordering=start_datetime&page_size=20"
+        )
+        data = response.json()["data"]
+
+        result = []
+        for entry in data:
+            new_entry = {}
+            new_entry["start_date"] = entry["attributes"]["start_date"]
+            new_entry["start_time"] = entry["attributes"]["start_time"]
+            new_entry["available_spots_ids"] = entry["attributes"]["available_spots"]
+            new_entry["class_type"] = entry["attributes"]["class_type_display"]
+            new_entry["duration"] = entry["attributes"]["duration"]
+            new_entry["instructor"] = entry["attributes"]["instructor_names"]
+            result.append(new_entry)
+
+        return json.dumps(result)
+
+    # def post_class_sessions(
+    #     self, class_id: str = "", name: str = "", email: str = ""
+    # ) -> str:
+    #     """Use this function to book a class session.
+
+    #     Returns:
+    #         str: JSON string of collected details. Returns "SUCCESS" if class was booked. Otherwise, keep asking for the remaining information.
+    #     """
+    #     d = {}
+    #     with open("booking_info.json") as f:
+    #         d = json.load(f)
+
+    #         if class_id:
+    #             d["class_id"] = class_id
+
+    #         if name:
+    #             d["name"] = name
+
+    #         if email:
+    #             d["email"] = email
+
+    #     with open("booking_info.json", "w", encoding="utf-8") as f:
+    #         json.dump(d, f, ensure_ascii=False, indent=4)
+
+    #     # Book if complete
+    #     if all(v for v in d.values()):
+    #         # call booking function
+    #         return "SUCCESS"
+
+    #     return json.dumps(d)
 
 
 def get_gym_assistant(
@@ -67,6 +144,7 @@ def get_gym_assistant(
         add_references_to_prompt=True,
         # Enable monitoring on phidata.app
         # monitoring=True,
+        tools=[BookingTools()],
         use_tools=True,
         show_tool_calls=debug_mode,  # show tool calls in debug mode
         search_knowledge=True,
