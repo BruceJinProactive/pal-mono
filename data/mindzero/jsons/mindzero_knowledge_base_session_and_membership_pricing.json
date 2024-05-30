@@ -1,0 +1,34 @@
+{
+  "MINDZERO Product Pricing": {
+    "Membership": {
+      "Reset Membership": {
+        "Price": "$99.00/month",
+        "Includes": "4 Sessions/Month"
+      },
+      "Elevate Membership": {
+        "Price": "$159.00/month",
+        "Includes": "8 Sessions/Month"
+      },
+      "Limitless Membership": {
+        "Price": "$219.00/month",
+        "Includes": "Unlimited Sessions/Month"
+      }
+    },
+    "Classpacks": {
+      "1 session": "$59",
+      "5 sessions": "$199",
+      "10 sessions": "$349",
+      "20 sessions": "$559"
+    },
+    "Promotional Pricing": {
+      "First Session": "Free",
+      "Relaxation Passport": {
+        "Price": "$79.00",
+        "Description": "Enjoy a week pass (7 consecutive days) for a session of your choice each day."
+      },
+      "Pre-sale at new location": {
+        "Description": "Founding membership. Only pay 20% today to lock in a lifetime membership discount."
+      }
+    }
+  }
+}
