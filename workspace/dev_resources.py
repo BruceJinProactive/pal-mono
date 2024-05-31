@@ -6,9 +6,9 @@ from phi.docker.app.streamlit import Streamlit
 from phi.docker.resource.image import DockerImage
 from phi.docker.resources import DockerResources
 
+from workspace.common_resources import common_container_env
 from workspace.jupyter.lab import dev_jupyter_app
 from workspace.settings import ws_settings
-from workspace.common_resources import common_container_env
 
 #
 # -*- Resources for the Development Environment
@@ -37,7 +37,6 @@ dev_db = PgVectorDb(
 # -*- Build container environment
 container_env = {
     "RUNTIME_ENV": "dev",
-
     # AWS User Pool key for Admin/Demo log in
     "AWS_USER_POOL_ID": getenv("AWS_USER_POOL_ID"),
     "AWS_APP_CLIENT_ID": getenv("AWS_APP_CLIENT_ID"),
