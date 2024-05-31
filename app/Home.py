@@ -30,6 +30,7 @@ def pages():
         # Demo pages
         Page("app/pages/demos/Coffee_Assistant.py", "[Internal]Coffee", "☕"),
         Page("app/pages/demos/Gym_Assistant_Test.py", "[Internal]Gym", "🏋️"),
+        Page("app/pages/demos/Pizza_Assistant.py", "[Internal]Pizza", "🍕"),
     ]
     pal_root_pages = [
         Page("app/pages/admin/Root.py", "[Root]Root", "⚠️"),
