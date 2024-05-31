@@ -1,11 +1,12 @@
 import logging
 from typing import Optional
 
-from phi.assistant import Assistant
+from phi.assistant import Assistant, AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.json import JSONKnowledgeBase
 from phi.knowledge.pdf import PDFKnowledgeBase
+from phi.memory.db.postgres import PgMemoryDb
 from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.vectordb.pgvector import PgVector2
 
@@ -45,6 +46,14 @@ pizza_assistant_storage = PgAssistantStorage(
 )
 
 
+memory = AssistantMemory(
+    db=PgMemoryDb(
+        db_url=db_url,
+        table_name="pizza_memory",
+    ),
+)
+
+
 def get_pizza_assistant(
     run_id: Optional[str] = None,
     user_id: Optional[str] = None,
@@ -64,6 +73,12 @@ def get_pizza_assistant(
         num_history_messages=20,
         # knowledge_base=pdf_knowledge_base,
         knowledge_base=pizza_knowledge_base,
+        # Add personalization to the assistant by creating memories
+        create_memories=True,
+        # Update memory after each run
+        update_memory_after_run=True,
+        # Store the memories in a database
+        memory=memory,
         add_references_to_prompt=True,
         # Enable monitoring on phidata.app
         # monitoring=True,
