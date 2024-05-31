@@ -62,6 +62,7 @@ class BookingTools(Toolkit):
         Returns:
             str: JSON string of class session availability.
         """
+        # Date range to search within: [Today, Today+num_days]
         min_date = datetime.datetime.today().strftime("%Y-%m-%d")
         max_date = datetime.date.today() + datetime.timedelta(days=num_days)
 
@@ -70,16 +71,30 @@ class BookingTools(Toolkit):
         )
         data = response.json()["data"]
 
+        # Returns whether the session is in the future (True) or not (False)
+        def date_in_the_future(session_date_str):
+            curr_date = datetime.datetime.now(datetime.timezone.utc)
+            session_date = datetime.datetime.strptime(
+                session_date_str, "%Y-%m-%dT%H:%M:%SZ"
+            ).replace(tzinfo=datetime.timezone.utc)
+
+            return curr_date < session_date
+
+        # Filter through the API response to gather and reformat desired data.
         result = []
         for entry in data:
-            new_entry = {}
-            new_entry["start_date"] = entry["attributes"]["start_date"]
-            new_entry["start_time"] = entry["attributes"]["start_time"]
-            new_entry["available_spots_ids"] = entry["attributes"]["available_spots"]
-            new_entry["class_type"] = entry["attributes"]["class_type_display"]
-            new_entry["duration"] = entry["attributes"]["duration"]
-            new_entry["instructor"] = entry["attributes"]["instructor_names"]
-            result.append(new_entry)
+            # Filter out sessions in past.
+            if date_in_the_future(entry["attributes"]["start_datetime"]):
+                new_entry = {}
+                new_entry["start_date"] = entry["attributes"]["start_date"]
+                new_entry["start_time"] = entry["attributes"]["start_time"]
+                new_entry["available_spots_ids"] = entry["attributes"][
+                    "available_spots"
+                ]
+                new_entry["class_type"] = entry["attributes"]["class_type_display"]
+                new_entry["duration"] = entry["attributes"]["duration"]
+                new_entry["instructor"] = entry["attributes"]["instructor_names"]
+                result.append(new_entry)
 
         return json.dumps(result)
 
