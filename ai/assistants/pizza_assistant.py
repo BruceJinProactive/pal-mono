@@ -230,7 +230,7 @@ def get_pizza_assistant(
         # llm=get_llm(LLM.MODAL),
         storage=pizza_assistant_storage,
         add_chat_history_to_messages=True,
-        num_history_messages=20,
+        num_history_messages=1,
         # knowledge_base=pdf_knowledge_base,
         knowledge_base=pizza_knowledge_base,
         # Add personalization to the assistant by creating memories
@@ -246,7 +246,7 @@ def get_pizza_assistant(
         use_tools=True,
         show_tool_calls=debug_mode,  # show tool calls in debug mode
         search_knowledge=True,
-        read_chat_history=True,
+        read_chat_history=False,
         debug_mode=debug_mode,
         build_default_system_prompt=False,
         system_prompt="""
