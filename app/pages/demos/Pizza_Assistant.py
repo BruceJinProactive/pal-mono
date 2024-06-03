@@ -67,6 +67,7 @@ def main() -> None:
             st.sidebar.success("Knowledge base loaded")
             loading_container.empty()
 
+    system_prompt = assistant.system_prompt
     show_system_prompt = st.toggle("Show System Prompt", True)
     if show_system_prompt:
         system_prompt = st.text_area(
