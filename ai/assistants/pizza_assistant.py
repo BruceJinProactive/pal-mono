@@ -46,7 +46,7 @@ pizza_knowledge_base = CombinedKnowledgeBase(
 pizza_assistant_storage = PgAssistantStorage(
     db_url=db_url,
     # TODO: make table name configurable from customer config read from DB
-    table_name="pizza_assistant",
+    table_name="pizza_assistant_2",  # Force using a new table
 )
 
 
