@@ -22,26 +22,28 @@ st.markdown("---")
 
 def pages():
     home_page = Page("app/Home.py", "Home", "🏠")
-    customer_specific_pages = [
-        Page("app/pages/customer/Training.py", "Training", "📖"),
+    console_pages = [
+        Page("app/pages/console/Training.py", "Training", "📖"),
+        Page("app/pages/console/Live.py", "Live", "💬"),
+    ]
+    demo_pages = [
+        Page("app/pages/demos/Coffee_Assistant.py", "[Demo]Coffee", "☕"),
+        Page("app/pages/demos/Gym_Assistant_Test.py", "[Demo]Gym", "🏋️"),
+        Page("app/pages/demos/Pizza_Assistant.py", "[Demo]Pizza", "🍕"),
     ]
     pal_internal_pages = [
-        Page("app/pages/admin/Account.py", "[Internal]Account", "👤"),
-        # Demo pages
-        Page("app/pages/demos/Coffee_Assistant.py", "[Internal]Coffee", "☕"),
-        Page("app/pages/demos/Gym_Assistant_Test.py", "[Internal]Gym", "🏋️"),
-        Page("app/pages/demos/Pizza_Assistant.py", "[Internal]Pizza", "🍕"),
+        Page("app/pages/internal/Account.py", "[Internal]Account", "👤"),
     ]
     pal_root_pages = [
-        Page("app/pages/admin/Root.py", "[Root]Root", "⚠️"),
+        Page("app/pages/internal/Root.py", "[Root]Root", "⚠️"),
     ]
     pages = [home_page]
     if user.account_name is not None:
-        pages.extend(customer_specific_pages)
+        pages.extend(console_pages)
+        pages.extend(demo_pages)
     if user.account_name == "proactiveailab":
         pages.extend(pal_internal_pages)
     if user.account_name == "root":
-        pages.extend(pal_internal_pages)
         pages.extend(pal_root_pages)
     show_pages(pages)
 
