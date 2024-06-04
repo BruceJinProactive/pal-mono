@@ -47,35 +47,34 @@ memory = AssistantMemory(
 
 
 def get_coffee_assistant(
-    run_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    debug_mode: bool = False,
+    user_id: str,
 ) -> Assistant:
-    """Get an Autonomous Assistant with a coffee knowledge base."""
+    # Retrieve the run_id if it exists
+    run_id: Optional[str] = None
+    existing_run_ids = storage.get_all_run_ids(user_id)
+    if len(existing_run_ids) > 0:
+        run_id = existing_run_ids[0]
 
-    return Assistant(
+    assistant = Assistant(
         name="coffee_assistant",
         run_id=run_id,
         user_id=user_id,
-        llm=get_llm(LLM.MODAL),
+        llm=get_llm(LLM.OPENAI),
         storage=storage,
         knowledge_base=knowledge_base,
-        # Add personalization to the assistant by creating memories
         create_memories=True,
-        # Update memory after each run
         update_memory_after_run=True,
-        # Store the memories in a database
         memory=memory,
-        # Enable monitoring on phidata.app
-        # monitoring=True,
         use_tools=True,
         show_tool_calls=True,
         search_knowledge=True,
         read_chat_history=True,
-        debug_mode=debug_mode,
+        debug_mode=True,
         description="You are a helpful assistant named 'Max' designed to answer questions about Max's Coffee Shop.",
         extra_instructions=[
             "Keep your answers under 5 sentences.",
         ],
         assistant_data={"assistant_type": "autonomous"},
     )
+
+    return assistant
