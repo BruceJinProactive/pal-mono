@@ -42,6 +42,8 @@ def main() -> None:
         assistant_run_id = assistant_run_ids[0]
     assistant.run_id = assistant_run_id
 
+    st.session_state["coffee_assistant_run_id"] = assistant.create_run()
+
     # Load messages for existing assistant
     assistant_chat_history = assistant.memory.get_chat_history()
     if len(assistant_chat_history) > 0:

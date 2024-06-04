@@ -63,7 +63,7 @@ def get_assistant(
     # Retrive the assistant configs
     # raw_config = db_assistant.raw_config
     raw_config = {
-        "name": "Coffee Assistant",
+        "name": "Pal Live Assistant",
         "description": "A conversational assistant that can help you order coffee.",
         "instructions": [
             "Tell me what you want to order and I'll help you out.",
