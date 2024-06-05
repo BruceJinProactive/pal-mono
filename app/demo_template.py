@@ -18,6 +18,7 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
             new_run=True,
         )
         assistant.memory.chat_history = []
+        assistant.memory.llm_messages = []
         st.session_state["messages"] = []
     else:
         logger.info("Not restarting chat")
@@ -27,15 +28,26 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
         )
     st.session_state["restart_chat"] = False
 
-    # st.write(f"Run ID: {assistant.run_id}")
+    # System Prompt
+    with st.expander("System Prompt"):
+        assistant.system_prompt = st.text_area(
+            "System Prompt",
+            assistant.system_prompt,
+            height=300,
+            label_visibility="collapsed",
+        )
+    # Debug Info
+    with st.expander("Debug Info"):
+        st.info(f"Run ID: {assistant.run_id}")
+        st.info(f"System Prompt: {assistant.system_prompt}")
+
+    # Restart chat
     def restart_chat():
         st.session_state["restart_chat"] = True
         st.rerun()
 
     if st.button("Restart Chat"):
         restart_chat()
-
-    st.write("---")
 
     # Load existing or create new run
     assistant.create_run()
