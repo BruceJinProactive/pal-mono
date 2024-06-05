@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from phi.assistant import Assistant, AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
@@ -47,10 +46,15 @@ memory = AssistantMemory(
 
 
 def get_coffee_assistant(
-    user_id: Optional[str] = None,
-    run_id: Optional[str] = None,
+    user_id: str,
+    new_run: bool = False,
     debug_mode: bool = False,
 ) -> Assistant:
+    run_id = None
+    if not new_run:
+        run_ids = storage.get_all_run_ids(user_id=user_id)
+        run_id = run_ids[0] if run_ids else None
+
     assistant = Assistant(
         name="coffee_assistant",
         run_id=run_id,

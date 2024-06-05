@@ -1,7 +1,6 @@
 import datetime
 import json
 import logging
-from typing import Optional
 
 import httpx
 from phi.assistant import Assistant
@@ -131,8 +130,8 @@ class BookingTools(Toolkit):
 
 
 def get_gym_assistant(
-    user_id: Optional[str] = None,
-    run_id: Optional[str] = None,
+    user_id: str,
+    new_run: bool = False,
     debug_mode: bool = False,
 ) -> Assistant:
     """Get an Autonomous Assistant with gym classes schedule knowledge and user past class attendances, and can help book classes."""
@@ -143,6 +142,11 @@ def get_gym_assistant(
         # TODO: make table name configurable from customer config read from DB
         table_name="gym_assistant",
     )
+
+    run_id = None
+    if not new_run:
+        run_ids = gym_assistant_storage.get_all_run_ids(user_id=user_id)
+        run_id = run_ids[0] if run_ids else None
 
     # set up assistant with specific storage
     assistant = Assistant(

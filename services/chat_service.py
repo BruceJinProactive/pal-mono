@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from phi.assistant import Assistant, AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
@@ -24,8 +23,8 @@ requests_log.propagate = True
 def get_assistant(
     db: Session,
     assistant_id: int,
-    user_id: Optional[str] = None,
-    run_id: Optional[str] = None,
+    user_id: str,
+    new_run: bool = False,
 ) -> Assistant:
     # Retrieve the assistant from the database
     assistant_repository = AssistantRepository(db)
@@ -59,6 +58,11 @@ def get_assistant(
             table_name=memory_table_name,
         ),
     )
+
+    run_id = None
+    if not new_run:
+        run_ids = storage.get_all_run_ids(user_id=user_id)
+        run_id = run_ids[0] if run_ids else None
 
     # Retrive the assistant configs
     # raw_config = db_assistant.raw_config

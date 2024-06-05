@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional
+from typing import Callable, List
 
 import streamlit as st
 from phi.assistant import Assistant
@@ -10,37 +10,32 @@ from app.shared import user_ui
 from utils.log import logger
 
 
-def main_ui(get_assistant: Callable[[Optional[str], Optional[str]], Assistant]) -> None:
-    # Get assistant
-    assistant = get_assistant(
-        user_id=user.username,
-    )
-
-    # Set or create run id
-    assistant_run_ids: List[str] = assistant.storage.get_all_run_ids(
-        user_id=user.username
-    )
+def main_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
     if st.session_state.get("restart_chat"):
+        logger.info("Restarting chat")
         assistant = get_assistant(
             user_id=user.username,
-            run_id=None,
+            new_run=True,
         )
         assistant.memory.chat_history = []
         st.session_state["messages"] = []
     else:
-        run_id = assistant_run_ids[0] if assistant_run_ids else None
+        logger.info("Not restarting chat")
         assistant = get_assistant(
             user_id=user.username,
-            run_id=run_id,
+            new_run=False,
         )
     st.session_state["restart_chat"] = False
 
+    # st.write(f"Run ID: {assistant.run_id}")
     def restart_chat():
         st.session_state["restart_chat"] = True
         st.rerun()
 
     if st.button("Restart Chat"):
         restart_chat()
+
+    st.write("---")
 
     # Load existing or create new run
     assistant.create_run()

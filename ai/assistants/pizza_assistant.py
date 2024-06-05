@@ -2,7 +2,6 @@ import json
 import logging
 import math
 from collections import defaultdict
-from typing import Optional
 
 from phi.assistant import Assistant, AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
@@ -211,11 +210,16 @@ class PizzaTools(Toolkit):
 
 
 def get_pizza_assistant(
-    user_id: Optional[str] = None,
-    run_id: Optional[str] = None,
+    user_id: str,
+    new_run: bool = False,
     debug_mode: bool = False,
 ) -> Assistant:
     """Get an Autonomous Assistant for a pizza store with menu knowledge."""
+
+    run_id = None
+    if not new_run:
+        run_ids = pizza_assistant_storage.get_all_run_ids(user_id=user_id)
+        run_id = run_ids[0] if run_ids else None
 
     # set up assistant with specific storage
     assistant = Assistant(
