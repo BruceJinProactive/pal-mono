@@ -47,7 +47,7 @@ memory = AssistantMemory(
 
 
 def get_coffee_assistant(
-    user_id: str,
+    user_id: Optional[str] = None,
     run_id: Optional[str] = None,
     debug_mode: bool = False,
 ) -> Assistant:

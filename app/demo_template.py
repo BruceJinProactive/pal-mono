@@ -9,7 +9,7 @@ from app.auth import user, user_ui
 from utils.log import logger
 
 
-def main_ui(get_assistant: Callable[[str, Optional[str]], Assistant]) -> None:
+def main_ui(get_assistant: Callable[[Optional[str], Optional[str]], Assistant]) -> None:
     # Get assistant
     assistant = get_assistant(
         user_id=user.username,
