@@ -5,7 +5,8 @@ from phi.assistant import Assistant
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
 
-from app.auth import user, user_ui
+from app.auth import user
+from app.shared import user_ui
 from utils.log import logger
 
 

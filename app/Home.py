@@ -2,21 +2,12 @@ import streamlit as st
 from st_pages import Page, show_pages
 from streamlit_cognito_auth import CognitoAuthenticator
 
-from app.auth import (
-    AWS_APP_CLIENT_ID,
-    AWS_APP_CLIENT_SECRET,
-    AWS_USER_POOL_ID,
-    footer_ui,
-    user,
-    user_ui,
-)
+from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
+from app.shared import footer_ui, set_page_config, user_ui
 
-st.set_page_config(
-    page_title="Proactive AI Console",
-    page_icon=":control-knobs:",
-)
+set_page_config()
 
-st.title("Welcome to Proactive AI!")
+st.title("Welcome to Proactive AI Lab!")
 st.markdown("---")
 
 

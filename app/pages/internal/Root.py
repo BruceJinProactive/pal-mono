@@ -1,22 +1,21 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-from app.auth import user, user_ui
+from app.auth import user
+from app.shared import set_page_config, user_ui
 from db.repositories.account_repository import AccountRepository
 from db.session import get_db
 from services.admin_service import create_account_with_defaults
 
-st.set_page_config(
-    page_title="Pal Root",
-    page_icon=":exclamation:",
-)
-st.title("Pal Root")
+set_page_config()
+
+st.title("Root")
 
 
 def main() -> None:
     st.write("---")
 
-    st.warning("[WARNING] Operations on this page are irreversible.")
+    st.error("[WARNING] Operations on this page are irreversible.")
 
     db = next(get_db())
     account_repository = AccountRepository(db)

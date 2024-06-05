@@ -1,14 +1,13 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-from app.auth import user, user_ui
+from app.auth import user
+from app.shared import set_page_config, user_ui
 from db.session import get_db
 from services.admin_service import get_account
 
-st.set_page_config(
-    page_title="Account",
-    page_icon=":key:",
-)
+set_page_config()
+
 st.title("Account")
 
 

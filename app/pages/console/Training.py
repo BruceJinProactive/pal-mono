@@ -1,12 +1,11 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-from app.auth import user, user_ui
+from app.auth import user
+from app.shared import set_page_config, user_ui
 
-st.set_page_config(
-    page_title="Training",
-    page_icon="📖",
-)
+set_page_config()
+
 st.title("Training")
 
 
