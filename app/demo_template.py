@@ -10,28 +10,23 @@ from utils.log import logger
 
 
 def main_ui(get_assistant: Callable[[str, Optional[str]], Assistant]) -> None:
-    # User UI
-    user_ui()
-
     # Get or create assistant
     assistant = get_assistant(
         user_id=user.username,
     )
 
     # Select or create run id
-    if assistant.storage:
-        assistant_run_ids: List[str] = assistant.storage.get_all_run_ids(
-            user_id=user.username
-        )
-        new_assistant_run_id = st.sidebar.selectbox("Run", options=assistant_run_ids)
-        if not st.session_state.get("new_run", False):
-            assistant = get_assistant(
-                user_id=user.username, run_id=new_assistant_run_id
-            )
-    st.session_state["new_run"] = False
+    assistant_run_ids: List[str] = assistant.storage.get_all_run_ids(
+        user_id=user.username
+    )
+    if not st.session_state.get("new_run"):
+        run_id = assistant_run_ids[0] if assistant_run_ids else None
+        assistant.run_id = run_id
+        st.session_state["new_run"] = False
 
     def new_run():
         st.session_state["new_run"] = True
+        st.session_state["messages"] = []
         st.rerun()
 
     if st.sidebar.button("New Run"):
@@ -39,34 +34,24 @@ def main_ui(get_assistant: Callable[[str, Optional[str]], Assistant]) -> None:
 
     # Load existing or create new run
     assistant_run_id = assistant.create_run()
+    st.write(f"Run ID: {assistant_run_id}")
 
-    # Load knowlege base if not already loaded
-    if assistant.knowledge_base and (
-        "knowledge_base_loaded" not in st.session_state
-        or not st.session_state["knowledge_base_loaded"]
-    ):
-        if not assistant.knowledge_base.exists():
-            logger.info("Knowledge base does not exist")
-            loading_container = st.sidebar.info("🧠 Loading knowledge base")
-            assistant.knowledge_base.load()
-            st.session_state["knowledge_base_loaded"] = True
-            st.sidebar.success("Knowledge base loaded")
-            loading_container.empty()
+    # User UI
+    user_ui()
 
-    # Update UI
+    # Messaging UI
     messaging_ui(assistant)
+
+    # Settings UI
+    memory_ui(assistant)
     knowledge_base_ui(assistant)
     storage_ui(assistant)
-    memory_ui(assistant)
 
 
 def messaging_ui(assistant: Assistant) -> None:
     assistant_chat_history = assistant.memory.get_chat_history()
-    if len(assistant_chat_history) > 0:
-        logger.debug("Loading chat history")
-        st.session_state["messages"] = assistant_chat_history
-    else:
-        logger.debug("No chat history found")
+    st.session_state["messages"] = assistant_chat_history
+    if assistant_chat_history == []:
         st.session_state["messages"] = [
             {"role": "assistant", "content": "Ask me anything..."}
         ]
@@ -93,7 +78,6 @@ def messaging_ui(assistant: Assistant) -> None:
                 for delta in assistant.run(question, stream=False):
                     response += delta  # type: ignore
                     resp_container.markdown(response)
-
             st.session_state["messages"].append(
                 {"role": "assistant", "content": response}
             )
@@ -101,6 +85,19 @@ def messaging_ui(assistant: Assistant) -> None:
 
 def knowledge_base_ui(assistant: Assistant) -> None:
     st.sidebar.write("## Knowledge Base")
+
+    # Load knowlege base if not already loaded
+    if assistant.knowledge_base and (
+        "knowledge_base_loaded" not in st.session_state
+        or not st.session_state["knowledge_base_loaded"]
+    ):
+        if not assistant.knowledge_base.exists():
+            logger.info("Knowledge base does not exist")
+            loading_container = st.sidebar.info("🧠 Loading knowledge base")
+            assistant.knowledge_base.load()
+            st.session_state["knowledge_base_loaded"] = True
+            st.sidebar.success("Knowledge base loaded")
+            loading_container.empty()
 
     if assistant.knowledge_base:
         if st.sidebar.button("Update Knowledge Base"):
@@ -142,6 +139,14 @@ def knowledge_base_ui(assistant: Assistant) -> None:
             alert.empty()
 
 
+def memory_ui(assistant: Assistant) -> None:
+    st.sidebar.write("## Memory")
+
+    if assistant.memory.memories:
+        for item in assistant.memory.memories:
+            st.sidebar.warning(item.memory)
+
+
 def storage_ui(assistant: Assistant) -> None:
     st.sidebar.write("## Storage")
 
@@ -151,11 +156,3 @@ def storage_ui(assistant: Assistant) -> None:
         st.sidebar.success(
             f"Number of chats: {len(assistant.memory.get_chat_history())}"
         )
-
-
-def memory_ui(assistant: Assistant) -> None:
-    st.sidebar.write("## Memory")
-
-    if assistant.memory.memories:
-        for item in assistant.memory.memories:
-            st.sidebar.warning(item.memory)
