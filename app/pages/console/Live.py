@@ -1,5 +1,5 @@
 import streamlit as st
-from demo_template import main_ui
+from demo_template import demo_ui
 from phi.assistant import Assistant
 from streamlit_extras.switch_page_button import switch_page
 
@@ -34,7 +34,7 @@ def get_current_assistant(
 
 
 if user.is_logged_in:
-    main_ui(
+    demo_ui(
         get_current_assistant,
     )
 else:

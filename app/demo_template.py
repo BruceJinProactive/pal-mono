@@ -10,7 +10,7 @@ from app.shared import user_ui
 from utils.log import logger
 
 
-def main_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
+def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
         assistant = get_assistant(
