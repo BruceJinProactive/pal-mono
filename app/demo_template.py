@@ -1,18 +1,44 @@
-from typing import List
+from typing import Callable, List, Optional
 
 import streamlit as st
 from phi.assistant import Assistant
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
 
-from app.auth import user_ui
+from app.auth import user, user_ui
 from utils.log import logger
 
 
-def main_ui(assistant: Assistant) -> None:
-    # Create assistant run, retrieve if exists
+def main_ui(get_assistant: Callable[[str, Optional[str]], Assistant]) -> None:
+    # User UI
+    user_ui()
+
+    # Get or create assistant
+    assistant = get_assistant(
+        user_id=user.username,
+    )
+
+    # Select or create run id
+    if assistant.storage:
+        assistant_run_ids: List[str] = assistant.storage.get_all_run_ids(
+            user_id=user.username
+        )
+        new_assistant_run_id = st.sidebar.selectbox("Run", options=assistant_run_ids)
+        if not st.session_state.get("new_run", False):
+            assistant = get_assistant(
+                user_id=user.username, run_id=new_assistant_run_id
+            )
+    st.session_state["new_run"] = False
+
+    def new_run():
+        st.session_state["new_run"] = True
+        st.rerun()
+
+    if st.sidebar.button("New Run"):
+        new_run()
+
+    # Load existing or create new run
     assistant_run_id = assistant.create_run()
-    st.write(f"Assistant run ID: {assistant_run_id}")
 
     # Load knowlege base if not already loaded
     if assistant.knowledge_base and (
@@ -29,14 +55,12 @@ def main_ui(assistant: Assistant) -> None:
 
     # Update UI
     messaging_ui(assistant)
-    user_ui()
     knowledge_base_ui(assistant)
     storage_ui(assistant)
     memory_ui(assistant)
 
 
 def messaging_ui(assistant: Assistant) -> None:
-    # Load messages for existing assistant
     assistant_chat_history = assistant.memory.get_chat_history()
     if len(assistant_chat_history) > 0:
         logger.debug("Loading chat history")

@@ -48,13 +48,8 @@ memory = AssistantMemory(
 
 def get_coffee_assistant(
     user_id: str,
+    run_id: Optional[str] = None,
 ) -> Assistant:
-    # Retrieve the run_id if it exists
-    run_id: Optional[str] = None
-    existing_run_ids = storage.get_all_run_ids(user_id)
-    if len(existing_run_ids) > 0:
-        run_id = existing_run_ids[0]
-
     assistant = Assistant(
         name="coffee_assistant",
         run_id=run_id,
