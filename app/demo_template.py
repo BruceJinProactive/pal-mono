@@ -10,31 +10,39 @@ from utils.log import logger
 
 
 def main_ui(get_assistant: Callable[[str, Optional[str]], Assistant]) -> None:
-    # Get or create assistant
+    # Get assistant
     assistant = get_assistant(
         user_id=user.username,
     )
 
-    # Select or create run id
+    # Set or create run id
     assistant_run_ids: List[str] = assistant.storage.get_all_run_ids(
         user_id=user.username
     )
-    if not st.session_state.get("new_run"):
-        run_id = assistant_run_ids[0] if assistant_run_ids else None
-        assistant.run_id = run_id
-        st.session_state["new_run"] = False
-
-    def new_run():
-        st.session_state["new_run"] = True
+    if st.session_state.get("restart_chat"):
+        assistant = get_assistant(
+            user_id=user.username,
+            run_id=None,
+        )
+        assistant.memory.chat_history = []
         st.session_state["messages"] = []
+    else:
+        run_id = assistant_run_ids[0] if assistant_run_ids else None
+        assistant = get_assistant(
+            user_id=user.username,
+            run_id=run_id,
+        )
+    st.session_state["restart_chat"] = False
+
+    def restart_chat():
+        st.session_state["restart_chat"] = True
         st.rerun()
 
-    if st.sidebar.button("New Run"):
-        new_run()
+    if st.button("Restart Chat"):
+        restart_chat()
 
     # Load existing or create new run
-    assistant_run_id = assistant.create_run()
-    st.write(f"Run ID: {assistant_run_id}")
+    assistant.create_run()
 
     # User UI
     user_ui()
