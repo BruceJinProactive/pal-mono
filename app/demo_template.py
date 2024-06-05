@@ -61,7 +61,7 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
     # Settings UI
     memory_ui(assistant)
     knowledge_base_ui(assistant)
-    storage_ui(assistant)
+    # storage_ui(assistant)
 
 
 def messaging_ui(assistant: Assistant) -> None:
