@@ -46,7 +46,7 @@ pizza_knowledge_base = CombinedKnowledgeBase(
 pizza_assistant_storage = PgAssistantStorage(
     db_url=db_url,
     # TODO: make table name configurable from customer config read from DB
-    table_name="pizza_assistant_2",  # Force using a new table
+    table_name="pizza_assistant",  # Force using a new table
 )
 
 
@@ -211,8 +211,8 @@ class PizzaTools(Toolkit):
 
 
 def get_pizza_assistant(
-    run_id: Optional[str] = None,
     user_id: Optional[str] = None,
+    run_id: Optional[str] = None,
     debug_mode: bool = False,
 ) -> Assistant:
     """Get an Autonomous Assistant for a pizza store with menu knowledge."""
@@ -271,6 +271,7 @@ Here are the instructions you must follow:
         assistant_data={"assistant_type": "autonomous"},
     )
 
-    assistant.knowledge_base.load(recreate=True)
+    # Not sure why it's recreated every time
+    # assistant.knowledge_base.load(recreate=True)
 
     return assistant
