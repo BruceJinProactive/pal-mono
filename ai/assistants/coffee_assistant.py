@@ -49,6 +49,7 @@ memory = AssistantMemory(
 def get_coffee_assistant(
     user_id: str,
     run_id: Optional[str] = None,
+    debug_mode: bool = False,
 ) -> Assistant:
     assistant = Assistant(
         name="coffee_assistant",
@@ -64,7 +65,7 @@ def get_coffee_assistant(
         show_tool_calls=True,
         search_knowledge=True,
         read_chat_history=True,
-        debug_mode=True,
+        debug_mode=debug_mode,
         description="You are a helpful assistant named 'Max' designed to answer questions about Max's Coffee Shop.",
         extra_instructions=[
             "Keep your answers under 5 sentences.",

@@ -131,8 +131,8 @@ class BookingTools(Toolkit):
 
 
 def get_gym_assistant(
-    run_id: Optional[str] = None,
     user_id: Optional[str] = None,
+    run_id: Optional[str] = None,
     debug_mode: bool = False,
 ) -> Assistant:
     """Get an Autonomous Assistant with gym classes schedule knowledge and user past class attendances, and can help book classes."""
@@ -275,6 +275,7 @@ Here are the instructions you must follow:
         assistant_data={"assistant_type": "autonomous"},
     )
 
-    assistant.knowledge_base.load(recreate=True)
+    # Not sure why it's recreated every time
+    # assistant.knowledge_base.load(recreate=True)
 
     return assistant

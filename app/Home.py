@@ -28,7 +28,7 @@ def pages():
     ]
     demo_pages = [
         Page("app/pages/demos/Coffee_Assistant.py", "[Demo]Coffee", "☕"),
-        Page("app/pages/demos/Gym_Assistant_Test.py", "[Demo]Gym", "🏋️"),
+        Page("app/pages/demos/Gym_Assistant.py", "[Demo]Gym", "🏋️"),
         Page("app/pages/demos/Pizza_Assistant.py", "[Demo]Pizza", "🍕"),
     ]
     pal_internal_pages = [
