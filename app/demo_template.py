@@ -66,7 +66,7 @@ def messaging_ui(assistant: Assistant) -> None:
             with st.spinner("Working..."):
                 response = ""
                 resp_container = st.empty()
-                for delta in assistant.run(question, stream=True):
+                for delta in assistant.run(question, stream=False):
                     response += delta  # type: ignore
                     resp_container.markdown(response)
 
@@ -121,12 +121,17 @@ def knowledge_base_ui(assistant: Assistant) -> None:
 def storage_ui(assistant: Assistant) -> None:
     st.sidebar.write("## Storage")
 
+    assistant.auto_rename_run()
+    st.sidebar.success(assistant.run_name)
     if assistant.storage:
-        st.sidebar.write(f"Number of chats: {len(assistant.memory.get_chat_history())}")
+        st.sidebar.success(
+            f"Number of chats: {len(assistant.memory.get_chat_history())}"
+        )
 
 
 def memory_ui(assistant: Assistant) -> None:
     st.sidebar.write("## Memory")
 
     if assistant.memory.memories:
-        st.sidebar.write(assistant.memory.memories)
+        for item in assistant.memory.memories:
+            st.sidebar.warning(item.memory)
