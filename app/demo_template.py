@@ -28,6 +28,26 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
         )
     st.session_state["restart_chat"] = False
 
+    # Debug UI
+    if user.account_name == "proactiveailab" or user.account_name == "root":
+        debug_ui(assistant)
+
+    # Load existing or create new run
+    assistant.create_run()
+
+    # User UI
+    user_ui()
+
+    # Messaging UI
+    messaging_ui(assistant)
+
+    # Settings UI
+    memory_ui(assistant)
+    knowledge_base_ui(assistant)
+    # storage_ui(assistant)
+
+
+def debug_ui(assistant: Assistant):
     # System Prompt
     with st.expander("System Prompt"):
         assistant.system_prompt = st.text_area(
@@ -48,20 +68,6 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
 
     if st.button("Restart Chat"):
         restart_chat()
-
-    # Load existing or create new run
-    assistant.create_run()
-
-    # User UI
-    user_ui()
-
-    # Messaging UI
-    messaging_ui(assistant)
-
-    # Settings UI
-    memory_ui(assistant)
-    knowledge_base_ui(assistant)
-    # storage_ui(assistant)
 
 
 def messaging_ui(assistant: Assistant) -> None:
