@@ -58,8 +58,8 @@ def debug_ui(assistant: Assistant):
         )
     # Debug Info
     with st.expander("Debug Info"):
+        st.info(f"Assistant Name: {assistant.name}")
         st.info(f"Run ID: {assistant.run_id}")
-        st.info(f"System Prompt: {assistant.system_prompt}")
 
     # Restart chat
     def restart_chat():

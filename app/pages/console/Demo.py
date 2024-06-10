@@ -44,18 +44,18 @@ if user.is_logged_in:
         "🍕 pizzamyheart": get_pizza_assistant,
     }
 
-    # Internal demo selection
     if user.account_name == "proactiveailab" or user.account_name == "root":
+        # Internal demo selection
         selected_account_name = st.sidebar.selectbox(
-            "[Internal] Select a demo", demo_dict.keys()
+            "[Internal] Select a demo then reload", list(demo_dict.keys())
         )
         get_demo_assistant = demo_dict.get(selected_account_name)
-
-    # Select customer demo
-    get_demo_assistant = demo_dict.get(user.account_name)
-    # If no demo availalbe, use the prd assistant
-    if get_demo_assistant is None:
-        get_demo_assistant = get_prd_assistant
+    else:
+        # Select customer demo
+        get_demo_assistant = demo_dict.get(user.account_name)
+        # If no demo availalbe, use the prd assistant
+        if get_demo_assistant is None:
+            get_demo_assistant = get_prd_assistant
 
     demo_ui(
         get_demo_assistant,
