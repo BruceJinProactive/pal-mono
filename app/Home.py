@@ -15,12 +15,7 @@ def pages():
     home_page = Page("app/Home.py", "Home", "🏠")
     console_pages = [
         Page("app/pages/console/Training.py", "Training", "📖"),
-        Page("app/pages/console/Live.py", "Live", "💬"),
-    ]
-    demo_pages = [
-        Page("app/pages/demos/Coffee_Assistant.py", "[Demo]Coffee", "☕"),
-        Page("app/pages/demos/Gym_Assistant.py", "[Demo]Gym", "🏋️"),
-        Page("app/pages/demos/Pizza_Assistant.py", "[Demo]Pizza", "🍕"),
+        Page("app/pages/console/Demo.py", "Demo", "💬"),
     ]
     pal_internal_pages = [
         Page("app/pages/internal/Account.py", "[Internal]Account", "👤"),
@@ -31,7 +26,6 @@ def pages():
     pages = [home_page]
     if user.account_name is not None:
         pages.extend(console_pages)
-        pages.extend(demo_pages)
     if user.account_name == "proactiveailab":
         pages.extend(pal_internal_pages)
     if user.account_name == "root":

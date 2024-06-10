@@ -14,7 +14,7 @@ from services.chat_service import get_assistant
 
 set_page_config()
 
-st.title("Live")
+st.title("Demo")
 
 
 def get_prd_assistant(
