@@ -35,6 +35,7 @@ def pages():
     if user.account_name == "proactiveailab":
         pages.extend(pal_internal_pages)
     if user.account_name == "root":
+        pages.extend(pal_internal_pages)
         pages.extend(pal_root_pages)
     show_pages(pages)
 
