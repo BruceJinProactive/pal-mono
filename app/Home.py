@@ -35,7 +35,7 @@ def pages():
 
 
 def dashboard():
-    st.metric("Active Users", 1000, 300)
+    st.metric("Active Users", 1, 1)
 
 
 authenticator = CognitoAuthenticator(
