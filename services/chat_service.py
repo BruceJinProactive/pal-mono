@@ -64,10 +64,11 @@ def get_assistant(
         run_ids = storage.get_all_run_ids(user_id=user_id)
         run_id = run_ids[0] if run_ids else None
 
-    # Retrive the assistant configs
+    # Retrive the assistant configs from the database
     # raw_config = db_assistant.raw_config
+    # TODO: Save the assistant configs in the database
     raw_config = {
-        "name": "Pal Live Assistant",
+        "name": "Pal Test Assistant",
         "description": "A conversational assistant that can help you order coffee.",
         "instructions": [
             "Tell me what you want to order and I'll help you out.",

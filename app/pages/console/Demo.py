@@ -37,6 +37,8 @@ def get_prd_assistant(
 if user.is_logged_in:
     # account_name : demo assistant getter mapping
     demo_dict = {
+        # PRD assistant
+        "pal-test": get_prd_assistant,
         # Internal demos
         "☕ coffee": get_coffee_assistant,
         # Customer demos
