@@ -23,6 +23,16 @@ def get_prd_assistant(
 ) -> Assistant:
     db = next(get_db())
     account = get_account(db, account_name=user.account_name)
+
+    if account is None:
+        raise ValueError("Account not found")
+
+    if not account.projects:
+        raise ValueError("No projects found for this account")
+
+    if not account.projects[0].assistants:
+        raise ValueError("No assistants found for this project")
+
     assistant_id = account.projects[0].assistants[0].id
 
     assistant: Assistant = get_assistant(
@@ -40,10 +50,11 @@ if user.is_logged_in:
         # PRD assistant
         "pal-test": get_prd_assistant,
         # Internal demos
-        "☕ coffee": get_coffee_assistant,
+        "coffee": get_coffee_assistant,
+        "customer": get_coffee_assistant,
         # Customer demos
-        "🏋️ mindzero": get_gym_assistant,
-        "🍕 pizzamyheart": get_pizza_assistant,
+        "mindzero": get_gym_assistant,
+        "pizzamyheart": get_pizza_assistant,
     }
 
     if user.account_name == "proactiveailab" or user.account_name == "root":
