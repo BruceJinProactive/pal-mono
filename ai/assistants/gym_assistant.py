@@ -97,39 +97,9 @@ class BookingTools(Toolkit):
 
         return json.dumps(result)
 
-    # def post_class_sessions(
-    #     self, class_id: str = "", name: str = "", email: str = ""
-    # ) -> str:
-    #     """Use this function to book a class session.
 
-    #     Returns:
-    #         str: JSON string of collected details. Returns "SUCCESS" if class was booked. Otherwise, keep asking for the remaining information.
-    #     """
-    #     d = {}
-    #     with open("booking_info.json") as f:
-    #         d = json.load(f)
-
-    #         if class_id:
-    #             d["class_id"] = class_id
-
-    #         if name:
-    #             d["name"] = name
-
-    #         if email:
-    #             d["email"] = email
-
-    #     with open("booking_info.json", "w", encoding="utf-8") as f:
-    #         json.dump(d, f, ensure_ascii=False, indent=4)
-
-    #     # Book if complete
-    #     if all(v for v in d.values()):
-    #         # call booking function
-    #         return "SUCCESS"
-
-    #     return json.dumps(d)
-
-
-def get_gym_assistant(
+def create_gym_assistant(
+    llm_name: LLM,
     user_id: str,
     new_run: bool = False,
     debug_mode: bool = False,
@@ -137,10 +107,16 @@ def get_gym_assistant(
     """Get an Autonomous Assistant with gym classes schedule knowledge and user past class attendances, and can help book classes."""
 
     # set up specific storage
+    assistant_name = ""
+    if llm_name == LLM.OPENAI:
+        assistant_name = "gym_assistant"
+    elif llm_name == LLM.MODAL:
+        assistant_name = "mindzero_assistant"
+
     gym_assistant_storage = PgAssistantStorage(
         db_url=db_url,
         # TODO: make table name configurable from customer config read from DB
-        table_name="gym_assistant",
+        table_name=assistant_name,
     )
 
     run_id = None
@@ -150,11 +126,10 @@ def get_gym_assistant(
 
     # set up assistant with specific storage
     assistant = Assistant(
-        name="gym_assistant",
+        name=assistant_name,
         run_id=run_id,
         user_id=user_id,
-        llm=get_llm(LLM.OPENAI),
-        # llm=get_llm(LLM.MODAL),
+        llm=get_llm(llm_name),
         storage=gym_assistant_storage,
         add_chat_history_to_messages=True,
         num_history_messages=20,
@@ -283,3 +258,21 @@ Here are the instructions you must follow:
     # assistant.knowledge_base.load(recreate=True)
 
     return assistant
+
+
+def get_gym_assistant(
+    user_id: str,
+    new_run: bool = False,
+    debug_mode: bool = False,
+) -> Assistant:
+
+    return create_gym_assistant(LLM.OPENAI, user_id, new_run, debug_mode)
+
+
+def get_mindzero_assistant(
+    user_id: str,
+    new_run: bool = False,
+    debug_mode: bool = False,
+) -> Assistant:
+
+    return create_gym_assistant(LLM.MODAL, user_id, new_run, debug_mode)
