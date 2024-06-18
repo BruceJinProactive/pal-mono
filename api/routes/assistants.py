@@ -5,9 +5,11 @@ from fastapi.responses import StreamingResponse
 from phi.assistant import Assistant, AssistantRun
 from pydantic import BaseModel
 
+from ai.assistants.coffee_assistant import get_coffee_assistant
 from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pdf_auto import get_autonomous_pdf_assistant
 from ai.assistants.pdf_rag import get_rag_pdf_assistant
+from ai.assistants.pizza_assistant import get_pizza_assistant
 from ai.storage import pdf_assistant_storage
 from api.routes.endpoints import endpoints
 from utils.log import logger
@@ -17,7 +19,9 @@ from utils.log import logger
 ######################################################
 
 assistants_router = APIRouter(prefix=endpoints.ASSISTANTS, tags=["Assistants"])
-AssistantType = Literal["AUTO_PDF", "RAG_PDF", "GYM_MINDZERO"]
+AssistantType = Literal[
+    "AUTO_PDF", "RAG_PDF", "GYM_MINDZERO", "PIZZERIA", "CAFE", "GYM"
+]
 
 
 def get_assistant(
@@ -33,6 +37,15 @@ def get_assistant(
         return get_rag_pdf_assistant(run_id=run_id, user_id=user_id)
     elif assistant_type == "GYM_MINDZERO":
         return get_gym_assistant(run_id=run_id, user_id=user_id)
+    elif assistant_type == "PIZZERIA":
+        # TODO: create a generic Demo Assistants with fake data
+        return get_pizza_assistant(run_id=run_id, user_id=user_id)
+    elif assistant_type == "CAFE":
+        return get_coffee_assistant(run_id=run_id, user_id=user_id)
+    elif assistant_type == "GYM":
+        return get_gym_assistant(run_id=run_id, user_id=user_id)
+    else:
+        raise HTTPException(status_code=404, detail="Assistant not found")
 
 
 class LoadKnowledgeBaseRequest(BaseModel):
