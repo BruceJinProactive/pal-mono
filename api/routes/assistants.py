@@ -36,14 +36,14 @@ def get_assistant(
     elif assistant_type == "RAG_PDF":
         return get_rag_pdf_assistant(run_id=run_id, user_id=user_id)
     elif assistant_type == "GYM_MINDZERO":
-        return get_gym_assistant(run_id=run_id, user_id=user_id)
+        return get_gym_assistant(user_id=user_id)
     elif assistant_type == "PIZZERIA":
         # TODO: create a generic Demo Assistants with fake data
-        return get_pizza_assistant(run_id=run_id, user_id=user_id)
+        return get_pizza_assistant(user_id=user_id)
     elif assistant_type == "CAFE":
-        return get_coffee_assistant(run_id=run_id, user_id=user_id)
+        return get_coffee_assistant(user_id=user_id)
     elif assistant_type == "GYM":
-        return get_gym_assistant(run_id=run_id, user_id=user_id)
+        return get_gym_assistant(user_id=user_id)
     else:
         raise HTTPException(status_code=404, detail="Assistant not found")
 
@@ -242,3 +242,80 @@ def autorename_assistant(body: AutoRenameAssistantRunRequest):
         run_id=assistant.run_id,
         run_name=assistant.run_name,
     )
+
+
+class WebDemoAssistantListRequest(BaseModel):
+    user_id: str
+
+
+class WebDemoAssistantInfo(BaseModel):
+    assistant_display_name: str
+    run_id: str
+    assistant: AssistantType
+    friendliness: float
+    fun_and_jokes: float
+    emojis: float
+
+
+class WebDemoAssistantListResponse(BaseModel):
+    assistants: List[WebDemoAssistantInfo]
+
+
+@assistants_router.post(
+    "/web-demo-assistants", response_model=WebDemoAssistantListResponse
+)
+def web_demo_assistants(body: WebDemoAssistantListRequest):
+    """Return a list of Web Demo Assistant info for a user"""
+
+    logger.debug(f"WebDemoAssistantListRequest: {body}")
+
+    user_id = body.user_id
+
+    pizzeria_assistant = get_assistant(user_id=user_id, assistant_type="PIZZERIA")
+    coffee_assistant = get_assistant(user_id=user_id, assistant_type="CAFE")
+    gym_assistant = get_assistant(user_id=user_id, assistant_type="GYM")
+    autonomous_assistant = get_assistant(user_id=user_id, assistant_type="AUTO_PDF")
+
+    # TODO: change get_autonomous_pdf_assistant to auto-load run id
+    auto_assistant_run_id = None
+    auto_assistant_run_ids = autonomous_assistant.get_all_run_ids(user_id=user_id)
+    auto_assistant_run_id = (
+        auto_assistant_run_ids[0] if auto_assistant_run_ids else None
+    )
+
+    assistant_list = [
+        {
+            "assistant_display_name": "Anna",
+            "run_id": auto_assistant_run_id,
+            "assistant": "AUTO_PDF",
+            "friendliness": 1.0,
+            "fun_and_jokes": 0.5,
+            "emojis": 0.8,
+        },
+        {
+            "assistant_display_name": "Pizzeria",
+            "run_id": pizzeria_assistant.run_id,
+            "assistant": "PIZZERIA",
+            "friendliness": 1.0,
+            "fun_and_jokes": 0.8,
+            "emojis": 1.0,
+        },
+        {
+            "assistant_display_name": "Cafe",
+            "run_id": coffee_assistant.run_id,
+            "assistant": "CAFE",
+            "friendliness": 1.0,
+            "fun_and_jokes": 0.5,
+            "emojis": 0.8,
+        },
+        {
+            "assistant_display_name": "Gym",
+            "run_id": gym_assistant.run_id,
+            "assistant": "GYM",
+            "friendliness": 1.0,
+            "fun_and_jokes": 0.5,
+            "emojis": 0.8,
+        },
+    ]
+
+    return assistant_list
