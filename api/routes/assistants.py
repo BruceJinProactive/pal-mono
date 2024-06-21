@@ -250,7 +250,7 @@ class WebDemoAssistantListRequest(BaseModel):
 
 class WebDemoAssistantInfo(BaseModel):
     assistant_display_name: str
-    run_id: str
+    run_id: Optional[str]
     assistant: AssistantType
     friendliness: float
     fun_and_jokes: float
@@ -278,12 +278,12 @@ def web_demo_assistants(body: WebDemoAssistantListRequest):
 
     # TODO: change get_autonomous_pdf_assistant to auto-load run id
     auto_assistant_run_id = None
-    auto_assistant_run_ids = autonomous_assistant.get_all_run_ids(user_id=user_id)
+    auto_assistant_run_ids = autonomous_assistant.storage.get_all_run_ids(user_id=user_id)
     auto_assistant_run_id = (
         auto_assistant_run_ids[0] if auto_assistant_run_ids else None
     )
 
-    assistant_list = [
+    response = WebDemoAssistantListResponse(assistants=[
         {
             "assistant_display_name": "Anna",
             "run_id": auto_assistant_run_id,
@@ -316,6 +316,6 @@ def web_demo_assistants(body: WebDemoAssistantListRequest):
             "fun_and_jokes": 0.5,
             "emojis": 0.8,
         },
-    ]
+    ])
 
-    return assistant_list
+    return response
