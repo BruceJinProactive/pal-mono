@@ -8,6 +8,7 @@ from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.json import JSONKnowledgeBase
 from phi.knowledge.pdf import PDFKnowledgeBase
+from phi.knowledge.website import WebsiteKnowledgeBase
 
 # from phi.llm.openai.like import OpenAILike
 from phi.storage.assistant.postgres import PgAssistantStorage
@@ -34,6 +35,7 @@ mindzero_knowledge_base = CombinedKnowledgeBase(
         # PDFUrlKnowledgeBase(urls=["https://phi-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"]),
         PDFKnowledgeBase(path="data/mindzero/pdfs"),
         JSONKnowledgeBase(path="data/mindzero/jsons"),
+        WebsiteKnowledgeBase(urls=["https://www.mindzero.com/terms-of-service/", "https://www.mindzero.com/privacy-policy/",]),
     ],
     vector_db=PgVector2(
         db_url=db_url,
@@ -133,7 +135,6 @@ def create_gym_assistant(
         storage=gym_assistant_storage,
         add_chat_history_to_messages=True,
         num_history_messages=20,
-        # knowledge_base=pdf_knowledge_base,
         knowledge_base=mindzero_knowledge_base,
         add_references_to_prompt=True,
         # Enable monitoring on phidata.app
