@@ -46,16 +46,18 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
     knowledge_base_ui(assistant)
     # storage_ui(assistant)
 
+demo_system_prompt = ""
 
 def debug_ui(assistant: Assistant):
     # System Prompt
-    with st.expander("System Prompt"):
-        assistant.system_prompt = st.text_area(
-            "System Prompt",
-            assistant.system_prompt,
-            height=300,
-            label_visibility="collapsed",
-        )
+    system_prompt_expander =  st.expander("System Prompt")
+    global demo_system_prompt
+    demo_system_prompt = system_prompt_expander.text_area(
+        "System Prompt",
+        assistant.system_prompt,
+        height=300,
+        label_visibility="collapsed",
+    )
     # Debug Info
     with st.expander("Debug Info"):
         st.info(f"Assistant Name: {assistant.name}")
@@ -92,6 +94,7 @@ def messaging_ui(assistant: Assistant) -> None:
     # If last message is from a user, generate a new response
     last_message = st.session_state["messages"][-1]
     if last_message.get("role") == "user":
+        assistant.system_prompt = demo_system_prompt
         question = last_message["content"]
         with st.chat_message("assistant"):
             with st.spinner("Working..."):
@@ -108,7 +111,7 @@ def messaging_ui(assistant: Assistant) -> None:
 def knowledge_base_ui(assistant: Assistant) -> None:
     st.sidebar.write("## Knowledge Base")
 
-    # Load knowlege base if not already loaded
+    # Load knowledge base if not already loaded
     if assistant.knowledge_base and (
         "knowledge_base_loaded" not in st.session_state
         or not st.session_state["knowledge_base_loaded"]
