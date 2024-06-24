@@ -20,7 +20,7 @@ def get_rag_pdf_assistant(
         run_id=run_id,
         user_id=user_id,
         llm=OpenAIChat(
-            model=ai_settings.gpt_4,
+            model=ai_settings.gpt_3_5,
             max_tokens=ai_settings.default_max_tokens,
             temperature=ai_settings.default_temperature,
         ),
