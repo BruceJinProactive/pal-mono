@@ -62,6 +62,7 @@ def debug_ui(assistant: Assistant):
     with st.expander("Debug Info"):
         st.info(f"Assistant Name: {assistant.name}")
         st.info(f"Run ID: {assistant.run_id}")
+        assistant.show_tool_calls = st.toggle("Show Tool Calls", assistant.show_tool_calls)
 
     # Restart chat
     def restart_chat():
