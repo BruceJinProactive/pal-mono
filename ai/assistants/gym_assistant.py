@@ -35,7 +35,12 @@ mindzero_knowledge_base = CombinedKnowledgeBase(
         # PDFUrlKnowledgeBase(urls=["https://phi-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"]),
         PDFKnowledgeBase(path="data/mindzero/pdfs"),
         JSONKnowledgeBase(path="data/mindzero/jsons"),
-        WebsiteKnowledgeBase(urls=["https://www.mindzero.com/terms-of-service/", "https://www.mindzero.com/privacy-policy/",]),
+        WebsiteKnowledgeBase(
+            urls=[
+                "https://www.mindzero.com/terms-of-service/",
+                "https://www.mindzero.com/privacy-policy/",
+            ]
+        ),
     ],
     vector_db=PgVector2(
         db_url=db_url,

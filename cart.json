@@ -1,0 +1,36 @@
+{
+    "a919e9fe-8041-7081-3889-1445693aadd5": {
+        "price": 64.0,
+        "list_of_cart_items": [
+            {
+                "pizza_name": "Big Sur",
+                "quantity": 1,
+                "size": "medium",
+                "order_note": ""
+            },
+            {
+                "pizza_name": "Figgy Piggy",
+                "quantity": 1,
+                "size": "medium",
+                "order_note": ""
+            }
+        ]
+    },
+    "aaron": {
+        "price": 158.0,
+        "list_of_cart_items": [
+            {
+                "pizza_name": "Cowell's Combo",
+                "quantity": 2,
+                "size": "large",
+                "order_note": ""
+            },
+            {
+                "pizza_name": "Figgy Piggy",
+                "quantity": 2,
+                "size": "large",
+                "order_note": ""
+            }
+        ]
+    }
+}

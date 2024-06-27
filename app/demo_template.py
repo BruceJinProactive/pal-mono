@@ -46,11 +46,13 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
     knowledge_base_ui(assistant)
     # storage_ui(assistant)
 
+
 demo_system_prompt = ""
+
 
 def debug_ui(assistant: Assistant):
     # System Prompt
-    system_prompt_expander =  st.expander("System Prompt")
+    system_prompt_expander = st.expander("System Prompt")
     global demo_system_prompt
     demo_system_prompt = system_prompt_expander.text_area(
         "System Prompt",
@@ -62,7 +64,9 @@ def debug_ui(assistant: Assistant):
     with st.expander("Debug Info"):
         st.info(f"Assistant Name: {assistant.name}")
         st.info(f"Run ID: {assistant.run_id}")
-        assistant.show_tool_calls = st.toggle("Show Tool Calls", assistant.show_tool_calls)
+        assistant.show_tool_calls = st.toggle(
+            "Show Tool Calls", assistant.show_tool_calls
+        )
 
     # Restart chat
     def restart_chat():

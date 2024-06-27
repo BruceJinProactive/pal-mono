@@ -16,6 +16,7 @@ from phi.vectordb.pgvector import PgVector2
 
 from ai.settings import ai_settings
 from db.session import db_url
+from service_adapters.adapters import ServiceAdapters, get_adapter
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -58,9 +59,14 @@ memory = AssistantMemory(
 
 
 class PizzaTools(Toolkit):
-    def __init__(self):
+    def __init__(self, user_id):
+        self.user_id = user_id
+
         super().__init__(name="pizza_tools")
         self.register(self.get_pizzas)
+        self.register(self.add_to_cart)
+        self.register(self.get_cart_items)
+        self.register(self.order_cart_items)
 
     def get_pizzas(
         self,
@@ -208,6 +214,68 @@ class PizzaTools(Toolkit):
 
         return json.dumps(pizzas)
 
+    def add_to_cart(
+        self,
+        pizza_name: str = "Big Sur",
+        quantity: int = 1,
+        size: str = "medium",
+        order_note: str = "",
+    ) -> str:
+        """Use this function to add the order to the cart.
+        Whenever the user expresses interest in ordering pizzas, use this function to add the order to the cart.
+
+        Args:
+            pizza_name (str): The name of the pizza. Defaults to Big Sur.
+            quantity (int): The number of the pizza. Defaults to 1.
+            size (str): The size of the pizza. Defaults to medium.
+            order_note (str): Any notes on the order. Defaults to empty string.
+
+        Returns:
+            str: JSON string of the user's order. If the pizza is not on the menu, return "Item not on menu".
+        """
+
+        pizza_item = {
+            "pizza_name": pizza_name,
+            "quantity": quantity,
+            "size": size,
+            "order_note": order_note,
+        }
+
+        add_to_cart_adapter = get_adapter(ServiceAdapters.ADD_MOCK_CART)
+        status = add_to_cart_adapter(self.user_id, pizza_item)
+
+        if not status:
+            return "Item not on menu"
+
+        return json.dumps(pizza_item)
+
+    def get_cart_items(self) -> str:
+        """Use this function to get the items in the cart or the total price of the cart.
+        Use this function whenever the user wants to know what is in the cart or the price.
+
+        Returns:
+            str: JSON string of the items in the cart.
+        """
+
+        get_cart_items_adapter = get_adapter(ServiceAdapters.GET_MOCK_CART)
+        cart_items = get_cart_items_adapter(self.user_id)
+
+        return json.dumps(cart_items)
+
+    def order_cart_items(self) -> str:
+        """Use this function to order the items in the cart.
+        Use this function whenever the user wants to order the items in the cart.
+
+        Returns:
+            str: JSON string of the ordered items.
+        """
+
+        order_cart_items_adapter = get_adapter(ServiceAdapters.ORDER_MOCK_CART)
+        cart_items = self.get_cart_items()
+        order_cart_items_adapter(self.user_id)
+
+        return "Order placed! " + json.dumps(cart_items)
+
 
 def get_pizza_assistant(
     user_id: str,
@@ -247,16 +315,22 @@ def get_pizza_assistant(
         add_references_to_prompt=True,
         # Enable monitoring on phidata.app
         # monitoring=True,
-        tools=[PizzaTools()],
+        tools=[PizzaTools(user_id=user_id)],
         use_tools=True,
         show_tool_calls=debug_mode,  # show tool calls in debug mode
         search_knowledge=True,
-        read_chat_history=False,
+        read_chat_history=True,
         debug_mode=debug_mode,
         build_default_system_prompt=False,
         system_prompt="""
 Your name is Jimmy. You are a  surfer from California. You love surfing and your love pizza. You want to tell everyone about Pizza My Heart pizza.
 You answer customer questions about the Pizza My Heart pizzas with passion. You respond in a precise, concise, and oh-so-relatable casual tone. You really care about all of your customers, new and old. You treat her customers like you own family and best friends.
+
+You have the following tools you can invoke depending on user request.
+- add_to_cart, when the user expresses interest in ordering a pizza
+- get_cart_items, when the user wants to know what is in their cart
+- order_cart_items, when the user wants to order the items in their cart
+If the user adds a pizza to their cart, assume that subsequent messages are about ordering pizzas and use the add_to_cart tool to save the order to the cart.
 
 Here are the instructions you must follow:
 <instructions>
