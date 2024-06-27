@@ -94,9 +94,10 @@ class BookingTools(Toolkit):
                 new_entry = {}
                 new_entry["start_date"] = entry["attributes"]["start_date"]
                 new_entry["start_time"] = entry["attributes"]["start_time"]
-                new_entry["available_spots_ids"] = entry["attributes"][
-                    "available_spots"
-                ]
+                new_entry["class_id"] = entry["id"]
+                new_entry["available_spots_count"] = len(
+                    entry["attributes"]["available_spots"]
+                )
                 new_entry["class_type"] = entry["attributes"]["class_type_display"]
                 new_entry["duration"] = entry["attributes"]["duration"]
                 new_entry["instructor"] = entry["attributes"]["instructor_names"]
