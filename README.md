@@ -43,8 +43,9 @@ export MODAL_API_KEY=***
 phi ws up
 ```
 
-6. You can read the API documentation running in your local host http://localhost:8000/docs#/. and the web app running in your local host http://localhost:8501/.
+7. You can read the API documentation running in your local host http://localhost:8000/docs#/. and the web app running in your local host http://localhost:8501/.
 
+8. You can install this Visual Studio extension to run the Python Lint check in your IDE while you code: https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff
 
 ## Validation
 
@@ -73,26 +74,28 @@ Run the following command to validate your code locally:
 
 The CI/CD pipeline is divided into 3 stages:
 
-- dev(development) - The environment for your local development. Changes before merged into `main` branch.
+- dev(your local development) - The environment for your local development. Changes before merged into `main` branch.
 - stg(staging) - The environment for internal testing and validation. Changes on the HEAD of `main` branch, before merged into `prd` branch.
 - prd(production) - The environment to serve live customer traffic. Changes on `prd` branch.
 
 ### Releasing from `dev` to `stg`:
 
-1. Create a feature branch `example-feature` based from `main` and make changes locally.
-2. Make a pull request merging `example-feature` to `main`.
-3. Wait for PR review and approval.
-4. Submit the PR to merge `example-feature` to `main`.
-5. A staging release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
+1. If you need to use any new env variables, please let @max or @kelvin know so they can add them to the AWS config
+2. Create a feature branch `example-feature` based from `main` and make changes locally.
+3. Make a pull request merging `example-feature` to `main`.
+4. Wait for PR review and approval.
+5. Submit the PR to merge `example-feature` to `main`.
+6. A staging release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
 
 ### Releasing from `stg` to `prd`:
 
 [TODO] The process is manual for now.
 
-1. Make a pull request merging `prd` to `main`.
-2. Wait for PR review and approval.
-3. Submit the PR to merge `prd` to `main`.
-4. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
+1. If you need to use any new env variables, please let @max or @kelvin know so they can add them to the AWS config
+2. Make a pull request merging `main` to `prd`.
+3. Wait for PR review and approval.
+4. Submit the PR to merge `main` to `prd`.
+5. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
 
 ## Endpoints
 
