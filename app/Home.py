@@ -14,6 +14,7 @@ st.markdown("---")
 def pages():
     home_page = Page("app/Home.py", "Home", "🏠")
     console_pages = [
+        Page("app/pages/console/Messages.py", "Messages", "🖥️"),
         Page("app/pages/console/Demo.py", "Demo", "💬"),
     ]
     pal_internal_pages = [

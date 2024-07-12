@@ -5,7 +5,7 @@ from db.repositories.assistant_repository import AssistantRepository
 from db.repositories.project_repository import ProjectRepository
 
 
-def get_account(db: Session, account_name):
+def get_account(db: Session, account_name: str):
     account_repository = AccountRepository(db)
     account = account_repository.get_account(account_name=account_name)
     return account
