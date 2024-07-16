@@ -50,14 +50,6 @@ pizza_assistant_storage = PgAssistantStorage(
 )
 
 
-memory = AssistantMemory(
-    db=PgMemoryDb(
-        db_url=db_url,
-        table_name="pizza_memory",
-    ),
-)
-
-
 class PizzaTools(Toolkit):
     def __init__(self, user_id):
         self.user_id = user_id
@@ -283,6 +275,15 @@ def get_pizza_assistant(
     debug_mode: bool = False,
 ) -> Assistant:
     """Get an Autonomous Assistant for a pizza store with menu knowledge."""
+
+    # Ensure AssistantMemory unique per user
+    memory = AssistantMemory(
+        db=PgMemoryDb(
+            db_url=db_url,
+            table_name="pizza_memory"
+        ),
+        user_id=user_id,
+    )
 
     run_id = None
     if not new_run:
