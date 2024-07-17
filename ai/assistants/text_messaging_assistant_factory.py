@@ -1,11 +1,7 @@
 from typing import List
 
 from ai.assistants.gym_assistant import get_gym_assistant
-
-
-# TODO move this to a Data Access Layer, and look up the user ID from the database based on the phone numbers
-def get_user_id_from_sms(to_number: str, from_number: str):
-    return "client_phone_number_" + to_number + "_user_phone_number_" + from_number
+from data_access_layer.dal_user_id import get_user_id_from_sms
 
 
 def assistant_from_sms(to_number: str, from_number: str):

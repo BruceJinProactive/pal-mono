@@ -7,14 +7,16 @@ from phi.document.reader.pdf import PDFReader
 
 from app.auth import user
 from app.shared import user_ui
+from data_access_layer.dal_user_id import get_user_id_for_account_name_user_email
 from utils.log import logger
 
 
 def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
+    user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
         assistant = get_assistant(
-            user_id=user.username,
+            user_id=user_id,
             new_run=True,
         )
         assistant.memory.chat_history = []
@@ -23,7 +25,7 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
     else:
         logger.info("Not restarting chat")
         assistant = get_assistant(
-            user_id=user.username,
+            user_id=user_id,
             new_run=False,
         )
     st.session_state["restart_chat"] = False
