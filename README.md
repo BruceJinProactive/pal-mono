@@ -48,6 +48,8 @@ phi ws up
 
 8. You can install this Visual Studio extension to run the Python Lint check in your IDE while you code: https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff
 
+9. You can install this Visual Studio Python Debugger extension to Debug the Python code in your IDE while you code: https://marketplace.visualstudio.com/items?itemName=ms-python.debugpy. We have a launch.json file in the .vscode folder that you can use to debug our cli_playground.py file in your IDE.
+
 ## Validation
 
 We use several tools to ensure code quality and consistency. These tools are run automatically before every commit.
