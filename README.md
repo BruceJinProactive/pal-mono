@@ -24,6 +24,7 @@ source ~/.venvs/aienv/bin/activate
 4. [One-time] Install dependencies
 
 ```bash
+pip3 install docker
 pip3 install -U phidata
 phi init
 phi ws setup
