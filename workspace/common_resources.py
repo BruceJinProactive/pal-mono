@@ -9,4 +9,7 @@ common_container_env = {
     # Get the SendBlue API key from the local environment
     "SENDBLUE_API_KEY": getenv("SENDBLUE_API_KEY"),
     "SENDBLUE_API_SECRET_KEY": getenv("SENDBLUE_API_SECRET_KEY"),
+    # Adora POS API key (POS used by PizzaMyHeart)
+    "ADORA_POS_API_KEY": getenv("ADORA_POS_API_KEY"),
+    "ADORA_POS_API_SECRET": getenv("ADORA_POS_API_SECRET"),
 }
