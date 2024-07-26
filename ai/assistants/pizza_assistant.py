@@ -278,10 +278,7 @@ def get_pizza_assistant(
 
     # Ensure AssistantMemory unique per user
     memory = AssistantMemory(
-        db=PgMemoryDb(
-            db_url=db_url,
-            table_name="pizza_memory"
-        ),
+        db=PgMemoryDb(db_url=db_url, table_name="pizza_memory"),
         user_id=user_id,
     )
 
