@@ -13,13 +13,13 @@ from services.chat_service import get_chat_response
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 
 
-class MessageChannel(str, Enum):
+class ChatChannel(str, Enum):
     SMS = "sms"
     WHATSAPP = "whatsapp"
 
 
-class MessageRequest(BaseModel):
-    channel: MessageChannel
+class ChatRequest(BaseModel):
+    channel: ChatChannel
     sender: str
     recipient: str
     content: str
@@ -27,13 +27,13 @@ class MessageRequest(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-class MessageResponse(BaseModel):
+class ChatResponse(BaseModel):
     content: str = ""
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
-@chat_router.post("/", response_model=MessageResponse)
-async def chat(message: MessageRequest, db: Session = Depends(get_db)):
+@chat_router.post("/", response_model=ChatResponse)
+async def chat(message: ChatRequest, db: Session = Depends(get_db)):
     try:
         # Process the message
         print(
@@ -49,8 +49,8 @@ async def chat(message: MessageRequest, db: Session = Depends(get_db)):
             recipient=message.recipient,
             content=message.content,
         )
-        # Create and return the MessageResponse
-        return MessageResponse(content=response_content)
+        # Create and return the ChatResponse
+        return ChatResponse(content=response_content)
 
     except Exception as e:
         # Log the error
