@@ -10,7 +10,7 @@ from app.auth import user
 from app.shared import set_page_config
 from db.session import get_db
 from services.admin_service import get_account
-from services.chat_service import get_assistant
+from services.assistant_service import get_assistant
 
 set_page_config()
 

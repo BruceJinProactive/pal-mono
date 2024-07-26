@@ -2,10 +2,13 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from api.routes.endpoints import endpoints
+from db.session import get_db
+from services.chat_service import get_chat_response
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 
@@ -30,24 +33,24 @@ class MessageResponse(BaseModel):
 
 
 @chat_router.post("/", response_model=MessageResponse)
-async def chat(message: MessageRequest):
+async def chat(message: MessageRequest, db: Session = Depends(get_db)):
     try:
         # Process the message
-        # Here you would typically:
-        # - Validate the message
-        # - Store the message in a database
-        # - Trigger any necessary workflows
-        # - Forward the message to other systems if needed
-
         print(
             f"Received {message.channel} message from {message.sender} to {message.recipient}: {message.content}"
         )
         print(f"Additional metadata: {message.metadata}")
 
-        # TODO: Create and return the response
-
-        response = MessageResponse()
-        return response
+        # Get the response from the chat service
+        response_content = get_chat_response(
+            db=db,
+            channel=message.channel,
+            sender=message.sender,
+            recipient=message.recipient,
+            content=message.content,
+        )
+        # Create and return the MessageResponse
+        return MessageResponse(content=response_content)
 
     except Exception as e:
         # Log the error
