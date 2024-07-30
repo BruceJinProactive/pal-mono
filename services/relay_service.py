@@ -13,7 +13,7 @@ STATE_MACHINE_ARN = (
 )
 
 
-def send_scheduled_message(message, delivery_time):
+def send_message(message: str, delivery_time: datetime = datetime.now(timezone.utc)):
     try:
         # Ensure delivery_time is a datetime object
         if isinstance(delivery_time, str):
@@ -70,6 +70,6 @@ def send_scheduled_message(message, delivery_time):
 # Usage example
 if __name__ == "__main__":
     message = "Hello, future!"
-    delivery_time = datetime.now(timezone.utc) + timedelta(seconds=1)
-    result = send_scheduled_message(message, delivery_time)
+    delivery_time = datetime.now(timezone.utc) + timedelta(seconds=10)
+    result = send_message(message, delivery_time)
     print(result)
