@@ -4,6 +4,7 @@ from typing import Iterator
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from api.models.message import Message, TextObject
 from services import assistant_service, user_service
 
 # Set up logging
@@ -13,21 +14,23 @@ requests_log.setLevel(logging.DEBUG)
 requests_log.propagate = True
 
 
-def get_chat_response(
-    db: Session, channel: str, sender: str, recipient: str, content: str
-) -> str:
+def get_chat_response(db: Session, message: Message) -> Message:
     # Get user_id by sender channel/number with user_service
-    user_id = user_service.get_user_id(db=db, channel=channel, sender=sender)
+    user_id = user_service.get_user_id(db=db)
 
-    # Get assistant with recipient channel/number with assistant_service
+    # Get assistant_id with recipient channel/number with assistant_service
     assistant_id = assistant_service.get_assistant_id(
-        db=db, channel=channel, recipient=recipient, user_id=user_id
+        db=db,
     )
+
+    # Get assistant with assistant_id and user_id with assistant_service
     assistant = assistant_service.get_assistant(
         db=db, assistant_id=assistant_id, user_id=user_id
     )
 
-    response = assistant.run(content, stream=False)
+    # Get response from assistant
+    response = assistant.run(message.text.body, stream=False)
+
     # Handle different response types
     if isinstance(response, Iterator):
         response_content = "".join(response)
@@ -38,4 +41,12 @@ def get_chat_response(
     else:
         raise ValueError("Unexpected response type from get_chat_response")
 
-    return response_content
+    # Create and return a new Message object for the response
+    return Message(
+        sender=message.recipient,  # Swap sender and recipient
+        recipient=message.sender,
+        messaging_product=message.messaging_product,
+        messaging_broker=message.messaging_broker,
+        text=TextObject(body=response_content),
+        metadata=message.metadata,  # Preserve original metadata
+    )

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.models.message import Message, TextObject
+from api.models.message import Message
 from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.chat_service import get_chat_response
@@ -38,22 +38,10 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         # Process the message
         print(f"Received message: {request.message}")
 
-        # Get the response from the chat service
-        response_content = get_chat_response(
+        # Get the response message from message service
+        response_message = get_chat_response(
             db=db,
-            channel=request.message.messaging_product,
-            sender=request.message.sender,
-            recipient=request.message.recipient,
-            content=request.message.text.body,
-        )
-
-        # Create response message
-        response_message = Message(
-            sender=request.message.recipient,  # swap sender and recipient
-            recipient=request.message.sender,
-            text=TextObject(body=response_content),
-            messaging_product=request.message.messaging_product,
-            messaging_broker=request.message.messaging_broker,
+            message=request.message,
         )
 
         # Create and return the ChatResponse

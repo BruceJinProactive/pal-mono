@@ -13,7 +13,7 @@ from db.session import db_url
 from services.admin_service import get_account
 
 
-def get_assistant_id(db: Session, channel: str, recipient: str, user_id: str):
+def get_assistant_id(db: Session):
     # TODO: Get project id by recipient channel/number
     account = get_account(
         db, account_name="proactiveailab"
