@@ -1,7 +1,7 @@
-from typing import Dict, Any
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Any, Dict
 
 
 class TextObject:
