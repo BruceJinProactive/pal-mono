@@ -2,7 +2,9 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import boto3
+from utils.dttm import current_utc
 from botocore.exceptions import ClientError
+from services.messages import Message, TextObject, MessagingProduct, MessagingBroker
 
 # Initialize AWS client
 stepfunctions = boto3.client("stepfunctions")
@@ -13,7 +15,7 @@ STATE_MACHINE_ARN = (
 )
 
 
-def send_message(message: str, delivery_time: datetime = datetime.now(timezone.utc)):
+def send_message(message: Message, delivery_time: datetime = current_utc()):
     try:
         # Ensure delivery_time is a datetime object
         if isinstance(delivery_time, str):
@@ -31,12 +33,7 @@ def send_message(message: str, delivery_time: datetime = datetime.now(timezone.u
         input_data = {
             "message": {
                 "rawPath": "/send",
-                "body": {
-                    "from": "+14155238886",  # TODO: Replace with account's number
-                    "to": "+16692463752",  # TODO: Replace with recipient's number
-                    "content": message,
-                    "channel": "whatsapp",
-                },
+                "body": message.to_dict(),
             },
             "delivery_time": formatted_time,
         }
@@ -65,11 +62,3 @@ def send_message(message: str, delivery_time: datetime = datetime.now(timezone.u
     except Exception as e:
         # Handle any other unexpected errors
         return {"status": "error", "error_message": str(e)}
-
-
-# Usage example
-if __name__ == "__main__":
-    message = "Hello, future!"
-    delivery_time = datetime.now(timezone.utc) + timedelta(seconds=10)
-    result = send_message(message, delivery_time)
-    print(result)
