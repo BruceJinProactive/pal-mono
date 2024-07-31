@@ -29,6 +29,7 @@ class Message(BaseModel):
     type: str = Field(default="text")
     text: TextObject
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     @validator("type")
     def validate_type(cls, v):
@@ -46,6 +47,7 @@ class Message(BaseModel):
             "type": self.type,
             "text": self.text.dict(),
             "timestamp": self.timestamp.isoformat(),
+            "metadata": self.metadata,
         }
 
     @classmethod
