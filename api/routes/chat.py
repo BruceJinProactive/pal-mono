@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
 from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from api.models.message import Message, TextObject
 from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.chat_service import get_chat_response
-from api.models.message import Message, TextObject
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 
