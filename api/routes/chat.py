@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from api.models.message import Message
 from api.routes.endpoints import endpoints
 from db.session import get_db
-from services.chat_service import get_chat_response
+from services.message_service import get_chat_response
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 
