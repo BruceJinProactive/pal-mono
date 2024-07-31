@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
-from services.messages import Message
+from api.models.message import Message
 from utils.dttm import current_utc
 
 # Initialize AWS client
