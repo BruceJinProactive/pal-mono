@@ -23,7 +23,9 @@ class Assistant(Base):
     )
     project = relationship("Project", back_populates="assistants")
 
-    raw_config: Mapped[Optional[dict]] = mapped_column(JSON)
+    raw_config: Mapped[dict] = mapped_column(
+        JSON, nullable=False, server_default=text("'{}'::jsonb")
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")

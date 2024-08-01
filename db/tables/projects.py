@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import BigInteger, DateTime, String
+from sqlalchemy.types import JSON, BigInteger, DateTime, String
 
 from db.tables.base import Base
 
@@ -33,3 +33,7 @@ class Project(Base):
     account = relationship("Account", back_populates="projects")
 
     assistants = relationship("Assistant", back_populates="project")
+
+    raw_config: Mapped[dict] = mapped_column(
+        JSON, nullable=False, server_default=text("'{}'::jsonb")
+    )
