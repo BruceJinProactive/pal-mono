@@ -5,22 +5,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import JSON, BigInteger, DateTime, String
+from sqlalchemy.types import BigInteger, DateTime
 
 from db.tables.base import Base
 
 
-class Project(Base):
-    __tablename__ = "projects"
+class Conversation(Base):
+    __tablename__ = "conversations"
     id: Mapped[int] = mapped_column(
         BigInteger, primary_key=True, autoincrement=True, nullable=False, index=True
     )
-    name: Mapped[str] = mapped_column(String, nullable=False, server_default="default")
-    account_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("accounts.id"), nullable=False, index=True
-    )
-    raw_config: Mapped[dict] = mapped_column(
-        JSON, nullable=False, server_default=text("'{}'::jsonb")
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(
@@ -30,6 +26,7 @@ class Project(Base):
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
     )
     # Relationships
-    account = relationship("Account", back_populates="projects")
-    assistants = relationship("Assistant", back_populates="project")
-    users: Mapped[List["User"]] = relationship("User", back_populates="project")
+    user: Mapped["User"] = relationship("User", back_populates="conversations")
+    messages: Mapped[List["Message"]] = relationship(
+        "Message", back_populates="conversation"
+    )
