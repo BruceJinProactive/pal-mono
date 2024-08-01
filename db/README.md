@@ -7,10 +7,16 @@
 ## Migrate development database [dev]
 
 1.  Add/update SqlAlchemy tables in the `db/tables` directory.
+
 2.  Import the SqlAlchemy class in the `db/tables/__init__.py` file.
+
 3.  Create a database revision using the command below:
 
-> `alembic autogenerate` is often very wrong. Review the migration file, ask ChatGPT to regenerate the file, then run the upgrade command.
+**Note:** `alembic autogenerate` is often very wrong. Review the migration file, ask ChatGPT to regenerate the file, then run the upgrade command.
+
+- Use `git diff > changes.diff` to generate a diff file.
+- Copy paste the diff file to ChatGPT or other tools to generate the migration file.
+- Copy paste the `upgrade()` and `downgrade()` functions back to the migration file.
 
 ```bash
 docker exec -it pal-mono-api alembic -c db/alembic.ini revision --autogenerate -m "<db-change-message>"
@@ -49,15 +55,15 @@ container_env = {
 phi ws patch --env stg --infra aws --name td
 ```
 
-5. Update the ECS task definition to use the new environment variable.
+1. Update the ECS service to use the new environment variable.
 
 ```bash
 phi ws patch --env stg --infra aws --name service
 ```
 
-6. Connect to the database using pgAdmin or any other database management tool to verify the changes.
+5. Connect to the database using pgAdmin or any other database management tool to verify the changes.
 
-7. Create a Pull Request and merge the changes to the `main` branch. The tile of the PR should be `[DB UPDATE] Staging db update done`.
+6. Create a Pull Request and merge the changes to the `main` branch. The tile of the PR should be `[DB UPDATE] Staging db update done`.
 
 ---
 
