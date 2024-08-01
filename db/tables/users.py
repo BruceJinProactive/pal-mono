@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
@@ -29,7 +29,5 @@ class User(Base):
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
     )
     # Relationships
-    project: Mapped["Project"] = relationship("Project", back_populates="users")
-    conversations: Mapped[List["Conversation"]] = relationship(
-        "Conversation", back_populates="user"
-    )
+    project = relationship("Project", back_populates="users")
+    conversations = relationship("Conversation", back_populates="user")

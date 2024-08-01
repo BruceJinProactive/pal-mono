@@ -29,6 +29,4 @@ class Message(Base):
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
     )
     # Relationships
-    conversation: Mapped["Conversation"] = relationship(
-        "Conversation", back_populates="messages"
-    )
+    conversation = relationship("Conversation", back_populates="messages")

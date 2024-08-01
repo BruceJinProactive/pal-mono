@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
@@ -32,4 +32,4 @@ class Project(Base):
     # Relationships
     account = relationship("Account", back_populates="projects")
     assistants = relationship("Assistant", back_populates="project")
-    users: Mapped[List["User"]] = relationship("User", back_populates="project")
+    users = relationship("User", back_populates="project")
