@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.models.message import AuthorType, Message, TextObject
+from db.repositories.message_repository import MessageRepository
 from services import assistant_service, user_service
 from services.admin_service import get_account
 
@@ -25,6 +26,11 @@ def get_chat_response(db: Session, message: Message) -> Message:
         channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP
         channel_identifier=message.sender_channel_identifier,
         create_new_user=True,
+    )
+
+    # Save request message to database
+    MessageRepository(db).create_message(
+        user_id=str(user_id), message_body=message.to_dict()
     )
 
     # Get assistant_id with recipient channel/number with assistant_service
@@ -56,7 +62,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         raise ValueError("Unexpected response type from get_chat_response")
 
     # Create and return a new Message object for the response
-    return Message(
+    response_message = Message(
         author_type=AuthorType.ASSISTANT,
         sender_channel_identifier=message.recipient_channel_identifier,  # Swap sender and recipient
         recipient_channel_identifier=message.sender_channel_identifier,
@@ -65,3 +71,10 @@ def get_chat_response(db: Session, message: Message) -> Message:
         text=TextObject(body=response_content),
         metadata=message.metadata,  # Preserve original metadata
     )
+
+    # Save response message to database
+    MessageRepository(db).create_message(
+        user_id=str(user_id), message_body=response_message.to_dict()
+    )
+
+    return response_message
