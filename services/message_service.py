@@ -4,7 +4,7 @@ from typing import Iterator
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.models.message import Message, TextObject
+from api.models.message import AuthorType, Message, TextObject
 from services import assistant_service, user_service
 
 # Set up logging
@@ -43,9 +43,10 @@ def get_chat_response(db: Session, message: Message) -> Message:
 
     # Create and return a new Message object for the response
     return Message(
-        sender=message.recipient,  # Swap sender and recipient
-        recipient=message.sender,
-        messaging_product=message.messaging_product,
+        author_type=AuthorType.ASSISTANT,
+        sender_channel_identifier=message.recipient_channel_identifier,  # Swap sender and recipient
+        recipient_channel_identifier=message.sender_channel_identifier,
+        channel_platform=message.channel_platform,
         messaging_broker=message.messaging_broker,
         text=TextObject(body=response_content),
         metadata=message.metadata,  # Preserve original metadata

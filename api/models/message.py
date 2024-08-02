@@ -10,7 +10,12 @@ class TextObject(BaseModel):
     body: str = Field(..., max_length=4096)
 
 
-class MessagingProduct(str, Enum):
+class AuthorType(str, Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ChannelPlatform(str, Enum):
     WHATSAPP = "whatsapp"
     SMS = "sms"
 
@@ -22,9 +27,10 @@ class MessagingBroker(str, Enum):
 
 class Message(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    sender: str
-    recipient: str
-    messaging_product: MessagingProduct
+    author_type: AuthorType
+    sender_channel_identifier: str
+    recipient_channel_identifier: str
+    channel_platform: ChannelPlatform
     messaging_broker: MessagingBroker
     type: str = Field(default="text")
     text: TextObject
@@ -40,9 +46,10 @@ class Message(BaseModel):
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
-            "sender": self.sender,
-            "recipient": self.recipient,
-            "messaging_product": self.messaging_product.value,
+            "author_type": self.author_type.value,
+            "sender_channel_identifier": self.sender_channel_identifier,
+            "recipient_channel_identifier": self.recipient_channel_identifier,
+            "channel_platform": self.channel_platform.value,
             "messaging_broker": self.messaging_broker.value,
             "type": self.type,
             "text": self.text.dict(),
