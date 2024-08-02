@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
@@ -19,7 +20,7 @@ class User(Base):
         BigInteger, ForeignKey("projects.id"), nullable=False, index=True
     )
     raw_config: Mapped[dict] = mapped_column(
-        JSON, nullable=False, server_default=text("'{}'::jsonb")
+        MutableDict.as_mutable(JSON), nullable=False, server_default=text("'{}'::jsonb")
     )
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(

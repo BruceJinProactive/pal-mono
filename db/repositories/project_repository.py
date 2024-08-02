@@ -13,3 +13,6 @@ class ProjectRepository:
         self.db.add(db_project)
         self.db.commit()
         return db_project
+
+    def get_project(self, project_id: str) -> Project | None:
+        return self.db.query(Project).filter(Project.id == int(project_id)).first()

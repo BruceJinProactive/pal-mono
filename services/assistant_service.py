@@ -9,36 +9,36 @@ from sqlalchemy.orm import Session
 from ai.llm import LLM, get_llm
 from ai.settings import ai_settings
 from db.repositories.assistant_repository import AssistantRepository
+from db.repositories.project_repository import ProjectRepository
 from db.session import db_url
-from services.admin_service import get_account
 
 
-def get_assistant_id(db: Session):
-    # TODO: Get project id by recipient channel/number
-    account = get_account(
-        db, account_name="proactiveailab"
-    )  # hardcoded account_name for testing
-    if account is None:
-        raise ValueError("Account not found")
-    if not account.projects:
-        raise ValueError("No projects found for this account")
+def get_assistant_id(db: Session, project_id: str) -> str | None:
+    project_repository = ProjectRepository(db)
+    project = project_repository.get_project(project_id=project_id)
 
-    # TODO: Get assistant from the project, assuming there is only one assistant
-    assistant_id = account.projects[0].assistants[0].id
-    return assistant_id
+    if project is None:
+        raise ValueError("Invalid project_id")
+
+    if not project.assistants:
+        return None
+
+    return str(project.assistants[0].id)
 
 
 def get_assistant(
     db: Session,
-    assistant_id: int,
+    assistant_id: str,
     user_id: str,
     new_run: bool = False,
 ) -> Assistant:
     # Retrieve the assistant from the database
     assistant_repository = AssistantRepository(db)
-    db_assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
+    db_assistant = assistant_repository.get_assistant(assistant_id=int(assistant_id))
 
     # Set up the knowledge base, storage, and memory
+    if db_assistant is None:
+        raise ValueError("Invalid assistant_id")
     project_id = db_assistant.project_id
     storage_table_name = f"project_{project_id}_storage"
     knowledge_base_table_name = f"project_{project_id}_knowledge_base"
