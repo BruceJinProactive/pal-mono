@@ -9,6 +9,7 @@ from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.message_service import get_chat_response
 from services.relay_service.relay_service import send_message
+from utils.log import logger
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 
@@ -47,7 +48,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                 db=db,
                 message=request.message,
             )
-            send_message(response_message)
+            logger.info(f"Schedule to send message: {response_message}")
+            result = send_message(response_message)
+            logger.info(f"Message scheduled for delivery result: {result}")
             return ChatResponse(status="success")
         else:
             # Get the response message from message service
