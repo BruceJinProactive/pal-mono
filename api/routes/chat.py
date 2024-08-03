@@ -8,16 +8,18 @@ from api.models.message import Message
 from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.message_service import get_chat_response
+from services.relay_service.relay_service import send_message
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 
 
 class ChatRequest(BaseModel):
     message: Message
+    async_response: bool = False
 
 
 class ChatResponse(BaseModel):
-    message: Message
+    message: Optional[Message] = None
     status: str = Field(default="success")
 
 
@@ -38,14 +40,23 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         # Process the message
         print(f"Received message: {request.message}")
 
-        # Get the response message from message service
-        response_message = get_chat_response(
-            db=db,
-            message=request.message,
-        )
-
-        # Create and return the ChatResponse
-        return ChatResponse(message=response_message)
+        if request.async_response:
+            # Return a successful response immediately
+            # TODO: make get_chat_response async
+            response_message = get_chat_response(
+                db=db,
+                message=request.message,
+            )
+            send_message(response_message)
+            return ChatResponse(status="success")
+        else:
+            # Get the response message from message service
+            response_message = get_chat_response(
+                db=db,
+                message=request.message,
+            )
+            # Create and return the ChatResponse with the message
+            return ChatResponse(message=response_message, status="success")
     except ValueError as ve:
         # Handle validation errors
         raise HTTPException(
