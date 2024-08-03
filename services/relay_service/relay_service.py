@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 
 from api.models.message import Message
 from utils.dttm import current_utc
+from utils.log import logger
 
 # Initialize AWS client
 stepfunctions = boto3.client("stepfunctions")
