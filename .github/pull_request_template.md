@@ -4,7 +4,11 @@
 
 ## Description
 
-<!-- Provide a brief description of what this PR does. Include any relevant context (videos, screenshots) or links to any related issues -->
+<!-- Provide a brief description of what this PR does. Include any relevant context (videos, screenshots) or links to any related issues. -->
+
+## Reviewer Notes
+
+<!-- Quick notes to let the reviewer know what to focus on. -->
 
 ## Type of Change
 
@@ -33,6 +37,6 @@
 - [ ] I have removed all commented-out code from the files I modified
 
 <!--
-For more information about PR Templates
+For more information about PR Templates:
 https://www.notion.so/proactiveailab/Developer-Experience-f73bd67919e54ba6845c59a916abb22f?pvs=4#47247e822526439ebf317debc71a6a29
 -->
