@@ -3,11 +3,10 @@ from dataclasses import dataclass
 
 @dataclass
 class ApiEndpoints:
-    ADMIN: str = "/admin"
-    ASSISTANTS: str = "/assistants"
-    CHAT: str = "/chat"
-    HEALTH: str = "/health"
     PING: str = "/ping"
+    HEALTH: str = "/health"
+    CHAT: str = "/chat"
+    ASSISTANTS: str = "/assistants"
     SENDBLUE: str = "/webhooks/sendblue"
 
 
