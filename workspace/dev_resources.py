@@ -38,6 +38,7 @@ dev_db = PgVectorDb(
 container_env = {
     "RUNTIME_ENV": "dev",
     # AWS User Pool key for Admin/Demo log in
+    "ADMIN_CONSOLE_AWS_CLIENT_ID": getenv("ADMIN_CONSOLE_AWS_CLIENT_ID"),
     "AWS_USER_POOL_ID": getenv("AWS_USER_POOL_ID"),
     "AWS_APP_CLIENT_ID": getenv("AWS_APP_CLIENT_ID"),
     "AWS_APP_CLIENT_SECRET": getenv("AWS_APP_CLIENT_SECRET"),
