@@ -15,13 +15,13 @@ from phi.tools import Toolkit
 from phi.vectordb.pgvector import PgVector2
 
 from ai.settings import ai_settings
-from ai.tools.ordering_tools import OrderingTools
 from db.session import db_url
+from service_adapters.adapters import ServiceAdapters, get_adapter
 
 # Set up logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.DEBUG)
 requests_log = logging.getLogger("requests.packages.urllib3")
-requests_log.setLevel(logging.ERROR)
+requests_log.setLevel(logging.DEBUG)
 requests_log.propagate = True
 
 # set up specific knowledge base
@@ -50,56 +50,98 @@ pizza_assistant_storage = PgAssistantStorage(
 )
 
 
-class PizzaMyHeartTools(Toolkit):
-    def __init__(self):
-        super().__init__(name="pizza_my_heart_tools")
-        self.register(self.pizza_calculator)
+class PizzaTools(Toolkit):
+    def __init__(self, user_id):
+        self.user_id = user_id
 
-    def pizza_calculator(
+        super().__init__(name="pizza_tools")
+        self.register(self.get_pizzas)
+        self.register(self.add_to_cart)
+        self.register(self.get_cart_items)
+        self.register(self.order_cart_items)
+
+    def get_pizzas(
         self,
-        num_meat_and_veggie_lovers: str = "0",
-        num_vegetarian: str = "0",
-        num_vegan: str = "0",
+        num_meat_and_veggie_lovers: str = None,
+        num_vegetarian: str = None,
+        num_vegan: str = None,
         num_kids: str = "0",
+        num_adults: str = "0",
     ) -> str:
-        """Use this function to calculate the number of each pizza needed for the user.
+        """Use this function to calculate the number of each pizza needed. This is the pizza calculator.
+            If the user hasn't supplied info, ask for number of adults and kids then use this function.
+            If the number of adults is known but not number of vegetarians or vegans, ask for the number of adult vegetarians and vegans then use this function with the num_kids and num_adults.
 
         Args:
-            num_meat_and_veggie_lovers (str): Number of meat and veggie lovers. Defaults to 0.
-            num_vegetarian (str): Number of vegetarians. Defaults to 0.
-            num_vegan (str): Number of vegans. Defaults to 0.
-            num_kids (str): Number of kids. Defaults to 0.
+            num_meat_and_veggie_lovers (str): Number of meat and veggie lovers. Default 0.
+            num_vegetarian (str): Number of vegetarians. Default 0.
+            num_vegan (str): Number of vegans. Default 0.
+            num_kids (str): Number of kids. Default to 0 if none supplied.
+            num_adults (str): Number of adults. Default to 0 if none supplied.
 
         Returns:
             str: JSON string of the number of each pizza needed.
+                    Returns "Get number of adults and kids" if the user needs to supply the number of adults and kids.
+                    Returns "Get number of vegetarians and vegans" if the user needs to supply the number of adult vegetarians and vegans.
         """
         # Number too large
         if (
-            len(num_meat_and_veggie_lovers) > 2
-            or len(num_vegetarian) > 2
-            or len(num_vegan) > 2
+            num_meat_and_veggie_lovers
+            and len(num_meat_and_veggie_lovers) > 2
+            or num_vegetarian
+            and len(num_vegetarian) > 2
+            or num_vegan
+            and len(num_vegan) > 2
             or len(num_kids) > 2
+            or len(num_adults) > 3
         ):
-            return "Input too large, please contact store about request"
+            return "Contact Store about request"
 
         # Negative number
         if (
-            num_meat_and_veggie_lovers[0] == "-"
-            or num_vegetarian[0] == "-"
-            or num_vegan[0] == "-"
+            num_meat_and_veggie_lovers
+            and num_meat_and_veggie_lovers[0] == "-"
+            or num_vegetarian
+            and num_vegetarian[0] == "-"
+            or num_vegan
+            and num_vegan[0] == "-"
             or num_kids[0] == "-"
+            or num_adults[0] == "-"
         ):
-            return "Negative input, please contact store about request"
+            return "Contact Store about request"
+
+        # No inputs
+        if (
+            not num_meat_and_veggie_lovers
+            and not num_vegetarian
+            and not num_vegan
+            and num_kids == "0"
+            and num_adults == "0"
+        ):
+            return "Get number of adults and kids"
+
+        # Ask for number of vegans and vegetarians if the number of adults is supplied.
+        if num_adults != "0" and not num_vegan and not num_vegetarian:
+            return "Get number of vegetarians and vegans"
 
         # Convert all strings
-        num_meat_and_veggie_lovers = int(num_meat_and_veggie_lovers)
-        num_vegetarian = int(num_vegetarian)
-        num_vegan = int(num_vegan)
-        num_kids = int(num_kids)
-
-        num_pizza_meat_and_veggie_lovers = math.floor(
-            num_meat_and_veggie_lovers * 0.25 + 0.5
+        num_meat_and_veggie_lovers = (
+            int(num_meat_and_veggie_lovers) if num_meat_and_veggie_lovers else 0
         )
+        num_vegetarian = int(num_vegetarian) if num_vegetarian else 0
+        num_vegan = int(num_vegan) if num_vegan else 0
+        num_kids = int(num_kids)
+        num_adults = int(num_adults)
+
+        # Deduce number of meat and veggie lovers if it hasn't been supplied.
+        if not num_meat_and_veggie_lovers and num_adults:
+            num_meat_and_veggie_lovers = num_adults - num_vegan - num_vegetarian
+
+        # In case number of vegans and vegetarians is somehow higher than the number of meat and veggie lovers.
+        if num_meat_and_veggie_lovers < 0:
+            return "Contact Store about request"
+
+        num_meat_and_veggie_lovers = math.floor(num_meat_and_veggie_lovers * 0.25 + 0.5)
         num_pizza_vegetarian = math.floor(num_vegetarian * 0.2 + 0.5)
         num_pizza_vegan = math.floor(num_vegan * 0.2 + 0.5)
         num_pizza_kids = math.floor(num_kids * 0.125 + 0.5)
@@ -118,7 +160,7 @@ class PizzaMyHeartTools(Toolkit):
         MTDIABLO = "MtDiablo"
         MAUIWOWIE = "MauiWowie"
 
-        for i in range(num_pizza_meat_and_veggie_lovers):
+        for i in range(num_meat_and_veggie_lovers):
             case = i % 4
             if case == 0:
                 pizzas[BIGSUR] += 1
@@ -164,6 +206,68 @@ class PizzaMyHeartTools(Toolkit):
 
         return json.dumps(pizzas)
 
+    def add_to_cart(
+        self,
+        pizza_name: str = "Big Sur",
+        quantity: int = 1,
+        size: str = "medium",
+        order_note: str = "",
+    ) -> str:
+        """Use this function to add the order to the cart.
+        Whenever the user expresses interest in ordering pizzas, use this function to add the order to the cart.
+
+        Args:
+            pizza_name (str): The name of the pizza. Defaults to Big Sur.
+            quantity (int): The number of the pizza. Defaults to 1.
+            size (str): The size of the pizza. Defaults to medium.
+            order_note (str): Any notes on the order. Defaults to empty string.
+
+        Returns:
+            str: JSON string of the user's order. If the pizza is not on the menu, return "Item not on menu".
+        """
+
+        pizza_item = {
+            "pizza_name": pizza_name,
+            "quantity": quantity,
+            "size": size,
+            "order_note": order_note,
+        }
+
+        add_to_cart_adapter = get_adapter(ServiceAdapters.ADD_MOCK_CART)
+        status = add_to_cart_adapter(self.user_id, pizza_item)
+
+        if not status:
+            return "Item not on menu"
+
+        return json.dumps(pizza_item)
+
+    def get_cart_items(self) -> str:
+        """Use this function to get the items in the cart or the total price of the cart.
+        Use this function whenever the user wants to know what is in the cart or the price.
+
+        Returns:
+            str: JSON string of the items in the cart.
+        """
+
+        get_cart_items_adapter = get_adapter(ServiceAdapters.GET_MOCK_CART)
+        cart_items = get_cart_items_adapter(self.user_id)
+
+        return json.dumps(cart_items)
+
+    def order_cart_items(self) -> str:
+        """Use this function to order the items in the cart.
+        Use this function whenever the user wants to order the items in the cart.
+
+        Returns:
+            str: JSON string of the ordered items.
+        """
+
+        order_cart_items_adapter = get_adapter(ServiceAdapters.ORDER_MOCK_CART)
+        cart_items = self.get_cart_items()
+        order_cart_items_adapter(self.user_id)
+
+        return "Order placed! " + json.dumps(cart_items)
+
 
 def get_pizza_assistant(
     user_id: str,
@@ -183,21 +287,15 @@ def get_pizza_assistant(
         run_ids = pizza_assistant_storage.get_all_run_ids(user_id=user_id)
         run_id = run_ids[0] if run_ids else None
 
-    # Need to address circular dependency:
-    # OrderingTools needs Assistant to set assistant field
-    # Assistant needs OrderingTools to set tools field.
-    ordering_tools = OrderingTools()
-
     # set up assistant with specific storage
     assistant = Assistant(
         name="pizza_assistant",
         run_id=run_id,
         user_id=user_id,
         llm=OpenAIChat(
-            model="gpt-4o-mini",
-            max_tokens=16383,
-            temperature=0,
-            function_call_limit=1000000,
+            model=ai_settings.gpt_3_5,
+            max_tokens=4096,
+            temperature=0.9,
         ),
         # llm=get_llm(LLM.MODAL),
         storage=pizza_assistant_storage,
@@ -207,58 +305,48 @@ def get_pizza_assistant(
         # knowledge_base=pdf_knowledge_base,
         knowledge_base=pizza_knowledge_base,
         # Add personalization to the assistant by creating memories
-        create_memories=False,
+        create_memories=True,
         # Update memory after each run
-        update_memory_after_run=False,
+        update_memory_after_run=True,
         # Store the memories in a database
         memory=memory,
         add_references_to_prompt=True,
         # Enable monitoring on phidata.app
         # monitoring=True,
-        tools=[
-            ordering_tools,
-            PizzaMyHeartTools(),
-        ],
+        tools=[PizzaTools(user_id=user_id)],
         use_tools=True,
-        show_tool_calls=debug_mode,  # show tool calls in debug mode. Set to True for dev purposes (see function calls)
+        show_tool_calls=debug_mode,  # show tool calls in debug mode
         search_knowledge=True,
         read_chat_history=True,
         debug_mode=debug_mode,
-        build_default_system_prompt=True,
-        description="""
-Your name is Jimmy. You are a surfer from California. You love surfing and you love pizza. You want to tell everyone about Pizza My Heart pizza.
-You answer customer questions about the Pizza My Heart pizzas with passion. You respond in a precise, concise, and oh-so-relatable casual tone. You really care about all of your customers, new and old. You treat your customers like your own family and best friends.
-""",
-        instructions=[
-            "Use emojis at the right time.",
-            "Always be polite and pleasant.",
-            "Be humorous",
-            "Only answer topics about the pizza store.",
-            "Include image links of the menu items in your response if you have not sent them in your earlier messages.",
-            "Recommend different pizzas. do not repeat the same pizza more than once.",
-            "Ask customers about salad and drinks to go with their pizza",
-            "When customers complain about the pizza because of order mixup, or delivery delay, offer them another pizza and apologize for their inconvenience.",
-            "Search the knowledge base for answers to answer questions about Brand Story, founder's story, awards, menu items, and promotions.",
-            "Use the set_user_first_name tool to save the user's first name whenever they mention their first name.",
-            "Use the set_user_last_name tool to save the user's last name whenever they mention their last name.",
-            "Use the set_user_email tool to save the user's email whenever they mention their email.",
-            "Use the set_user_phone_number tool to save the user's phone number whenever they mention their phone number.",
-            'Use the set_order_type tool to save the user\'s desired order type whenever they mention their desired order type. The options are "pickup" or "delivery".',
-            "Use the set_delivery_address tool to save the user's delivery address whenever they mention their delivery address.",
-            "Use the set_delivery_suite_number tool to save the user's suite number whenever they mention their suite number as a part of their delivery address.",
-            "Use the set_delivery_city tool to save the user's city whenever they mention their city as a part of their delivery address.",
-            "Use the set_delivery_state tool to save the user's state whenever they mention their state as a part of their delivery address.",
-            "Use the set_delivery_zip tool to save the user's zip whenever they mention their zip as a part of their delivery address.",
-            "Use the add_to_order tool to add items to the user's order whenever the user expresses interest in ordering. For example, if the user says \"I'd like to order\" then use this tool.",
-            "Use the remove_from_order tool to remove items from the user's order whenever the user expresses interest in removing from their order.",
-            'Use the place_order tool to place the user\'s order whenever the user expresses interest in placing their order. For example, if the user says "I\'m ready to place my order" or "I\'m ready to check out" then use this tool.',
-        ],
-        assistant_data={"assistant_type": "autonomous"},
-    )
+        build_default_system_prompt=False,
+        system_prompt="""
+Your name is Jimmy. You are a  surfer from California. You love surfing and your love pizza. You want to tell everyone about Pizza My Heart pizza.
+You answer customer questions about the Pizza My Heart pizzas with passion. You respond in a precise, concise, and oh-so-relatable casual tone. You really care about all of your customers, new and old. You treat her customers like you own family and best friends.
 
-    # Temporary solution: Set the fields for the ordering tools
-    ordering_tools.set_fields(
-        assistant=assistant, user_id=user_id, add_cart_to_system_prompt=True
+You have the following tools you can invoke depending on user request.
+- add_to_cart, when the user expresses interest in ordering a pizza
+- get_cart_items, when the user wants to know what is in their cart
+- order_cart_items, when the user wants to order the items in their cart
+If the user adds a pizza to their cart, assume that subsequent messages are about ordering pizzas and use the add_to_cart tool to save the order to the cart.
+
+Here are the instructions you must follow:
+<instructions>
+1. Only answer topics about the pizza store.
+2. Always tell customer your name first and then always ask for their names.
+3. Always address customers by their name in this conversation if you know their name. If you don't know their name, ask what their names are.
+4. Use the pizza calculator tool to calculate the number of pizzas needed for any question related to planning orders. Use the chat history to determine arguments.
+5. Use emojis at the right time.
+6. Always be polite and pleasant.
+7. Be humorous
+8. Recommend different pizzas. do not repeat the same pizza more than once.
+9. Ask customers about salad and drinks to go with their pizza
+10. When customers complain about the pizza because of order mixup, or delivery delay, offer them another pizza and apologize for their inconvenience.
+11. Search the knowledge base for answers to answer questions about Brand Story, founder's story, awards, menu items, and promotions.
+12. Include image links of the menu items in your response if you have not sent them in your earlier messages.
+</instructions>
+""",
+        assistant_data={"assistant_type": "autonomous"},
     )
 
     # Not sure why it's recreated every time
