@@ -1,0 +1,6 @@
+~One line pizza
+Send a large Big Sur to my house.
+~One line all info
+Send a large Big Sur to my house. My name is John Smith, (888)123-4567, gmail@example.com
+~One line all info explicit
+Send a large Big Sur to my house. My first name is John, last name Smith. Phone number is (888)123-4567, email is gmail@example.com

@@ -1,8 +1,10 @@
 from os import getenv
 
-from ai.tools.integrations.pos.adora_pos.adora_pos_apis import (
+from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
     AdoraApiKeyAndSecret,
     AdoraCustomerInfo,
+    AdoraPosDeliveryAddress,
+    AdoraPosOrderType,
     _get_adora_pos_auth_token,
     calculate_tax_fees_and_total,
     get_adora_pos_consumer_account_info,
@@ -45,9 +47,7 @@ if api_key and api_secret:
     }
 
     # test order validation
-    order_validation_result = calculate_tax_fees_and_total(
-        adora_key_and_secret, store_id, customer, order["items"]
-    )
+    order_validation_result = calculate_tax_fees_and_total(store_id, order["items"])
     print(
         "Order Validation Result: "
         + (
@@ -57,19 +57,36 @@ if api_key and api_secret:
         )
     )
 
-    # test order submission
+    # test pickup order submission
     order_submitted = submit_order_and_text_payment_link(
-        adora_key_and_secret, store_id, customer, order["items"]
+        store_id, customer, order["items"]
+    )
+    print("Order Submitted: " + str(order_submitted) if order_submitted else "Failure")
+
+    # test delivery order submission
+    order_submitted = submit_order_and_text_payment_link(
+        store_id,
+        customer,
+        order["items"],
+        AdoraPosOrderType.Delivery,
+        AdoraPosDeliveryAddress(
+            address="123 Main St.",
+            extendedAddress="Apt 1",
+            city="Austin",
+            state="TX",
+            zip="78701",
+        ),
+        True,
     )
     print("Order Submitted: " + str(order_submitted) if order_submitted else "Failure")
 
     # test get menu api
-    menu_json_string = get_adora_pos_store_menu(adora_key_and_secret, store_id)
+    menu_json_string = get_adora_pos_store_menu(store_id)
     print("Menu: \n" + menu_json_string if menu_json_string else "Menu API error")
 
     # test get consumer account info
     user_json_string = get_adora_pos_consumer_account_info(
-        adora_key_and_secret, store_id, customer.phone_number
+        store_id, customer.phone_number
     )
     print("User: \n" + user_json_string if user_json_string else "User not found")
 

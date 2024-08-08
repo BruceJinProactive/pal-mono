@@ -5,17 +5,28 @@ import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from os import getenv
 from typing import Optional, Tuple, Type, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from ai.tools.integrations.data_models.access_token import AccessToken
+from ai.tools.adapters.integrations.data_models.access_token import AccessToken
 
 
 @dataclass
 class AdoraApiKeyAndSecret:
     api_key: str
     api_secret: str
+
+
+_adora_key_and_secret = None
+_adora_api_key = getenv("ADORA_POS_API_KEY")
+_adora_api_secret = getenv("ADORA_POS_API_SECRET")
+if _adora_api_key and _adora_api_secret:
+    _adora_key_and_secret = AdoraApiKeyAndSecret(
+        api_key=_adora_api_key,
+        api_secret=_adora_api_secret,
+    )
 
 
 class AdoraCustomerInfo(BaseModel):
@@ -30,6 +41,11 @@ class AdoraCustomerInfo(BaseModel):
     email: str
 
 
+class AdoraPosOrderType(str, Enum):
+    Delivery = "Delivery"
+    TakeOut = "TakeOut"
+
+
 class AdoraPosOrderCalculationResult(BaseModel):
     # Key is used on the Adora Pos API side in subsequent API calls to refer to the order. Ignore it outside of this file
     Key: str
@@ -42,39 +58,56 @@ class AdoraPosOrderCalculationResult(BaseModel):
     DeliveryCharge: float
 
 
-def get_adora_pos_store_menu(
-    api_key_and_secret: AdoraApiKeyAndSecret, store_id: str, log_request: bool = False
-) -> Optional[str]:
+class AdoraPosDeliveryAddress(BaseModel):
+    address: str
+    extendedAddress: str = (
+        ""  # Required by Adora API, used for Apt/Suite number, can be empty string
+    )
+    city: str
+    state: str
+    zip: str
+    lat: float = 37.230727  # TODO: get this from an address to lat long API
+    lng: float = -121.953576  # TODO: get this from an address to lat long API
+    instruction: str = ""  # Required by Adora API but can be empty string
+    typeId: int = 1  # TODO: get this from address validation API
+    extraField1: str = (
+        ""  # Required by Adora API but not sure its use and can be empty string
+    )
+    extraField2: str = (
+        ""  # Required by Adora API but not sure its use and can be empty string
+    )
+
+
+def get_adora_pos_store_menu(store_id: str, log_request: bool = False) -> Optional[str]:
     """returns json string of the store menu"""
 
-    bearer_token = _get_adora_pos_auth_token(api_key_and_secret)
-    if bearer_token:
-        return _get_adora_pos_store_menu(store_id, bearer_token, log_request)
-    else:
-        return None
+    if _adora_key_and_secret:
+        bearer_token = _get_adora_pos_auth_token(_adora_key_and_secret)
+        if bearer_token:
+            return _get_adora_pos_store_menu(store_id, bearer_token, log_request)
+
+    return None
 
 
 def get_adora_pos_consumer_account_info(
-    api_key_and_secret: AdoraApiKeyAndSecret,
     store_id: str,
     consumer_phone_number: str,
     log_request: bool = False,
 ) -> Optional[str]:
     """returns json string of the consumer account info"""
 
-    bearer_token = _get_adora_pos_auth_token(api_key_and_secret)
-    if bearer_token:
-        return _get_adora_pos_consumer_account_info(
-            bearer_token, store_id, consumer_phone_number, log_request
-        )
-    else:
-        return None
+    if _adora_key_and_secret:
+        bearer_token = _get_adora_pos_auth_token(_adora_key_and_secret)
+        if bearer_token:
+            return _get_adora_pos_consumer_account_info(
+                bearer_token, store_id, consumer_phone_number, log_request
+            )
+
+    return None
 
 
 def calculate_tax_fees_and_total(
-    api_key_and_secret: AdoraApiKeyAndSecret,
     store_id: str,
-    customer: AdoraCustomerInfo,
     order_items: list[dict],
     log_request: bool = False,
 ) -> Optional[AdoraPosOrderCalculationResult]:
@@ -82,20 +115,32 @@ def calculate_tax_fees_and_total(
     Returns AdoraPosOrderCalculationResult object which contains order amount calculations,
     including subtotal, taxes, fees, and total
     """
-    bearer_token = _get_adora_pos_auth_token(api_key_and_secret)
-    if bearer_token:
-        return _validate_order(
-            bearer_token, store_id, customer, order_items, log_request
-        )
-    else:
-        return None
+
+    if _adora_key_and_secret:
+        bearer_token = _get_adora_pos_auth_token(_adora_key_and_secret)
+        if bearer_token:
+            # use place holder user info for calculating fees
+            # Adora API won't work if we are missing User Info.
+            customer: AdoraCustomerInfo = AdoraCustomerInfo(
+                first_name="Agent",
+                last_name="Smith",
+                phone_number="(888)123-4567",
+                email="GKvzQ@example.com",
+            )
+
+            return _validate_order(
+                bearer_token, store_id, customer, order_items, log_request=log_request
+            )
+
+    return None
 
 
 def submit_order_and_text_payment_link(
-    api_key_and_secret: AdoraApiKeyAndSecret,
     store_id: str,
     customer: AdoraCustomerInfo,
     order_items: list[dict],
+    order_type: AdoraPosOrderType = AdoraPosOrderType.TakeOut,
+    delivery_address: Optional[AdoraPosDeliveryAddress] = None,
     log_request: bool = False,
 ) -> Optional[AdoraPosOrderCalculationResult]:
     """Calls (multiple) Adora APIs to validates order_items and calculate subtotal and total; submit order
@@ -103,38 +148,46 @@ def submit_order_and_text_payment_link(
     Returns AdoraPosOrderCalculationResult object which contains order amount calculations,
     including subtotal, taxes, fees, and total
     """
-    bearer_token = _get_adora_pos_auth_token(api_key_and_secret)
-    if bearer_token:
 
-        order_calculation_result = _validate_order(
-            bearer_token, store_id, customer, order_items, log_request=log_request
-        )
-        if order_calculation_result:
+    if _adora_key_and_secret:
+        bearer_token = _get_adora_pos_auth_token(_adora_key_and_secret)
+        if bearer_token:
 
-            order_save_result = _save_order(
-                bearer_token, order_calculation_result.Key, log_request=log_request
+            order_calculation_result = _validate_order(
+                bearer_token,
+                store_id,
+                customer,
+                order_items,
+                order_type=order_type,
+                delivery_address=delivery_address,
+                log_request=log_request,
             )
-            if order_save_result and order_save_result.Success == 1:
-                if log_request:
-                    print("Order saved: " + str(order_save_result.OrderID))
+            if order_calculation_result:
 
-                # NOTE: HACK: sleep for 3 seconds to wait for OrderID to propagate through Adora POS systems
-                # otherwise the Adora APIs might not be able to find the order ID if we send it too fast
-                # TODO: find a better solution for this by asking the Adora eng team
-                time.sleep(3)
-
-                (send_payment_link_success, send_payment_link_response) = (
-                    _send_payment_link(
-                        bearer_token,
-                        store_id,
-                        order_save_result.OrderID,
-                        customer.phone_number,
-                        log_request=log_request,
-                    )
+                order_save_result = _save_order(
+                    bearer_token, order_calculation_result.Key, log_request=log_request
                 )
-                if send_payment_link_success:
-                    # return the order calculation details to the caller if order was placed successfully
-                    return order_calculation_result
+                if order_save_result and order_save_result.Success == 1:
+                    if log_request:
+                        print("Order saved: " + str(order_save_result.OrderID))
+
+                    # NOTE: HACK: sleep for 3 seconds to wait for OrderID to propagate through Adora POS systems
+                    # otherwise the Adora APIs might not be able to find the order ID if we send it too fast
+                    # TODO: find a better solution for this by asking the Adora eng team
+                    time.sleep(3)
+
+                    (send_payment_link_success, send_payment_link_response) = (
+                        _send_payment_link(
+                            bearer_token,
+                            store_id,
+                            order_save_result.OrderID,
+                            customer.phone_number,
+                            log_request=log_request,
+                        )
+                    )
+                    if send_payment_link_success:
+                        # return the order calculation details to the caller if order was placed successfully
+                        return order_calculation_result
 
     return None
 
@@ -155,7 +208,7 @@ def _parse_json(model_class: Type[T], json_str: str) -> Optional[T]:
     return None
 
 
-class AdoraApiHttpMethod(Enum):
+class AdoraApiHttpMethod(str, Enum):
     GET = "GET"
     POST = "POST"
 
@@ -292,6 +345,8 @@ def _validate_order(
     store_id: str,
     customer: AdoraCustomerInfo,
     order_items: list[dict],
+    order_type: AdoraPosOrderType = AdoraPosOrderType.TakeOut,
+    delivery_address: Optional[AdoraPosDeliveryAddress] = None,
     log_request: bool = False,
 ) -> Optional[AdoraPosOrderCalculationResult]:
     """
@@ -309,6 +364,17 @@ def _validate_order(
         "DeliveryCharge": 0.00
     }
     """
+    # TODO attach property to enum value instead
+    assert order_type == AdoraPosOrderType.TakeOut or (
+        order_type == AdoraPosOrderType.Delivery and delivery_address
+    ), "Invalid order type, either takeout or need address for delivery"
+
+    # TODO: validate address
+    order_type_string = (
+        "Delivery"
+        if (order_type == AdoraPosOrderType.Delivery and delivery_address)
+        else "TakeOut"
+    )
 
     # NOTE: Adoro API says "promiseDateTime" is optional, but it's actually required, and it's required to be
     # less than 24 hours (or 12 hours, need trial and error testing) in the future. Need to check with their Eng to figure out why.
@@ -317,25 +383,30 @@ def _validate_order(
     future_datetime = current_datetime + timedelta(hours=2)
     formatted_datetime = future_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    payload = json.dumps(
-        {
-            "storeId": store_id,
-            "couponId": 0,
-            "orderType": "TakeOut",
-            "orderTypeSubType": "OverCounter",
-            "promiseDateTime": formatted_datetime,
-            "customer": {
-                "name": customer.first_name,
-                "lastname": customer.last_name,
-                "phone": customer.phone_number,
-                "email": customer.email,
-            },
-            "items": [{"group": order_items}],
-            "discount": 0,
-            "paid": False,
-            "orderComment": "order comments here",
-        }
-    )
+    payload_dict = {
+        "storeId": store_id,
+        "couponId": 0,
+        "orderType": order_type_string,
+        "orderTypeSubType": "OverCounter",
+        "promiseDateTime": formatted_datetime,
+        "customer": {
+            "name": customer.first_name,
+            "lastname": customer.last_name,
+            "phone": customer.phone_number,
+            "email": customer.email,
+        },
+        "items": [{"group": order_items}],
+        "discount": 0,
+        "paid": False,
+        "orderComment": " ",
+    }
+
+    # add delivery address
+    if order_type == AdoraPosOrderType.Delivery and delivery_address:
+        delivery_address_dict = delivery_address.model_dump()
+        payload_dict["deliveryAddress"] = delivery_address_dict
+
+    payload = json.dumps(payload_dict)
 
     response = _connect_adora_order_hub(
         AdoraApiHttpMethod.POST,

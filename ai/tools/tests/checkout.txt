@@ -1,0 +1,23 @@
+~Basic flow
+Hi, I'd like to order a medium big sur for pickup.
+My first name is John, my last name is Smith, my phone number is (888)123-4567 and my email is gmail@example.com
+Please place my order
+~Basic flow not explicit
+Hi, I'd like to order a medium big sur for pickup.
+John Smith, (888)123-4567, gmail@example.com
+~Explicit across turns
+Hi, I'd like to order a medium big sur for pickup.
+My first name is John, my last name is Smith.
+My phone number is (888)123-4567
+My email is gmail@example.com
+Please place my order
+~Not explicit across turns
+Hi, I'd like to order a medium big sur for pickup.
+My name is John Smith.
+(888)123-4567, gmail@example.com
+Please place my order.
+~Place before providing all info
+Hi, I'd like to order a medium big sur for pickup.
+That'll be all, place my order.
+My first name is John, my last name is Smith, my phone number is (888)123-4567 and my email is gmail@example.com
+Place my order.
