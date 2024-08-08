@@ -7,26 +7,21 @@ import streamlit as st
 from jwt.algorithms import RSAAlgorithm
 from streamlit_cognito_auth import CognitoAuthenticator
 
-ADMIN_CONSOLE_AWS_CLIENT_ID = os.environ["ADMIN_CONSOLE_AWS_CLIENT_ID"]
-AWS_APP_CLIENT_ID = os.environ["AWS_APP_CLIENT_ID"]
-AWS_APP_CLIENT_SECRET = os.environ["AWS_APP_CLIENT_SECRET"]
 AWS_REGION = os.environ["AWS_REGION"]
 AWS_USER_POOL_ID = os.environ["AWS_USER_POOL_ID"]
+AWS_APP_CLIENT_ID = os.environ["AWS_APP_CLIENT_ID"]
+AWS_APP_CLIENT_SECRET = os.environ["AWS_APP_CLIENT_SECRET"]
 
 AWS_COGNITO_JWKS_URL = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{AWS_USER_POOL_ID}/.well-known/jwks.json"
 
 
-# Saving the JWKS in a variable
+# Auth helper methods
 def get_jwks():
     response = requests.get(AWS_COGNITO_JWKS_URL)
     response.raise_for_status()
     return response.json()
 
 
-jwks = get_jwks()
-
-
-# Auth helper methods
 def get_public_key(jwks, kid):
     for key in jwks["keys"]:
         if key["kid"] == kid:
@@ -51,33 +46,8 @@ def decode_verify_jwt(token, jwks, app_client_id):
     return claims
 
 
-def parse_admin_console_id_token(id_token):
-    # TODO: @ilbum fast-follow in decoupling auth from streamlit PR.
-    """
-    # Example of decrypted_id_token:
-    {
-        sub: <UUID = cognito:username>,                        # Same as 'cognito:username'
-        'cognito:groups': ['<organization>-admins'],           # User group for administrative or marketing privileges
-        'custom:account_name': '<organization-name>',          # User's immutable organization identifier
-        'custom:account_display_name': '<organization-name>',  # User's public facing organization name
-        iss: <URL of Issuer>,
-        'cognito:username': <UUID = sub>,                      # Same as 'sub'
-        origin_jti: <UUID>,
-        aud: <Audience Claim String>,
-        event_id: <UUID>,
-        token_use: 'id',
-        auth_time: <Unix Timestamp>,
-        exp: <Unix Timestamp>,
-        iat: <Unix Timestamp>,
-        jti: <UUID>,
-        email: '<name>@<organization-domain>.com',
-    }
-    """
-    claims = decode_verify_jwt(id_token, jwks, ADMIN_CONSOLE_AWS_CLIENT_ID)
-    return claims
-
-
 def parse_id_token(id_token):
+    jwks = get_jwks()
     claims = decode_verify_jwt(id_token, jwks, AWS_APP_CLIENT_ID)
     return claims
 
