@@ -10,7 +10,6 @@ from phi.aws.resources import AwsResources
 from phi.docker.resource.image import DockerImage
 from phi.docker.resources import DockerResources
 
-from workspace.common_resources import common_container_env
 from workspace.settings import ws_settings
 
 #
@@ -184,8 +183,6 @@ container_env = {
     # Migrate database on startup using alembic
     # "MIGRATE_DB": ws_settings.stg_db_enabled,
 }
-
-container_env.update(common_container_env)
 
 # -*- Streamlit running on ECS
 stg_streamlit = Streamlit(

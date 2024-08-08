@@ -6,7 +6,6 @@ from phi.docker.app.streamlit import Streamlit
 from phi.docker.resource.image import DockerImage
 from phi.docker.resources import DockerResources
 
-from workspace.common_resources import common_container_env
 from workspace.jupyter.lab import dev_jupyter_app
 from workspace.settings import ws_settings
 
@@ -53,8 +52,6 @@ container_env = {
     # Migrate database on startup using alembic
     # "MIGRATE_DB": ws_settings.prd_db_enabled,
 }
-
-container_env.update(common_container_env)
 
 # -*- Streamlit running on port 8501:8501
 dev_streamlit = Streamlit(
