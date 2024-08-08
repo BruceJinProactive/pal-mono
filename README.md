@@ -30,13 +30,7 @@ phi init
 phi ws setup
 ```
 
-5. Setup OpenAI API key in your environment variable
-
-```bash
-export OPENAI_API_KEY=sk-***
-export LEPTON_API_KEY=***
-export MODAL_API_KEY=***
-```
+5. Duplicate folder `workspace/example_secrets` and rename it to `workspace/secrets`. Setup `workspace/secrets/dev_app_secrets.yml` to add keys and secrets in your environment variable.
 
 6. Build and run both API and web app locally
 

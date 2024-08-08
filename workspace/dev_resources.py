@@ -1,5 +1,3 @@
-from os import getenv
-
 from phi.docker.app.fastapi import FastApi
 from phi.docker.app.postgres import PgVectorDb
 from phi.docker.app.streamlit import Streamlit
@@ -36,11 +34,6 @@ dev_db = PgVectorDb(
 # -*- Build container environment
 container_env = {
     "RUNTIME_ENV": "dev",
-    # AWS User Pool key for Admin/Demo log in
-    "ADMIN_CONSOLE_AWS_CLIENT_ID": getenv("ADMIN_CONSOLE_AWS_CLIENT_ID"),
-    "AWS_USER_POOL_ID": getenv("AWS_USER_POOL_ID"),
-    "AWS_APP_CLIENT_ID": getenv("AWS_APP_CLIENT_ID"),
-    "AWS_APP_CLIENT_SECRET": getenv("AWS_APP_CLIENT_SECRET"),
     # Database configuration
     "DB_HOST": dev_db.get_db_host(),
     "DB_PORT": dev_db.get_db_port(),
