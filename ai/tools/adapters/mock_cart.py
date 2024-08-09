@@ -767,3 +767,17 @@ def reset_mock_cart(user_id):
     cart.order_type = None
 
     save_mock_cart(cart, user_id)
+
+
+def hard_reset_mock_cart(user_id):
+    """
+    Completely removes the user from the cart.json file
+    """
+    carts = {}
+    with open("data/pizza/jsons/cart.json", "r") as read_f:
+        carts = json.load(read_f)
+
+    carts.pop(user_id)
+
+    with open("data/pizza/jsons/cart.json", "w") as write_f:
+        json.dump(carts, write_f, ensure_ascii=False, indent=4)

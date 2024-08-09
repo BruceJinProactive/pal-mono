@@ -8,7 +8,9 @@ from phi.document.reader.pdf import PDFReader
 from ai.tools.adapters.mock_cart import (
     calculate_tax_fees_and_total,
     get_adora_list_of_items,
+    hard_reset_mock_cart,
     load_mock_cart,
+    reset_mock_cart,
 )
 from app.auth import user
 from app.shared import user_ui
@@ -130,8 +132,32 @@ def debug_ui(assistant: Assistant):
         st.session_state["restart_chat"] = True
         st.rerun()
 
-    if st.button("Restart Chat"):
-        restart_chat()
+    def reset_cart():
+        """
+        Resets the cart items and order type then reruns
+        """
+        user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
+        reset_mock_cart(user_id)
+        st.rerun()
+
+    def hard_reset_cart():
+        """
+        Completely removes the user from the cart
+        """
+        user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
+        hard_reset_mock_cart(user_id)
+        st.rerun()
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("Restart Chat"):
+            restart_chat()
+    with col2:
+        if st.button("Reset Cart"):
+            reset_cart()
+    with col3:
+        if st.button("Hard Reset Cart"):
+            hard_reset_cart()
 
 
 def messaging_ui(assistant: Assistant) -> None:
