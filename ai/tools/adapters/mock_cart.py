@@ -731,6 +731,10 @@ def get_mock_cart(user_id) -> str:
     """
     cart = load_mock_cart(user_id)
 
+    # Heuristic: User has cart items <=> User wants to order
+    if not cart.list_of_cart_items:
+        return ""
+
     return _get_tool_response_prompt("Abide by the following instructions: ", cart)
 
 
@@ -777,7 +781,8 @@ def hard_reset_mock_cart(user_id):
     with open("data/pizza/jsons/cart.json", "r") as read_f:
         carts = json.load(read_f)
 
-    carts.pop(user_id)
+    if user_id in carts:
+        carts.pop(user_id)
 
     with open("data/pizza/jsons/cart.json", "w") as write_f:
         json.dump(carts, write_f, ensure_ascii=False, indent=4)
