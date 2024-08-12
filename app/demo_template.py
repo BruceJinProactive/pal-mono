@@ -1,9 +1,11 @@
+import re
 from typing import Callable, List
 
 import streamlit as st
 from phi.assistant import Assistant
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
+from PIL import Image
 
 from ai.tools.adapters.mock_cart import (
     calculate_tax_fees_and_total,
@@ -62,17 +64,18 @@ def cart_ui(user_id):
     """
     cart = load_mock_cart(user_id)
     cart_dict = cart.model_dump()
-    # st.sidebar.write("## Shopping Cart")
 
     # Display customer information
+    st.sidebar.write("***")
+    st.sidebar.image("data/pizza/logos/pizza_my_heart_logo.png", use_column_width=True)
     st.sidebar.write("## Customer Information")
     st.sidebar.write(
-        f"**Name:** {cart_dict['user']['first_name']} {cart_dict['user']['last_name']}"
+        f"**📇 Name:** {cart_dict['user']['first_name']} {cart_dict['user']['last_name']}"
     )
-    st.sidebar.write(f"**Phone Number:** {cart_dict['user']['phone_number']}")
-    st.sidebar.write(f"**Email:** {cart_dict['user']['email']}")
+    st.sidebar.write(f"**📞 Telephone:** {cart_dict['user']['phone_number']}")
+    st.sidebar.write(f"**📨 Email:** {cart_dict['user']['email']}")
     st.sidebar.write("")
-
+    st.sidebar.write("***")
     # Display cart items
     st.sidebar.write("## Items")
     if cart_dict["list_of_cart_items"]:
@@ -99,12 +102,12 @@ def cart_ui(user_id):
 
     # Display store and order type information
     st.sidebar.write("## Order Information")
-    st.sidebar.write("**Store ID:** " + cart_dict["store_id"])
+    st.sidebar.write("**🎫 Store ID:** " + cart_dict["store_id"])
     if not cart_dict["order_type"]:
-        st.sidebar.write("**Order Type:** ")
+        st.sidebar.write("**🍕 Order Type:** ")
     else:
-        st.sidebar.write(f"**Order Type:** {cart_dict['order_type'].value}")
-    st.sidebar.write("**Delivery Address:**")
+        st.sidebar.write(f"**🍕 Order Type:** {cart_dict['order_type'].value}")
+    st.sidebar.write("**📍 Delivery Address:**")
     if cart_dict["address_for_delivery"]:
         st.sidebar.json(cart_dict["address_for_delivery"])
 
@@ -164,9 +167,10 @@ def messaging_ui(assistant: Assistant) -> None:
     assistant_chat_history = assistant.memory.get_chat_history()
     st.session_state["messages"] = assistant_chat_history
     if assistant_chat_history == []:
-        st.session_state["messages"] = [
-            {"role": "assistant", "content": "Ask me anything..."}
-        ]
+        if assistant.name == "pizza_assistant":
+            st.session_state["messages"] = [
+                {"role": "assistant", "content": "Ask me anything..."}
+            ]
     # Prompt for user input
     if prompt := st.chat_input():
         st.session_state["messages"].append({"role": "user", "content": prompt})
@@ -174,19 +178,29 @@ def messaging_ui(assistant: Assistant) -> None:
     for message in st.session_state["messages"]:
         if message["role"] == "system":
             continue
-        with st.chat_message(message["role"]):
+        avatar = (
+            "data/pizza/logos/jimmy_the_surfer.png"
+            if message["role"] == "assistant"
+            else None
+        )
+        with st.chat_message(message["role"], avatar=avatar):
             st.write(message["content"])
     # If last message is from a user, generate a new response
     last_message = st.session_state["messages"][-1]
     if last_message.get("role") == "user":
         assistant.system_prompt = demo_system_prompt
         question = last_message["content"]
-        with st.chat_message("assistant"):
+        with st.chat_message(
+            "assistant", avatar=Image.open("data/pizza/logos/jimmy_the_surfer.png")
+        ):
             with st.spinner("Working..."):
                 response = ""
                 resp_container = st.empty()
                 for delta in assistant.run(question, stream=False):
                     response += delta  # type: ignore
+                    # matches a dollar sign ($) that is not preceded by a backslash (\), avoid $...$ where ... is italicized
+                    pattern = r"(?<!\\)\$"
+                    response = re.sub(pattern, r"\$", response)
                     resp_container.markdown(response)
             st.session_state["messages"].append(
                 {"role": "assistant", "content": response}
