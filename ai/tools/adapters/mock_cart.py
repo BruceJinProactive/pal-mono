@@ -19,6 +19,7 @@ from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
 from ai.tools.ordering_classes import OrderItem
 
 client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
+OPENAI_CONVERSION_MODEL = "gpt-4o-2024-08-06"
 
 # TODO: set up some error handling system.
 # TODO: no longer mock cart, more Adora POS cart.
@@ -62,22 +63,49 @@ def convert_order_item_to_adora(order_item: OrderItem) -> ConversionResult:
             menu_items.append(item["name"])
 
         # Get GPT to find the most similar item name
+        sys_prompt = f"""# CONTEXT #
+I am a waiter at a restaurant. I am taking a user's order. 
+I want to match a user supplied item name to an item on the menu. 
+Here are the menu items {menu_items}
+
+#########
+
+# OBJECTIVE #
+Match the user's inputted item name to the closest item option on the menu as if you were a server/waiter.
+
+#########
+
+# EXAMPLES #
+User: big sur
+Assistant: Big Sur
+
+User: cowels coombo
+Assistant: Cowell's Combo
+
+User: supreme pizza
+Assistant: N/A
+
+#########
+
+# RESPONSE FORMAT #
+Only output the most similar menu item name. Output "N/A" if the user's inputted item name is nothing like any of the available options.
+"""
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_CONVERSION_MODEL,
             messages=[
                 {
                     "role": "system",
                     "content": [
                         {
                             "type": "text",
-                            "text": 'Your role is to find if an item exists in a list of items. If there exists a similar item within the list of items, output that similar item. If not, output "N/A". A similar item could be similar in definition or spelling, for example, typos should not matter.',
+                            "text": sys_prompt,
                         }
                     ],
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"{order_item_name}, {menu_items}"},
+                        {"type": "text", "text": order_item_name},
                     ],
                 },
             ],
@@ -130,22 +158,50 @@ def convert_order_item_to_adora(order_item: OrderItem) -> ConversionResult:
         for size in available_sizes:
             size_options.append(size_descriptions[size])
 
+        sys_prompt = f"""# CONTEXT #
+I am a waiter at a restaurant. I am taking a user's order.
+I want to match a user supplied item size to an available item size on the menu.
+Here are the available size options {size_options}
+
+#########
+
+# OBJECTIVE #
+Match the user's inputted item size to the closest item size on the menu as if you were a server/waiter.
+
+#########
+
+# EXAMPLES #
+If the size options are 12", 14" and 18"
+User: large
+Assistant: 18"
+
+User: medium
+Assistant: 14"
+
+User: 12-inch
+Assistant: 12"
+
+#########
+
+# RESPONSE FORMAT #
+Only output the most similar item size. Output "N/A" if the user's inputted item size is nothing like any of the available options.
+"""
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_CONVERSION_MODEL,
             messages=[
                 {
                     "role": "system",
                     "content": [
                         {
                             "type": "text",
-                            "text": "You are taking an order. The user will provide a size and your role is to match the user's inputted size to the closest size option on the menu as if you were a server/waiter. You will be given the options and must output the most similar menu size. If the user's inputted size is nothing like any of the available options, output \"N/A\"",
+                            "text": sys_prompt,
                         }
                     ],
                 },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"{order_item_size}, {size_options}"},
+                        {"type": "text", "text": order_item_size},
                     ],
                 },
             ],
@@ -206,17 +262,46 @@ def convert_order_item_to_adora(order_item: OrderItem) -> ConversionResult:
         for modifier in menu["modifiers"]:
             modifier_names.append(modifier["name"])
 
+        sys_prompt = f"""# CONTEXT #
+I am a waiter at a restaurant. I am taking a user's order.
+I want to match a user supplied item modification to an available item modification on the menu.
+Here are the available modification options {modifier_names}
+
+#########
+
+# OBJECTIVE #
+Match the user's inputted item modification to the closest item modification on the menu as if you were a server/waiter.
+
+#########
+
+# EXAMPLES #
+User: anchoby
+Assistant: Anchovy
+
+User: extra cheese
+Assistant: Extra Cheese
+
+User: nutella
+Assistant: N/A
+
+#########
+
+# RESPONSE FORMAT #
+Only output the most similar item size. Output "N/A" if the user's inputted item size is nothing like any of the available options.
+"""
+
         # 1. Iterate through the modifications and find most similar for each.
         for order_item_modification in order_item_modifications:
+
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=OPENAI_CONVERSION_MODEL,
                 messages=[
                     {
                         "role": "system",
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Your role is to match the user's inputted modifier to a modifier on the menu. You will be given the options and must output the most similar menu modifier. If the user's inputted modifier is nothing like any of the available options, output \"N/A\"",
+                                "text": sys_prompt,
                             }
                         ],
                     },
@@ -225,7 +310,7 @@ def convert_order_item_to_adora(order_item: OrderItem) -> ConversionResult:
                         "content": [
                             {
                                 "type": "text",
-                                "text": f"{order_item_modification}, {modifier_names}",
+                                "text": order_item_modification,
                             },
                         ],
                     },
@@ -256,11 +341,12 @@ def convert_order_item_to_adora(order_item: OrderItem) -> ConversionResult:
                             "price": 1,
                             "weightId": 3,
                         }
+                        if adora_modifier in payload["modifiers"]:  # Slow array search
+                            modifier_found = True
+                            break
                         if (
                             item_modifier_group_modifier["modifier_id"]
                             == most_similar_modifier_id
-                            and adora_modifier
-                            not in payload["modifiers"]  # Slow array search
                         ):
                             payload["modifiers"].append(adora_modifier)
                             modifier_group_counter[item_modifier_group_id] += 1
