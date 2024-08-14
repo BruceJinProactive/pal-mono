@@ -3,6 +3,8 @@ from typing import Iterator
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ai.assistants.gym_assistant import get_gym_assistant
+from ai.assistants.pizza_assistant import get_pizza_assistant
 from api.models.message import AuthorType, Message, TextObject
 from db.repositories.message_repository import MessageRepository
 from services import assistant_service, user_service
@@ -10,43 +12,53 @@ from services.admin_service import get_account
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
-    # TODO: Get project_id via account authorization
-    account_name = "proactiveailab"
+    # Get account with chnannel identifier (assume channel platform is SMS)
+    channel_identifier = message.recipient_channel_identifier
+    recipient_account_mapping = {
+        "+14244859440": "proactiveailab",
+        "+14244705958": "mindzero",
+        "+14244680365": "pizzamyheart",
+    }
+    account_name = recipient_account_mapping.get(channel_identifier)
+    if account_name is None:
+        raise ValueError("Account name not found")
+
+    # Get account and project via account name
     account = get_account(db, account_name=account_name)
     if account is None:
         raise ValueError("Account not found")
     if not account.projects:
         raise ValueError("No projects found for this account")
-    project_id = account.projects[0].id
+    project = account.projects[0]
 
     # Get user_id by sender channel/number with user_service
-    user_id = user_service.get_user_id(
+    user = user_service.get_user(
         db=db,
-        project_id=project_id,
+        project_id=str(project.id),
         channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP
         channel_identifier=message.sender_channel_identifier,
         create_new_user=True,
     )
+    if user is None:
+        raise ValueError("User not found")
 
     # Save request message to database
     MessageRepository(db).create_message(
-        user_id=str(user_id), message_body=message.to_dict()
+        user_id=str(user.id), message_body=message.to_dict()
     )
 
-    # Get assistant_id with recipient channel/number with assistant_service
-    assistant_id = assistant_service.get_assistant_id(
-        db=db,
-        project_id=project_id,
-    )
-
-    # Get assistant with assistant_id and user_id with assistant_service
+    assistant_id = project.assistants[0].id
     if assistant_id is None:
         raise ValueError("Assistant ID not found")
-    if user_id is None:
-        raise ValueError("User ID not found")
-    assistant = assistant_service.get_assistant(
-        db=db, assistant_id=str(assistant_id), user_id=str(user_id)
-    )
+
+    if account_name == "proactiveailab":
+        assistant = assistant_service.get_assistant(
+            db=db, assistant_id=str(assistant_id), user_id=str(user.id)
+        )
+    elif account_name == "mindzero":
+        assistant = get_gym_assistant(user_id=str(user.id))
+    elif account_name == "pizzamyheart":
+        assistant = get_pizza_assistant(user_id=str(user.id))
 
     # Get response from assistant
     response = assistant.run(message.text.body, stream=False)
@@ -74,7 +86,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
 
     # Save response message to database
     MessageRepository(db).create_message(
-        user_id=str(user_id), message_body=response_message.to_dict()
+        user_id=str(user.id), message_body=response_message.to_dict()
     )
 
     return response_message
