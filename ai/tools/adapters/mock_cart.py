@@ -138,7 +138,7 @@ def convert_order_item_to_adora(order_item: OrderItem) -> ConversionResult:
                     "content": [
                         {
                             "type": "text",
-                            "text": "Your role is to match the user's inputted size to a size on the menu. You will be given the options and must output the most similar menu size. If the user's inputted size is nothing like any of the available options, output \"N/A\"",
+                            "text": "You are taking an order. The user will provide a size and your role is to match the user's inputted size to the closest size option on the menu as if you were a server/waiter. You will be given the options and must output the most similar menu size. If the user's inputted size is nothing like any of the available options, output \"N/A\"",
                         }
                     ],
                 },
