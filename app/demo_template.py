@@ -178,33 +178,36 @@ def messaging_ui(assistant: Assistant) -> None:
     for message in st.session_state["messages"]:
         if message["role"] == "system":
             continue
-        avatar = (
-            "data/pizza/logos/jimmy_the_surfer.png"
-            if message["role"] == "assistant"
-            else None
-        )
-        with st.chat_message(message["role"], avatar=avatar):
-            st.write(message["content"])
-    # If last message is from a user, generate a new response
-    last_message = st.session_state["messages"][-1]
-    if last_message.get("role") == "user":
-        assistant.system_prompt = demo_system_prompt
-        question = last_message["content"]
-        with st.chat_message(
-            "assistant", avatar=Image.open("data/pizza/logos/jimmy_the_surfer.png")
-        ):
-            with st.spinner("Working..."):
-                response = ""
-                resp_container = st.empty()
-                for delta in assistant.run(question, stream=False):
-                    response += delta  # type: ignore
-                    # matches a dollar sign ($) that is not preceded by a backslash (\), avoid $...$ where ... is italicized
-                    pattern = r"(?<!\\)\$"
-                    response = re.sub(pattern, r"\$", response)
-                    resp_container.markdown(response)
-            st.session_state["messages"].append(
-                {"role": "assistant", "content": response}
+        # For Adora / Pizza My Heart
+        if assistant.name == "pizza_assistant":
+            avatar = (
+                "data/pizza/logos/jimmy_the_surfer.png"
+                if message["role"] == "assistant"
+                else None
             )
+            with st.chat_message(message["role"], avatar=avatar):
+                st.write(message["content"])
+        else:
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
+
+    # If last message is from a user, generate a new response
+    try:
+        last_message = st.session_state["messages"][-1]
+        if last_message.get("role") == "user":
+            assistant.system_prompt = demo_system_prompt
+            question = last_message["content"]
+            # For Adora / Pizza My Heart
+            if assistant.name == "pizza_assistant":
+                generate_response_in_ui(
+                    assistant,
+                    question,
+                    avatar_path="data/pizza/logos/jimmy_the_surfer.png",
+                )
+            else:
+                generate_response_in_ui(assistant, question)
+    except IndexError:
+        pass
 
 
 def knowledge_base_ui(assistant: Assistant) -> None:
@@ -272,3 +275,31 @@ def storage_ui(assistant: Assistant) -> None:
         st.sidebar.success(
             f"Number of chats: {len(assistant.memory.get_chat_history())}"
         )
+
+
+def generate_response_in_ui(assistant, question, avatar_path=None):
+    """
+    Generates a response from the assistant and displays it in the chat interface.
+    Simplifying the code to insert Jimmy the Surfer and other customizations.
+
+    Parameters:
+    assistant (object): The assistant object that will generate the response.
+    question (str): The question or prompt to which the assistant will respond.
+    avatar_path (str, optional): The file path to the avatar image to be displayed with the assistant's message. Defaults to None.
+
+    Returns:
+    None
+    """
+    with st.chat_message(
+        "assistant", avatar=Image.open(avatar_path) if avatar_path else None
+    ):
+        with st.spinner("Working..."):
+            response = ""
+            resp_container = st.empty()
+            for delta in assistant.run(question, stream=False):
+                response += delta  # type: ignore
+                # matches a dollar sign ($) that is not preceded by a backslash (\), avoid $...$ where ... is italicized
+                pattern = r"(?<!\\)\$"
+                response = re.sub(pattern, r"\$", response)
+                resp_container.markdown(response)
+        st.session_state["messages"].append({"role": "assistant", "content": response})
