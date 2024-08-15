@@ -298,7 +298,7 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
             resp_container = st.empty()
             for delta in assistant.run(question, stream=False):
                 # Sometimes delta will return a non-string type object
-                if isinstance(delta) == str:
+                if isinstance(delta, str):
                     response += delta  # type: ignore
                     # matches a dollar sign ($) that is not preceded by a backslash (\), avoid $...$ where ... is italicized
                     pattern = r"(?<!\\)\$"
