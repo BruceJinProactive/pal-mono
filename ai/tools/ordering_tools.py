@@ -258,24 +258,32 @@ class OrderingTools(Toolkit):
         quantity: int = 1,
         modifications: List[str] = [],
     ) -> str:
-        """Use this function when the user wants to add an item to their order.
-        For example, the user might say
-        - Add a large big sur.
-        - I'd like to order a medium big sur.
-        - I want a small Pesto.
-        - Throw in a large Pepperoni.
-        - Add a large big sur with extra cheese and no onions.
-        - I'd like to order a medium big sur with extra cheese and no onions.
-        - I want a small Pesto with extra cheese and no onions.
+        """# CONTEXT #
+        This function will add one user specified item to the order. You must use this function every time the user expresses interest in ordering.
 
+        #########
+
+        # FUNCTION DESCRIPTION #
         Args:
-            item_name (str): The name of the item to add.
-            size (str): The size of the item to add.
+            item_name (str): The name of the item to add. Do not supply defaults.
+            size (str): The size of the item to add. Do not supply defaults.
             quantity (int): The quantity of the item to add.
             modifications (List[str]): Any modifications for the item to add.
 
         Returns:
             str: The result of adding the item to the order.
+
+        #########
+
+        # EXAMPLES #
+        User: I'd like to order 6 chicken wings.
+        Tool: add_to_order(item_name=chicken wings, size=6, quantity=1, modifications=[])
+
+        User: Can I have two orders of 12 chicken wings?
+        Tool: add_to_order(item_name=chicken wings, size=12, quantity=2, modifications=[])
+
+        User: I'd like a large Big Sur with extra cheese and white sauce.
+        Tool: add_to_order(item_name=Big Sur, size=large, quantity=1, modifications=[extra cheese, white sauce])
         """
 
         order_item = OrderItem(item_name, size, quantity, modifications)

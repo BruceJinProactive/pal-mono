@@ -297,9 +297,11 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
             response = ""
             resp_container = st.empty()
             for delta in assistant.run(question, stream=False):
-                response += delta  # type: ignore
-                # matches a dollar sign ($) that is not preceded by a backslash (\), avoid $...$ where ... is italicized
-                pattern = r"(?<!\\)\$"
-                response = re.sub(pattern, r"\$", response)
-                resp_container.markdown(response)
+                # Sometimes delta will return a non-string type object
+                if isinstance(delta) == str:
+                    response += delta  # type: ignore
+                    # matches a dollar sign ($) that is not preceded by a backslash (\), avoid $...$ where ... is italicized
+                    pattern = r"(?<!\\)\$"
+                    response = re.sub(pattern, r"\$", response)
+                    resp_container.markdown(response)
         st.session_state["messages"].append({"role": "assistant", "content": response})
