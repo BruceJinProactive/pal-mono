@@ -7,7 +7,6 @@ import streamlit as st
 from jwt.algorithms import RSAAlgorithm
 from streamlit_cognito_auth import CognitoAuthenticator
 
-ADMIN_CONSOLE_AWS_CLIENT_ID = os.environ["ADMIN_CONSOLE_AWS_CLIENT_ID"]
 AWS_APP_CLIENT_ID = os.environ["AWS_APP_CLIENT_ID"]
 AWS_APP_CLIENT_SECRET = os.environ["AWS_APP_CLIENT_SECRET"]
 AWS_REGION = os.environ["AWS_REGION"]
@@ -48,32 +47,6 @@ def decode_verify_jwt(token, jwks, app_client_id):
         raise ValueError("Token was not issued for this audience")
     except jwt.PyJWTError as e:
         raise ValueError(f"Token verification failed: {e}")
-    return claims
-
-
-def parse_admin_console_id_token(id_token):
-    # TODO: @ilbum fast-follow in decoupling auth from streamlit PR.
-    """
-    # Example of decrypted_id_token:
-    {
-        sub: <UUID = cognito:username>,                        # Same as 'cognito:username'
-        'cognito:groups': ['<organization>-admins'],           # User group for administrative or marketing privileges
-        'custom:account_name': '<organization-name>',          # User's immutable organization identifier
-        'custom:account_display_name': '<organization-name>',  # User's public facing organization name
-        iss: <URL of Issuer>,
-        'cognito:username': <UUID = sub>,                      # Same as 'sub'
-        origin_jti: <UUID>,
-        aud: <Audience Claim String>,
-        event_id: <UUID>,
-        token_use: 'id',
-        auth_time: <Unix Timestamp>,
-        exp: <Unix Timestamp>,
-        iat: <Unix Timestamp>,
-        jti: <UUID>,
-        email: '<name>@<organization-domain>.com',
-    }
-    """
-    claims = decode_verify_jwt(id_token, jwks, ADMIN_CONSOLE_AWS_CLIENT_ID)
     return claims
 
 

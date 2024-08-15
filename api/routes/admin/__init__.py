@@ -3,8 +3,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from api.routes.admin.auth import parse_admin_console_id_token
 from api.routes.endpoints import endpoints
-from app.auth import parse_admin_console_id_token
 from services.admin_service import create_account_with_defaults, get_assistant_data
 
 ######################################################
