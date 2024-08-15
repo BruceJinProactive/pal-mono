@@ -8,7 +8,6 @@ class ApiEndpoints:
     CHAT: str = "/chat"
     HEALTH: str = "/health"
     PING: str = "/ping"
-    SENDBLUE: str = "/webhooks/sendblue"
 
 
 endpoints = ApiEndpoints()
