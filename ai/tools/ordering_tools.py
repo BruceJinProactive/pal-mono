@@ -259,7 +259,7 @@ class OrderingTools(Toolkit):
         modifications: List[str] = [],
     ) -> str:
         """# CONTEXT #
-        This function will add one user specified item to the order. You must use this function every time the user expresses interest in ordering.
+        This function will add one user specified item to the order, only when the user expresses interest in ordering and the size, name, quantity, and modifications are indicated.
 
         #########
 
@@ -276,13 +276,13 @@ class OrderingTools(Toolkit):
         #########
 
         # EXAMPLES #
-        User: I'd like to order 6 chicken wings.
+        User: I'll order 6 chicken wings.
         Tool: add_to_order(item_name=chicken wings, size=6, quantity=1, modifications=[])
 
         User: Can I have two orders of 12 chicken wings?
         Tool: add_to_order(item_name=chicken wings, size=12, quantity=2, modifications=[])
 
-        User: I'd like a large Big Sur with extra cheese and white sauce.
+        User: I'd take a large Big Sur with extra cheese and white sauce.
         Tool: add_to_order(item_name=Big Sur, size=large, quantity=1, modifications=[extra cheese, white sauce])
         """
 
@@ -309,6 +309,7 @@ class OrderingTools(Toolkit):
         - Remove a large big sur with extra cheese and no onions.
         - I'd like to remove a medium big sur with extra cheese and no onions.
         - I want to remove a small Pesto with extra cheese and no onions.
+        - I want to clear my cart.
 
         Args:
             item_name (str): The name of the item to remove.
@@ -333,17 +334,28 @@ class OrderingTools(Toolkit):
 
     # TODO: Figure out how (if) we want to take in coupons, payment info, delivery type. Hardcode for now.
     def place_order(self):
-        """Use this function when the user wants to finish their order or check out or pay for it.
-        For example, the user might say
-        - Place my order.
-        - Check out.
-        - Pay for my order.
-        - I'm ready to place my order.
-        - I'm ready to check out.
-        - I'm ready to pay for my order.
+        """# CONTEXT #
+        This function will place the user's order. You must use this function evfery time the user wants to finish their order or check out or pay for it.
 
+        # FUNCTION DESCRIPTION #
         Returns:
             str: Result of placing order, the total if applicable, and where to pay if applicable.
+
+        # EXAMPLES #
+        User: Place my order
+        Tool: place_order()
+
+        User: checkout
+        Tool: place_order()
+
+        User: that'll be all
+        Tool: place_order()
+
+        User: im ready to pay
+        Tool: place_order()
+
+        User: just those items please
+        Tool: place_order()
         """
 
         # Can place some wrapper logic here.

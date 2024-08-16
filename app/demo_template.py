@@ -1,4 +1,3 @@
-import re
 from typing import Callable, List
 
 import streamlit as st
@@ -165,6 +164,8 @@ def debug_ui(assistant: Assistant):
 
 def messaging_ui(assistant: Assistant) -> None:
     assistant_chat_history = assistant.memory.get_chat_history()
+    for message in assistant_chat_history:
+        message["content"] = message["content"].replace("\$", "💲").replace("$", "💲")
     st.session_state["messages"] = assistant_chat_history
     if assistant_chat_history == []:
         if assistant.name == "pizza_assistant":
@@ -299,9 +300,6 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
             for delta in assistant.run(question, stream=False):
                 # Sometimes delta will return a non-string type object
                 if isinstance(delta, str):
-                    response += delta  # type: ignore
-                    # matches a dollar sign ($) that is not preceded by a backslash (\), avoid $...$ where ... is italicized
-                    pattern = r"(?<!\\)\$"
-                    response = re.sub(pattern, r"\$", response)
+                    response += delta.replace("\$", "💲").replace("$", "💲")
                     resp_container.markdown(response)
         st.session_state["messages"].append({"role": "assistant", "content": response})
