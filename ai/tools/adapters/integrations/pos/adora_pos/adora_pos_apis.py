@@ -383,6 +383,10 @@ def _validate_order(
     future_datetime = current_datetime + timedelta(hours=2)
     formatted_datetime = future_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    item_list = []
+    for order_item in order_items:
+        item_list.append({"group": [order_item]})
+
     payload_dict = {
         "storeId": store_id,
         "couponId": 0,
@@ -395,7 +399,7 @@ def _validate_order(
             "phone": customer.phone_number,
             "email": customer.email,
         },
-        "items": [{"group": order_items}],
+        "items": item_list,
         "discount": 0,
         "paid": False,
         "orderComment": " ",
