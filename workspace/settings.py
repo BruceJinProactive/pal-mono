@@ -18,15 +18,12 @@ ws_settings = WorkspaceSettings(
     dev_db_enabled=True,
     # dev_jupyter_enabled=True,
     # -*- Production settings
-    prd_env="prd",
+    # prd_env="lat",
+    # prd_env="stg",
+    # prd_env="prd",
     prd_app_enabled=True,
     prd_api_enabled=True,
     prd_db_enabled=True,
-    # -*- Staging settings
-    stg_env="stg",
-    stg_app_enabled=True,
-    stg_api_enabled=True,
-    stg_db_enabled=True,
     # -*- AWS settings
     # Region for AWS resources
     aws_region="us-west-1",
