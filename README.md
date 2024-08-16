@@ -96,7 +96,9 @@ The CI/CD pipeline is divided into 3 stages:
 
 ## Endpoints
 
-|     | app                                                                | api (Load Balancer)                                                | api (API Gateway)                                              |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------------- |
-| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/ | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/stg-api |
-| prd | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/  | https://5xtuyf38b8.execute-api.us-west-1.amazonaws.com/api     |
+| stages | app                                                                | api (Load Balancer)                                                    | api (API Gateway)                                             |
+| ------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| dev    | http://localhost:8501/                                             | http://localhost:8000/docs                                             | -                                                             |
+| lat    | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/latest |
+| stg    | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stging |
+| prd    | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/docs  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/api    |
