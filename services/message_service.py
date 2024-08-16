@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from api.models.message import AuthorType, Message, TextObject
+from db.repositories.account_repository import AccountRepository
 from db.repositories.message_repository import MessageRepository
 from services import assistant_service, user_service
-from services.admin_service import get_account
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
@@ -24,7 +24,8 @@ def get_chat_response(db: Session, message: Message) -> Message:
         raise ValueError("Account name not found")
 
     # Get account and project via account name
-    account = get_account(db, account_name=account_name)
+    account_repository = AccountRepository(db)
+    account = account_repository.get_account(account_name=account_name)
     if account is None:
         raise ValueError("Account not found")
     if not account.projects:
