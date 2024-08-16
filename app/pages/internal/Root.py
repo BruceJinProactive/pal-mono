@@ -36,7 +36,7 @@ def main() -> None:
         account = account_repository.delete_account(account_id)
         st.write(account)
     if st.button("Create Account with Defaults"):
-        account = create_account_with_defaults(db, account_name=account_name)
+        account = create_account_with_defaults(db=db, account_name=account_name)
         st.write(account)
         for project in account.projects:
             st.write(project)

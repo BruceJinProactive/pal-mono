@@ -1,4 +1,3 @@
-from fastapi import Depends
 from phi.assistant.run import AssistantRun
 from phi.storage.assistant.postgres import PgAssistantStorage
 from sqlalchemy.orm import Session
@@ -6,7 +5,6 @@ from sqlalchemy.orm import Session
 from db.repositories.account_repository import AccountRepository
 from db.repositories.assistant_repository import AssistantRepository
 from db.repositories.project_repository import ProjectRepository
-from db.session import get_db
 from db.settings import db_settings
 
 
@@ -33,9 +31,7 @@ def get_account(db: Session, account_name: str):
     return account
 
 
-async def create_account_with_defaults(
-    account_name: str, db: Session = Depends(get_db)
-):
+def create_account_with_defaults(db: Session, account_name: str):
     # Instantiate the repositories
     account_repository = AccountRepository(db)
     project_repository = ProjectRepository(db)
@@ -49,7 +45,7 @@ async def create_account_with_defaults(
     return account
 
 
-async def get_assistant_data(account_name: str, db: Session = Depends(get_db)):
+def get_assistant_data(db: Session, account_name: str):
     account = get_account(db, account_name=account_name)
     if account is None:
         raise ValueError("Account not found")
