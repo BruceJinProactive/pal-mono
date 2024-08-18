@@ -1,9 +1,12 @@
-name: Continuous Integration
+name: Validate, build, test
 on:
-  push:
   pull_request:
     types:
       - opened
+      - synchronize
+    branches:
+      - "main"
+  push:
     branches:
       - "main"
 
