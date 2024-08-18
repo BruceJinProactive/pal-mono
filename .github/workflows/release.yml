@@ -11,6 +11,8 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,6 +50,8 @@ jobs:
           git config user.email github-actions@github.com
           git tag -a ${{ env.BUILD_TAG }} -m "Build ${{ github.run_number }}"
           git push origin ${{ env.BUILD_TAG }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify Slack
         uses: act10ns/slack@v2
