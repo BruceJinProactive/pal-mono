@@ -1,0 +1,66 @@
+name: Tag Release Latest
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_tag:
+        description: 'Build tag to create release for (e.g., build-123)'
+        required: true
+        type: string
+
+jobs:
+  create_release_tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create Release Tag
+        id: create_release_tag
+        run: |
+          BUILD_TAG="${{ github.event.inputs.build_tag }}"
+          
+          # Verify the build tag exists
+          if ! git rev-parse "$BUILD_TAG" >/dev/null 2>&1; then
+            echo "Error: Build tag $BUILD_TAG does not exist"
+            exit 1
+          fi
+          
+          # Get the commit hash for the build tag
+          COMMIT=$(git rev-list -n 1 $BUILD_TAG)
+          
+          # Create a timestamp
+          TIMESTAMP=$(date -u +"%Y%m%d%H%M%S")
+          
+          # Create the new release tag
+          RELEASE_TAG="release-lat-${TIMESTAMP}-${BUILD_TAG}"
+          
+          # Tag the commit
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag -a $RELEASE_TAG $COMMIT -m "Release tag for $BUILD_TAG"
+          git push origin $RELEASE_TAG
+          
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "Created and pushed release tag: $RELEASE_TAG"
+
+      - name: Display Release Tag
+        run: echo "Created release tag: ${{ steps.create_release_tag.outputs.release_tag }}"
+
+      - name: Notify Slack
+        uses: act10ns/slack@v2
+        with:
+          status: ${{ job.status }}
+          steps: ${{ toJson(steps) }}
+          channel: '#workflows'
+          message: |
+            Release Tag Creation Status: ${{ job.status }}
+            Build Tag: ${{ github.event.inputs.build_tag }}
+            Created Release Tag: ${{ steps.create_release_tag.outputs.release_tag }}
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
