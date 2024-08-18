@@ -49,7 +49,8 @@ jobs:
           echo "Created and pushed release tag: $RELEASE_TAG"
 
       - name: Display Release Tag
-        run: echo "Created release tag: ${{ steps.create_release_tag.outputs.release_tag }}"
+        run: |
+          echo "Created release tag: ${{ steps.create_release_tag.outputs.release_tag }}"
 
       - name: Notify Slack
         uses: act10ns/slack@v2
