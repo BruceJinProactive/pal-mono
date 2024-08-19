@@ -1,4 +1,4 @@
-name: Tag Release Latest
+name: Create release latest
 
 on:
   workflow_dispatch:

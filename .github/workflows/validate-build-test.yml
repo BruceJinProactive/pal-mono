@@ -1,4 +1,5 @@
-name: Validate Build Test
+name: Validate build test
+
 on:
   pull_request:
     types:

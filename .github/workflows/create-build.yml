@@ -1,4 +1,5 @@
-name: Tag Build
+# Warning: changing the name will reset the action run number / build number.
+name: Create build
 
 on:
   push:
