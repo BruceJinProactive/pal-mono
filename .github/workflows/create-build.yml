@@ -23,13 +23,22 @@ jobs:
           fetch-depth: 0  # Fetch all history for all tags and branches
 
       - name: Set BUILD_TAG
-        id: build_tag
+        id: set_build_tag
         run: echo "BUILD_TAG=build-${{ github.run_number }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Display build information
         run: |
           echo "Current run number: ${{ github.run_number }}"
-          echo "Build tag: ${{ steps.build_tag.outputs.BUILD_TAG }}"
+          echo "Build tag: ${{ steps.set_build_tag.outputs.BUILD_TAG }}"
+
+      - name: Push Git tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag -a ${{ steps.set_build_tag.outputs.BUILD_TAG }} -m "Build ${{ github.run_number }}"
+          git push origin ${{ steps.set_build_tag.outputs.BUILD_TAG }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -47,18 +56,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: pal-mono
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.build_tag.outputs.BUILD_TAG }} .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.build_tag.outputs.BUILD_TAG }}
-          echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.build_tag.outputs.BUILD_TAG }}"
-
-      - name: Create Git tag
-        run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git tag -a ${{ steps.build_tag.outputs.BUILD_TAG }} -m "Build ${{ github.run_number }}"
-          git push origin ${{ steps.build_tag.outputs.BUILD_TAG }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }} .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }}
+          echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }}"
 
       - name: Notify Slack
         uses: act10ns/slack@v2
@@ -69,7 +69,7 @@ jobs:
           message: |
             Deployment status: ${{ job.status }}
             Run number: ${{ github.run_number }}
-            Build tag: ${{ steps.build_tag.outputs.BUILD_TAG }}
+            Build tag: ${{ steps.set_build_tag.outputs.BUILD_TAG }}
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
