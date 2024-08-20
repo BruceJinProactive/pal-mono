@@ -77,8 +77,9 @@ jobs:
       - name: Trigger Create Release Workflow for Latest
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const response = await github.actions.createWorkflowDispatch({
+            await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'create-release.yml',
@@ -88,6 +89,5 @@ jobs:
                 build_tag: '${{ steps.set_build_tag.outputs.BUILD_TAG }}'
               }
             });
-            console.log(response);
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
