@@ -85,7 +85,7 @@ jobs:
               ref: 'main',
               inputs: {
                 stage: 'lat',
-                build_tag: ${{ steps.set_build_tag.outputs.BUILD_TAG }}
+                build_tag: '${{ steps.set_build_tag.outputs.BUILD_TAG }}'
               }
             });
             console.log(response);
