@@ -34,10 +34,10 @@ jobs:
           COMMIT=$(git rev-list -n 1 $BUILD_TAG)
 
           # Create a timestamp in a format without special characters
-          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+          TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
 
           # Create the new release tag
-          RELEASE_TAG="rel-${TIMESTAMP}-${BUILD_TAG}"
+          RELEASE_TAG="release-lat-${TIMESTAMP}-${BUILD_TAG}"
 
           echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
           echo "COMMIT=$COMMIT" >> $GITHUB_OUTPUT
@@ -75,7 +75,7 @@ jobs:
           ECR_REPOSITORY: pal-mono
         run: |
           # Find the image with the BUILD_TAG
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_release_tag.outputs.BUILD_TAG }}"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.event.inputs.build_tag }}"
           
           # Tag the image with the RELEASE_TAG
           docker pull $IMAGE_URI
