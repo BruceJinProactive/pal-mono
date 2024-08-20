@@ -39,8 +39,8 @@ jobs:
           # Create the new release tag
           RELEASE_TAG="rel-${TIMESTAMP}-${BUILD_TAG}"
 
-          echo "release_tag=$RELEASE_TAG" >> $GITHUB_ENV
-          echo "commit=$COMMIT" >> $GITHUB_ENV
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "COMMIT=$COMMIT" >> $GITHUB_OUTPUT
           echo "Created release tag: $RELEASE_TAG"
 
       - name: Push Git Tag
