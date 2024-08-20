@@ -1,6 +1,11 @@
 name: Create release
 
 on:
+  # Automatically create a lat release when a new build tag is pushed
+  push:
+    tags:
+      - 'build-*'
+  # Manually create a release for stg or prd
   workflow_dispatch:
     inputs:
       stage:
@@ -10,16 +15,6 @@ on:
         options:
           - stg
           - prd
-      build_tag:
-        description: 'Build tag to create release for (e.g., build-123-abcdefg)'
-        required: true
-        type: string
-  workflow_call:
-    inputs:
-      stage:
-        description: 'Stage (must be lat)'
-        required: true
-        type: string
       build_tag:
         description: 'Build tag to create release for (e.g., build-123-abcdefg)'
         required: true
@@ -39,10 +34,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set build tag and stage
+        id: set_vars
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "BUILD_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "STAGE=lat" >> $GITHUB_OUTPUT
+          else
+            echo "BUILD_TAG=${{ github.event.inputs.build_tag }}" >> $GITHUB_OUTPUT
+            echo "STAGE=${{ github.event.inputs.stage }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set Release Tag
         id: set_release_tag
         run: |
-          BUILD_TAG="${{ github.event.inputs.build_tag }}"
+          BUILD_TAG="${{ steps.set_vars.outputs.BUILD_TAG }}"
+          STAGE="${{ steps.set_vars.outputs.STAGE }}"
 
           # Verify the build tag exists
           if ! git rev-parse "$BUILD_TAG" >/dev/null 2>&1; then
@@ -69,7 +76,7 @@ jobs:
           git config user.email github-actions@github.com
           echo "Release tag: ${{ steps.set_release_tag.outputs.RELEASE_TAG }}"
           echo "Commit: ${{ steps.set_release_tag.outputs.COMMIT }}"
-          git tag -a ${{ steps.set_release_tag.outputs.RELEASE_TAG }} ${{ steps.set_release_tag.outputs.COMMIT }} -m "Release tag for ${{ github.event.inputs.build_tag }}"
+          git tag -a ${{ steps.set_release_tag.outputs.RELEASE_TAG }} ${{ steps.set_release_tag.outputs.COMMIT }} -m "Release tag for ${{ steps.set_vars.outputs.BUILD_TAG }}"
           git push origin ${{ steps.set_release_tag.outputs.RELEASE_TAG }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,7 +102,7 @@ jobs:
           ECR_REPOSITORY: pal-mono
         run: |
           # Find the image with the BUILD_TAG
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:${{ github.event.inputs.build_tag }}"
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_vars.outputs.BUILD_TAG }}"
           
           # Tag the image with the RELEASE_TAG
           docker pull $IMAGE_URI
@@ -114,8 +121,8 @@ jobs:
           channel: '#workflows'
           message: |
             Release Tag Creation Status: ${{ job.status }}
-            Build Tag: ${{ github.event.inputs.build_tag }}
-            Created Release Tag: ${{ steps.set_release_tag.outputs.release_tag }}
+            Build Tag: ${{ steps.set_vars.outputs.BUILD_TAG }}
+            Created Release Tag: ${{ steps.set_release_tag.outputs.RELEASE_TAG }}
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
