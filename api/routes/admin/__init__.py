@@ -1,10 +1,12 @@
 import jwt
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from requests import Session
 
 from api.routes.admin.auth import parse_admin_console_id_token
 from api.routes.endpoints import endpoints
+from db.session import get_db
 from services.admin_service import create_account_with_defaults, get_assistant_data
 
 ######################################################
@@ -121,7 +123,7 @@ def read_inbox(request: Request):
 
 
 @admin_router.get("/chat")
-def read_chat(request: Request):
+def read_chat(request: Request, db: Session = Depends(get_db)):
     # TODO: @ilbum fast-follow with decoupling auth from streamlit
     try:
         decrypted_id_token = parse_admin_console_id_token(
@@ -153,7 +155,7 @@ def read_chat(request: Request):
         )
 
     unformatted_assistant_data = get_assistant_data(
-        decrypted_id_token["custom:account_name"]
+        db, decrypted_id_token["custom:account_name"]
     )
 
     return unformatted_assistant_data[0].memory["chat_history"]
