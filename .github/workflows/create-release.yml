@@ -1,15 +1,23 @@
-name: Create release latest
+name: Create release
 
 on:
   workflow_dispatch:
     inputs:
+      stage:
+        description: 'Stage for the release (e.g., stg, prd)'
+        required: true
+        type: choice
+        options:
+          - lat
+          - stg
+          - prd
       build_tag:
         description: 'Build tag to create release for (e.g., build-123-abcdefg)'
         required: true
         type: string
 
 jobs:
-  create_release_tag:
+  create_release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -37,7 +45,7 @@ jobs:
           TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
 
           # Create the new release tag
-          RELEASE_TAG="release-lat-${TIMESTAMP}-${BUILD_TAG}"
+          RELEASE_TAG="release-${STAGE}-${TIMESTAMP}-${BUILD_TAG}"
 
           echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
           echo "COMMIT=$COMMIT" >> $GITHUB_OUTPUT
