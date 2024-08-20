@@ -47,8 +47,12 @@ jobs:
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git tag -a $RELEASE_TAG $COMMIT -m "Release tag for $BUILD_TAG"
-          git push origin $RELEASE_TAG
+          echo "Release tag: ${{ steps.set_release_tag.outputs.RELEASE_TAG }}"
+          echo "Commit: ${{ steps.set_release_tag.outputs.COMMIT }}"
+          git tag -a ${{ steps.set_release_tag.outputs.RELEASE_TAG }} ${{ steps.set_release_tag.outputs.COMMIT }} -m "Release tag for ${{ github.event.inputs.build_tag }}"
+          git push origin ${{ steps.set_release_tag.outputs.RELEASE_TAG }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Display Release Tag
         run: |
