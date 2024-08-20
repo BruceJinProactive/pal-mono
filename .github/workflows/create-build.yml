@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      BUILD_TAG: ${{ steps.set_build_tag.outputs.BUILD_TAG }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -91,3 +93,11 @@ jobs:
             });
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  call_create_release:
+    needs: create_build
+    uses: ./.github/workflows/create-release.yml
+    with:
+      stage: 'lat'
+      build_tag: ${{ needs.create_build.outputs.build_tag }}
+    secrets: inherit

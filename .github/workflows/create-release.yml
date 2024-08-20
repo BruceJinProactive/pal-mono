@@ -8,9 +8,18 @@ on:
         required: true
         type: choice
         options:
-          - lat
           - stg
           - prd
+      build_tag:
+        description: 'Build tag to create release for (e.g., build-123-abcdefg)'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      stage:
+        description: 'Stage (must be lat)'
+        required: true
+        type: string
       build_tag:
         description: 'Build tag to create release for (e.g., build-123-abcdefg)'
         required: true
