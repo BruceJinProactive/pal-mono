@@ -23,22 +23,22 @@ jobs:
         id: set_release_tag
         run: |
           BUILD_TAG="${{ github.event.inputs.build_tag }}"
-          
+
           # Verify the build tag exists
           if ! git rev-parse "$BUILD_TAG" >/dev/null 2>&1; then
             echo "Error: Build tag $BUILD_TAG does not exist"
             exit 1
           fi
-          
+
           # Get the commit hash for the build tag
           COMMIT=$(git rev-list -n 1 $BUILD_TAG)
-          
-          # Create a timestamp in ISO 8601 format
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          
+
+          # Create a timestamp in a format without special characters
+          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+
           # Create the new release tag
-          RELEASE_TAG="release-lat-${TIMESTAMP}-${BUILD_TAG}"
-          
+          RELEASE_TAG="rel-${TIMESTAMP}-${BUILD_TAG}"
+
           echo "release_tag=$RELEASE_TAG" >> $GITHUB_ENV
           echo "commit=$COMMIT" >> $GITHUB_ENV
           echo "Created release tag: $RELEASE_TAG"
