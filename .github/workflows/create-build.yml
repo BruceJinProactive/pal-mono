@@ -96,8 +96,10 @@ jobs:
 
   call_create_release:
     needs: create_build
+    permissions:
+      contents: write
     uses: ./.github/workflows/create-release.yml
     with:
       stage: 'lat'
-      build_tag: ${{ needs.create_build.outputs.build_tag }}
+      build_tag: ${{ needs.create_build.outputs.BUILD_TAG }}
     secrets: inherit
