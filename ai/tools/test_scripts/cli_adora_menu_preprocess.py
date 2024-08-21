@@ -1,7 +1,7 @@
 import json
 
 menu = {}
-with open("data/pizza/jsons/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
+with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
     menu = json.load(read_f)
 
 for item in menu["items"]:

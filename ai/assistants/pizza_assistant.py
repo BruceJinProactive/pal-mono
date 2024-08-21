@@ -7,7 +7,6 @@ from phi.assistant import Assistant, AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.json import JSONKnowledgeBase
-from phi.knowledge.pdf import PDFKnowledgeBase
 from phi.llm.openai import OpenAIChat
 from phi.memory.db.postgres import PgMemoryDb
 from phi.storage.assistant.postgres import PgAssistantStorage
@@ -27,9 +26,6 @@ requests_log.propagate = True
 # set up specific knowledge base
 pizza_knowledge_base = CombinedKnowledgeBase(
     sources=[
-        ## removing the RAG example Thai Recipes PDF
-        # PDFUrlKnowledgeBase(urls=["https://phi-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"]),
-        PDFKnowledgeBase(path="data/pizza/pdfs"),
         JSONKnowledgeBase(path="data/pizza/jsons"),
     ],
     vector_db=PgVector2(
@@ -38,9 +34,8 @@ pizza_knowledge_base = CombinedKnowledgeBase(
         collection="pizza_documents",
         embedder=OpenAIEmbedder(model=ai_settings.embedding_model),
     ),
-    # 3 references are added to the prompt
-    # It needs to be +1 of the total documents, still investigating why.
-    num_documents=3,
+    # 2 references are added to the prompt
+    num_documents=2,
 )
 
 # set up specific storage

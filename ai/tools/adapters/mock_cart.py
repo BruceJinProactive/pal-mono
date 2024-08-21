@@ -18,8 +18,11 @@ from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
 )
 from ai.tools.ordering_classes import OrderItem
 
+CART_JSON_PATH = "data/pizza/cart.json"
+
 client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
 OPENAI_CONVERSION_MODEL = "gpt-4o-2024-08-06"
+
 
 # TODO: set up some error handling system.
 # TODO: no longer mock cart, more Adora POS cart.
@@ -43,7 +46,7 @@ def convert_order_item_to_adora(order_item: OrderItem) -> ConversionResult:
     """
 
     menu = {}
-    with open("data/pizza/jsons/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
+    with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
         menu = json.load(read_f)
 
     # Invalid quantity, temporary fix
@@ -473,7 +476,7 @@ def load_mock_cart(user_id: str) -> Cart:
     """
 
     cart = None
-    with open("data/pizza/jsons/cart.json", "r") as read_f:
+    with open(CART_JSON_PATH, "r") as read_f:
         carts = json.load(read_f)
         if user_id in carts:
             try:
@@ -497,12 +500,12 @@ def save_mock_cart(cart: Cart, user_id: str):
     Placeholder for now: Save the cart.json file.
     """
     carts = {}
-    with open("data/pizza/jsons/cart.json", "r") as read_f:
+    with open(CART_JSON_PATH, "r") as read_f:
         carts = json.load(read_f)
 
     carts[user_id] = cart.model_dump()
 
-    with open("data/pizza/jsons/cart.json", "w") as write_f:
+    with open(CART_JSON_PATH, "w") as write_f:
         json.dump(carts, write_f, ensure_ascii=False, indent=4)
 
 
@@ -864,11 +867,11 @@ def hard_reset_mock_cart(user_id):
     Completely removes the user from the cart.json file
     """
     carts = {}
-    with open("data/pizza/jsons/cart.json", "r") as read_f:
+    with open(CART_JSON_PATH, "r") as read_f:
         carts = json.load(read_f)
 
     if user_id in carts:
         carts.pop(user_id)
 
-    with open("data/pizza/jsons/cart.json", "w") as write_f:
+    with open(CART_JSON_PATH, "w") as write_f:
         json.dump(carts, write_f, ensure_ascii=False, indent=4)
