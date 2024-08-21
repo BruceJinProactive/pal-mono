@@ -39,8 +39,10 @@ jobs:
       - name: Set build tag and stage
         id: set_vars
         run: |
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            echo "BUILD_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            # Get the latest build tag
+            BUILD_TAG=$(git describe --tags --match "build-*" --abbrev=0)
+            echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_OUTPUT
             echo "STAGE=lat" >> $GITHUB_OUTPUT
           else
             echo "BUILD_TAG=${{ github.event.inputs.build_tag }}" >> $GITHUB_OUTPUT
