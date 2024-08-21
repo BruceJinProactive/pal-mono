@@ -91,4 +91,4 @@ jobs:
           channel: '#workflows'
         if: failure() && github.ref == 'refs/heads/main' && github.event.pull_request.draft == false
         env:
-          SLACK_WEBHOOK_URL_BUILD: ${{ secrets.SLACK_WEBHOOK_URL_BUILD }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_BUILD }}
