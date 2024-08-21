@@ -2,9 +2,11 @@ name: Create release
 
 on:
   # Automatically create a lat release when a new build tag is pushed
-  push:
-    tags:
-      - 'build-*'
+  workflow_run:
+    workflows: ["Create build"] # The name should be the same as the name of create-build.yml
+    types:
+      - completed
+      
   # Manually create a release for stg or prd
   workflow_dispatch:
     inputs:
