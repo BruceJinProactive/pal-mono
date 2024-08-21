@@ -69,30 +69,24 @@ Run the following command to validate your code locally:
 
 ### Environments
 
-The CI/CD pipeline is divided into 3 stages:
+The CI/CD pipeline is divided into 4 stages:
 
-- dev(your local development) - The environment for your local development. Changes before merged into `main` branch.
-- stg(staging) - The environment for internal testing and validation. Changes on the HEAD of `main` branch, before merged into `prd` branch.
-- prd(production) - The environment to serve live customer traffic. Changes on `prd` branch.
+- dev(your local machine) - The environment for your local development.
+- lat(latest) - The environment automatically built on the HEAD of `main` branch.
+- stg(staging) - The environment for internal testing and validation.
+- prd(production) - The environment to serve live customer traffic.
 
-### Releasing from `dev` to `stg`:
+### Releasing for `lat`:
 
-1. If you need to use any new env variables, please let @max or @kelvin know so they can add them to the AWS config
-2. Create a feature branch `example-feature` based from `main` and make changes locally.
-3. Make a pull request merging `example-feature` to `main`.
-4. Wait for PR review and approval.
-5. Submit the PR to merge `example-feature` to `main`.
-6. A staging release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
+[TODO]
 
-### Releasing from `stg` to `prd`:
+### Releasing from `stg`:
 
-[TODO] The process is manual for now.
+[TODO]
 
-1. If you need to use any new env variables, please let @max or @kelvin know so they can add them to the AWS config
-2. Make a pull request merging `main` to `prd`.
-3. Wait for PR review and approval.
-4. Submit the PR to merge `main` to `prd`.
-5. A release release will be automatically triggered. Join Slack channel #cicd-notifications to receive notifications.
+### Releasing from `prd`:
+
+[TODO]
 
 ## Endpoints
 
