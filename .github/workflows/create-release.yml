@@ -89,34 +89,6 @@ jobs:
         run: |
           echo "Created release tag: ${{ steps.set_release_tag.outputs.RELEASE_TAG }}"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Tag image in Amazon ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: pal-mono
-        run: |
-          # Find the image with the BUILD_TAG
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_vars.outputs.BUILD_TAG }}"
-          
-          # Tag the image with the RELEASE_TAG
-          docker pull $IMAGE_URI
-          docker tag $IMAGE_URI $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_release_tag.outputs.RELEASE_TAG }}
-          
-          # Push the new tag to ECR
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_release_tag.outputs.RELEASE_TAG }}
-          
-          echo "Tagged and pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_release_tag.outputs.RELEASE_TAG }}"
-          
       - name: Set Slack Webhook URL
         id: set_slack_webhook
         run: |
