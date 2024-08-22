@@ -53,12 +53,14 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Trigger AWS CodeBuild
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: pal-mono
         run: |
-          aws codebuild start-build \
-            --project-name pal-mono-cb \
-            --source-version ${{ steps.set_build_tag.outputs.BUILD_TAG }} \
-            --environment-variables-override name=BUILD_TAG,value=${{ steps.set_build_tag.outputs.BUILD_TAG }},type=PLAINTEXT
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }} .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }}
+          echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }}"
 
       - name: Notify Slack
         uses: act10ns/slack@v2
