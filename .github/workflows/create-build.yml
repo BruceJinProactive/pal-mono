@@ -56,7 +56,7 @@ jobs:
       - name: Trigger AWS CodeBuild
         run: |
           aws codebuild start-build \
-            --project-name pal-mono-bd \
+            --project-name pal-mono-cb \
             --source-version ${{ steps.set_build_tag.outputs.BUILD_TAG }} \
             --environment-variables-override name=BUILD_TAG,value=${{ steps.set_build_tag.outputs.BUILD_TAG }},type=PLAINTEXT
 
