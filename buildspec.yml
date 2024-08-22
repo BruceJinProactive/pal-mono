@@ -8,30 +8,40 @@ phases:
   build:
     commands:
       - IMAGE_REPO="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
-      - RUNTIME_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${STAGE_NAME}"
-      - UNIQUE_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+      - IMAGE_REPO_NAME="pal-mono"
+      - IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${BUILD_TAG}"
 
       - echo Building the Docker image...
-      - docker build -t $IMAGE_REPO_NAME:$STAGE_NAME .
-      - docker tag $IMAGE_REPO_NAME:$STAGE_NAME $RUNTIME_IMAGE_URL
-      - docker tag $IMAGE_REPO_NAME:$STAGE_NAME $UNIQUE_IMAGE_URL
+      - docker build -t $IMAGE_REPO_NAME:$BUILD_TAG .
+      - docker tag $IMAGE_REPO_NAME:$BUILD_TAG $IMAGE_URL
   post_build:
     commands:
       - echo Pushing the Docker image...
-      - docker push $RUNTIME_IMAGE_URL
-      - docker push $UNIQUE_IMAGE_URL
+      - docker push $IMAGE_URL
       - echo Write the image definitions file...
 
-      - CONTAINER_NAME_APP="${IMAGE_REPO_NAME}-${STAGE_NAME}-app"
-      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $UNIQUE_IMAGE_URL > imagedefinitions_app.json
+      - CONTAINER_NAME_APP="${IMAGE_REPO_NAME}-lat-app"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $IMAGE_URL > imagedefinitions_lat_app.json
+      - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-lat-api"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $IMAGE_URL > imagedefinitions_lat_api.json
 
-      - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-${STAGE_NAME}-api"
-      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $UNIQUE_IMAGE_URL > imagedefinitions_api.json
+      - CONTAINER_NAME_APP="${IMAGE_REPO_NAME}-stg-app"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $IMAGE_URL > imagedefinitions_stg_app.json
+      - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-stg-api"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $IMAGE_URL > imagedefinitions_stg_api.json
 
+      - CONTAINER_NAME_APP="${IMAGE_REPO_NAME}-prd-app"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $IMAGE_URL > imagedefinitions_prd_app.json
+      - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-prd-api"
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $IMAGE_URL > imagedefinitions_prd_api.json
 artifacts:
   files:
-    - imagedefinitions_app.json
-    - imagedefinitions_api.json
+    - imagedefinitions_lat_app.json
+    - imagedefinitions_lat_api.json
+    - imagedefinitions_stg_app.json
+    - imagedefinitions_stg_api.json
+    - imagedefinitions_prd_app.json
+    - imagedefinitions_prd_api.json
 
 cache:
   paths:
