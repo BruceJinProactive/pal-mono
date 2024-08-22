@@ -14,17 +14,14 @@ phases:
   build:
     commands:
       - IMAGE_REPO="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
-      - RUNTIME_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${STAGE_NAME}"
-      - UNIQUE_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${GITHUB_TAG}"
+      - UNIQUE_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${RELEASE_TAG}"
 
       - echo Building the Docker image...
-      - docker build -t $IMAGE_REPO_NAME:$STAGE_NAME .
-      - docker tag $IMAGE_REPO_NAME:$STAGE_NAME $RUNTIME_IMAGE_URL
-      - docker tag $IMAGE_REPO_NAME:$STAGE_NAME $UNIQUE_IMAGE_URL
+      - docker build -t $IMAGE_REPO_NAME:$RELEASE_TAG .
+      - docker tag $IMAGE_REPO_NAME:$RELEASE_TAG $UNIQUE_IMAGE_URL
   post_build:
     commands:
       - echo Pushing the Docker image...
-      - docker push $RUNTIME_IMAGE_URL
       - docker push $UNIQUE_IMAGE_URL
       - echo Write the image definitions file...
 
