@@ -5,7 +5,12 @@ phases:
     commands:
       - echo Logging in to Amazon ECR...
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-      - echo GitHub tag is $GITHUB_TAG
+      
+      - echo "Preparing to create the RELEASE_TAG..."
+      - COMMIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+      - RELEASE_TAG="release-${STAGE_NAME}-${TIMESTAMP}-${COMMIT_SHA}"
+      - echo RELEASE_TAG $RELEASE_TAG
   build:
     commands:
       - IMAGE_REPO="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
