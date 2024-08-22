@@ -5,11 +5,12 @@ phases:
     commands:
       - echo Logging in to Amazon ECR...
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo GitHub tag is $GITHUB_TAG
   build:
     commands:
       - IMAGE_REPO="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
       - RUNTIME_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${STAGE_NAME}"
-      - UNIQUE_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+      - UNIQUE_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${GITHUB_TAG}"
 
       - echo Building the Docker image...
       - docker build -t $IMAGE_REPO_NAME:$STAGE_NAME .
