@@ -86,8 +86,6 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: pal-mono
         run: |
-          # Copy all imagedefinitions files into the Docker build context
-          cp imagedefinitions_*.json ./
           # Build the Docker image
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }} \
             --build-arg IMAGEDEFINITIONS_LAT_APP_FILE=imagedefinitions_lat_app.json \
