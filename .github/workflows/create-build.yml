@@ -53,51 +53,12 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      # Updated image definitions file generation
-      - name: Create image definition files
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: pal-mono
-          UNIQUE_IMAGE_URL: ${{ steps.login-ecr.outputs.registry }}/pal-mono:${{ steps.set_build_tag.outputs.BUILD_TAG }}
+      - name: Trigger AWS CodeBuild
         run: |
-          # Function to create image definition files for a given stage
-          create_image_definitions() {
-            local stage=$1
-            CONTAINER_NAME_APP="${ECR_REPOSITORY}-${stage}-app"
-            CONTAINER_NAME_API="${ECR_REPOSITORY}-${stage}-api"
-            
-            printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $UNIQUE_IMAGE_URL > imagedefinitions_${stage}_app.json
-            printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $UNIQUE_IMAGE_URL > imagedefinitions_${stage}_api.json
-            
-            echo "Created imagedefinitions_${stage}_app.json and imagedefinitions_${stage}_api.json"
-            echo "Contents of imagedefinitions_${stage}_app.json:"
-            cat imagedefinitions_${stage}_app.json
-            echo "Contents of imagedefinitions_${stage}_api.json:"
-            cat imagedefinitions_${stage}_api.json
-          }
-          
-          # Create image definition files for each stage
-          create_image_definitions "lat"
-          create_image_definitions "stg"
-          create_image_definitions "prd"
-      
-      - name: Build, tag, and push image to Amazon ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: pal-mono
-        run: |
-          # Build the Docker image
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }} \
-            --build-arg IMAGEDEFINITIONS_LAT_APP_FILE=imagedefinitions_lat_app.json \
-            --build-arg IMAGEDEFINITIONS_LAT_API_FILE=imagedefinitions_lat_api.json \
-            --build-arg IMAGEDEFINITIONS_STG_APP_FILE=imagedefinitions_stg_app.json \
-            --build-arg IMAGEDEFINITIONS_STG_API_FILE=imagedefinitions_stg_api.json \
-            --build-arg IMAGEDEFINITIONS_PRD_APP_FILE=imagedefinitions_prd_app.json \
-            --build-arg IMAGEDEFINITIONS_PRD_API_FILE=imagedefinitions_prd_api.json .
-            
-          # Push the Docker image to ECR
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }}
-          echo "Pushed image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.set_build_tag.outputs.BUILD_TAG }}"
+          aws codebuild start-build \
+            --project-name pal-mono-bd \
+            --source-version ${{ steps.set_build_tag.outputs.BUILD_TAG }} \
+            --environment-variables-override name=BUILD_TAG,value=${{ steps.set_build_tag.outputs.BUILD_TAG }},type=PLAINTEXT
 
       - name: Notify Slack
         uses: act10ns/slack@v2
