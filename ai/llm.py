@@ -11,6 +11,7 @@ class LLM(Enum):
     OPENAI = "OPENAI"
     LEPTON = "LEPTON"
     MODAL = "MODAL"
+    ROUTER = "ROUTER"
 
 
 def get_llm(llm_name: LLM):
@@ -37,6 +38,10 @@ def get_llm(llm_name: LLM):
             max_tokens=16384,
             temperature=0.9,
             top_p=0.9,
+        )
+    elif llm_name == LLM.ROUTER:
+        return OpenAILike(
+            base_url="https://4msggkaz6wph3hx7hxppwcqn7e0xjlmb.lambda-url.us-west-1.on.aws/"
         )
     else:
         raise ValueError(f"Invalid model name: {llm_name}")

@@ -59,7 +59,7 @@ def get_coffee_assistant(
         name="coffee_assistant",
         run_id=run_id,
         user_id=user_id,
-        llm=get_llm(LLM.OPENAI),
+        llm=get_llm(LLM.ROUTER),
         storage=storage,
         knowledge_base=knowledge_base,
         create_memories=True,
