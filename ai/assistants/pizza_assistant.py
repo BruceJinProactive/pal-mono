@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import re
 from collections import defaultdict
 
 from phi.assistant import Assistant, AssistantMemory
@@ -13,6 +14,7 @@ from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.tools import Toolkit
 from phi.vectordb.pgvector import PgVector2
 
+from ai.assistants.constants import FUNCTION_NAME_LENGTH_LIMIT
 from ai.settings import ai_settings
 from ai.tools.ordering_tools import OrderingTools
 from db.session import db_url
@@ -22,6 +24,54 @@ logging.basicConfig(level=logging.ERROR)
 requests_log = logging.getLogger("requests.packages.urllib3")
 requests_log.setLevel(logging.ERROR)
 requests_log.propagate = True
+
+
+# Set up function name validation
+def validate_and_format_name(name: str) -> str:
+    """
+    Validates and reformats a given name to match a specific pattern.
+
+    The function ensures that the name matches the pattern `^[a-zA-Z0-9_]+$`.
+    If the name does not match the pattern, it will be reformatted by:
+    - Stripping any whitespace characters from the beginning and end of the string.
+    - Replacing white spaces and hyphens within the string with underscores.
+    - Removing any characters that do not match the [a-zA-Z0-9_] pattern.
+    - Limiting the length to FUNCTION_NAME_LENGTH_LIMIT.
+
+    If the final processed name still does not match the required pattern, a ValueError is raised.
+
+    Args:
+        name (str): The name to be validated and reformatted.
+
+    Returns:
+        str: The validated and reformatted name.
+
+    Raises:
+        ValueError: If the final processed name does not match the required pattern.
+    """
+    # Define the allowed pattern
+    pattern = r"^[a-zA-Z0-9_]+$"
+    # Check if the name already matches the pattern
+    if re.match(pattern, name):
+        return name
+    # else, reformat the name
+    # Strip any whitespace characters from the beginning and end of the string
+    name = name.strip()
+    # Replace white spaces and hyphens within the string with underscores
+    name = re.sub(r"[\s-]+", "_", name)
+    # Remove any characters that do not match the [a-zA-Z0-9_] pattern
+    name = re.sub(pattern, "", name)
+    # Limit the length to the FUNCTION_NAME_LENGTH_LIMIT
+    name = name[:FUNCTION_NAME_LENGTH_LIMIT]
+    # Final validation
+    if not re.match(pattern, name):
+        error_message = (
+            f"Final processed name '{name}' does not match the required pattern."
+        )
+        logging.error(error_message)
+        raise ValueError(error_message)
+    return name
+
 
 # set up specific knowledge base
 pizza_knowledge_base = CombinedKnowledgeBase(
@@ -180,9 +230,12 @@ def get_pizza_assistant(
         run_id = run_ids[0] if run_ids else None
 
     # Need to address circular dependency:
-    # OrderingTools needs Assistant to set assistant field
-    # Assistant needs OrderingTools to set tools field.
+    # Define the tools
     ordering_tools = OrderingTools()
+    pizza_my_heart_tools = PizzaMyHeartTools()
+    # Validate and reformat tool names
+    ordering_tools.name = validate_and_format_name(ordering_tools.name)
+    pizza_my_heart_tools.name = validate_and_format_name(pizza_my_heart_tools.name)
 
     # set up assistant with specific storage
     assistant = Assistant(
@@ -213,8 +266,8 @@ def get_pizza_assistant(
         # monitoring=True,
         tools=[
             ordering_tools,
-            PizzaMyHeartTools(),
-        ],
+            pizza_my_heart_tools,
+        ], #maximum 128 tools
         use_tools=True,
         show_tool_calls=debug_mode,  # show tool calls in debug mode. Set to True for dev purposes (see function calls)
         search_knowledge=True,

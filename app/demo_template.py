@@ -290,16 +290,39 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
 
     Returns:
     None
+
+    Raises:
+    Exception: Raises an exception if an error occurs during response generation after 5 attempts.
     """
     with st.chat_message(
         "assistant", avatar=Image.open(avatar_path) if avatar_path else None
     ):
         with st.spinner("Working..."):
+
+            MAX_RETRIES = 5
+            retries = 0
+            error = ""
             response = ""
-            resp_container = st.empty()
-            for delta in assistant.run(question, stream=False):
-                # Sometimes delta will return a non-string type object
-                if isinstance(delta, str):
-                    response += delta.replace("\$", "💲").replace("$", "💲")
-                    resp_container.markdown(response)
+            while retries < MAX_RETRIES:
+                try:
+                    resp_container = st.empty()
+                    for delta in assistant.run(question, stream=False):
+                        # Sometimes delta will return a non-string type object
+                        if isinstance(delta, str):
+                            response += delta.replace("\$", "💲").replace("$", "💲")
+                            resp_container.markdown(response)
+                    break  # Exit the loop if the response is generated
+                except Exception as e:
+                    error = e
+                    logger.error(f"Error generating response: {e}")
+                    retries += 1
+                    st.warning(
+                        f"An error occurred: Retrying... (Attempt {retries}/{MAX_RETRIES})"
+                    )
+
+            if retries == MAX_RETRIES:
+                st.error(
+                    f"Error: {error}\nFailed to generate a response after multiple attempts."
+                )
+
         st.session_state["messages"].append({"role": "assistant", "content": response})
