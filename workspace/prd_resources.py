@@ -171,7 +171,7 @@ prd_ecs_cluster = EcsCluster(
 
 # -*- Build container environment
 container_env = {
-    "RUNTIME_ENV": "prd",
+    "RUNTIME_ENV": ws_settings.prd_env,
     # Database configuration
     "DB_HOST": AwsReference(prd_db.get_db_endpoint),
     "DB_PORT": AwsReference(prd_db.get_db_port),
@@ -181,7 +181,7 @@ container_env = {
     # Wait for database to be available before starting the application
     "WAIT_FOR_DB": ws_settings.prd_db_enabled,
     # Migrate database on startup using alembic
-    "MIGRATE_DB": ws_settings.prd_db_enabled,
+    # "MIGRATE_DB": ws_settings.prd_db_enabled,
 }
 
 # -*- Streamlit running on ECS
