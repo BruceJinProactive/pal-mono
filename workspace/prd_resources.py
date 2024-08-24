@@ -171,7 +171,7 @@ prd_ecs_cluster = EcsCluster(
 
 # -*- Build container environment
 container_env = {
-    "RUNTIME_ENV": ws_settings.prd_env,
+    "RUNTIME_ENV": "prd",
     # Database configuration
     "DB_HOST": AwsReference(prd_db.get_db_endpoint),
     "DB_PORT": AwsReference(prd_db.get_db_port),
