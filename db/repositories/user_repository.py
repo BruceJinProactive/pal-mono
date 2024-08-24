@@ -12,9 +12,9 @@ class UserRepository:
     def get_users(self, skip: int = 0, limit: int = 100):
         return self.db.query(User).offset(skip).limit(limit).all()
 
-    def get_user(self, project_id: str, channel_platform: str, channel_identifier: str):
-        if not project_id:
-            raise ValueError("'project_id' must be provided")
+    def get_user(self, account_id: str, channel_platform: str, channel_identifier: str):
+        if not account_id:
+            raise ValueError("'account_id' must be provided")
         if not channel_platform:
             raise ValueError("'channel_platform' must be provided")
         if not channel_identifier:
@@ -23,7 +23,7 @@ class UserRepository:
         query = (
             self.db.query(User)
             .filter(
-                User.project_id == int(project_id),
+                User.account_id == int(account_id),
                 text("(raw_config->>'channel_platform') = :channel_platform"),
                 text("(raw_config->>'channel_identifier') = :channel_identifier"),
             )
@@ -34,8 +34,8 @@ class UserRepository:
         user = query.first()
         return user
 
-    def create_user(self, project_id: str):
-        db_user = User(project_id=int(project_id))
+    def create_user(self, account_id: str):
+        db_user = User(account_id=int(account_id))
         self.db.add(db_user)
         self.db.commit()
         return db_user

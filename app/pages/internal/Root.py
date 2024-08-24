@@ -20,28 +20,24 @@ def main() -> None:
     db = next(get_db())
     account_repository = AccountRepository(db)
 
-    account_id = int(st.number_input("Enter Account ID", step=1))
     account_name = st.text_input("Enter Account Name")
     if st.button("Get Accounts"):
         accounts = account_repository.get_accounts()
         for account in accounts:
             st.write(account)
     if st.button("Get Account"):
-        account = account_repository.get_account(account_id, account_name)
-        st.write(account)
-    if st.button("Update Account"):
-        account = account_repository.update_account(account_id, account_name)
+        account = account_repository.get_account(account_name)
         st.write(account)
     if st.button("Delete Account"):
-        account = account_repository.delete_account(account_id)
+        account = account_repository.delete_account(account_name)
         st.write(account)
     if st.button("Create Account with Defaults"):
         account = create_account_with_defaults(db=db, account_name=account_name)
         st.write(account)
+        for assistent in account.assistants:
+            st.write(assistent)
         for project in account.projects:
             st.write(project)
-            for assistent in project.assistants:
-                st.write(assistent)
 
 
 if user.is_logged_in:

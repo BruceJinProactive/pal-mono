@@ -22,13 +22,16 @@ def main() -> None:
 
     st.write("### Account")
     account = get_account(db, account_name=user.account_name)
-    st.write(account)
-    st.write("### Project")
-    for project in account.projects:
-        st.write(project)
+    if account is not None:
+        st.write(account)
+
         st.write("### Assistant")
-        for assistant in project.assistants:
+        for assistant in account.assistants:
             st.write(assistant)
+
+        st.write("### Project")
+        for project in account.projects:
+            st.write(project)
 
 
 if user.is_logged_in:

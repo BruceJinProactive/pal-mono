@@ -27,14 +27,11 @@ def get_chat_response(db: Session, message: Message) -> Message:
     account = get_account(db, account_name=account_name)
     if account is None:
         raise ValueError("Account not found")
-    if not account.projects:
-        raise ValueError("No projects found for this account")
-    project = account.projects[0]
 
     # Get user_id by sender channel/number with user_service
     user = user_service.get_user(
         db=db,
-        project_id=str(project.id),
+        account_id=str(account.id),
         channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP
         channel_identifier=message.sender_channel_identifier,
         create_new_user=True,
@@ -47,13 +44,17 @@ def get_chat_response(db: Session, message: Message) -> Message:
         user_id=str(user.id), message_body=message.to_dict()
     )
 
-    assistant_id = project.assistants[0].id
+    if not account.projects:
+        raise ValueError("No projects found for this account")
+    project = account.projects[0]
+
+    assistant_id = project.assistant_id
     if assistant_id is None:
         raise ValueError("Assistant ID not found")
 
     if account_name == "proactiveailab":
         assistant = assistant_service.get_assistant(
-            db=db, assistant_id=str(assistant_id), user_id=str(user.id)
+            db=db, assistant_id=assistant_id, user_id=user.id
         )
     elif account_name == "mindzero":
         assistant = get_gym_assistant(user_id=str(user.id))

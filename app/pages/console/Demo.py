@@ -30,10 +30,7 @@ def get_prd_assistant(
     if not account.projects:
         raise ValueError("No projects found for this account")
 
-    if not account.projects[0].assistants:
-        raise ValueError("No assistants found for this project")
-
-    assistant_id = account.projects[0].assistants[0].id
+    assistant_id = account.projects[0].assistant_id
 
     assistant: Assistant = get_assistant(
         db,

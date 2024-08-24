@@ -39,8 +39,12 @@ def create_account_with_defaults(db: Session, account_name: str):
 
     # Use the repositories to create the account, project, and assistant
     account = account_repository.create_account(account_name)
-    project = project_repository.create_project(account_id=account.id)
-    _ = assistant_repository.create_assistant(project_id=project.id)
+    assistant = assistant_repository.create_assistant(account_id=account.id)
+    project_repository.create_project(
+        project_name=f"{account_name}-default",
+        account_id=account.id,
+        assistant_id=assistant.id,
+    )
 
     return account
 

@@ -1,3 +1,5 @@
+import uuid
+
 from phi.assistant import Assistant, AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
@@ -9,40 +11,26 @@ from sqlalchemy.orm import Session
 from ai.llm import LLM, get_llm
 from ai.settings import ai_settings
 from db.repositories.assistant_repository import AssistantRepository
-from db.repositories.project_repository import ProjectRepository
 from db.session import db_url
-
-
-def get_assistant_id(db: Session, project_id: str) -> str | None:
-    project_repository = ProjectRepository(db)
-    project = project_repository.get_project(project_id=project_id)
-
-    if project is None:
-        raise ValueError("Invalid project_id")
-
-    if not project.assistants:
-        return None
-
-    return str(project.assistants[0].id)
 
 
 def get_assistant(
     db: Session,
-    assistant_id: str,
-    user_id: str,
+    assistant_id: uuid.UUID,
+    user_id: uuid.UUID,
     new_run: bool = False,
 ) -> Assistant:
     # Retrieve the assistant from the database
     assistant_repository = AssistantRepository(db)
-    db_assistant = assistant_repository.get_assistant(assistant_id=int(assistant_id))
+    db_assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
 
     # Set up the knowledge base, storage, and memory
     if db_assistant is None:
         raise ValueError("Invalid assistant_id")
-    project_id = db_assistant.project_id
-    storage_table_name = f"project_{project_id}_storage"
-    knowledge_base_table_name = f"project_{project_id}_knowledge_base"
-    memory_table_name = f"project_{project_id}_memory"
+    account_name = db_assistant.account.name
+    storage_table_name = f"{account_name}_storage"
+    knowledge_base_table_name = f"{account_name}_knowledge_base"
+    memory_table_name = f"{account_name}_memory"
 
     knowledge_base = CombinedKnowledgeBase(
         sources=[],
@@ -69,7 +57,7 @@ def get_assistant(
 
     run_id = None
     if not new_run:
-        run_ids = storage.get_all_run_ids(user_id=user_id)
+        run_ids = storage.get_all_run_ids(user_id=str(user_id))
         run_id = run_ids[0] if run_ids else None
 
     # Retrive the assistant configs from the database
@@ -94,7 +82,7 @@ def get_assistant(
     return Assistant(
         # Hardcoded assistant fields
         run_id=run_id,
-        user_id=user_id,
+        user_id=str(user_id),
         llm=get_llm(LLM.OPENAI),
         # Assistant settings
         use_tools=True,
