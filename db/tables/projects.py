@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Optional
 
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
@@ -30,7 +31,9 @@ class Project(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     raw_config: Mapped[Dict] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+        MutableDict.as_mutable(JSONB),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
     )
 
     # Metadata columns
