@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy.orm import Session
 
 from db.tables import Conversation, Message, User
@@ -8,9 +10,9 @@ class MessageRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_message(self, user_id: str, message_body: dict):
+    def create_message(self, user_id: uuid.UUID, message_body: dict):
         # Step 1: Get the user from the database
-        user = self.db.query(User).filter(User.id == int(user_id)).first()
+        user = self.db.query(User).filter(User.id == user_id).first()
 
         # Step 2: If no such user exists, raise an error
         if not user:

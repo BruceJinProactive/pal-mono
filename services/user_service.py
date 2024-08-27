@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy.orm import Session
 
 import db.tables as db
@@ -6,7 +8,7 @@ from db.repositories.user_repository import UserRepository
 
 def get_user(
     db: Session,
-    account_id: str,
+    account_id: uuid.UUID,
     channel_platform: str,
     channel_identifier: str,
     create_new_user: bool = False,
@@ -24,7 +26,7 @@ def get_user(
     if create_new_user:
         new_user = user_repository.create_user(account_id=account_id)
         user_repository.update_user(
-            user_id=str(new_user.id),
+            user_id=new_user.id,
             raw_config={
                 "channel_platform": channel_platform,
                 "channel_identifier": channel_identifier,

@@ -11,6 +11,7 @@ from app.shared import set_page_config
 from db.session import get_db
 from services.admin_service import get_account
 from services.assistant_service import get_assistant
+from services.user_service import get_user
 
 set_page_config()
 
@@ -30,12 +31,22 @@ def get_prd_assistant(
     if not account.projects:
         raise ValueError("No projects found for this account")
 
-    assistant_id = account.projects[0].assistant_id
+    db_user = get_user(
+        db,
+        account_id=account.id,
+        channel_platform="INTERNAL_APP",
+        channel_identifier=user_id,
+        create_new_user=True,
+    )
 
+    if not db_user:
+        raise ValueError("User not found in db")
+
+    assistant_id = account.projects[0].assistant_id
     assistant: Assistant = get_assistant(
         db,
         assistant_id=assistant_id,
-        user_id=user_id,
+        user_id=db_user.id,
         new_run=new_run,
     )
     return assistant
