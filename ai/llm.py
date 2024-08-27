@@ -17,7 +17,7 @@ class LLM(Enum):
 def get_llm(llm_name: LLM):
     if llm_name == LLM.OPENAI:
         return OpenAIChat(
-            model=ai_settings.gpt_3_5,
+            model=ai_settings.gpt_4o_2024_08_06,
             max_tokens=4096,
             temperature=0.9,
         )

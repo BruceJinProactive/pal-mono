@@ -66,3 +66,50 @@ def get_assistant_data(db: Session, account_name: str):
     for run in all_runs:
         rows.append(run)
     return rows
+
+
+def get_inbox_messages():
+    """This is a placeholder implementation"""
+    chat_data = [
+        {
+            "chatId": 36478232,
+            "lastMessage": "A professional dreads deadlines",
+            "numMessages": 85,
+        },
+        {
+            "chatId": 47593205,
+            "lastMessage": "A parent proud at graduation",
+            "numMessages": 164,
+        },
+        {
+            "chatId": 75892945,
+            "lastMessage": "An artist inspired by sunset",
+            "numMessages": 1100,
+        },
+        {
+            "chatId": 46284652,
+            "lastMessage": "A teacher satisfied by a lesson",
+            "numMessages": 19,
+        },
+        {
+            "chatId": 18402851,
+            "lastMessage": "A pet owner saddened by loss",
+            "numMessages": 436,
+        },
+    ]
+    return chat_data
+
+
+def get_knowledge_base():
+    knowledge_base_json = {
+        "profile": {
+            "company": "Proactive AI Lab",
+            "email": "agent@proactiveailab.com",
+            "phone": "555-555-5555",
+            "website": "https://www.proactiveailab.com",
+        },
+        "branding": "Our AI agent is designed to emulate a real person, utilizing a new generation of AI systems with multi-agents and multimodal-to-action models, enhancing its high EQ language capabilities.",
+        "prompt": "You're name is Anna and you are a highly emotionally intelligent executive assistant.\n\n - You have expertise in coding.\n - You have expertise in customer service.\n - You have expertise in sales and marketing.",
+        "terms_&_faq": "Once upon a time, in a bustling tech hub, a team of passionate innovators embarked on a remarkable journey to revolutionize customer interactions. Their vision? To create an advanced AI system equipped with multi-agents and multimodal-to-action models, complemented by a cutting-edge high EQ language model. With unwavering determination, they set out to empower businesses worldwide, enabling them to provide unparalleled levels of personalized customer experiences, seamless automation, and unmatched operational efficiency. This is the inspiring founder story behind the groundbreaking technology that is reshaping the future of customer engagement.",
+    }
+    return knowledge_base_json

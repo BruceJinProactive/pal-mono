@@ -6,6 +6,19 @@ from typing import Any, Dict
 from pydantic import BaseModel, Field, validator
 
 
+class ChatRequestBody(BaseModel):
+    """
+    ChatRequestBody encapsulates the payload of a chat request originating from the Admin-Console.
+    This model is required for processing and handling chat requests submitted via the Admin-Console.
+
+
+    Attributes:
+        message (str): The message content of the chat request.
+    """
+
+    message: str
+
+
 class TextObject(BaseModel):
     body: str = Field(..., max_length=4096)
 
@@ -16,13 +29,15 @@ class AuthorType(str, Enum):
 
 
 class ChannelPlatform(str, Enum):
-    WHATSAPP = "whatsapp"
+    ADMIN_CONSOLE = "admin_console"
     SMS = "sms"
+    WHATSAPP = "whatsapp"
 
 
 class MessagingBroker(str, Enum):
-    TWILIO = "twilio"
     SENDBLUE = "sendblue"
+    TWILIO = "twilio"
+    WEB = "web"
 
 
 class Message(BaseModel):

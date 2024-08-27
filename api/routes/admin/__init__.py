@@ -1,13 +1,33 @@
-import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from requests import Session
 
+from api.models.message import (
+    AuthorType,
+    ChannelPlatform,
+    ChatRequestBody,
+    Message,
+    MessagingBroker,
+    TextObject,
+)
 from api.routes.admin.auth import parse_admin_console_id_token
 from api.routes.endpoints import endpoints
 from db.session import get_db
-from services.admin_service import create_account_with_defaults, get_assistant_data
+from services.admin_service import (
+    create_account_with_defaults,
+    get_account,
+    get_inbox_messages,
+    get_knowledge_base,
+)
+from services.conversation_service import get_conversations_by_user
+from services.message_service.message_service import (
+    get_chat_response,
+    get_messages_by_conversation,
+)
+from services.user_service import get_user
+from utils.log import logger
 
 ######################################################
 ## Router for Admin Console
@@ -44,138 +64,167 @@ def create_account(request: Request):
 
 @admin_router.get("/account")
 def read_account(request: Request):
-    decrypted_id_token = parse_admin_console_id_token(
-        request.headers.get("Authorization")
-    )
+    try:
+        decrypted_id_token = parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
     json_compatible_item_data = jsonable_encoder(decrypted_id_token)
     return JSONResponse(content=json_compatible_item_data)
 
 
 @admin_router.get("/inbox")
 def read_inbox(request: Request):
-    # TODO: @ilbum fast-follow with decoupling auth from streamlit, add authorization
+    try:
+        _ = parse_admin_console_id_token(request.headers.get("Authorization"))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
     # 1. Check admin level
     # 2. Check organization
     # 3. Get inbox messages
-    chat_data = [
-        {
-            "chatId": 36478232,
-            "lastMessage": "A professional dreads deadlines",
-            "numMessages": 85,
-        },
-        {
-            "chatId": 47593205,
-            "lastMessage": "A parent proud at graduation",
-            "numMessages": 164,
-        },
-        {
-            "chatId": 75892945,
-            "lastMessage": "An artist inspired by sunset",
-            "numMessages": 1100,
-        },
-        {
-            "chatId": 46284652,
-            "lastMessage": "A teacher satisfied by a lesson",
-            "numMessages": 19,
-        },
-        {
-            "chatId": 18402851,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-        {
-            "chatId": 18402852,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-        {
-            "chatId": 18402853,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-        {
-            "chatId": 18402854,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-        {
-            "chatId": 18402855,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-        {
-            "chatId": 18402856,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-        {
-            "chatId": 18402857,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-        {
-            "chatId": 18402858,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-    ]
+    chat_data = get_inbox_messages()
     return JSONResponse(content=chat_data)
 
 
 @admin_router.get("/chat")
 def read_chat(request: Request, db: Session = Depends(get_db)):
-    # TODO: @ilbum fast-follow with decoupling auth from streamlit
     try:
         decrypted_id_token = parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
-    except jwt.ExpiredSignatureError:
+    except ValueError as e:
         raise HTTPException(
             status_code=401,
-            detail="Token is expired",
-            headers={"Content-Type": "application/json"},
-        )
-    except jwt.InvalidAudienceError:
-        raise HTTPException(
-            status_code=401,
-            detail="Token was not issued for this audience",
-            headers={"Content-Type": "application/json"},
-        )
-    except jwt.PyJWTError as e:
-        raise HTTPException(
-            status_code=401,
-            detail=f"Token verification failed: {e}",
-            headers={"Content-Type": "application/json"},
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized",
+            detail=str(e),
             headers={"Content-Type": "application/json"},
         )
 
-    unformatted_assistant_data = get_assistant_data(
-        db, decrypted_id_token["custom:account_name"]
+    # Step 1: Get the account information from the ID Token
+    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+
+    if account is None:
+        raise ValueError("Account not found")
+
+    # Step 2: Get the user from the account id and cognito:username (latter of which is stored in raw_config)
+    user = get_user(
+        db=db,
+        account_id=str(account.id),
+        channel_platform=ChannelPlatform.ADMIN_CONSOLE,
+        channel_identifier=decrypted_id_token["cognito:username"],
+        create_new_user=True,
     )
 
-    return unformatted_assistant_data[0].memory["chat_history"]
+    if user is None:
+        raise ValueError("User not found")
+
+    logger.info(f"User: {str(user.id)}")
+    logger.info(f"cognito:username: {decrypted_id_token['cognito:username']}")
+
+    # Step 3: Get all conversations associated with the admin
+    conversations = get_conversations_by_user(
+        db=db, user_id=str(user.id), create_new_conversation=True
+    )
+
+    if not conversations:
+        raise ValueError("No conversations found")
+
+    """ 
+    We assume that an Admin Console admin only has one conversation.
+    If we want an admin to be able to create more than one conversation,
+    then we will need to update the DB schema.
+    """
+    messages = get_messages_by_conversation(
+        db=db, conversation_id=str(conversations[0].id)
+    )
+
+    logger.info(f"# Messages: {len(messages)}")
+    return messages
+
+
+@admin_router.post("/chat")
+async def respond_to_message(request: Request, db: Session = Depends(get_db)):
+    try:
+        decrypted_id_token = parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    body = await request.json()
+    try:
+        body_data = ChatRequestBody(**body)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,  # Unprocessable Entity
+            detail=f"Validation error: {e.errors()}\n\nInvalid request body: {body}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unexpected error: {e}\n\nInvalid request body: {body}",
+        )
+
+    # Steps largely the same as the GET endpoint
+    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+
+    if account is None:
+        raise ValueError("Account not found")
+
+    user = get_user(
+        db=db,
+        account_id=str(account.id),
+        channel_platform=ChannelPlatform.ADMIN_CONSOLE,
+        channel_identifier=decrypted_id_token["cognito:username"],
+        create_new_user=True,
+    )
+
+    if user is None:
+        raise ValueError("User not found")
+
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_channel_identifier=decrypted_id_token["cognito:username"],
+        recipient_channel_identifier=decrypted_id_token["custom:account_name"],
+        channel_platform=ChannelPlatform.ADMIN_CONSOLE,
+        messaging_broker=MessagingBroker.WEB,
+        text=TextObject(body=body_data.message),
+    )
+
+    """ 
+    get_chat_response uses the first conversation associated with the Message.
+    Since we assume that an admin console will only ever have one conversation,
+    get_chat_response stores the message and the response to the correct conversation.
+    """
+    chat_response = get_chat_response(db, message)
+    return JSONResponse(content=jsonable_encoder(chat_response))
 
 
 @admin_router.get("/knowledge")
 def read_knowledge(request: Request):
-    # TODO: @ilbum fast-follow with decoupling auth from streamlit
+    try:
+        _ = parse_admin_console_id_token(request.headers.get("Authorization"))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
 
-    knowledge_base_json = {
-        "profile": {
-            "company": "Proactive AI Lab",
-            "email": "agent@proactiveailab.com",
-            "phone": "555-555-5555",
-            "website": "https://www.proactiveailab.com",
-        },
-        "branding": "Our AI agent is designed to emulate a real person, utilizing a new generation of AI systems with multi-agents and multimodal-to-action models, enhancing its high EQ language capabilities.",
-        "prompt": "You're name is Anna and you are a highly emotionally intelligent executive assistant.\n\n - You have expertise in coding.\n - You have expertise in customer service.\n - You have expertise in sales and marketing.",
-        "terms_&_faq": "Once upon a time, in a bustling tech hub, a team of passionate innovators embarked on a remarkable journey to revolutionize customer interactions. Their vision? To create an advanced AI system equipped with multi-agents and multimodal-to-action models, complemented by a cutting-edge high EQ language model. With unwavering determination, they set out to empower businesses worldwide, enabling them to provide unparalleled levels of personalized customer experiences, seamless automation, and unmatched operational efficiency. This is the inspiring founder story behind the groundbreaking technology that is reshaping the future of customer engagement.",
-    }
+    knowledge_base_json = get_knowledge_base()
 
     return knowledge_base_json
 
@@ -185,33 +234,14 @@ def read_knowledge(request: Request):
 #   Example: Max's Coffee's customers.
 @admin_router.get("/users")
 def read_users(request: Request):
-    # TODO: @ilbum fast-follow with decoupling auth from streamlit
     try:
         decrypted_id_token = parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
-    except jwt.ExpiredSignatureError:
+    except ValueError as e:
         raise HTTPException(
             status_code=401,
-            detail="Token is expired",
-            headers={"Content-Type": "application/json"},
-        )
-    except jwt.InvalidAudienceError:
-        raise HTTPException(
-            status_code=401,
-            detail="Token was not issued for this audience",
-            headers={"Content-Type": "application/json"},
-        )
-    except jwt.PyJWTError as e:
-        raise HTTPException(
-            status_code=401,
-            detail=f"Token verification failed: {e}",
-            headers={"Content-Type": "application/json"},
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized",
+            detail=str(e),
             headers={"Content-Type": "application/json"},
         )
 
@@ -221,33 +251,14 @@ def read_users(request: Request):
 
 @admin_router.get("/campaigns")
 def read_campaigns(request: Request):
-    # TODO: @ilbum fast-follow with decoupling auth from streamlit
     try:
         decrypted_id_token = parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
-    except jwt.ExpiredSignatureError:
+    except ValueError as e:
         raise HTTPException(
             status_code=401,
-            detail="Token is expired",
-            headers={"Content-Type": "application/json"},
-        )
-    except jwt.InvalidAudienceError:
-        raise HTTPException(
-            status_code=401,
-            detail="Token was not issued for this audience",
-            headers={"Content-Type": "application/json"},
-        )
-    except jwt.PyJWTError as e:
-        raise HTTPException(
-            status_code=401,
-            detail=f"Token verification failed: {e}",
-            headers={"Content-Type": "application/json"},
-        )
-    except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized",
+            detail=str(e),
             headers={"Content-Type": "application/json"},
         )
 

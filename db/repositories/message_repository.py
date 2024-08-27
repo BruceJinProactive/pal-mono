@@ -37,3 +37,16 @@ class MessageRepository:
         self.db.refresh(message)  # Refresh to get the new message ID
 
         return message
+
+    def get_messages_by_conversation(self, conversation_id: str):
+        messages = (
+            self.db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .order_by(
+                # filter by updated_at ascending so messages are in chronological order
+                Message.updated_at.asc()
+            )
+            .all()
+        )
+
+        return messages
