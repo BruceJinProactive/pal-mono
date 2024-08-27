@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -41,4 +41,20 @@ class AssistantRepository:
         except SQLAlchemyError as e:
             self.db.rollback()
             logger.error(f"Error creating assistant: {e}")
+            raise
+
+    def update_assistant_config(
+        self, assistant_id: uuid.UUID, config: Dict[str, Any]
+    ) -> None:
+        """Update an assistant's config in the database."""
+        try:
+            assistant = self.get_assistant(assistant_id)
+            if assistant is None:
+                raise ValueError(f"Assistant {assistant_id} not found")
+
+            assistant.raw_config.update(config)
+            self.db.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.db.rollback()
+            logger.error(f"Error setting assistant config: {e}")
             raise

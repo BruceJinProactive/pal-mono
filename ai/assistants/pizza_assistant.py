@@ -267,7 +267,7 @@ def get_pizza_assistant(
         tools=[
             ordering_tools,
             pizza_my_heart_tools,
-        ], #maximum 128 tools
+        ],  # maximum 128 tools
         use_tools=True,
         show_tool_calls=debug_mode,  # show tool calls in debug mode. Set to True for dev purposes (see function calls)
         search_knowledge=True,
