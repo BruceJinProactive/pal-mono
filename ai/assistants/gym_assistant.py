@@ -120,6 +120,8 @@ def create_gym_assistant(
         assistant_name = "gym_assistant"
     elif llm_name == LLM.MODAL:
         assistant_name = "mindzero_assistant"
+    elif llm_name == LLM.ROUTER:
+        assistant_name = "mindzero_assistant"
 
     gym_assistant_storage = PgAssistantStorage(
         db_url=db_url,
@@ -273,7 +275,7 @@ def get_gym_assistant(
     debug_mode: bool = False,
 ) -> Assistant:
 
-    return create_gym_assistant(LLM.OPENAI, user_id, new_run, debug_mode)
+    return create_gym_assistant(LLM.ROUTER, user_id, new_run, debug_mode)
 
 
 def get_mindzero_assistant(
@@ -282,4 +284,4 @@ def get_mindzero_assistant(
     debug_mode: bool = False,
 ) -> Assistant:
 
-    return create_gym_assistant(LLM.MODAL, user_id, new_run, debug_mode)
+    return create_gym_assistant(LLM.ROUTER, user_id, new_run, debug_mode)
