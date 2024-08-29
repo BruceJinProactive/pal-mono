@@ -40,7 +40,7 @@ class MessagingBroker(str, Enum):
     WEB = "web"
 
 
-class ModelData(BaseModel):
+class Extras(BaseModel):
     escalated: bool = Field(default=False)
 
 
@@ -55,7 +55,7 @@ class Message(BaseModel):
     text: TextObject
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    model_data: ModelData
+    extras: Extras
 
     @field_validator("type")
     def validate_type(cls, v):
@@ -75,7 +75,7 @@ class Message(BaseModel):
             "text": self.text.dict(),
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
-            "model_data": self.model_data.dict(),
+            "extras": self.extras.dict(),
         }
 
     @classmethod
@@ -88,8 +88,8 @@ class Message(BaseModel):
         if isinstance(data.get("text"), dict):
             data["text"] = TextObject(**data["text"])
 
-        # Convert model_data dict to ModelData
-        if isinstance(data.get("model_data"), dict):
-            data["model_data"] = ModelData(**data["model_data"])
+        # Convert extras dict to Extras
+        if isinstance(data.get("extras"), dict):
+            data["extras"] = Extras(**data["extras"])
 
         return cls(**data)

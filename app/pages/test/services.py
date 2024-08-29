@@ -4,9 +4,9 @@ from streamlit_extras.switch_page_button import switch_page
 from api.models.message import (
     AuthorType,
     ChannelPlatform,
+    Extras,
     Message,
     MessagingBroker,
-    ModelData,
     TextObject,
 )
 from app.auth import user
@@ -51,7 +51,7 @@ def main() -> None:
                 text=TextObject(body=text),
                 channel_platform=ChannelPlatform.SMS,
                 messaging_broker=MessagingBroker.SENDBLUE,
-                model_data=ModelData(),
+                extras=Extras(),
             )
             output_message = get_chat_response(db, input_message)
             st.write(output_message.to_dict())
