@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ChatRequestBody(BaseModel):
@@ -40,6 +40,10 @@ class MessagingBroker(str, Enum):
     WEB = "web"
 
 
+class ModelData(BaseModel):
+    escalated: bool = Field(default=False)
+
+
 class Message(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     author_type: AuthorType
@@ -51,8 +55,9 @@ class Message(BaseModel):
     text: TextObject
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    model_data: ModelData
 
-    @validator("type")
+    @field_validator("type")
     def validate_type(cls, v):
         if v != "text":
             raise ValueError("Currently, only 'text' type is supported")
@@ -70,6 +75,7 @@ class Message(BaseModel):
             "text": self.text.dict(),
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
+            "model_data": self.model_data.dict(),
         }
 
     @classmethod
@@ -81,5 +87,9 @@ class Message(BaseModel):
         # Convert text dict to TextObject
         if isinstance(data.get("text"), dict):
             data["text"] = TextObject(**data["text"])
+
+        # Convert model_data dict to ModelData
+        if isinstance(data.get("model_data"), dict):
+            data["model_data"] = ModelData(**data["model_data"])
 
         return cls(**data)

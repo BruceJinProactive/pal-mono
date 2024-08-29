@@ -13,6 +13,9 @@ st.markdown("---")
 
 def pages():
     home_page = Page("app/Home.py", "Home", "🏠")
+    test_pages = [
+        Page("app/pages/test/services.py", "Services", "🚦"),
+    ]
     console_pages = [
         Page("app/pages/console/Demo.py", "Demo", "💬"),
     ]
@@ -26,6 +29,7 @@ def pages():
     if user.account_name is not None:
         pages.extend(console_pages)
     if user.account_name == "proactiveailab":
+        pages.extend(test_pages)
         pages.extend(pal_internal_pages)
         pages.extend(pal_root_pages)
     show_pages(pages)
