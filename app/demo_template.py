@@ -14,7 +14,6 @@ from ai.tools.adapters.mock_cart import (
     reset_mock_cart,
 )
 from app.auth import user
-from app.shared import user_ui
 from data_access_layer.dal_user_id import get_user_id_for_account_name_user_email
 from utils.log import logger
 
@@ -42,8 +41,6 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
         debug_ui(assistant)
     # Load existing or create new run
     assistant.create_run()
-    # User UI
-    user_ui()
     # Messaging UI
     messaging_ui(assistant)
     # Settings UI

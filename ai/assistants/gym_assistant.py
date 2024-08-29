@@ -274,14 +274,4 @@ def get_gym_assistant(
     new_run: bool = False,
     debug_mode: bool = False,
 ) -> Assistant:
-
-    return create_gym_assistant(LLM.ROUTER, user_id, new_run, debug_mode)
-
-
-def get_mindzero_assistant(
-    user_id: str,
-    new_run: bool = False,
-    debug_mode: bool = False,
-) -> Assistant:
-
     return create_gym_assistant(LLM.ROUTER, user_id, new_run, debug_mode)

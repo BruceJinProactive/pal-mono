@@ -9,7 +9,7 @@ from services.admin_service import create_account_with_defaults
 
 set_page_config()
 
-st.title("Root")
+st.title("[Root] Manage Clients' Accounts")
 
 db = next(get_db())
 

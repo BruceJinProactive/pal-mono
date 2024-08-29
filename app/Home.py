@@ -16,27 +16,19 @@ def pages():
     test_pages = [
         Page("app/pages/test/services.py", "Services", "🚦"),
     ]
-    console_pages = [
+    demo_pages = [
         Page("app/pages/console/Demo.py", "Demo", "💬"),
     ]
-    pal_internal_pages = [
-        Page("app/pages/internal/Account.py", "[Internal]Account", "👤"),
-    ]
-    pal_root_pages = [
-        Page("app/pages/internal/Root.py", "[Root]Root", "⚠️"),
+    root_pages = [
+        Page("app/pages/internal/Account.py", "Account", "👤"),
+        Page("app/pages/internal/Root.py", "Root", "⚠️"),
     ]
     pages = [home_page]
     if user.account_name is not None:
-        pages.extend(console_pages)
-    if user.account_name == "proactiveailab":
         pages.extend(test_pages)
-        pages.extend(pal_internal_pages)
-        pages.extend(pal_root_pages)
+        pages.extend(demo_pages)
+        pages.extend(root_pages)
     show_pages(pages)
-
-
-def dashboard():
-    st.metric("Active Users", 1, 1)
 
 
 authenticator = CognitoAuthenticator(
@@ -60,5 +52,3 @@ else:
         authenticator.logout()
         st.experimental_rerun()
     footer_ui()
-
-    dashboard()
