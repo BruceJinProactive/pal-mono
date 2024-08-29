@@ -18,7 +18,9 @@ from data_access_layer.dal_user_id import get_user_id_for_account_name_user_emai
 from utils.log import logger
 
 
-def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
+def demo_ui(
+    get_assistant: Callable[[str, bool], Assistant],
+) -> None:
     user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
@@ -36,9 +38,11 @@ def demo_ui(get_assistant: Callable[[str, bool], Assistant]) -> None:
             new_run=False,
         )
     st.session_state["restart_chat"] = False
+
     # Debug UI
     if user.account_name == "proactiveailab" or user.account_name == "root":
         debug_ui(assistant)
+
     # Load existing or create new run
     assistant.create_run()
     # Messaging UI

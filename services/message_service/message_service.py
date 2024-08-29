@@ -85,7 +85,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         raise ValueError("Assistant ID not found")
 
     if account_name == "proactiveailab":
-        assistant = assistant_service.get_assistant(
+        assistant = assistant_service.get_phi_assistant(
             db=db, assistant_id=assistant_id, user_id=user.id
         )
     elif account_name == "mindzero":

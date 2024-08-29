@@ -1,6 +1,8 @@
 import uuid
+from typing import Any, Dict, Optional
 
-from phi.assistant import Assistant, AssistantMemory
+from phi.assistant import Assistant as PhiAssistant
+from phi.assistant import AssistantMemory
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.memory.db.postgres import PgMemoryDb
@@ -12,22 +14,23 @@ from ai.llm import LLM, get_llm
 from ai.settings import ai_settings
 from db.repositories.assistant_repository import AssistantRepository
 from db.session import db_url
+from db.tables import Assistant
 
 
-def get_assistant(
+def get_phi_assistant(
     db: Session,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
     new_run: bool = False,
-) -> Assistant:
+) -> PhiAssistant:
     # Retrieve the assistant from the database
     assistant_repository = AssistantRepository(db)
-    db_assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
+    assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
 
     # Set up the knowledge base, storage, and memory
-    if db_assistant is None:
+    if assistant is None:
         raise ValueError("Invalid assistant_id")
-    account_name = db_assistant.account.name
+    account_name = assistant.account.name
     storage_table_name = f"{account_name}_storage"
     knowledge_base_table_name = f"{account_name}_knowledge_base"
     memory_table_name = f"{account_name}_memory"
@@ -61,7 +64,7 @@ def get_assistant(
         run_id = run_ids[0] if run_ids else None
 
     # Retrive the assistant configs from the database
-    # raw_config = db_assistant.raw_config
+    # raw_config = assistant.raw_config
     # TODO: Save the assistant configs in the database
     raw_config = {
         "name": "Pal Test Assistant",
@@ -79,7 +82,7 @@ def get_assistant(
         "extra_instructions", ["Keep your answers under 5 sentences."]
     )
 
-    return Assistant(
+    return PhiAssistant(
         # Hardcoded assistant fields
         run_id=run_id,
         user_id=str(user_id),
@@ -102,4 +105,29 @@ def get_assistant(
         instructions=instructions,
         extra_instructions=extra_instructions,
         assistant_data={"assistant_type": "autonomous"},
+    )
+
+
+def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
+    # Retrieve the assistant from the database
+    assistant_repository = AssistantRepository(db)
+    assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
+    return assistant
+
+
+def update_assistant_config(
+    db: Session, assistant_id: uuid.UUID, config: Dict[str, Any]
+) -> None:
+    assistant_repository = AssistantRepository(db)
+    assistant_repository.update_assistant_config(
+        assistant_id=assistant_id, config=config
+    )
+
+
+def replace_assistant_config(
+    db: Session, assistant_id: uuid.UUID, config: Dict[str, Any]
+) -> None:
+    assistant_repository = AssistantRepository(db)
+    assistant_repository.replace_assistant_config(
+        assistant_id=assistant_id, config=config
     )

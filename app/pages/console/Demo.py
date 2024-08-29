@@ -10,7 +10,7 @@ from app.auth import user
 from app.shared import set_page_config
 from db.session import get_db
 from services.admin_service import get_account
-from services.assistant_service import get_assistant
+from services.assistant_service import get_phi_assistant
 from services.user_service import get_user
 
 set_page_config()
@@ -43,7 +43,7 @@ def get_prd_assistant(
         raise ValueError("User not found in db")
 
     assistant_id = account.projects[0].assistant_id
-    assistant: Assistant = get_assistant(
+    assistant: Assistant = get_phi_assistant(
         db,
         assistant_id=assistant_id,
         user_id=db_user.id,
@@ -75,8 +75,6 @@ if user.is_logged_in:
         if get_demo_assistant is None:
             get_demo_assistant = get_prd_assistant
 
-    demo_ui(
-        get_demo_assistant,
-    )
+    demo_ui(get_demo_assistant)
 else:
     switch_page("home")
