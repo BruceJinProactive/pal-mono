@@ -30,7 +30,7 @@ phi init
 phi ws setup
 ```
 
-5. Duplicate folder `workspace/example_secrets` and rename it to `workspace/secrets`. Setup `workspace/secrets/dev_app_secrets.yml` to add keys and secrets in your environment variable.
+5. Duplicate folder `workspace/example_secrets` and rename it to `workspace/secrets`. Setup `workspace/secrets/dev_app_secrets.yml` to add secrets in your environment variable. Please reach out to Kelvin to get these secrets.
 
 6. Build and run both API and web app locally
 
@@ -69,30 +69,18 @@ Run the following command to validate your code locally:
 
 ### Environments
 
-The CI/CD pipeline is divided into 4 stages:
+The CI/CD pipeline consists of 4 environments:
 
-- dev(your local machine) - The environment for your local development.
+- dev(local machine) - The environment for your local development.
 - lat(latest) - The environment automatically built on the HEAD of `main` branch.
 - stg(staging) - The environment for internal testing and validation.
 - prd(production) - The environment to serve live customer traffic.
 
-### Releasing for `lat`:
+### Endpoints
 
-[TODO]
-
-### Releasing from `stg`:
-
-[TODO]
-
-### Releasing from `prd`:
-
-[TODO]
-
-## Endpoints
-
-| stages | app                                                                | api (Load Balancer)                                                    | api (API Gateway)                                             |
-| ------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
-| dev    | http://localhost:8501/                                             | http://localhost:8000/docs                                             | -                                                             |
-| lat    | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/latest |
-| stg    | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stging |
-| prd    | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/docs  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/api    |
+| stages | app                                                                | api (Load Balancer)                                                    | api (API Gateway)                                               |
+| ------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
+| dev    | http://localhost:8501/                                             | http://localhost:8000/docs                                             | -                                                               |
+| lat    | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat/docs |
+| stg    | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg/docs |
+| prd    | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/docs  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/prd/docs |
