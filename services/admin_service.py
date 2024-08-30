@@ -1,11 +1,19 @@
+import uuid
+from typing import List
+
 from phi.assistant.run import AssistantRun
 from phi.storage.assistant.postgres import PgAssistantStorage
 from sqlalchemy.orm import Session
 
-from db.repositories.account_repository import AccountRepository
-from db.repositories.assistant_repository import AssistantRepository
-from db.repositories.project_repository import ProjectRepository
+from db.repositories.conversation_repository import ConversationRepository
+from db.repositories.message_repository import MessageRepository
+from db.repositories.user_repository import UserRepository
 from db.settings import db_settings
+from db.tables.messages import Message
+from services.account_service import get_account
+from services.conversation_service import get_conversations_by_users
+from services.message_service.message_service import get_messages_by_conversation
+from services.user_service import get_users_by_account
 
 
 class Row:
@@ -23,30 +31,6 @@ class Row:
             "memories": str(self.memories),
             "chat_history": len(self.chat_history),
         }
-
-
-def get_account(db: Session, account_name: str):
-    account_repository = AccountRepository(db)
-    account = account_repository.get_account(account_name=account_name)
-    return account
-
-
-def create_account_with_defaults(db: Session, account_name: str):
-    # Instantiate the repositories
-    account_repository = AccountRepository(db)
-    project_repository = ProjectRepository(db)
-    assistant_repository = AssistantRepository(db)
-
-    # Use the repositories to create the account, project, and assistant
-    account = account_repository.create_account(account_name)
-    assistant = assistant_repository.create_assistant(account_id=account.id)
-    project_repository.create_project(
-        project_name=f"{account_name}-default",
-        account_id=account.id,
-        assistant_id=assistant.id,
-    )
-
-    return account
 
 
 def get_assistant_data(db: Session, account_name: str):
@@ -68,36 +52,77 @@ def get_assistant_data(db: Session, account_name: str):
     return rows
 
 
-def get_inbox_messages():
-    """This is a placeholder implementation"""
-    chat_data = [
-        {
-            "chatId": 36478232,
-            "lastMessage": "A professional dreads deadlines",
-            "numMessages": 85,
-        },
-        {
-            "chatId": 47593205,
-            "lastMessage": "A parent proud at graduation",
-            "numMessages": 164,
-        },
-        {
-            "chatId": 75892945,
-            "lastMessage": "An artist inspired by sunset",
-            "numMessages": 1100,
-        },
-        {
-            "chatId": 46284652,
-            "lastMessage": "A teacher satisfied by a lesson",
-            "numMessages": 19,
-        },
-        {
-            "chatId": 18402851,
-            "lastMessage": "A pet owner saddened by loss",
-            "numMessages": 436,
-        },
-    ]
-    return chat_data
+def get_inbox_conversations(
+    db: Session, account_id: uuid.UUID
+) -> List[tuple[uuid.UUID, uuid.UUID, int, Message]]:
+    # Get users associated with the account
+    users = get_users_by_account(db, account_id=account_id)
+
+    # Get all conversations involving a user with the account id
+    conversations = get_conversations_by_users(
+        db, user_ids=list(map(lambda user: user.id, users))
+    )
+    conversation_user_ids = list(
+        map(lambda conv: (conv.id, conv.user_id), conversations)
+    )
+
+    message_counts: List[int] = []
+    last_messages: List[Message] = []
+
+    message_repository = MessageRepository(db)
+    for id, _ in conversation_user_ids:
+        # Get most recent message for each conversation
+        last_messages.append(message_repository.get_last_message_by_conversation(id))
+
+        # Get most number of messages for each conversation
+        message_counts.append(message_repository.get_message_count_by_conversation(id))
+
+    # return conversations filtered by those with at least one message, and sorted by created_at
+    conversation_previews = sorted(
+        filter(
+            lambda preview: preview[3],
+            zip(
+                [id for id, _ in conversation_user_ids],  # conversation IDs
+                [user_id for _, user_id in conversation_user_ids],  # user IDs,
+                message_counts,
+                last_messages,
+            ),
+        ),
+        key=lambda preview: preview[3].created_at,
+        reverse=True,
+    )
+    return conversation_previews
+
+
+def get_conversation_messages(
+    db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+):
+    conversation_repository = ConversationRepository(db)
+    user_repository = UserRepository(db)
+
+    """
+    First ensure that the requesting account can access this conversation
+    """
+
+    conversation = conversation_repository.get_conversation_by_id(conversation_id)
+
+    if not conversation:
+        raise ValueError(f"No conversation with id {conversation_id}")
+
+    user = user_repository.get_user_by_id(conversation.user_id)
+
+    if not user:
+        raise ValueError(f"No user with id {conversation.user_id}")
+
+    if user.account_id != account_id:
+        raise Exception(">:(")
+
+    # Requesting account matches account associated with conversation
+
+    # Get messages and return
+    messages = get_messages_by_conversation(db, conversation_id=conversation_id)
+
+    return messages
 
 
 def get_knowledge_base():

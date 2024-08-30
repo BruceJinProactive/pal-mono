@@ -1,9 +1,12 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from requests import Session
 
+from api.models.conversation import ConversationPreview
 from api.models.message import (
     AuthorType,
     ChannelPlatform,
@@ -15,10 +18,10 @@ from api.models.message import (
 from api.routes.admin.auth import parse_admin_console_id_token
 from api.routes.endpoints import endpoints
 from db.session import get_db
+from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (
-    create_account_with_defaults,
-    get_account,
-    get_inbox_messages,
+    get_conversation_messages,
+    get_inbox_conversations,
     get_knowledge_base,
 )
 from services.conversation_service import get_conversations_by_user
@@ -44,7 +47,7 @@ admin_router = APIRouter(prefix=endpoints.ADMIN, tags=["Admin"])
 
 
 @admin_router.post("/create_account")
-def create_account(request: Request):
+def create_account(request: Request, db: Session = Depends(get_db)):
     """
     This endpoint is used to create an account in the database.
     Without the account in the database, the rest of the functionality will not work.
@@ -58,7 +61,7 @@ def create_account(request: Request):
     decrypted_id_token = parse_admin_console_id_token(
         request.headers.get("Authorization")
     )
-    create_account_with_defaults(decrypted_id_token["custom:account_name"])
+    create_account_with_defaults(db, decrypted_id_token["custom:account_name"])
     return '{"message": "Account created"}'
 
 
@@ -79,9 +82,55 @@ def read_account(request: Request):
 
 
 @admin_router.get("/inbox")
-def read_inbox(request: Request):
+def read_inbox(request: Request, db: Session = Depends(get_db)):
+    # Validate ID Token
     try:
-        _ = parse_admin_console_id_token(request.headers.get("Authorization"))
+        decrypted_id_token = parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    # Get Account information
+    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+
+    if account is None:
+        raise ValueError("Account not found")
+
+    logger.info(f"Account: {account}")
+
+    inbox = get_inbox_conversations(db, account_id=account.id)
+
+    logger.info(f"Inbox Conversations: {inbox}")
+
+    # Reformat conversations
+    inbox = list(
+        map(
+            lambda conversation: ConversationPreview(
+                id=str(conversation[0]),
+                user_id=str(conversation[1]),
+                num_messages=conversation[2],
+                last_message_text=conversation[3].body.get("text").get("body"),
+            ),
+            inbox,
+        )
+    )
+
+    return JSONResponse(content=jsonable_encoder(inbox))
+
+
+@admin_router.get("/inbox/{conversation_id}")
+def read_conversation(
+    request: Request, conversation_id: uuid.UUID, db: Session = Depends(get_db)
+):
+    # Validate ID Token
+    try:
+        decrypted_id_token = parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=401,
@@ -89,11 +138,13 @@ def read_inbox(request: Request):
             headers={"Content-Type": "application/json"},
         )
 
-    # 1. Check admin level
-    # 2. Check organization
-    # 3. Get inbox messages
-    chat_data = get_inbox_messages()
-    return JSONResponse(content=chat_data)
+    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+
+    if account is None:
+        raise ValueError("Account not found")
+
+    messages = get_conversation_messages(db, account.id, conversation_id)
+    return JSONResponse(content=jsonable_encoder(messages))
 
 
 @admin_router.get("/chat")
@@ -118,7 +169,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     # Step 2: Get the user from the account id and cognito:username (latter of which is stored in raw_config)
     user = get_user(
         db=db,
-        account_id=str(account.id),
+        account_id=account.id,
         channel_platform=ChannelPlatform.ADMIN_CONSOLE,
         channel_identifier=decrypted_id_token["cognito:username"],
         create_new_user=True,
@@ -127,12 +178,12 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     if user is None:
         raise ValueError("User not found")
 
-    logger.info(f"User: {str(user.id)}")
+    logger.info(f"User: {user.id}")
     logger.info(f"cognito:username: {decrypted_id_token['cognito:username']}")
 
     # Step 3: Get all conversations associated with the admin
     conversations = get_conversations_by_user(
-        db=db, user_id=str(user.id), create_new_conversation=True
+        db=db, user_id=user.id, create_new_conversation=True
     )
 
     if not conversations:
@@ -143,9 +194,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     If we want an admin to be able to create more than one conversation,
     then we will need to update the DB schema.
     """
-    messages = get_messages_by_conversation(
-        db=db, conversation_id=str(conversations[0].id)
-    )
+    messages = get_messages_by_conversation(db=db, conversation_id=conversations[0].id)
 
     logger.info(f"# Messages: {len(messages)}")
     return messages
@@ -186,7 +235,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
 
     user = get_user(
         db=db,
-        account_id=str(account.id),
+        account_id=account.id,
         channel_platform=ChannelPlatform.ADMIN_CONSOLE,
         channel_identifier=decrypted_id_token["cognito:username"],
         create_new_user=True,
@@ -202,6 +251,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
         channel_platform=ChannelPlatform.ADMIN_CONSOLE,
         messaging_broker=MessagingBroker.WEB,
         text=TextObject(body=body_data.message),
+        extras={},
     )
 
     """ 

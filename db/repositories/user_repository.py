@@ -1,9 +1,11 @@
 import uuid
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.tables import User
+from utils.log import logger
 
 
 class UserRepository:
@@ -13,6 +15,16 @@ class UserRepository:
 
     def get_users(self, skip: int = 0, limit: int = 100):
         return self.db.query(User).offset(skip).limit(limit).all()
+
+    def get_users_by_account(self, account_id: uuid.UUID):
+        # no argument validation needed
+
+        try:
+            return self.db.query(User).filter(User.account_id == account_id).all()
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving users: {e}")
+            return []
 
     def get_user(
         self, account_id: uuid.UUID, channel_platform: str, channel_identifier: str
@@ -38,6 +50,13 @@ class UserRepository:
         user = query.first()
         return user
 
+    def get_user_by_id(self, user_id: uuid.UUID):
+        query = self.db.query(User).filter(
+            User.id == user_id,
+        )
+        user = query.first()
+        return user
+
     def create_user(self, account_id: uuid.UUID):
         db_user = User(account_id=account_id)
         self.db.add(db_user)
@@ -45,8 +64,6 @@ class UserRepository:
         return db_user
 
     def update_user(self, user_id: uuid.UUID, raw_config: dict):
-        if not user_id:
-            raise ValueError("'user_id' must be provided")
         query = self.db.query(User).filter(User.id == user_id)
         user = query.first()
         if user:

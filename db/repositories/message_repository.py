@@ -38,15 +38,40 @@ class MessageRepository:
 
         return message
 
-    def get_messages_by_conversation(self, conversation_id: str):
+    def get_messages_by_conversation(self, conversation_id: uuid.UUID):
         messages = (
             self.db.query(Message)
             .filter(Message.conversation_id == conversation_id)
             .order_by(
-                # filter by updated_at ascending so messages are in chronological order
-                Message.updated_at.asc()
+                # filter by created_at ascending so messages are in chronological order
+                Message.created_at.asc()
             )
             .all()
         )
 
         return messages
+
+    def get_last_message_by_conversation(self, conversation_id: uuid.UUID):
+        message = (
+            self.db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .order_by(
+                # filter by created_at desc so first message is most recent
+                Message.created_at.desc()
+            )
+            .first()
+        )
+
+        if not message:
+            return None
+
+        return message
+
+    def get_message_count_by_conversation(self, conversation_id: uuid.UUID):
+        message_count = (
+            self.db.query(Message)
+            .filter(Message.conversation_id == conversation_id)
+            .count()
+        )
+
+        return message_count

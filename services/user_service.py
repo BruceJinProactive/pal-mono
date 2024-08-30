@@ -1,4 +1,5 @@
 import uuid
+from typing import List
 
 from sqlalchemy.orm import Session
 
@@ -35,3 +36,13 @@ def get_user(
         return new_user
 
     return None
+
+
+def get_users_by_account(
+    db: Session,
+    account_id: uuid.UUID,
+) -> List[db.User]:
+    user_repository = UserRepository(db)
+    users = user_repository.get_users_by_account(account_id=account_id)
+
+    return users

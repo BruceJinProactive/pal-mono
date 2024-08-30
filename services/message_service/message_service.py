@@ -1,5 +1,7 @@
 import json
 import re
+import uuid
+from typing import List
 
 from sqlalchemy.orm import Session
 
@@ -8,7 +10,7 @@ from ai.assistants.pizza_assistant import get_pizza_assistant
 from api.models.message import AuthorType, Extras, Message, TextObject
 from db.repositories.message_repository import MessageRepository
 from services import assistant_service, user_service
-from services.admin_service import get_account
+from services.account_service import get_account
 
 RECIPIENT_ACCOUNT_MAPPING = {
     "+14244859440": "proactiveailab",
@@ -125,7 +127,9 @@ def get_chat_response(db: Session, message: Message) -> Message:
     return response_message
 
 
-def get_messages_by_conversation(db: Session, conversation_id: str):
+def get_messages_by_conversation(
+    db: Session, conversation_id: uuid.UUID
+) -> List[Message]:
     messages = MessageRepository(db).get_messages_by_conversation(
         conversation_id=conversation_id
     )
