@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -55,7 +55,7 @@ class Message(BaseModel):
     text: TextObject
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    extras: Extras
+    extras: Optional[Extras] = None
 
     @field_validator("type")
     def validate_type(cls, v):
@@ -75,7 +75,7 @@ class Message(BaseModel):
             "text": self.text.dict(),
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
-            "extras": self.extras.dict(),
+            "extras": self.extras.dict() if self.extras is not None else None,
         }
 
     @classmethod
