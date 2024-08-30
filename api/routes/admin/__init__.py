@@ -186,8 +186,8 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
         db=db, user_id=user.id, create_new_conversation=True
     )
 
-    if not conversations:
-        raise ValueError("No conversations found")
+    if not conversations or conversations is None:
+        JSONResponse(content=jsonable_encoder([]))
 
     """ 
     We assume that an Admin Console admin only has one conversation.
@@ -197,7 +197,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     messages = get_messages_by_conversation(db=db, conversation_id=conversations[0].id)
 
     logger.info(f"# Messages: {len(messages)}")
-    return messages
+    return JSONResponse(content=jsonable_encoder(messages))
 
 
 @admin_router.post("/chat")
