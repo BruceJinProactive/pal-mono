@@ -2,6 +2,7 @@ from typing import Callable, List
 
 import streamlit as st
 from phi.assistant import Assistant
+from phi.memory.manager import MemoryManager
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
 from PIL import Image
@@ -38,6 +39,13 @@ def demo_ui(
             new_run=False,
         )
     st.session_state["restart_chat"] = False
+    
+    # Reset memory
+    if st.session_state.get("reset_memory"):
+        if assistant.memory.manager is None:
+            assistant.memory.manager = MemoryManager(user_id=assistant.memory.user_id, db=assistant.memory.db)
+        assistant.memory.manager.clear_memory()
+        st.session_state["reset_memory"] = False
 
     # Debug UI
     if user.account_name == "proactiveailab" or user.account_name == "root":
@@ -135,6 +143,10 @@ def debug_ui(assistant: Assistant):
         st.session_state["restart_chat"] = True
         st.rerun()
 
+    def reset_memory():
+        st.session_state["reset_memory"] = True
+        st.rerun()
+    
     def reset_cart():
         """
         Resets the cart items and order type then reruns
@@ -151,14 +163,17 @@ def debug_ui(assistant: Assistant):
         hard_reset_mock_cart(user_id)
         st.rerun()
 
-    col1, col2, col3 = st.columns([1, 1, 1])
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         if st.button("Restart Chat"):
             restart_chat()
     with col2:
+        if st.button("Reset Memory"):
+            reset_memory()
+    with col3:
         if st.button("Reset Cart"):
             reset_cart()
-    with col3:
+    with col4:
         if st.button("Hard Reset Cart"):
             hard_reset_cart()
 
