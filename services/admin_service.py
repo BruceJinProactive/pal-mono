@@ -12,7 +12,7 @@ from db.settings import db_settings
 from db.tables.messages import Message
 from services.account_service import get_account
 from services.conversation_service import get_conversations_by_users
-from services.message_service.message_service import get_messages_by_conversation
+from services.message_service import get_messages_by_conversation
 from services.user_service import get_users_by_account
 
 

@@ -25,10 +25,7 @@ from services.admin_service import (
     get_knowledge_base,
 )
 from services.conversation_service import get_conversations_by_user
-from services.message_service.message_service import (
-    get_chat_response,
-    get_messages_by_conversation,
-)
+from services.message_service import get_chat_response, get_messages_by_conversation
 from services.user_service import get_user
 from utils.log import logger
 

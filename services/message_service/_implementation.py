@@ -20,31 +20,6 @@ RECIPIENT_ACCOUNT_MAPPING = {
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
-    """
-    Processes an incoming message and generates a response from the appropriate assistant.
-
-    This function performs the following steps:
-    1. Identifies the account based on the recipient's channel identifier.
-    2. Retrieves the account and project information.
-    3. Retrieves or creates a user based on the sender's channel identifier.
-    4. Saves the incoming message to the database.
-    5. Retrieves the appropriate assistant based on the account name.
-    6. Generates a response from the assistant.
-    7. Handles different response types (Iterator, str, BaseModel).
-    8. Creates and returns a new Message object for the response.
-    9. Saves the response message to the database.
-
-    Args:
-        db (Session): The database session.
-        message (Message): The incoming message object.
-
-    Returns:
-        Message: The response message object.
-
-    Raises:
-        ValueError: If any required information (account name, account, projects, user, assistant ID) is not found.
-        ValueError: If the response type from the assistant is unexpected.
-    """
     # Get account with channel identifier (assume channel platform is SMS)
     channel_identifier = message.recipient_channel_identifier
 
