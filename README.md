@@ -32,17 +32,25 @@ phi ws setup
 
 5. Duplicate folder `workspace/example_secrets` and rename it to `workspace/secrets`. Setup `workspace/secrets/dev_app_secrets.yml` to add secrets in your environment variable. Please reach out to Kelvin to get these secrets.
 
-6. Build and run both API and web app locally
+6. [One-time] Uncomment L46: `MIGRATE_DB": ws_settings.dev_db_enabled` in `workspace/dev_resources.py`. This will initialize the database for you locally.
+
+7. Build and run both API and web app locally
 
 ```bash
 phi ws up
+
+phi ws up -f (Force rebuild from scratch)
 ```
 
-7. You can read the API documentation running in your local host http://localhost:8000/docs#/. and the web app running in your local host http://localhost:8501/.
+8. [One-time] Log into the internal app at http://localhost:8501/. Under Root Page, enter account name "proactiveailab" and click "Create Account with Defaults" button. Switch to "Demo" page, you should be able to talk to the agent of "proactiveailab" account.
 
-8. You can install this Visual Studio extension to run the Python Lint check in your IDE while you code: https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff
+## Others
 
-9. You can install this Visual Studio Python Debugger extension to Debug the Python code in your IDE while you code: https://marketplace.visualstudio.com/items?itemName=ms-python.debugpy. We have a launch.json file in the .vscode folder that you can use to debug our cli_playground.py file in your IDE.
+1. You can read the API documentation running in your local host http://localhost:8000/docs#/. and the web app running in your local host http://localhost:8501/.
+
+2. You can install this Visual Studio extension to run the Python Lint check in your IDE while you code: https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff
+
+3. You can install this Visual Studio Python Debugger extension to Debug the Python code in your IDE while you code: https://marketplace.visualstudio.com/items?itemName=ms-python.debugpy. We have a launch.json file in the .vscode folder that you can use to debug our cli_playground.py file in your IDE.
 
 ## Validation
 
