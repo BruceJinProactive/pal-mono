@@ -54,4 +54,4 @@ jobs:
             Build tag: ${{ steps.set_build_tag.outputs.BUILD_TAG }}
         if: always()
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_BUILD }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_LAT }}
