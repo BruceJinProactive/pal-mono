@@ -10,11 +10,8 @@ from api.models.message import (
     TextObject,
 )
 from app.auth import user
-from app.shared import set_page_config
 from db.session import get_db
 from services.message_service import get_chat_response
-
-set_page_config()
 
 st.title("Services")
 

@@ -2,9 +2,9 @@ from typing import Callable, List
 
 import streamlit as st
 from phi.assistant import Assistant
-from phi.memory.manager import MemoryManager
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
+from phi.memory.manager import MemoryManager
 from PIL import Image
 
 from ai.tools.adapters.mock_cart import (
@@ -39,11 +39,13 @@ def demo_ui(
             new_run=False,
         )
     st.session_state["restart_chat"] = False
-    
+
     # Reset memory
     if st.session_state.get("reset_memory"):
         if assistant.memory.manager is None:
-            assistant.memory.manager = MemoryManager(user_id=assistant.memory.user_id, db=assistant.memory.db)
+            assistant.memory.manager = MemoryManager(
+                user_id=assistant.memory.user_id, db=assistant.memory.db
+            )
         assistant.memory.manager.clear_memory()
         st.session_state["reset_memory"] = False
 
@@ -146,7 +148,7 @@ def debug_ui(assistant: Assistant):
     def reset_memory():
         st.session_state["reset_memory"] = True
         st.rerun()
-    
+
     def reset_cart():
         """
         Resets the cart items and order type then reruns

@@ -1,5 +1,4 @@
 import streamlit as st
-from st_pages import Page, show_pages
 from streamlit_cognito_auth import CognitoAuthenticator
 
 from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
@@ -7,28 +6,24 @@ from app.shared import footer_ui, set_page_config, user_ui
 
 set_page_config()
 
-st.title("Welcome to Proactive AI Lab!")
-st.markdown("---")
-
 
 def pages():
-    home_page = Page("app/Home.py", "Home", "🏠")
     test_pages = [
-        Page("app/pages/test/services.py", "Services", "🚦"),
+        st.Page("pages/test/services.py", title="Services", icon="🚦"),
     ]
     demo_pages = [
-        Page("app/pages/console/Demo.py", "Demo", "💬"),
+        st.Page("pages/console/Demo.py", title="Demo", icon="💬"),
     ]
     root_pages = [
-        Page("app/pages/internal/Account.py", "Account", "👤"),
-        Page("app/pages/internal/Root.py", "Root", "⚠️"),
+        st.Page("pages/internal/Account.py", title="Account", icon="👤"),
+        st.Page("pages/internal/Root.py", title="Root", icon="⚠️"),
     ]
-    pages = [home_page]
+    pages = []
     if user.account_name is not None:
         pages.extend(test_pages)
         pages.extend(demo_pages)
         pages.extend(root_pages)
-    show_pages(pages)
+    return pages
 
 
 authenticator = CognitoAuthenticator(
@@ -44,11 +39,12 @@ if not is_logged_in:
 else:
     user.update(authenticator=authenticator)
 
-    pages()
+    pg = st.navigation(pages())
+    pg.run()
 
     user_ui()
     if st.sidebar.button("Logout", "logout_btn"):
         user.logout()
         authenticator.logout()
-        st.experimental_rerun()
+        st.rerun()
     footer_ui()
