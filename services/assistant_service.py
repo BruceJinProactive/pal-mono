@@ -62,19 +62,10 @@ def get_phi_assistant(
     if not new_run:
         run_ids = storage.get_all_run_ids(user_id=str(user_id))
         run_id = run_ids[0] if run_ids else None
-
+    
     # Retrive the assistant configs from the database
-    # raw_config = assistant.raw_config
-    # TODO: Save the assistant configs in the database
-    raw_config = {
-        "name": "Pal Test Assistant",
-        "description": "A conversational assistant that can help you order coffee.",
-        "instructions": [
-            "Tell me what you want to order and I'll help you out.",
-            "I can also provide information about our menu.",
-        ],
-        "extra_instructions": ["Keep your answers under 5 sentences."],
-    }
+    raw_config = assistant.raw_config
+
     name = raw_config.get("name", "")
     descripton = raw_config.get("description", "")
     instructions = raw_config.get("instructions", [])
@@ -86,7 +77,7 @@ def get_phi_assistant(
         # Hardcoded assistant fields
         run_id=run_id,
         user_id=str(user_id),
-        llm=get_llm(LLM.OPENAI),
+        llm=get_llm(LLM.ROUTER),
         # Assistant settings
         use_tools=True,
         show_tool_calls=True,
