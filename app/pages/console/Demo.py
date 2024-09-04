@@ -7,10 +7,13 @@ from ai.assistants.coffee_assistant import get_coffee_assistant
 from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from app.auth import user
+from app.shared import set_page_config
 from db.session import get_db
 from services.admin_service import get_account
 from services.assistant_service import get_phi_assistant
 from services.user_service import get_user
+
+set_page_config()
 
 st.title("Demo")
 

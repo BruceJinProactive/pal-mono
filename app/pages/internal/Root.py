@@ -4,6 +4,7 @@ import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
 from app.auth import user
+from app.shared import set_page_config
 from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.assistant_service import (
@@ -11,6 +12,8 @@ from services.assistant_service import (
     replace_assistant_config,
     update_assistant_config,
 )
+
+set_page_config()
 
 st.title("[Root] Manage Clients' Accounts")
 
