@@ -3,7 +3,6 @@ from demo_template import demo_ui
 from phi.assistant import Assistant
 from streamlit_extras.switch_page_button import switch_page
 
-from ai.assistants.coffee_assistant import get_coffee_assistant
 from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from app.auth import user
@@ -54,7 +53,6 @@ if user.is_logged_in:
     demo_dict = {
         # PRD assistant
         "pal": get_prd_assistant,
-        "coffee": get_coffee_assistant,
         "mindzero": get_gym_assistant,
         "pizzamyheart": get_pizza_assistant,
     }

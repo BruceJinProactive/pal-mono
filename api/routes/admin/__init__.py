@@ -351,7 +351,7 @@ def read_knowledge(request: Request):
 
 # This renders the "Users" page in the Admin Console.
 # This page is used to view all the "consumers" for the "client" (organization).
-#   Example: Max's Coffee's customers.
+#   Example: ABC Coffee's customers.
 @admin_router.get("/users")
 def read_users(request: Request):
     try:
