@@ -106,12 +106,7 @@ class ConversationRepository:
 
         Returns:
             Conversation | None: The created conversation object if successful, or None if an error occurs.
-
-        Raises:
-            ValueError: If 'user_id' is not provided.
         """
-        if not user_id:
-            raise ValueError("'user_id' must be provided")
         try:
             db_conversation = Conversation(user_id=user_id)
             with self.db.begin():

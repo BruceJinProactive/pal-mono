@@ -6,7 +6,6 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from requests import Session
 
-from api.models.conversation import ConversationPreview
 from api.models.message import (
     AuthorType,
     ChannelPlatform,
@@ -80,7 +79,21 @@ def read_account(request: Request):
 
 @admin_router.get("/inbox")
 def read_inbox(request: Request, db: Session = Depends(get_db)):
-    # Validate ID Token
+    """
+    This endpoint allows an Admin to retrieve a list of `ConversationPreview` objects.
+
+    Args:
+        request (Request): The request object containing the headers and other request data.
+        db (Session): The database connection.
+
+    Returns:
+        JSONResponse: A JSON-encoded list of ConversationPreviews.
+
+    Raises:
+        HTTPException: If the ID token is invalid or missing.
+        HTTPException: If the Account associated with the token is not found.
+    """
+
     try:
         decrypted_id_token = parse_admin_console_id_token(
             request.headers.get("Authorization")
@@ -91,30 +104,18 @@ def read_inbox(request: Request, db: Session = Depends(get_db)):
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
-    # Get Account information
+
+    # Get Account from ID Token
     account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
 
     if account is None:
-        raise ValueError("Account not found")
-
-    logger.info(f"Account: {account}")
+        raise HTTPException(
+            status_code=404,
+            detail="Account not found.",
+            headers={"Content-Type": "application/json"},
+        )
 
     inbox = get_inbox_conversations(db, account_id=account.id)
-
-    logger.info(f"Inbox Conversations: {inbox}")
-
-    # Reformat conversations
-    inbox = list(
-        map(
-            lambda conversation: ConversationPreview(
-                id=str(conversation[0]),
-                user_id=str(conversation[1]),
-                num_messages=conversation[2],
-                last_message_text=conversation[3].body.get("text").get("body"),
-            ),
-            inbox,
-        )
-    )
 
     return JSONResponse(content=jsonable_encoder(inbox))
 
@@ -123,6 +124,22 @@ def read_inbox(request: Request, db: Session = Depends(get_db)):
 def read_conversation(
     request: Request, conversation_id: uuid.UUID, db: Session = Depends(get_db)
 ):
+    """
+    This endpoint allows an Admin to retrieve all Messages within a specific Conversation.
+
+    Args:
+        request (Request): The request object containing the headers and other request data.
+        conversation_id (uuid.UUID): The unique identifier of the Conversation requested, as a path param.
+        db (Session): The database connection.
+
+    Returns:
+        JSONResponse: A JSON-encoded list of messages in the specified conversation.
+
+    Raises:
+        HTTPException: If the ID token is invalid or missing.
+        HTTPException: If the Account, User, or Conversation is not found.
+        HTTPException: If the requesting Admin does not have access to the Conversation.
+    """
     # Validate ID Token
     try:
         decrypted_id_token = parse_admin_console_id_token(
@@ -135,17 +152,50 @@ def read_conversation(
             headers={"Content-Type": "application/json"},
         )
 
+    # Get Account from ID Token
     account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
 
     if account is None:
-        raise ValueError("Account not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Account not found.",
+            headers={"Content-Type": "application/json"},
+        )
 
-    messages = get_conversation_messages(db, account.id, conversation_id)
+    try:
+        messages = get_conversation_messages(db, account.id, conversation_id)
+    except ValueError:
+        """
+        Only say "Conversation not found" because if the Admin does not
+        have access to the conversation, they should not know that
+        the conversation exists in the first place.
+        """
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found.",
+            headers={"Content-Type": "application/json"},
+        )
+
     return JSONResponse(content=jsonable_encoder(messages))
 
 
 @admin_router.get("/chat")
 def read_chat(request: Request, db: Session = Depends(get_db)):
+    """
+    This endpoint allows an Admin to retrieve all Messages within the Conversation within
+    the Admin Console chat, which is assumed to be unique.
+
+    Args:
+        request (Request): The request object containing the headers and other request data.
+        db (Session): The database connection.
+
+    Returns:
+        JSONResponse: A JSON-encoded list of Messages.
+
+    Raises:
+        HTTPException: If the ID token is invalid or missing.
+        HTTPException: If the Account or User is not found.
+    """
     try:
         decrypted_id_token = parse_admin_console_id_token(
             request.headers.get("Authorization")
@@ -161,7 +211,11 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
 
     if account is None:
-        raise ValueError("Account not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Account not found.",
+            headers={"Content-Type": "application/json"},
+        )
 
     # Step 2: Get the user from the account id and cognito:username (latter of which is stored in raw_config)
     user = get_user(
@@ -173,16 +227,19 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     )
 
     if user is None:
-        raise ValueError("User not found")
-
-    logger.info(f"User: {user.id}")
-    logger.info(f"cognito:username: {decrypted_id_token['cognito:username']}")
+        raise HTTPException(
+            status_code=404,
+            detail="User not found.",
+            headers={"Content-Type": "application/json"},
+        )
 
     # Step 3: Get all conversations associated with the admin
     conversations = get_conversations_by_user(
         db=db, user_id=user.id, create_new_conversation=True
     )
 
+    # Skip the rest of the steps if there are no conversations
+    # Send an empty list of messages
     if not conversations or conversations is None:
         JSONResponse(content=jsonable_encoder([]))
 
@@ -193,12 +250,27 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     """
     messages = get_messages_by_conversation(db=db, conversation_id=conversations[0].id)
 
-    logger.info(f"# Messages: {len(messages)}")
     return JSONResponse(content=jsonable_encoder(messages))
 
 
 @admin_router.post("/chat")
 async def respond_to_message(request: Request, db: Session = Depends(get_db)):
+    """
+    This endpoint generates a response to a chat message in the Admin Console chat.
+    It stores both the message received and the response in the database.
+
+    Args:
+        request (Request): The request object containing the headers and other request data.
+        db (Session): The database connection.
+
+    Returns:
+        JSONResponse: A JSON-encoded Message.
+
+    Raises:
+        HTTPException: If the ID token is invalid or missing.
+        HTTPException: If the request body is malformed.
+        HTTPException: If the Account or User is not found.
+    """
     try:
         decrypted_id_token = parse_admin_console_id_token(
             request.headers.get("Authorization")
@@ -228,7 +300,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
 
     if account is None:
-        raise ValueError("Account not found")
+        raise HTTPException(status_code=404, detail="Account not found")
 
     user = get_user(
         db=db,
@@ -239,7 +311,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     )
 
     if user is None:
-        raise ValueError("User not found")
+        raise HTTPException(status_code=404, detail="User not found")
 
     message = Message(
         author_type=AuthorType.USER,

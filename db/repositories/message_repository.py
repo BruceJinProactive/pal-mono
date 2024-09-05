@@ -1,8 +1,10 @@
 import uuid
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.tables import Conversation, Message, User
+from utils.log import logger
 
 
 class MessageRepository:
@@ -39,39 +41,84 @@ class MessageRepository:
         return message
 
     def get_messages_by_conversation(self, conversation_id: uuid.UUID):
-        messages = (
-            self.db.query(Message)
-            .filter(Message.conversation_id == conversation_id)
-            .order_by(
-                # filter by created_at ascending so messages are in chronological order
-                Message.created_at.asc()
-            )
-            .all()
-        )
+        """
+        Retrieves all messages associated with a specific conversation id.
+        Sorts them by creation timestamp so that the messages are in chronological order.
 
-        return messages
+        Args:
+            conversation_id (uuid.UUID): The unique identifier for the conversation.
+
+        Returns:
+            List[Message]: A list of messages, empty if an error occurs.
+        """
+        try:
+            messages = (
+                self.db.query(Message)
+                .filter(Message.conversation_id == conversation_id)
+                .order_by(
+                    # filter by created_at ascending so messages are in chronological order
+                    Message.created_at.asc()
+                )
+                .all()
+            )
+
+            return messages
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving last message: {e}")
+            return []
 
     def get_last_message_by_conversation(self, conversation_id: uuid.UUID):
-        message = (
-            self.db.query(Message)
-            .filter(Message.conversation_id == conversation_id)
-            .order_by(
-                # filter by created_at desc so first message is most recent
-                Message.created_at.desc()
-            )
-            .first()
-        )
+        """
+        Retrieves the most recently created message associated with a specific
+        conversation id.
 
-        if not message:
+        Args:
+            conversation_id (uuid.UUID): The unique identifier for the conversation.
+
+        Returns:
+            Message | None: The most recent message, or None of an error occurs.
+        """
+        try:
+            message = (
+                self.db.query(Message)
+                .filter(Message.conversation_id == conversation_id)
+                .order_by(
+                    # filter by created_at desc so first message is most recent
+                    Message.created_at.desc()
+                )
+                .first()
+            )
+
+            if not message:
+                return None
+
+            return message
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving last message: {e}")
             return None
 
-        return message
-
     def get_message_count_by_conversation(self, conversation_id: uuid.UUID):
-        message_count = (
-            self.db.query(Message)
-            .filter(Message.conversation_id == conversation_id)
-            .count()
-        )
+        """
+        Retrieves the number of messages associated with a specific
+        conversation id.
 
-        return message_count
+        Args:
+            conversation_id (uuid.UUID): The unique identifier for the conversation.
+
+        Returns:
+            int: The number of messages, 0 if an error occurs.
+        """
+        try:
+            message_count = (
+                self.db.query(Message)
+                .filter(Message.conversation_id == conversation_id)
+                .count()
+            )
+
+            return message_count
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving message count: {e}")
+            return 0

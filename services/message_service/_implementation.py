@@ -105,6 +105,18 @@ def get_chat_response(db: Session, message: Message) -> Message:
 def get_messages_by_conversation(
     db: Session, conversation_id: uuid.UUID
 ) -> List[Message]:
+    """
+    Retrieves all Messages for a given Conversation.
+
+    This function queries the database to fetch all Messages associated with the specified Conversation ID.
+
+    Args:
+        db (Session): The database connection.
+        conversation_id (uuid.UUID): The unique identifier of the Conversation for which Messages are being retrieved.
+
+    Returns:
+        List[Message]: A list of Message objects representing the messages in the specified Conversation.
+    """
     messages = MessageRepository(db).get_messages_by_conversation(
         conversation_id=conversation_id
     )
