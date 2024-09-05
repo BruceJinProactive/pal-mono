@@ -110,7 +110,7 @@ def read_inbox(request: Request, db: Session = Depends(get_db)):
 
     if account is None:
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail="Account not found.",
             headers={"Content-Type": "application/json"},
         )
@@ -157,7 +157,7 @@ def read_conversation(
 
     if account is None:
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail="Account not found.",
             headers={"Content-Type": "application/json"},
         )
@@ -212,7 +212,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
 
     if account is None:
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail="Account not found.",
             headers={"Content-Type": "application/json"},
         )
@@ -282,6 +282,11 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
             headers={"Content-Type": "application/json"},
         )
 
+    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+
+    if account is None:
+        raise HTTPException(status_code=500, detail="Account not found")
+
     body = await request.json()
     try:
         body_data = ChatRequestBody(**body)
@@ -297,10 +302,6 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
         )
 
     # Steps largely the same as the GET endpoint
-    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
-
-    if account is None:
-        raise HTTPException(status_code=404, detail="Account not found")
 
     user = get_user(
         db=db,
