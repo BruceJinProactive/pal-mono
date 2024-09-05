@@ -135,6 +135,8 @@ def account_picker_ui():
         account_name = st.text_input("Enter Account Name")
         if st.button("Get Account"):
             st.session_state["account_name"] = account_name
+            st.rerun()  # rerun script
+
         if st.button("Create Account with Defaults"):
             account = create_account_with_defaults(db=db, account_name=account_name)
             st.write(account)

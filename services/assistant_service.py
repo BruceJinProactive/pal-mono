@@ -62,7 +62,7 @@ def get_phi_assistant(
     if not new_run:
         run_ids = storage.get_all_run_ids(user_id=str(user_id))
         run_id = run_ids[0] if run_ids else None
-    
+
     # Retrive the assistant configs from the database
     raw_config = assistant.raw_config
 
