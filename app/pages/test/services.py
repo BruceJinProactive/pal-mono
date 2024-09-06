@@ -1,4 +1,7 @@
+import uuid
+
 import streamlit as st
+from sqlalchemy.exc import IntegrityError
 from streamlit_extras.switch_page_button import switch_page
 
 from api.models.message import (
@@ -11,14 +14,16 @@ from api.models.message import (
 )
 from app.auth import user
 from db.session import get_db
+from services.account_service import create_account_with_defaults, get_account
+from services.admin_service import get_conversation_messages, get_inbox_conversations
 from services.message_service import get_chat_response
 
 st.title("Services")
 
 db = next(get_db())
 
-message_service_tab, assistant_service_tab = st.tabs(
-    ["Message Service", "Assistant Service"]
+message_service_tab, assistant_service_tab, admin_service_tab = st.tabs(
+    ["Message Service", "Assistant Service", "Admin Service"]
 )
 
 
@@ -55,6 +60,90 @@ def main() -> None:
 
     with assistant_service_tab:
         st.write("Assistant Service")
+    with admin_service_tab:
+        st.write("### get_inbox_conversations")
+
+        account_names = ["proactiveailab", "mindzero", "pizzamyheart"]
+        accounts = []
+
+        for name in account_names:
+            try:
+                accounts.append(create_account_with_defaults(db, name))
+            except IntegrityError:  # account already exists
+                account = get_account(db, name)
+
+                if not account:
+                    continue
+
+                accounts.append(account)
+
+        selected_account = st.selectbox(
+            "Select Accounts",
+            [f"{account.id} ({account.name})" for account in accounts],
+            key="account_select",
+        )
+
+        # Streamlit reruns the entire script every time an interaction happens (button click), and temporary variables get reset.
+        # To address the issue effectively, we refine the use of st.session_state to ensure that all relevant data is retained across reruns,
+        # and update the UI controls only when necessary.
+        # Initialize session state variables if not already present
+
+        if "loaded_conversations" not in st.session_state:
+            st.session_state.loaded_conversations = False
+
+        if "conversations" not in st.session_state:
+            st.session_state.conversations = []
+
+        if "selected_conversation" not in st.session_state:
+            st.session_state.selected_conversation = None
+
+        # Button to load inbox conversations
+        if st.button("Get Inbox Conversations"):
+            if selected_account:
+                account_id = selected_account.split()[0]
+                st.session_state.conversations = get_inbox_conversations(
+                    db, uuid.UUID(account_id)
+                )
+                st.session_state.loaded_conversations = (
+                    True  # Set flag to True after loading
+                )
+                st.session_state.selected_conversation = (
+                    None  # Reset selected conversation
+                )
+
+                st.write(st.session_state.conversations)
+
+        # Check if conversations are loaded to display further UI elements
+        if st.session_state.loaded_conversations:
+            if st.session_state.conversations:
+                st.write("### get_conversation_messages")
+                conversation_details = [
+                    f"{conv.id} - Last message: '{conv.last_message_text[:50]}'... ({conv.num_messages} messages)"
+                    for conv in st.session_state.conversations
+                ]
+                st.session_state.selected_conversation = st.selectbox(
+                    "Select Conversations", conversation_details, key="conv_select"
+                )
+                if st.button("Get Conversation Messages", key="msg_button"):
+                    if st.session_state.selected_conversation and selected_account:
+                        selected_conversation_id = (
+                            st.session_state.selected_conversation.split()[0]
+                        )
+                        account_id = selected_account.split()[0]
+                        messages = get_conversation_messages(
+                            db, uuid.UUID(account_id), selected_conversation_id
+                        )
+                        message_texts = [
+                            (
+                                message.body.get("text", {}).get("body", "")
+                                if message.body is not None
+                                else ""
+                            )
+                            for message in messages
+                        ]
+                        st.write(message_texts)
+            else:
+                st.write("No conversations found for this account.")
 
 
 if user.is_logged_in:

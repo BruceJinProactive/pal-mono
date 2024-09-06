@@ -1,3 +1,4 @@
+import json
 import uuid
 from typing import List
 
@@ -16,22 +17,6 @@ from services.user_service import get_users_by_account
 def get_inbox_conversations(
     db: Session, account_id: uuid.UUID
 ) -> List[ConversationPreview]:
-    """
-    Retrieves a list of conversation previews for all conversations associated with the given account.
-
-    The function first fetches all users associated with the specified Account ID. It then retrieves
-    all Conversations involving those Users and gathers information for each Conversation. Conversations
-    with at least one Message are included in the result, sorted by the timestamp of the last Message
-    in descending order.
-
-    Args:
-        db (Session): The database session used to perform queries.
-        account_id (uuid.UUID): The unique identifier of the account for which Conversations are being retrieved.
-
-    Returns:
-        List[ConversationPreview]: A list of `ConversationPreview` objects representing the Conversations,
-        each containing the Conversation ID, User ID, number of Messages, and the text of the last Message.
-    """
 
     # Get users associated with the account
     users = get_users_by_account(db, account_id=account_id)
@@ -90,24 +75,7 @@ def get_inbox_conversations(
 
 def get_conversation_messages(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-):
-    """
-    Verifies that the requester has access to the conversation, then returns all messages
-    in the conversation.
-
-    Args:
-        db (Session): The database session.
-        account_id (uuid.UUID): The unique identifier of the incoming request's Account.
-        conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
-
-    Returns:
-        List[Message]: A List of Messages from the Conversation.
-
-    Raises:
-        ValueError: If the Admin does not have access to the Conversation.
-        ValueError: If the Conversation or User is not found.
-    """
-
+) -> List[Message]:
     conversation_repository = ConversationRepository(db)
     user_repository = UserRepository(db)
 
@@ -140,7 +108,7 @@ def get_conversation_messages(
     return messages
 
 
-def get_knowledge_base():
+def get_knowledge_base() -> json:
     knowledge_base_json = {
         "profile": {
             "company": "Proactive AI Lab",
