@@ -4,7 +4,6 @@ from phi.docker.app.streamlit import Streamlit
 from phi.docker.resource.image import DockerImage
 from phi.docker.resources import DockerResources
 
-from workspace.jupyter.lab import dev_jupyter_app
 from workspace.settings import ws_settings
 
 #
@@ -79,12 +78,9 @@ dev_fastapi = FastApi(
     depends_on=[dev_db],
 )
 
-# -*- Update jupyter environment variables
-dev_jupyter_app.env_vars = container_env
-
 # -*- Dev DockerResources
 dev_docker_resources = DockerResources(
     env=ws_settings.dev_env,
     network=ws_settings.ws_name,
-    apps=[dev_db, dev_streamlit, dev_fastapi, dev_jupyter_app],
+    apps=[dev_db, dev_streamlit, dev_fastapi],
 )
