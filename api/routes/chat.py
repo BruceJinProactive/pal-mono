@@ -8,7 +8,7 @@ from api.models.message import Message
 from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.message_service import get_chat_response
-from services.relay_service.relay_service import send_message
+from services.relay_service import send_message
 from utils.log import logger
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])

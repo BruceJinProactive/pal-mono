@@ -25,7 +25,7 @@ from services.admin_service import (
 )
 from services.conversation_service import get_conversations_by_user
 from services.message_service import get_chat_response, get_messages_by_conversation
-from services.user_service import get_user
+from services.user_service import get_user_by_channel
 from utils.log import logger
 
 ######################################################
@@ -218,7 +218,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
         )
 
     # Step 2: Get the user from the account id and cognito:username (latter of which is stored in raw_config)
-    user = get_user(
+    user = get_user_by_channel(
         db=db,
         account_id=account.id,
         channel_platform=ChannelPlatform.ADMIN_CONSOLE,
@@ -303,7 +303,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
 
     # Steps largely the same as the GET endpoint
 
-    user = get_user(
+    user = get_user_by_channel(
         db=db,
         account_id=account.id,
         channel_platform=ChannelPlatform.ADMIN_CONSOLE,

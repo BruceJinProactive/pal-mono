@@ -38,7 +38,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         raise ValueError("Account not found")
 
     # Get user_id by sender channel/number with user_service
-    user = user_service.get_user(
+    user = user_service.get_user_by_channel(
         db=db,
         account_id=account.id,
         channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP

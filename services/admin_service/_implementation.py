@@ -11,7 +11,7 @@ from db.repositories.user_repository import UserRepository
 from db.tables.messages import Message
 from services.conversation_service import get_conversations_by_users
 from services.message_service import get_messages_by_conversation
-from services.user_service import get_users_by_account
+from services.user_service import get_users_by_account_id
 
 
 def get_inbox_conversations(
@@ -19,7 +19,7 @@ def get_inbox_conversations(
 ) -> List[ConversationPreview]:
 
     # Get users associated with the account
-    users = get_users_by_account(db, account_id=account_id)
+    users = get_users_by_account_id(db, account_id=account_id)
 
     # Get all conversations involving a user with the account id
     conversations = get_conversations_by_users(
