@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 import streamlit as st
 from sqlalchemy.exc import IntegrityError
@@ -17,13 +18,15 @@ from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import get_conversation_messages, get_inbox_conversations
 from services.message_service import get_chat_response
+from services.relay_service import send_message
+from utils.dttm import current_utc
 
 st.title("Services")
 
 db = next(get_db())
 
-message_service_tab, assistant_service_tab, admin_service_tab = st.tabs(
-    ["Message Service", "Assistant Service", "Admin Service"]
+message_service_tab, assistant_service_tab, admin_service_tab, relay_service_tab = (
+    st.tabs(["Message Service", "Assistant Service", "Admin Service", "Relay Service"])
 )
 
 
@@ -144,6 +147,44 @@ def main() -> None:
                         st.write(message_texts)
             else:
                 st.write("No conversations found for this account.")
+
+    with relay_service_tab:
+        st.write("Relay Service")
+
+        # Generates warning but works.
+        sender_channel_identifier = st.selectbox(
+            "Sender Number",
+            [
+                "+14244859440 (proactiveailab)",
+                "+14244705958 (mindzero)",
+                "+14244680365 (pizzamyheart)",
+            ],
+        )
+
+        if sender_channel_identifier:
+            sender_channel_identifier = sender_channel_identifier.split()[0]
+        else:
+            sender_channel_identifier = "+14244859440"
+
+        recipient_channel_identifier = st.text_input("Recipient Number")
+
+        text = st.text_input("Message")
+
+        time_delta = st.number_input("Delay (seconds)", min_value=0, value=0)
+
+        delivery_time = current_utc() + timedelta(seconds=time_delta)
+
+        if st.button("Send Message"):
+            message_to_send = Message(
+                author_type=AuthorType.USER,
+                sender_channel_identifier=sender_channel_identifier,
+                recipient_channel_identifier=recipient_channel_identifier,
+                text=TextObject(body=text),
+                channel_platform=ChannelPlatform.SMS,
+                messaging_broker=MessagingBroker.SENDBLUE,
+            )
+            status = send_message(message_to_send, delivery_time)
+            st.json(status)
 
 
 if user.is_logged_in:
