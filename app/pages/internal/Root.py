@@ -11,6 +11,11 @@ from services.assistant_service import (
     replace_assistant_config,
     update_assistant_config,
 )
+from services.project_service import (
+    get_project,
+    replace_project_config,
+    update_project_config,
+)
 
 st.title("[Root] Manage Clients' Accounts")
 
@@ -69,7 +74,7 @@ def assistant_tab_ui():
 
             st.write(":red[__Replace__] the entire assistant config")
 
-            with st.form(key="replace_form"):
+            with st.form(key="replace_assistant_config_form"):
                 replace_config_expander = st.expander("Replace Assistant Config")
                 replace_config = replace_config_expander.text_area(
                     "Replace Assistant Config",
@@ -95,7 +100,7 @@ def assistant_tab_ui():
 
             st.write(":blue[__Update a key(s)__] in the assistant config")
 
-            with st.form(key="update_form"):
+            with st.form(key="update_assistant_config_form"):
                 update_config_expander = st.expander("Update Assistant Config")
                 update_config = update_config_expander.text_area(
                     "Update Assistant Config",
@@ -125,7 +130,79 @@ def assistant_tab_ui():
 
 
 def project_tab_ui():
-    st.write("Project")
+    if "account_name" in st.session_state:
+        account_name = st.session_state["account_name"]
+        account = get_account(db, account_name)
+        project = get_project(db, account.projects[0].id) if account else None
+
+        if project is None:
+            st.write("Project not found")
+        else:
+            st.subheader("Project Update")
+
+            st.write(
+                ":orange-background[Please __double-check any modifications__ before submitting.]"
+            )
+
+            unformatted_json = dict(project.raw_config)
+            formatted_json = json.dumps(unformatted_json, indent=4, ensure_ascii=False)
+            formatted_json_str = str(formatted_json)
+
+            st.write(":red[__Replace__] the entire project config")
+
+            with st.form(key="replace_project_config_form"):
+                replace_config_expander = st.expander("Replace Project Config")
+                replace_config = replace_config_expander.text_area(
+                    "Replace Project Config",
+                    value=formatted_json_str,
+                    height=400,
+                    label_visibility="collapsed",
+                )
+
+                # Submit button
+                if st.form_submit_button(label="Submit"):
+                    replace_config_json = _json_decode(replace_config)
+                    if replace_config_json:
+                        replace_project_config(
+                            db,
+                            project_id=project.id,
+                            config=replace_config_json,
+                        )
+                        st.success("Successfully replaced the project config")
+                    else:
+                        st.error("Invalid JSON format")
+
+            st.divider()
+
+            st.write(":blue[__Update a key(s)__] in the project config")
+
+            with st.form(key="update_project_config_form"):
+                update_config_expander = st.expander("Update Project Config")
+                update_config = update_config_expander.text_area(
+                    "Update Project Config",
+                    value=json.dumps({}),
+                    height=400,
+                    label_visibility="collapsed",
+                )
+
+                # Submit button
+                if st.form_submit_button(label="Submit"):
+                    update_config_json = _json_decode(update_config)
+                    if update_config_json:
+                        update_project_config(
+                            db,
+                            project_id=project.id,
+                            config=update_config_json,
+                        )
+                        st.success("Successfully updated the assistant config")
+                    else:
+                        st.error("Invalid JSON format")
+
+            st.subheader("Project Config")
+            st.json(project.raw_config)
+
+            st.subheader("Project Database Information")
+            st.write(project)
 
 
 def account_picker_ui():

@@ -1,8 +1,12 @@
 import uuid
+from typing import Any, Dict
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.tables import Project
+from utils.log import logger
 
 
 class ProjectRepository:
@@ -22,3 +26,95 @@ class ProjectRepository:
 
     def get_project(self, project_id: uuid.UUID) -> Project | None:
         return self.db.query(Project).filter(Project.id == project_id).first()
+
+    def get_project_by_channel(self, channel_platform: str, channel_identifier: str):
+        """
+        Retrieve a project by the channel platform and identifiers.
+
+        Args:
+            channel_platform (str): The platform of the channel (eg. sms, whatsapp).
+            channel_identifier (str): The identifier of the channel (eg. phone number).
+
+        Returns:
+            Project, or None if no such Project is found.
+        """
+
+        if not channel_platform:
+            raise ValueError("'channel_platform' must be provided")
+        if not channel_identifier:
+            raise ValueError("'channel_identifier' must be provided")
+
+        channel_filter = f'{{"platform": "{channel_platform}", "identifier": "{channel_identifier}"}}'
+
+        """
+        The query should return the project that contains the channel_platform and channel_identifier pair in
+        raw_config[channels].
+
+        We use jsonb_array_elements to search over all elements in raw_config->'channels', and use
+        @> to match the pair.
+        """
+        query = (
+            self.db.query(Project)
+            .filter(
+                text(
+                    "EXISTS (SELECT 1 FROM jsonb_array_elements(raw_config->'channels') AS elem "
+                    "WHERE elem @> :channel_filter)"
+                )
+            )
+            .params(channel_filter=channel_filter)
+        )
+
+        project = query.first()
+        return project
+
+    def update_project_config(self, project_id: uuid.UUID, config: Dict[str, Any]):
+        """Update a project's config in the database.
+
+        This function is best used to update specific fields in the configuration object.
+
+        Args:
+            project_id (uuid.UUID): The unique identifier of the project.
+            config (Dict[str, Any]): The configuration dictionary to update the project's config with.
+
+        Raises:
+            ValueError: If the project with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            project = self.get_project(project_id)
+            if project is None:
+                raise ValueError(f"Project {project_id} not found")
+
+            project.raw_config.update(config)
+            self.db.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.db.rollback()
+            logger.error(f"Error updating project config: {e}")
+            raise
+
+    def replace_project_config(
+        self, project_id: uuid.UUID, config: Dict[str, Any]
+    ) -> None:
+        """Replace an project's config in the database.
+
+        This function replaces the entire `raw_config` for the specified project.
+
+        Args:
+            project_id (uuid.UUID): The unique identifier of the project.
+            config (Dict[str, Any]): The new `raw_config` to replace the existing one.
+
+        Raises:
+            ValueError: If the project with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            project = self.get_project(project_id)
+            if project is None:
+                raise ValueError(f"project {project_id} not found")
+
+            project.raw_config = config
+            self.db.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.db.rollback()
+            logger.error(f"Error replacing project config: {e}")
+            raise

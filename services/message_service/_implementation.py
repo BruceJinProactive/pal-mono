@@ -9,38 +9,26 @@ from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from api.models.message import AuthorType, Extras, Message, TextObject
 from db.repositories.message_repository import MessageRepository
+from db.repositories.project_repository import ProjectRepository
 from services import assistant_service, user_service
-from services.account_service import get_account
-
-RECIPIENT_ACCOUNT_MAPPING = {
-    "+14244859440": "proactiveailab",
-    "+14244705958": "mindzero",
-    "+14244680365": "pizzamyheart",
-}
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
-    # Get account with channel identifier (assume channel platform is SMS)
-    channel_identifier = message.recipient_channel_identifier
+    # find project with matching channel platform, identifier pair
+    project = ProjectRepository(db).get_project_by_channel(
+        channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is a CHANNELPLATFORM object
+        channel_identifier=message.recipient_channel_identifier,
+    )
 
-    # If the channel identifier is a phone number, convert it to an account name
-    if re.match(r"^\+\d{11}$", channel_identifier):
-        account_name = RECIPIENT_ACCOUNT_MAPPING.get(channel_identifier)
-    else:
-        account_name = channel_identifier
-
-    if account_name is None:
-        raise ValueError("Account name not found")
-
-    # Get account and project via account name
-    account = get_account(db, account_name=account_name)
-    if account is None:
-        raise ValueError("Account not found")
+    if project is None:
+        raise ValueError(
+            f"Project with channel platform '{message.channel_platform.value}', channel_identifier '{message.recipient_channel_identifier}' not found."
+        )
 
     # Get user_id by sender channel/number with user_service
     user = user_service.get_user_by_channel(
         db=db,
-        account_id=account.id,
+        account_id=project.account_id,
         channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP
         channel_identifier=message.sender_channel_identifier,
         create_new_user=True,
@@ -53,15 +41,13 @@ def get_chat_response(db: Session, message: Message) -> Message:
         user_id=user.id, message_body=message.to_dict()
     )
 
-    if not account.projects:
-        raise ValueError("No projects found for this account")
-    project = account.projects[0]
-
-    assistant_id = project.assistant_id
-    if assistant_id is None:
-        raise ValueError("Assistant ID not found")
-
+    account_name = project.account.name
+    # Get appropriate assistant from account name
     if account_name == "proactiveailab":
+        assistant_id = project.assistant_id
+        if assistant_id is None:
+            raise ValueError("Assistant ID not found")
+
         assistant = assistant_service.get_phi_assistant(
             db=db, assistant_id=assistant_id, user_id=user.id
         )
