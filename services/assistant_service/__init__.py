@@ -9,7 +9,7 @@ from db.tables import Assistant
 from . import _implementation
 
 
-def get_phi_assistant(
+def get_ai_assistant(
     db: Session,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
@@ -27,7 +27,7 @@ def get_phi_assistant(
     Returns:
         PhiAssistant: The retrieved PhiAssistant instance.
     """
-    return _implementation.get_phi_assistant(db, assistant_id, user_id, new_run)
+    return _implementation.get_ai_assistant(db, assistant_id, user_id, new_run)
 
 
 def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
@@ -79,7 +79,7 @@ def replace_assistant_config(
 
 
 __all__ = [
-    "get_phi_assistant",
+    "get_ai_assistant",
     "get_assistant",
     "update_assistant_config",
     "replace_assistant_config",
