@@ -48,7 +48,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
 
-        assistant = assistant_service.get_phi_assistant(
+        assistant = assistant_service.get_ai_assistant(
             db=db, assistant_id=assistant_id, user_id=user.id
         )
     elif account_name == "mindzero":

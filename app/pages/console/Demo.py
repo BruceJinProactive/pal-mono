@@ -8,7 +8,7 @@ from ai.assistants.pizza_assistant import get_pizza_assistant
 from app.auth import user
 from db.session import get_db
 from services.account_service import get_account
-from services.assistant_service import get_phi_assistant
+from services.assistant_service import get_ai_assistant
 from services.user_service import get_user_by_channel
 
 st.title("Demo")
@@ -39,7 +39,7 @@ def get_prd_assistant(
         raise ValueError("User not found in db")
 
     assistant_id = account.projects[0].assistant_id
-    assistant: Assistant = get_phi_assistant(
+    assistant: Assistant = get_ai_assistant(
         db,
         assistant_id=assistant_id,
         user_id=db_user.id,
