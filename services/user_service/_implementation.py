@@ -7,7 +7,7 @@ import db.tables as db
 from db.repositories.user_repository import UserRepository
 
 
-def get_user(
+def get_user_by_channel(
     db: Session,
     account_id: uuid.UUID,
     channel_platform: str,
@@ -15,7 +15,7 @@ def get_user(
     create_new_user: bool = False,
 ) -> db.User | None:
     user_repository = UserRepository(db)
-    user = user_repository.get_user(
+    user = user_repository.get_user_by_channel(
         account_id=account_id,
         channel_platform=channel_platform,
         channel_identifier=channel_identifier,
@@ -38,11 +38,11 @@ def get_user(
     return None
 
 
-def get_users_by_account(
+def get_users_by_account_id(
     db: Session,
     account_id: uuid.UUID,
 ) -> List[db.User]:
     user_repository = UserRepository(db)
-    users = user_repository.get_users_by_account(account_id=account_id)
+    users = user_repository.get_users_by_account_id(account_id=account_id)
 
     return users

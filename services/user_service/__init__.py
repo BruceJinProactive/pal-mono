@@ -28,7 +28,7 @@ def get_user_by_channel(
     Returns:
         db.User | None: The retrieved user if found, otherwise None.
     """
-    return _implementation.get_user(
+    return _implementation.get_user_by_channel(
         db, account_id, channel_platform, channel_identifier, create_new_user
     )
 
@@ -47,7 +47,7 @@ def get_users_by_account_id(
     Returns:
         List[db.User]: A list of users associated with the account.
     """
-    return _implementation.get_users_by_account(db, account_id)
+    return _implementation.get_users_by_account_id(db, account_id)
 
 
 __all__ = ["get_user_by_channel", "get_users_by_account_id"]

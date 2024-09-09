@@ -16,7 +16,7 @@ class UserRepository:
     def get_users(self, skip: int = 0, limit: int = 100):
         return self.db.query(User).offset(skip).limit(limit).all()
 
-    def get_users_by_account(self, account_id: uuid.UUID):
+    def get_users_by_account_id(self, account_id: uuid.UUID):
         # no argument validation needed
 
         try:
@@ -26,7 +26,7 @@ class UserRepository:
             logger.error(f"Error retrieving users: {e}")
             return []
 
-    def get_user(
+    def get_user_by_channel(
         self, account_id: uuid.UUID, channel_platform: str, channel_identifier: str
     ):
         if not account_id:
