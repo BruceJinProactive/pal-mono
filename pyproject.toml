@@ -25,6 +25,9 @@ dependencies = [
   "openai==1.42.0",
   "phidata==2.4.29",
 
+  # DevOps
+  "aws-xray-sdk==2.14.0",
+
   # Validation
   "black==24.8.0",
   "isort==5.13.2",

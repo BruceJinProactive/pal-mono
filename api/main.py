@@ -1,8 +1,23 @@
-from fastapi import FastAPI
+from aws_xray_sdk.core import xray_recorder
+from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
 from api.routes.v1_router import v1_router
 from api.settings import api_settings
+
+# Configure X-Ray
+xray_recorder.configure(service="pal-mono-api")
+
+
+class XRayMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        with xray_recorder.in_segment("fastapi_request") as segment:
+            segment.put_annotation("path", request.url.path)
+            segment.put_annotation("method", request.method)
+            response = await call_next(request)
+            segment.put_annotation("status_code", response.status_code)
+        return response
 
 
 def create_app() -> FastAPI:
@@ -38,3 +53,6 @@ def create_app() -> FastAPI:
 
 # Create FastAPI app
 app = create_app()
+
+# Add X-Ray middleware
+app.add_middleware(XRayMiddleware)
