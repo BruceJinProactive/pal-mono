@@ -5,10 +5,13 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
+import db.tables as db
 from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from api.models.message import AuthorType, Extras, Message, TextObject
+from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
+from db.tables import Conversation
 from db.repositories.project_repository import ProjectRepository
 from services import assistant_service, user_service
 
@@ -107,3 +110,30 @@ def get_messages_by_conversation(
         conversation_id=conversation_id
     )
     return messages
+
+
+def get_conversations_by_user(
+    db: Session, user_id: uuid.UUID, create_new_conversation: bool = False
+) -> List[db.Conversation]:
+    conversation_repository = ConversationRepository(db)
+    conversations = conversation_repository.get_conversations_by_user(
+        user_id=user_id,
+    )
+
+    if conversations:
+        return conversations
+
+    if create_new_conversation:
+        new_conversation = conversation_repository.create_conversation(user_id=user_id)
+        return [new_conversation]
+
+    return []
+
+
+def get_conversations_by_users(
+    db: Session, user_ids: List[uuid.UUID]
+) -> List[Conversation]:
+    conversation_repository = ConversationRepository(db)
+    return conversation_repository.get_conversations_by_users(
+        user_ids=user_ids,
+    )
