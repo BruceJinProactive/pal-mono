@@ -6,7 +6,7 @@ from phi.memory.db.postgres import PgMemoryDb
 from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.vectordb.pgvector import PgVector2
 
-from ai.llm import get_embedder, get_llm
+from ai.llms import get_embedder, get_llm
 from db.session import db_url
 
 
