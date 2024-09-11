@@ -1,14 +1,12 @@
 from typing import Any, Dict
 
 from phi.assistant import Assistant, AssistantMemory
-from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.memory.db.postgres import PgMemoryDb
 from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.vectordb.pgvector import PgVector2
 
-from ai.llm import LLM, get_llm
-from ai.settings import ai_settings
+from ai.llm import get_embedder, get_llm
 from db.session import db_url
 
 
@@ -32,7 +30,7 @@ def integrate_assistant(
         vector_db=PgVector2(
             db_url=db_url,
             collection=knowledge_base_table_name,
-            embedder=OpenAIEmbedder(model=ai_settings.embedding_model),
+            embedder=get_embedder(),
         ),
         # 2 references are added to the prompt
         num_documents=2,
@@ -81,7 +79,7 @@ def integrate_assistant(
         create_memories=True,
         update_memory_after_run=True,
         # LLM
-        llm=get_llm(LLM.ROUTER),
+        llm=get_llm(),
         # Tools
         tools=[],
         use_tools=True,

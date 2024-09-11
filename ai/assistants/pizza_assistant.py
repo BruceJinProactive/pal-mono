@@ -15,7 +15,7 @@ from phi.tools import Toolkit
 from phi.vectordb.pgvector import PgVector2
 
 from ai.assistants.constants import FUNCTION_NAME_LENGTH_LIMIT
-from ai.settings import ai_settings
+from ai.llm import ai_settings
 from ai.tools.ordering_tools import OrderingTools
 from db.session import db_url
 

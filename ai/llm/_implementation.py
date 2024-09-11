@@ -1,10 +1,11 @@
 from enum import Enum
 from os import getenv
 
+from phi.embedder.openai import OpenAIEmbedder
 from phi.llm.openai import OpenAIChat
 from phi.llm.openai.like import OpenAILike
 
-from ai.settings import ai_settings
+from . import _settings
 
 
 class LLM(Enum):
@@ -17,7 +18,7 @@ class LLM(Enum):
 def get_llm(llm_name: LLM):
     if llm_name == LLM.OPENAI:
         return OpenAIChat(
-            model=ai_settings.gpt_4o_2024_08_06,
+            model=_settings.ai_settings.gpt_4o_2024_08_06,
             max_tokens=4096,
             temperature=0.9,
         )
@@ -45,3 +46,7 @@ def get_llm(llm_name: LLM):
         )
     else:
         raise ValueError(f"Invalid model name: {llm_name}")
+
+
+def get_embedder():
+    return OpenAIEmbedder(model=_settings.ai_settings.embedding_model)
