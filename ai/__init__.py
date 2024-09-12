@@ -1,14 +1,14 @@
 from typing import Any, Dict
 
-from phi.assistant import Assistant
+from phi.assistant.assistant import Assistant
 
-from . import _assistants
+from . import _implementation
 
 
 def integrate_assistant(
     account_name: str,
+    assistant_raw_config: Dict[str, Any],
     user_id: str,
-    raw_config: Dict[str, Any],
     new_run: bool = False,
 ) -> Assistant:
     """
@@ -19,9 +19,9 @@ def integrate_assistant(
 
     Args:
         account_name (str): The name of the account for which the assistant is being integrated.
-        user_id (str): The ID of the user associated with this assistant.
-        raw_config (Dict[str, Any]): A dictionary containing the assistant's configuration,
+        assistant_raw_config (Dict[str, Any]): A dictionary containing the assistant's configuration,
                                      typically converted from JSON.
+        user_id (str): The ID of the user associated with this assistant.
         new_run (bool, optional): If True, starts a new run. If False, attempts to
                                   continue from the last run. Defaults to False.
 
@@ -33,9 +33,9 @@ def integrate_assistant(
         The assistant is configured with debug mode enabled and default tools.
     """
 
-    return _assistants.integrate_assistant(
+    return _implementation.integrate_assistant(
         account_name=account_name,
+        assistant_raw_config=assistant_raw_config,
         user_id=user_id,
-        raw_config=raw_config,
         new_run=new_run,
     )

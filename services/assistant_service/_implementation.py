@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Dict, Optional
 
-from phi.assistant import Assistant as AIAssistant
+from phi.assistant.assistant import Assistant as AIAssistant
 from sqlalchemy.orm import Session
 
 from ai import integrate_assistant
@@ -20,12 +20,11 @@ def get_ai_assistant(
     assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
     if assistant is None:
         raise ValueError("Invalid assistant_id")
-    account_name = assistant.account.name
 
     return integrate_assistant(
-        account_name=account_name,
+        account_name=assistant.account.name,
+        assistant_raw_config=assistant.raw_config,
         user_id=str(user_id),
-        raw_config=assistant.raw_config,
         new_run=new_run,
     )
 

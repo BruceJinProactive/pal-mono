@@ -5,17 +5,22 @@ from phi.assistant.assistant import Assistant
 from ai.knowledge import get_knowledge_base
 from ai.llm import get_llm
 from ai.memory import get_memory
+from ai.prompts import get_system_prompt
 from ai.storage import get_storage
-
-from . import _prompts
 
 
 def integrate_assistant(
     account_name: str,
+    assistant_raw_config: Dict[str, Any],
     user_id: str,
-    raw_config: Dict[str, Any],
     new_run: bool = False,
 ) -> Assistant:
+    # Set up llm
+    llm = get_llm()
+
+    # Retrive and build prompts
+    system_prompt = get_system_prompt(assistant_raw_config)
+
     # Set up storage
     storage = get_storage(account_name)
 
@@ -25,16 +30,13 @@ def integrate_assistant(
     # Set up memory
     memory = get_memory(account_name)
 
+    # TODO: Add tools
+
     # Get run id
     run_id = None
     if not new_run:
         run_ids = storage.get_all_run_ids(user_id=str(user_id))
         run_id = run_ids[0] if run_ids else None
-
-    # Retrive and build prompts
-    system_prompt = _prompts.generate_system_prompt(raw_config)
-
-    # TODO: Add tools
 
     return Assistant(
         # Basic fields
@@ -50,7 +52,7 @@ def integrate_assistant(
         create_memories=True,
         update_memory_after_run=True,
         # LLM
-        llm=get_llm(),
+        llm=llm,
         # Tools
         tools=[],
         use_tools=True,

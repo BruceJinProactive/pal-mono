@@ -1,7 +1,7 @@
 from . import _implementation
 
 
-def generate_system_prompt(json_data) -> str:
+def get_system_prompt(json_data) -> str:
     """
     Currently generates a markdown-formatted system prompt from the raw_config JSON data.
 
@@ -60,5 +60,5 @@ def generate_system_prompt(json_data) -> str:
 
 
 __all__ = [
-    "generate_system_prompt",
+    "get_system_prompt",
 ]
