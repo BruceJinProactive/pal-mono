@@ -7,6 +7,8 @@ from ai.llm import get_llm
 from ai.memory import get_memory
 from ai.storage import get_storage
 
+from . import _prompts
+
 
 def integrate_assistant(
     account_name: str,
@@ -30,13 +32,7 @@ def integrate_assistant(
         run_id = run_ids[0] if run_ids else None
 
     # Retrive and build prompts
-    # TODO: Adopt prompt template
-    name = raw_config.get("name", "")
-    descripton = raw_config.get("description", "")
-    instructions = raw_config.get("instructions", [])
-    extra_instructions = raw_config.get(
-        "extra_instructions", ["Keep your answers under 5 sentences."]
-    )
+    system_prompt = _prompts.generate_system_prompt(raw_config)
 
     # TODO: Add tools
 
@@ -45,10 +41,7 @@ def integrate_assistant(
         user_id=user_id,
         run_id=run_id,
         # Prompts
-        name=name,
-        description=descripton,
-        instructions=instructions,
-        extra_instructions=extra_instructions,
+        system_prompt=system_prompt,
         assistant_data={"assistant_type": "autonomous"},
         # Storage, knowledge base, and memory
         storage=storage,
