@@ -11,8 +11,8 @@ from ai.assistants.pizza_assistant import get_pizza_assistant
 from api.models.message import AuthorType, Extras, Message, TextObject
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
-from db.repositories.project_repository import ProjectRepository
 from db.tables import Conversation
+from db.repositories.project_repository import ProjectRepository
 from services import assistant_service, user_service
 
 
