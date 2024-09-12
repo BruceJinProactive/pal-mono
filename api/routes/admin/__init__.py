@@ -243,8 +243,8 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
 
     # Skip the rest of the steps if there are no conversations
     # Send an empty list of messages
-    if not conversations or conversations is None:
-        JSONResponse(content=jsonable_encoder([]))
+    if conversations is None or conversations[0] is None:
+        return JSONResponse(content=jsonable_encoder([]))
 
     """ 
     We assume that an Admin Console admin only has one conversation.
