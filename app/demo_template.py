@@ -186,10 +186,9 @@ def messaging_ui(assistant: Assistant) -> None:
         message["content"] = message["content"].replace("\$", "💲").replace("$", "💲")
     st.session_state["messages"] = assistant_chat_history
     if assistant_chat_history == []:
-        if assistant.name == "pizza_assistant":
-            st.session_state["messages"] = [
-                {"role": "assistant", "content": "Ask me anything..."}
-            ]
+        st.session_state["messages"] = [
+            {"role": "assistant", "content": "Ask me anything..."}
+        ]
     # Prompt for user input
     if prompt := st.chat_input():
         st.session_state["messages"].append({"role": "user", "content": prompt})
@@ -197,18 +196,23 @@ def messaging_ui(assistant: Assistant) -> None:
     for message in st.session_state["messages"]:
         if message["role"] == "system":
             continue
-        # For Adora / Pizza My Heart
+        # Set Avatar For Adora / Pizza My Heart; Lazy Dog
         if assistant.name == "pizza_assistant":
             avatar = (
                 "data/pizza/logos/jimmy_the_surfer.png"
                 if message["role"] == "assistant"
                 else None
             )
-            with st.chat_message(message["role"], avatar=avatar):
-                st.write(message["content"])
+        elif assistant.name == "lazydog_assistant":
+            avatar = (
+                "data/lazydog/logos/lazydog_charactor.png"
+                if message["role"] == "assistant"
+                else None
+            )
         else:
-            with st.chat_message(message["role"]):
-                st.write(message["content"])
+            avatar = None
+        with st.chat_message(message["role"], avatar=avatar):
+            st.write(message["content"])
 
     # If last message is from a user, generate a new response
     try:
@@ -222,6 +226,12 @@ def messaging_ui(assistant: Assistant) -> None:
                     assistant,
                     question,
                     avatar_path="data/pizza/logos/jimmy_the_surfer.png",
+                )
+            elif assistant.name == "lazydog_assistant":
+                generate_response_in_ui(
+                    assistant,
+                    question,
+                    avatar_path="data/lazydog/logos/lazydog_charactor.png",
                 )
             else:
                 generate_response_in_ui(assistant, question)
