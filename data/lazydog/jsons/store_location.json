@@ -1,0 +1,433 @@
+{
+    "stores": [
+      {
+        "location": "Stadium Promenade",
+        "address": "1623 West Katella Ave., Orange, CA 92867",
+        "phone": "(714) 769-7020",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Los Cerritos Center",
+        "address": "278 Los Cerritos Center, Cerritos, CA 90703",
+        "phone": "(562) 402-6644",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Across from the Brea Mall",
+        "address": "240 S State College Blvd, Brea, CA 92821",
+        "phone": "(714) 529-9300",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Willows Shopping Center",
+        "address": "1961 Diamond Blvd, Concord, CA 94520",
+        "phone": "(925) 849-1221",
+        "hours": {
+          "monday_thursday": "11am-11pm",
+          "friday": "11am-midnight",
+          "saturday": "10am-midnight",
+          "sunday": "10am-11pm"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Corona Hills Plaza",
+        "address": "380 McKinley Street, Corona, CA 92879",
+        "phone": "951-379-3630",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Main Street Cupertino",
+        "address": "19359 Stevens Creek Blvd, Cupertino, CA 95014",
+        "phone": "(408) 359-4690",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Del Amo Fashion Center",
+        "address": "3525 West Carson Street, Torrance, CA 90503",
+        "phone": "(310) 921-6080",
+        "description": "We will be closed for a private event on Thursday, September 12 from 7-11pm. We apologize for any inconvenience.",
+        "hours": {
+          "monday_thursday": "11am-11pm",
+          "friday": "11am-midnight",
+          "saturday": "10am-midnight",
+          "sunday": "10am-11pm"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "The Valencia Town Center",
+        "address": "24201 Valencia Blvd., Valencia, CA 91355",
+        "phone": "(661) 253-9996",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_wednesday": "11am-11pm",
+          "thursday_friday": "11am-midnight",
+          "saturday": "10am-midnight",
+          "sunday": "10am-11pm"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Plaza West Covina",
+        "address": "1440 Plaza Drive, West Covina, CA 91790",
+        "phone": "(626) 480-8603",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Promenade at Downey",
+        "address": "8800 Apollo Way, Downey, CA 90242",
+        "phone": "(562) 354-4910",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Hacienda Crossings",
+        "address": "4805 Hacienda Dr, Dublin, CA 94568",
+        "phone": "(925) 361-3690",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Palladio at Broadstone",
+        "address": "300 Palladio Pkwy, Folsom, CA 95630",
+        "phone": "916-378-4660",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Villaggio Shopping Center",
+        "address": "7965 N. Blackstone Ave., Fresno, CA 93720",
+        "phone": "559-691-5300",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "The Market Place",
+        "address": "13290 Jamboree Rd, Irvine, CA 92602",
+        "phone": "(714) 731-9700",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "LA Live",
+        "address": "800 W Olympic Blvd, Los Angeles, CA 90015",
+        "phone": "213-502-0227",
+        "description": "FREE Guest Parking Mon - Fri from 11am - 2pm with Parking Validation.",
+        "hours": {
+          "sunday_thursday": "11am - 10pm",
+          "friday_saturday": "11am - 12am"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm - 6pm",
+          "sunday_thursday": "9pm - 10pm"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "11am - 2pm"
+        }
+      },
+      {
+        "location": "Montclair Place",
+        "address": "5295 N. Montclair Plaza Lane, Montclair, CA 91763",
+        "phone": "(909) 318-0568",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Newpark Mall",
+        "address": "3100 Newpark Mall, Newark, CA 94560",
+        "phone": "510-925-2424",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "The Collection at Riverpark",
+        "address": "598 Town Center Drive, Oxnard, CA 93036",
+        "phone": "(805) 351-4888",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_thursday": "11am-11pm",
+          "friday": "11am-midnight",
+          "saturday": "10am-midnight",
+          "sunday": "10am-11pm"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Ontario Mills Shopping Center",
+        "address": "11560 4th Street, Rancho Cucamonga, CA 91730",
+        "phone": "(909) 987-4131",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Roseville Galleria",
+        "address": "238 Gibson Drive, Roseville, CA 95678",
+        "phone": "916-727-6321",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Almaden Plaza Shopping Center",
+        "address": "5305 Almaden Expressway, San Jose, CA 95118",
+        "phone": "(408) 786-9594",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Westfield Mission Valley",
+        "address": "1202 Camino Del Rio N, San Diego, CA 92108",
+        "phone": "(619) 481-6191",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "Bridgepointe Parkway",
+        "address": "2208 Bridgepointe Parkway, San Mateo, CA 94404",
+        "phone": "(650) 514-6772",
+        "hours": {
+          "monday_friday": "11am-midnight",
+          "saturday_sunday": "10am-midnight"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-midnight"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "The Promenade",
+        "address": "40754 Winchester Road, Temecula, CA 92591",
+        "phone": "(951) 719-1884",
+        "description": "Open for indoor + patio dining, takeout + delivery!",
+        "hours": {
+          "monday_thursday": "11am-10pm",
+          "friday": "11am-midnight",
+          "saturday": "10am-midnight",
+          "sunday": "10am-10pm"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      },
+      {
+        "location": "The Oaks Mall",
+        "address": "172 West Hillcrest Drive, Thousand Oaks, CA 91360",
+        "phone": "(805) 449-5206",
+        "description": "Open for indoor + patio dining, curbside takeout + delivery!",
+        "hours": {
+          "monday_thursday": "11am-11pm",
+          "friday": "11am-midnight",
+          "saturday": "10am-midnight",
+          "sunday": "10am-11pm"
+        },
+        "happy_hour": {
+          "monday_friday": "3pm-6pm",
+          "sunday_thursday": "9pm-close"
+        },
+        "weekend_brunch": {
+          "saturday_sunday": "10am-2pm"
+        }
+      }
+    ]
+  }
+  
