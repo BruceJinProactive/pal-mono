@@ -4,7 +4,6 @@ from phi.assistant import Assistant
 from streamlit_extras.switch_page_button import switch_page
 
 from ai.assistants.gym_assistant import get_gym_assistant
-from ai.assistants.lazydog_assistant import get_lazydog_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from app.auth import user
 from db.session import get_db
@@ -56,7 +55,6 @@ if user.is_logged_in:
         "pal": get_prd_assistant,
         "mindzero": get_gym_assistant,
         "pizzamyheart": get_pizza_assistant,
-        "lazydog": get_lazydog_assistant,
     }
 
     if user.account_name == "proactiveailab" or user.account_name == "root":
