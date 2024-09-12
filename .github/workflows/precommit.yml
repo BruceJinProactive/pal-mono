@@ -1,4 +1,4 @@
-name: Validate build test
+name: Pre commit
 
 on:
   pull_request:
@@ -59,7 +59,7 @@ jobs:
         env:
           SLACK_WEBHOOK_URL_BUILD: ${{ secrets.SLACK_WEBHOOK_URL_BUILD }}
 
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -77,11 +77,11 @@ jobs:
           tags: myapp:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
+
       - name: Test Docker image
         run: |
-          docker run myapp:${{ github.sha }} echo "Container is running correctly"
-      
+          docker run myapp:${{ github.sha }} bash -c "echo 'Container is running correctly' && pytest"
+        
       # If the build job fails, send a message to Slack
       - name: Notify Slack
         uses: act10ns/slack@v2

@@ -75,6 +75,18 @@ Run the following command to validate your code locally:
 
 ## CI/CD
 
+### Testing
+Testing is done with [pytest](https://docs.pytest.org/en/7.1.x/contents.html), which runs all tests named test_* in files named test_*.py or *_test.py. Test files should be placed in the same directory as the source file.
+
+To run, first start the containers.
+```
+phi ws up
+```
+Then run the test script.
+```
+./scripts/test.sh
+```
+
 ### Environments
 
 The CI/CD pipeline consists of 4 environments:
