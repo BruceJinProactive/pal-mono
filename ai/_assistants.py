@@ -1,13 +1,11 @@
 from typing import Any, Dict
 
-from phi.assistant import Assistant, AssistantMemory
-from phi.knowledge.combined import CombinedKnowledgeBase
-from phi.memory.db.postgres import PgMemoryDb
-from phi.storage.assistant.postgres import PgAssistantStorage
-from phi.vectordb.pgvector import PgVector2
+from phi.assistant.assistant import Assistant
 
-from ai.llms import get_embedder, get_llm
-from db.session import db_url
+from ai.knowledge import get_knowledge_base
+from ai.llms import get_llm
+from ai.memory import get_memory
+from ai.storage import get_storage
 
 
 def integrate_assistant(
@@ -17,33 +15,13 @@ def integrate_assistant(
     new_run: bool = False,
 ) -> Assistant:
     # Set up storage
-    storage_table_name = f"{account_name}_storage"
-    storage = PgAssistantStorage(
-        db_url=db_url,
-        table_name=storage_table_name,
-    )
+    storage = get_storage(account_name)
 
     # Set up knowledge base
-    knowledge_base_table_name = f"{account_name}_knowledge_base"
-    knowledge_base = CombinedKnowledgeBase(
-        sources=[],
-        vector_db=PgVector2(
-            db_url=db_url,
-            collection=knowledge_base_table_name,
-            embedder=get_embedder(),
-        ),
-        # 2 references are added to the prompt
-        num_documents=2,
-    )
+    knowledge_base = get_knowledge_base(account_name)
 
     # Set up memory
-    memory_table_name = f"{account_name}_memory"
-    memory = AssistantMemory(
-        db=PgMemoryDb(
-            db_url=db_url,
-            table_name=memory_table_name,
-        ),
-    )
+    memory = get_memory(account_name)
 
     # Get run id
     run_id = None
