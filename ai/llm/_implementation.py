@@ -7,6 +7,12 @@ from phi.llm.openai.like import OpenAILike
 
 from . import _settings
 
+# Get the MODEL_ROUTER_BASE_URL environment variable, or use a default value if not set
+MODEL_ROUTER_BASE_URL = getenv(
+    "MODEL_ROUTER_BASE_URL",
+    "https://4msggkaz6wph3hx7hxppwcqn7e0xjlmb.lambda-url.us-west-1.on.aws/",  # lat,
+)
+
 
 class LLM(Enum):
     OPENAI = "OPENAI"
@@ -41,9 +47,7 @@ def get_llm(llm_name: LLM):
             top_p=0.9,
         )
     elif llm_name == LLM.ROUTER:
-        return OpenAILike(
-            base_url="https://4msggkaz6wph3hx7hxppwcqn7e0xjlmb.lambda-url.us-west-1.on.aws/"
-        )
+        return OpenAILike(base_url=MODEL_ROUTER_BASE_URL)
     else:
         raise ValueError(f"Invalid model name: {llm_name}")
 
