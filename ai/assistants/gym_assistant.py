@@ -15,7 +15,7 @@ from phi.storage.assistant.postgres import PgAssistantStorage
 from phi.tools import Toolkit
 from phi.vectordb.pgvector import PgVector2
 
-from ai.llms import LLM, ai_settings, get_llm
+from ai.llm import LLM, ai_settings, get_llm
 from db.session import db_url
 
 # from phi.llm.openai import OpenAIChat

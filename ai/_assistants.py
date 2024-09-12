@@ -3,7 +3,7 @@ from typing import Any, Dict
 from phi.assistant.assistant import Assistant
 
 from ai.knowledge import get_knowledge_base
-from ai.llms import get_llm
+from ai.llm import get_llm
 from ai.memory import get_memory
 from ai.storage import get_storage
 
