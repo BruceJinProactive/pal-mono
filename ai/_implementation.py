@@ -39,12 +39,18 @@ def integrate_assistant(
         run_id = run_ids[0] if run_ids else None
 
     return Assistant(
-        # Basic fields
-        user_id=user_id,
-        run_id=run_id,
-        # Prompts
-        system_prompt=system_prompt,
+        # Assistant settings
         assistant_data={"assistant_type": "autonomous"},
+        # Run settings
+        run_id=run_id,
+        # User settings
+        user_id=user_id,
+        # Chat Memory
+        add_chat_history_to_messages=True,
+        add_chat_history_to_prompt=False,
+        num_history_messages=10,
+        # Prompt Settings
+        system_prompt=system_prompt,
         # Storage, knowledge base, and memory
         storage=storage,
         knowledge_base=knowledge_base,
