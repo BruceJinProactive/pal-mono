@@ -3,18 +3,15 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 from requests import Session
 
 from api.models.message import (
     AuthorType,
     ChannelPlatform,
-    ChatRequestBody,
     Message,
     MessagingBroker,
     TextObject,
 )
-from api.routes.admin.auth import parse_admin_console_id_token
 from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
@@ -29,7 +26,8 @@ from services.message_service import (
     get_messages_by_conversation,
 )
 from services.user_service import get_user_by_channel
-from utils.log import logger
+
+from . import _auth, _utils
 
 ######################################################
 ## Router for Admin Console
@@ -57,7 +55,7 @@ def create_account(request: Request, db: Session = Depends(get_db)):
     Returns:
         str: A JSON string indicating that the account has been created.
     """
-    decrypted_id_token = parse_admin_console_id_token(
+    decrypted_id_token = _auth.parse_admin_console_id_token(
         request.headers.get("Authorization")
     )
     create_account_with_defaults(db, decrypted_id_token["custom:account_name"])
@@ -67,7 +65,7 @@ def create_account(request: Request, db: Session = Depends(get_db)):
 @admin_router.get("/account")
 def read_account(request: Request):
     try:
-        decrypted_id_token = parse_admin_console_id_token(
+        decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
     except ValueError as e:
@@ -98,7 +96,7 @@ def read_inbox(request: Request, db: Session = Depends(get_db)):
     """
 
     try:
-        decrypted_id_token = parse_admin_console_id_token(
+        decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
     except ValueError as e:
@@ -145,7 +143,7 @@ def read_conversation(
     """
     # Validate ID Token
     try:
-        decrypted_id_token = parse_admin_console_id_token(
+        decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
     except ValueError as e:
@@ -200,7 +198,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
         HTTPException: If the Account or User is not found.
     """
     try:
-        decrypted_id_token = parse_admin_console_id_token(
+        decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
     except ValueError as e:
@@ -259,23 +257,27 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
 @admin_router.post("/chat")
 async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     """
-    This endpoint generates a response to a chat message in the Admin Console chat.
-    It stores both the message received and the response in the database.
+    Endpoint to handle chat messages from the Admin Console.
+
+    This endpoint processes incoming chat messages, generates a response, and
+    stores both the received message and the generated response in the database.
 
     Args:
-        request (Request): The request object containing the headers and other request data.
-        db (Session): The database connection.
+        request (Request): The incoming request containing headers and a JSON
+            body with the chat message, e.g., {'message': 'test'}.
+        db (Session): The database session for storing messages and responses.
 
     Returns:
-        JSONResponse: A JSON-encoded Message.
+        JSONResponse: A JSON-encoded response containing the chat message and the generated reply.
 
     Raises:
         HTTPException: If the ID token is invalid or missing.
         HTTPException: If the request body is malformed.
         HTTPException: If the Account or User is not found.
+        HTTPException: If the 'message' field is missing or not a string.
     """
     try:
-        decrypted_id_token = parse_admin_console_id_token(
+        decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
     except ValueError as e:
@@ -290,19 +292,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     if account is None:
         raise HTTPException(status_code=500, detail="Account not found")
 
-    body = await request.json()
-    try:
-        body_data = ChatRequestBody(**body)
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=422,  # Unprocessable Entity
-            detail=f"Validation error: {e.errors()}\n\nInvalid request body: {body}",
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unexpected error: {e}\n\nInvalid request body: {body}",
-        )
+    body_message = await _utils.retrieve_body_message(request)
 
     # Steps largely the same as the GET endpoint
 
@@ -323,7 +313,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
         recipient_channel_identifier=decrypted_id_token["custom:account_name"],
         channel_platform=ChannelPlatform.ADMIN_CONSOLE,
         messaging_broker=MessagingBroker.WEB,
-        text=TextObject(body=body_data.message),
+        text=TextObject(body=body_message),
         extras={},
     )
 
@@ -339,7 +329,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
 @admin_router.get("/knowledge")
 def read_knowledge(request: Request):
     try:
-        _ = parse_admin_console_id_token(request.headers.get("Authorization"))
+        _ = _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
     except ValueError as e:
         raise HTTPException(
             status_code=401,
@@ -358,7 +348,7 @@ def read_knowledge(request: Request):
 @admin_router.get("/users")
 def read_users(request: Request):
     try:
-        decrypted_id_token = parse_admin_console_id_token(
+        decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
     except ValueError as e:
@@ -375,7 +365,7 @@ def read_users(request: Request):
 @admin_router.get("/campaigns")
 def read_campaigns(request: Request):
     try:
-        decrypted_id_token = parse_admin_console_id_token(
+        decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
         )
     except ValueError as e:
