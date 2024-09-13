@@ -205,7 +205,7 @@ def messaging_ui(assistant: Assistant) -> None:
             )
         elif assistant.name == "lazydog_assistant":
             avatar = (
-                "data/lazydog/logos/LZRLogo.jpeg"
+                "data/lazydog/logos/lazydog_charactor.png"
                 if message["role"] == "assistant"
                 else None
             )
@@ -231,7 +231,7 @@ def messaging_ui(assistant: Assistant) -> None:
                 generate_response_in_ui(
                     assistant,
                     question,
-                    avatar_path="data/lazydog/logos/LZRLogo.jpeg",
+                    avatar_path="data/lazydog/logos/lazydog_charactor.png",
                 )
             else:
                 generate_response_in_ui(assistant, question)
