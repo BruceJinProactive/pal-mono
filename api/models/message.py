@@ -19,6 +19,7 @@ class ChannelPlatform(str, Enum):
     ADMIN_CONSOLE = "admin_console"
     SMS = "sms"
     WHATSAPP = "whatsapp"
+    WEBSITE = "website"
 
 
 class MessagingBroker(str, Enum):
