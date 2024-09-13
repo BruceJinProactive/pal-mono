@@ -186,9 +186,16 @@ def messaging_ui(assistant: Assistant) -> None:
         message["content"] = message["content"].replace("\$", "💲").replace("$", "💲")
     st.session_state["messages"] = assistant_chat_history
     if assistant_chat_history == []:
-        st.session_state["messages"] = [
-            {"role": "assistant", "content": "Ask me anything..."}
-        ]
+        # Set initial message for lazydog assistant
+        if assistant.name == "lazydog_assistant":
+            st.session_state["messages"] = [
+                {"role": "assistant", "content": "I am Doug. I work at Lazy Dog Restaurant. I am here to help you Eat, Drink and have a great time at our Lazy Dog Restaurant"}
+            ]
+        # else set initial message for general assistant
+        else:
+            st.session_state["messages"] = [
+                {"role": "assistant", "content": "Ask me anything..."}
+            ]
     # Prompt for user input
     if prompt := st.chat_input():
         st.session_state["messages"].append({"role": "user", "content": prompt})
