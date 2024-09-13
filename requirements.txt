@@ -24,6 +24,7 @@ contourpy==1.2.1
 cryptography==43.0.0
 cycler==0.12.1
 distro==1.9.0
+elevenlabs==1.8.0
 entrypoints==0.4
 envs==1.4
 extra-streamlit-components==0.1.71
@@ -125,4 +126,5 @@ tzdata==2024.1
 urllib3==2.2.2
 uvicorn==0.30.6
 validators==0.33.0
+websockets==13.0.1
 wrapt==1.16.0

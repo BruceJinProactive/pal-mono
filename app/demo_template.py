@@ -1,6 +1,9 @@
+import io
+import os
 from typing import Callable, List
 
 import streamlit as st
+from elevenlabs.client import ElevenLabs
 from phi.assistant import Assistant
 from phi.document import Document
 from phi.document.reader.pdf import PDFReader
@@ -189,7 +192,10 @@ def messaging_ui(assistant: Assistant) -> None:
         # Set initial message for lazydog assistant
         if assistant.name == "lazydog_assistant":
             st.session_state["messages"] = [
-                {"role": "assistant", "content": "I am Doug. I work at Lazy Dog Restaurant. I am here to help you Eat, Drink and have a great time at our Lazy Dog Restaurant"}
+                {
+                    "role": "assistant",
+                    "content": "I am Doug. I work at Lazy Dog Restaurant. I am here to help you Eat, Drink and have a great time at our Lazy Dog Restaurant",
+                }
             ]
         # else set initial message for general assistant
         else:
@@ -315,8 +321,8 @@ def storage_ui(assistant: Assistant) -> None:
 
 def generate_response_in_ui(assistant, question, avatar_path=None):
     """
-    Generates a response from the assistant and displays it in the chat interface.
-    Simplifying the code to insert Jimmy the Surfer and other customizations.
+    Generates a response from the assistant, displays it in the chat interface,
+    and converts it to audio using ElevenLabs, showing a spinner while audio is generated.
 
     Parameters:
     assistant (object): The assistant object that will generate the response.
@@ -333,7 +339,6 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
         "assistant", avatar=Image.open(avatar_path) if avatar_path else None
     ):
         with st.spinner("Working..."):
-
             MAX_RETRIES = 5
             retries = 0
             error = ""
@@ -342,7 +347,6 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                 try:
                     resp_container = st.empty()
                     for delta in assistant.run(question, stream=False):
-                        # Sometimes delta will return a non-string type object
                         if isinstance(delta, str):
                             response += delta.replace("\$", "💲").replace("$", "💲")
                             resp_container.markdown(response)
@@ -361,3 +365,29 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                 )
 
         st.session_state["messages"].append({"role": "assistant", "content": response})
+
+        # Create a placeholder for the audio player
+        audio_placeholder = st.empty()
+
+        # Convert text to audio using ElevenLabs
+        with st.spinner("Generating audio..."):
+            try:
+                eleven_labs_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+
+                audio_stream = eleven_labs_client.generate(
+                    text=response,
+                    voice="Jessica",
+                    model="eleven_monolingual_v1",
+                    stream=True,
+                )
+
+                # Collect audio data from the generator
+                audio_data = b"".join(chunk for chunk in audio_stream)
+
+                # Create a BytesIO object from the audio data
+                audio_bytes = io.BytesIO(audio_data)
+
+                # Display the audio player
+                audio_placeholder.audio(audio_bytes, format="audio/mp3")
+            except Exception as e:
+                audio_placeholder.error(f"Error generating audio: {e}")
