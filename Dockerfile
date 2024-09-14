@@ -1,4 +1,4 @@
-FROM python:3.11.5
+FROM phidata/python:3.11.5
 
 ARG USER=app
 ARG APP_DIR=${USER_LOCAL_DIR}/${USER}
