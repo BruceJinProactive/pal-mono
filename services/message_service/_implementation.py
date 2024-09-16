@@ -1,5 +1,3 @@
-import json
-import re
 import uuid
 from typing import List
 
@@ -61,16 +59,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
 
     # Get response from assistant
     response = assistant.run(message.text.body, stream=False)
-
-    pattern = r"^(.*?)###(.*)###$"
-    match = re.match(pattern, response, re.DOTALL)
-
-    if match:
-        content = match.group(1).strip()
-        extras = json.loads(match.group(2))
-    else:
-        content = response
-        extras = {}
+    extras = {}  # TODO: Get extras from response
 
     response_message = Message(
         author_type=AuthorType.ASSISTANT,
@@ -78,7 +67,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         recipient_channel_identifier=message.sender_channel_identifier,
         channel_platform=message.channel_platform,
         messaging_broker=message.messaging_broker,
-        text=TextObject(body=content),
+        text=TextObject(body=response),
         metadata={"instance": "BaseModel"},
         extras=Extras(**extras),
     )
