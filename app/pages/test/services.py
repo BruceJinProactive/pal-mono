@@ -25,9 +25,12 @@ st.title("Services")
 
 db = next(get_db())
 
-message_service_tab, assistant_service_tab, admin_service_tab, relay_service_tab = (
-    st.tabs(["Message Service", "Assistant Service", "Admin Service", "Relay Service"])
-)
+(
+    message_service_tab,
+    assistant_service_tab,
+    admin_service_tab,
+    relay_service_tab,
+) = st.tabs(["Message Service", "Assistant Service", "Admin Service", "Relay Service"])
 
 
 def main() -> None:

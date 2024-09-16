@@ -10,7 +10,6 @@ from utils.log import logger
 
 
 class ProjectRepository:
-
     def __init__(self, db: Session):
         self.db = db
 

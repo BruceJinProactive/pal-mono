@@ -9,7 +9,6 @@ from utils.log import logger
 
 
 class UserRepository:
-
     def __init__(self, db: Session):
         self.db = db
 

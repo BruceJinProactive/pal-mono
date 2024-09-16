@@ -69,7 +69,6 @@ def get_account_name(authenticator: CognitoAuthenticator):
 
 
 class User:
-
     def __init__(self):
         self.is_logged_in = False
         self.username = ""

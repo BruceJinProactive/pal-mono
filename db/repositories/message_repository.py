@@ -8,7 +8,6 @@ from utils.log import logger
 
 
 class MessageRepository:
-
     def __init__(self, db: Session):
         self.db = db
 

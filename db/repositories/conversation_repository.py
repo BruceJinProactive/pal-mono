@@ -9,7 +9,6 @@ from utils.log import logger
 
 
 class ConversationRepository:
-
     def __init__(self, db: Session):
         self.db = db
 

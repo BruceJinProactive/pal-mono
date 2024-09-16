@@ -152,7 +152,6 @@ def submit_order_and_text_payment_link(
     if _adora_key_and_secret:
         bearer_token = _get_adora_pos_auth_token(_adora_key_and_secret)
         if bearer_token:
-
             order_calculation_result = _validate_order(
                 bearer_token,
                 store_id,
@@ -163,7 +162,6 @@ def submit_order_and_text_payment_link(
                 log_request=log_request,
             )
             if order_calculation_result:
-
                 order_save_result = _save_order(
                     bearer_token, order_calculation_result.Key, log_request=log_request
                 )
@@ -176,14 +174,15 @@ def submit_order_and_text_payment_link(
                     # TODO: find a better solution for this by asking the Adora eng team
                     time.sleep(3)
 
-                    (send_payment_link_success, send_payment_link_response) = (
-                        _send_payment_link(
-                            bearer_token,
-                            store_id,
-                            order_save_result.OrderID,
-                            customer.phone_number,
-                            log_request=log_request,
-                        )
+                    (
+                        send_payment_link_success,
+                        send_payment_link_response,
+                    ) = _send_payment_link(
+                        bearer_token,
+                        store_id,
+                        order_save_result.OrderID,
+                        customer.phone_number,
+                        log_request=log_request,
                     )
                     if send_payment_link_success:
                         # return the order calculation details to the caller if order was placed successfully

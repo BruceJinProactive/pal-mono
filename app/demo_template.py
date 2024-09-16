@@ -189,16 +189,7 @@ def messaging_ui(assistant: Assistant) -> None:
         message["content"] = message["content"].replace("\$", "💲").replace("$", "💲")
     st.session_state["messages"] = assistant_chat_history
     if assistant_chat_history == []:
-        # Set initial message for lazydog assistant
-        if assistant.name == "lazydog_assistant":
-            st.session_state["messages"] = [
-                {
-                    "role": "assistant",
-                    "content": "I am Doug. I work at Lazy Dog Restaurant. I am here to help you Eat, Drink and have a great time at our Lazy Dog Restaurant",
-                }
-            ]
-        # else set initial message for general assistant
-        else:
+        if assistant.name == "pizza_assistant":
             st.session_state["messages"] = [
                 {"role": "assistant", "content": "Ask me anything..."}
             ]
@@ -209,23 +200,18 @@ def messaging_ui(assistant: Assistant) -> None:
     for message in st.session_state["messages"]:
         if message["role"] == "system":
             continue
-        # Set Avatar For Adora / Pizza My Heart; Lazy Dog
+        # For Adora / Pizza My Heart
         if assistant.name == "pizza_assistant":
             avatar = (
                 "data/pizza/logos/jimmy_the_surfer.png"
                 if message["role"] == "assistant"
                 else None
             )
-        elif assistant.name == "lazydog_assistant":
-            avatar = (
-                "data/lazydog/logos/LZRLogo.png"
-                if message["role"] == "assistant"
-                else None
-            )
+            with st.chat_message(message["role"], avatar=avatar):
+                st.write(message["content"])
         else:
-            avatar = None
-        with st.chat_message(message["role"], avatar=avatar):
-            st.write(message["content"])
+            with st.chat_message(message["role"]):
+                st.write(message["content"])
 
     # If last message is from a user, generate a new response
     try:
@@ -239,12 +225,6 @@ def messaging_ui(assistant: Assistant) -> None:
                     assistant,
                     question,
                     avatar_path="data/pizza/logos/jimmy_the_surfer.png",
-                )
-            elif assistant.name == "lazydog_assistant":
-                generate_response_in_ui(
-                    assistant,
-                    question,
-                    avatar_path="data/lazydog/logos/LZRLogo.png",
                 )
             else:
                 generate_response_in_ui(assistant, question)

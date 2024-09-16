@@ -247,9 +247,9 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
             item_modifier_group_id = item_modifier_group["modifier_group_id"]
             item_modifier_group_modifiers = item_modifier_group["modifiers"]
             for item_modifier_group_modifier in item_modifier_group_modifiers:
-                modifier_id_to_group_id[item_modifier_group_modifier["modifier_id"]] = (
-                    item_modifier_group_id
-                )
+                modifier_id_to_group_id[
+                    item_modifier_group_modifier["modifier_id"]
+                ] = item_modifier_group_id
                 if item_modifier_group_modifier["default"]:
                     payload["modifiers"].append(
                         {
@@ -295,7 +295,6 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
 
         # 1. Iterate through the modifications and find most similar for each.
         for order_item_modification in order_item_modifications:
-
             response = client.chat.completions.create(
                 model=OPENAI_CONVERSION_MODEL,
                 messages=[

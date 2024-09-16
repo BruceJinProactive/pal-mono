@@ -61,7 +61,6 @@ def assistant_tab_ui():
         if assistant is None:
             st.write("Assistant not found")
         else:
-
             st.subheader("Assistant Update")
 
             st.write(
