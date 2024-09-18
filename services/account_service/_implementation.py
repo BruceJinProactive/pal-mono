@@ -1,11 +1,14 @@
+from typing import Optional
+
 from requests import Session
 
 from db.repositories.account_repository import AccountRepository
 from db.repositories.assistant_repository import AssistantRepository
 from db.repositories.project_repository import ProjectRepository
+from db.tables import Account
 
 
-def get_account(db: Session, account_name: str):
+def get_account(db: Session, account_name: str) -> Optional[Account]:
     account_repository = AccountRepository(db)
     account = account_repository.get_account(account_name=account_name)
     return account
@@ -25,5 +28,3 @@ def create_account_with_defaults(db: Session, account_name: str):
         account_id=account.id,
         assistant_id=assistant.id,
     )
-
-    return account

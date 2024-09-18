@@ -13,7 +13,6 @@ from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
 from db.tables import Conversation
 from services import assistant_service, user_service
-from services.account_service import get_account
 
 from . import _implementation
 

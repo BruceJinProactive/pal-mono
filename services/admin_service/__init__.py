@@ -66,4 +66,8 @@ def get_brandings(db: Session, account_name: str) -> list[dict]:
     return _implementation.get_brandings(db, account_name)
 
 
-__all__ = ["get_inbox_conversations", "get_conversation_messages", "get_brandings"]
+__all__ = [
+    "get_inbox_conversations",
+    "get_conversation_messages",
+    "get_brandings",
+]
