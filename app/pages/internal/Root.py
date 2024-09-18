@@ -121,6 +121,55 @@ def assistant_tab_ui():
                     else:
                         st.error("Invalid JSON format")
 
+            st.divider()
+
+            st.write(":blue[Update a __branding__ key(s)] in the assistant config")
+            with st.form(key="update_branding_key"):
+                update_config_expander = st.expander("Update branding Key")
+                update_config = update_config_expander.text_area(
+                    "Update branding Key",
+                    value=json.dumps({}),
+                    height=400,
+                    label_visibility="collapsed",
+                )
+                if st.form_submit_button(label="Submit"):
+                    update_config_json = _json_decode(update_config)
+                    if update_config_json:
+                        modified_config = assistant.raw_config
+                        modified_config["branding"].update(update_config_json)
+                        update_assistant_config(
+                            db,
+                            assistant_id=assistant.id,
+                            config=modified_config,
+                        )
+
+                        st.success("Successfully updated the assistant config")
+
+                    else:
+                        st.error("Invalid JSON format")
+
+            st.write(":blue[Update a __System Prompt__ key(s)] in the assistant config")
+            with st.form(key="update_system_prompt_key"):
+                update_config_expander = st.expander("Update System Prompt Key")
+                update_config = update_config_expander.text_area(
+                    "Update System Prompt Key",
+                    value=json.dumps({}),
+                    height=400,
+                    label_visibility="collapsed",
+                )
+                if st.form_submit_button(label="Submit"):
+                    update_config_json = _json_decode(update_config)
+                    if update_config_json:
+                        modified_config = assistant.raw_config
+                        modified_config["system_prompt"].update(update_config_json)
+                        update_assistant_config(
+                            db,
+                            assistant_id=assistant.id,
+                            config=modified_config,
+                        )
+                        st.success("Successfully updated the assistant config")
+                    else:
+                        st.error("Invalid JSON format")
             st.subheader("Assistant Config")
             st.json(assistant.raw_config)
 
