@@ -1,4 +1,3 @@
-import json
 import uuid
 from typing import List
 
@@ -54,18 +53,17 @@ def get_conversation_messages(
     return _implementation.get_conversation_messages(db, account_id, conversation_id)
 
 
-def get_knowledge_base() -> json:
+def get_brandings(db: Session, account_name: str) -> list[dict]:
     """
     NOTE: This function is not implemented and is a placeholder.
 
-    Retrieves the knowledge base content, formatted as a JSON structure, which includes company profile,
-    branding, and frequently asked questions.
+    Retrieves the branding base content, formatted as a list of JSON structure, which includes branding, and frequently asked questions.
 
     Returns:
-        dict: A JSON dictionary containing structured information about the company's profile, branding,
+        list[dict]: A list of JSON dictionary containing structured information about the company's profile, branding,
         and foundational story for AI application.
     """
-    return _implementation.get_knowledge_base()
+    return _implementation.get_brandings(db, account_name)
 
 
-__all__ = ["get_inbox_conversations", "get_conversation_messages", "get_knowledge_base"]
+__all__ = ["get_inbox_conversations", "get_conversation_messages", "get_brandings"]

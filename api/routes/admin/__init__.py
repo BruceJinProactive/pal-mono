@@ -16,9 +16,9 @@ from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (
+    get_brandings,
     get_conversation_messages,
     get_inbox_conversations,
-    get_knowledge_base,
 )
 from services.message_service import (
     get_chat_response,
@@ -326,10 +326,13 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     return JSONResponse(content=jsonable_encoder(chat_response))
 
 
-@admin_router.get("/knowledge")
-def read_knowledge(request: Request):
+@admin_router.get("/brandings")
+def read_brandings(request: Request, db: Session = Depends(get_db)):
     try:
-        _ = _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
+        decrypted_id_token = _auth.parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+
     except ValueError as e:
         raise HTTPException(
             status_code=401,
@@ -337,9 +340,16 @@ def read_knowledge(request: Request):
             headers={"Content-Type": "application/json"},
         )
 
-    knowledge_base_json = get_knowledge_base()
+    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+    if account is None:
+        raise HTTPException(status_code=500, detail="Account not found")
 
-    return knowledge_base_json
+    account_name = account.name
+    """
+    get_brandings returns a list of JSON object that represents the brandings.
+    """
+    branding_jsons = get_brandings(db, account_name)
+    return branding_jsons
 
 
 # This renders the "Users" page in the Admin Console.

@@ -1,4 +1,3 @@
-import json
 import uuid
 from typing import List
 
@@ -9,6 +8,8 @@ from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository
 from db.tables.messages import Message
+from services.account_service import get_account
+from services.assistant_service import get_assistants_by_account
 from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
@@ -109,16 +110,18 @@ def get_conversation_messages(
     return messages
 
 
-def get_knowledge_base() -> json:
-    knowledge_base_json = {
-        "profile": {
-            "company": "Proactive AI Lab",
-            "email": "agent@proactiveailab.com",
-            "phone": "555-555-5555",
-            "website": "https://www.proactiveailab.com",
-        },
-        "branding": "Our AI agent is designed to emulate a real person, utilizing a new generation of AI systems with multi-agents and multimodal-to-action models, enhancing its high EQ language capabilities.",
-        "prompt": "You're name is Anna and you are a highly emotionally intelligent executive assistant.\n\n - You have expertise in coding.\n - You have expertise in customer service.\n - You have expertise in sales and marketing.",
-        "terms_&_faq": "Once upon a time, in a bustling tech hub, a team of passionate innovators embarked on a remarkable journey to revolutionize customer interactions. Their vision? To create an advanced AI system equipped with multi-agents and multimodal-to-action models, complemented by a cutting-edge high EQ language model. With unwavering determination, they set out to empower businesses worldwide, enabling them to provide unparalleled levels of personalized customer experiences, seamless automation, and unmatched operational efficiency. This is the inspiring founder story behind the groundbreaking technology that is reshaping the future of customer engagement.",
-    }
-    return knowledge_base_json
+def get_brandings(db: Session, account_name: str) -> list[dict]:
+    account = get_account(db, account_name)
+
+    account_name = account.name
+    assistants = get_assistants_by_account(db, account_name)
+
+    # # find the assistant's raw config
+    # parse the raw config with the branding key
+    # error check, if it doesn't have the branding key, send back an empty json
+    brandings = []
+    for assistant in assistants:
+        if "branding" in assistant.raw_config:
+            branding = assistant.raw_config.get("branding", {})
+            brandings.append(branding)
+    return brandings

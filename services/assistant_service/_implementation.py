@@ -5,6 +5,7 @@ from phi.assistant.assistant import Assistant as AIAssistant
 from sqlalchemy.orm import Session
 
 from ai import integrate_assistant
+from db.repositories.account_repository import AccountRepository
 from db.repositories.assistant_repository import AssistantRepository
 from db.tables import Assistant
 
@@ -34,6 +35,17 @@ def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
     assistant_repository = AssistantRepository(db)
     assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
     return assistant
+
+
+def get_assistants_by_account(db: Session, account_name: str) -> list[Assistant]:
+    # Retrieve the assistant from the database
+    account_repository = AccountRepository(db)
+    account = account_repository.get_account(account_name)
+    account_id = account.id
+    assistants = AssistantRepository(db).get_assistants_by_account(
+        account_id=account_id
+    )
+    return assistants
 
 
 def update_assistant_config(

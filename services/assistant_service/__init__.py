@@ -44,6 +44,20 @@ def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
     return _implementation.get_assistant(db, assistant_id)
 
 
+def get_assistants_by_account(db: Session, account_name: str) -> list[Assistant]:
+    """
+    Retrieve a list of Assistants instance based on the provided assistant ID.
+
+    Args:
+        db (Session): The database session to use for the query.
+        account_name (str): The unique identifier of the assistant.
+
+    Returns:
+        list[Assistant]: Return the list of assistants
+    """
+    return _implementation.get_assistants_by_account(db, account_name)
+
+
 def update_assistant_config(
     db: Session, assistant_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
@@ -81,6 +95,7 @@ def replace_assistant_config(
 __all__ = [
     "get_ai_assistant",
     "get_assistant",
+    "get_assistants_by_account",
     "update_assistant_config",
     "replace_assistant_config",
 ]
