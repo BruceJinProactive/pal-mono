@@ -8,21 +8,50 @@ set_page_config()
 
 
 def pages():
-    test_pages = [
-        st.Page("pages/test/services.py", title="Services", icon="🚦"),
+    dashboard_pages = [
+        st.Page(
+            "pages/dashboard/dashboard.py",
+            title="Dashboard",
+            icon=":material/dashboard:",
+            default=True,
+        ),
     ]
-    demo_pages = [
-        st.Page("pages/console/Demo.py", title="Demo", icon="💬"),
+    clients_pages = [
+        st.Page(
+            "pages/clients/onboard.py",
+            title="Onboard",
+            icon=":material/flight_takeoff:",
+        ),
+        st.Page(
+            "pages/clients/accounts.py",
+            title="Accounts",
+            icon=":material/manage_accounts:",
+        ),
+        st.Page(
+            "pages/clients/users.py",
+            title="Users",
+            icon=":material/group:",
+        ),
+        st.Page("pages/clients/demo.py", title="Demo", icon=":material/chat:"),
+        st.Page("pages/clients/live.py", title="Live", icon=":material/support_agent:"),
     ]
-    root_pages = [
-        st.Page("pages/internal/Account.py", title="Account", icon="👤"),
-        st.Page("pages/internal/Root.py", title="Root", icon="⚠️"),
+    development_pages = [
+        st.Page(
+            "pages/development/services.py",
+            title="Services",
+            icon=":material/room_service:",
+        ),
+        st.Page(
+            "pages/development/tools.py",
+            title="Tools",
+            icon=":material/pan_tool:",
+        ),
     ]
-    pages = []
-    if user.account_name is not None:
-        pages.extend(test_pages)
-        pages.extend(demo_pages)
-        pages.extend(root_pages)
+    pages = {
+        "Dashboard": dashboard_pages,
+        "Clients": clients_pages,
+        "Development": development_pages,
+    }
     return pages
 
 

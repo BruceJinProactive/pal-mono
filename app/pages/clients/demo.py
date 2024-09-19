@@ -1,11 +1,11 @@
 import streamlit as st
-from demo_template import demo_ui
 from phi.assistant import Assistant
 from streamlit_extras.switch_page_button import switch_page
 
 from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from app.auth import user
+from app.pages.clients.demo_template import demo_ui
 from db.session import get_db
 from services.account_service import get_account
 from services.assistant_service import get_ai_assistant

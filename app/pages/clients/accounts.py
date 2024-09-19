@@ -17,7 +17,7 @@ from services.project_service import (
     update_project_config,
 )
 
-st.title("[Root] Manage Clients' Accounts")
+st.title("Accounts")
 
 db = next(get_db())
 
