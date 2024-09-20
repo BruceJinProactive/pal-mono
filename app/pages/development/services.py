@@ -38,16 +38,7 @@ def main() -> None:
         st.write("### get_chat_response")
 
         sender_channel_identifier = st.text_input("From Number")
-        recipient_channel_identifier = st.selectbox(
-            "To Number",
-            [
-                "+14244859440 (proactiveailab)",
-                "+14244705958 (mindzero)",
-                "+14244680365 (pizzamyheart)",
-            ],
-        )
-        if recipient_channel_identifier:
-            recipient_channel_identifier = recipient_channel_identifier.split()[0]
+        recipient_channel_identifier = st.text_input("To Number")
         text = st.text_input("Text")
 
         if st.button("Get Chat Response"):
