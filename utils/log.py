@@ -1,5 +1,8 @@
 import logging
 
+# Exclude watchdog DEBUG and INFO logs
+logging.getLogger("watchdog").setLevel(logging.WARNING)
+
 
 def build_logger(logger_name: str) -> logging.Logger:
     from rich.logging import RichHandler
