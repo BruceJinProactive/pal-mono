@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from requests import Session
 
@@ -6,6 +6,12 @@ from db.repositories.account_repository import AccountRepository
 from db.repositories.assistant_repository import AssistantRepository
 from db.repositories.project_repository import ProjectRepository
 from db.tables import Account
+
+
+def get_accounts(db: Session) -> List[Account]:
+    account_repository = AccountRepository(db)
+    accounts = account_repository.get_accounts()
+    return accounts
 
 
 def get_account(db: Session, account_name: str) -> Optional[Account]:

@@ -1,75 +1,50 @@
 import streamlit as st
-from phi.assistant import Assistant
 from streamlit_extras.switch_page_button import switch_page
 
-from ai.assistants.gym_assistant import get_gym_assistant
-from ai.assistants.pizza_assistant import get_pizza_assistant
 from app.auth import user
 from app.pages.clients.demo_template import demo_ui
 from db.session import get_db
-from services.account_service import get_account
-from services.assistant_service import get_ai_assistant
-from services.user_service import get_user_by_channel
+from services.account_service import get_accounts
 
 st.title("Demo")
 
 
-def get_prd_assistant(
-    user_id: str,
-    new_run: bool = False,
-) -> Assistant:
+def _construct_demo_dict():
+    """
+    Returns dictionary of account name to assistant id
+    """
+    demo_dict = {}
     db = next(get_db())
-    account = get_account(db, account_name=user.account_name)
+    accounts = get_accounts(db)
 
-    if account is None:
-        raise ValueError("Account not found")
+    for account in accounts:
+        for assistant in account.assistants:
+            demo_dict[account.name] = assistant.id
 
-    if not account.projects:
-        raise ValueError("No projects found for this account")
-
-    db_user = get_user_by_channel(
-        db,
-        account_id=account.id,
-        channel_platform="INTERNAL_APP",
-        channel_identifier=user_id,
-        create_new_user=True,
-    )
-
-    if not db_user:
-        raise ValueError("User not found in db")
-
-    assistant_id = account.projects[0].assistant_id
-    assistant: Assistant = get_ai_assistant(
-        db,
-        assistant_id=assistant_id,
-        user_id=db_user.id,
-        new_run=new_run,
-    )
-    return assistant
+    return demo_dict
 
 
 if user.is_logged_in:
     # account_name : demo assistant getter mapping
-    demo_dict = {
-        # PRD assistant
-        "pal": get_prd_assistant,
-        "mindzero": get_gym_assistant,
-        "pizzamyheart": get_pizza_assistant,
-    }
+
+    demo_dict = _construct_demo_dict()
+
+    # Exception for demo
+    demo_dict["Jimmy Demo"] = "jimmy_demo"
 
     if user.account_name == "proactiveailab" or user.account_name == "root":
         # Internal demo selection
         selected_account_name = st.sidebar.selectbox(
             "Select a demo then reload", list(demo_dict.keys())
         )
-        get_demo_assistant = demo_dict.get(selected_account_name)
+        assistant_id = demo_dict.get(selected_account_name)
     else:
         # Select customer demo
-        get_demo_assistant = demo_dict.get(user.account_name)
-        # If no demo availalbe, use the prd assistant
-        if get_demo_assistant is None:
-            get_demo_assistant = get_prd_assistant
+        assistant_id = demo_dict.get(user.account_name)
+        # If no demo availabe, use the prd assistant
+        if assistant_id is None:
+            assistant_id = demo_dict["proactiveailab"]
 
-    demo_ui(get_demo_assistant)
+    demo_ui(assistant_id)
 else:
     switch_page("home")

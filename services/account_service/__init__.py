@@ -1,10 +1,23 @@
-from typing import Optional
+from typing import List, Optional
 
 from requests import Session
 
 from db.tables import Account
 
 from . import _implementation
+
+
+def get_accounts(db: Session) -> List[Account]:
+    """
+    Retrieve a list of all Accounts.
+
+    Args:
+        db (Session): The database session.
+
+    Returns:
+        List[Account]: A list of all Accounts.
+    """
+    return _implementation.get_accounts(db)
 
 
 def get_account(db: Session, account_name: str) -> Optional[Account]:
@@ -36,6 +49,7 @@ def create_account_with_defaults(db: Session, account_name: str):
 
 
 __all__ = [
+    "get_accounts",
     "get_account",
     "create_account_with_defaults",
 ]

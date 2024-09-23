@@ -1,6 +1,7 @@
 import io
 import os
-from typing import Callable, List
+import uuid
+from typing import List
 
 import streamlit as st
 from elevenlabs.client import ElevenLabs
@@ -10,6 +11,7 @@ from phi.document.reader.pdf import PDFReader
 from phi.memory.manager import MemoryManager
 from PIL import Image
 
+from ai.assistants.pizza_assistant import get_pizza_assistant
 from ai.tools.adapters.mock_cart import (
     calculate_tax_fees_and_total,
     get_adora_list_of_items,
@@ -19,27 +21,75 @@ from ai.tools.adapters.mock_cart import (
 )
 from app.auth import user
 from data_access_layer.dal_user_id import get_user_id_for_account_name_user_email
+from db.session import get_db
+from services.account_service import get_account
+from services.assistant_service import get_ai_assistant
+from services.user_service import get_user_by_channel
 from utils.log import logger
 
 
+def get_prd_assistant(
+    user_id: str,
+    assistant_id: uuid.UUID,
+    new_run: bool = False,
+) -> Assistant:
+    db = next(get_db())
+    account = get_account(db, account_name=user.account_name)
+
+    if account is None:
+        raise ValueError("Account not found")
+
+    if not account.projects:
+        raise ValueError("No projects found for this account")
+
+    db_user = get_user_by_channel(
+        db,
+        account_id=account.id,
+        channel_platform="INTERNAL_APP",
+        channel_identifier=user_id,
+        create_new_user=True,
+    )
+
+    if not db_user:
+        raise ValueError("User not found in db")
+
+    assistant: Assistant = get_ai_assistant(
+        db,
+        assistant_id=assistant_id,
+        user_id=db_user.id,
+        new_run=new_run,
+    )
+    return assistant
+
+
 def demo_ui(
-    get_assistant: Callable[[str, bool], Assistant],
+    assistant_id: uuid.UUID,
 ) -> None:
     user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
-        assistant = get_assistant(
-            user_id=user_id,
-            new_run=True,
+        assistant = (
+            get_prd_assistant(
+                user_id=user_id,
+                assistant_id=assistant_id,
+                new_run=True,
+            )
+            if assistant_id != "jimmy_demo"
+            else get_pizza_assistant(user_id, new_run=True)
         )
         assistant.memory.chat_history = []
         assistant.memory.llm_messages = []
         st.session_state["messages"] = []
     else:
         logger.info("Not restarting chat")
-        assistant = get_assistant(
-            user_id=user_id,
-            new_run=False,
+        assistant = (
+            get_prd_assistant(
+                user_id=user_id,
+                assistant_id=assistant_id,
+                new_run=False,
+            )
+            if assistant_id != "jimmy_demo"
+            else get_pizza_assistant(user_id, new_run=False)
         )
     st.session_state["restart_chat"] = False
 
