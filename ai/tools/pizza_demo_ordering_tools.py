@@ -9,10 +9,10 @@ from ai.tools.adapters.mock_cart import (
     set_order_type_to_mock_cart,
     set_user_info_to_mock_cart,
 )
-from ai.tools.ordering_classes import OrderItem
+from ai.tools.ordering_tools.ordering_classes import OrderItem
 
 
-class OrderingTools(Toolkit):
+class PizzaDemoOrderingTools(Toolkit):
     assistant: Assistant = None
     user_id: str = None
     add_cart_to_system_prompt: bool = False

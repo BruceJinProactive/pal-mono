@@ -16,7 +16,9 @@ from phi.vectordb.pgvector import PgVector2
 
 from ai.assistants.constants import FUNCTION_NAME_LENGTH_LIMIT
 from ai.llm import ai_settings
-from ai.tools.ordering_tools import OrderingTools
+from ai.tools.pizza_demo_ordering_tools import PizzaDemoOrderingTools
+
+# from ai.tools.ordering_tools import OrderingTools
 from db.session import db_url
 
 # Set up logging
@@ -229,9 +231,7 @@ def get_pizza_assistant(
         run_ids = pizza_assistant_storage.get_all_run_ids(user_id=user_id)
         run_id = run_ids[0] if run_ids else None
 
-    # Need to address circular dependency:
-    # Define the tools
-    ordering_tools = OrderingTools()
+    ordering_tools = PizzaDemoOrderingTools()
     pizza_my_heart_tools = PizzaMyHeartTools()
     # Validate and reformat tool names
     ordering_tools.name = validate_and_format_name(ordering_tools.name)

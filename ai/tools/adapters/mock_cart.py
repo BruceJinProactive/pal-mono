@@ -16,7 +16,7 @@ from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
     calculate_tax_fees_and_total,
     submit_order_and_text_payment_link,
 )
-from ai.tools.ordering_classes import OrderItem
+from ai.tools.ordering_tools.ordering_classes import OrderItem
 
 CART_JSON_PATH = "data/pizza/cart.json"
 

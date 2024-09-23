@@ -1,4 +1,5 @@
 import json
+from os import getenv
 
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
@@ -20,7 +21,13 @@ db = next(get_db())
 
 def ordering_tools_tab_content():
     st.write("# Ordering Tools")
-    toolkit = OrderingTools()
+    toolkit = OrderingTools(
+        {
+            "type": "adora",
+            "api_key": getenv("ADORA_POS_API_KEY"),
+            "api_secret": getenv("ADORA_POS_API_SECRET"),
+        }
+    )
 
     st.write("### Add to Order")
     item_name = st.text_input("Item Name", value="Big Sur")
