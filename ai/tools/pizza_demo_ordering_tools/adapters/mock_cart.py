@@ -8,7 +8,7 @@ from typing import Optional
 from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
-from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
+from ai.tools.pizza_demo_ordering_tools.adapters.integrations.pos.adora_pos_apis import (
     AdoraCustomerInfo,
     AdoraPosDeliveryAddress,
     AdoraPosOrderCalculationResult,
@@ -16,7 +16,7 @@ from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
     calculate_tax_fees_and_total,
     submit_order_and_text_payment_link,
 )
-from ai.tools.ordering_tools.ordering_classes import OrderItem
+from ai.tools.pizza_demo_ordering_tools.ordering_classes import OrderItem
 
 CART_JSON_PATH = "data/pizza/cart.json"
 

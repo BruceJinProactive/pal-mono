@@ -3,13 +3,16 @@ from typing import List
 from phi.assistant import Assistant
 from phi.tools import Toolkit
 
-from ai.tools.adapters.adapters import ServiceAdapters, get_adapter
-from ai.tools.adapters.mock_cart import (
+from ai.tools.pizza_demo_ordering_tools.adapters.adapters import (
+    ServiceAdapters,
+    get_adapter,
+)
+from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import (
     set_delivery_address_to_mock_cart,
     set_order_type_to_mock_cart,
     set_user_info_to_mock_cart,
 )
-from ai.tools.ordering_tools.ordering_classes import OrderItem
+from ai.tools.pizza_demo_ordering_tools.ordering_classes import OrderItem
 
 
 class PizzaDemoOrderingTools(Toolkit):

@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 
-from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
+from ai.tools.pizza_demo_ordering_tools.adapters.integrations.pos.adora_pos_apis import (
     AdoraApiKeyAndSecret,
     _get_adora_pos_auth_token,
     _get_adora_pos_store_menu,

@@ -33,7 +33,7 @@ def integrate_assistant(
 
     # Add tools
     tools = None
-    if assistant_raw_config["tools"]:
+    if "tools" in assistant_raw_config:
         # Ensure keys are present
         if "type" not in assistant_raw_config["tools"]:
             raise ValueError("Tool type must be specified")

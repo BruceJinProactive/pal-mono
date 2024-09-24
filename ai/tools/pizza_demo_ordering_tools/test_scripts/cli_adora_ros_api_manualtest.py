@@ -1,6 +1,6 @@
 from os import getenv
 
-from ai.tools.adapters.integrations.pos.adora_pos.adora_pos_apis import (
+from ai.tools.pizza_demo_ordering_tools.adapters.integrations.pos.adora_pos_apis import (
     AdoraApiKeyAndSecret,
     AdoraCustomerInfo,
     AdoraPosDeliveryAddress,

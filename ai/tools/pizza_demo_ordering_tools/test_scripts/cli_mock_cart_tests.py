@@ -1,5 +1,5 @@
 from ai.assistants.pizza_assistant import get_pizza_assistant
-from ai.tools.adapters.mock_cart import reset_mock_cart
+from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import reset_mock_cart
 
 # clear output file
 output_file_path = "mock_cart_test_chat_history.txt"

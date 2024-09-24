@@ -10,7 +10,9 @@ from typing import Optional, Tuple, Type, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from ai.tools.adapters.integrations.data_models.access_token import AccessToken
+from ai.tools.pizza_demo_ordering_tools.adapters.integrations.data_models.access_token import (
+    AccessToken,
+)
 
 
 @dataclass

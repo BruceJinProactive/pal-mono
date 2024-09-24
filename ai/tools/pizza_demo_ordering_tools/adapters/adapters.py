@@ -1,6 +1,6 @@
 from enum import Enum
 
-from ai.tools.adapters.mock_cart import (
+from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import (
     add_mock_cart,
     checkout_mock_cart,
     get_mock_cart,

@@ -16,9 +16,9 @@ from phi.vectordb.pgvector import PgVector2
 
 from ai.assistants.constants import FUNCTION_NAME_LENGTH_LIMIT
 from ai.llm import ai_settings
-from ai.tools.pizza_demo_ordering_tools import PizzaDemoOrderingTools
-
-# from ai.tools.ordering_tools import OrderingTools
+from ai.tools.pizza_demo_ordering_tools.pizza_demo_ordering_tools import (
+    PizzaDemoOrderingTools,
+)
 from db.session import db_url
 
 # Set up logging

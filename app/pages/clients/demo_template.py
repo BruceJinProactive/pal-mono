@@ -12,7 +12,7 @@ from phi.memory.manager import MemoryManager
 from PIL import Image
 
 from ai.assistants.pizza_assistant import get_pizza_assistant
-from ai.tools.adapters.mock_cart import (
+from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import (
     calculate_tax_fees_and_total,
     get_adora_list_of_items,
     hard_reset_mock_cart,

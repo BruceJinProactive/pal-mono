@@ -1,8 +1,10 @@
 import json
 from dataclasses import dataclass
 
-from ai.tools.adapters.mock_cart import convert_order_item_to_adora
-from ai.tools.ordering_tools.ordering_classes import OrderItem
+from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import (
+    convert_order_item_to_adora,
+)
+from ai.tools.pizza_demo_ordering_tools.ordering_classes import OrderItem
 
 
 # False means propagate failure, True means expected result in message.
