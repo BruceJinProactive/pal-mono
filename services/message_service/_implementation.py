@@ -4,7 +4,6 @@ from typing import List
 from sqlalchemy.orm import Session
 
 import db.tables as db
-from ai.assistants.gym_assistant import get_gym_assistant
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from api.models.message import AuthorType, Extras, Message, TextObject
 from db.repositories.conversation_repository import ConversationRepository
@@ -44,7 +43,9 @@ def get_chat_response(db: Session, message: Message) -> Message:
 
     account_name = project.account.name
     # Get appropriate assistant from account name
-    if account_name == "proactiveailab":
+    if account_name == "pizzamyheart":
+        assistant = get_pizza_assistant(user_id=str(user.id))
+    else:
         assistant_id = project.assistant_id
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
@@ -52,10 +53,6 @@ def get_chat_response(db: Session, message: Message) -> Message:
         assistant = assistant_service.get_ai_assistant(
             db=db, assistant_id=assistant_id, user_id=user.id
         )
-    elif account_name == "mindzero":
-        assistant = get_gym_assistant(user_id=str(user.id))
-    elif account_name == "pizzamyheart":
-        assistant = get_pizza_assistant(user_id=str(user.id))
 
     # Get response from assistant
     response = assistant.run(message.text.body, stream=False)

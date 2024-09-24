@@ -1,18 +1,11 @@
-import json
-import re
 import uuid
 from typing import List
 
 from sqlalchemy.orm import Session
 
 import db.tables as db
-from ai.assistants.gym_assistant import get_gym_assistant
-from ai.assistants.pizza_assistant import get_pizza_assistant
-from api.models.message import AuthorType, Extras, Message, TextObject
-from db.repositories.conversation_repository import ConversationRepository
-from db.repositories.message_repository import MessageRepository
+from api.models.message import Message
 from db.tables import Conversation
-from services import assistant_service, user_service
 
 from . import _implementation
 
