@@ -12,15 +12,15 @@ class BookingTools(Toolkit):
     def __init__(self, config: dict):
         super().__init__(name="booking_tools")
 
-        # Tool configuration
+        # Toolkit tools (actions)
+        self.register(self.book_a_class)
+        self.register(self.get_classes)
+
+        # Toolkit configuration
         self.api_key = config.get("api_key", None)
         self.api_secret = config.get("api_secret", None)
 
-        # Tool actions
-        self.register(self.get_classes)
-        self.register(self.book_a_class)
-
-        # Tool integrations
+        # Toolkit integrations
         # TODO: create a tool integration module
         self.integration_map = {
             "mindzero": MindZeroIntegration,
@@ -34,16 +34,9 @@ class BookingTools(Toolkit):
         # Lazy load integration
         self.integration = integration_class()
 
-    def get_classes(self, num_days: Optional[int]) -> str:
-        """Use this function to answer any questions regarding class availability.
-
-        Args:
-            num_days (int): Number of days in advance to look for.
-
-        Returns:
-            str: JSON string of class availability.
-        """
-        return self.integration.get_classes(num_days)
+    # ----------------------------------------
+    # Toolkit tools (actions)
+    # ----------------------------------------
 
     def book_a_class(self) -> str:
         """Use this function to answer any questions regarding class availability.
@@ -55,3 +48,14 @@ class BookingTools(Toolkit):
             str: JSON string of class availability.
         """
         return self.integration.book_a_class()
+
+    def get_classes(self, num_days: Optional[int]) -> str:
+        """Use this function to answer any questions regarding class availability.
+
+        Args:
+            num_days (int): Number of days in advance to look for.
+
+        Returns:
+            str: JSON string of class availability.
+        """
+        return self.integration.get_classes(num_days)

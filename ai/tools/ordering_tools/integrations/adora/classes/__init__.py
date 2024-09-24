@@ -2,10 +2,15 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from ai.tools.ordering_tools.ordering_classes import OrderItem
+from ai.tools.ordering_tools.classes import OrderItem
 
 
 class AccessToken(BaseModel):
+    """
+    This is the response shape from the Adora API when you request an access token.
+    This access token is used to authenticate subsequent API calls.
+    """
+
     access_token: str
     expires_in: int
     token_type: str
@@ -16,12 +21,20 @@ class AccessToken(BaseModel):
 
 
 class AdoraHubResponse(BaseModel):
+    """
+    This is the response shape from the Adora API when you make a request to the OrderHub.
+    """
+
     status: int
     reason: str
     decoded_body: str
 
 
 class AdoraOrderItem(OrderItem):
+    """
+    This is the shape of an order item that is sent to the Adora API at the add_to_order step.
+    """
+
     def __init__(
         self,
         item_id: int,
@@ -47,6 +60,7 @@ class AdoraOrderItem(OrderItem):
 
 class Consumer(BaseModel):
     """
+    This is the shape of a consumer that is sent to the Adora API at the place_order step.
     NOTE: phone number must be in (xxx)xxx-xxxx format
     NOTE: Placing order will send a text to the phone number
     """
@@ -58,6 +72,10 @@ class Consumer(BaseModel):
 
 
 class DeliveryAddress(BaseModel):
+    """
+    This is the shape of a delivery address that is sent to the Adora API at the place_order step.
+    """
+
     address: str
     extendedAddress: str = (
         ""  # Required by Adora API, used for Apt/Suite number, can be empty string
@@ -78,6 +96,10 @@ class DeliveryAddress(BaseModel):
 
 
 class OrderCalculationResult(BaseModel):
+    """
+    This is the response shape from the Adora API when you request an order calculation at the validate_order step.
+    """
+
     # Key is used on the Adora Pos API side in subsequent API calls to refer to the order.
     Key: str
     IsPaymentRequired: bool
@@ -95,6 +117,10 @@ class OrderType(str, Enum):
 
 
 class SavedOrderResult(BaseModel):
+    """
+    This is the shape of the response from the Adora API at the save_validate_order step.
+    """
+
     Success: int
     OrderID: int  # this is the important value -- you need this to checkout the order using /textPaymentLink
     OrderNo: int

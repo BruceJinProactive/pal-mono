@@ -4,14 +4,22 @@ from typing import Optional
 from openai import OpenAI
 
 from ai.llm import _settings
-from ai.tools.ordering_tools.ordering_classes import LLMCartInfo, ParsedAdoraOrder
+from ai.tools.ordering_tools.classes import LLMCartInfo, LLMOrder
 
 openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
 openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
 
 def get_cart_info(chat_history: str) -> Optional[LLMCartInfo]:
-    response = openai_client.beta.chat.completions.parse(
+    """Extracts the cart information from the chat history.
+
+    Args:
+        chat_history (str): The chat history to extract the cart information from.
+
+    Returns:
+        Optional[LLMCartInfo]: The parsed cart information.
+    """
+    response = openai_client.chat.completions.parse(
         model=openai_model,
         messages=[
             {
@@ -36,8 +44,16 @@ def get_cart_info(chat_history: str) -> Optional[LLMCartInfo]:
     return response.choices[0].message.parsed
 
 
-def get_order_id(validated_order_res: str) -> Optional[ParsedAdoraOrder]:
-    response = openai_client.beta.chat.completions.parse(
+def get_order_id(validated_order_res: str) -> Optional[LLMOrder]:
+    """Extracts the order ID from the validated order response.
+
+    Args:
+        validated_order_res (str): The validated order response to extract the order ID from.
+
+    Returns:
+        Optional[LLMOrder]: The parsed order ID.
+    """
+    response = openai_client.chat.completions.parse(
         model=openai_model,
         messages=[
             {
@@ -56,7 +72,7 @@ def get_order_id(validated_order_res: str) -> Optional[ParsedAdoraOrder]:
         ],
         temperature=0,
         max_tokens=2048,
-        response_format=ParsedAdoraOrder,
+        response_format=LLMOrder,
     )
 
     return response.choices[0].message.parsed

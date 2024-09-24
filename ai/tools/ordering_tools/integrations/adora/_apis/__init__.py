@@ -127,7 +127,16 @@ def validate_order(
 def save_validate_order(
     bearer_token: AccessToken,
     order_key: str,
-):
+) -> SavedOrderResult | None:
+    """Save an already-validate order to Adora POS.
+
+    Args:
+        bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
+        order_key (str): The order key from the validate_order response.
+
+    Returns:
+        SavedOrderResult: The result of saving the order to Adora POS.
+    """
     response = _utils.connect_adora_order_hub(
         "POST",
         bearer_token,
@@ -148,7 +157,17 @@ def place_order(
     bearer_token: AccessToken,
     order_id: int,
     store_id: str,
-):
+) -> bool:
+    """Place an order with Adora POS.
+
+    Args:
+        bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
+        order_id (int): The order ID from the save_validate_order response.
+        store_id (str): The store ID to place the order with.
+
+    Returns:
+        bool: True if the order was placed successfully, False otherwise.
+    """
     response = _utils.connect_adora_order_hub(
         "POST",
         bearer_token,

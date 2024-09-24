@@ -2,7 +2,7 @@ import json
 
 from openai import OpenAI
 
-from ai.tools.ordering_tools.ordering_classes import OrderItem
+from ai.tools.ordering_tools.classes import OrderItem
 
 from . import _apis, _utils
 from .classes import AdoraOrderItem

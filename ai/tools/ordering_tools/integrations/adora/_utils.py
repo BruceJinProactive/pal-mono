@@ -83,7 +83,7 @@ def get_adora_size_id(
     menu, adora_item_id: int, order_item_size: str, openai_client, openai_model: str
 ) -> ConversionResult:
     """
-    Maps the size to size id
+    Maps the size to size id.
     """
     # Size descriptions.
     # TODO: Make more comprehensive
