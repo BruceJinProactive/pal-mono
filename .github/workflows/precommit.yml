@@ -65,6 +65,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -U \
+            pip setuptools wheel \
+            mypy ruff
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        env:
+          AWS_USER_POOL_ID: ${{ secrets.AWS_USER_POOL_ID }}
+          AWS_APP_CLIENT_ID: ${{ secrets.AWS_APP_CLIENT_ID }}
+          AWS_APP_CLIENT_SECRET: ${{ secrets.AWS_APP_CLIENT_SECRET }}
+          MODAL_API_KEY: ${{ secrets.MODAL_API_KEY }}
+          ADMIN_CONSOLE_AWS_CLIENT_ID: ${{ secrets.ADMIN_CONSOLE_AWS_CLIENT_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ci: true
+        run: |
+          pytest
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       
@@ -80,7 +106,7 @@ jobs:
 
       - name: Test Docker image
         run: |
-          docker run myapp:${{ github.sha }} bash -c "echo 'Container is running correctly' && pytest"
+          docker run myapp:${{ github.sha }} echo "Container is running correctly"
         
       # If the build job fails, send a message to Slack
       - name: Notify Slack
