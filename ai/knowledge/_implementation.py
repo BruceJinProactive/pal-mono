@@ -6,17 +6,17 @@ from ai.llm import get_embedder
 from db.session import db_url
 
 
-def get_knowledge_base(account_name: str) -> AssistantKnowledge:
-    knowledge_base_table_name = f"{account_name}_knowledge_base"
-    knowledge_base = CombinedKnowledgeBase(
+def get_knowledge(account_name: str) -> AssistantKnowledge:
+    knowledge_table_name = f"{account_name}_knowledge"
+    get_knowledge = CombinedKnowledgeBase(
         sources=[],
         vector_db=PgVector2(
             db_url=db_url,
-            collection=knowledge_base_table_name,
+            collection=knowledge_table_name,
             embedder=get_embedder(),
         ),
         # 2 references are added to the prompt
         num_documents=2,
     )
 
-    return knowledge_base
+    return get_knowledge

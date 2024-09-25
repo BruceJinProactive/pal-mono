@@ -3,7 +3,7 @@ from phi.knowledge.base import AssistantKnowledge
 from . import _implementation
 
 
-def get_knowledge_base(account_name: str) -> AssistantKnowledge:
+def get_knowledge(account_name: str) -> AssistantKnowledge:
     """
     Create and return an AssistantKnowledge instance for the given account.
 
@@ -17,4 +17,4 @@ def get_knowledge_base(account_name: str) -> AssistantKnowledge:
     Returns:
         AssistantKnowledge: An instance of AssistantKnowledge configured with the specified settings.
     """
-    return _implementation.get_knowledge_base(account_name)
+    return _implementation.get_knowledge(account_name)

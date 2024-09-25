@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 from phi.assistant.assistant import Assistant
 
-from ai.knowledge import get_knowledge_base
+from ai.knowledge import get_knowledge
 from ai.llm import get_llm
 from ai.memory import get_memory
 from ai.prompts import get_system_prompt
@@ -26,7 +26,7 @@ def integrate_assistant(
     storage = get_storage(account_name)
 
     # Set up knowledge base
-    knowledge_base = get_knowledge_base(account_name)
+    knowledge = get_knowledge(account_name)
 
     # Set up memory
     memory = get_memory(account_name)
@@ -71,9 +71,9 @@ def integrate_assistant(
         num_history_messages=10,
         # Prompt Settings
         system_prompt=system_prompt,
-        # Storage, knowledge base, and memory
+        # Storage, knowledge, and memory
         storage=storage,
-        knowledge_base=knowledge_base,
+        knowledge_base=knowledge,
         memory=memory,
         create_memories=True,
         update_memory_after_run=True,
