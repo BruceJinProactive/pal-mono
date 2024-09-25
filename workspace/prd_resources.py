@@ -34,8 +34,8 @@ prd_image = DockerImage(
 
 # -*- S3 bucket for production data (set enabled=True when needed)
 prd_bucket = S3Bucket(
-    name=f"{ws_settings.prd_key}-data",
-    enabled=False,
+    name=f"{ws_settings.prd_key}-bucket",
+    enabled=True,
     acl="private",
     skip_delete=skip_delete,
     save_output=save_output,
