@@ -9,6 +9,17 @@ from pydantic import BaseModel
 """
 
 
+class Consumer(BaseModel):
+    """
+    This is the shape of a consumer that is sent to an integration API at the place_order step.
+    """
+
+    first_name: str
+    last_name: str
+    phone_number: str  # NOTE: phone number must be in (xxx)xxx-xxxx format for compatibility with ALL providers
+    email: str
+
+
 class LLMOrderItem(BaseModel):
     """
     An LLM Order Item is what the LLM outputs when it is asked to parse a cart (see LLMCartInfo).
@@ -37,12 +48,16 @@ class LLMOrder(BaseModel):
     order_id: int
 
 
-class OrderItem(BaseModel):
+class OrderItem:
     """
     This represents a generic order item that will be passed to an ordering integration.
+    This should NOT inherit from Pydantic's BaseModel because it is not used by the LLM.
     """
 
-    item_name: str
-    size: str
-    quantity: int
-    modifications: list[str]
+    def __init__(
+        self, item_name: str, size: str, quantity: int, modifications: list[str]
+    ):
+        self.item_name: str = item_name
+        self.size: str = size
+        self.quantity: int = quantity
+        self.modifications: list[str] = modifications

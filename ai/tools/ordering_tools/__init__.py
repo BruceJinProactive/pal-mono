@@ -92,7 +92,7 @@ class OrderingTools(Toolkit):
         This function should be used every time the user wants to finish their order, check out, or pay for it.
 
         Args:
-            chat_history (list[str]): The chat history between the user and the assistant. Only include the last 50 messages.
+            chat_history (list[str]): The chat history between the user and the assistant. Only include the last 50 messages. If there are less than 50 messages, include all of them.
 
         Returns:
             str: Result of placing the order, including the total if applicable, and payment instructions if applicable.
@@ -113,27 +113,21 @@ class OrderingTools(Toolkit):
             User: just those items please
             Tool: place_order()
         """
-
         cart = _utils.get_cart_info(chat_history)
         if not cart:
             return "There was an issue processing your order. Please try again."
 
-        # TODO: investigate if all POS require an order_id to place an order
+        consumer = _utils.get_consumer_info(chat_history)
+        if (
+            not consumer
+            or consumer.first_name == "N/A"
+            or consumer.last_name == "N/A"
+            or consumer.phone_number == "N/A"
+            or consumer.email == "N/A"
+        ):
+            return "Ask the user to provide their first name, last name, phone number, and email address to place an order."
 
-        # Call integration's add_to_order method to validate order
-        integrated_order_res = self.integration.add_to_order(cart.cart_items[0])
-
-        # Given validated order message string, extract order ID
-        order = _utils.get_order_id(integrated_order_res)
-        if not order:
-            return "There was an issue processing your order. Please try again."
-
-        success = self.integration.place_order(order.order_id)
-
-        if success:
-            return "The order has been placed."
-        else:
-            return "There was an issue placing the order. Please try again."
+        return self.integration.place_order(cart.cart_items, consumer)
 
     def remove_from_order(self):
         """

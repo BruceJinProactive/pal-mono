@@ -58,19 +58,6 @@ class AdoraOrderItem(OrderItem):
         self.modifiers = modifications
 
 
-class Consumer(BaseModel):
-    """
-    This is the shape of a consumer that is sent to the Adora API at the place_order step.
-    NOTE: phone number must be in (xxx)xxx-xxxx format
-    NOTE: Placing order will send a text to the phone number
-    """
-
-    first_name: str
-    last_name: str
-    phone_number: str  # NOTE: phone number must be in (xxx)xxx-xxxx format
-    email: str
-
-
 class DeliveryAddress(BaseModel):
     """
     This is the shape of a delivery address that is sent to the Adora API at the place_order step.

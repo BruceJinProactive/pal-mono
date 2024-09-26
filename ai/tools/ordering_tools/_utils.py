@@ -4,7 +4,7 @@ from typing import Optional
 from openai import OpenAI
 
 from ai.llm import _settings
-from ai.tools.ordering_tools.classes import LLMCartInfo, LLMOrder
+from ai.tools.ordering_tools.classes import Consumer, LLMCartInfo, LLMOrder
 
 openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
 openai_model = _settings.ai_settings.gpt_4o_2024_08_06
@@ -19,7 +19,7 @@ def get_cart_info(chat_history: str) -> Optional[LLMCartInfo]:
     Returns:
         Optional[LLMCartInfo]: The parsed cart information.
     """
-    response = openai_client.chat.completions.parse(
+    response = openai_client.beta.chat.completions.parse(
         model=openai_model,
         messages=[
             {
@@ -44,6 +44,45 @@ def get_cart_info(chat_history: str) -> Optional[LLMCartInfo]:
     return response.choices[0].message.parsed
 
 
+def get_consumer_info(chat_history: str) -> Optional[Consumer]:
+    """Extracts the consumer information from the chat history.
+
+    Args:
+        chat_history (str): The chat history to extract the consumer information from.
+
+    Returns:
+        Optional[Consumer]: The parsed consumer information.
+    """
+    response = openai_client.beta.chat.completions.parse(
+        model=openai_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """Your role is to process the chat history between a user and an assistant.
+                        You will extract the relevant customer information into the desired format.
+                        You will be provided with the chat history to process.
+                        The phone number, if provided, MUST match the format (XXX)XXX-XXXX.
+                        If the customer information is not present, output "N/A" for the missing fields.
+                        """,
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": f"{chat_history}"}],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=Consumer,
+    )
+
+    return response.choices[0].message.parsed
+
+
 def get_order_id(validated_order_res: str) -> Optional[LLMOrder]:
     """Extracts the order ID from the validated order response.
 
@@ -53,7 +92,7 @@ def get_order_id(validated_order_res: str) -> Optional[LLMOrder]:
     Returns:
         Optional[LLMOrder]: The parsed order ID.
     """
-    response = openai_client.chat.completions.parse(
+    response = openai_client.beta.chat.completions.parse(
         model=openai_model,
         messages=[
             {

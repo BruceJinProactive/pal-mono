@@ -2,7 +2,7 @@ import json
 
 from openai import OpenAI
 
-from ai.tools.ordering_tools.classes import OrderItem
+from ai.tools.ordering_tools.classes import Consumer, LLMOrderItem, OrderItem
 
 from . import _apis, _utils
 from .classes import AdoraOrderItem
@@ -23,53 +23,53 @@ class AdoraIntegration:
         with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
             menu = json.load(read_f)
 
-        # Invalid quantity
-        if order_item.quantity < 1:
-            return "Quantity must be at least 1."
-        if order_item.quantity > 100:
-            return "Quantity must be at most 100."
+        # Get bearer token
+        bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
+        if not bearer_token:
+            return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-        # Get Adora-specific item id and size id
-        adora_item_id_res = _utils.get_adora_item_id(
-            menu, order_item.item_name, self.openai_client, self.openai_model
+        convert_item_success, adora_order_item = _utils.validate_and_convert_item(
+            order_item, menu, self.openai_client, self.openai_model
         )
-        if not adora_item_id_res.success:
-            return adora_item_id_res.message
+        if not convert_item_success:
+            return adora_order_item  # this is an error string
 
-        adora_size_id_res = _utils.get_adora_size_id(
-            menu,
-            int(adora_item_id_res.message),
-            order_item.size,
-            self.openai_client,
-            self.openai_model,
+        # validate order
+        validated_order = _apis.validate_order(
+            bearer_token, self.store_id, [adora_order_item]
         )
-        if not adora_size_id_res.success:
-            return adora_size_id_res.message
+
+        if not validated_order:
+            return "Failed to validate order."
+
+
+        return f"Added {order_item.item_name} to your cart."
+
+    def place_order(self, cart: list[LLMOrderItem], consumer: Consumer) -> str:
+        menu = {}  # TODO Should be referenced from the knowledge base in SQL
+        with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
+            menu = json.load(read_f)
 
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-        # TODO modifications
-        # adora_modifications_res = get_adora_modifications(
-        #     int(adora_item_id_res.message),
-        #     order_item.modifications,
-        # )
+        order_items = []
 
-        # transform generic order item into Adora order item
-        adora_order_item = AdoraOrderItem(
-            int(adora_item_id_res.message),
-            int(adora_size_id_res.message),
-            order_item.quantity,
-            "",
-            0,
-            order_item.modifications,
-        )
+        for order_item in cart:
+            convert_item_success, adora_order_item = _utils.validate_and_convert_item(
+                order_item, menu, self.openai_client, self.openai_model
+            )
+
+            if not convert_item_success:
+                return adora_order_item  # this is an error string
+
+            order_items.append(adora_order_item)
 
         # validate order
         validated_order = _apis.validate_order(
-            bearer_token, self.store_id, adora_order_item
+            bearer_token, self.store_id, order_items, consumer
         )
 
         if not validated_order:
@@ -78,12 +78,10 @@ class AdoraIntegration:
         # save validated order to Adora system and get the order ID back
         saved_order = _apis.save_validate_order(bearer_token, validated_order.Key)
 
-        return f"Added {order_item.item_name} to your cart. You absolutely must include the order number {saved_order.OrderID}."
-
-    def place_order(self, order_id: int):
-        bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
-        if not bearer_token:
-            return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
-
         # place order
-        return _apis.place_order(bearer_token, order_id, self.store_id)
+        if _apis.place_order(
+            bearer_token, saved_order.OrderID, self.store_id, consumer.phone_number
+        ):
+            return "Order placed successfully."
+        else:
+            return "There was an issue placing the order. Please try again."

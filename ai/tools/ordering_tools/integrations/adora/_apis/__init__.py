@@ -2,10 +2,10 @@ import http
 import json
 from datetime import datetime, timedelta, timezone
 
+from ai.tools.ordering_tools.classes import Consumer
 from ai.tools.ordering_tools.integrations.adora.classes import (
     AccessToken,
     AdoraOrderItem,
-    Consumer,
     OrderCalculationResult,
     OrderType,
     SavedOrderResult,
@@ -38,7 +38,13 @@ def validate_order(
     bearer_token: AccessToken,
     store_id: str,
     # order_items: list[OrderItem],
-    order_item: AdoraOrderItem,
+    order_items: list[AdoraOrderItem],
+    customer: Consumer = Consumer(
+        first_name="JimmyAI",
+        last_name="ValidateOrder",
+        phone_number="(555)555-5555",
+        email="jimmythesurfer@proactiveailab.com",
+    ),
 ):
     """
     Validate order with Adora Pos
@@ -56,15 +62,6 @@ def validate_order(
     }
     """
 
-    # TODO use place holder user info for calculating fees
-    # Adora API won't work if we are missing User Info.
-    customer: Consumer = Consumer(
-        first_name="Agent",
-        last_name="Smith",
-        phone_number="(888)123-4567",
-        email="GKvzQ@example.com",
-    )
-
     order_type = OrderType.TakeOut
     delivery_address = None
 
@@ -79,9 +76,9 @@ def validate_order(
     future_datetime = current_datetime + timedelta(hours=2)
     formatted_datetime = future_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # item_list = []
-    # for order_item in order_items:
-    #     item_list.append({"group": [order_item]})
+    full_item_list = []
+    for order_item in order_items:
+        full_item_list.append({"group": [order_item.__dict__]})
 
     payload = {
         "storeId": store_id,
@@ -95,7 +92,7 @@ def validate_order(
             "phone": customer.phone_number,
             "email": customer.email,
         },
-        "items": [{"group": [order_item.__dict__]}],
+        "items": full_item_list,
         "discount": 0,
         "paid": False,
         "orderComment": " ",
@@ -157,6 +154,7 @@ def place_order(
     bearer_token: AccessToken,
     order_id: int,
     store_id: str,
+    phone_number: str,
 ) -> bool:
     """Place an order with Adora POS.
 
@@ -164,6 +162,7 @@ def place_order(
         bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
         order_id (int): The order ID from the save_validate_order response.
         store_id (str): The store ID to place the order with.
+        phone_number (str): The phone number to associate with the order.
 
     Returns:
         bool: True if the order was placed successfully, False otherwise.
@@ -175,15 +174,11 @@ def place_order(
         query_params=None,
         extra_headers=None,
         payload=json.dumps(
-            {
-                "orderId": order_id,
-                "storeId": store_id,
-                "customerPhoneNo": "(888)123-4567",  # TODO how do we retrieve this?
-            }
+            {"orderId": order_id, "storeId": store_id, "customerPhoneNo": phone_number}
         ),
     )
 
     if response.status == 200:
-        return True
+        return True  # Adora does not return anything useful for this API endpoint, so just return True
     else:
         return False

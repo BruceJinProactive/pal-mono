@@ -1,4 +1,10 @@
 from dataclasses import dataclass
+from typing import Union
+
+from openai import OpenAI
+
+from ai.tools.ordering_tools.classes import OrderItem
+from ai.tools.ordering_tools.integrations.adora.classes import AdoraOrderItem
 
 
 @dataclass
@@ -176,3 +182,61 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
             return ConversionResult(True, size_id)
 
     return ConversionResult(False, "Size not found in menu.")
+
+
+def validate_and_convert_item(
+    order_item: OrderItem, menu: any, openai_client: OpenAI, openai_model: str
+) -> tuple[bool, Union[AdoraOrderItem, str]]:
+    """Converts a generic order item into an Adora order item.
+
+    Args:
+        order_item (OrderItem): The generic order item to convert.
+        menu (any): The menu to use to get the item ID and size ID.
+        openai_client (OpenAI): The OpenAI client to use for the item and size ID conversion.
+        openai_model (str): The OpenAI model to use for the item and size ID conversion.
+
+    Returns:
+        tuple[bool, Union[AdoraOrderItem, str]]: A tuple containing a boolean indicating
+            if the conversion was successful, and either the converted Adora order item or an error message.
+    """
+    # detect invalid quantity
+    if order_item.quantity < 1:
+        return False, f"{order_item.item_name}: Quantity must be at least 1."
+    if order_item.quantity > 100:
+        return False, f"{order_item.item_name}: Quantity must be at most 100."
+
+    # get Adora-specific item id and size id
+    adora_item_id_res = get_adora_item_id(
+        menu, order_item.item_name, openai_client, openai_model
+    )
+    if not adora_item_id_res.success:
+        return False, adora_item_id_res.message
+
+    adora_size_id_res = get_adora_size_id(
+        menu,
+        int(adora_item_id_res.message),
+        order_item.size,
+        openai_client,
+        openai_model,
+    )
+    if not adora_size_id_res.success:
+        return False, adora_size_id_res.message
+
+    # TODO modifications
+    # adora_modifications_res = get_adora_modifications(
+    #     int(adora_item_id_res.message),
+    #     order_item.modifications,
+    # )
+
+    # transform generic order item into Adora order item
+    adora_order_item = AdoraOrderItem(
+        int(adora_item_id_res.message),
+        int(adora_size_id_res.message),
+        order_item.quantity,
+        "",
+        0,
+        order_item.modifications,
+    )
+
+    # return converted order item
+    return True, adora_order_item
