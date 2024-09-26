@@ -1,22 +1,21 @@
 import json
+from os import getenv
 
 from openai import OpenAI
 
+from ai.llm import _settings
 from ai.tools.ordering_tools.classes import Consumer, LLMOrderItem, OrderItem
 
 from . import _apis, _utils
-from .classes import AdoraOrderItem
 
 
 class AdoraIntegration:
-    def __init__(
-        self, api_key: str, api_secret: str, openai_api_key: str, openai_model: str
-    ):
+    def __init__(self, api_key: str, api_secret: str):
         self.store_id = "9WHCV"
         self.api_key = api_key
         self.api_secret = api_secret
-        self.openai_client = OpenAI(api_key=openai_api_key)
-        self.openai_model = openai_model
+        self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
+        self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
     def add_to_order(self, order_item: OrderItem):
         menu = {}  # TODO Should be referenced from the knowledge base in SQL

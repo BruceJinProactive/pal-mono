@@ -7,7 +7,7 @@ from ai.llm import OutputModel, get_llm
 from ai.memory import get_memory
 from ai.prompts import get_system_prompt
 from ai.storage import get_storage
-from ai.tools.ordering_tools import OrderingTools
+from ai.tools import get_tools
 
 
 def integrate_assistant(
@@ -32,25 +32,7 @@ def integrate_assistant(
     memory = get_memory(account_name)
 
     # Add tools
-    tools = None
-    if "tools" in assistant_raw_config:
-        # Ensure keys are present
-        if "type" not in assistant_raw_config["tools"]:
-            raise ValueError("Tool type must be specified")
-        if "api_key" not in assistant_raw_config["tools"]:
-            raise ValueError("Tool api_key must be specified")
-        if "api_secret" not in assistant_raw_config["tools"]:
-            raise ValueError("Tool api_secret must be specified")
-
-        tools = [
-            OrderingTools(
-                {
-                    "type": assistant_raw_config["tools"]["type"],
-                    "api_key": assistant_raw_config["tools"]["api_key"],
-                    "api_secret": assistant_raw_config["tools"]["api_secret"],
-                }
-            )
-        ]
+    tools = get_tools(assistant_raw_config)
 
     # Get run id
     run_id = None

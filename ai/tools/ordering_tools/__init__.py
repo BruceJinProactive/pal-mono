@@ -1,8 +1,5 @@
-from os import getenv
-
 from phi.tools import Toolkit
 
-from ai.llm import _settings
 from ai.tools.ordering_tools.classes import OrderItem
 from ai.tools.ordering_tools.integrations.adora import AdoraIntegration
 
@@ -21,34 +18,22 @@ class OrderingTools(Toolkit):
         self.register(self.place_order)
         self.register(self.remove_from_order)
 
-        # Toolkit configuration
-        self.api_key = config["api_key"]
-        self.api_secret = config["api_secret"]
-        self.openai_api_key = getenv("OPENAI_API_KEY")
-        self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
-        if (
-            not self.api_key
-            or not self.api_secret
-            or not self.openai_api_key
-            or not self.openai_model
-        ):
-            raise ValueError(
-                "Please reach out to our support team at help@proactiveailab.com for assistance. Message: API key and secret are required for ordering tools."
-            )
-
         # Toolkit integrations
         # Map the integration type to the respective class
         # We can refactor to initialize on use if it's a problem
         # TODO: consider an abstract class for each integration?
         self.integration_map = {
-            "adora": AdoraIntegration(
-                self.api_key,
-                self.api_secret,
-                self.openai_api_key,
-                self.openai_model,
-            ),
+            "adora": AdoraIntegration,
+            # Add other integrations here
         }
-        self.integration = self.integration_map[config["type"]]
+
+        integration_class = self.integration_map.get(config["type"])
+
+        if not integration_class:
+            raise ValueError(f"Unknown integration type: {config['type']}")
+
+        # Lazy load integration
+        self.integration = integration_class(**config["settings"])
 
     # ----------------------------------------
     # Toolkit tools (actions)
