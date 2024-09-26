@@ -17,7 +17,7 @@ ws_settings = WorkspaceSettings(
     dev_api_enabled=True,
     dev_db_enabled=True,
     # -*- Production settings
-    # prd_env="lat",
+    prd_env="lat",
     # prd_env="stg",
     # prd_env="prd",
     prd_app_enabled=True,

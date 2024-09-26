@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 
 import boto3
@@ -11,10 +12,8 @@ from utils.log import logger
 # Initialize AWS client
 stepfunctions = boto3.client("stepfunctions")
 
-# Constants
-STATE_MACHINE_ARN = (
-    "arn:aws:states:us-west-1:767398151610:stateMachine:pal-mono-send-message-sm"
-)
+# Get Step Functions state machine ARN from environment variable
+AWS_RELAY_STATE_MACHINE_ARN = os.getenv("AWS_RELAY_STATE_MACHINE_ARN")
 
 
 def send_message(message: Message, delivery_time: datetime = current_utc()) -> dict:
@@ -41,9 +40,13 @@ def send_message(message: Message, delivery_time: datetime = current_utc()) -> d
             "delivery_time": formatted_time,
         }
 
+        # Ensure AWS_RELAY_STATE_MACHINE_ARN is not None
+        if AWS_RELAY_STATE_MACHINE_ARN is None:
+            raise ValueError("STATE_MACHINE_ARN environment variable is not set")
+
         # Start the Step Functions execution
         response = stepfunctions.start_execution(
-            stateMachineArn=STATE_MACHINE_ARN, input=json.dumps(input_data)
+            stateMachineArn=AWS_RELAY_STATE_MACHINE_ARN, input=json.dumps(input_data)
         )
 
         return {
