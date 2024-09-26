@@ -5,11 +5,11 @@ import jwt
 import requests
 from jwt.algorithms import RSAAlgorithm
 
-ADMIN_CONSOLE_AWS_CLIENT_ID = os.environ["ADMIN_CONSOLE_AWS_CLIENT_ID"]
 AWS_REGION = os.environ["AWS_REGION"]
-AWS_USER_POOL_ID = os.environ["AWS_USER_POOL_ID"]
+AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
+AWS_ADMIN_CONSOLE_APP_CLIENT_ID = os.environ["AWS_ADMIN_CONSOLE_APP_CLIENT_ID"]
 
-AWS_COGNITO_JWKS_URL = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{AWS_USER_POOL_ID}/.well-known/jwks.json"
+AWS_COGNITO_JWKS_URL = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{AWS_ADMIN_CONSOLE_USER_POOL_ID}/.well-known/jwks.json"
 
 
 def get_jwks():
@@ -119,7 +119,7 @@ def parse_admin_console_id_token(id_token):
     Raises:
         ValueError: If the token is expired, the audience is invalid, or the token verification fails for any other reason.
     """
-    claims = decode_verify_jwt(id_token, jwks, ADMIN_CONSOLE_AWS_CLIENT_ID)
+    claims = decode_verify_jwt(id_token, jwks, AWS_ADMIN_CONSOLE_APP_CLIENT_ID)
     return claims
 
 

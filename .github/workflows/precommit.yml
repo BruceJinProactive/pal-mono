@@ -64,7 +64,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -80,12 +80,14 @@ jobs:
 
       - name: Run pytest
         env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_USER_POOL_ID: ${{ secrets.AWS_USER_POOL_ID }}
           AWS_APP_CLIENT_ID: ${{ secrets.AWS_APP_CLIENT_ID }}
           AWS_APP_CLIENT_SECRET: ${{ secrets.AWS_APP_CLIENT_SECRET }}
-          MODAL_API_KEY: ${{ secrets.MODAL_API_KEY }}
+          AWS_ADMIN_CONSOLE_USER_POOL_ID: ${{ secrets.AWS_ADMIN_CONSOLE_USER_POOL_ID }}
+          AWS_ADMIN_CONSOLE_APP_CLIENT_ID: ${{ secrets.AWS_ADMIN_CONSOLE_APP_CLIENT_ID }}
           ADMIN_CONSOLE_AWS_CLIENT_ID: ${{ secrets.ADMIN_CONSOLE_AWS_CLIENT_ID }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+          MODAL_API_KEY: ${{ secrets.MODAL_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ci: true
         run: |
@@ -93,7 +95,7 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      
+
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
@@ -107,7 +109,7 @@ jobs:
       - name: Test Docker image
         run: |
           docker run myapp:${{ github.sha }} echo "Container is running correctly"
-        
+
       # If the build job fails, send a message to Slack
       - name: Notify Slack
         uses: act10ns/slack@v2
