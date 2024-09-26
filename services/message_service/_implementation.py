@@ -55,8 +55,9 @@ def get_chat_response(db: Session, message: Message) -> Message:
         )
 
     # Get response from assistant
-    response = assistant.run(message.text.body, stream=False)
-    extras = {}  # TODO: Get extras from response
+    response_object = assistant.run(message.text.body, stream=False)
+    response = response_object.content
+    extras = {"escalated": response_object.escalated}
 
     response_message = Message(
         author_type=AuthorType.ASSISTANT,

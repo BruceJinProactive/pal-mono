@@ -3,7 +3,7 @@ from typing import Any, Dict
 from phi.assistant.assistant import Assistant
 
 from ai.knowledge import get_knowledge
-from ai.llm import get_llm
+from ai.llm import OutputModel, get_llm
 from ai.memory import get_memory
 from ai.prompts import get_system_prompt
 from ai.storage import get_storage
@@ -87,4 +87,6 @@ def integrate_assistant(
         read_chat_history=True,
         # Configurations
         debug_mode=True,
+        # Output Format
+        output_model=OutputModel,
     )

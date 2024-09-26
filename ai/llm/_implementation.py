@@ -4,6 +4,7 @@ from os import getenv
 from phi.embedder.openai import OpenAIEmbedder
 from phi.llm.openai import OpenAIChat
 from phi.llm.openai.like import OpenAILike
+from pydantic import BaseModel, Field
 
 from . import _settings
 
@@ -19,6 +20,11 @@ class LLM(Enum):
     LEPTON = "LEPTON"
     MODAL = "MODAL"
     ROUTER = "ROUTER"
+
+
+class OutputModel(BaseModel):
+    content: str = Field(..., description="plain response content")
+    escalated: bool = Field(..., description="system info escalated field")
 
 
 def get_llm(llm_name: LLM):

@@ -28,6 +28,7 @@ def get_embedder():
 
 
 LLM = _implementation.LLM  # TODO: Remove this after fully migrate to model router
+OutputModel = _implementation.OutputModel
 
 ai_settings = (
     _settings.ai_settings
