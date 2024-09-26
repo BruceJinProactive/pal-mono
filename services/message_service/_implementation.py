@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 import db.tables as db
 from ai.assistants.pizza_assistant import get_pizza_assistant
+from ai.llm import OutputModel
 from api.models.message import AuthorType, Extras, Message, TextObject
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
@@ -56,8 +57,16 @@ def get_chat_response(db: Session, message: Message) -> Message:
 
     # Get response from assistant
     response_object = assistant.run(message.text.body, stream=False)
-    response = response_object.content
-    extras = {"escalated": response_object.escalated}
+    if isinstance(response_object, str):
+        response = response_object
+        extras = {}
+    elif isinstance(response_object, OutputModel):
+        response = response_object.content
+        extras = {"escalated": response_object.escalated}
+    else:
+        raise ValueError(
+            f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
+        )
 
     response_message = Message(
         author_type=AuthorType.ASSISTANT,
