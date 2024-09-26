@@ -15,58 +15,62 @@ from services import assistant_service, user_service
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
-    # find project with matching channel platform, identifier pair
-    project = ProjectRepository(db).get_project_by_channel(
-        channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is a CHANNELPLATFORM object
-        channel_identifier=message.recipient_channel_identifier,
-    )
-
-    if project is None:
-        raise ValueError(
-            f"Project with channel platform '{message.channel_platform.value}', channel_identifier '{message.recipient_channel_identifier}' not found."
+    try:
+        # find project with matching channel platform, identifier pair
+        project = ProjectRepository(db).get_project_by_channel(
+            channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is a CHANNELPLATFORM object
+            channel_identifier=message.recipient_channel_identifier,
         )
 
-    # Get user_id by sender channel/number with user_service
-    user = user_service.get_user_by_channel(
-        db=db,
-        account_id=project.account_id,
-        channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP
-        channel_identifier=message.sender_channel_identifier,
-        create_new_user=True,
-    )
-    if user is None:
-        raise ValueError("User not found")
+        if project is None:
+            raise ValueError(
+                f"Project with channel platform '{message.channel_platform.value}', channel_identifier '{message.recipient_channel_identifier}' not found."
+            )
 
-    # Save request message to database
-    MessageRepository(db).create_message(
-        user_id=user.id, message_body=message.to_dict()
-    )
+        # Get user_id by sender channel/number with user_service
+        user = user_service.get_user_by_channel(
+            db=db,
+            account_id=project.account_id,
+            channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP
+            channel_identifier=message.sender_channel_identifier,
+            create_new_user=True,
+        )
+        if user is None:
+            raise ValueError("User not found")
 
-    account_name = project.account.name
-    # Get appropriate assistant from account name
-    if account_name == "pizzamyheart":
-        assistant = get_pizza_assistant(user_id=str(user.id))
-    else:
-        assistant_id = project.assistant_id
-        if assistant_id is None:
-            raise ValueError("Assistant ID not found")
-
-        assistant = assistant_service.get_ai_assistant(
-            db=db, assistant_id=assistant_id, user_id=user.id
+        # Save request message to database
+        MessageRepository(db).create_message(
+            user_id=user.id, message_body=message.to_dict()
         )
 
-    # Get response from assistant
-    response_object = assistant.run(message.text.body, stream=False)
-    if isinstance(response_object, str):
-        response = response_object
-        extras = {}
-    elif isinstance(response_object, OutputModel):
-        response = response_object.content
-        extras = {"escalated": response_object.escalated}
-    else:
-        raise ValueError(
-            f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
-        )
+        account_name = project.account.name
+        # Get appropriate assistant from account name
+        if account_name == "pizzamyheart":
+            assistant = get_pizza_assistant(user_id=str(user.id))
+        else:
+            assistant_id = project.assistant_id
+            if assistant_id is None:
+                raise ValueError("Assistant ID not found")
+
+            assistant = assistant_service.get_ai_assistant(
+                db=db, assistant_id=assistant_id, user_id=user.id
+            )
+
+        # Get response from assistant
+        response_object = assistant.run(message.text.body, stream=False)
+        if isinstance(response_object, str):
+            response = response_object
+            extras = {}
+        elif isinstance(response_object, OutputModel):
+            response = response_object.content
+            extras = {"escalated": response_object.escalated}
+        else:
+            raise ValueError(
+                f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
+            )
+    except Exception:
+        # Handle any error and set default response
+        response = "Something went wrong. Please try again."
 
     response_message = Message(
         author_type=AuthorType.ASSISTANT,
