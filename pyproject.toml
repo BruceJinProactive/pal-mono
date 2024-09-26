@@ -24,6 +24,7 @@ dependencies = [
   # /ai
   "openai==1.42.0",
   "phidata==2.4.29",
+  "pypdf==5.0.0",
 
   # DevOps
   "aws-xray-sdk==2.14.0",

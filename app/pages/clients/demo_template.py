@@ -1,10 +1,7 @@
 import uuid
-from typing import List
 
 import streamlit as st
 from phi.assistant import Assistant
-from phi.document import Document
-from phi.document.reader.pdf import PDFReader
 from phi.memory.manager import MemoryManager
 from PIL import Image
 
@@ -109,7 +106,6 @@ def demo_ui(
     messaging_ui(assistant)
     # Settings UI
     memory_ui(assistant)
-    knowledge_base_ui(assistant)
     # storage_ui(assistant)
     if assistant.name == "pizza_assistant":
         cart_ui(user_id)
@@ -277,56 +273,6 @@ def messaging_ui(assistant: Assistant) -> None:
                 generate_response_in_ui(assistant, question)
     except IndexError:
         pass
-
-
-def knowledge_base_ui(assistant: Assistant) -> None:
-    st.sidebar.write("## Knowledge Base")
-    # Load knowledge base if not already loaded
-    if assistant.knowledge_base and (
-        "knowledge_base_loaded" not in st.session_state
-        or not st.session_state["knowledge_base_loaded"]
-    ):
-        if not assistant.knowledge_base.exists():
-            logger.info("Knowledge base does not exist")
-            loading_container = st.sidebar.info("🧠 Loading knowledge base")
-            assistant.knowledge_base.load()
-            st.session_state["knowledge_base_loaded"] = True
-            st.sidebar.success("Knowledge base loaded")
-            loading_container.empty()
-    if assistant.knowledge_base:
-        if st.sidebar.button("Update Knowledge Base"):
-            assistant.knowledge_base.load(recreate=False, upsert=True)
-            st.session_state["knowledge_base_loaded"] = True
-            st.sidebar.success("Knowledge base updated")
-        if st.sidebar.button("Recreate Knowledge Base"):
-            assistant.knowledge_base.load(recreate=True)
-            st.session_state["knowledge_base_loaded"] = True
-            st.sidebar.success("Knowledge base recreated")
-        if st.sidebar.button("Clear Knowledge Base"):
-            assistant.knowledge_base.vector_db.clear()
-            st.session_state["knowledge_base_loaded"] = False
-            st.sidebar.success("Knowledge base cleared")
-    # Upload PDF
-    if assistant.knowledge_base:
-        if "file_uploader_key" not in st.session_state:
-            st.session_state["file_uploader_key"] = 0
-        uploaded_file = st.sidebar.file_uploader(
-            "Upload PDF",
-            type="pdf",
-            key=st.session_state["file_uploader_key"],
-        )
-        if uploaded_file is not None:
-            alert = st.sidebar.info("Processing PDF...", icon="ℹ️")
-            pdf_name = uploaded_file.name.split(".")[0]
-            if f"{pdf_name}_uploaded" not in st.session_state:
-                reader = PDFReader()
-                pdf_documents: List[Document] = reader.read(uploaded_file)
-                if pdf_documents:
-                    assistant.knowledge_base.load_documents(pdf_documents)
-                else:
-                    st.sidebar.error("Could not read PDF")
-                st.session_state[f"{pdf_name}_uploaded"] = True
-            alert.empty()
 
 
 def memory_ui(assistant: Assistant) -> None:

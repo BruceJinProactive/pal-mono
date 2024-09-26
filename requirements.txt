@@ -126,3 +126,4 @@ urllib3==2.2.2
 uvicorn==0.30.6
 validators==0.33.0
 wrapt==1.16.0
+pypdf==5.0.0

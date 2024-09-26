@@ -42,7 +42,6 @@ class AdoraIntegration:
         if not validated_order:
             return "Failed to validate order."
 
-
         return f"Added {order_item.item_name} to your cart."
 
     def place_order(self, cart: list[LLMOrderItem], consumer: Consumer) -> str:

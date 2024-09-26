@@ -32,6 +32,11 @@ def pages():
             title="Users",
             icon=":material/group:",
         ),
+        st.Page(
+            "pages/clients/knowledge.py",
+            title="Knowledge",
+            icon=":material/school:",
+        ),
         st.Page("pages/clients/demo.py", title="Demo", icon=":material/chat:"),
         st.Page("pages/clients/live.py", title="Live", icon=":material/support_agent:"),
     ]
