@@ -373,10 +373,18 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
             while retries < MAX_RETRIES:
                 try:
                     resp_container = st.empty()
-                    for delta in assistant.run(question, stream=False):
-                        if isinstance(delta, str):
-                            response += delta.replace("\$", "💲").replace("$", "💲")
-                            resp_container.markdown(response)
+                    response_object = assistant.run(question, stream=False)
+                    if isinstance(response_object, str):
+                        response = response_object
+                        response = response.replace("\$", "💲").replace("$", "💲")
+                        resp_container.markdown(response)
+                    else:
+                        response = response_object.content
+                        response = response.replace("\$", "💲").replace("$", "💲")
+                        resp_container.markdown(response)
+                        extras = {"escalated": response_object.escalated}
+                        st.json(extras)
+
                     break  # Exit the loop if the response is generated
                 except Exception as e:
                     error = e
