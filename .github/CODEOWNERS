@@ -1,5 +1,7 @@
-# Any changes in the root folder requires Kelvin's approval
+# Changes in root and first level need Kelvin's approval
 /* kelvin@proactiveailab.com
+/*/* kelvin@proactiveailab.com
 
-# Any __init__.py file requires Kelvin's approval
-**/__init__.py kelvin@proactiveailab.com
+# Changes to __init__.py in first and second levels need Kelvin's approval
+/*/__init__.py kelvin@proactiveailab.com
+/*/*/__init__.py kelvin@proactiveailab.com
