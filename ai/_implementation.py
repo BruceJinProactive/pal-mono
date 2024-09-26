@@ -64,7 +64,7 @@ def integrate_assistant(
         # Tools
         tools=tools,
         use_tools=True,
-        show_tool_calls=True,
+        show_tool_calls=False,
         search_knowledge=True,
         read_chat_history=True,
         # Configurations
