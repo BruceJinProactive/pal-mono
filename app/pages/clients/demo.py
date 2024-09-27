@@ -32,18 +32,11 @@ if user.is_logged_in:
     # Exception for demo
     demo_dict["Jimmy Demo"] = "jimmy_demo"
 
-    if user.account_name == "proactiveailab" or user.account_name == "root":
-        # Internal demo selection
-        selected_account_name = st.sidebar.selectbox(
-            "Select a demo then reload", list(demo_dict.keys())
-        )
-        assistant_id = demo_dict.get(selected_account_name)
-    else:
-        # Select customer demo
-        assistant_id = demo_dict.get(user.account_name)
-        # If no demo availabe, use the prd assistant
-        if assistant_id is None:
-            assistant_id = demo_dict["proactiveailab"]
+    # Internal demo selection
+    selected_account_name = st.sidebar.selectbox(
+        "Select a demo then reload", list(demo_dict.keys())
+    )
+    assistant_id = demo_dict.get(selected_account_name)
 
     demo_ui(assistant_id)
 else:

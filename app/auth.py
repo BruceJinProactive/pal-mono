@@ -3,7 +3,6 @@ import os
 
 import jwt
 import requests
-import streamlit as st
 from jwt.algorithms import RSAAlgorithm
 from streamlit_cognito_auth import CognitoAuthenticator
 
@@ -55,37 +54,21 @@ def parse_id_token(id_token):
     return claims
 
 
-def get_account_name(authenticator: CognitoAuthenticator):
-    credentials = authenticator.get_credentials()
-    if credentials is not None:
-        id_token = credentials.id_token
-    else:
-        id_token = None
-    try:
-        claims = parse_id_token(id_token)
-        return claims["custom:account_name"]
-    except Exception as e:
-        st.write(f"Error parsing ID token: {e}")
-
-
 class User:
     def __init__(self):
         self.is_logged_in = False
         self.username = ""
         self.email = ""
-        self.account_name = ""
 
     def update(self, authenticator: CognitoAuthenticator):
         self.is_logged_in = authenticator.is_logged_in()
         self.username = authenticator.get_username()
         self.email = authenticator.get_email()
-        self.account_name = get_account_name(authenticator)
 
     def logout(self):
         self.is_logged_in = False
         self.username = ""
         self.email = ""
-        self.account_name = ""
 
 
 user = User()

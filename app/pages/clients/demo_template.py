@@ -14,10 +14,9 @@ from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import (
     reset_mock_cart,
 )
 from app.auth import user
-from data_access_layer.dal_user_id import get_user_id_for_account_name_user_email
 from db.session import get_db
 from services.account_service import get_account
-from services.assistant_service import get_ai_assistant
+from services.assistant_service import get_ai_assistant, get_assistant
 from services.user_service import get_user_by_channel
 from utils.log import logger
 
@@ -28,7 +27,9 @@ def get_prd_assistant(
     new_run: bool = False,
 ) -> Assistant:
     db = next(get_db())
-    account = get_account(db, account_name=user.account_name)
+    assistant = get_assistant(db, assistant_id)
+
+    account = get_account(db, account_name=assistant.account.name)
 
     if account is None:
         raise ValueError("Account not found")
@@ -59,17 +60,16 @@ def get_prd_assistant(
 def demo_ui(
     assistant_id: uuid.UUID,
 ) -> None:
-    user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
         assistant = (
             get_prd_assistant(
-                user_id=user_id,
+                user_id=user.email,
                 assistant_id=assistant_id,
                 new_run=True,
             )
             if assistant_id != "jimmy_demo"
-            else get_pizza_assistant(user_id, new_run=True)
+            else get_pizza_assistant(user.email, new_run=True)
         )
         assistant.memory.chat_history = []
         assistant.memory.llm_messages = []
@@ -78,12 +78,12 @@ def demo_ui(
         logger.info("Not restarting chat")
         assistant = (
             get_prd_assistant(
-                user_id=user_id,
+                user_id=user.email,
                 assistant_id=assistant_id,
                 new_run=False,
             )
             if assistant_id != "jimmy_demo"
-            else get_pizza_assistant(user_id, new_run=False)
+            else get_pizza_assistant(user.email, new_run=False)
         )
     st.session_state["restart_chat"] = False
 
@@ -97,8 +97,7 @@ def demo_ui(
         st.session_state["reset_memory"] = False
 
     # Debug UI
-    if user.account_name == "proactiveailab" or user.account_name == "root":
-        debug_ui(assistant)
+    debug_ui(assistant)
 
     # Load existing or create new run
     assistant.create_run()
@@ -108,7 +107,7 @@ def demo_ui(
     memory_ui(assistant)
     # storage_ui(assistant)
     if assistant.name == "pizza_assistant":
-        cart_ui(user_id)
+        cart_ui(user.email)
 
 
 demo_system_prompt = ""
@@ -199,16 +198,14 @@ def debug_ui(assistant: Assistant):
         """
         Resets the cart items and order type then reruns
         """
-        user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
-        reset_mock_cart(user_id)
+        reset_mock_cart(user.email)
         st.rerun()
 
     def hard_reset_cart():
         """
         Completely removes the user from the cart
         """
-        user_id = get_user_id_for_account_name_user_email(user.account_name, user.email)
-        hard_reset_mock_cart(user_id)
+        hard_reset_mock_cart(user.email)
         st.rerun()
 
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
