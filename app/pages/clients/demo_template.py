@@ -7,8 +7,6 @@ from PIL import Image
 
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import (
-    calculate_tax_fees_and_total,
-    get_adora_list_of_items,
     hard_reset_mock_cart,
     load_mock_cart,
     reset_mock_cart,
@@ -134,9 +132,6 @@ def cart_ui(user_id):
     # Display cart items
     st.sidebar.write("## Items")
     if cart_dict["list_of_cart_items"]:
-        st.sidebar.write(
-            f"**Total Price:** {calculate_tax_fees_and_total(cart.store_id, get_adora_list_of_items(cart)).Total}"
-        )  # TODO: get rid of squiggle here
         for item in cart_dict["list_of_cart_items"]:
             st.sidebar.write(
                 "Item: "
@@ -225,8 +220,6 @@ def debug_ui(assistant: Assistant):
 
 def messaging_ui(assistant: Assistant) -> None:
     assistant_chat_history = assistant.memory.get_chat_history()
-    for message in assistant_chat_history:
-        message["content"] = message["content"].replace("\$", "💲").replace("$", "💲")
     st.session_state["messages"] = assistant_chat_history
     if assistant_chat_history == []:
         if assistant.name == "pizza_assistant":
@@ -319,11 +312,11 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                     response_object = assistant.run(question, stream=False)
                     if isinstance(response_object, str):
                         response = response_object
-                        response = response.replace("\$", "💲").replace("$", "💲")
+                        # response = response.replace("\$", "💲").replace("$", "💲")
                         resp_container.markdown(response)
                     else:
                         response = response_object.content
-                        response = response.replace("\$", "💲").replace("$", "💲")
+                        # response = response.replace("\$", "💲").replace("$", "💲")
                         resp_container.markdown(response)
                         extras = {"escalated": response_object.escalated}
                         st.json(extras)

@@ -392,7 +392,7 @@ def _validate_order(
         "storeId": store_id,
         "couponId": 0,
         "orderType": order_type_string,
-        "orderTypeSubType": "OverCounter",
+        "orderTypeSubType": "PhoneOrder",
         "promiseDateTime": formatted_datetime,
         "customer": {
             "name": customer.first_name,

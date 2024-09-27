@@ -5,6 +5,7 @@ from openai import OpenAI
 
 from ai.llm import _settings
 from ai.tools.ordering_tools.classes import Consumer, LLMOrderItem, OrderItem
+from ai.tools.ordering_tools.integrations.adora.classes import OrderCalculationResult
 
 from . import _apis, _utils
 
@@ -38,10 +39,10 @@ class AdoraIntegration:
             bearer_token, self.store_id, [adora_order_item]
         )
 
-        if not validated_order:
+        if isinstance(validated_order, OrderCalculationResult):
+            return f"Added {order_item.item_name} for {validated_order.SubTotal} to your cart."
+        else:
             return "Failed to validate order."
-
-        return f"Added {order_item.item_name} to your cart."
 
     def place_order(self, cart: list[LLMOrderItem], consumer: Consumer) -> str:
         menu = {}  # TODO Should be referenced from the knowledge base in SQL
