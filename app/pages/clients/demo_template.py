@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import streamlit as st
@@ -241,10 +242,31 @@ def messaging_ui(assistant: Assistant) -> None:
                 else None
             )
             with st.chat_message(message["role"], avatar=avatar):
-                st.write(message["content"])
+                if message["role"] == "assistant":
+                    try:
+                        response_object = json.loads(message["content"])
+                        response = response_object["content"]
+                        extras = {"escalated": response_object["escalated"]}
+                        st.write(response)
+                        st.json(extras)
+                    except Exception:
+                        st.write(message["content"])
+                else:
+                    st.write(message["content"])
+
         else:
             with st.chat_message(message["role"]):
-                st.write(message["content"])
+                if message["role"] == "assistant":
+                    try:
+                        response_object = json.loads(message["content"])
+                        response = response_object["content"]
+                        extras = {"escalated": response_object["escalated"]}
+                        st.write(response)
+                        st.json(extras)
+                    except Exception:
+                        st.write(message["content"])
+                else:
+                    st.write(message["content"])
 
     # If last message is from a user, generate a new response
     try:
