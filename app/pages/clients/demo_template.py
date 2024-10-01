@@ -250,7 +250,20 @@ def messaging_ui(assistant: Assistant) -> None:
                         st.write(response)
                         st.json(extras)
                     except Exception:
-                        st.write(message["content"])
+                        response = message["content"]
+                        try:
+                            ## handle str format when tool call toggle is on
+                            json_start = response.find('''{"content"''')
+                            response_object = json.loads(response[json_start:])
+                            response = (
+                                response[:json_start] + response_object["content"]
+                            )
+                            extras = {"escalated": response_object["escalated"]}
+                            st.write(response)
+                            st.json(extras)
+                        except Exception:
+                            # response = response.replace("\$", "💲").replace("$", "💲")
+                            st.write(response)
                 else:
                     st.write(message["content"])
 
@@ -264,7 +277,21 @@ def messaging_ui(assistant: Assistant) -> None:
                         st.write(response)
                         st.json(extras)
                     except Exception:
-                        st.write(message["content"])
+                        ## handle the case when show tool call toggle is on
+                        response = message["content"]
+                        try:
+                            ## handle str format when tool call toggle is on
+                            json_start = response.find('''{"content"''')
+                            response_object = json.loads(response[json_start:])
+                            response = (
+                                response[:json_start] + response_object["content"]
+                            )
+                            extras = {"escalated": response_object["escalated"]}
+                            st.write(response)
+                            st.json(extras)
+                        except Exception:
+                            # response = response.replace("\$", "💲").replace("$", "💲")
+                            st.write(response)
                 else:
                     st.write(message["content"])
 
@@ -334,8 +361,19 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                     response_object = assistant.run(question, stream=False)
                     if isinstance(response_object, str):
                         response = response_object
-                        # response = response.replace("\$", "💲").replace("$", "💲")
-                        resp_container.markdown(response)
+                        try:
+                            ## handle str format when tool call toggle is on
+                            json_start = response.find('''{"content"''')
+                            response_object = json.loads(response[json_start:])
+                            response = (
+                                response[:json_start] + response_object["content"]
+                            )
+                            extras = {"escalated": response_object["escalated"]}
+                            resp_container.markdown(response)
+                            st.json(extras)
+                        except Exception:
+                            # response = response.replace("\$", "💲").replace("$", "💲")
+                            resp_container.markdown(response)
                     else:
                         response = response_object.content
                         # response = response.replace("\$", "💲").replace("$", "💲")
