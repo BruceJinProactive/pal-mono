@@ -10,6 +10,14 @@ def set_page_config():
     )
 
 
+def set_account(account_name):
+    st.session_state["account_name"] = account_name
+    if "project_name" in st.session_state:
+        st.session_state.pop("project_name")
+    if "assistant_id" in st.session_state:
+        st.session_state.pop("assistant_id")
+
+
 def user_ui():
     with st.sidebar:
         st.write("## User")

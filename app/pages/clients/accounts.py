@@ -4,6 +4,7 @@ import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
 from app.auth import user
+from app.shared import set_account
 from db.session import get_db
 from services.account_service import (
     create_account_with_defaults,
@@ -272,12 +273,8 @@ def account_picker_ui():
             index=account_names.index(st.session_state["account_name"]),
         )
 
-        if account_name != st.session_state["account_name"]:
-            st.session_state["account_name"] = account_name
-            if "project_name" in st.session_state:
-                st.session_state.pop("project_name")
-            if "assistant_id" in st.session_state:
-                st.session_state.pop("assistant_id")
+        if account_name != st.session_state.get("account_name"):
+            set_account(account_name)
             st.rerun()
 
 
@@ -372,8 +369,8 @@ def create_account_with_defaults_ui():
 
 
 if user.is_logged_in:
-    main()
     universal_picker_ui()
+    main()
     create_account_with_defaults_ui()
 else:
     switch_page("home")
