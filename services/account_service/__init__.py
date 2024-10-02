@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from requests import Session
+from sqlalchemy.orm import Session
 
 from db.tables import Account
 

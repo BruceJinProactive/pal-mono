@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from phi.assistant import Assistant as PhiAssistant
+from phi.assistant.assistant import Assistant as PhiAssistant
 from sqlalchemy.orm import Session
 
 from db.tables import Assistant

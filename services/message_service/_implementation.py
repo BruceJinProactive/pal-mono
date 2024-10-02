@@ -125,7 +125,7 @@ def get_conversations_by_user(
 
     if create_new_conversation:
         new_conversation = conversation_repository.create_conversation(user_id=user_id)
-        return [new_conversation]
+        return [new_conversation] if new_conversation else []
 
     return []
 

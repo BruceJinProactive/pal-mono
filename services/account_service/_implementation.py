@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from requests import Session
+from sqlalchemy.orm import Session
 
 from db.repositories.account_repository import AccountRepository
 from db.repositories.assistant_repository import AssistantRepository
