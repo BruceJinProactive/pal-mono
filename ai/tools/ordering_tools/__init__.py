@@ -1,4 +1,4 @@
-from phi.tools import Toolkit
+from phi.tools.toolkit import Toolkit
 
 from ai.tools.ordering_tools.classes import OrderItem
 from ai.tools.ordering_tools.integrations.adora import AdoraIntegration

@@ -4,15 +4,16 @@ import math
 import re
 from collections import defaultdict
 
-from phi.assistant import Assistant, AssistantMemory
+from phi.assistant.assistant import Assistant
 from phi.embedder.openai import OpenAIEmbedder
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.json import JSONKnowledgeBase
-from phi.llm.openai import OpenAIChat
+from phi.llm.openai.chat import OpenAIChat
+from phi.memory.assistant import AssistantMemory
 from phi.memory.db.postgres import PgMemoryDb
 from phi.storage.assistant.postgres import PgAssistantStorage
-from phi.tools import Toolkit
-from phi.vectordb.pgvector import PgVector2
+from phi.tools.toolkit import Toolkit
+from phi.vectordb.pgvector.pgvector2 import PgVector2
 
 from ai.assistants.constants import FUNCTION_NAME_LENGTH_LIMIT
 from ai.llm import ai_settings
@@ -140,17 +141,17 @@ class PizzaMyHeartTools(Toolkit):
             return "Negative input, please contact store about request"
 
         # Convert all strings
-        num_meat_and_veggie_lovers = int(num_meat_and_veggie_lovers)
-        num_vegetarian = int(num_vegetarian)
-        num_vegan = int(num_vegan)
-        num_kids = int(num_kids)
+        num_meat_and_veggie_lovers_count = int(num_meat_and_veggie_lovers)
+        num_vegetarian_count = int(num_vegetarian)
+        num_vegan_count = int(num_vegan)
+        num_kids_count = int(num_kids)
 
         num_pizza_meat_and_veggie_lovers = math.floor(
-            num_meat_and_veggie_lovers * 0.25 + 0.5
+            num_meat_and_veggie_lovers_count * 0.25 + 0.5
         )
-        num_pizza_vegetarian = math.floor(num_vegetarian * 0.2 + 0.5)
-        num_pizza_vegan = math.floor(num_vegan * 0.2 + 0.5)
-        num_pizza_kids = math.floor(num_kids * 0.125 + 0.5)
+        num_pizza_vegetarian = math.floor(num_vegetarian_count * 0.2 + 0.5)
+        num_pizza_vegan = math.floor(num_vegan_count * 0.2 + 0.5)
+        num_pizza_kids = math.floor(num_kids_count * 0.125 + 0.5)
 
         pizzas = defaultdict(int)
 

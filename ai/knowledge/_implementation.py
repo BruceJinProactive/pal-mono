@@ -1,6 +1,6 @@
 from phi.knowledge.base import AssistantKnowledge
 from phi.knowledge.combined import CombinedKnowledgeBase
-from phi.vectordb.pgvector import PgVector2
+from phi.vectordb.pgvector.pgvector2 import PgVector2
 
 from ai.llm import get_embedder
 from db.session import db_url

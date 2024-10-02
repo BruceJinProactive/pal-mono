@@ -2,7 +2,7 @@ from enum import Enum
 from os import getenv
 
 from phi.embedder.openai import OpenAIEmbedder
-from phi.llm.openai import OpenAIChat
+from phi.llm.openai.chat import OpenAIChat
 from phi.llm.openai.like import OpenAILike
 from pydantic import BaseModel, Field
 

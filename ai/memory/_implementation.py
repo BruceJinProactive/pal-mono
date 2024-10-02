@@ -1,4 +1,4 @@
-from phi.assistant import AssistantMemory
+from phi.memory.assistant import AssistantMemory
 from phi.memory.db.postgres import PgMemoryDb
 
 from db.session import db_url

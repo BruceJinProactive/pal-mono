@@ -18,7 +18,7 @@ class AdoraIntegration:
         self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
         self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
-    def add_to_order(self, order_item: OrderItem):
+    def add_to_order(self, order_item: OrderItem) -> str:
         menu = {}  # TODO Should be referenced from the knowledge base in SQL
         with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
             menu = json.load(read_f)
@@ -78,7 +78,7 @@ class AdoraIntegration:
         saved_order = _apis.save_validate_order(bearer_token, validated_order.Key)
 
         # place order
-        if _apis.place_order(
+        if saved_order and _apis.place_order(
             bearer_token, saved_order.OrderID, self.store_id, consumer.phone_number
         ):
             return "Order placed successfully."

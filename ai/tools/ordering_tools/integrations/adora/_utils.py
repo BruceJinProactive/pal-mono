@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Union
 
 from openai import OpenAI
 
@@ -185,13 +185,13 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
 
 
 def validate_and_convert_item(
-    order_item: OrderItem, menu: any, openai_client: OpenAI, openai_model: str
+    order_item: OrderItem, menu: Any, openai_client: OpenAI, openai_model: str
 ) -> tuple[bool, Union[AdoraOrderItem, str]]:
     """Converts a generic order item into an Adora order item.
 
     Args:
         order_item (OrderItem): The generic order item to convert.
-        menu (any): The menu to use to get the item ID and size ID.
+        menu (Any): The menu to use to get the item ID and size ID.
         openai_client (OpenAI): The OpenAI client to use for the item and size ID conversion.
         openai_model (str): The OpenAI model to use for the item and size ID conversion.
 

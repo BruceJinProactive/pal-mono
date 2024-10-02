@@ -1,7 +1,7 @@
 from typing import List
 
-from phi.assistant import Assistant
-from phi.tools import Toolkit
+from phi.assistant.assistant import Assistant
+from phi.tools.toolkit import Toolkit
 
 from ai.tools.pizza_demo_ordering_tools.adapters.adapters import (
     ServiceAdapters,

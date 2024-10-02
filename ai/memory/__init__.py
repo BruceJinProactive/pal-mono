@@ -1,4 +1,4 @@
-from phi.assistant import Assistant, AssistantMemory
+from phi.memory.assistant import AssistantMemory
 
 from . import _implementation
 

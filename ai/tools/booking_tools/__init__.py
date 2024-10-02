@@ -1,6 +1,6 @@
 from typing import Optional
 
-from phi.tools import Toolkit
+from phi.tools.toolkit import Toolkit
 
 from ai.tools.booking_tools.integrations.mindzero import MindZeroIntegration
 
@@ -49,7 +49,7 @@ class BookingTools(Toolkit):
         """
         return self.integration.book_a_class()
 
-    def get_classes(self, num_days: Optional[int]) -> str:
+    def get_classes(self, num_days: int | None) -> str:
         """Use this function to answer any questions regarding class availability.
 
         Args:
@@ -58,4 +58,7 @@ class BookingTools(Toolkit):
         Returns:
             str: JSON string of class availability.
         """
+        if num_days is None:
+            return self.integration.get_classes()
+
         return self.integration.get_classes(num_days)
