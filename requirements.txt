@@ -55,7 +55,6 @@ markupsafe==2.1.5
 matplotlib==3.9.2
 mdurl==0.1.2
 more-itertools==10.4.0
-mypy==1.11.2
 mypy-extensions==1.0.0
 narwhals==1.5.5
 numpy==1.26.4
@@ -83,6 +82,8 @@ pygments==2.18.0
 pyjwt[crypto]==2.9.0
 pymdown-extensions==10.9
 pyparsing==3.1.4
+pypdf==5.0.0
+pyright==1.1.382
 pytest==8.3.2
 pytest-mock==3.14.0
 python-dateutil==2.9.0.post0
@@ -126,4 +127,3 @@ urllib3==2.2.2
 uvicorn==0.30.6
 validators==0.33.0
 wrapt==1.16.0
-pypdf==5.0.0

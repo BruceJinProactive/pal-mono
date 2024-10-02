@@ -59,12 +59,12 @@ We use several tools to ensure code quality and consistency. These tools are run
 - Format with `black .`
 - Sort imports with `isort .`
 - Lint with `ruff check .`
-- Type check with `mypy .`
+- Type check with `pyright .`
 
 [One-time] Install the following tools locally:
 
 ```bash
-pip3 install black isort ruff mypy
+pip3 install black isort ruff pyright
 ```
 
 Run the following command to validate your code locally:

@@ -3,9 +3,10 @@
 ############################################################################
 #
 # Run this script to validate the workspace:
-# 1. Type check using mypy
-# 2. Test using pytest
+# 1. Format using black
+# 2. Sort imports using isort
 # 3. Lint using ruff
+# 4. Type check using pyright
 # Usage:
 #   ./scripts/validate.sh
 ############################################################################
@@ -16,13 +17,18 @@ source ${CURR_DIR}/_utils.sh
 
 main() {
   print_heading "Validating workspace..."
-  print_heading "Running: ruff check ${REPO_ROOT}"
 
+  print_heading "Running: black ${REPO_ROOT}"
   black ${REPO_ROOT}
+
+  print_heading "Running: isort ${REPO_ROOT}"
   isort ${REPO_ROOT}
+
+  print_heading "Running: ruff check ${REPO_ROOT}"
   ruff check ${REPO_ROOT}
-  # print_heading "Running: mypy ${REPO_ROOT}"
-  # mypy ${REPO_ROOT}
+
+  print_heading "Running: pyright ${REPO_ROOT}"
+  pyright ${REPO_ROOT}
 }
 
 main "$@"
