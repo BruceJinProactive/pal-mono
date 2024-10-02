@@ -30,10 +30,16 @@ class AssistantRepository:
             logger.error(f"Error retrieving assistant: {e}")
             return None
 
-    def get_assistants_by_account(self, account_id: uuid.UUID) -> list[Assistant]:
+    def get_assistants_by_account(
+        self, account_id: uuid.UUID
+    ) -> List[Assistant] | None:
         """Retrieve a list of assistants by its account name."""
         try:
-            return self.db.query(Assistant).filter(Assistant.account_id == account_id)
+            return (
+                self.db.query(Assistant)
+                .filter(Assistant.account_id == account_id)
+                .all()
+            )
         except SQLAlchemyError as e:
             self.db.rollback()
             logger.error(f"Error retrieving assistant: {e}")

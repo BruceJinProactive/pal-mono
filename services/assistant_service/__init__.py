@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from phi.assistant import Assistant as PhiAssistant
 from sqlalchemy.orm import Session
@@ -44,7 +44,7 @@ def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
     return _implementation.get_assistant(db, assistant_id)
 
 
-def get_assistants_by_account(db: Session, account_name: str) -> list[Assistant]:
+def get_assistants_by_account(db: Session, account_name: str) -> List[Assistant]:
     """
     Retrieve a list of Assistants instance based on the provided assistant ID.
 
@@ -53,7 +53,7 @@ def get_assistants_by_account(db: Session, account_name: str) -> list[Assistant]
         account_name (str): The unique identifier of the assistant.
 
     Returns:
-        list[Assistant]: Return the list of assistants
+        List[Assistant]: Return the list of assistants
     """
     return _implementation.get_assistants_by_account(db, account_name)
 

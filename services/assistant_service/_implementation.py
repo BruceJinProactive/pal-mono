@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from phi.assistant.assistant import Assistant as AIAssistant
 from sqlalchemy.orm import Session
@@ -37,7 +37,7 @@ def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
     return assistant
 
 
-def get_assistants_by_account(db: Session, account_name: str) -> list[Assistant]:
+def get_assistants_by_account(db: Session, account_name: str) -> List[Assistant]:
     # Retrieve the assistant from the database
     account_repository = AccountRepository(db)
     account = account_repository.get_account(account_name)

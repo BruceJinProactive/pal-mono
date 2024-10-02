@@ -314,7 +314,6 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
         channel_platform=ChannelPlatform.ADMIN_CONSOLE,
         messaging_broker=MessagingBroker.WEB,
         text=TextObject(body=body_message),
-        extras={},
     )
 
     """ 

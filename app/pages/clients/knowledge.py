@@ -3,7 +3,7 @@ import re
 from typing import List
 
 import streamlit as st
-from phi.document import Document
+from phi.document.base import Document
 from phi.document.reader.pdf import PDFReader
 from streamlit_extras.switch_page_button import switch_page
 
