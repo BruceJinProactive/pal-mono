@@ -58,7 +58,7 @@ class OrderingTools(Toolkit):
             modifications (list[str]): Any modifications for the item to add. Defaults to an empty list.
 
         Returns:
-            str: A message indicating the result of adding the item to the order.
+            str: A message indicating with the item name and order total or a failure to add item message.
         """
 
         # Create generic order item
@@ -101,8 +101,9 @@ class OrderingTools(Toolkit):
         cart = _utils.get_cart_info(chat_history)
         if not cart:
             return "There was an issue processing your order. Please try again."
-
-        consumer = _utils.get_consumer_info(chat_history)
+        account_name = self.integration.account_name
+        memories = _utils.get_consumer_memory(account_name)
+        consumer = _utils.get_consumer_info(chat_history, memories)
         if (
             not consumer
             or consumer.first_name == "N/A"

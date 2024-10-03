@@ -11,8 +11,9 @@ from . import _apis, _utils
 
 
 class AdoraIntegration:
-    def __init__(self, api_key: str, api_secret: str):
-        self.store_id = "9WHCV"
+    def __init__(self, api_key: str, api_secret: str, store_id: str, account_name: str):
+        self.store_id = store_id
+        self.account_name = account_name
         self.api_key = api_key
         self.api_secret = api_secret
         self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))

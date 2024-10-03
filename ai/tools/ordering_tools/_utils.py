@@ -1,16 +1,18 @@
 from os import getenv
-from typing import Optional
+from typing import List, Optional
 
 from openai import OpenAI
+from phi.memory.memory import Memory
 
 from ai.llm import _settings
+from ai.memory import get_memory
 from ai.tools.ordering_tools.classes import Consumer, LLMCartInfo, LLMOrder
 
 openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
 openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
 
-def get_cart_info(chat_history: str) -> Optional[LLMCartInfo]:
+def get_cart_info(chat_history: List[str]) -> Optional[LLMCartInfo]:
     """Extracts the cart information from the chat history.
 
     Args:
@@ -44,7 +46,9 @@ def get_cart_info(chat_history: str) -> Optional[LLMCartInfo]:
     return response.choices[0].message.parsed
 
 
-def get_consumer_info(chat_history: str) -> Optional[Consumer]:
+def get_consumer_info(
+    chat_history: List[str], memories: Optional[List[Memory]]
+) -> Optional[Consumer]:
     """Extracts the consumer information from the chat history.
 
     Args:
@@ -72,7 +76,10 @@ def get_consumer_info(chat_history: str) -> Optional[Consumer]:
             },
             {
                 "role": "user",
-                "content": [{"type": "text", "text": f"{chat_history}"}],
+                "content": [
+                    {"type": "text", "text": f"{chat_history}"},
+                    {"type": "text", "text": f"{memories}"},
+                ],
             },
         ],
         temperature=0,
@@ -115,3 +122,18 @@ def get_order_id(validated_order_res: str) -> Optional[LLMOrder]:
     )
 
     return response.choices[0].message.parsed
+
+
+def get_consumer_memory(account_name: str) -> Optional[List[Memory]]:
+    """Get the list of memories for the given account name.
+
+    Args:
+        account_name (str): The account name to get the memory for.
+
+    Returns:
+        Memory: The list of memories object.
+    """
+    memory = get_memory(account_name)
+    memory.load_memory()
+    memories = memory.memories
+    return memories
