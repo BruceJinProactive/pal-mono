@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -17,8 +18,27 @@ from services.message_service import (
 from services.user_service import get_users_by_account_id
 
 
+def _include_conversation_preview(message: Message | None, max_age: int) -> bool:
+    """
+    An internal filter function that determines whether a conversation should be included in get_inbox_conversations
+    The conversation must have an existing last message, and cannot be older than max_age, if specified.
+
+    Args:
+        message: The conversation's last message
+        max_age: age limit in minutes. 0 by default (meaning no limit) as provided in __init__.py
+    Returns:
+        bool: whether to include the conversation
+    """
+    if max_age:
+        return bool(message) and message.created_at >= datetime.now(
+            timezone.utc
+        ) - timedelta(minutes=max_age)
+    else:
+        return bool(message)
+
+
 def get_inbox_conversations(
-    db: Session, account_id: uuid.UUID
+    db: Session, account_id: uuid.UUID, max_age: int
 ) -> List[ConversationPreview]:
     # Get users associated with the account
     users = get_users_by_account_id(db, account_id=account_id)
@@ -45,7 +65,7 @@ def get_inbox_conversations(
     # filter conversations by those with at least one message, and sorted descending by created_at
     conversation_previews = sorted(
         filter(
-            lambda preview: preview[3],
+            lambda preview: _include_conversation_preview(preview[3], max_age),
             zip(
                 [id for id, _ in conversation_user_ids],  # conversation IDs
                 [user_id for _, user_id in conversation_user_ids],  # user IDs,

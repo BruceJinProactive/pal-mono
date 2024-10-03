@@ -10,7 +10,7 @@ from . import _implementation
 
 
 def get_inbox_conversations(
-    db: Session, account_id: uuid.UUID
+    db: Session, account_id: uuid.UUID, max_age: int = 0
 ) -> List[ConversationPreview]:
     """
     Retrieves a list of conversation previews for all conversations associated with the given account.
@@ -28,7 +28,7 @@ def get_inbox_conversations(
         List[ConversationPreview]: A list of `ConversationPreview` objects representing the Conversations,
         each containing the Conversation ID, User ID, number of Messages, and the text of the last Message.
     """
-    return _implementation.get_inbox_conversations(db, account_id)
+    return _implementation.get_inbox_conversations(db, account_id, max_age)
 
 
 def get_conversation_messages(

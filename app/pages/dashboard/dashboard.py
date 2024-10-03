@@ -23,7 +23,7 @@ def main() -> None:
     accounts = get_accounts(db)
     st.metric(label="Active Accounts", value=len(accounts), delta="2")
 
-    table_headers = ["Account", "Status", "Users", "Details"]
+    table_headers = ["Account", "Status", "Active Users", "Details"]
     for th, col in zip(table_headers, st.columns([1] * len(table_headers))):
         col.write(th)
     for acc in accounts:
@@ -32,7 +32,7 @@ def main() -> None:
         )
 
         name_col.write(acc.name)
-        users_col.write(len(get_inbox_conversations(db, acc.id)))
+        users_col.write(len(get_inbox_conversations(db, acc.id, max_age=5)))
         status_col.write("Existing")
 
         if action_col.button("View", key=acc.name):
