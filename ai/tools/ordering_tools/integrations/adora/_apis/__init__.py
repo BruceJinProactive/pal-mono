@@ -1,14 +1,19 @@
-import http
+import http.client
 import json
 from datetime import datetime, timedelta, timezone
 
 from ai.tools.ordering_tools.classes import Consumer
 from ai.tools.ordering_tools.integrations.adora.classes import (
-    AccessToken,
+    AdoraAccessToken,
+    AdoraCoupon,
+    AdoraCouponList,
+    AdoraDeliveryAddress,
+    AdoraOrderCalculationResult,
     AdoraOrderItem,
-    OrderCalculationResult,
-    OrderType,
-    SavedOrderResult,
+    AdoraOrderType,
+    AdoraSavedOrderResult,
+    AdoraValidatedAddress,
+    AdoraValidatedAddressList,
 )
 
 from . import _utils
@@ -31,20 +36,22 @@ def get_adora_pos_auth_token(key: str, secret: str):
     data = res.read()
     bearer_token_json = data.decode("utf-8")
 
-    return _utils.parse_json(AccessToken, bearer_token_json)
+    return _utils.parse_json(AdoraAccessToken, bearer_token_json)
 
 
 def validate_order(
-    bearer_token: AccessToken,
+    bearer_token: AdoraAccessToken,
     store_id: str,
-    # order_items: list[OrderItem],
     order_items: list[AdoraOrderItem],
+    coupon_id: int,
+    order_type: AdoraOrderType = AdoraOrderType.TakeOut,
     customer: Consumer = Consumer(
         first_name="JimmyAI",
         last_name="ValidateOrder",
         phone_number="(555)555-5555",
         email="jimmythesurfer@proactiveailab.com",
     ),
+    delivery_address: AdoraDeliveryAddress | None = None,
 ):
     """
     Validate order with Adora Pos
@@ -62,11 +69,8 @@ def validate_order(
     }
     """
 
-    order_type = OrderType.TakeOut
-    delivery_address = None
-
-    assert order_type == OrderType.TakeOut or (
-        order_type == OrderType.Delivery and delivery_address
+    assert order_type == AdoraOrderType.TakeOut or (
+        order_type == AdoraOrderType.Delivery and delivery_address
     ), "Invalid order type, either takeout or need address for delivery"
 
     # NOTE: Adoro API says "promiseDateTime" is optional, but it's actually required, and it's required to be
@@ -82,7 +86,7 @@ def validate_order(
 
     payload = {
         "storeId": store_id,
-        "couponId": 0,
+        "couponId": coupon_id,
         "orderType": order_type,
         "orderTypeSubType": "PhoneOrder",
         "promiseDateTime": formatted_datetime,
@@ -99,7 +103,7 @@ def validate_order(
     }
 
     # add delivery address
-    if order_type == OrderType.Delivery and delivery_address:
+    if order_type == AdoraOrderType.Delivery and delivery_address:
         payload["deliveryAddress"] = delivery_address.model_dump()
 
     payload = json.dumps(payload)
@@ -115,16 +119,16 @@ def validate_order(
 
     if response.status == 200:
         return _utils.parse_json(
-            OrderCalculationResult, json.loads(response.decoded_body)
+            AdoraOrderCalculationResult, json.loads(response.decoded_body)
         )
     else:
         return None
 
 
 def save_validate_order(
-    bearer_token: AccessToken,
+    bearer_token: AdoraAccessToken,
     order_key: str,
-) -> SavedOrderResult | None:
+) -> AdoraSavedOrderResult | None:
     """Save an already-validate order to Adora POS.
 
     Args:
@@ -145,13 +149,15 @@ def save_validate_order(
     )
 
     if response.status == 200:
-        return _utils.parse_json(SavedOrderResult, json.loads(response.decoded_body))
+        return _utils.parse_json(
+            AdoraSavedOrderResult, json.loads(response.decoded_body)
+        )
     else:
         return None
 
 
 def place_order(
-    bearer_token: AccessToken,
+    bearer_token: AdoraAccessToken,
     order_id: int,
     store_id: str,
     phone_number: str,
@@ -182,3 +188,70 @@ def place_order(
         return True  # Adora does not return anything useful for this API endpoint, so just return True
     else:
         return False
+
+
+def validate_address(
+    bearer_token: AdoraAccessToken, store_id: str, lat: str, long: str
+) -> tuple[bool, list[AdoraValidatedAddress] | str]:
+    """Validate an address (latitude + longitude) with Adora POS.
+
+    Args:
+        bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
+        store_id (str): The store ID.
+        lat (str): The latitude of the address.
+        long (str): The longitude of the address.
+
+    Returns:
+        bool: True if the address was validated successfully, False otherwise.
+        list[ValidatedAddress] | str: A list of validated addresses if the address was validated successfully,
+            or an error message otherwise.
+    """
+    response = _utils.connect_adora_order_hub(
+        "POST",
+        bearer_token,
+        "validateAddress",
+        query_params=None,
+        extra_headers=None,
+        payload=json.dumps({"storeId": store_id, "lat": lat, "lng": long}),
+    )
+
+    if response.status == 200:
+        parsed_json = _utils.parse_json(
+            AdoraValidatedAddressList,
+            # account for weird Adora API response format of a string of an array
+            json.dumps({"addresses": json.loads(json.loads(response.decoded_body))}),
+        )
+        return (
+            (True, parsed_json.addresses)
+            if parsed_json
+            else (False, "An error occurred.")
+        )
+    else:
+        # return error message, likely "Address was not found in the list of delivery zones!"
+        return False, response.decoded_body
+
+
+def list_coupons(
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+) -> list[AdoraCoupon]:
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "coupons",
+        query_params={
+            "sid": store_id,
+        },
+        extra_headers=None,
+        payload=None,
+    )
+
+    if response.status == 200:
+        # parse Adora array of coupons into a list of Coupon objects
+        parsed_json = _utils.parse_json(
+            AdoraCouponList, json.dumps({"coupons": json.loads(response.decoded_body)})
+        )
+
+        return parsed_json.coupons if parsed_json else []
+    else:
+        return []

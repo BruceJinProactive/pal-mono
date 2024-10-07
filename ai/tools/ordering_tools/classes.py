@@ -1,3 +1,5 @@
+from enum import Enum
+
 from pydantic import BaseModel
 
 """
@@ -18,6 +20,41 @@ class Consumer(BaseModel):
     last_name: str
     phone_number: str  # NOTE: phone number must be in (xxx)xxx-xxxx format for compatibility with ALL providers
     email: str
+
+
+class GenericCoupon(BaseModel):
+    """
+    This is the shape of a generic coupon that is sent to an integration API at the place_order step.
+    """
+
+    coupon: str
+
+
+class GenericDeliveryAddress(BaseModel):
+    """
+    This is the shape of a generic delivery address that is sent to an integration API at the place_order step.
+    """
+
+    address: str
+    city: str
+    state: str
+    zip_code: str
+    # TODO: Consider adding a second address line for suite numbers or other additional address information.
+
+
+class FulfillmentStrategy(Enum):
+    """
+    This is an enum representing different fulfillment strategies for an order.
+    """
+
+    DELIVERY = "delivery"
+    PICKUP = "pickup"
+    DINEIN = "dine-in"
+    NA = "N/A"
+
+
+class LLMFulfillmentStrategy(BaseModel):
+    strategy: FulfillmentStrategy
 
 
 class LLMOrderItem(BaseModel):

@@ -1,6 +1,6 @@
 from phi.tools.toolkit import Toolkit
 
-from ai.tools.ordering_tools.classes import OrderItem
+from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
 from ai.tools.ordering_tools.integrations.adora import AdoraIntegration
 
 from . import _utils
@@ -15,6 +15,7 @@ class OrderingTools(Toolkit):
 
         # Toolkit tools (actions)
         self.register(self.add_to_order)
+        self.register(self.list_coupons)
         self.register(self.place_order)
         self.register(self.remove_from_order)
 
@@ -69,12 +70,26 @@ class OrderingTools(Toolkit):
 
         return integrated_order_res
 
+    def list_coupons(self):
+        """
+        Lists all available coupons. Do NOT use an ordered list with numbers when listing the coupons.
+
+        Use this function when the user wants to see all available coupons.
+
+        Returns:
+            str: A message listing all available coupons.
+        """
+
+        return self.integration.list_coupons()
+
     # TODO: Figure out how (if) we want to take in coupons, payment info, delivery type. Hardcode for now.
     def place_order(self, chat_history: list[str]) -> str:
         """
         Places the user's order based on the chat history.
 
         This function should be used every time the user wants to finish their order, check out, or pay for it.
+
+        The user must provide the fulfillment strategy (delivery, pickup, dine-in), and the delivery address if the fulfillment strategy is delivery.
 
         Args:
             chat_history (list[str]): The chat history between the user and the assistant. Only include the last 50 messages. If there are less than 50 messages, include all of them.
@@ -101,8 +116,10 @@ class OrderingTools(Toolkit):
         cart = _utils.get_cart_info(chat_history)
         if not cart:
             return "There was an issue processing your order. Please try again."
+
         account_name = self.integration.account_name
         memories = _utils.get_consumer_memory(account_name)
+
         consumer = _utils.get_consumer_info(chat_history, memories)
         if (
             not consumer
@@ -113,7 +130,37 @@ class OrderingTools(Toolkit):
         ):
             return "Ask the user to provide their first name, last name, phone number, and email address to place an order."
 
-        return self.integration.place_order(cart.cart_items, consumer)
+        fulfillment_strategy = _utils.get_fulfillment_strategy(chat_history)
+
+        if (
+            not fulfillment_strategy
+            or fulfillment_strategy.strategy == FulfillmentStrategy.NA
+        ):
+            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup, dine-in."
+        fulfillment_strategy = fulfillment_strategy.strategy
+
+        delivery_address = None
+        if fulfillment_strategy == FulfillmentStrategy.DELIVERY:
+            delivery_address = _utils.get_delivery_address(chat_history)
+            if (
+                not delivery_address
+                or delivery_address.address == "N/A"
+                or delivery_address.city == "N/A"
+                or delivery_address.state == "N/A"
+                or delivery_address.zip_code == "N/A"
+            ):
+                return "Ask the user to provide a valid and complete delivery address to place a delivery order."
+
+        generic_coupon = _utils.get_generic_coupon_info(chat_history)
+        generic_coupon = generic_coupon.coupon if generic_coupon else "N/A"
+
+        return self.integration.place_order(
+            cart.cart_items,
+            consumer,
+            fulfillment_strategy,
+            delivery_address,
+            generic_coupon,
+        )
 
     def remove_from_order(self):
         """
@@ -129,7 +176,5 @@ class OrderingTools(Toolkit):
         Returns:
             str: The result of removing the item from the order.
         """
-
-        # TODO: @brandon - Please implement this function
 
         return "The item was successfully removed from the order!"

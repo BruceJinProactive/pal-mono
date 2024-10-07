@@ -1,5 +1,3 @@
-from typing import Optional
-
 from phi.tools.toolkit import Toolkit
 
 from ai.tools.booking_tools.integrations.mindzero import MindZeroIntegration

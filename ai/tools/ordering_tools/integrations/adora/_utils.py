@@ -1,16 +1,72 @@
 from dataclasses import dataclass
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from openai import OpenAI
 
 from ai.tools.ordering_tools.classes import OrderItem
-from ai.tools.ordering_tools.integrations.adora.classes import AdoraOrderItem
+from ai.tools.ordering_tools.integrations.adora.classes import (
+    AdoraCoupon,
+    AdoraOrderItem,
+)
 
 
 @dataclass
 class ConversionResult:
     success: bool
     message: str
+
+
+def convert_coupon(
+    all_coupons: list[AdoraCoupon], target_coupon: str, openai_client, openai_model: str
+) -> Optional[AdoraCoupon]:
+    """Given a list of all available coupons and a target coupon, convert the target coupon to a Coupon object.
+
+    Args:
+        all_coupons (list[Coupon]): A list of all available coupons as Coupon objects.
+        target_coupon (str): The target coupon to convert.
+        openai_client (OpenAI): The OpenAI client to use for the coupon conversion.
+        openai_model (str): The OpenAI model to use for the coupon conversion.
+
+    Returns:
+        Optional[Coupon]: The converted Coupon object if the target coupon was found in the list of all coupons.
+    """
+
+    message = (
+        "\n\n".join([f"{c.id}\n{c.name}\n{c.description}" for c in all_coupons])
+        + "\n\n\nTARGET COUPON:\n"
+        + target_coupon
+    )
+
+    response = openai_client.beta.chat.completions.parse(
+        model=openai_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """You are given a list of available coupons.
+                        An available coupon has an ID, a name, and a description.
+                        Convert the user's target coupon to a valid coupon from the list.
+                        The target coupon will be at the bottom of the message.
+                        Output the target coupon in the desired format.
+                        If the target coupon does not match any available coupons, then
+                            output 0 in the ID field and "N/A" in the name and description fields.
+                        """,
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": f"{message}"}],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=AdoraCoupon,
+    )
+
+    return response.choices[0].message.parsed
 
 
 def get_adora_item_id(

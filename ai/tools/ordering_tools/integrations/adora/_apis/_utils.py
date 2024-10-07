@@ -1,11 +1,11 @@
-import http
-import urllib
+import http.client
+import urllib.parse
 from typing import Optional
 
 from jsonschema import ValidationError
 
 from ai.tools.ordering_tools.integrations.adora.classes import (
-    AccessToken,
+    AdoraAccessToken,
     AdoraHubResponse,
 )
 from utils.log import logger
@@ -25,7 +25,7 @@ def parse_json(model_class, json_str: str):
 
 def connect_adora_order_hub(
     http_method: str,
-    auth_token: AccessToken,
+    auth_token: AdoraAccessToken,
     api_function: str,
     query_params: Optional[dict] = None,
     extra_headers: Optional[dict] = None,
