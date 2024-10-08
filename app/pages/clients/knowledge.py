@@ -9,8 +9,8 @@ from streamlit_extras.switch_page_button import switch_page
 
 from ai.knowledge import get_knowledge
 from app.auth import user
+from app.pages.clients.accounts import account_picker_ui
 from db.session import get_db
-from services.account_service import get_accounts
 from utils.log import logger
 
 st.title("Knowledge")
@@ -134,19 +134,7 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
-    with st.sidebar:
-        st.subheader("Account Picker")
-        account_names = [account.name for account in get_accounts(db)]
-        if "account_name" not in st.session_state:
-            st.session_state["account_name"] = "proactiveailab"
-        account_name = st.selectbox(
-            "Select an account",
-            account_names,
-            index=account_names.index(st.session_state["account_name"]),
-        )
-        if account_name != st.session_state["account_name"]:
-            st.session_state["account_name"] = account_name
-            st.rerun()
+    account_picker_ui()
 
 
 else:

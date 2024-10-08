@@ -1,8 +1,8 @@
 from utils.log import logger
 
 from .booking_tools import BookingTools
-from .ordering_tools import OrderingTools
 from .escalation_tools import EscalationTools
+from .ordering_tools import OrderingTools
 
 
 def get_tools(assistant_raw_config):
