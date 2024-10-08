@@ -4,7 +4,7 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-from api.models.conversation import ConversationPreview
+from api.schemas.admin.conversation import ConversationPreview
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository

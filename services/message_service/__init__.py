@@ -4,7 +4,7 @@ from typing import List
 from sqlalchemy.orm import Session
 
 import db.tables as db
-from api.models.message import Message
+from api.schemas.message.message import Message
 from db.tables import Conversation
 
 from . import _implementation

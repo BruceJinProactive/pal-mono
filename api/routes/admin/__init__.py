@@ -5,14 +5,14 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from requests import Session
 
-from api.models.message import (
+from api.routes.endpoints import endpoints
+from api.schemas.message.message import (
     AuthorType,
     ChannelPlatform,
     Message,
     MessagingBroker,
     TextObject,
 )
-from api.routes.endpoints import endpoints
 from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (

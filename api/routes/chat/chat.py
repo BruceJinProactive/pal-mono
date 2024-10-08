@@ -1,34 +1,14 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.models.message import Message
 from api.routes.endpoints import endpoints
+from api.schemas.chat.chat import ChatRequest, ChatResponse, ErrorResponse
 from db.session import get_db
 from services.message_service import get_chat_response
 from services.relay_service import send_message
 from utils.log import logger
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
-
-
-class ChatRequest(BaseModel):
-    message: Message
-    async_response: bool = False
-
-
-class ChatResponse(BaseModel):
-    message: Optional[Message] = None
-    status: str = Field(default="success")
-
-
-class ErrorResponse(BaseModel):
-    status: str = Field(default="error")
-    error_code: str
-    error_message: str
-    details: Optional[dict] = None
 
 
 @chat_router.post(

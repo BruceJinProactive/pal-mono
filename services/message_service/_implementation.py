@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import db.tables as db
 from ai.assistants.pizza_assistant import get_pizza_assistant
 from ai.llm import OutputModel
-from api.models.message import AuthorType, Extras, Message, TextObject
+from api.schemas.message.message import AuthorType, Extras, Message, TextObject
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.project_repository import ProjectRepository

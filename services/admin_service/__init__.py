@@ -3,7 +3,7 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-from api.models.conversation import ConversationPreview
+from api.schemas.admin.conversation import ConversationPreview
 from db.tables.messages import Message
 
 from . import _implementation
