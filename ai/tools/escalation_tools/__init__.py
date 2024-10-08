@@ -2,7 +2,6 @@ from typing import Optional
 
 from phi.tools.toolkit import Toolkit
 
-from ai.tools.escalation_tools.integrations.mindzero import MindZeroIntegration
 
 
 class EscalationTools(Toolkit):
@@ -17,22 +16,8 @@ class EscalationTools(Toolkit):
         self.register(self.get_response)
 
         # Toolkit configuration
-        # self.api_key = config.get("api_key", None)
-        # self.api_secret = config.get("api_secret", None)
-
-        # Toolkit integrations
-        # TODO: create a tool integration module
-        self.integration_map = {
-            "mindzero": MindZeroIntegration,
-            # Add other integrations here
-        }
-        integration_class = self.integration_map.get(config["type"])
-
-        if not integration_class:
-            raise ValueError(f"Unknown integration type: {config['type']}")
-
-        # Lazy load integration
-        self.integration = integration_class()
+        self.criteria = config['settings'].get("criteria", None)
+        self.response = config['settings'].get("response", None)
 
     # ----------------------------------------
     # Toolkit tools (actions)
@@ -45,7 +30,7 @@ class EscalationTools(Toolkit):
         Returns:
             str: The criteria used to determine if a user prompt should be escalated.
         """
-        return self.integration.get_criteria()
+        return self.criteria
 
     def get_response(self) -> str:
         """
@@ -56,4 +41,4 @@ class EscalationTools(Toolkit):
         Returns:
             str: The escalation response.
         """
-        return self.integration.get_response()
+        return self.response
