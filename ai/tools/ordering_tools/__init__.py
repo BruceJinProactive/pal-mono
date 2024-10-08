@@ -119,8 +119,13 @@ class OrderingTools(Toolkit):
 
         account_name = self.integration.account_name
         memories = _utils.get_consumer_memory(account_name)
-
-        consumer = _utils.get_consumer_info(chat_history, memories)
+        memory_list = (
+            "## Existing Memories\n"
+            + "\n".join(f"- {memory.memory}" for memory in memories)
+            if memories
+            else ""
+        )
+        consumer = _utils.get_consumer_info(chat_history, memory_list)
         if (
             not consumer
             or consumer.first_name == "N/A"

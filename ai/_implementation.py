@@ -19,17 +19,17 @@ def integrate_assistant(
     # Set up llm
     llm = get_llm()
 
-    # Retrive and build prompts
-    system_prompt = get_system_prompt(assistant_raw_config)
+    # Set up memory
+    memory = get_memory(account_name)
+
+    # Retrieve and build prompts and add memory list
+    system_prompt = get_system_prompt(assistant_raw_config, memory, user_id)
 
     # Set up storage
     storage = get_storage(account_name)
 
     # Set up knowledge base
     knowledge = get_knowledge(account_name)
-
-    # Set up memory
-    memory = get_memory(account_name)
 
     # Add tools
     tools = get_tools(assistant_raw_config)

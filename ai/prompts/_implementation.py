@@ -21,10 +21,11 @@ def format_section(title, section_data):
     return formatted_section
 
 
-def generate_markdown_system_prompt(json_data) -> str:
+def generate_markdown_system_prompt(json_data, memory, user_id) -> str:
     markdown_output = []
 
     # Determine the level at which character and guardrails are located
+    # Note: this may change in the future
     if "system_prompt" in json_data:
         data = json_data["system_prompt"]
     else:
@@ -43,6 +44,17 @@ def generate_markdown_system_prompt(json_data) -> str:
         markdown_output.extend(
             format_section("Guardrails - Rules you must absolutely obey", guardrails)
         )
+
+    # Process memories
+    memory.user_id = user_id
+    memory.load_memory()
+    memories = memory.memories
+    memory_list = (
+        "\n".join(f"  - {memory.memory}" for memory in memories) if memories else ""
+    )
+    if memory_list:
+        markdown_output.append("## Existing Memories")
+        markdown_output.append(memory_list)
 
     # Join all parts into a single string with new lines
     return "\n".join(markdown_output)

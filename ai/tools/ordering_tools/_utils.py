@@ -53,9 +53,7 @@ def get_cart_info(chat_history: List[str]) -> Optional[LLMCartInfo]:
     return response.choices[0].message.parsed
 
 
-def get_consumer_info(
-    chat_history: List[str], memories: Optional[List[Memory]]
-) -> Optional[Consumer]:
+def get_consumer_info(chat_history: List[str], memories: str) -> Optional[Consumer]:
     """Extracts the consumer information from the chat history.
 
     Args:
