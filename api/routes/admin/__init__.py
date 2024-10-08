@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from requests import Session
 
 from api.routes.endpoints import endpoints
+from api.schemas.admin.feedback import Feedback
 from api.schemas.message.message import (
     AuthorType,
     ChannelPlatform,
@@ -386,3 +387,46 @@ def read_campaigns(request: Request):
 
     json_compatible_item_data = jsonable_encoder(decrypted_id_token)
     return JSONResponse(content=json_compatible_item_data)
+
+
+@admin_router.post("/feedback", status_code=200)
+async def submit_feedback(request: Request, db: Session = Depends(get_db)):
+    """
+    This endpoint is used to create feedback in the database.
+    """
+    # Validate ID token
+    try:
+        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Try to create Feedback object
+    try:
+        feedback_data = await request.json()
+        feedback = Feedback(**feedback_data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid feedback data: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Pass Feedback object into service layer
+    try:
+        return feedback.to_dict()
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return {
+        "message": "Feedback successfully submitted",
+        "feedback_id": feedback.id,
+        "submitted_at": feedback.timestamp,
+    }
