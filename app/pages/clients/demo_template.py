@@ -253,7 +253,9 @@ def messaging_ui(assistant: Assistant) -> None:
                         response = message["content"]
                         try:
                             ## handle str format when tool call toggle is on
-                            json_start = response.find('''{"content"''')
+                            json_start = response.find('''{ "content"''')
+                            if json_start == -1:
+                                json_start = response.find('''{"content"''')
                             response_object = json.loads(response[json_start:])
                             response = (
                                 response[:json_start] + response_object["content"]
@@ -281,7 +283,9 @@ def messaging_ui(assistant: Assistant) -> None:
                         response = message["content"]
                         try:
                             ## handle str format when tool call toggle is on
-                            json_start = response.find('''{"content"''')
+                            json_start = response.find('''{ "content"''')
+                            if json_start == -1:
+                                json_start = response.find('''{"content"''')
                             response_object = json.loads(response[json_start:])
                             response = (
                                 response[:json_start] + response_object["content"]
@@ -363,7 +367,9 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                         response = response_object
                         try:
                             ## handle str format when tool call toggle is on
-                            json_start = response.find('''{"content"''')
+                            json_start = response.find('''{ "content"''')
+                            if json_start == -1:
+                                json_start = response.find('''{"content"''')
                             response_object = json.loads(response[json_start:])
                             response = (
                                 response[:json_start] + response_object["content"]

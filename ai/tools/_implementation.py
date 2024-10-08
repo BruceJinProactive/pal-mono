@@ -2,6 +2,7 @@ from utils.log import logger
 
 from .booking_tools import BookingTools
 from .ordering_tools import OrderingTools
+from .escalation_tools import EscalationTools
 
 
 def get_tools(assistant_raw_config):
@@ -9,6 +10,7 @@ def get_tools(assistant_raw_config):
     toolkit_map = {
         "OrderingTools": OrderingTools,
         "BookingTools": BookingTools,
+        "EscalationTools": EscalationTools,
     }
 
     if "tools" in assistant_raw_config and type(assistant_raw_config["tools"]) is list:
