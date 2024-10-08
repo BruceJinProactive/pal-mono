@@ -72,7 +72,6 @@ if not is_logged_in:
     st.stop()
 else:
     user.update(authenticator=authenticator)
-
     pg = st.navigation(pages())
     pg.run()
 
