@@ -41,7 +41,8 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             # Create and return the ChatResponse with the message
             return ChatResponse(message=response_message, status="success")
     except ValueError as ve:
-        # Handle validation errors
+        # Log and handle validation errors
+        logger.error(f"Error validating message: {ve}")
         raise HTTPException(
             status_code=400,
             detail=ErrorResponse(

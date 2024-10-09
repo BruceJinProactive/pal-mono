@@ -20,6 +20,7 @@ class ChannelPlatform(str, Enum):
     SMS = "sms"
     WHATSAPP = "whatsapp"
     WEBSITE = "website"
+    INSTAGRAM = "instagram"
 
 
 class MessagingBroker(str, Enum):

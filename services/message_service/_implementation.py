@@ -12,9 +12,13 @@ from db.repositories.message_repository import MessageRepository
 from db.repositories.project_repository import ProjectRepository
 from db.tables import Conversation
 from services import assistant_service, user_service
+from utils.log import logger
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
+    user = None
+    extras = {}
+
     try:
         # find project with matching channel platform, identifier pair
         project = ProjectRepository(db).get_project_by_channel(
@@ -35,6 +39,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
             channel_identifier=message.sender_channel_identifier,
             create_new_user=True,
         )
+
         if user is None:
             raise ValueError("User not found")
 
@@ -60,7 +65,6 @@ def get_chat_response(db: Session, message: Message) -> Message:
         response_object = assistant.run(message.text.body, stream=False)
         if isinstance(response_object, str):
             response = response_object
-            extras = {}
         elif isinstance(response_object, OutputModel):
             response = response_object.content
             extras = {"escalated": response_object.escalated}
@@ -68,8 +72,9 @@ def get_chat_response(db: Session, message: Message) -> Message:
             raise ValueError(
                 f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
             )
-    except Exception:
-        # Handle any error and set default response
+    except Exception as e:
+        # Log any error and set default error response
+        logger.error(e)
         response = "Something went wrong. Please try again."
 
     response_message = Message(
@@ -83,10 +88,11 @@ def get_chat_response(db: Session, message: Message) -> Message:
         extras=Extras(**extras),
     )
 
-    # Save response message to database
-    MessageRepository(db).create_message(
-        user_id=user.id, message_body=response_message.to_dict()
-    )
+    if user:
+        # Save response message to database
+        MessageRepository(db).create_message(
+            user_id=user.id, message_body=response_message.to_dict()
+        )
 
     return response_message
 
