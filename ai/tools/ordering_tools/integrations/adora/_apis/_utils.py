@@ -1,6 +1,5 @@
 import http.client
 import urllib.parse
-from typing import Optional
 
 from jsonschema import ValidationError
 
@@ -27,9 +26,9 @@ def connect_adora_order_hub(
     http_method: str,
     auth_token: AdoraAccessToken,
     api_function: str,
-    query_params: Optional[dict] = None,
-    extra_headers: Optional[dict] = None,
-    payload: Optional[str] = "",
+    query_params: dict | None = None,
+    extra_headers: dict | None = None,
+    payload: str | None = "",
 ) -> AdoraHubResponse:
     """utility function to connect to Adora Order Hub API"""
 

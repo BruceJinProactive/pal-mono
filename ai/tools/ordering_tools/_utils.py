@@ -1,5 +1,4 @@
 from os import getenv
-from typing import List, Optional
 
 from openai import OpenAI
 from phi.memory.memory import Memory
@@ -19,14 +18,14 @@ openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
 openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
 
-def get_cart_info(chat_history: List[str]) -> Optional[LLMCartInfo]:
+def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
     """Extracts the cart information from the chat history.
 
     Args:
         chat_history (str): The chat history to extract the cart information from.
 
     Returns:
-        Optional[LLMCartInfo]: The parsed cart information.
+        LLMCartInfo | None: The parsed cart information.
     """
     response = openai_client.beta.chat.completions.parse(
         model=openai_model,
@@ -53,15 +52,18 @@ def get_cart_info(chat_history: List[str]) -> Optional[LLMCartInfo]:
     return response.choices[0].message.parsed
 
 
-def get_consumer_info(chat_history: List[str], memories: str) -> Optional[Consumer]:
+def get_consumer_info(
+    chat_history: list[str], memories: list[Memory] | None
+) -> Consumer | None:
     """Extracts the consumer information from the chat history.
 
     Args:
         chat_history (str): The chat history to extract the consumer information from.
 
     Returns:
-        Optional[Consumer]: The parsed consumer information.
+        Consumer | None: The parsed consumer information.
     """
+    memories_string = [f"{m.memory}\n" for m in memories] if memories else ""
     response = openai_client.beta.chat.completions.parse(
         model=openai_model,
         messages=[
@@ -83,7 +85,7 @@ def get_consumer_info(chat_history: List[str], memories: str) -> Optional[Consum
                 "role": "user",
                 "content": [
                     {"type": "text", "text": f"{chat_history}"},
-                    {"type": "text", "text": f"{memories}"},
+                    {"type": "text", "text": f"{memories_string}"},
                 ],
             },
         ],
@@ -95,14 +97,14 @@ def get_consumer_info(chat_history: List[str], memories: str) -> Optional[Consum
     return response.choices[0].message.parsed
 
 
-def get_consumer_memory(account_name: str) -> Optional[List[Memory]]:
+def get_consumer_memory(account_name: str) -> list[Memory] | None:
     """Get the list of memories for the given account name.
 
     Args:
         account_name (str): The account name to get the memory for.
 
     Returns:
-        Memory: The list of memories object.
+        list[Memory] | None: The list of memories object.
     """
     memory = get_memory(account_name)
     memory.load_memory()
@@ -189,14 +191,14 @@ def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy 
     return response.choices[0].message.parsed
 
 
-def get_generic_coupon_info(chat_history: list[str]) -> Optional[GenericCoupon]:
+def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
     """Extracts the coupon information from the chat history.
 
     Args:
         chat_history (str): The chat history to extract the coupon information from.
 
     Returns:
-        Optional[GenericCoupon]: The parsed coupon information. If no coupon information is found, return "N/A".
+        GenericCoupon | None: The parsed coupon information. If no coupon information is found, return "N/A".
     """
     response = openai_client.beta.chat.completions.parse(
         model=openai_model,
@@ -229,14 +231,14 @@ def get_generic_coupon_info(chat_history: list[str]) -> Optional[GenericCoupon]:
 
 
 # This function is currently not used.
-def get_order_id(validated_order_res: str) -> Optional[LLMOrder]:
+def get_order_id(validated_order_res: str) -> LLMOrder | None:
     """Extracts the order ID from the validated order response.
 
     Args:
         validated_order_res (str): The validated order response to extract the order ID from.
 
     Returns:
-        Optional[LLMOrder]: The parsed order ID.
+        LLMOrder | None: The parsed order ID.
     """
     response = openai_client.beta.chat.completions.parse(
         model=openai_model,

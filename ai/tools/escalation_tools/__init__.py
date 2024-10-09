@@ -1,7 +1,4 @@
-from typing import Optional
-
 from phi.tools.toolkit import Toolkit
-
 
 
 class EscalationTools(Toolkit):
@@ -16,8 +13,8 @@ class EscalationTools(Toolkit):
         self.register(self.get_response)
 
         # Toolkit configuration
-        self.criteria = config['settings'].get("criteria", None)
-        self.response = config['settings'].get("response", None)
+        self.criteria = config["settings"].get("criteria", None)
+        self.response = config["settings"].get("response", None)
 
     # ----------------------------------------
     # Toolkit tools (actions)

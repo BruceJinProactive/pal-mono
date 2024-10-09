@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Any, Optional, Union
 
 from openai import OpenAI
 
@@ -18,7 +17,7 @@ class ConversionResult:
 
 def convert_coupon(
     all_coupons: list[AdoraCoupon], target_coupon: str, openai_client, openai_model: str
-) -> Optional[AdoraCoupon]:
+) -> AdoraCoupon | None:
     """Given a list of all available coupons and a target coupon, convert the target coupon to a Coupon object.
 
     Args:
@@ -28,7 +27,7 @@ def convert_coupon(
         openai_model (str): The OpenAI model to use for the coupon conversion.
 
     Returns:
-        Optional[Coupon]: The converted Coupon object if the target coupon was found in the list of all coupons.
+        AdoraCoupon | None: The converted Coupon object if the target coupon was found in the list of all coupons.
     """
 
     message = (
@@ -241,18 +240,18 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
 
 
 def validate_and_convert_item(
-    order_item: OrderItem, menu: Any, openai_client: OpenAI, openai_model: str
-) -> tuple[bool, Union[AdoraOrderItem, str]]:
+    order_item: OrderItem, menu: object, openai_client: OpenAI, openai_model: str
+) -> tuple[bool, AdoraOrderItem | str]:
     """Converts a generic order item into an Adora order item.
 
     Args:
         order_item (OrderItem): The generic order item to convert.
-        menu (Any): The menu to use to get the item ID and size ID.
+        menu (object): The menu to use to get the item ID and size ID.
         openai_client (OpenAI): The OpenAI client to use for the item and size ID conversion.
         openai_model (str): The OpenAI model to use for the item and size ID conversion.
 
     Returns:
-        tuple[bool, Union[AdoraOrderItem, str]]: A tuple containing a boolean indicating
+        tuple[bool, AdoraOrderItem | str]: A tuple containing a boolean indicating
             if the conversion was successful, and either the converted Adora order item or an error message.
     """
     # detect invalid quantity
