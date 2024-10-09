@@ -242,7 +242,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
 
     # Skip the rest of the steps if there are no conversations
     # Send an empty list of messages
-    if conversations is None or conversations[0] is None:
+    if not conversations or conversations[0] is None:
         return JSONResponse(content=jsonable_encoder([]))
 
     """ 
