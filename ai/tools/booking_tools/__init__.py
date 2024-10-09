@@ -7,7 +7,7 @@ class BookingTools(Toolkit):
     def __str__(self):
         return "BookingTools"
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, user_id: str):
         super().__init__(name="booking_tools")
 
         # Toolkit tools (actions)

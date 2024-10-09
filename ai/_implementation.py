@@ -32,7 +32,7 @@ def integrate_assistant(
     knowledge = get_knowledge(account_name)
 
     # Add tools
-    tools = get_tools(assistant_raw_config)
+    tools = get_tools(assistant_raw_config, user_id)
 
     # Get run id
     run_id = None

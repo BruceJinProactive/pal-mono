@@ -10,8 +10,11 @@ class OrderingTools(Toolkit):
     def __str__(self):
         return "OrderingTools"
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, user_id: str):
         super().__init__(name="ordering_tools")
+
+        # Load user_id
+        self.user_id = user_id
 
         # Toolkit tools (actions)
         self.register(self.add_to_order)
@@ -21,7 +24,6 @@ class OrderingTools(Toolkit):
 
         # Toolkit integrations
         # Map the integration type to the respective class
-        # We can refactor to initialize on use if it's a problem
         # TODO: consider an abstract class for each integration?
         self.integration_map = {
             "adora": AdoraIntegration,
@@ -61,7 +63,6 @@ class OrderingTools(Toolkit):
         Returns:
             str: A message indicating with the item name and order total or a failure to add item message.
         """
-
         # Create generic order item
         generic_order_item = OrderItem(item_name, size, quantity, modifications)
 
@@ -118,7 +119,7 @@ class OrderingTools(Toolkit):
             return "There was an issue processing your order. Please try again."
 
         account_name = self.integration.account_name
-        memories = _utils.get_consumer_memory(account_name)
+        memories = _utils.get_consumer_memory(account_name, self.user_id)
         memory_list = (
             "## Existing Memories\n"
             + "\n".join(f"- {memory.memory}" for memory in memories)

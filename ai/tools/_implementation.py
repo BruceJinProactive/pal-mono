@@ -5,7 +5,7 @@ from .escalation_tools import EscalationTools
 from .ordering_tools import OrderingTools
 
 
-def get_tools(assistant_raw_config):
+def get_tools(assistant_raw_config, user_id):
     tools = []
     toolkit_map = {
         "OrderingTools": OrderingTools,
@@ -25,6 +25,6 @@ def get_tools(assistant_raw_config):
                 continue
             toolkit_name, toolkit_config = toolkit["toolkit"], toolkit["config"]
 
-            tools.append(toolkit_map[toolkit_name](toolkit_config))
+            tools.append(toolkit_map[toolkit_name](toolkit_config, user_id))
 
     return tools

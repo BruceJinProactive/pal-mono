@@ -97,7 +97,7 @@ def get_consumer_info(
     return response.choices[0].message.parsed
 
 
-def get_consumer_memory(account_name: str) -> list[Memory] | None:
+def get_consumer_memory(account_name: str, user_id: str) -> list[Memory] | None:
     """Get the list of memories for the given account name.
 
     Args:
@@ -107,6 +107,7 @@ def get_consumer_memory(account_name: str) -> list[Memory] | None:
         list[Memory] | None: The list of memories object.
     """
     memory = get_memory(account_name)
+    memory.user_id = user_id
     memory.load_memory()
     memories = memory.memories
     return memories

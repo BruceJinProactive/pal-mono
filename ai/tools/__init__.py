@@ -1,7 +1,7 @@
 from . import _implementation
 
 
-def get_tools(assistant_raw_config):
+def get_tools(assistant_raw_config, user_id):
     """
     Initialize and return a list of toolkits based on the assistant raw configuration.
 
@@ -30,7 +30,7 @@ def get_tools(assistant_raw_config):
         }
         tools = get_tools(assistant_raw_config)
     """
-    return _implementation.get_tools(assistant_raw_config)
+    return _implementation.get_tools(assistant_raw_config, user_id)
 
 
 __all__ = ["get_tools"]
