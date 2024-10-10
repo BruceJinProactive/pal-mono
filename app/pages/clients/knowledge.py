@@ -1,5 +1,4 @@
 import json
-import re
 from typing import List
 
 import streamlit as st
@@ -33,7 +32,7 @@ def show_confirmation():
 
 def knowledge_ui(account_name: str) -> None:
     if account_name:
-        st.error("[WARNING] Operations on this page are irreversible.")
+        st.warning("[WARNING] Operations on this page are irreversible.")
         # Load knowledge base if not already loaded
         knowledge_base = get_knowledge(account_name)
         if knowledge_base and (
@@ -78,34 +77,68 @@ def knowledge_ui(account_name: str) -> None:
                     alert.empty()
         with tab_text:
             if knowledge_base:
+                name_input = st.text_input(
+                    "Document Name:", key="text_document_name_key"
+                )
                 text_input = st.text_area(
-                    "Upload Text Here:", height=300, key="text_input_key"
+                    "Paste or type your Text here:", height=300, key="text_input_key"
                 )
                 if st.button("Upload Text"):
                     alert = st.info("Processing Submitted Text...", icon="ℹ️")
-                    if text_input:
-                        knowledge_base.load_text(text_input)
-                        st.success("Text processed and loaded into knowledge base")
-                    else:
-                        st.error("No text submitted")
+                    if text_input and name_input:
+                        try:
+                            text_document = Document(
+                                content=text_input, name=name_input
+                            )
+                            knowledge_base.load_document(text_document)
+                            st.success("Text processed and loaded into knowledge base")
+                        except Exception:
+                            st.error(
+                                "Sorry, the text you provided it is **too long** \n, please provide a shorter text or contact support."
+                            )
+                    if not text_input:
+                        st.error("Please paste some Text to process.")
+                    if not name_input:
+                        st.error("Please provide a document name.")
                     alert.empty()
         with tab_json:
             if knowledge_base:
+                json_name_input = st.text_input(
+                    "Document Name:", key="json_document_name_key"
+                )
                 json_input = st.text_area(
                     "Paste or type your JSON here:", height=300, key="json_input_area"
                 )
                 if st.button("Upload JSON"):
-                    if json_input:
+                    if json_input and json_name_input:
                         try:
-                            json.loads(json_input)
-                            json_input = re.sub(r"\s+", "", json_input)
-                            knowledge_base.load_text(json_input)
+                            # Attempt to parse the input JSON
+                            json_content = json.loads(json_input)
+
+                            # Convert the dictionary back to a JSON string with specific separators
+                            compressed_json = json.dumps(
+                                json_content, separators=(",", ":")
+                            )
+                            # Pass the JSON string to the knowledge base for loading
+                            knowledge_base.load_document(
+                                Document(content=compressed_json, name=json_name_input)
+                            )
+
                             st.success("JSON processed and loaded into knowledge base.")
 
                         except json.JSONDecodeError as e:
                             st.error(f"Invalid JSON format: {e}")
-                    else:
-                        st.warning("Please paste some JSON to process.")
+
+                        except Exception:
+                            st.error(
+                                "Sorry, the JSON you provided is **too long** \n. Please provide a shorter JSON or contact support."
+                            )
+
+                    if not json_input:
+                        st.error("Please paste some JSON to process.")
+
+                    if not json_name_input:
+                        st.error("Please provide a document name.")
         if knowledge_base:
             st.text("")
             if st.button("Clear Knowledge Base"):
