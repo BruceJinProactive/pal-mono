@@ -1,9 +1,11 @@
 import json
 from os import getenv
+from typing import Any
 
 from geopy.geocoders import Nominatim
 from openai import OpenAI
 
+from ai.knowledge import get_knowledge
 from ai.llm import _settings
 from ai.tools.ordering_tools.classes import (
     Consumer,
@@ -23,18 +25,25 @@ from . import _apis, _utils
 
 
 class AdoraIntegration:
-    def __init__(self, api_key: str, api_secret: str, store_id: str, account_name: str):
-        self.store_id = store_id
+    def __init__(
+        self,
+        account_name: str,
+        api_key: str,
+        api_secret: str,
+        menu_name: str,
+        store_id: str,
+    ):
         self.account_name = account_name
         self.api_key = api_key
         self.api_secret = api_secret
+        self.menu_name = menu_name
+        self.store_id = store_id
         self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
         self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
     def add_to_order(self, order_item: OrderItem) -> str:
-        menu = {}  # TODO Should be referenced from the knowledge base in SQL
-        with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
-            menu = json.load(read_f)
+        # Get menu from knowledge base based on menu name
+        menu = self.get_adora_menu(self.menu_name)
 
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
@@ -84,9 +93,8 @@ class AdoraIntegration:
         delivery_address: GenericDeliveryAddress | None,
         generic_coupon: str,
     ) -> str:
-        menu = {}  # TODO Should be referenced from the knowledge base in SQL
-        with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
-            menu = json.load(read_f)
+        # Get menu from knowledge base based on menu name
+        menu = self.get_adora_menu(self.menu_name)
 
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
@@ -219,3 +227,13 @@ class AdoraIntegration:
 
         else:
             return "There was an issue placing the order. Please try again."
+
+    def get_adora_menu(self, menu_name: str) -> Any:
+        menu = {}
+        # Load the knowledge base according to the account name
+        knowledge = get_knowledge(self.account_name)
+        knowledge.load()
+        # Search for the menu in the knowledge base according to the menu name
+        menus = knowledge.search(menu_name)
+        menu = json.loads(menus[0].content) if menus else {}
+        return menu
