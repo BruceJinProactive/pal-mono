@@ -51,6 +51,11 @@ def pages():
             title="Tools",
             icon=":material/pan_tool:",
         ),
+        st.Page(
+            "pages/development/utils.py",
+            title="Utils",
+            icon=":material/service_toolbox:",
+        ),
     ]
     pages = {
         "Dashboard": dashboard_pages,
