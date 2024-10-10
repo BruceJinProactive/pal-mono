@@ -21,6 +21,7 @@ from services.admin_service import (
     get_conversation_messages,
     get_inbox_conversations,
 )
+from services.feedback_service import create_feedback
 from services.message_service import (
     get_chat_response,
     get_conversations_by_user,
@@ -417,7 +418,11 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
 
     # Pass Feedback object into service layer
     try:
-        return feedback.to_dict()
+        create_feedback(db, feedback.to_dict())
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400, detail=str(e), headers={"Content-Type": "application/json"}
+        )
     except Exception:
         raise HTTPException(
             status_code=500,
