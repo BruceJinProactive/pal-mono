@@ -52,18 +52,16 @@ def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
     return response.choices[0].message.parsed
 
 
-def get_consumer_info(
-    chat_history: list[str], memories: list[Memory] | None
-) -> Consumer | None:
+def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | None:
     """Extracts the consumer information from the chat history.
 
     Args:
         chat_history (str): The chat history to extract the consumer information from.
+        memory_list (str): The list of memories to extract the consumer information from.
 
     Returns:
         Consumer | None: The parsed consumer information.
     """
-    memories_string = [f"{m.memory}\n" for m in memories] if memories else ""
     response = openai_client.beta.chat.completions.parse(
         model=openai_model,
         messages=[
@@ -85,7 +83,7 @@ def get_consumer_info(
                 "role": "user",
                 "content": [
                     {"type": "text", "text": f"{chat_history}"},
-                    {"type": "text", "text": f"{memories_string}"},
+                    {"type": "text", "text": f"{memory_list}"},
                 ],
             },
         ],
