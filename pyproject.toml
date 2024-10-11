@@ -27,9 +27,6 @@ dependencies = [
   "pypdf==5.0.0",
   "geopy==2.4.1",
 
-  # DevOps
-  "aws-xray-sdk==2.14.0",
-
   # Validation
   "black==24.8.0",
   "isort==5.13.2",

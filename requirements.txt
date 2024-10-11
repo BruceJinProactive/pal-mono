@@ -9,7 +9,6 @@ altair==5.4.1
 annotated-types==0.7.0
 anyio==4.4.0
 attrs==24.2.0
-aws-xray-sdk==2.14.0
 beautifulsoup4==4.12.3
 black==24.8.0
 blinker==1.8.2
@@ -129,4 +128,3 @@ tzdata==2024.1
 urllib3==2.2.2
 uvicorn==0.30.6
 validators==0.33.0
-wrapt==1.16.0
