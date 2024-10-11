@@ -31,6 +31,10 @@ def main() -> None:
     st.error("[WARNING] Operations on this page are irreversible.")
     st.write("---")
 
+    if "account_name" not in st.session_state:
+        st.error("Please Select an Account to View")
+        return
+
     account_tab, assistant_tab, project_tab = st.tabs(
         ["Account", "Assistant", "Project"]
     )
@@ -264,13 +268,14 @@ def account_picker_ui():
 
         account_names = [account.name for account in get_accounts(db)]
 
-        if "account_name" not in st.session_state:
-            st.session_state["account_name"] = "proactiveailab"
-
         account_name = st.selectbox(
             "Select an account",
             account_names,
-            index=account_names.index(st.session_state["account_name"]),
+            index=(
+                account_names.index(st.session_state["account_name"])
+                if "account_name" in st.session_state
+                else None
+            ),
         )
 
         if account_name != st.session_state.get("account_name"):

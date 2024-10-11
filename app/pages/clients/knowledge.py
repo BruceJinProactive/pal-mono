@@ -154,7 +154,7 @@ def knowledge_ui(account_name: str) -> None:
                     del st.session_state.confirmation_result
 
     else:
-        st.error("[WARNING] Please Select an Account to Edit Knowledge Base")
+        st.error("Please Select an Account to Edit Knowledge Base")
 
 
 def main() -> None:

@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
 from app.auth import user
-from app.pages.clients.accounts import universal_picker_ui
+from app.pages.clients.accounts import account_picker_ui
 from db.session import get_db
 from services.account_service import get_account
 from services.message_service import (
@@ -47,7 +47,9 @@ def render_conversation(user_id) -> None:
 
 def main() -> None:
     st.write("---")
-
+    if "account_name" not in st.session_state:
+        st.error("Please Select an Account to View Users")
+        return
     account = get_account(db, st.session_state["account_name"])
     if not account:
         raise ValueError(
@@ -71,7 +73,7 @@ def main() -> None:
 
 
 if user.is_logged_in:
-    universal_picker_ui()
     main()
+    account_picker_ui()
 else:
     switch_page("home")
