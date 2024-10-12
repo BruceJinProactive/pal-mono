@@ -43,7 +43,7 @@ class AdoraIntegration:
 
     def add_to_order(self, order_item: OrderItem) -> str:
         # Get menu from knowledge base based on menu name
-        menu = self.get_adora_menu(self.menu_name)
+        menu = self.get_adora_menu()
 
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
@@ -94,7 +94,7 @@ class AdoraIntegration:
         generic_coupon: str,
     ) -> str:
         # Get menu from knowledge base based on menu name
-        menu = self.get_adora_menu(self.menu_name)
+        menu = self.get_adora_menu()
 
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
@@ -228,12 +228,8 @@ class AdoraIntegration:
         else:
             return "There was an issue placing the order. Please try again."
 
-    def get_adora_menu(self, menu_name: str) -> Any:
-        menu = {}
-        # Load the knowledge base according to the account name
-        knowledge = get_knowledge(self.account_name)
-        knowledge.load()
-        # Search for the menu in the knowledge base according to the menu name
-        menus = knowledge.search(menu_name)
-        menu = json.loads(menus[0].content) if menus else {}
+    def get_adora_menu(self) -> Any:
+        menu = {}  # TODO Temporary fix, investigating knowledge SQL performance
+        with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
+            menu = json.load(read_f)
         return menu
