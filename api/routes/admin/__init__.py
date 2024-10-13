@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from requests import Session
+from sqlalchemy.exc import DatabaseError, NoResultFound
 
 from api.routes.endpoints import endpoints
 from api.schemas.admin.feedback import Feedback
@@ -433,5 +434,92 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
     return {
         "message": "Feedback successfully submitted",
         "feedback_id": feedback.id,
+        "submitted_at": feedback.timestamp,
+    }
+
+
+@admin_router.get("/feedback/{feedback_id}", status_code=200)
+def retrieve_feedback_by_id(
+    feedback_id: str, request: Request, db: Session = Depends(get_db)
+):
+    """
+    This endpoint is used to retrieve feedback by id from the database.
+    """
+    try:
+        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Get Feedback object from service layer
+    try:
+        feedback = feedback_id
+        # feedback = get_feedback_by_id(db, feedback_id)
+    except (DatabaseError, NoResultFound) as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving feedback: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return feedback
+
+
+@admin_router.post("/feedback/{feedback_id}", status_code=200)
+async def change_feedback_by_id(
+    feedback_id: str, request: Request, db: Session = Depends(get_db)
+):
+    """
+    This endpoint is used to update feedback by id in the database.
+    """
+    try:
+        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Try to create Feedback object
+    try:
+        feedback_data = await request.json()
+        feedback = Feedback(**feedback_data)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid feedback data: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Pass Feedback object into service layer
+    try:
+        pass
+        # update_feedack_by_id(db, feedback_id, feedback.to_dict())
+    except (DatabaseError, NoResultFound) as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error updating feedback: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return {
+        "message": "Feedback successfully updated",
+        "feedback_id": feedback_id,
         "submitted_at": feedback.timestamp,
     }
