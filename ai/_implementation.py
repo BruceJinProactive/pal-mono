@@ -68,7 +68,7 @@ def integrate_assistant(
         search_knowledge=True,
         read_chat_history=True,
         # Configurations
-        debug_mode=True,
+        debug_mode=False,
         # Output Format
         output_model=OutputModel,
     )
