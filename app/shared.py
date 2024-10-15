@@ -1,5 +1,7 @@
 import streamlit as st
 
+from app.auth import user
+
 
 def set_page_config():
     st.set_page_config(
@@ -14,6 +16,13 @@ def set_account(account_name):
         st.session_state.pop("project_name")
     if "assistant_id" in st.session_state:
         st.session_state.pop("assistant_id")
+
+
+def user_ui():
+    with st.sidebar:
+        st.write("## User")
+        st.info(f":technologist: User: {user.email}")
+        # st.write(user)
 
 
 def footer_ui():
