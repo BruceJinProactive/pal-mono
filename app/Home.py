@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_cognito_auth import CognitoAuthenticator
 
 from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
-from app.shared import footer_ui, set_page_config, user_ui
+from app.shared import footer_ui, set_page_config
 
 set_page_config()
 
@@ -80,7 +80,6 @@ else:
     pg = st.navigation(pages())
     pg.run()
 
-    user_ui()
     if st.sidebar.button("Logout", "logout_btn"):
         user.logout()
         authenticator.logout()
