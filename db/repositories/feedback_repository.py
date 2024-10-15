@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -30,3 +32,33 @@ class FeedbackRepository:
             raise
 
         return db_feedback
+
+    def get_feedback_by_id(self, feedback_id: uuid.UUID):
+        try:
+            return {"result": f"Found feedback {str(feedback_id)}"}
+            # return self.db.query(Feedback).filter(Feedback.id == feedback_id).first()
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving feedback: {e}")
+            raise
+
+    def update_feedback_by_id(self, feedback_id: uuid.UUID, updated_feedback: dict):
+        try:
+            return {"updated feedback": updated_feedback}
+            db_feedback = self.get_feedback_by_id(feedback_id)
+            if db_feedback is None:
+                raise ValueError(f"Feedback {feedback_id} not found")
+            for key, value in updated_feedback.items():
+                setattr(db_feedback, key, value)
+            self.db.commit()
+            self.db.refresh(db_feedback)
+        except (SQLAlchemyError, ValueError) as e:
+            self.db.rollback()
+            logger.error(f"Error updating feedback: {e}")
+            raise
+        except Exception as e:
+            self.db.rollback()
+            logger.exception(
+                f"Unexpected error while updating feedback {feedback_id}: {e}"
+            )
+            raise

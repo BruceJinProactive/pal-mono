@@ -22,7 +22,11 @@ from services.admin_service import (
     get_conversation_messages,
     get_inbox_conversations,
 )
-from services.feedback_service import create_feedback
+from services.feedback_service import (
+    create_feedback,
+    get_feedback_by_id,
+    update_feedback_by_id,
+)
 from services.message_service import (
     get_chat_response,
     get_conversations_by_user,
@@ -456,8 +460,7 @@ def retrieve_feedback_by_id(
 
     # Get Feedback object from service layer
     try:
-        feedback = feedback_id
-        # feedback = get_feedback_by_id(db, feedback_id)
+        feedback = get_feedback_by_id(db, feedback_id)
     except (DatabaseError, NoResultFound) as e:
         raise HTTPException(
             status_code=500,
@@ -503,8 +506,7 @@ async def change_feedback_by_id(
 
     # Pass Feedback object into service layer
     try:
-        pass
-        # update_feedack_by_id(db, feedback_id, feedback.to_dict())
+        update_feedback_by_id(db, feedback_id, feedback.to_dict())
     except (DatabaseError, NoResultFound) as e:
         raise HTTPException(
             status_code=500,
