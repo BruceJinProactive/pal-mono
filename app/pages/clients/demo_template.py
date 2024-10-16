@@ -2,8 +2,9 @@ import json
 import uuid
 
 import streamlit as st
-from phi.assistant import Assistant
+from phi.assistant.assistant import Assistant
 from phi.memory.manager import MemoryManager
+from phi.memory.memory import Memory
 from PIL import Image
 
 from ai.assistants.pizza_assistant import get_pizza_assistant
@@ -28,7 +29,9 @@ def get_prd_assistant(
     db = next(get_db())
     assistant = get_assistant(db, assistant_id)
 
-    account = get_account(db, account_name=assistant.account.name)
+    account = None
+    if assistant is not None:
+        account = get_account(db, account_name=assistant.account.name)
 
     if account is None:
         raise ValueError("Account not found")
@@ -320,9 +323,81 @@ def messaging_ui(assistant: Assistant) -> None:
 
 def memory_ui(assistant: Assistant) -> None:
     st.sidebar.write("## Memory")
+    # Display existing memories
     if assistant.memory.memories:
         for item in assistant.memory.memories:
-            st.sidebar.warning(item.memory)
+            col1, col2 = st.sidebar.columns([12, 2.5])
+            with col1:
+                st.warning(item.memory)
+            with col2:
+                st.write("")
+                if st.button("✕", key=f"remove_memory_{item}"):
+                    clear_memory(assistant, item)
+                    st.rerun()
+    # Add the "Add Memory" button
+    if "add_memory" not in st.session_state:
+        st.session_state["add_memory"] = False
+    if st.sidebar.button("Add Memory"):
+        st.session_state["add_memory"] = not st.session_state["add_memory"]
+
+    # Show the text input field when "Add Memory" is clicked
+    if st.session_state["add_memory"]:
+        memory_text = st.sidebar.text_input("Enter memory")
+        if st.sidebar.button("Save"):
+            if memory_text:
+                new_memory = Memory(input=memory_text, memory=memory_text)
+                add_memory(assistant, new_memory)
+                # Close the text field after saving
+                st.session_state["add_memory"] = False
+                st.rerun()
+    st.sidebar.markdown("---")
+
+
+def add_memory(assistant: Assistant, memory: Memory) -> None:
+    """
+    Adds the specified memory to both the assistant's memory list and the memory database.
+
+    Parameters:
+    assistant (Assistant): The `Assistant` instance that will generate the response.
+    memory (Memory): The `Memory` instance to be added.
+
+    Returns:
+    None
+
+    """
+    if assistant.memory.manager is None:
+        assistant.memory.manager = MemoryManager(
+            user_id=assistant.memory.user_id, db=assistant.memory.db
+        )
+
+    assistant.memory.manager.add_memory(memory.memory)
+
+
+def clear_memory(assistant: Assistant, removed_memory: Memory) -> None:
+    """
+    Clears the specified memory from both the assistant's memory list and the memory database.
+
+    Parameters:
+    assistant (Assistant): The `Assistant` instance that will generate the response.
+    removed_memory (Memory): The `Memory` object to be removed.
+
+    Returns:
+    None
+
+    """
+
+    if assistant.memory.manager is None:
+        assistant.memory.manager = MemoryManager(
+            user_id=assistant.memory.user_id, db=assistant.memory.db
+        )
+
+    memories = assistant.memory.memories
+    if memories and removed_memory and removed_memory in memories:
+        memories.remove(removed_memory)
+    assistant.memory.manager.clear_memory()
+    if memories:
+        for memory in memories:
+            assistant.memory.manager.add_memory(memory.memory)
 
 
 def storage_ui(assistant: Assistant) -> None:

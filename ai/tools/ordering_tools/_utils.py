@@ -73,7 +73,8 @@ def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | N
                         "text": """Your role is to process the chat history between a user and an assistant.
                         You will extract the relevant customer information into the desired format.
                         You will be provided with the chat history to process.
-                        The phone number, if provided, MUST match the format (XXX)XXX-XXXX.
+                        The phone number, if provided, MUST be a 10-digit number and can be in any format.
+                        Extract the phone number as a string of exactly 10 digits without any formatting.
                         If the customer information is not present, output "N/A" for the missing fields.
                         """,
                     }

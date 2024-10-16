@@ -139,14 +139,29 @@ class OrderingTools(Toolkit):
             else ""
         )
         consumer = _utils.get_consumer_info(chat_history, memory_list)
-        if (
-            not consumer
-            or consumer.first_name == "N/A"
-            or consumer.last_name == "N/A"
-            or consumer.phone_number == "N/A"
-            or consumer.email == "N/A"
-        ):
+        if not consumer:
             return "Ask the user to provide their first name, last name, phone number, and email address to place an order."
+
+        missing_info = []
+        if consumer.first_name == "N/A":
+            missing_info.append("first name")
+        if consumer.last_name == "N/A":
+            missing_info.append("last name")
+        if consumer.phone_number == "N/A":
+            missing_info.append("phone number")
+        if consumer.email == "N/A":
+            missing_info.append("email address")
+
+        if missing_info:
+            return (
+                f"Please provide your {' and '.join(missing_info)} to place an order."
+            )
+        # Format phone number
+        consumer.phone_number = "({}){}-{}".format(
+            consumer.phone_number[:3],
+            consumer.phone_number[3:6],
+            consumer.phone_number[6:],
+        )
 
         fulfillment_strategy = _utils.get_fulfillment_strategy(chat_history)
 
