@@ -2,6 +2,7 @@ from utils.log import logger
 
 from .booking_tools import BookingTools
 from .escalation_tools import EscalationTools
+from .image_retrieval_tools import ImageRetrievalTools
 from .ordering_tools import OrderingTools
 
 
@@ -11,6 +12,7 @@ def get_tools(assistant_raw_config, user_id):
         "OrderingTools": OrderingTools,
         "BookingTools": BookingTools,
         "EscalationTools": EscalationTools,
+        "ImageRetrievalTools": ImageRetrievalTools,
     }
 
     if "tools" in assistant_raw_config and type(assistant_raw_config["tools"]) is list:
