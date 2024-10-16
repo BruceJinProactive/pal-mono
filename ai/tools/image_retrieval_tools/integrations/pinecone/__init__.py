@@ -37,7 +37,7 @@ class PineconeIntegration:
                 raise ValueError(
                     "Failed to setup Pinecone Integration. Error with Google Cloud credentials."
                 )
-            
+
             google_creds_dict = yaml.safe_load(google_creds_str)
 
         # Ensure the private key has the correct format
@@ -65,7 +65,9 @@ class PineconeIntegration:
         self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
         self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
-    def retrieve_image_by_chat_history(self, chat_history: list[str], top_k: int = 3) -> str:
+    def retrieve_image_by_chat_history(
+        self, chat_history: list[str], top_k: int = 3
+    ) -> str:
         try:
             chat_completion = self.openai_client.chat.completions.create(
                 model=self.openai_model,
@@ -122,7 +124,7 @@ class PineconeIntegration:
 
         if not matches:
             return "Failed to retrieve image. No image found in Pinecone index."
-        
+
         # TODO: update to return top 3
         image_url = matches[0]["metadata"]["image_url"]
 
