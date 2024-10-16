@@ -173,7 +173,7 @@ def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy 
                         "text": """Your role is to process the chat history between a user and an assistant.
                         You will be provided with the chat history to process.
                         You will extract the relevant fulfillment strategy.
-                        The possible options are "delivery", "pickup", "dine-in", or "N/A" if no strategy is specified.
+                        The possible options are "delivery", "pickup" or "N/A" if no strategy is specified.
                         """,
                     }
                 ],

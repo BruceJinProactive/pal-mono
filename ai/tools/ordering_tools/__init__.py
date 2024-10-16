@@ -102,7 +102,7 @@ class OrderingTools(Toolkit):
 
         This function should be used every time the user wants to finish their order, check out, or pay for it.
 
-        The user must provide the fulfillment strategy (delivery, pickup, dine-in), and the delivery address if the fulfillment strategy is delivery.
+        The user must provide the fulfillment strategy (delivery, pickup), and the delivery address if the fulfillment strategy is delivery.
 
         Args:
             chat_history (list[str]): The chat history between the user and the assistant. Only include the last 50 messages. If there are less than 50 messages, include all of them.
@@ -169,7 +169,7 @@ class OrderingTools(Toolkit):
             not fulfillment_strategy
             or fulfillment_strategy.strategy == FulfillmentStrategy.NA
         ):
-            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup, dine-in."
+            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
         fulfillment_strategy = fulfillment_strategy.strategy
 
         delivery_address = None

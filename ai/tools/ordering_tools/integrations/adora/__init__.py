@@ -136,11 +136,8 @@ class AdoraIntegration:
             adora_coupon_id = adora_coupon.id if adora_coupon else 0
 
         # convert generic fulfillment strategy to Adora order type
-        if (
-            fulfillment_strategy == FulfillmentStrategy.DINEIN
-            or fulfillment_strategy == FulfillmentStrategy.NA
-        ):
-            return "Dine-in is not supported by Adora POS. Please choose delivery or pickup."
+        if fulfillment_strategy == FulfillmentStrategy.NA:
+            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
         fulfillment_conversion_map = {
             FulfillmentStrategy.DELIVERY: AdoraOrderType.Delivery,
             FulfillmentStrategy.PICKUP: AdoraOrderType.TakeOut,

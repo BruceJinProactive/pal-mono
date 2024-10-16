@@ -49,7 +49,6 @@ class FulfillmentStrategy(Enum):
 
     DELIVERY = "delivery"
     PICKUP = "pickup"
-    DINEIN = "dine-in"
     NA = "N/A"
 
 
