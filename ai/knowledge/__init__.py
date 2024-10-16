@@ -18,3 +18,15 @@ def get_knowledge(account_name: str) -> AssistantKnowledge:
         AssistantKnowledge: An instance of AssistantKnowledge configured with the specified settings.
     """
     return _implementation.get_knowledge(account_name)
+
+
+def index_data_from_shopify() -> int:
+    """
+    **TEMPORARY** Index data from Shopify.
+
+    This function retrieves images from Shopify and indexes them in the Pinecone index.
+
+    Returns:
+        int: The number of images successfully indexed.
+    """
+    return _implementation.index_data_from_shopify()

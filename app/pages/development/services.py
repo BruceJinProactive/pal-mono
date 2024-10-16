@@ -38,24 +38,23 @@ def main() -> None:
         st.write("### get_chat_response")
 
         sender_channel_identifier: str = st.text_input("Sender Channel Identifier")
-        recipient_channel_identifier: str = st.text_input("Recipient Channel Identifier")
+        recipient_channel_identifier: str = st.text_input(
+            "Recipient Channel Identifier"
+        )
         channel_platform: ChannelPlatform = st.radio(
             label="Channel Platform",
             options=[platform for platform in ChannelPlatform],
             format_func=(lambda platform: platform.value),
-            key="channel_platform"
+            key="channel_platform",
         )
         messaging_broker: MessagingBroker = st.radio(
             label="Messaging Broker",
             options=[broker for broker in MessagingBroker],
             format_func=(lambda broker: broker.value),
-            key="messaging_broker"
+            key="messaging_broker",
         )
         text: str = st.text_area("Text")
-        extras: Extras = Extras(escalated=st.checkbox(
-            "Escalated",
-            key = "extras"
-        ))
+        extras: Extras = Extras(escalated=st.checkbox("Escalated", key="extras"))
 
         if st.button("Get Chat Response"):
             input_message = Message(
