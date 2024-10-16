@@ -37,20 +37,35 @@ def main() -> None:
     with message_service_tab:
         st.write("### get_chat_response")
 
-        sender_channel_identifier = st.text_input("From Number")
-        recipient_channel_identifier = st.text_input("To Number")
-        text = st.text_input("Text")
+        sender_channel_identifier: str = st.text_input("Sender Channel Identifier")
+        recipient_channel_identifier: str = st.text_input("Recipient Channel Identifier")
+        channel_platform: ChannelPlatform = st.radio(
+            label="Channel Platform",
+            options=[platform for platform in ChannelPlatform],
+            format_func=(lambda platform: platform.value),
+            key="channel_platform"
+        )
+        messaging_broker: MessagingBroker = st.radio(
+            label="Messaging Broker",
+            options=[broker for broker in MessagingBroker],
+            format_func=(lambda broker: broker.value),
+            key="messaging_broker"
+        )
+        text: str = st.text_area("Text")
+        extras: Extras = Extras(escalated=st.checkbox(
+            "Escalated",
+            key = "extras"
+        ))
 
         if st.button("Get Chat Response"):
             input_message = Message(
                 author_type=AuthorType.USER,
                 sender_channel_identifier=sender_channel_identifier,
-                recipient_channel_identifier=recipient_channel_identifier
-                or "+14244859440",
+                recipient_channel_identifier=recipient_channel_identifier,
                 text=TextObject(body=text),
-                channel_platform=ChannelPlatform.SMS,
-                messaging_broker=MessagingBroker.SENDBLUE,
-                extras=Extras(),
+                channel_platform=channel_platform,
+                messaging_broker=messaging_broker,
+                extras=extras,
             )
             output_message = get_chat_response(db, input_message)
             st.write(output_message.to_dict())
