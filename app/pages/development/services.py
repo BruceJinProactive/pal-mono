@@ -128,7 +128,9 @@ def main() -> None:
                         )
                         account_id = selected_account.split()[0]
                         messages = get_conversation_messages(
-                            db, uuid.UUID(account_id), selected_conversation_id
+                            db,
+                            uuid.UUID(account_id),
+                            uuid.UUID(selected_conversation_id),
                         )
                         message_texts = [
                             (

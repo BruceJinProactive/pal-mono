@@ -132,10 +132,12 @@ def get_conversation_messages(
 
 def get_brandings(db: Session, account_name: str) -> list[dict]:
     account = get_account(db, account_name)
-
+    if not account:
+        return []
     account_name = account.name
     assistants = get_assistants_by_account(db, account_name)
-
+    if not assistants:
+        return []
     # # find the assistant's raw config
     # parse the raw config with the branding key
     # error check, if it doesn't have the branding key, send back an empty json

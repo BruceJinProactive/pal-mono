@@ -37,14 +37,18 @@ def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
     return assistant
 
 
-def get_assistants_by_account(db: Session, account_name: str) -> List[Assistant]:
+def get_assistants_by_account(
+    db: Session, account_name: str
+) -> Optional[List[Assistant]]:
     # Retrieve the assistant from the database
     account_repository = AccountRepository(db)
     account = account_repository.get_account(account_name)
-    account_id = account.id
-    assistants = AssistantRepository(db).get_assistants_by_account(
-        account_id=account_id
-    )
+    assistants = []
+    if account:
+        account_id = account.id
+        assistants = AssistantRepository(db).get_assistants_by_account(
+            account_id=account_id
+        )
     return assistants
 
 
