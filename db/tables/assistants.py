@@ -30,7 +30,7 @@ class Assistant(Base):
         index=True,
     )
     raw_config: Mapped[Dict] = mapped_column(
-        MutableDict.as_mutable(JSONB),
+        MutableDict.as_mutable(JSONB()),
         nullable=False,
         server_default=text("'{}'::jsonb"),
     )
