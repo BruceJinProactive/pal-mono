@@ -24,6 +24,7 @@ class ChannelPlatform(str, Enum):
 
 
 class MessagingBroker(str, Enum):
+    META = "meta"
     SENDBLUE = "sendblue"
     TWILIO = "twilio"
     WEB = "web"
