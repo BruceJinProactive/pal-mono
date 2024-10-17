@@ -19,7 +19,34 @@ from ai.tools.ordering_tools.integrations.adora.classes import (
 from . import _utils
 
 
-def get_adora_pos_auth_token(key: str, secret: str):
+def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None:
+    """
+    Returns a dictionary of the store menu
+    maps to Adora API doc: https://adoraimages.blob.core.windows.net/api-docs/orderhubapi.html#tag/OrderHub/paths/~1api~1v%7Bversion%7D~1OrderHub~1menu/get
+    """
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "menu",
+        query_params={"sid": store_id},
+        extra_headers=None,
+        payload=None,
+    )
+
+    if response.status == 200:
+        # Decode the JSON string once
+        response_data = json.loads(response.decoded_body)
+
+        # Check if the result is still a JSON string and decode again if necessary
+        if isinstance(response_data, str):
+            response_data = json.loads(response_data)
+
+        return response_data
+    else:
+        return None
+
+
+def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
     """
     Returns a bearer token. It expires in 1 hour.
     """

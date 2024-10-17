@@ -6,8 +6,7 @@ from phi.document.base import Document
 from phi.document.reader.pdf import PDFReader
 from streamlit_extras.switch_page_button import switch_page
 
-from ai.knowledge import get_knowledge
-from ai.knowledge import index_data_from_shopify
+from ai.knowledge import get_knowledge, index_data_from_shopify
 from app.auth import user
 from app.pages.clients.accounts import account_picker_ui
 from db.session import get_db
@@ -147,7 +146,7 @@ def knowledge_ui(account_name: str) -> None:
                     alert = st.info("Indexing...", icon="ℹ️")
                     try:
                         num_indexed_images = index_data_from_shopify()
-                        
+
                         st.success(f"Successfully indexed {num_indexed_images} images.")
                     except Exception as e:
                         st.error(f"An error occurred during indexing: {str(e)}")

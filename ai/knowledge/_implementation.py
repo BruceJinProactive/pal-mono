@@ -21,6 +21,7 @@ def get_knowledge(account_name: str) -> AssistantKnowledge:
 
     return get_knowledge
 
+
 def index_data_from_shopify() -> int:
     # TODO: Implement the actual indexing logic here
     return 0

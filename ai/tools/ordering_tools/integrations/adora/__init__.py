@@ -42,13 +42,15 @@ class AdoraIntegration:
         self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
     def add_to_order(self, order_item: OrderItem) -> str:
-        # Get menu from knowledge base based on menu name
-        menu = self.get_adora_menu()
-
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+
+        # Get menu from knowledge base based on menu name
+        menu = _apis.get_adora_menu(self.store_id, bearer_token)
+        if not menu:
+            return "Failed to get menu, please try again."
 
         convert_item_success, adora_order_item = _utils.validate_and_convert_item(
             order_item, menu, self.openai_client, self.openai_model
@@ -93,13 +95,15 @@ class AdoraIntegration:
         delivery_address: GenericDeliveryAddress | None,
         generic_coupon: str,
     ) -> str:
-        # Get menu from knowledge base based on menu name
-        menu = self.get_adora_menu()
-
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+
+        # Get menu from knowledge base based on menu name
+        menu = _apis.get_adora_menu(self.store_id, bearer_token)
+        if not menu:
+            return "Failed to get menu, please try again."
 
         order_items = []
         order_summary = []  # List to hold the summary of items and their prices
@@ -224,9 +228,3 @@ class AdoraIntegration:
 
         else:
             return "There was an issue placing the order. Please try again."
-
-    def get_adora_menu(self) -> Any:
-        menu = {}  # TODO Temporary fix, investigating knowledge SQL performance
-        with open("data/pizza/Pizza_My_Heart_Adora_Menu.json", "r") as read_f:
-            menu = json.load(read_f)
-        return menu

@@ -69,12 +69,11 @@ def convert_coupon(
 
 
 def get_adora_item_id(
-    menu, order_item_name: str, openai_client, openai_model: str
+    menu: dict, order_item_name: str, openai_client, openai_model: str
 ) -> ConversionResult:
     """
     Finds the closest item name in the menu and consequent item id.
     """
-
     # Load menu item names
     menu_items = []
     for item in menu["items"]:
@@ -240,7 +239,7 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
 
 
 def validate_and_convert_item(
-    order_item: OrderItem, menu: object, openai_client: OpenAI, openai_model: str
+    order_item: OrderItem, menu: dict, openai_client: OpenAI, openai_model: str
 ) -> tuple[bool, AdoraOrderItem | str]:
     """Converts a generic order item into an Adora order item.
 
