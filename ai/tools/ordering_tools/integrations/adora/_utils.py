@@ -1,4 +1,6 @@
+from collections import defaultdict
 from dataclasses import dataclass
+from typing import Any
 
 from openai import OpenAI
 
@@ -238,8 +240,247 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
     return ConversionResult(False, "Size not found in menu.")
 
 
+def get_similar_modifier_using_openai(
+    openai_client: OpenAI,
+    openai_model: str,
+    order_item_modification: str,
+    modifier_names: list,
+) -> str | None:
+    """
+    Uses OpenAI's language model to match a user-supplied item modification to the most similar modifier on the menu.
+
+    Args:
+        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
+        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
+        order_item_modification (str): The user-provided modification for an order item (e.g., "extra cheese").
+        modifier_names (list): A list of available modifier names on the menu.
+
+    Returns:
+        str: The most similar modifier from the menu or "N/A" if no close match is found.
+    """
+
+    sys_prompt = f"""# CONTEXT #
+I am a waiter at a restaurant. I am taking a user's order.
+I want to match a user supplied item modification to an available item modification on the menu.
+Here are the available modification options {modifier_names}
+
+#########
+
+# OBJECTIVE #
+Match the user's inputted item modification to the closest item modification on the menu as if you were a server/waiter.
+
+#########
+
+# EXAMPLES #
+User: anchoby
+Assistant: Anchovy
+
+User: extra cheese
+Assistant: Extra Cheese
+
+User: nutella
+Assistant: N/A
+
+#########
+
+# RESPONSE FORMAT #
+Only output the most similar item modification. Output "N/A" if the user's inputted item modification is nothing like any of the available options.
+"""
+    response = openai_client.chat.completions.create(
+        model=openai_model,
+        messages=[
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": order_item_modification},
+        ],
+        temperature=0,
+        max_tokens=256,
+    )
+
+    return response.choices[0].message.content
+
+
+def get_item_modifier_groups(menu: dict, adora_item_id: int) -> list:
+    """
+    Retrieves the modifier groups for a specific item from the menu.
+
+    Args:
+        menu (dict): The restaurant's menu data, containing items and their respective modifier groups.
+        adora_item_id (int): The ID of the item for which modifier groups are being retrieved.
+
+    Returns:
+        list: A list of modifier groups for the specified item. If the item is not found, an empty list is returned.
+    """
+
+    for item in menu["items"]:
+        if item["item_id"] == adora_item_id:
+            return item["modifier_groups"]
+    return []
+
+
+def process_modifiers(
+    menu: dict, order_item_modifications: list, openai_client: OpenAI, openai_model: str
+) -> tuple[list, str]:
+    """
+    Processes user-supplied order item modifications, classifying them as valid modifiers or comments.
+
+    Args:
+        menu (dict): The restaurant's menu data, containing items and modifiers.
+        order_item_modifications (list): A list of modifications provided by the user for a specific order item.
+        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
+        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
+
+    Returns:
+        tuple[list, str]:
+            - A list of valid modifier IDs matched to the menu modifiers.
+            - A comment string containing the user-provided modifications that did not match any menu modifiers.
+    """
+    modifier_names = [modifier["name"] for modifier in menu["modifiers"]]
+    modifiers = []
+    comment = ""
+
+    for order_item_modification in order_item_modifications:
+        matched_modifier = get_similar_modifier_using_openai(
+            openai_client, openai_model, order_item_modification, modifier_names
+        )
+
+        most_similar_modifier_id = next(
+            (
+                modifier["modifier_id"]
+                for modifier in menu["modifiers"]
+                if modifier["name"] == matched_modifier
+            ),
+            None,
+        )
+
+        if most_similar_modifier_id:
+            modifiers.append(most_similar_modifier_id)
+        else:
+            comment += order_item_modification + ". "
+
+    return modifiers, comment
+
+
+def validate_modifier_group_constraints(
+    modifier_group_counter: dict, menu: dict, payload: dict
+) -> tuple[bool, str]:
+    """
+    Validates that the modifier group constraints (e.g., minimum and maximum allowed modifiers) are satisfied.
+
+    Args:
+        modifier_group_counter (dict): A dictionary that tracks how many modifiers have been selected for each modifier group.
+        menu (dict): The restaurant's menu data, containing the modifier groups and their constraints.
+        payload (dict): The order payload that contains the list of selected modifiers.
+
+    Returns:
+        tuple[bool, str]:
+            - A boolean indicating whether all modifier group constraints are satisfied.
+            - A string containing an error message if the constraints are not met, otherwise an empty string.
+    """
+
+    modifier_group_dict = {
+        mg["modifier_group_id"]: mg for mg in menu["modifier_groups"]
+    }
+
+    for modifier_group_id, count in modifier_group_counter.items():
+        if modifier_group_id in modifier_group_dict:
+            mg = modifier_group_dict[modifier_group_id]
+            if count < mg["min_required_modifier"]:
+                return (
+                    False,
+                    f"Please provide at least {mg['min_required_modifier']} modifiers for {mg['name']}.",
+                )
+            if count > mg["max_allowed_modifier"]:
+                return (
+                    False,
+                    f"Please provide at most {mg['max_allowed_modifier']} modifiers for {mg['name']}.",
+                )
+
+    return True, ""
+
+
+def get_adora_modifications(
+    adora_item_id: int,
+    adora_item_id_res: ConversionResult,
+    adora_size_id_res: ConversionResult,
+    menu: dict,
+    openai_client: OpenAI,
+    openai_model: str,
+    order_item: OrderItem,
+    order_item_modifications: list,
+) -> tuple[bool, AdoraOrderItem | str]:
+    """
+    Maps user-supplied modifications to a specific item in the restaurant's menu, handling both valid modifiers and comments.
+
+    Args:
+        adora_item_id (int): The ID of the item in the Adora system.
+        adora_item_id_res (ConversionResult): A result object that holds the converted item ID.
+        adora_size_id_res (ConversionResult): A result object that holds the converted size ID.
+        menu (dict): The restaurant's menu data, containing items, modifier groups, and modifiers.
+        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
+        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
+        order_item (OrderItem): The order item object that holds details such as quantity.
+        order_item_modifications (list): A list of modifications provided by the user for the order item.
+
+    Returns:
+        tuple[bool, AdoraOrderItem | str]:
+            - A boolean indicating whether the modifications were successfully applied.
+            - An AdoraOrderItem object if successful, or an error message if a validation error occurred.
+    """
+
+    # Initialize payload
+    payload = {"comment": "", "modifiers": []}
+
+    # Get modifier groups for the item
+    item_modifier_groups = get_item_modifier_groups(menu, adora_item_id)
+    if not item_modifier_groups:
+        return False, "No modifier groups found for item."
+
+    # Process order item modifications using OpenAI
+    modifiers, comment = process_modifiers(
+        menu, order_item_modifications, openai_client, openai_model
+    )
+    payload["comment"] = comment
+
+    # Add all default modifiers and track modifier group constraints
+    modifier_group_counter = defaultdict(int)
+    modifier_id_to_group_id = {}
+
+    for item_modifier_group in item_modifier_groups:
+        item_modifier_group_id = item_modifier_group["modifier_group_id"]
+        for modifier in item_modifier_group["modifiers"]:
+            modifier_id_to_group_id[modifier["modifier_id"]] = item_modifier_group_id
+            if modifier["default"]:
+                payload["modifiers"].append(
+                    {
+                        "id": modifier["modifier_id"],
+                        "isDefault": True,
+                        "price": 1,
+                        "weightId": 3,
+                    }
+                )
+                modifier_group_counter[item_modifier_group_id] += 1
+
+    # Validate modifier group constraints
+    is_valid, validation_message = validate_modifier_group_constraints(
+        modifier_group_counter, menu, payload
+    )
+    if not is_valid:
+        return False, validation_message
+
+    adora_order_item = AdoraOrderItem(
+        int(adora_item_id_res.message),
+        int(adora_size_id_res.message),
+        order_item.quantity,
+        payload["comment"],
+        0,
+        payload["modifiers"],
+    )
+
+    return True, adora_order_item
+
+
 def validate_and_convert_item(
-    order_item: OrderItem, menu: dict, openai_client: OpenAI, openai_model: str
+    order_item: OrderItem, menu: Any, openai_client: OpenAI, openai_model: str
 ) -> tuple[bool, AdoraOrderItem | str]:
     """Converts a generic order item into an Adora order item.
 
@@ -276,21 +517,15 @@ def validate_and_convert_item(
     if not adora_size_id_res.success:
         return False, adora_size_id_res.message
 
-    # TODO modifications
-    # adora_modifications_res = get_adora_modifications(
-    #     int(adora_item_id_res.message),
-    #     order_item.modifications,
-    # )
-
-    # transform generic order item into Adora order item
-    adora_order_item = AdoraOrderItem(
+    adora_modifications_res = get_adora_modifications(
         int(adora_item_id_res.message),
-        int(adora_size_id_res.message),
-        order_item.quantity,
-        "",
-        0,
+        adora_item_id_res,
+        adora_size_id_res,
+        menu,
+        openai_client,
+        openai_model,
+        order_item,
         order_item.modifications,
     )
 
-    # return converted order item
-    return True, adora_order_item
+    return adora_modifications_res
