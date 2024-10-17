@@ -21,6 +21,7 @@ class ChannelPlatform(str, Enum):
     WHATSAPP = "whatsapp"
     WEBSITE = "website"
     INSTAGRAM = "instagram"
+    INTERNAL_APP = "internal_app"
 
 
 class MessagingBroker(str, Enum):

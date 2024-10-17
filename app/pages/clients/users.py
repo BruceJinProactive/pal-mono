@@ -34,15 +34,17 @@ def render_conversation(user_id) -> None:
         )
         active_conversation = options.index(choice)
     with st.container(height=CHAT_HEIGHT):
-        messages = get_messages_by_conversation(
-            db, conversations[active_conversation].id
-        )
+        messages = [
+            message.body
+            for message in get_messages_by_conversation(
+                db, conversations[active_conversation].id
+            )
+        ]
         if not messages:
             st.write("No messages in this conversation")
         for message in messages:
-            body = message.body
-            with st.chat_message(body["author_type"]):
-                st.write(body["text"]["body"])
+            with st.chat_message(message["author_type"]):
+                st.write(message["text"]["body"])
 
 
 def main() -> None:
