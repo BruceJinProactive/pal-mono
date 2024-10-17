@@ -1,5 +1,7 @@
 import http.client
 import json
+import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 from ai.tools.ordering_tools.classes import Consumer
@@ -192,7 +194,7 @@ def place_order(
     """Place an order with Adora POS.
 
     Args:
-        bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
+        bearer_token (AdoraAccessToken): The bearer token to authenticate with Adora POS.
         order_id (int): The order ID from the save_validate_order response.
         store_id (str): The store ID to place the order with.
         phone_number (str): The phone number to associate with the order.
@@ -200,21 +202,46 @@ def place_order(
     Returns:
         bool: True if the order was placed successfully, False otherwise.
     """
-    response = _utils.connect_adora_order_hub(
-        "POST",
-        bearer_token,
-        "textPaymentUrl",
-        query_params=None,
-        extra_headers=None,
-        payload=json.dumps(
-            {"orderId": order_id, "storeId": store_id, "customerPhoneNo": phone_number}
-        ),
-    )
 
-    if response.status == 200:
-        return True  # Adora does not return anything useful for this API endpoint, so just return True
-    else:
-        return False
+    MAX_RETRIES = 5
+    BASE_DELAY = 1  # second
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = _utils.connect_adora_order_hub(
+                "POST",
+                bearer_token,
+                "textPaymentUrl",
+                query_params=None,
+                extra_headers=None,
+                payload=json.dumps(
+                    {
+                        "orderId": order_id,
+                        "storeId": store_id,
+                        "customerPhoneNo": phone_number,
+                    }
+                ),
+            )
+            if response.status == 200:
+                logging.info(f"Order {order_id} placed successfully.")
+                return True
+            else:
+                logging.warning(
+                    f"[Attempt {attempt + 1}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}. Status: {response.status}, Body: {response.decoded_body}"
+                )
+        except Exception as e:
+            logging.error(
+                f"[Attempt {attempt + 1}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}. Exception: {type(e).__name__}: {e}"
+            )
+
+        delay = BASE_DELAY * (2**attempt)  # Exponential backoff
+        logging.warning(f"... Retrying in {delay} seconds")
+        time.sleep(delay)
+
+    logging.error(
+        f"[Attempt {MAX_RETRIES}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}."
+    )
+    return False
 
 
 def validate_address(
