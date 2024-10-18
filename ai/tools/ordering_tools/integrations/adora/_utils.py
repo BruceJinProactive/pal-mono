@@ -10,6 +10,27 @@ from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraOrderItem,
 )
 
+# Size descriptions.
+# TODO: Make more comprehensive
+SIZE_DESCRIPTION_MAP = {
+    "1": '12"',
+    "2": '14"',
+    "3": '18"',
+    "4": 'Gluten Free 12"',
+    "5": "Heart Shaped",
+    "6": "Regular",
+    "16": "Pint",
+    "17": "Pitcher",
+    "18": "Bottle",
+    "19": "6 Pack",
+    "20": "Catering",
+    "21": "6 Wings",
+    "22": "12 Wings",
+    "23": "24 Wings",
+    "24": "Slices",
+    "25": "Kids Make Pizza",
+}
+
 
 @dataclass
 class ConversionResult:
@@ -141,33 +162,29 @@ Only output the most similar menu item name. Output "N/A" if the user's inputted
     return ConversionResult(False, "Item not found in menu.")
 
 
+def get_adora_item_name(menu: dict, adora_item_id: int) -> str | None:
+    """
+    Retrieve the name of an item from the Adora menu.
+
+    Args:
+        menu (dict): A dictionary representing the menu, which contains a list of items.
+        adora_item_id (int): The unique identifier of the Adora item.
+
+    Returns:
+        str | None: The name of the Adora item if found, otherwise None.
+    """
+    for item in menu["items"]:
+        if item["item_id"] == adora_item_id:
+            return item["name"]
+    return None
+
+
 def get_adora_size_id(
     menu, adora_item_id: int, order_item_size: str, openai_client, openai_model: str
 ) -> ConversionResult:
     """
     Maps the size to size id.
     """
-    # Size descriptions.
-    # TODO: Make more comprehensive
-    size_descriptions = {
-        "1": '12"',
-        "2": '14"',
-        "3": '18"',
-        "4": 'Gluten Free 12"',
-        "5": "Heart Shaped",
-        "6": "Regular",
-        "16": "Pint",
-        "17": "Pitcher",
-        "18": "Bottle",
-        "19": "6 Pack",
-        "20": "Catering",
-        "21": "6 Wings",
-        "22": "12 Wings",
-        "23": "24 Wings",
-        "24": "Slices",
-        "25": "Kids Make Pizza",
-    }
-
     # Find available size ids for the item
     available_sizes: set = set()
     for item in menu["items"]:
@@ -178,7 +195,7 @@ def get_adora_size_id(
     # Get GPT to find the most similar size
     size_options = []
     for size in available_sizes:
-        size_options.append(size_descriptions[size])
+        size_options.append(SIZE_DESCRIPTION_MAP[size])
 
     sys_prompt = f"""# CONTEXT #
 I am a waiter at a restaurant. I am taking a user's order.
@@ -200,7 +217,10 @@ Assistant: 18"
 User: medium
 Assistant: 14"
 
-User: 12-inch
+User: small
+Assistant: 12"
+
+User: 12 inch
 Assistant: 12"
 
 #########
@@ -233,7 +253,7 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
     )
 
     item_size = response.choices[0].message.content
-    for size_id, size in size_descriptions.items():
+    for size_id, size in SIZE_DESCRIPTION_MAP.items():
         if size == item_size:
             return ConversionResult(True, size_id)
 
@@ -399,9 +419,10 @@ def validate_modifier_group_constraints(
 
 
 def get_adora_modifications(
+    adora_item_name: str,
     adora_item_id: int,
-    adora_item_id_res: ConversionResult,
-    adora_size_id_res: ConversionResult,
+    adora_size_name: str,
+    adora_size_id: int,
     menu: dict,
     openai_client: OpenAI,
     openai_model: str,
@@ -412,9 +433,10 @@ def get_adora_modifications(
     Maps user-supplied modifications to a specific item in the restaurant's menu, handling both valid modifiers and comments.
 
     Args:
-        adora_item_id (int): The ID of the item in the Adora system.
-        adora_item_id_res (ConversionResult): A result object that holds the converted item ID.
-        adora_size_id_res (ConversionResult): A result object that holds the converted size ID.
+        adora_item_name (str): The name of the item in the Adora menu.
+        adora_item_id (int): The ID of the item in the Adora menu.
+        adora_size_name (str): The name of the size in the Adora menu.
+        adora_size_id (int): The ID of the size in the Adora menu.
         menu (dict): The restaurant's menu data, containing items, modifier groups, and modifiers.
         openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
         openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
@@ -468,13 +490,21 @@ def get_adora_modifications(
         return False, validation_message
 
     adora_order_item = AdoraOrderItem(
-        int(adora_item_id_res.message),
-        int(adora_size_id_res.message),
+        adora_item_id,
+        adora_size_id,
         order_item.quantity,
         payload["comment"],
         0,
         payload["modifiers"],
     )
+
+    adora_order_item.item_name = adora_item_name
+    adora_order_item.size = adora_size_name
+    adora_order_item.quantity = order_item.quantity
+    # TODO: add modifications to the response
+    # But this includes the whole modifier group and not the modifications
+    # the user asked for and is incompatible to render as it's the wrong format
+    # adora_order_item.modifications = ???
 
     return True, adora_order_item
 
@@ -500,27 +530,42 @@ def validate_and_convert_item(
     if order_item.quantity > 100:
         return False, f"{order_item.item_name}: Quantity must be at most 100."
 
-    # get Adora-specific item id and size id
+    # get Adora-specific item id
     adora_item_id_res = get_adora_item_id(
         menu, order_item.item_name, openai_client, openai_model
     )
     if not adora_item_id_res.success:
         return False, adora_item_id_res.message
+    adora_item_id = int(adora_item_id_res.message)
 
+    # get Adora-specific item name
+    adora_item_name = get_adora_item_name(menu, adora_item_id)
+    if adora_item_name is None:
+        return False, "Failed to get item in the menu."
+
+    # get Adora-specific size id
     adora_size_id_res = get_adora_size_id(
         menu,
-        int(adora_item_id_res.message),
+        adora_item_id,
         order_item.size,
         openai_client,
         openai_model,
     )
     if not adora_size_id_res.success:
         return False, adora_size_id_res.message
+    adora_size_id = int(adora_size_id_res.message)
 
+    # get Adora-specific size name
+    adora_size_name = SIZE_DESCRIPTION_MAP.get(str(adora_size_id))
+    if adora_size_name is None:
+        return False, "Failed to get size of item in the menu."
+
+    # get Adora-specific modifications and create the AdoraOrderItem
     adora_modifications_res = get_adora_modifications(
-        int(adora_item_id_res.message),
-        adora_item_id_res,
-        adora_size_id_res,
+        adora_item_name,
+        adora_item_id,
+        adora_size_name,
+        adora_size_id,
         menu,
         openai_client,
         openai_model,

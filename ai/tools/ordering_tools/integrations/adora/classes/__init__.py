@@ -115,6 +115,21 @@ class AdoraOrderItem(OrderItem):
         # self.modifiers = [{"id": 0, "isDefault": True, "price": 0, "weightId": 0}]
         self.modifiers = modifications
 
+    def to_dict(self):
+        """
+        Returns a dictionary containing only the attributes of AdoraOrderItem.
+        Use this to generate the JSON payload to send to the Adora API.
+        """
+        return {
+            "itemId": self.itemId,
+            "sizeId": self.sizeId,
+            "quantity": self.quantity,
+            "comment": self.comment,
+            "price": self.price,
+            "taxes": self.taxes,
+            "modifiers": self.modifiers,
+        }
+
 
 class AdoraOrderType(str, Enum):
     Delivery = "Delivery"

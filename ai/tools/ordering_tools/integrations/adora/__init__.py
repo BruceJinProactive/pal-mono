@@ -1,4 +1,3 @@
-import json
 from os import getenv
 from typing import Any
 
@@ -67,7 +66,8 @@ class AdoraIntegration:
         )
 
         if isinstance(validated_order, AdoraOrderCalculationResult):
-            return f"Added {order_item.item_name} for {validated_order.SubTotal} to your cart."
+            # TODO: add the size to the response before the item_name
+            return f"In the response, include quanity: {adora_order_item.quantity}, size: {adora_order_item.size}, item_name: {adora_order_item.item_name} with for price: {validated_order.SubTotal} to your cart."
         else:
             return "Failed to validate order."
 

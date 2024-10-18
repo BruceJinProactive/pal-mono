@@ -111,7 +111,7 @@ def validate_order(
 
     full_item_list = []
     for order_item in order_items:
-        full_item_list.append({"group": [order_item.__dict__]})
+        full_item_list.append({"group": [order_item.to_dict()]})
 
     payload = {
         "storeId": store_id,
