@@ -26,7 +26,9 @@ class ApiSettings(BaseSettings):
     # This list is set using the set_cors_origin_list validator
     # which uses the runtime_env variable to set the
     # default cors origin list.
-    cors_origin_list: Optional[List[str]] = Field(None, validate_default=True)
+    cors_origin_list: Optional[List[str]] = Field(
+        default_factory=list, validate_default=True
+    )
 
     @field_validator("runtime_env")
     def validate_runtime_env(cls, runtime_env):
