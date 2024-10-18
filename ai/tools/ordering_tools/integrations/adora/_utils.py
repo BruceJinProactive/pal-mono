@@ -482,6 +482,19 @@ def get_adora_modifications(
                 )
                 modifier_group_counter[item_modifier_group_id] += 1
 
+    # Add user-provided modifiers to payload and update group counts
+    for modifier_id in modifiers:
+        payload["modifiers"].append(
+            {
+                "id": modifier_id,
+                "isDefault": False,
+                "price": 1,  # adjust the price as needed
+                "weightId": 3,  # adjust the weightId as needed
+            }
+        )
+        if modifier_id in modifier_id_to_group_id:
+            modifier_group_counter[modifier_id_to_group_id[modifier_id]] += 1
+
     # Validate modifier group constraints
     is_valid, validation_message = validate_modifier_group_constraints(
         modifier_group_counter, menu, payload
