@@ -7,12 +7,6 @@ from phi.memory.manager import MemoryManager
 from phi.memory.memory import Memory
 from PIL import Image
 
-from ai.assistants.pizza_assistant import get_pizza_assistant
-from ai.tools.pizza_demo_ordering_tools.adapters.mock_cart import (
-    hard_reset_mock_cart,
-    load_mock_cart,
-    reset_mock_cart,
-)
 from app.auth import user
 from db.session import get_db
 from services.account_service import get_account
@@ -64,28 +58,20 @@ def demo_ui(
 ) -> None:
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
-        assistant = (
-            get_prd_assistant(
-                user_id=user.email,
-                assistant_id=assistant_id,
-                new_run=True,
-            )
-            if assistant_id != "jimmy_demo"
-            else get_pizza_assistant(user.email, new_run=True)
+        assistant = get_prd_assistant(
+            user_id=user.email,
+            assistant_id=assistant_id,
+            new_run=True,
         )
         assistant.memory.chat_history = []
         assistant.memory.llm_messages = []
         st.session_state["messages"] = []
     else:
         logger.info("Not restarting chat")
-        assistant = (
-            get_prd_assistant(
-                user_id=user.email,
-                assistant_id=assistant_id,
-                new_run=False,
-            )
-            if assistant_id != "jimmy_demo"
-            else get_pizza_assistant(user.email, new_run=False)
+        assistant = get_prd_assistant(
+            user_id=user.email,
+            assistant_id=assistant_id,
+            new_run=False,
         )
     st.session_state["restart_chat"] = False
 
@@ -108,62 +94,9 @@ def demo_ui(
     # Settings UI
     memory_ui(assistant)
     # storage_ui(assistant)
-    if assistant.name == "pizza_assistant":
-        cart_ui(user.email)
 
 
 demo_system_prompt = ""
-
-
-def cart_ui(user_id):
-    """
-    This function displays the cart information in the sidebar
-    """
-    cart = load_mock_cart(user_id)
-    cart_dict = cart.model_dump()
-
-    # Display customer information
-    st.sidebar.write("***")
-    st.sidebar.image("data/pizza/logos/pizza_my_heart_logo.png", use_column_width=True)
-    st.sidebar.write("## Customer Information")
-    st.sidebar.write(
-        f"**📇 Name:** {cart_dict['user']['first_name']} {cart_dict['user']['last_name']}"
-    )
-    st.sidebar.write(f"**📞 Telephone:** {cart_dict['user']['phone_number']}")
-    st.sidebar.write(f"**📨 Email:** {cart_dict['user']['email']}")
-    st.sidebar.write("")
-    st.sidebar.write("***")
-    # Display cart items
-    st.sidebar.write("## Items")
-    if cart_dict["list_of_cart_items"]:
-        for item in cart_dict["list_of_cart_items"]:
-            st.sidebar.write(
-                "Item: "
-                + str(item["quantity"])
-                + " "
-                + item["size"]
-                + " "
-                + item["item_name"]
-            )
-            modification_string = ""
-            for mod in item["modifications"]:
-                modification_string += mod + ", "
-            modification_string = modification_string[:-2]
-            st.sidebar.write("Modifications: " + modification_string)
-            st.sidebar.write("Adora Item:")
-            st.sidebar.json(item["pos_item"])
-            st.sidebar.write("")
-
-    # Display store and order type information
-    st.sidebar.write("## Order Information")
-    st.sidebar.write("**🎫 Store ID:** " + cart_dict["store_id"])
-    if not cart_dict["order_type"]:
-        st.sidebar.write("**🍕 Order Type:** ")
-    else:
-        st.sidebar.write(f"**🍕 Order Type:** {cart_dict['order_type'].value}")
-    st.sidebar.write("**📍 Delivery Address:**")
-    if cart_dict["address_for_delivery"]:
-        st.sidebar.json(cart_dict["address_for_delivery"])
 
 
 def debug_ui(assistant: Assistant):
@@ -193,20 +126,6 @@ def debug_ui(assistant: Assistant):
         st.session_state["reset_memory"] = True
         st.rerun()
 
-    def reset_cart():
-        """
-        Resets the cart items and order type then reruns
-        """
-        reset_mock_cart(user.email)
-        st.rerun()
-
-    def hard_reset_cart():
-        """
-        Completely removes the user from the cart
-        """
-        hard_reset_mock_cart(user.email)
-        st.rerun()
-
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         if st.button("Restart Chat"):
@@ -214,22 +133,11 @@ def debug_ui(assistant: Assistant):
     with col2:
         if st.button("Reset Memory"):
             reset_memory()
-    with col3:
-        if st.button("Reset Cart"):
-            reset_cart()
-    with col4:
-        if st.button("Hard Reset Cart"):
-            hard_reset_cart()
 
 
 def messaging_ui(assistant: Assistant) -> None:
     assistant_chat_history = assistant.memory.get_chat_history()
     st.session_state["messages"] = assistant_chat_history
-    if assistant_chat_history == []:
-        if assistant.name == "pizza_assistant":
-            st.session_state["messages"] = [
-                {"role": "assistant", "content": "Ask me anything..."}
-            ]
     # Prompt for user input
     if prompt := st.chat_input():
         st.session_state["messages"].append({"role": "user", "content": prompt})
@@ -237,40 +145,6 @@ def messaging_ui(assistant: Assistant) -> None:
     for message in st.session_state["messages"]:
         if message["role"] == "system":
             continue
-        # For Adora / Pizza My Heart
-        if assistant.name == "pizza_assistant":
-            avatar = (
-                "data/pizza/logos/jimmy_the_surfer.png"
-                if message["role"] == "assistant"
-                else None
-            )
-            with st.chat_message(message["role"], avatar=avatar):
-                if message["role"] == "assistant":
-                    try:
-                        response_object = json.loads(message["content"])
-                        response = response_object["content"]
-                        extras = {"escalated": response_object["escalated"]}
-                        st.write(response)
-                        st.json(extras)
-                    except Exception:
-                        response = message["content"]
-                        try:
-                            ## handle str format when tool call toggle is on
-                            json_start = response.find('''{ "content"''')
-                            if json_start == -1:
-                                json_start = response.find('''{"content"''')
-                            response_object = json.loads(response[json_start:])
-                            response = (
-                                response[:json_start] + response_object["content"]
-                            )
-                            extras = {"escalated": response_object["escalated"]}
-                            st.write(response)
-                            st.json(extras)
-                        except Exception:
-                            # response = response.replace("\$", "💲").replace("$", "💲")
-                            st.write(response)
-                else:
-                    st.write(message["content"])
 
         else:
             with st.chat_message(message["role"]):
@@ -308,15 +182,7 @@ def messaging_ui(assistant: Assistant) -> None:
         if last_message.get("role") == "user":
             assistant.system_prompt = demo_system_prompt
             question = last_message["content"]
-            # For Adora / Pizza My Heart
-            if assistant.name == "pizza_assistant":
-                generate_response_in_ui(
-                    assistant,
-                    question,
-                    avatar_path="data/pizza/logos/jimmy_the_surfer.png",
-                )
-            else:
-                generate_response_in_ui(assistant, question)
+            generate_response_in_ui(assistant, question)
     except IndexError:
         pass
 
@@ -413,7 +279,6 @@ def storage_ui(assistant: Assistant) -> None:
 def generate_response_in_ui(assistant, question, avatar_path=None):
     """
     Generates a response from the assistant and displays it in the chat interface.
-    Simplifying the code to insert Jimmy the Surfer and other customizations.
 
     Parameters:
     assistant (object): The assistant object that will generate the response.

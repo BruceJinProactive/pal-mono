@@ -29,9 +29,6 @@ if user.is_logged_in:
 
     demo_dict = _construct_demo_dict()
 
-    # Exception for demo
-    demo_dict["Jimmy Demo"] = "jimmy_demo"
-
     # Internal demo selection
     selected_account_name = st.sidebar.selectbox(
         "Select a demo then reload", list(demo_dict.keys())

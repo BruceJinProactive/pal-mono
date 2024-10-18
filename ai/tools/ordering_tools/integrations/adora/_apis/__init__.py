@@ -75,8 +75,8 @@ def validate_order(
     coupon_id: int,
     order_type: AdoraOrderType = AdoraOrderType.TakeOut,
     customer: Consumer = Consumer(
-        first_name="JimmyAI",
-        last_name="ValidateOrder",
+        first_name="Jimmy",
+        last_name="ProactiveAiLab",
         phone_number="(555)555-5555",
         email="jimmythesurfer@proactiveailab.com",
     ),
