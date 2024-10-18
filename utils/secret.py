@@ -4,8 +4,8 @@ import os
 from boto3.session import Session
 from botocore.exceptions import ClientError
 
-AWS_REGION = os.environ["AWS_REGION"]
-AWS_CLIENT_SECRET_NAME = os.environ["AWS_CLIENT_SECRET_NAME"]
+AWS_REGION = os.getenv("AWS_REGION", "")
+AWS_CLIENT_SECRET_NAME = os.getenv("AWS_CLIENT_SECRET_NAME", "")
 
 
 def get_client_secret(secret_key: str) -> str:
