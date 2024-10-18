@@ -5,10 +5,11 @@ from typing import List
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.conversation import ConversationPreview
+from api.schemas.message.message import Message
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository
-from db.tables.messages import Message
+from db.tables.messages import Message as DBMessage
 from services.account_service import get_account
 from services.assistant_service import get_assistants_by_account
 from services.message_service import (
@@ -18,10 +19,10 @@ from services.message_service import (
 from services.user_service import get_users_by_account_id
 
 
-def _include_conversation_preview(message: Message | None, max_age: int) -> bool:
+def _include_conversation_preview(message: DBMessage, max_age: int) -> bool:
     """
     An internal filter function that determines whether a conversation should be included in get_inbox_conversations
-    The conversation must have an existing last message, and cannot be older than max_age, if specified.
+    The conversation cannot be older than max_age, if specified.
 
     Args:
         message: The conversation's last message
@@ -30,11 +31,11 @@ def _include_conversation_preview(message: Message | None, max_age: int) -> bool
         bool: whether to include the conversation
     """
     if max_age:
-        return bool(message) and message.created_at >= datetime.now(
-            timezone.utc
-        ) - timedelta(minutes=max_age)
-    else:
-        return bool(message)
+        return message.created_at >= datetime.now(timezone.utc) - timedelta(
+            minutes=max_age
+        )
+
+    return True
 
 
 def get_inbox_conversations(
@@ -52,17 +53,23 @@ def get_inbox_conversations(
     )
 
     message_counts: List[int] = []
-    last_messages: List[Message] = []
+    last_messages: List[DBMessage] = []
 
     message_repository = MessageRepository(db)
     for id, _ in conversation_user_ids:
         # Get most recent message for each conversation
-        last_messages.append(message_repository.get_last_message_by_conversation(id))
+        last_message = message_repository.get_last_message_by_conversation(id)
+
+        # If there are no messages, skip this conversation
+        if last_message is None:
+            continue
+
+        last_messages.append(last_message)
 
         # Get most number of messages for each conversation
         message_counts.append(message_repository.get_message_count_by_conversation(id))
 
-    # filter conversations by those with at least one message, and sorted descending by created_at
+    # filter conversations by recency of last message, and sort descending by created_at
     conversation_previews = sorted(
         filter(
             lambda preview: _include_conversation_preview(preview[3], max_age),

@@ -11,15 +11,6 @@ get_conversation_messages = _implementation.get_conversation_messages
 _include_conversation_preview = _implementation._include_conversation_preview
 
 
-def test_include_conversation_preview_no_message(mocker):
-    """
-    Test _include_conversation_preview without a message
-
-    Expected result: reject
-    """
-    assert not _include_conversation_preview(None, 5)
-
-
 def test_include_conversation_preview_no_limit(mocker):
     """
     Test _include_conversation_preview without a limit
