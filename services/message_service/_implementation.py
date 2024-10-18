@@ -14,7 +14,7 @@ from services import assistant_service, user_service
 from utils.log import logger
 
 
-def get_chat_response(db: Session, message: Message) -> Message:
+async def get_chat_response(db: Session, message: Message) -> Message:
     user = None
     extras = {}
 
@@ -57,7 +57,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         )
 
         # Get response from assistant
-        response_object = assistant.run(message.text.body, stream=False)
+        response_object = await assistant.arun(message.text.body, stream=False)
         if isinstance(response_object, str):
             response = response_object
         elif isinstance(response_object, OutputModel):

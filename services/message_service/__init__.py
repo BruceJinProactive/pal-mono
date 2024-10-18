@@ -10,7 +10,7 @@ from db.tables import Conversation
 from . import _implementation
 
 
-def get_chat_response(db: Session, message: Message) -> Message:
+async def get_chat_response(db: Session, message: Message) -> Message:
     """
     Processes an incoming message and generates a response from the appropriate assistant.
 
@@ -25,7 +25,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         ValueError: If any required information (account name, account, projects, user, assistant ID) is not found.
         ValueError: If the response type from the assistant is unexpected.
     """
-    return _implementation.get_chat_response(db, message)
+    return await _implementation.get_chat_response(db, message)
 
 
 def get_messages_by_conversation(
