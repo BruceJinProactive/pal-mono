@@ -68,7 +68,5 @@ exclude = ["aienv*", ".venv*"]
 "*.ipynb" = ["E402"]
 
 [tool.pyright]
-useLibraryCodeForTypes = true
 exclude = ["aienv*", ".venv*", "**/__pycache__", "workspace/"]
 typeCheckingMode = "standard"
-reportMissingImports = "error"

@@ -21,11 +21,11 @@ main() {
   print_heading "Running: black ${REPO_ROOT}"
   black ${REPO_ROOT}
 
+  print_heading "Running: ruff check ${REPO_ROOT}"
+  ruff check ${REPO_ROOT} --fix
+
   print_heading "Running: isort ${REPO_ROOT}"
   isort ${REPO_ROOT}
-
-  print_heading "Running: ruff check ${REPO_ROOT}"
-  ruff check ${REPO_ROOT}
 
   print_heading "Running: pyright ${REPO_ROOT}"
   pyright ${REPO_ROOT}
