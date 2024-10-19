@@ -318,11 +318,11 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                             resp_container.markdown(response)
                             st.json(extras)
                         except Exception:
-                            # response = response.replace("\$", "💲").replace("$", "💲")
+                            response = response.replace(r"\$", "💲").replace("$", "💲")
                             resp_container.markdown(response)
                     else:
                         response = response_object.content
-                        # response = response.replace("\$", "💲").replace("$", "💲")
+                        response = response.replace(r"\$", "💲").replace("$", "💲")
                         resp_container.markdown(response)
                         extras = {"escalated": response_object.escalated}
                         st.json(extras)

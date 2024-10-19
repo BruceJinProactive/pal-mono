@@ -107,7 +107,7 @@ class OrderingTools(Toolkit):
         Must tell user ordered item, price and order id in the response.
 
         Args:
-            chat_history (list[str]): Chat history between user and assistant. 
+            chat_history (list[str]): Chat history between user and assistant.
 
         Returns:
             str: Result of placing the order, including the total and order id if applicable, and payment instructions if applicable.
