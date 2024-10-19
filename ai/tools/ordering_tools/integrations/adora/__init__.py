@@ -221,9 +221,10 @@ class AdoraIntegration:
             return (
                 "Order placed successfully!\n"
                 "Here are the details of your order, list the item name:\n"
-                f"{order_summary}\n"
-                f"Subtotal: ${validated_order.SubTotal}"
-                f"Total with Tax: ${validated_order.Total}"
+                f"{', '.join(order_summary)}\n"
+                f"Subtotal: ${validated_order.SubTotal}\n"
+                f"Total with Tax: ${validated_order.Total}\n"
+                f"Order ID: {saved_order.OrderID}\n"
             )
 
         else:

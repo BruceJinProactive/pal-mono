@@ -104,11 +104,13 @@ class OrderingTools(Toolkit):
 
         The user must provide the fulfillment strategy (delivery, pickup), and the delivery address if the fulfillment strategy is delivery.
 
+        Must tell user ordered item, price and order id in the response.
+
         Args:
-            chat_history (list[str]): The chat history between the user and the assistant for current order. User may have already placed another order before, only include chat history related to current order. Include at most last 50 messages.
+            chat_history (list[str]): Chat history between user and assistant. 
 
         Returns:
-            str: Result of placing the order, including the total if applicable, and payment instructions if applicable.
+            str: Result of placing the order, including the total and order id if applicable, and payment instructions if applicable.
 
         Examples:
             User: Place my order
