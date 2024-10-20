@@ -49,6 +49,35 @@ class UserRepository:
         user = query.first()
         return user
 
+    def get_user_by_channel_identifier(
+        self, account_id: uuid.UUID, channel_identifier: str
+    ):
+        """
+        Retrieve a user by the channel identifier.
+
+        Args:
+            account_id (uuid.UUID): The account ID associated with the user.
+            channel_identifier (str): The identifier of the channel (e.g., phone number).
+
+        Returns:
+            User or None if no such user is found.
+        """
+        if not account_id:
+            raise ValueError("'account_id' must be provided")
+        if not channel_identifier:
+            raise ValueError("'channel_identifier' must be provided")
+
+        # Use the `contains` operator to search for the channel identifier
+        user = (
+            self.db.query(User)
+            .filter(
+                User.account_id == account_id,
+                User.channel_identifiers.contains([channel_identifier]),
+            )
+            .first()
+        )
+        return user
+
     def get_user_by_id(self, user_id: uuid.UUID):
         query = self.db.query(User).filter(
             User.id == user_id,
@@ -56,8 +85,8 @@ class UserRepository:
         user = query.first()
         return user
 
-    def create_user(self, account_id: uuid.UUID):
-        db_user = User(account_id=account_id)
+    def create_user(self, account_id: uuid.UUID, channel_identifier: str = ""):
+        db_user = User(account_id=account_id, channel_identifiers=[channel_identifier])
         self.db.add(db_user)
         self.db.commit()
         return db_user

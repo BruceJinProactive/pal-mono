@@ -66,6 +66,26 @@ class ProjectRepository:
         project = query.first()
         return project
 
+    def get_project_by_channel_identifier(
+        self, channel_identifier: str
+    ) -> Project | None:
+        """
+        Retrieve a project by a channel identifier.
+
+        Args:
+            channel_identifier (str): The identifier of the channel (e.g., phone number).
+
+        Returns:
+            Project, or None if no such Project is found.
+        """
+        # Use the `contains` operator for fast lookup
+        project = (
+            self.db.query(Project)
+            .filter(Project.channel_identifiers.contains([channel_identifier]))
+            .first()
+        )
+        return project
+
     def update_project_config(self, project_id: uuid.UUID, config: Dict[str, Any]):
         """Update a project's config in the database.
 

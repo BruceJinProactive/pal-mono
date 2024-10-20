@@ -20,9 +20,11 @@ async def get_chat_response(db: Session, message: Message) -> Message:
 
     try:
         # find project with matching channel platform, identifier pair
-        project = ProjectRepository(db).get_project_by_channel(
-            channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is a CHANNELPLATFORM object
-            channel_identifier=message.recipient_channel_identifier,
+        project_channel_identifier = (
+            f"{message.channel_platform.value}:{message.recipient_channel_identifier}"
+        )
+        project = ProjectRepository(db).get_project_by_channel_identifier(
+            project_channel_identifier
         )
 
         if project is None:
@@ -31,11 +33,13 @@ async def get_chat_response(db: Session, message: Message) -> Message:
             )
 
         # Get user_id by sender channel/number with user_service
-        user = user_service.get_user_by_channel(
+        user_channel_identifier = (
+            f"{message.channel_platform.value}:{message.sender_channel_identifier}"
+        )
+        user = user_service.get_user_by_channel_identifier(
             db=db,
             account_id=project.account_id,
-            channel_platform=message.channel_platform.value,  # Need .value, otherwise the value is CHANNELPLATFORM.WHATSAPP
-            channel_identifier=message.sender_channel_identifier,
+            channel_identifier=user_channel_identifier,
             create_new_user=True,
         )
 

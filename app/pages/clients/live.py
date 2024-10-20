@@ -1,3 +1,5 @@
+import asyncio
+
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
@@ -18,7 +20,7 @@ from services.message_service import (
     get_conversations_by_user,
     get_messages_by_conversation,
 )
-from services.user_service import get_user_by_channel
+from services.user_service import get_user_by_channel_identifier
 
 st.title("Live")
 
@@ -38,11 +40,11 @@ def main() -> None:
         raise ValueError(
             "There was an error accessing account details. Please reselect from picker"
         )
-    db_user = get_user_by_channel(
+    channel_identifier = f"{ChannelPlatform.INTERNAL_APP.value}:{str(user.email)}"
+    db_user = get_user_by_channel_identifier(
         db=db,
         account_id=account.id,
-        channel_platform=ChannelPlatform.INTERNAL_APP,
-        channel_identifier=str(user.email),
+        channel_identifier=channel_identifier,
         create_new_user=True,
     )
     if not db_user:
@@ -84,8 +86,11 @@ def main() -> None:
     ):
         with st.chat_message("assistant"):
             with st.spinner("Working..."):
-                response_message = get_chat_response(
-                    db=db, message=Message.from_dict(st.session_state["messages"][-1])
+                response_message = asyncio.run(
+                    get_chat_response(
+                        db=db,
+                        message=Message.from_dict(st.session_state["messages"][-1]),
+                    )
                 ).dict()
             st.session_state["messages"].append(response_message)
             st.write(response_message["text"]["body"])
