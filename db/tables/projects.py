@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Optional
 
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
@@ -34,6 +34,9 @@ class Project(Base):
         MutableDict.as_mutable(JSONB()),
         nullable=False,
         server_default=text("'{}'::jsonb"),
+    )
+    channel_identifiers: Mapped[Optional[list[str]]] = mapped_column(
+        ARRAY(String), nullable=False, server_default="{}", index=True
     )
 
     # Metadata columns
