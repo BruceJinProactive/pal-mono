@@ -2,10 +2,60 @@ import uuid
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
 from db.tables import User
 from utils.log import logger
+
+
+class UserRepositoryAsync:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_user_by_channel_identifier(
+        self, account_id: uuid.UUID, channel_identifier: str
+    ) -> User | None:
+        """
+        Retrieve a user by the channel identifier asynchronously.
+        Args:
+            account_id (uuid.UUID): The account ID associated with the user.
+            channel_identifier (str): The identifier of the channel (e.g., phone number).
+        Returns:
+            User or None if no such user is found.
+        """
+        if not account_id:
+            raise ValueError("'account_id' must be provided")
+        if not channel_identifier:
+            raise ValueError("'channel_identifier' must be provided")
+
+        # Use the `contains` operator to search for the channel identifier
+        query = select(User).filter(
+            User.account_id == account_id,
+            User.channel_identifiers.contains([channel_identifier]),
+        )
+        result = await self.db.execute(query)
+        user = result.scalar_one_or_none()
+        return user
+
+    async def create_user(
+        self, account_id: uuid.UUID, channel_identifier: str = ""
+    ) -> User:
+        """
+        Create a new user asynchronously.
+        Args:
+            account_id (uuid.UUID): The account ID associated with the user.
+            channel_identifier (str): The identifier of the channel (e.g., phone number).
+        Returns:
+            User: The newly created user.
+        """
+        db_user = User(account_id=account_id, channel_identifiers=[channel_identifier])
+        self.db.add(db_user)
+        await self.db.flush()
+        await self.db.refresh(db_user)
+        await self.db.commit()
+        return db_user
 
 
 class UserRepository:

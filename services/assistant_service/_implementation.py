@@ -2,12 +2,38 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from phi.assistant.assistant import Assistant as AIAssistant
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from ai import integrate_assistant
 from db.repositories.account_repository import AccountRepository
-from db.repositories.assistant_repository import AssistantRepository
+from db.repositories.assistant_repository import (
+    AssistantRepository,
+    AssistantRepositoryAsync,
+)
 from db.tables import Assistant
+
+
+async def get_ai_assistant_async(
+    db: AsyncSession,
+    assistant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    new_run: bool = False,
+) -> AIAssistant:
+    # Retrieve the assistant from the database
+    assistant_repository = AssistantRepositoryAsync(db)
+    assistant = await assistant_repository.get_assistant(assistant_id=assistant_id)
+
+    if assistant is None:
+        raise ValueError("Invalid assistant_id")
+
+    # Assuming integrate_assistant is a synchronous function
+    return integrate_assistant(
+        account_name=assistant.account.name,
+        assistant_raw_config=assistant.raw_config,
+        user_id=str(user_id),
+        new_run=new_run,
+    )
 
 
 def get_ai_assistant(

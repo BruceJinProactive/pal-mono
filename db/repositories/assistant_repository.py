@@ -2,10 +2,27 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import Session, selectinload
 
 from db.tables import Assistant
 from utils.log import logger
+
+
+class AssistantRepositoryAsync:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_assistant(self, assistant_id: uuid.UUID) -> Optional[Assistant]:
+        result = await self.db.execute(
+            select(Assistant)
+            # [IMPORTANT] The next fixes the following error: 2024-10-21 00:17:10 {"asctime": "2024-10-21 07:17:10,747", "name": "pal-mono", "levelname": "ERROR", "message": "Error in get_chat_response: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place? (Background on this error at: https://sqlalche.me/e/20/xd2s)"}
+            .options(selectinload(Assistant.account)).where(
+                Assistant.id == assistant_id
+            )
+        )
+        return result.scalars().first()
 
 
 class AssistantRepository:

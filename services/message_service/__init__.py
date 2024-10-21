@@ -1,6 +1,7 @@
 import uuid
 from typing import List
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db.tables as db
@@ -8,6 +9,24 @@ from api.schemas.message.message import Message
 from db.tables import Conversation
 
 from . import _implementation
+
+
+async def get_chat_response_async(db: AsyncSession, message: Message) -> Message:
+    """
+    Processes an incoming message and generates a response from the appropriate assistant.
+
+    Args:
+        db (Session): The database session.
+        message (Message): The incoming message object.
+
+    Returns:
+        Message: The response message object.
+
+    Raises:
+        ValueError: If any required information (account name, account, projects, user, assistant ID) is not found.
+        ValueError: If the response type from the assistant is unexpected.
+    """
+    return await _implementation.get_chat_response_async(db, message)
 
 
 async def get_chat_response(db: Session, message: Message) -> Message:

@@ -45,6 +45,53 @@ class DbSettings(BaseSettings):
             raise ValueError("Could not build database connection")
         return db_url
 
+    def get_db_url_async(self) -> str:
+        """
+        Generates the database URL using an asynchronous driver.
+        """
+        # Map synchronous drivers to their async counterparts
+        async_driver_mapping = {
+            "postgresql+psycopg": "postgresql+asyncpg",
+            "postgresql+psycopg2": "postgresql+asyncpg",
+            "mysql+mysqldb": "mysql+aiomysql",
+            "sqlite": "sqlite+aiosqlite",
+            # Add more mappings as needed
+        }
+
+        # Get the async driver
+        if self.db_driver in async_driver_mapping:
+            async_db_driver = async_driver_mapping[self.db_driver]
+        else:
+            # If no mapping is found, default to the original driver
+            # or raise an error if necessary
+            raise ValueError(
+                f"No async driver mapping for db_driver '{self.db_driver}'"
+            )
+
+        # Build the async database URL
+        db_url = "{}://{}{}@{}:{}/{}".format(
+            async_db_driver,
+            self.db_user,
+            f":{self.db_pass}" if self.db_pass else "",
+            self.db_host,
+            self.db_port,
+            self.db_database,
+        )
+
+        # Use local database if RUNTIME_ENV is not set
+        if "None" in db_url and getenv("RUNTIME_ENV") is None:
+            from workspace.dev_resources import dev_db
+
+            logger.debug("Using local connection")
+            local_db_url = dev_db.get_db_connection_local()
+            if local_db_url:
+                db_url = local_db_url
+
+        # Validate database connection
+        if "None" in db_url or db_url is None:
+            raise ValueError("Could not build database connection")
+        return db_url
+
 
 # Create DbSettings object
 db_settings = DbSettings()

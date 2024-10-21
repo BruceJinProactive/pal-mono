@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse, ErrorResponse
-from db.session import get_db
-from services.message_service import get_chat_response
+from db.session import get_async_db
+from services.message_service import get_chat_response_async
 from services.relay_service import send_message
 from utils.log import logger
 
@@ -16,13 +16,13 @@ chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
     response_model=ChatResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-async def chat(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat(request: ChatRequest, db: AsyncSession = Depends(get_async_db)):
     try:
         # Process the message
         logger.info(f"Received message: {request.message}")
 
         # Get the response message from message service
-        response_message = await get_chat_response(
+        response_message = await get_chat_response_async(
             db=db,
             message=request.message,
         )

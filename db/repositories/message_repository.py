@@ -1,10 +1,48 @@
 import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
 from db.tables import Conversation, Message, User
 from utils.log import logger
+
+
+class MessageRepositoryAsync:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def create_message(self, user_id: uuid.UUID, message_body: dict):
+        # Step 1: Get the user from the database
+        result = await self.db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        # Step 2: If no such user exists, raise an error
+        if not user:
+            raise ValueError(f"No user found with id {user_id}")
+
+        # Step 3: Get the first conversation from the user
+        result = await self.db.execute(
+            select(Conversation).filter(Conversation.user_id == user.id)
+        )
+        conversation = result.scalar_one_or_none()
+
+        # Step 4: If no conversation exists, create one for the user
+        if not conversation:
+            conversation = Conversation(user_id=user.id)
+            self.db.add(conversation)
+            await self.db.flush()
+
+        # Step 5: Create a message with message_body and add it to the conversation
+        message = Message(conversation_id=conversation.id, body=message_body)
+        self.db.add(message)
+        await self.db.flush()
+
+        # Refresh to get the new message ID
+        await self.db.refresh(message)
+
+        return message
 
 
 class MessageRepository:

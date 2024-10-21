@@ -3,10 +3,35 @@ from typing import Any, Dict
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
 from db.tables import Project
 from utils.log import logger
+
+
+class ProjectRepositoryAsync:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_project_by_channel_identifier(
+        self, channel_identifier: str
+    ) -> Project | None:
+        """
+        Retrieve a project by a channel identifier asynchronously.
+        Args:
+            channel_identifier (str): The identifier of the channel (e.g., phone number).
+        Returns:
+            Project, or None if no such Project is found.
+        """
+        # Use the `contains` operator for fast lookup
+        query = select(Project).filter(
+            Project.channel_identifiers.contains([channel_identifier])
+        )
+        result = await self.db.execute(query)
+        project = result.scalar_one_or_none()
+        return project
 
 
 class ProjectRepository:
