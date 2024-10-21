@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
 from app.auth import user
-from app.pages.clients.accounts import account_picker_ui
+from app.shared import account_picker_ui
 from db.session import get_db
 from services.account_service import get_account
 from services.message_service import (
@@ -66,8 +66,8 @@ def main() -> None:
         col.write(th)
     for account_user in account_users:
         identifier_col, platform_col, id_col, conversation_col = st.columns(col_widths)
-        identifier_col.write(account_user.raw_config["channel_identifier"])
-        platform_col.write(account_user.raw_config["channel_platform"])
+        identifier_col.write(account_user.raw_config.get("channel_identifier", "None"))
+        platform_col.write(account_user.raw_config.get("channel_platform", "None"))
         id_col.write(account_user.id)
 
         if conversation_col.toggle("View", key=str(account_user.id)):
@@ -76,6 +76,6 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
-    account_picker_ui()
+    account_picker_ui(db)
 else:
     switch_page("home")

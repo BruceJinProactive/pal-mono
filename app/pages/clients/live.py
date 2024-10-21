@@ -12,7 +12,7 @@ from api.schemas.message.message import (
     TextObject,
 )
 from app.auth import user
-from app.pages.clients.accounts import account_picker_ui
+from app.shared import account_picker_ui
 from db.session import get_db
 from services.account_service import get_account
 from services.message_service import (
@@ -98,6 +98,6 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
-    account_picker_ui()
+    account_picker_ui(db)
 else:
     switch_page("home")

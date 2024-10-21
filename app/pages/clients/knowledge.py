@@ -8,7 +8,7 @@ from streamlit_extras.switch_page_button import switch_page
 
 from ai.knowledge import get_knowledge, index_data_from_shopify
 from app.auth import user
-from app.pages.clients.accounts import account_picker_ui
+from app.shared import account_picker_ui
 from db.session import get_db
 from utils.log import logger
 
@@ -180,7 +180,7 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
-    account_picker_ui()
+    account_picker_ui(db)
 
 
 else:
