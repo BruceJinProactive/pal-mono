@@ -8,57 +8,56 @@ from ai.llm import OutputModel
 from api.schemas.message.message import AuthorType, Extras, Message, TextObject
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
+from db.repositories.project_repository import ProjectRepository
 from db.tables import Conversation
-from services import assistant_service
+from services import assistant_service, user_service
 from utils.log import logger
 
 
 async def get_chat_response(db: Session, message: Message) -> Message:
-    # user = None
+    user = None
     extras = {}
-    user_id = uuid.UUID("b15dae73-0bdf-4ba7-9dc3-399aaaa2e37a")
 
     try:
-        # # find project with matching channel platform, identifier pair
-        # project_channel_identifier = (
-        #     f"{message.channel_platform.value}:{message.recipient_channel_identifier}"
-        # )
-        # project = ProjectRepository(db).get_project_by_channel_identifier(
-        #     project_channel_identifier
-        # )
+        # find project with matching channel platform, identifier pair
+        project_channel_identifier = (
+            f"{message.channel_platform.value}:{message.recipient_channel_identifier}"
+        )
+        project = ProjectRepository(db).get_project_by_channel_identifier(
+            project_channel_identifier
+        )
 
-        # if project is None:
-        #     raise ValueError(
-        #         f"Project with channel platform '{message.channel_platform.value}', channel_identifier '{message.recipient_channel_identifier}' not found."
-        #     )
+        if project is None:
+            raise ValueError(
+                f"Project with channel platform '{message.channel_platform.value}', channel_identifier '{message.recipient_channel_identifier}' not found."
+            )
 
-        # # Get user_id by sender channel/number with user_service
-        # user_channel_identifier = (
-        #     f"{message.channel_platform.value}:{message.sender_channel_identifier}"
-        # )
-        # user = user_service.get_user_by_channel_identifier(
-        #     db=db,
-        #     account_id=project.account_id,
-        #     channel_identifier=user_channel_identifier,
-        #     create_new_user=True,
-        # )
+        # Get user_id by sender channel/number with user_service
+        user_channel_identifier = (
+            f"{message.channel_platform.value}:{message.sender_channel_identifier}"
+        )
+        user = user_service.get_user_by_channel_identifier(
+            db=db,
+            account_id=project.account_id,
+            channel_identifier=user_channel_identifier,
+            create_new_user=True,
+        )
 
-        # if user is None:
-        #     raise ValueError("User not found")
+        if user is None:
+            raise ValueError("User not found")
 
-        # # Save request message to database
-        # MessageRepository(db).create_message(
-        #     user_id=user.id, message_body=message.to_dict()
-        # )
+        # Save request message to database
+        MessageRepository(db).create_message(
+            user_id=user.id, message_body=message.to_dict()
+        )
 
         # Get appropriate assistant from account name
-        # assistant_id = project.assistant_id
-        assistant_id = uuid.UUID("dc415360-5fe4-474d-9529-775a30901526")
+        assistant_id = project.assistant_id
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
 
         assistant = assistant_service.get_ai_assistant(
-            db=db, assistant_id=assistant_id, user_id=user_id
+            db=db, assistant_id=assistant_id, user_id=user.id
         )
 
         # Get response from assistant
@@ -70,7 +69,7 @@ async def get_chat_response(db: Session, message: Message) -> Message:
             extras = {"escalated": response_object.escalated}
         else:
             raise ValueError(
-                f"Can't handle response type {type(response_object)} for userid {user_id} with text msg {message.text.body}."
+                f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
             )
     except Exception as e:
         # Log any error and set default error response
@@ -88,10 +87,10 @@ async def get_chat_response(db: Session, message: Message) -> Message:
         extras=Extras(**extras),
     )
 
-    if True:
+    if user:
         # Save response message to database
         MessageRepository(db).create_message(
-            user_id=user_id, message_body=response_message.to_dict()
+            user_id=user.id, message_body=response_message.to_dict()
         )
 
     return response_message
