@@ -1,4 +1,4 @@
-from typing import Optional
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -7,7 +7,7 @@ from . import _implementation
 # from db.tables.feedback import Feedback
 
 
-def create_feedback(db: Session, feedback: dict) -> Optional[dict]:
+def create_feedback(db: Session, feedback: dict) -> dict:
     """
     Creates feedback in the database.
 
@@ -21,13 +21,13 @@ def create_feedback(db: Session, feedback: dict) -> Optional[dict]:
     return _implementation.create_feedback(db, feedback)
 
 
-def get_feedback_by_id(db: Session, feedback_id: str) -> Optional[dict]:
+def get_feedback_by_id(db: Session, feedback_id: UUID) -> dict:
     """
     Retrieves feedback by id from the database.
 
     Args:
         db (Session): The database session.
-        feedback_id (str): The feedback to retrieve.
+        feedback_id (UUID): The feedback to retrieve.
 
     Returns:
         Feedback: The DB Feedback object associated with the id if it exists
@@ -36,14 +36,14 @@ def get_feedback_by_id(db: Session, feedback_id: str) -> Optional[dict]:
 
 
 def update_feedback_by_id(
-    db: Session, feedback_id: str, updated_feedback: dict
-) -> Optional[dict]:
+    db: Session, feedback_id: UUID, updated_feedback: dict
+) -> dict:
     """
     Updates feedback by id in the database.
 
     Args:
         db (Session): The database session.
-        feedback_id (str): The feedback to update.
+        feedback_id (UUID): The feedback to update.
         updated_feedback (dict): The updated feedback fields.
 
     Returns:

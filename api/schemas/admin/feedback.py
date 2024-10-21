@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -23,9 +22,9 @@ class FeedbackTag(str, Enum):
 class Feedback(BaseModel):
     """Feedback Model"""
 
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    id: Optional[str] = None
     message_id: str
-    sender_email: str
+    author_identifier: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     reaction: Optional[FeedbackReaction] = None
     tags: Optional[List[FeedbackTag]] = None
@@ -33,9 +32,8 @@ class Feedback(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self.id,
             "message_id": self.message_id,
-            "sender_email": self.sender_email,
+            "author_identifier": self.author_identifier,
             "timestamp": self.timestamp.isoformat(),
             "reaction": self.reaction.value if self.reaction is not None else None,
             "tags": [tag.value for tag in self.tags] if self.tags is not None else None,

@@ -1,4 +1,4 @@
-import uuid
+from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -13,8 +13,8 @@ class FeedbackRepository:
 
     def create_feedback(self, feedback: dict):
         db_feedback = dict(
-            id=feedback["id"],
-            sender_email=feedback["sender_email"],
+            id="placeholder",
+            author_identifier=feedback["author_identifier"],
             reaction=feedback["reaction"],
             tags=feedback["tags"],
             note=feedback["note"],
@@ -33,7 +33,7 @@ class FeedbackRepository:
 
         return db_feedback
 
-    def get_feedback_by_id(self, feedback_id: uuid.UUID):
+    def get_feedback_by_id(self, feedback_id: UUID):
         try:
             return {"result": f"Found feedback {str(feedback_id)}"}
             # return self.db.query(Feedback).filter(Feedback.id == feedback_id).first()
@@ -42,7 +42,7 @@ class FeedbackRepository:
             logger.error(f"Error retrieving feedback: {e}")
             raise
 
-    def update_feedback_by_id(self, feedback_id: uuid.UUID, updated_feedback: dict):
+    def update_feedback_by_id(self, feedback_id: UUID, updated_feedback: dict):
         try:
             return {"updated feedback": updated_feedback}
             db_feedback = self.get_feedback_by_id(feedback_id)

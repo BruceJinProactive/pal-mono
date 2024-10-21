@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from requests import Session
-from sqlalchemy.exc import DatabaseError, NoResultFound
 
 from api.routes.endpoints import endpoints
 from api.schemas.admin.feedback import Feedback
@@ -414,6 +413,8 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
     try:
         feedback_data = await request.json()
         feedback = Feedback(**feedback_data)
+        feedback_dict = feedback.to_dict()
+        feedback_dict["message_id"] = uuid.UUID(feedback_dict["message_id"])
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -423,11 +424,7 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
 
     # Pass Feedback object into service layer
     try:
-        create_feedback(db, feedback.to_dict())
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400, detail=str(e), headers={"Content-Type": "application/json"}
-        )
+        db_feedback = create_feedback(db, feedback_dict)
     except Exception:
         raise HTTPException(
             status_code=500,
@@ -437,7 +434,7 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
 
     return {
         "message": "Feedback successfully submitted",
-        "feedback_id": feedback.id,
+        "feedback_id": db_feedback["id"],
         "submitted_at": feedback.timestamp,
     }
 
@@ -458,19 +455,23 @@ def retrieve_feedback_by_id(
             headers={"Content-Type": "application/json"},
         )
 
-    # Get Feedback object from service layer
+    # Validate feedback_id
     try:
-        feedback = get_feedback_by_id(db, feedback_id)
-    except (DatabaseError, NoResultFound) as e:
+        feedback_uuid = uuid.UUID(feedback_id)
+    except ValueError as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving feedback: {str(e)}",
+            status_code=400,
+            detail=f"Invalid feedback UUID: {str(e)}",
             headers={"Content-Type": "application/json"},
         )
-    except Exception as e:
+
+    # Get Feedback object from service layer
+    try:
+        feedback = get_feedback_by_id(db, feedback_uuid)
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error: {str(e)}.",
+            detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
 
@@ -497,6 +498,9 @@ async def change_feedback_by_id(
     try:
         feedback_data = await request.json()
         feedback = Feedback(**feedback_data)
+        feedback_dict = feedback.to_dict()
+        feedback_dict["message_id"] = uuid.UUID(feedback_dict["message_id"])
+        feedback_uuid = uuid.UUID(feedback_id)
     except ValueError as e:
         raise HTTPException(
             status_code=400,
@@ -506,13 +510,7 @@ async def change_feedback_by_id(
 
     # Pass Feedback object into service layer
     try:
-        update_feedback_by_id(db, feedback_id, feedback.to_dict())
-    except (DatabaseError, NoResultFound) as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error updating feedback: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
+        update_feedback_by_id(db, feedback_uuid, feedback_dict)
     except Exception:
         raise HTTPException(
             status_code=500,
