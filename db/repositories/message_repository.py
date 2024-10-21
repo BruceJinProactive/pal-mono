@@ -22,20 +22,21 @@ class MessageRepositoryAsync:
         if not user:
             raise ValueError(f"No user found with id {user_id}")
 
-        # Step 3: Get the first conversation from the user
+        # Step 3: Get the conversation ID instead of the full conversation
         result = await self.db.execute(
-            select(Conversation).filter(Conversation.user_id == user.id)
+            select(Conversation.id).filter(Conversation.user_id == user.id)
         )
-        conversation = result.scalar_one_or_none()
+        conversation_id = result.scalar_one_or_none()
 
         # Step 4: If no conversation exists, create one for the user
-        if not conversation:
+        if not conversation_id:
             conversation = Conversation(user_id=user.id)
             self.db.add(conversation)
             await self.db.flush()
+            conversation_id = conversation.id  # Get the new conversation ID
 
         # Step 5: Create a message with message_body and add it to the conversation
-        message = Message(conversation_id=conversation.id, body=message_body)
+        message = Message(conversation_id=conversation_id, body=message_body)
         self.db.add(message)
         await self.db.flush()
 
