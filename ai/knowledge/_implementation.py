@@ -16,7 +16,7 @@ def get_knowledge(account_name: str) -> AssistantKnowledge:
             embedder=get_embedder(),
         ),
         # 2 references are added to the prompt
-        num_documents=2,
+        num_documents=10,
     )
 
     return get_knowledge
