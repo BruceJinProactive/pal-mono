@@ -19,7 +19,7 @@ from utils.log import logger
 async def get_chat_response_async(db: AsyncSession, message: Message) -> Message:
     user = None
     extras = {}
-    message_repo = MessageRepositoryAsync(db)
+    # message_repo = MessageRepositoryAsync(db)
     try:
         # find project with matching channel platform, identifier pair
         project_channel_identifier = (
@@ -48,10 +48,10 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
                 project.account_id, user_channel_identifier
             )
 
-        # Save request message to database
-        await message_repo.create_message(
-            user_id=user.id, message_body=message.to_dict()
-        )
+        # # Save request message to database
+        # await message_repo.create_message(
+        #     user_id=user.id, message_body=message.to_dict()
+        # )
 
         # Get appropriate assistant from account name
         assistant_id = project.assistant_id
@@ -89,11 +89,11 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
         extras=Extras(**extras),
     )
 
-    if user:
-        # Save response message to database
-        await message_repo.create_message(
-            user_id=user.id, message_body=response_message.to_dict()
-        )
+    # if user:
+    #     # Save response message to database
+    #     await message_repo.create_message(
+    #         user_id=user.id, message_body=response_message.to_dict()
+    #     )
 
     return response_message
 
