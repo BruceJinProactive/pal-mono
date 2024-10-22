@@ -3,14 +3,7 @@ import asyncio
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-from api.schemas.message.message import (
-    AuthorType,
-    ChannelPlatform,
-    Extras,
-    Message,
-    MessagingBroker,
-    TextObject,
-)
+from api.schemas.message.message import AuthorType, Channel, Extras, Message, TextObject
 from app.auth import user
 from app.shared import account_picker_ui
 from db.session import get_db
@@ -40,7 +33,7 @@ def main() -> None:
         raise ValueError(
             "There was an error accessing account details. Please reselect from picker"
         )
-    channel_identifier = f"{ChannelPlatform.INTERNAL_APP.value}:{str(user.email)}"
+    channel_identifier = f"{Channel.INTERNAL_APP.value}:{str(user.email)}"
     db_user = get_user_by_channel_identifier(
         db=db,
         account_id=account.id,
@@ -65,10 +58,9 @@ def main() -> None:
     if prompt := st.chat_input():
         user_message = Message(
             author_type=AuthorType.USER,
-            sender_channel_identifier=str(user.email),
-            recipient_channel_identifier=account_name,
-            channel_platform=ChannelPlatform.INTERNAL_APP,
-            messaging_broker=MessagingBroker.WEB,
+            sender_identifier=str(user.email),
+            recipient_identifier=account_name,
+            channel=Channel.INTERNAL_APP,
             text=TextObject(body=prompt),
             extras=Extras(),
         ).dict()

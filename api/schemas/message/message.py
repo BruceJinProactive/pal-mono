@@ -12,23 +12,25 @@ class TextObject(BaseModel):
 
 class AuthorType(str, Enum):
     USER = "user"
-    ASSISTANT = "assistant"
+    AGENT = "agent"
 
 
-class ChannelPlatform(str, Enum):
-    ADMIN_CONSOLE = "admin_console"
-    SMS = "sms"
-    WHATSAPP = "whatsapp"
-    WEBSITE = "website"
+class Channel(str, Enum):
+    API = "api"
     INSTAGRAM = "instagram"
     INTERNAL_APP = "internal_app"
+    SMS = "sms"
+    WHATSAPP = "whatsapp"
 
 
-class MessagingBroker(str, Enum):
+class Broker(str, Enum):
     META = "meta"
     SENDBLUE = "sendblue"
     TWILIO = "twilio"
-    WEB = "web"
+
+
+class Type(str, Enum):
+    TEXT = "text"
 
 
 class Extras(BaseModel):
@@ -38,15 +40,19 @@ class Extras(BaseModel):
 class Message(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     author_type: AuthorType
-    sender_channel_identifier: str
-    recipient_channel_identifier: str
-    channel_platform: ChannelPlatform
-    messaging_broker: MessagingBroker
-    type: str = Field(default="text")
+    # Channel
+    sender_identifier: str
+    recipient_identifier: str
+    channel: Channel = Channel.API
+    broker: Optional[Broker] = None
+    # Content
+    type: Type = Type.TEXT
     text: TextObject
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    # Extra information
     extras: Optional[Extras] = None
+    # Metadata
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("type")
     def validate_type(cls, v):
@@ -58,11 +64,11 @@ class Message(BaseModel):
         return {
             "id": self.id,
             "author_type": self.author_type.value,
-            "sender_channel_identifier": self.sender_channel_identifier,
-            "recipient_channel_identifier": self.recipient_channel_identifier,
-            "channel_platform": self.channel_platform.value,
-            "messaging_broker": self.messaging_broker.value,
-            "type": self.type,
+            "sender_identifier": self.sender_identifier,
+            "recipient_identifier": self.recipient_identifier,
+            "channel": self.channel.value,
+            "broker": self.broker.value if self.broker is not None else None,
+            "type": self.type.value,
             "text": self.text.dict(),
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,

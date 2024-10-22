@@ -7,10 +7,10 @@ from streamlit_extras.switch_page_button import switch_page
 
 from api.schemas.message.message import (
     AuthorType,
-    ChannelPlatform,
+    Broker,
+    Channel,
     Extras,
     Message,
-    MessagingBroker,
     TextObject,
 )
 from app.auth import user
@@ -37,21 +37,19 @@ def main() -> None:
     with message_service_tab:
         st.write("### get_chat_response")
 
-        sender_channel_identifier: str = st.text_input("Sender Channel Identifier")
-        recipient_channel_identifier: str = st.text_input(
-            "Recipient Channel Identifier"
+        sender_identifier: str = st.text_input("Sender Channel Identifier")
+        recipient_identifier: str = st.text_input("Recipient Channel Identifier")
+        channel: Channel = st.radio(
+            label="Channel",
+            options=[channel for channel in Channel],
+            format_func=(lambda channel: channel.value),
+            key="channel",
         )
-        channel_platform: ChannelPlatform = st.radio(
-            label="Channel Platform",
-            options=[platform for platform in ChannelPlatform],
-            format_func=(lambda platform: platform.value),
-            key="channel_platform",
-        )
-        messaging_broker: MessagingBroker = st.radio(
-            label="Messaging Broker",
-            options=[broker for broker in MessagingBroker],
+        broker: Broker = st.radio(
+            label="Broker",
+            options=[broker for broker in Broker],
             format_func=(lambda broker: broker.value),
-            key="messaging_broker",
+            key="broker",
         )
         text: str = st.text_area("Text")
         extras: Extras = Extras(escalated=st.checkbox("Escalated", key="extras"))
@@ -59,11 +57,11 @@ def main() -> None:
         if st.button("Get Chat Response"):
             input_message = Message(
                 author_type=AuthorType.USER,
-                sender_channel_identifier=sender_channel_identifier,
-                recipient_channel_identifier=recipient_channel_identifier,
+                sender_identifier=sender_identifier,
+                recipient_identifier=recipient_identifier,
                 text=TextObject(body=text),
-                channel_platform=channel_platform,
-                messaging_broker=messaging_broker,
+                channel=channel,
+                broker=broker,
                 extras=extras,
             )
             output_message = get_chat_response(db, input_message)
@@ -162,7 +160,7 @@ def main() -> None:
         st.write("Relay Service")
 
         # Generates warning but works.
-        sender_channel_identifier = st.selectbox(
+        sender_identifier = st.selectbox(
             "Sender Number",
             [
                 "+14244859440 (proactiveailab)",
@@ -171,12 +169,12 @@ def main() -> None:
             ],
         )
 
-        if sender_channel_identifier:
-            sender_channel_identifier = sender_channel_identifier.split()[0]
+        if sender_identifier:
+            sender_identifier = sender_identifier.split()[0]
         else:
-            sender_channel_identifier = "+14244859440"
+            sender_identifier = "+14244859440"
 
-        recipient_channel_identifier = st.text_input("Recipient Number")
+        recipient_identifier = st.text_input("Recipient Number")
 
         text = st.text_input("Message")
 
@@ -187,11 +185,11 @@ def main() -> None:
         if st.button("Send Message"):
             message_to_send = Message(
                 author_type=AuthorType.USER,
-                sender_channel_identifier=sender_channel_identifier,
-                recipient_channel_identifier=recipient_channel_identifier,
+                sender_identifier=sender_identifier,
+                recipient_identifier=recipient_identifier,
                 text=TextObject(body=text),
-                channel_platform=ChannelPlatform.SMS,
-                messaging_broker=MessagingBroker.SENDBLUE,
+                channel=Channel.SMS,
+                broker=Broker.SENDBLUE,
             )
             status = send_message(message_to_send, delivery_time)
             st.json(status)

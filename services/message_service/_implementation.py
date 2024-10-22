@@ -23,7 +23,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
     try:
         # find project with matching channel platform, identifier pair
         project_channel_identifier = (
-            f"{message.channel_platform.value}:{message.recipient_channel_identifier}"
+            f"{message.channel.value}:{message.recipient_identifier}"
         )
         project_repo = ProjectRepositoryAsync(db)
         project = await project_repo.get_project_by_channel_identifier(
@@ -31,13 +31,11 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
         )
         if project is None:
             raise ValueError(
-                f"Project with channel platform '{message.channel_platform.value}', channel_identifier '{message.recipient_channel_identifier}' not found."
+                f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
             )
 
         # Get user_id by sender channel/number with user_service
-        user_channel_identifier = (
-            f"{message.channel_platform.value}:{message.sender_channel_identifier}"
-        )
+        user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
         user_repo = UserRepositoryAsync(db)
         user = await user_repo.get_user_by_channel_identifier(
             account_id=project.account_id,
@@ -85,11 +83,11 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
         response = "Something went wrong. Please try again."
 
     response_message = Message(
-        author_type=AuthorType.ASSISTANT,
-        sender_channel_identifier=message.recipient_channel_identifier,  # Swap sender and recipient
-        recipient_channel_identifier=message.sender_channel_identifier,
-        channel_platform=message.channel_platform,
-        messaging_broker=message.messaging_broker,
+        author_type=AuthorType.AGENT,
+        sender_identifier=message.recipient_identifier,  # Swap sender and recipient
+        recipient_identifier=message.sender_identifier,
+        channel=message.channel,
+        broker=message.broker,
         text=TextObject(body=response),
         metadata={"instance": "BaseModel"},
         extras=Extras(**extras),
@@ -111,7 +109,7 @@ async def get_chat_response(db: Session, message: Message) -> Message:
     try:
         # find project with matching channel platform, identifier pair
         project_channel_identifier = (
-            f"{message.channel_platform.value}:{message.recipient_channel_identifier}"
+            f"{message.channel.value}:{message.recipient_identifier}"
         )
         project = ProjectRepository(db).get_project_by_channel_identifier(
             project_channel_identifier
@@ -119,13 +117,11 @@ async def get_chat_response(db: Session, message: Message) -> Message:
 
         if project is None:
             raise ValueError(
-                f"Project with channel platform '{message.channel_platform.value}', channel_identifier '{message.recipient_channel_identifier}' not found."
+                f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
             )
 
         # Get user_id by sender channel/number with user_service
-        user_channel_identifier = (
-            f"{message.channel_platform.value}:{message.sender_channel_identifier}"
-        )
+        user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
         user = user_service.get_user_by_channel_identifier(
             db=db,
             account_id=project.account_id,
@@ -167,11 +163,11 @@ async def get_chat_response(db: Session, message: Message) -> Message:
         response = "Something went wrong. Please try again."
 
     response_message = Message(
-        author_type=AuthorType.ASSISTANT,
-        sender_channel_identifier=message.recipient_channel_identifier,  # Swap sender and recipient
-        recipient_channel_identifier=message.sender_channel_identifier,
-        channel_platform=message.channel_platform,
-        messaging_broker=message.messaging_broker,
+        author_type=AuthorType.AGENT,
+        sender_identifier=message.recipient_identifier,  # Swap sender and recipient
+        recipient_identifier=message.sender_identifier,
+        channel=message.channel,
+        broker=message.broker,
         text=TextObject(body=response),
         metadata={"instance": "BaseModel"},
         extras=Extras(**extras),

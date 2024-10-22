@@ -7,13 +7,7 @@ from requests import Session
 
 from api.routes.endpoints import endpoints
 from api.schemas.admin.feedback import Feedback
-from api.schemas.message.message import (
-    AuthorType,
-    ChannelPlatform,
-    Message,
-    MessagingBroker,
-    TextObject,
-)
+from api.schemas.message.message import AuthorType, Broker, Channel, Message, TextObject
 from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (
@@ -228,7 +222,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     user = get_user_by_channel(
         db=db,
         account_id=account.id,
-        channel_platform=ChannelPlatform.ADMIN_CONSOLE,
+        channel_platform=Channel.API,
         channel_identifier=decrypted_id_token["cognito:username"],
         create_new_user=True,
     )
@@ -305,7 +299,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     user = get_user_by_channel(
         db=db,
         account_id=account.id,
-        channel_platform=ChannelPlatform.ADMIN_CONSOLE,
+        channel_platform=Channel.API,
         channel_identifier=decrypted_id_token["cognito:username"],
         create_new_user=True,
     )
@@ -315,10 +309,9 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
 
     message = Message(
         author_type=AuthorType.USER,
-        sender_channel_identifier=decrypted_id_token["cognito:username"],
-        recipient_channel_identifier=decrypted_id_token["custom:account_name"],
-        channel_platform=ChannelPlatform.ADMIN_CONSOLE,
-        messaging_broker=MessagingBroker.WEB,
+        sender_identifier=decrypted_id_token["cognito:username"],
+        recipient_identifier=decrypted_id_token["custom:account_name"],
+        channel=Channel.API,
         text=TextObject(body=body_message),
     )
 
