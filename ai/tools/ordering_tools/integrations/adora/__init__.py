@@ -158,7 +158,7 @@ class AdoraIntegration:
             # TODO: Usage limited to 1qps without API key. Upgrade to paid plan when needed.
             # TODO: https://aws.amazon.com/location/
             geolocator = Nominatim(user_agent="pal")
-            geocoded_loc = geolocator.geocode(
+            geocoded_loc: Any = geolocator.geocode(
                 {
                     "street": delivery_address.address,
                     "city": delivery_address.city,
