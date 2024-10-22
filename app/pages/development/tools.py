@@ -1,13 +1,17 @@
-# import json
-# from os import getenv
+import json
 
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-# from ai.tools.booking_tools import BookingTools
-# from ai.tools.ordering_tools import OrderingTools
+from ai.tools.booking_tools import BookingTools
+from ai.tools.ordering_tools import OrderingTools
 from app.auth import user
+from app.pages.clients.demo import _construct_demo_dict
 from db.session import get_db
+from services.account_service import get_account
+from services.assistant_service import get_assistant
+from services.user_service import get_user_by_channel
+from utils.secret import get_client_secret
 
 st.title("Tools")
 
@@ -16,58 +20,102 @@ db = next(get_db())
 (ordering_tools_tab, booking_tools_tab) = st.tabs(["Ordering Tools", "Booking Tools"])
 
 
-# def ordering_tools_tab_content():
-#     st.write("# Ordering Tools")
-#     toolkit = OrderingTools(
-#         {
-#             "type": "adora",
-#             "api_key": getenv("ADORA_POS_API_KEY"),
-#             "api_secret": getenv("ADORA_POS_API_SECRET"),
-#         }
-#     )
+def ordering_tools_tab_content(user_id):
+    st.write("# Ordering Tools")
+    toolkit = OrderingTools(
+        {
+            "type": "adora",
+            "settings": {
+                "api_key": get_client_secret("PIZZAMYHEART_ADORA_API_KEY"),
+                "api_secret": get_client_secret("PIZZAMYHEART_ADORA_API_SECRET"),
+                "store_id": "9WHCV",
+                "account_name": "pizzamyheart",
+                "menu_name": "Pizza_My_Heart_Adora_Menu",
+            },
+        },
+        user_id,
+    )
 
-#     st.write("### Add to Order")
-#     item_name = st.text_input("Item Name", value="Big Sur")
-#     size = st.text_input("Size", value='18"')
-#     quantity = st.number_input("Quantity", value=1)
-#     modifications = st.text_input(
-#         "Modifications", value="Extra Garlic, Light Mushrooms", help="Separate by comma"
-#     )
-#     if st.button("Add to Order"):
-#         retval = toolkit.add_to_order(
-#             item_name, size, int(quantity), modifications.split(",")
-#         )
-#         st.write(retval)
+    st.write("### Add to Order")
+    item_name = st.text_input("Item Name", value="Big Sur")
+    size = st.text_input("Size", value='18"')
+    quantity = st.number_input("Quantity", value=1)
+    modifications = st.text_input(
+        "Modifications", value="Extra Garlic, Light Mushrooms", help="Separate by comma"
+    )
+    if st.button("Add to Order"):
+        try:
+            retval = toolkit.add_to_order(
+                item_name,
+                size,
+                int(quantity),
+                str(modifications).split(","),
+            )
+            st.write(retval)
+        except Exception as e:
+            st.error(f"Failed to add to order: {e}")
 
-#     st.write("### Place Order")
-#     if st.button("Place Order"):
-#         retval = toolkit.place_order()
-#         st.write(retval)
+    st.write("### Place Order")
+    if st.button("Place Order"):
+        try:
+            retval = toolkit.place_order(
+                chat_history=[
+                    "my name is John Doe. My email is 123@abc.com and my phone number is 123-456-7890. "
+                    + f"add {quantity} {size} {item_name} with {modifications} to cart. "
+                    + "when I place order, do pickup."
+                ]
+            )
+            st.write(retval)
+        except Exception as e:
+            st.error(f"Failed to place order: {e}")
 
 
-# def booking_tools_tab_content():
-#     st.write("# Booking Tools")
-#     toolkit = BookingTools({
-#         type: "mindzero",
-#     })
+def booking_tools_tab_content(user_id):
+    st.write("# Booking Tools")
+    toolkit = BookingTools({"type": "mindzero", "settings": {}}, user_id)
 
-#     st.write("### Get Class Sessions")
-#     num_days = st.number_input("Number of Days", value=7)
-#     if st.button("Get Class Sessions"):
-#         retval = toolkit.get_class_sessions(int(num_days))
-#         st.json(json.loads(retval))
+    st.write("### Get Class Sessions")
+    num_days = st.number_input("Number of Days", value=7)
+    if st.button("Get Class Sessions"):
+        try:
+            retval = toolkit.get_classes(int(num_days))
+            st.json(json.loads(retval))
+        except Exception as e:
+            st.error(f"Failed to get class sessions: {e}")
 
 
-def main() -> None:
-    st.write("## In development")
-    st.write("This page is still in development.")
-    # with ordering_tools_tab:
-    #     ordering_tools_tab_content()
-    # with booking_tools_tab:
-    #     booking_tools_tab_content()
+def main(user_id) -> None:
+    with ordering_tools_tab:
+        ordering_tools_tab_content(user_id)
+    with booking_tools_tab:
+        booking_tools_tab_content(user_id)
 
 
 if user.is_logged_in:
-    main()
+    demo_dict = _construct_demo_dict()
+
+    # Internal demo selection
+    selected_account_name = st.sidebar.selectbox(
+        "Select a demo then reload",
+        list(demo_dict.keys()),
+        key="tools_page_demo_select",
+    )
+    assistant_id = demo_dict.get(selected_account_name)
+
+    assistant = get_assistant(db, assistant_id)  # type: ignore
+
+    account = get_account(db, account_name=assistant.account.name)  # type: ignore
+    db_user = get_user_by_channel(
+        db,
+        account_id=account.id,  # type: ignore
+        channel_platform="INTERNAL_APP",
+        channel_identifier=user.email if user.email else "",
+        create_new_user=True,
+    )
+
+    if db_user:
+        main(db_user.id)
+    else:
+        st.write("Failed to get user")
 else:
     switch_page("home")
