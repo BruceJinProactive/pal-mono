@@ -14,22 +14,22 @@ async def get_ai_assistant_async(
     db: AsyncSession,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
-    new_run: bool = False,
+    conversation_id: uuid.UUID,
 ) -> PhiAssistant:
     """
-    Retrieve a PhiAssistant instance based on the provided assistant ID and user ID.
+    Retrieve a PhiAssistant instance based on the provided assistant ID, user ID, and conversation ID.
 
     Args:
-    db (AsyncSession): The asynchronous database session to use for the query.
-    assistant_id (uuid.UUID): The unique identifier of the assistant.
-    user_id (uuid.UUID): The unique identifier of the user.
-    new_run (bool, optional): Flag indicating whether this is a new run. Defaults to False.
+        db (AsyncSession): The asynchronous database session to use for the query.
+        assistant_id (uuid.UUID): The unique identifier of the assistant.
+        user_id (uuid.UUID): The unique identifier of the user.
+        conversation_id (uuid.UUID): The unique identifier of the conversation.
 
     Returns:
-    PhiAssistant: The retrieved PhiAssistant instance.
+        PhiAssistant: The retrieved PhiAssistant instance.
     """
     return await _implementation.get_ai_assistant_async(
-        db, assistant_id, user_id, new_run
+        db, assistant_id, user_id, conversation_id=conversation_id
     )
 
 
@@ -51,7 +51,7 @@ def get_ai_assistant(
     Returns:
         PhiAssistant: The retrieved PhiAssistant instance.
     """
-    return _implementation.get_ai_assistant(db, assistant_id, user_id, new_run)
+    return _implementation.get_ai_assistant(db, assistant_id, user_id, new_run=new_run)
 
 
 def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:

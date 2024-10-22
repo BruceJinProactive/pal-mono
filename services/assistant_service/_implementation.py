@@ -18,7 +18,7 @@ async def get_ai_assistant_async(
     db: AsyncSession,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
-    new_run: bool = False,
+    conversation_id: uuid.UUID,
 ) -> AIAssistant:
     # Retrieve the assistant from the database
     assistant_repository = AssistantRepositoryAsync(db)
@@ -32,7 +32,7 @@ async def get_ai_assistant_async(
         account_name=assistant.account.name,
         assistant_raw_config=assistant.raw_config,
         user_id=str(user_id),
-        new_run=new_run,
+        conversation_id=str(conversation_id),
     )
 
 

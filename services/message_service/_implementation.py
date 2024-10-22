@@ -49,16 +49,22 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
             )
 
         # Save request message to database
-        await message_repo.create_message(
+        request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
         )
+        if not request_message:
+            raise ValueError("Failed to create request message")
+        conversation_id = request_message.conversation_id
 
         # Get appropriate assistant from account name
         assistant_id = project.assistant_id
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
         assistant = await assistant_service.get_ai_assistant_async(
-            db=db, assistant_id=assistant_id, user_id=user.id
+            db=db,
+            assistant_id=assistant_id,
+            user_id=user.id,
+            conversation_id=conversation_id,
         )
 
         # Get response from assistant

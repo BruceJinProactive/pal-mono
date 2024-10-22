@@ -14,6 +14,7 @@ def integrate_assistant(
     account_name: str,
     assistant_raw_config: Dict[str, Any],
     user_id: str,
+    conversation_id: str | None = None,
     new_run: bool = False,
 ) -> Assistant:
     # Set up llm
@@ -36,7 +37,9 @@ def integrate_assistant(
 
     # Get run id
     run_id = None
-    if not new_run:
+    if conversation_id:
+        run_id = conversation_id
+    elif not new_run:
         run_ids = storage.get_all_run_ids(user_id=str(user_id))
         run_id = run_ids[0] if run_ids else None
 

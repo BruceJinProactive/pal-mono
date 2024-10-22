@@ -9,6 +9,7 @@ def integrate_assistant(
     account_name: str,
     assistant_raw_config: Dict[str, Any],
     user_id: str,
+    conversation_id: str | None = None,
     new_run: bool = False,
 ) -> Assistant:
     """
@@ -20,8 +21,10 @@ def integrate_assistant(
     Args:
         account_name (str): The name of the account for which the assistant is being integrated.
         assistant_raw_config (Dict[str, Any]): A dictionary containing the assistant's configuration,
-                                     typically converted from JSON.
+                                               typically converted from JSON.
         user_id (str): The ID of the user associated with this assistant.
+        conversation_id (str | None, optional): The ID of the conversation associated with this assistant.
+                                                If None, a new conversation is created. Defaults to None.
         new_run (bool, optional): If True, starts a new run. If False, attempts to
                                   continue from the last run. Defaults to False.
 
@@ -37,5 +40,6 @@ def integrate_assistant(
         account_name=account_name,
         assistant_raw_config=assistant_raw_config,
         user_id=user_id,
+        conversation_id=conversation_id,
         new_run=new_run,
     )
