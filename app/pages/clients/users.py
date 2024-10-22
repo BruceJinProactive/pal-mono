@@ -60,14 +60,16 @@ def main() -> None:
     account_id = account.id
     account_users = get_users_by_account_id(db, account_id)
 
-    table_headers = ["Identifier", "Platform", "Id", "Conversation"]
+    table_headers = ["Identifier", "Channel", "Id", "Conversation"]
     col_widths = [2] + [1] * (len(table_headers) - 1)
     for th, col in zip(table_headers, st.columns(col_widths)):
         col.write(th)
     for account_user in account_users:
         identifier_col, platform_col, id_col, conversation_col = st.columns(col_widths)
-        identifier_col.write(account_user.raw_config.get("channel_identifier", "None"))
-        platform_col.write(account_user.raw_config.get("channel_platform", "None"))
+        if account_user.channel_identifiers:
+            platform, identifier = account_user.channel_identifiers[0].split(":")
+            identifier_col.write(identifier)
+            platform_col.write(platform)
         id_col.write(account_user.id)
 
         if conversation_col.toggle("View", key=str(account_user.id)):

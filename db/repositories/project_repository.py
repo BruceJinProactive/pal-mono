@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -134,6 +134,33 @@ class ProjectRepository:
         except (SQLAlchemyError, ValueError) as e:
             self.db.rollback()
             logger.error(f"Error updating project config: {e}")
+            raise
+
+    def replace_project_channel_identifiers(
+        self, project_id: uuid.UUID, channel_identifiers: List[str]
+    ) -> None:
+        """Replace an project's channel identifiers in the database.
+
+        This function replaces the entire `channel_identifiers` for the specified project.
+
+        Args:
+            project_id (uuid.UUID): The unique identifier of the project.
+            channel_identifiers (List[str]): The new `channel_identifiers` to replace the existing one.
+
+        Raises:
+            ValueError: If the project with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            project = self.get_project(project_id)
+            if project is None:
+                raise ValueError(f"project {project_id} not found")
+
+            project.channel_identifiers = channel_identifiers
+            self.db.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.db.rollback()
+            logger.error(f"Error replacing project channel identifiers: {e}")
             raise
 
     def replace_project_config(

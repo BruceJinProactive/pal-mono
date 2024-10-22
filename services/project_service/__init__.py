@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,26 @@ def get_project(db: Session, project_id: uuid.UUID):
     """
 
     return _implementation.get_project(db, project_id)
+
+
+def replace_project_channel_identifiers(
+    db: Session, project_id: uuid.UUID, channel_identifiers: List[str]
+) -> None:
+    """
+    Replaces a project's channel identifiers.
+
+    Args:
+        db (Session): The database connection.
+        project_id (uuid.UUID): The unique identifier of the project whose configuration is being replaced.
+        channel_identifiers (List[str]): A list of the new channel identifiers.
+
+    Returns:
+        None
+    """
+
+    return _implementation.replace_project_channel_identifiers(
+        db, project_id, channel_identifiers
+    )
 
 
 def update_project_config(
@@ -57,4 +77,9 @@ def replace_project_config(
     return _implementation.replace_project_config(db, project_id, config)
 
 
-__all__ = ["get_project", "update_project_config", "replace_project_config"]
+__all__ = [
+    "get_project",
+    "replace_project_channel_identifiers",
+    "update_project_config",
+    "replace_project_config",
+]

@@ -1,5 +1,6 @@
 import json
 
+import pandas as pd
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
@@ -14,6 +15,7 @@ from services.assistant_service import (
 )
 from services.project_service import (
     get_project,
+    replace_project_channel_identifiers,
     replace_project_config,
     update_project_config,
 )
@@ -196,6 +198,40 @@ def project_tab_ui():
             st.write(
                 ":orange-background[Please __double-check any modifications__ before submitting.]"
             )
+
+            st.write(
+                ":red[__Modify__] the channel identifiers. Please unfocus (click off or press enter) any cells before saving."
+            )
+
+            channel_identifiers = project.channel_identifiers or [":"]
+            old_df = pd.DataFrame(
+                [
+                    {"Channel": channel, "Identifier": identifier}
+                    for channel_identifier in channel_identifiers
+                    for channel, identifier in [channel_identifier.split(":")]
+                ]
+            )
+            new_df = st.data_editor(
+                old_df, num_rows="dynamic", use_container_width=True
+            )
+
+            if st.button("Save"):
+                new_channel_identifiers = []
+                for _, row in new_df.iterrows():
+                    items = list(row.items())
+                    channel = items[0][1]
+                    identifier = items[1][1]
+                    if channel and identifier:
+                        new_channel_identifiers.append(f"{channel}:{identifier}")
+
+                replace_project_channel_identifiers(
+                    db,
+                    project_id=project.id,
+                    channel_identifiers=new_channel_identifiers,
+                )
+                st.success("Successfully updated the channel identifiers")
+
+            st.divider()
 
             unformatted_json = dict(project.raw_config)
             formatted_json = json.dumps(unformatted_json, indent=4, ensure_ascii=False)
