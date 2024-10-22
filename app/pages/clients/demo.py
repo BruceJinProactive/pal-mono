@@ -35,6 +35,7 @@ if user.is_logged_in:
     )
     assistant_id = demo_dict.get(selected_account_name)
 
-    demo_ui(assistant_id)
+    if assistant_id:
+        demo_ui(assistant_id)
 else:
     switch_page("home")
