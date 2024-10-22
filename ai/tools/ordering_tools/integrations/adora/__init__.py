@@ -50,9 +50,17 @@ class AdoraIntegration:
         menu = _apis.get_adora_menu(self.store_id, bearer_token)
         if not menu:
             return "Failed to get menu, please try again."
+        menu_maps = _utils.get_menu_maps(menu)
+        size_map = _utils.get_size_description_map(menu)
 
         convert_item_success, adora_order_item = _utils.validate_and_convert_item(
-            order_item, menu, self.openai_client, self.openai_model
+            order_item,
+            menu_maps,
+            size_map,
+            menu["modifiers"],
+            menu["modifier_groups"],
+            self.openai_client,
+            self.openai_model,
         )
         if not convert_item_success and isinstance(adora_order_item, str):
             return adora_order_item  # this is an error string
@@ -105,6 +113,9 @@ class AdoraIntegration:
         if not menu:
             return "Failed to get menu, please try again."
 
+        menu_maps = _utils.get_menu_maps(menu)
+        size_map = _utils.get_size_description_map(menu)
+
         order_items = []
         order_summary = []  # List to hold the summary of items and their prices
 
@@ -116,7 +127,13 @@ class AdoraIntegration:
                 order_item.modifications,
             )
             convert_item_success, adora_order_item = _utils.validate_and_convert_item(
-                order_item, menu, self.openai_client, self.openai_model
+                order_item,
+                menu_maps,
+                size_map,
+                menu["modifiers"],
+                menu["modifier_groups"],
+                self.openai_client,
+                self.openai_model,
             )
 
             if not convert_item_success and isinstance(adora_order_item, str):

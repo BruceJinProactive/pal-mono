@@ -1,6 +1,5 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any
 
 from openai import OpenAI
 
@@ -8,28 +7,8 @@ from ai.tools.ordering_tools.classes import OrderItem
 from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraCoupon,
     AdoraOrderItem,
+    MenuItemDetails,
 )
-
-# Size descriptions.
-# TODO: Make more comprehensive
-SIZE_DESCRIPTION_MAP = {
-    "1": '12"',
-    "2": '14"',
-    "3": '18"',
-    "4": 'Gluten Free 12"',
-    "5": "Heart Shaped",
-    "6": "Regular",
-    "16": "Pint",
-    "17": "Pitcher",
-    "18": "Bottle",
-    "19": "6 Pack",
-    "20": "Catering",
-    "21": "6 Wings",
-    "22": "12 Wings",
-    "23": "24 Wings",
-    "24": "Slices",
-    "25": "Kids Make Pizza",
-}
 
 
 @dataclass
@@ -92,21 +71,18 @@ def convert_coupon(
 
 
 def get_adora_item_id(
-    menu: dict, order_item_name: str, openai_client, openai_model: str
+    menu_name_to_id_map: dict, order_item_name: str, openai_client, openai_model: str
 ) -> ConversionResult:
     """
     Finds the closest item name in the menu and consequent item id.
     """
     # Load menu item names
-    menu_items = []
-    for item in menu["items"]:
-        menu_items.append(item["name"])
 
     # Get GPT to find the most similar item name
     sys_prompt = f"""# CONTEXT #
 I am a waiter at a restaurant. I am taking a user's order. 
 I want to match a user supplied item name to an item on the menu. 
-Here are the menu items {menu_items}
+Here are the menu items {list(menu_name_to_id_map.keys())}
 
 #########
 
@@ -155,47 +131,39 @@ Only output the most similar menu item name. Output "N/A" if the user's inputted
     )
 
     item_name = response.choices[0].message.content
-    for item in menu["items"]:
-        if item["name"] == item_name:
-            return ConversionResult(True, item["item_id"])
+    if item_name in menu_name_to_id_map:
+        return ConversionResult(True, menu_name_to_id_map[item_name])
 
     return ConversionResult(False, "Item not found in menu.")
 
 
-def get_adora_item_name(menu: dict, adora_item_id: int) -> str | None:
-    """
-    Retrieve the name of an item from the Adora menu.
-
-    Args:
-        menu (dict): A dictionary representing the menu, which contains a list of items.
-        adora_item_id (int): The unique identifier of the Adora item.
-
-    Returns:
-        str | None: The name of the Adora item if found, otherwise None.
-    """
-    for item in menu["items"]:
-        if item["item_id"] == adora_item_id:
-            return item["name"]
-    return None
-
-
 def get_adora_size_id(
-    menu, adora_item_id: int, order_item_size: str, openai_client, openai_model: str
+    menu_id_to_details_map: dict[int, MenuItemDetails],
+    size_map: dict[int, str],
+    adora_item_id: int,
+    order_item_size: str,
+    openai_client,
+    openai_model: str,
 ) -> ConversionResult:
     """
     Maps the size to size id.
     """
+    print("get_adora_size_id.size_map", size_map)
+
     # Find available size ids for the item
     available_sizes: set = set()
-    for item in menu["items"]:
-        if item["item_id"] == adora_item_id:
-            for size in item["order_types"][0]["sizes"]:
-                available_sizes.add(str(size["size_id"]))
+    if adora_item_id in menu_id_to_details_map:
+        for size in menu_id_to_details_map[adora_item_id].order_types[0]["sizes"]:
+            available_sizes.add(size["size_id"])
+
+    print("available_sizes", available_sizes)
 
     # Get GPT to find the most similar size
     size_options = []
     for size in available_sizes:
-        size_options.append(SIZE_DESCRIPTION_MAP[size])
+        size_options.append(size_map[size])
+
+    print("size_options", size_options)
 
     sys_prompt = f"""# CONTEXT #
 I am a waiter at a restaurant. I am taking a user's order.
@@ -253,11 +221,35 @@ Only output the most similar item size. Output "N/A" if the user's inputted item
     )
 
     item_size = response.choices[0].message.content
-    for size_id, size in SIZE_DESCRIPTION_MAP.items():
+    for size_id, size in size_map.items():
         if size == item_size:
-            return ConversionResult(True, size_id)
+            return ConversionResult(True, str(size_id))
 
     return ConversionResult(False, "Size not found in menu.")
+
+
+def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int]]:
+    """
+    Extracts the item ID to details and name to ID maps from the menu data.
+
+    Args:
+        menu (dict): The menu data containing the items.
+
+    Returns:
+        tuple[dict, dict]: A tuple containing two dictionaries:
+            - A dictionary mapping item IDs to their corresponding details.
+            - A dictionary mapping item names to their corresponding IDs.
+    """
+    id_to_details_map = {
+        item["item_id"]: MenuItemDetails(
+            item["name"],
+            item["order_types"] if "order_types" in item else [],
+            item["modifier_groups"] if "modifier_groups" in item else [],
+        )
+        for item in menu["items"]
+    }
+    name_to_id_map = {item["name"]: item["item_id"] for item in menu["items"]}
+    return id_to_details_map, name_to_id_map
 
 
 def get_similar_modifier_using_openai(
@@ -319,26 +311,24 @@ Only output the most similar item modification. Output "N/A" if the user's input
     return response.choices[0].message.content
 
 
-def get_item_modifier_groups(menu: dict, adora_item_id: int) -> list:
+def get_size_description_map(menu) -> dict[int, str]:
     """
-    Retrieves the modifier groups for a specific item from the menu.
+    Extracts the size description map from the menu data.
 
     Args:
-        menu (dict): The restaurant's menu data, containing items and their respective modifier groups.
-        adora_item_id (int): The ID of the item for which modifier groups are being retrieved.
+        menu (dict): The menu data containing the size descriptions.
 
     Returns:
-        list: A list of modifier groups for the specified item. If the item is not found, an empty list is returned.
+        dict: A dictionary mapping size IDs to their corresponding descriptions.
     """
-
-    for item in menu["items"]:
-        if item["item_id"] == adora_item_id:
-            return item["modifier_groups"]
-    return []
+    return {size["size_id"]: size["name"] for size in menu["sizes"]}
 
 
 def process_modifiers(
-    menu: dict, order_item_modifications: list, openai_client: OpenAI, openai_model: str
+    menu_modifiers: dict,
+    order_item_modifications: list,
+    openai_client: OpenAI,
+    openai_model: str,
 ) -> tuple[list, str]:
     """
     Processes user-supplied order item modifications, classifying them as valid modifiers or comments.
@@ -354,7 +344,7 @@ def process_modifiers(
             - A list of valid modifier IDs matched to the menu modifiers.
             - A comment string containing the user-provided modifications that did not match any menu modifiers.
     """
-    modifier_names = [modifier["name"] for modifier in menu["modifiers"]]
+    modifier_names = [modifier["name"] for modifier in menu_modifiers]
     modifiers = []
     comment = ""
 
@@ -366,7 +356,7 @@ def process_modifiers(
         most_similar_modifier_id = next(
             (
                 modifier["modifier_id"]
-                for modifier in menu["modifiers"]
+                for modifier in menu_modifiers
                 if modifier["name"] == matched_modifier
             ),
             None,
@@ -381,7 +371,7 @@ def process_modifiers(
 
 
 def validate_modifier_group_constraints(
-    modifier_group_counter: dict, menu: dict, payload: dict
+    modifier_group_counter: dict, menu_modifier_groups: dict, payload: dict
 ) -> tuple[bool, str]:
     """
     Validates that the modifier group constraints (e.g., minimum and maximum allowed modifiers) are satisfied.
@@ -397,9 +387,7 @@ def validate_modifier_group_constraints(
             - A string containing an error message if the constraints are not met, otherwise an empty string.
     """
 
-    modifier_group_dict = {
-        mg["modifier_group_id"]: mg for mg in menu["modifier_groups"]
-    }
+    modifier_group_dict = {mg["modifier_group_id"]: mg for mg in menu_modifier_groups}
 
     for modifier_group_id, count in modifier_group_counter.items():
         if modifier_group_id in modifier_group_dict:
@@ -423,7 +411,9 @@ def get_adora_modifications(
     adora_item_id: int,
     adora_size_name: str,
     adora_size_id: int,
-    menu: dict,
+    menu_id_to_details_map: dict[int, MenuItemDetails],
+    menu_modifiers: dict,
+    menu_modifier_groups: dict,
     openai_client: OpenAI,
     openai_model: str,
     order_item: OrderItem,
@@ -453,13 +443,15 @@ def get_adora_modifications(
     payload = {"comment": "", "modifiers": []}
 
     # Get modifier groups for the item
-    item_modifier_groups = get_item_modifier_groups(menu, adora_item_id)
+    item_modifier_groups = []
+    if adora_item_id in menu_id_to_details_map:
+        item_modifier_groups = menu_id_to_details_map[adora_item_id].modifier_groups
     if not item_modifier_groups:
         return False, "No modifier groups found for item."
 
     # Process order item modifications using OpenAI
     modifiers, comment = process_modifiers(
-        menu, order_item_modifications, openai_client, openai_model
+        menu_modifiers, order_item_modifications, openai_client, openai_model
     )
     payload["comment"] = comment
 
@@ -497,7 +489,7 @@ def get_adora_modifications(
 
     # Validate modifier group constraints
     is_valid, validation_message = validate_modifier_group_constraints(
-        modifier_group_counter, menu, payload
+        modifier_group_counter, menu_modifier_groups, payload
     )
     if not is_valid:
         return False, validation_message
@@ -523,7 +515,13 @@ def get_adora_modifications(
 
 
 def validate_and_convert_item(
-    order_item: OrderItem, menu: Any, openai_client: OpenAI, openai_model: str
+    order_item: OrderItem,
+    menu_maps: tuple[dict[int, MenuItemDetails], dict[str, int]],
+    size_map: dict[int, str],
+    menu_modifiers: dict,
+    menu_modifier_groups: dict,
+    openai_client: OpenAI,
+    openai_model: str,
 ) -> tuple[bool, AdoraOrderItem | str]:
     """Converts a generic order item into an Adora order item.
 
@@ -537,6 +535,7 @@ def validate_and_convert_item(
         tuple[bool, AdoraOrderItem | str]: A tuple containing a boolean indicating
             if the conversion was successful, and either the converted Adora order item or an error message.
     """
+    menu_id_to_details_map, menu_name_to_id_map = menu_maps
     # detect invalid quantity
     if order_item.quantity < 1:
         return False, f"{order_item.item_name}: Quantity must be at least 1."
@@ -545,20 +544,26 @@ def validate_and_convert_item(
 
     # get Adora-specific item id
     adora_item_id_res = get_adora_item_id(
-        menu, order_item.item_name, openai_client, openai_model
+        menu_name_to_id_map,
+        order_item.item_name,
+        openai_client,
+        openai_model,
     )
     if not adora_item_id_res.success:
         return False, adora_item_id_res.message
     adora_item_id = int(adora_item_id_res.message)
 
     # get Adora-specific item name
-    adora_item_name = get_adora_item_name(menu, adora_item_id)
-    if adora_item_name is None:
+    item_details = menu_id_to_details_map.get(adora_item_id)
+    if item_details:
+        adora_item_name = item_details.name
+    else:
         return False, "Failed to get item in the menu."
 
     # get Adora-specific size id
     adora_size_id_res = get_adora_size_id(
-        menu,
+        menu_id_to_details_map,
+        size_map,
         adora_item_id,
         order_item.size,
         openai_client,
@@ -569,7 +574,7 @@ def validate_and_convert_item(
     adora_size_id = int(adora_size_id_res.message)
 
     # get Adora-specific size name
-    adora_size_name = SIZE_DESCRIPTION_MAP.get(str(adora_size_id))
+    adora_size_name = size_map.get(adora_size_id)
     if adora_size_name is None:
         return False, "Failed to get size of item in the menu."
 
@@ -579,7 +584,9 @@ def validate_and_convert_item(
         adora_item_id,
         adora_size_name,
         adora_size_id,
-        menu,
+        menu_id_to_details_map,
+        menu_modifiers,
+        menu_modifier_groups,
         openai_client,
         openai_model,
         order_item,

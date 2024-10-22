@@ -168,3 +168,14 @@ class AdoraValidatedAddressList(BaseModel):
     """
 
     addresses: list[AdoraValidatedAddress]
+
+
+class MenuItemDetails:
+    """
+    This is the shape of a menu item, part of a response from the Adora API when you list all menu items.
+    """
+
+    def __init__(self, name: str, order_types: list, modifier_groups: list):
+        self.name = name
+        self.order_types = order_types
+        self.modifier_groups = modifier_groups
