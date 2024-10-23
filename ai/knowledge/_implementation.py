@@ -38,7 +38,7 @@ def index_data_from_shopify() -> tuple[int, int]:
 
     try:
         shopify_access_token = get_client_secret("WINDSOR_SHOPIFY_ACCESS_TOKEN")
-    except Exception as e:
+    except Exception:
         shopify_access_token = getenv("SHOPIFY_ACCESS_TOKEN")  # Use local env variable
 
     session = shopify.Session(windsor_shopify_url, api_version, shopify_access_token)
