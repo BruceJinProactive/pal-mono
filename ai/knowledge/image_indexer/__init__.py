@@ -26,17 +26,8 @@ class ShopifyImageIndexer:
     pinecone_api_key: str | None = getenv("PINECONE_API_KEY")
 
     def __init__(self):
-        try:
-            google_creds_str = get_client_secret("GOOGLE_APPLICATION_CREDENTIALS")
-            google_creds_dict = json.loads(google_creds_str)
-
-        except Exception:
-            google_creds_str = getenv("GOOGLE_APPLICATION_CREDENTIALS")
-
-            if not google_creds_str:
-                raise ValueError("Error with Google Cloud credentials.")
-
-            google_creds_dict = yaml.safe_load(google_creds_str)
+        google_creds_str = get_client_secret("GOOGLE_APPLICATION_CREDENTIALS")
+        google_creds_dict = json.loads(google_creds_str)
 
         # Ensure the private key has the correct format
         if "private_key" in google_creds_dict:
@@ -108,7 +99,12 @@ class ShopifyImageIndexer:
     def __create_index_if_not_exists(
         self, index_name: str, dimension: int = 512
     ) -> None:
-        """Create Pinecone index if it doesn't exist."""
+        """Create Pinecone index if it doesn't exist.
+
+        Args:
+            index_name (str): The name of the index.
+            dimension (int, optional): The dimension of the index. Defaults to 512.
+        """
         try:
             self.pc_client.describe_index(index_name)
             logger.info(f"Index '{index_name}' already exists.")

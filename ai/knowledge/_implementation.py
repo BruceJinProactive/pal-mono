@@ -1,4 +1,3 @@
-from os import getenv
 from typing import Any
 
 import shopify
@@ -36,10 +35,7 @@ def index_data_from_shopify() -> tuple[int, int]:
     windsor_shopify_url: str = "windsor-us.myshopify.com"
     api_version: str = "2024-07"
 
-    try:
-        shopify_access_token = get_client_secret("WINDSOR_SHOPIFY_ACCESS_TOKEN")
-    except Exception:
-        shopify_access_token = getenv("SHOPIFY_ACCESS_TOKEN")  # Use local env variable
+    shopify_access_token = get_client_secret("WINDSOR_SHOPIFY_ACCESS_TOKEN")
 
     session = shopify.Session(windsor_shopify_url, api_version, shopify_access_token)
     shopify.ShopifyResource.activate_session(session)
@@ -48,8 +44,7 @@ def index_data_from_shopify() -> tuple[int, int]:
     erroneous_products: list[str] = []
     catalog = shopify.Product.find()
     while catalog:
-        # TODO: For testing purposes, we only sample a subset of the data
-        for product in catalog[:3]:
+        for product in catalog:
             attributes = product.attributes
 
             if not attributes["image"]:
@@ -80,6 +75,7 @@ def index_data_from_shopify() -> tuple[int, int]:
             if catalog.has_next_page():  # type: ignore
                 catalog = catalog.next_page()  # type: ignore
 
+        # TODO: For testing purposes, we only sample a subset of the data
         break
 
     indexer = ShopifyImageIndexer()

@@ -28,19 +28,8 @@ class PineconeIntegration:
     ):
         # NOTE: Temporary use of vertex ai multimodal embedding model
 
-        try:
-            google_creds_str = get_client_secret("GOOGLE_APPLICATION_CREDENTIALS")
-            google_creds_dict = json.loads(google_creds_str)
-
-        except Exception:
-            google_creds_str = getenv("GOOGLE_APPLICATION_CREDENTIALS")
-
-            if not google_creds_str:
-                raise ValueError(
-                    "Failed to setup Pinecone Integration. Error with Google Cloud credentials."
-                )
-
-            google_creds_dict = yaml.safe_load(google_creds_str)
+        google_creds_str = get_client_secret("GOOGLE_APPLICATION_CREDENTIALS")
+        google_creds_dict = json.loads(google_creds_str)
 
         # Ensure the private key has the correct format
         if "private_key" in google_creds_dict:
