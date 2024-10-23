@@ -20,13 +20,13 @@ def get_knowledge(account_name: str) -> AssistantKnowledge:
     return _implementation.get_knowledge(account_name)
 
 
-def index_data_from_shopify() -> int:
+def index_data_from_shopify() -> tuple[int, int]:
     """
     **TEMPORARY** Index data from Shopify.
 
     This function retrieves images from Shopify and indexes them in the Pinecone index.
 
     Returns:
-        int: The number of images successfully indexed.
+        tuple[int, int]: A tuple containing the number of successful indexes and the number of failed indexes.
     """
     return _implementation.index_data_from_shopify()

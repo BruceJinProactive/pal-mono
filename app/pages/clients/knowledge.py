@@ -142,12 +142,13 @@ def knowledge_ui(account_name: str) -> None:
         with tab_img:
             st.warning("THIS TAB IS SPECIFICALLY FOR WINDSOR", icon="ℹ️")
             if knowledge_base:
-                if st.button("[Windsor] Automatic Image Indexing"):
+                if st.button("[Windsor] Image Indexing"):
                     alert = st.info("Indexing...", icon="ℹ️")
                     try:
-                        num_indexed_images = index_data_from_shopify()
-
-                        st.success(f"Successfully indexed {num_indexed_images} images.")
+                        successes, failures = index_data_from_shopify()
+                        st.info(
+                            f"Successfully indexed {successes} images. Failed to index {failures} images."
+                        )
                     except Exception as e:
                         st.error(f"An error occurred during indexing: {str(e)}")
                     alert.empty()

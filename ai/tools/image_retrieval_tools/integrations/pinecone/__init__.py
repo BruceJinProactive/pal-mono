@@ -7,7 +7,7 @@ from google.oauth2 import service_account
 from openai import OpenAI, OpenAIError
 from pinecone import Pinecone
 from pinecone.exceptions import PineconeException
-from vertexai.language_models import TextEmbeddingModel
+from vertexai.vision_models import MultiModalEmbeddingModel
 
 from ai.llm import _settings
 from utils.log import logger
@@ -19,8 +19,10 @@ from .constant import SYSTEM_PROMPT, USER_PROMPT
 class PineconeIntegration:
     def __init__(
         self,
-        pinecone_index_name: str,
         pinecone_api_key: str,
+        pinecone_index_name: str,
+        pinecone_namespace: str,
+        pinecone_dim: int,
         vertexai_project_id: str,
         vertexai_location: str = "us-central1",
     ):
@@ -55,11 +57,15 @@ class PineconeIntegration:
             location=vertexai_location,
             credentials=credentials,
         )
-        self.emb_model = TextEmbeddingModel.from_pretrained("text-embedding-004")
+        self.emb_model = MultiModalEmbeddingModel.from_pretrained(
+            "multimodalembedding@001"
+        )
 
         # Pinecone
         pc_client = Pinecone(api_key=pinecone_api_key)
         self.index = pc_client.Index(name=pinecone_index_name)
+        self.pinecone_dim = pinecone_dim
+        self.pinecone_namespace = pinecone_namespace
 
         # OpenAI
         self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
@@ -100,12 +106,12 @@ class PineconeIntegration:
         try:
             # NOTE: Temporary embedding strategy - using google vertex ai multimodal embedding
             query_embedding = self.emb_model.get_embeddings(
-                [img_rag_query], output_dimensionality=768
+                contextual_text=img_rag_query, dimension=self.pinecone_dim
             )
 
             query_response = self.index.query(
-                namespace="image-embeddings",
-                vector=query_embedding[0].values,
+                namespace=self.pinecone_namespace,
+                vector=query_embedding.text_embedding,
                 top_k=top_k,
                 include_values=False,
                 include_metadata=True,
