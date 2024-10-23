@@ -11,8 +11,9 @@ from . import _settings
 # Get the MODEL_ROUTER_BASE_URL environment variable, or use a default value if not set
 MODEL_ROUTER_BASE_URL = getenv(
     "MODEL_ROUTER_BASE_URL",
-    "https://4msggkaz6wph3hx7hxppwcqn7e0xjlmb.lambda-url.us-west-1.on.aws/",  # lat,
+    "https://25qnn07d2j.execute-api.us-west-1.amazonaws.com/lat/",  # lat,
 )
+MODEL_ROUTER_API_KEY = getenv("MODEL_ROUTER_API_KEY")
 
 
 class LLM(Enum):
@@ -53,7 +54,12 @@ def get_llm(llm_name: LLM):
             top_p=0.9,
         )
     elif llm_name == LLM.ROUTER:
-        return OpenAILike(base_url=MODEL_ROUTER_BASE_URL)
+        return OpenAILike(
+            default_headers={
+                "x-api-key": MODEL_ROUTER_API_KEY,
+            },
+            base_url=MODEL_ROUTER_BASE_URL,
+        )
     else:
         raise ValueError(f"Invalid model name: {llm_name}")
 
