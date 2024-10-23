@@ -1,6 +1,9 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
+from sqlalchemy.orm import Session
 
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.user_repository import UserRepository
@@ -9,6 +12,10 @@ from . import _implementation
 
 get_conversation_messages = _implementation.get_conversation_messages
 _include_conversation_preview = _implementation._include_conversation_preview
+
+mock_session = MagicMock(spec=Session)
+mock_account_uuid = UUID("12345678-1234-5678-1234-567812345678")
+mock_conversation_uuid = MagicMock(spec=UUID)
 
 
 def test_include_conversation_preview_no_limit(mocker):
@@ -51,7 +58,7 @@ def test_get_conversation_messages_valid_user(mocker):
     conversation_mock = mocker.Mock()
     conversation_mock.user_id = 2
     user_mock = mocker.Mock()
-    user_mock.account_id = 0
+    user_mock.account_id = mock_account_uuid
     messages = ["mock_message1", "mock_message2"]
 
     mocker.patch.object(
@@ -62,7 +69,12 @@ def test_get_conversation_messages_valid_user(mocker):
         "services.admin_service._implementation.get_messages_by_conversation",
         return_value=messages,
     )
-    assert get_conversation_messages(None, 0, 0) == messages
+    assert (
+        get_conversation_messages(
+            mock_session, mock_account_uuid, mock_conversation_uuid
+        )
+        == messages
+    )
 
 
 def test_get_conversation_messages_invalid_auth(mocker):
@@ -81,4 +93,6 @@ def test_get_conversation_messages_invalid_auth(mocker):
     )
     mocker.patch.object(UserRepository, "get_user_by_id", return_value=user_mock)
     with pytest.raises(ValueError):
-        get_conversation_messages(None, 0, 0)
+        get_conversation_messages(
+            mock_session, mock_account_uuid, mock_conversation_uuid
+        )

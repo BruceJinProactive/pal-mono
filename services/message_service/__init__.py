@@ -49,7 +49,7 @@ async def get_chat_response(db: Session, message: Message) -> Message:
 
 def get_messages_by_conversation(
     db: Session, conversation_id: uuid.UUID
-) -> List[Message]:
+) -> List[db.Message]:
     """
     Retrieves all messages for a given conversation.
 

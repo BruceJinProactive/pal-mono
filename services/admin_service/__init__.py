@@ -3,8 +3,8 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
+import db.tables as db
 from api.schemas.admin.conversation import ConversationPreview
-from db.tables.messages import Message
 
 from . import _implementation
 
@@ -33,7 +33,7 @@ def get_inbox_conversations(
 
 def get_conversation_messages(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[Message]:
+) -> List[db.Message]:
     """
     Verifies that the requester has access to the conversation, then returns all messages
     in the conversation.

@@ -4,12 +4,11 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
+import db.tables as db_
 from api.schemas.admin.conversation import ConversationPreview
-from api.schemas.message.message import Message
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository
-from db.tables.messages import Message as DBMessage
 from services.account_service import get_account
 from services.assistant_service import get_assistants_by_account
 from services.message_service import (
@@ -19,7 +18,7 @@ from services.message_service import (
 from services.user_service import get_users_by_account_id
 
 
-def _include_conversation_preview(message: DBMessage, max_age: int) -> bool:
+def _include_conversation_preview(message: db_.Message, max_age: int) -> bool:
     """
     An internal filter function that determines whether a conversation should be included in get_inbox_conversations
     The conversation cannot be older than max_age, if specified.
@@ -53,7 +52,7 @@ def get_inbox_conversations(
     )
 
     message_counts: List[int] = []
-    last_messages: List[DBMessage] = []
+    last_messages: List[db_.Message] = []
 
     message_repository = MessageRepository(db)
     for id, _ in conversation_user_ids:
@@ -104,7 +103,7 @@ def get_inbox_conversations(
 
 def get_conversation_messages(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[Message]:
+) -> List[db_.Message]:
     conversation_repository = ConversationRepository(db)
     user_repository = UserRepository(db)
 
