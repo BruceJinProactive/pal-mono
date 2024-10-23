@@ -148,22 +148,16 @@ def get_adora_size_id(
     """
     Maps the size to size id.
     """
-    print("get_adora_size_id.size_map", size_map)
-
     # Find available size ids for the item
     available_sizes: set = set()
     if adora_item_id in menu_id_to_details_map:
         for size in menu_id_to_details_map[adora_item_id].order_types[0]["sizes"]:
             available_sizes.add(size["size_id"])
 
-    print("available_sizes", available_sizes)
-
     # Get GPT to find the most similar size
     size_options = []
     for size in available_sizes:
         size_options.append(size_map[size])
-
-    print("size_options", size_options)
 
     sys_prompt = f"""# CONTEXT #
 I am a waiter at a restaurant. I am taking a user's order.
