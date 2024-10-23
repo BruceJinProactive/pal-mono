@@ -74,8 +74,7 @@ class AdoraIntegration:
         )
 
         if isinstance(validated_order, AdoraOrderCalculationResult):
-            # TODO: add the size to the response before the item_name
-            return f"In the response, include quanity: {adora_order_item.quantity}, size: {adora_order_item.size}, item_name: {adora_order_item.item_name} with for price: {validated_order.SubTotal} to your cart."
+            return f"In the response, include quantity: {adora_order_item.quantity}, size: {adora_order_item.size}, item_name: {adora_order_item.item_name}, with modifications: {adora_order_item.modifications} for price: {validated_order.SubTotal} to your cart."
         else:
             return "Failed to validate order."
 

@@ -100,7 +100,7 @@ class AdoraOrderItem(OrderItem):
         quantity: int,
         comment: str,
         price: int,
-        modifications: list,
+        modifiers: list,
     ):
         self.itemId = item_id
         self.sizeId = size_id
@@ -113,7 +113,7 @@ class AdoraOrderItem(OrderItem):
 
         # TODO transform self.modifications into self.modifiers
         # self.modifiers = [{"id": 0, "isDefault": True, "price": 0, "weightId": 0}]
-        self.modifiers = modifications
+        self.modifiers = modifiers
 
     def to_dict(self):
         """

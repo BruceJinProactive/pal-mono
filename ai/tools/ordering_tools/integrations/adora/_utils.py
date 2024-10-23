@@ -357,7 +357,7 @@ def process_modifiers(
         )
 
         if most_similar_modifier_id:
-            modifiers.append(most_similar_modifier_id)
+            modifiers.append({"id": most_similar_modifier_id, "name": matched_modifier})
         else:
             comment += order_item_modification + ". "
 
@@ -411,7 +411,6 @@ def get_adora_modifications(
     openai_client: OpenAI,
     openai_model: str,
     order_item: OrderItem,
-    order_item_modifications: list,
 ) -> tuple[bool, AdoraOrderItem | str]:
     """
     Maps user-supplied modifications to a specific item in the restaurant's menu, handling both valid modifiers and comments.
@@ -425,7 +424,6 @@ def get_adora_modifications(
         openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
         openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
         order_item (OrderItem): The order item object that holds details such as quantity.
-        order_item_modifications (list): A list of modifications provided by the user for the order item.
 
     Returns:
         tuple[bool, AdoraOrderItem | str]:
@@ -445,7 +443,7 @@ def get_adora_modifications(
 
     # Process order item modifications using OpenAI
     modifiers, comment = process_modifiers(
-        menu_modifiers, order_item_modifications, openai_client, openai_model
+        menu_modifiers, order_item.modifications, openai_client, openai_model
     )
     payload["comment"] = comment
 
@@ -469,17 +467,19 @@ def get_adora_modifications(
                 modifier_group_counter[item_modifier_group_id] += 1
 
     # Add user-provided modifiers to payload and update group counts
-    for modifier_id in modifiers:
+    new_added_modifications: list[str] = []
+    for modifier_item in modifiers:
         payload["modifiers"].append(
             {
-                "id": modifier_id,
+                "id": modifier_item["id"],
                 "isDefault": False,
                 "price": 1,  # adjust the price as needed
                 "weightId": 3,  # adjust the weightId as needed
             }
         )
-        if modifier_id in modifier_id_to_group_id:
-            modifier_group_counter[modifier_id_to_group_id[modifier_id]] += 1
+        if modifier_item["id"] in modifier_id_to_group_id:
+            modifier_group_counter[modifier_id_to_group_id[modifier_item["id"]]] += 1
+        new_added_modifications.append(modifier_item["name"])
 
     # Validate modifier group constraints
     is_valid, validation_message = validate_modifier_group_constraints(
@@ -500,10 +500,7 @@ def get_adora_modifications(
     adora_order_item.item_name = adora_item_name
     adora_order_item.size = adora_size_name
     adora_order_item.quantity = order_item.quantity
-    # TODO: add modifications to the response
-    # But this includes the whole modifier group and not the modifications
-    # the user asked for and is incompatible to render as it's the wrong format
-    # adora_order_item.modifications = ???
+    adora_order_item.modifications = new_added_modifications
 
     return True, adora_order_item
 
@@ -573,7 +570,7 @@ def validate_and_convert_item(
         return False, "Failed to get size of item in the menu."
 
     # get Adora-specific modifications and create the AdoraOrderItem
-    adora_modifications_res = get_adora_modifications(
+    adora_order_res = get_adora_modifications(
         adora_item_name,
         adora_item_id,
         adora_size_name,
@@ -584,7 +581,6 @@ def validate_and_convert_item(
         openai_client,
         openai_model,
         order_item,
-        order_item.modifications,
     )
 
-    return adora_modifications_res
+    return adora_order_res

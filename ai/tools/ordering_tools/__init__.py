@@ -73,7 +73,7 @@ class OrderingTools(Toolkit):
             modifications (list[str]): Any modifications for the item to add. Defaults to an empty list.
 
         Returns:
-            str: A message including quanity, size, item_name, with the price or a failure to add item message.
+            str: A message including quanity, size, item_name, with modifications for the price or a failure to add item message.
         """
         # Create generic order item
         generic_order_item = OrderItem(item_name, size, quantity, modifications)
