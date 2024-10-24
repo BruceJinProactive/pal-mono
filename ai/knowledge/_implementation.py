@@ -73,7 +73,7 @@ def index_data_from_shopify() -> tuple[int, int]:
                 catalog = catalog.next_page()  # type: ignore
 
         # TODO: For testing purposes, we only sample a subset of the data
-        if products_indexed >= 100:
+        if products_indexed >= 1000:
             break
 
     indexer = ShopifyImageIndexer()
