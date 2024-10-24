@@ -71,9 +71,11 @@ class ShopifyImageIndexer:
         Returns:
             list[float]: The cross-modality embedding.
         """
-        # Remove HTML tags from body_html
-        clean = re.compile("<.*?>")
-        metadata["body_html"] = re.sub(clean, "", metadata["body_html"])
+
+        if metadata["body_html"]:
+            # Remove HTML tags from body_html
+            clean = re.compile("<.*?>")
+            metadata["body_html"] = re.sub(clean, "", metadata["body_html"])
 
         # Embed only title and body_html (description)
         metadata_str = ", ".join(
