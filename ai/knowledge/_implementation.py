@@ -60,6 +60,9 @@ def index_data_from_shopify() -> tuple[int, int]:
                 if k not in ["variants", "options", "images", "image"] and v is not None
             }
 
+            if not filtered_metadata["body_html"]:
+                filtered_metadata["body_html"] = ""
+
             data = {
                 "id": str(metadata["id"]),
                 "image_url": image_url,
