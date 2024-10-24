@@ -61,26 +61,30 @@ class ShopifyImageIndexer:
         response.raise_for_status()
         return Image(response.content)
 
-    def __get_embedding(self, image_url: str, metadata: dict[str, Any]) -> list[float]:
+    def __get_embedding(
+        self, image_url: str, embedding_data: dict[str, Any]
+    ) -> list[float]:
         """Get embedding for image and metadata.
 
         Args:
             image_url (str): Item's image url.
-            metadata (dict[str, Any]): Item's metadata.
+            embedding_data (dict[str, Any]): Item's data to embed.
 
         Returns:
             list[float]: The cross-modality embedding.
         """
 
-        if metadata.get("body_html"):
+        if embedding_data.get("description"):
             # Remove HTML tags from body_html
             clean = re.compile("<.*?>")
-            metadata["body_html"] = re.sub(clean, "", metadata["body_html"])
+            embedding_data["description"] = re.sub(
+                clean, "", embedding_data["description"]
+            )
 
         # Embed only title and body_html (description)
         metadata_str = ", ".join(
             str(v)
-            for k, v in metadata.items()
+            for k, v in embedding_data.items()
             if k in ["title", "body_html"] and v is not None
         )
 
@@ -140,56 +144,58 @@ class ShopifyImageIndexer:
             )
             logger.info(f"Index '{index_name}' created successfully.")
 
-    def _upsert(
-        self, id: str, image_url: str, metadata: dict[str, Any]
-    ) -> UpsertResponse:
+    def upsert(
+        self,
+        item: dict[str, Any],
+    ) -> UpsertResponse | None:
         """Upsert into Pinecone index.
 
         Args:
-            id (str): The item id.
-            image_url (str): The item image url.
-            metadata (dict[str, Any]): The item metadata.
+            item (dict[str, Any]): The item to upsert.
 
         Returns:
             UpsertResponse: The response from Pinecone after upsertion.
         """
-        embedding = self.__get_embedding(image_url, metadata)
+        try:
+            embedding = self.__get_embedding(item["image_url"], item["embedding_data"])
 
-        upsert_response = self.index.upsert(
-            vectors=[
-                {
-                    "id": id,
-                    "values": embedding,
-                    "metadata": metadata,
-                }
-            ],
-            namespace="cross-modality-embeddings",
-        )
-        return upsert_response
+            upsert_response = self.index.upsert(
+                vectors=[
+                    {
+                        "id": item["id"],
+                        "values": embedding,
+                        "metadata": item["metadata"],
+                    }
+                ],
+                namespace="cross-modality-embeddings-full",
+            )
 
-    def batch_upsert(self, data: list[dict[str, Any]]) -> tuple[int, int]:
+            logger.info(
+                f"Upserted embedding for item ID {item['id']}\n"
+                f"Response: {upsert_response}\n"
+                f"Item info: {item}"
+            )
+
+            return upsert_response
+        except Exception as e:
+            logger.error(f"Error upserting item to Pinecone: {e}\nItem: {item}")
+            return None
+
+    def batch_upsert(self, items: list[dict[str, Any]]) -> tuple[int, int]:
         """Upsert multiple items into Pinecone index.
 
         Args:
-            data (list[dict[str, Any]]): The list of items to upsert.
+            items (list[dict[str, Any]]): The list of items to upsert.
 
         Returns:
             tuple[int, int]: A tuple containing the number of successful upsertions and the number of failed upsertions.
         """
-        failures = 0
-        for item in data:
-            try:
-                response = self._upsert(
-                    id=item["id"],
-                    image_url=item["image_url"],
-                    metadata=item["metadata"],
-                )
+        # TODO: Make this more efficient by batching upsertions
 
-                logger.info(
-                    f"Upserted embedding for item ID {item['id']}\n"
-                    f"Response: {response}\n"
-                    f"Item info: {item}"
-                )
+        failures = 0
+        for item in items:
+            try:
+                self.upsert(item)
 
             except Exception as e:
                 logger.error(f"Error upserting item to Pinecone: {e}\nItem: {item}")
@@ -198,5 +204,5 @@ class ShopifyImageIndexer:
 
         logger.info("Pinecone upsertion complete.")
 
-        successes = len(data) - failures
+        successes = len(items) - failures
         return successes, failures

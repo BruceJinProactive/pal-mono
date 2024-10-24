@@ -2,6 +2,7 @@ import json
 from os import getenv
 
 import vertexai
+import yaml
 from google.oauth2 import service_account
 from openai import OpenAI, OpenAIError
 from pinecone import Pinecone
