@@ -211,7 +211,7 @@ class ShopifyImageIndexer:
             ids=[str(metadata["id"])], namespace=self.pinecone_namespace
         )
 
-        if not fetch_res.get("vectors"):
+        if fetch_res.get("vectors") != {}:
             # Product already upserted
             logger.info(
                 f"Product ID {str(metadata['id'])} already upserted. Skipping..."

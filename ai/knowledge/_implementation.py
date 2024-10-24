@@ -12,6 +12,8 @@ from utils.secret import get_client_secret
 
 from .image_indexer import ShopifyImageIndexer
 
+import time
+
 
 def get_knowledge(account_name: str) -> AssistantKnowledge:
     knowledge_table_name = f"{account_name}_knowledge"
@@ -49,11 +51,16 @@ def index_data_from_shopify() -> tuple[int, int]:
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         while catalog:
             logger.info(f"Current number of products viewed: {products_indexed}")
+            logger.info(
+                f"Current unique labels found in Shopify Catalog: {indexer.unique_labels}"
+            )
 
             future_to_product = {
                 executor.submit(indexer.process_product, product): product
                 for product in catalog
             }
+
+            start_time = time.time()
 
             for future in as_completed(future_to_product):
                 product = future_to_product[future]
@@ -72,6 +79,10 @@ def index_data_from_shopify() -> tuple[int, int]:
                     )
                     failures += 1
 
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            logger.info(f"Total time taken: {elapsed_time} seconds")
+
             # Move to the next page if available
             if catalog.has_next_page():  # type: ignore
                 catalog = catalog.next_page()  # type: ignore
@@ -82,6 +93,8 @@ def index_data_from_shopify() -> tuple[int, int]:
 
     shopify.ShopifyResource.clear_session()  # Clear the session
 
-    logger.info(f"Unique labels found in Shopify Catalog: {indexer.unique_labels}")
+    logger.info(
+        f"Final unique labels found in Shopify Catalog: {indexer.unique_labels}"
+    )
 
     return successes, failures
