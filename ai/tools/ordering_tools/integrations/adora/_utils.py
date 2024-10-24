@@ -587,8 +587,9 @@ def validate_and_convert_item(
     if adora_size_name is None:
         return False, "Failed to get size of item in the menu."
 
-    # get Adora-specific modifications and create the AdoraOrderItem
-    adora_order_res = get_adora_modifications(
+    # get Adora-specific modifications and create the AdoraOrderItem:
+    #   (True, AdoraOrderItem) or 'Error message'
+    adora_order_item_conversion_res = get_adora_modifications(
         adora_item_name,
         adora_item_id,
         adora_size_name,
@@ -601,4 +602,4 @@ def validate_and_convert_item(
         order_item,
     )
 
-    return adora_order_res
+    return adora_order_item_conversion_res

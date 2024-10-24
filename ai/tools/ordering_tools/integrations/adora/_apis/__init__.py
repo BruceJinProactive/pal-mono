@@ -1,6 +1,5 @@
 import http.client
 import json
-import logging
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -17,6 +16,7 @@ from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraValidatedAddress,
     AdoraValidatedAddressList,
 )
+from utils.log import logger
 
 from . import _utils
 
@@ -137,6 +137,10 @@ def validate_order(
 
     payload = json.dumps(payload)
 
+    logger.debug(
+        f"[AdoraIntegration._apis.validate_order] Payload: {json.dumps(json.loads(payload), indent=2)}"
+    )
+
     response = _utils.connect_adora_order_hub(
         "POST",
         bearer_token,
@@ -146,11 +150,17 @@ def validate_order(
         payload=payload,
     )
 
+    logger.debug(
+        f"[AdoraIntegration._apis.validate_order] Response code: {response.status}. Response body: {response.decoded_body}"
+    )
     if response.status == 200:
         return _utils.parse_json(
             AdoraOrderCalculationResult, json.loads(response.decoded_body)
         )
     else:
+        logger.error(
+            f"[AdoraIntegration._apis.validate_order] Order validation failed with status {response.status}: {response.decoded_body}"
+        )
         return None
 
 
@@ -223,23 +233,27 @@ def place_order(
                 ),
             )
             if response.status == 200:
-                logging.info(f"Order {order_id} placed successfully.")
+                logger.debug(
+                    f"[AdoraIntegration._apis.place_order] Order {order_id} placed successfully."
+                )
                 return True
             else:
-                logging.warning(
-                    f"[Attempt {attempt + 1}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}. Status: {response.status}, Body: {response.decoded_body}"
+                logger.warning(
+                    f"[AdoraIntegration._apis.place_order] [Attempt {attempt + 1}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}. Status: {response.status}, Body: {response.decoded_body}"
                 )
         except Exception as e:
-            logging.error(
-                f"[Attempt {attempt + 1}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}. Exception: {type(e).__name__}: {e}"
+            logger.error(
+                f"[AdoraIntegration._apis.place_order] [Attempt {attempt + 1}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}. Exception: {type(e).__name__}: {e}"
             )
 
         delay = BASE_DELAY * (2**attempt)  # Exponential backoff
-        logging.warning(f"... Retrying in {delay} seconds")
+        logger.warning(
+            f"[AdoraIntegration._apis.place_order] ... Retrying in {delay} seconds"
+        )
         time.sleep(delay)
 
-    logging.error(
-        f"[Attempt {MAX_RETRIES}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}."
+    logger.error(
+        f"[AdoraIntegration._apis.place_order] [Attempt {MAX_RETRIES}/{MAX_RETRIES}] Failed to call connect_adora_order_hub:textPaymentUrl with order_id={order_id}, store_id={store_id}, phone_number={phone_number}."
     )
     return False
 

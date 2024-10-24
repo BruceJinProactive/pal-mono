@@ -19,6 +19,7 @@ from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraOrderItem,
     AdoraOrderType,
 )
+from utils.log import logger
 
 from . import _apis, _utils
 
@@ -174,17 +175,26 @@ class AdoraIntegration:
             # TODO: Usage limited to 1qps without API key. Upgrade to paid plan when needed.
             # TODO: https://aws.amazon.com/location/
             geolocator = Nominatim(user_agent="pal")
-            geocoded_loc: Any = geolocator.geocode(
-                {
-                    "street": delivery_address.address,
-                    "city": delivery_address.city,
-                    "state": delivery_address.state,
-                    "country": "USA",
-                    "postalcode": delivery_address.zip_code,
-                }
+            geo_payload = {
+                "street": delivery_address.address,
+                "city": delivery_address.city,
+                "state": delivery_address.state,
+                "country": "USA",
+                "postalcode": delivery_address.zip_code,
+            }
+            logger.debug(
+                "[AdoraIntegration.place_order] Geolocator payload: " + str(geo_payload)
             )
+            geocoded_loc: Any = geolocator.geocode(geo_payload)
             if not geocoded_loc:
                 return "The address that the user provided is invalid. Please provide a valid address."
+
+            logger.debug(
+                "[AdoraIntegration.place_order] Nominatim API result: "
+                + str(geocoded_loc.latitude)
+                + ", "
+                + str(geocoded_loc.longitude)
+            )
 
             # call Adora address validation API
             validated_address_success, validated_address = _apis.validate_address(
@@ -233,8 +243,7 @@ class AdoraIntegration:
         if saved_order and _apis.place_order(
             bearer_token, saved_order.OrderID, self.store_id, consumer.phone_number
         ):
-            # Combine the summary of items with the total price
-            return (
+            res = (
                 "Order placed successfully!\n"
                 "Here are the details of your order, list the item name:\n"
                 f"{', '.join(order_summary)}\n"
@@ -242,6 +251,14 @@ class AdoraIntegration:
                 f"Total with Tax: ${validated_order.Total}\n"
                 f"Order ID: {saved_order.OrderID}\n"
             )
+            logger.debug(
+                f"[AdoraIntegration.place_order] Order placed successfully! Returning: {res}"
+            )
+            # Combine the summary of items with the total price
+            return res
 
         else:
+            logger.debug(
+                f"[AdoraIntegration.place_order] Failed to place order. Saved order ID: {saved_order.OrderID if saved_order else 'NO SAVED ORDER'}"
+            )
             return "There was an issue placing the order. Please try again."

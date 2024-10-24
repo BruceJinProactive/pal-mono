@@ -4,6 +4,7 @@ from phi.tools.toolkit import Toolkit
 
 from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
 from ai.tools.ordering_tools.integrations.adora import AdoraIntegration
+from utils.log import logger
 
 from . import _utils
 
@@ -75,13 +76,14 @@ class OrderingTools(Toolkit):
         Returns:
             str: A message including quanity, size, item_name, with modifications for the price or a failure to add item message.
         """
+        logger.debug(
+            f"[OrderingTools.add_to_order] Item: {item_name}, Size: {size}, Quantity: {quantity}, Modifications: {modifications}"
+        )
         # Create generic order item
         generic_order_item = OrderItem(item_name, size, quantity, modifications)
 
         # Call integration's add_to_order method
-        integrated_order_res = self.integration.add_to_order(generic_order_item)
-
-        return integrated_order_res
+        return self.integration.add_to_order(generic_order_item)
 
     def list_coupons(self):
         """
@@ -128,6 +130,8 @@ class OrderingTools(Toolkit):
             User: just those items please
             Tool: place_order()
         """
+        logger.debug(f"[OrderingTools.place_order] Chat history: {chat_history}")
+
         cart = _utils.get_cart_info(chat_history)
         if not cart:
             return "There was an issue processing your order. Please try again."
@@ -141,6 +145,7 @@ class OrderingTools(Toolkit):
             else ""
         )
         consumer = _utils.get_consumer_info(chat_history, memory_list)
+        logger.debug(f"[OrderingTools.place_order] Consumer: {consumer}")
         if not consumer:
             return "Ask the user to provide their first name, last name, phone number, and email address to place an order."
 
@@ -166,6 +171,9 @@ class OrderingTools(Toolkit):
         )
 
         fulfillment_strategy = _utils.get_fulfillment_strategy(chat_history)
+        logger.debug(
+            f"[OrderingTools.place_order] Fulfillment strategy: {fulfillment_strategy}"
+        )
 
         if (
             not fulfillment_strategy
@@ -177,6 +185,9 @@ class OrderingTools(Toolkit):
         delivery_address = None
         if fulfillment_strategy == FulfillmentStrategy.DELIVERY:
             delivery_address = _utils.get_delivery_address(chat_history)
+            logger.debug(
+                f"[OrderingTools.place_order] Delivery address: {delivery_address}"
+            )
             if (
                 not delivery_address
                 or delivery_address.address == "N/A"
@@ -188,6 +199,7 @@ class OrderingTools(Toolkit):
 
         generic_coupon = _utils.get_generic_coupon_info(chat_history)
         generic_coupon = generic_coupon.coupon if generic_coupon else "N/A"
+        logger.debug(f"[OrderingTools.place_order] Generic coupon: {generic_coupon}")
 
         return self.integration.place_order(
             cart.cart_items,
@@ -211,5 +223,6 @@ class OrderingTools(Toolkit):
         Returns:
             str: The result of removing the item from the order.
         """
+        logger.debug("[OrderingTools.remove_from_order] Removing item from order.")
 
         return "The item was successfully removed from the order!"

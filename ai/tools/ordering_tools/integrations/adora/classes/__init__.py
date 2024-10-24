@@ -115,6 +115,12 @@ class AdoraOrderItem(OrderItem):
         # self.modifiers = [{"id": 0, "isDefault": True, "price": 0, "weightId": 0}]
         self.modifiers = modifiers
 
+    def __str__(self):
+        return f"quantity: {self.quantity} sizeId: {self.sizeId} itemId: {self.itemId} with {self.modifiers} for {self.price}"
+
+    def to_log_string(self):
+        return f"{self.quantity} {self.size} (sizeId: {self.sizeId}) {self.item_name} (itemId: {self.itemId}) with {self.modifications} ({self.modifiers}) for {self.price}"
+
     def to_dict(self):
         """
         Returns a dictionary containing only the attributes of AdoraOrderItem.
