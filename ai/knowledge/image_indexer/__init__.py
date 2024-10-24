@@ -79,7 +79,9 @@ class ShopifyImageIndexer:
 
         # Embed only title and body_html (description)
         metadata_str = ", ".join(
-            str(v) for k, v in metadata.items() if k in ["title", "body_html"]
+            str(v)
+            for k, v in metadata.items()
+            if k in ["title", "body_html"] and v is not None
         )
 
         # NOTE: We cut the metadata string to 1024 characters to avoid exceeding embedder limit
