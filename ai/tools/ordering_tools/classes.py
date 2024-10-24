@@ -97,3 +97,6 @@ class OrderItem:
         self.size: str = size
         self.quantity: int = quantity
         self.modifications: list[str] = modifications
+
+    def __str__(self):
+        return f"{self.quantity} {self.size} {self.item_name} with {self.modifications}"

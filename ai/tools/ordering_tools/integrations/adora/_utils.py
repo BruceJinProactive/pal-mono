@@ -76,8 +76,6 @@ def get_adora_item_id(
     """
     Finds the closest item name in the menu and consequent item id.
     """
-    # Load menu item names
-
     # Get GPT to find the most similar item name
     sys_prompt = f"""# CONTEXT #
 I am a waiter at a restaurant. I am taking a user's order. 
@@ -154,72 +152,81 @@ def get_adora_size_id(
         for size in menu_id_to_details_map[adora_item_id].order_types[0]["sizes"]:
             available_sizes.add(size["size_id"])
 
-    # Get GPT to find the most similar size
-    size_options = []
-    for size in available_sizes:
-        size_options.append(size_map[size])
+    # Available sizes for the item
+    # example: {'12"': 1, '14"': 2, '18"': 3, 'Gluten Free 12"': 4}
+    size_options = {size_map[size]: size for size in available_sizes}
 
-    sys_prompt = f"""# CONTEXT #
-I am a waiter at a restaurant. I am taking a user's order.
-I want to match a user supplied item size to an available item size on the menu.
-Here are the available size options {size_options}
+    if len(size_options) == 0:
+        return ConversionResult(False, "No sizes found for the item.")
+    # Only 1 size option, so return the size id directly and skip LLM
+    elif len(size_options) == 1:
+        # get the value from the only key in the dictionary
+        key = next(iter(size_options))
+        size_id = size_options[key]
+        return ConversionResult(True, str(size_id))
+    else:
+        sys_prompt = f"""
+            # CONTEXT #
+            I am a waiter at a restaurant. I am taking a user's order.
+            I want to match a user supplied item size to an available item size on the menu.
+            Here are the available size options {size_options}
 
-#########
+            #########
 
-# OBJECTIVE #
-Match the user's inputted item size to the closest item size on the menu as if you were a server/waiter.
+            # OBJECTIVE #
+            Match the user's inputted item size to the closest item size on the menu as if you were a server/waiter.
 
-#########
+            #########
 
-# EXAMPLES #
-If the size options are 12", 14" and 18"
-User: large
-Assistant: 18"
+            # EXAMPLES #
+            If the size options are 12", 14" and 18"
+            User: large
+            Assistant: 18"
 
-User: medium
-Assistant: 14"
+            User: medium
+            Assistant: 14"
 
-User: small
-Assistant: 12"
+            User: small
+            Assistant: 12"
 
-User: 12 inch
-Assistant: 12"
+            User: 12 inch
+            Assistant: 12"
 
-#########
+            #########
 
-# RESPONSE FORMAT #
-Only output the most similar item size. Output "N/A" if the user's inputted item size is nothing like any of the available options.
-"""
-    response = openai_client.chat.completions.create(
-        model=openai_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": sys_prompt,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": order_item_size},
-                ],
-            },
-        ],
-        temperature=0,
-        max_tokens=256,
-        response_format={"type": "text"},
-    )
+            # RESPONSE FORMAT #
+            Only output the most similar item size. Output "N/A" if the user's inputted item size is nothing like any of the available options.
+        """
+        response = openai_client.chat.completions.create(
+            model=openai_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": sys_prompt,
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": order_item_size},
+                    ],
+                },
+            ],
+            temperature=0,
+            max_tokens=256,
+            response_format={"type": "text"},
+        )
 
-    item_size = response.choices[0].message.content
-    for size_id, size in size_map.items():
-        if size == item_size:
+        item_size = response.choices[0].message.content
+        size_id = size_options.get(item_size)
+        if size_id:
             return ConversionResult(True, str(size_id))
 
-    return ConversionResult(False, "Size not found in menu.")
+        return ConversionResult(False, "Size not found in menu.")
 
 
 def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int]]:
@@ -438,14 +445,25 @@ def get_adora_modifications(
     item_modifier_groups = []
     if adora_item_id in menu_id_to_details_map:
         item_modifier_groups = menu_id_to_details_map[adora_item_id].modifier_groups
-    if not item_modifier_groups:
-        return False, "No modifier groups found for item."
 
     # Process order item modifications using OpenAI
     modifiers, comment = process_modifiers(
         menu_modifiers, order_item.modifications, openai_client, openai_model
     )
     payload["comment"] = comment
+
+    # If there are no modifier groups, create an AdoraOrderItem with no modifications
+    if not item_modifier_groups:
+        if modifiers:
+            return False, "No modifiers are allowed for this item."
+        adora_order_item = AdoraOrderItem(
+            adora_item_id, adora_size_id, order_item.quantity, comment, 0, []
+        )
+        adora_order_item.item_name = adora_item_name
+        adora_order_item.size = adora_size_name
+        adora_order_item.quantity = order_item.quantity
+        adora_order_item.modifications = []
+        return True, adora_order_item
 
     # Add all default modifiers and track modifier group constraints
     modifier_group_counter = defaultdict(int)
