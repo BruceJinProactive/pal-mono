@@ -1,3 +1,4 @@
+import textwrap
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -77,33 +78,41 @@ def get_adora_item_id(
     Finds the closest item name in the menu and consequent item id.
     """
     # Get GPT to find the most similar item name
-    sys_prompt = f"""# CONTEXT #
-I am a waiter at a restaurant. I am taking a user's order. 
-I want to match a user supplied item name to an item on the menu. 
-Here are the menu items {list(menu_name_to_id_map.keys())}
+    sys_prompt = textwrap.dedent(
+        f"""
+        # CONTEXT #
+        I am a waiter at a restaurant. I am taking a user's order. 
+        I want to match a user supplied item name to an item on the menu. 
+        Here is the MENU: {list(menu_name_to_id_map.keys())}
 
-#########
+        #########
 
-# OBJECTIVE #
-Match the user's inputted item name to the closest item option on the menu as if you were a server/waiter.
+        # OBJECTIVE #
+        Match the user's inputted item name to the closest item option on the menu as if you were a server/waiter.
 
-#########
+        #########
 
-# EXAMPLES #
-User: big sur
-Assistant: Big Sur
+        # EXAMPLES #
+        EXAMPLE MENU: ["Coke", "Sprite"]
 
-User: cowels coombo
-Assistant: Cowell's Combo
+        User: coke
+        Assistant: Coke
 
-User: supreme pizza
-Assistant: N/A
+        User: spritw
+        Assistant: Sprite
 
-#########
+        User: pepsi
+        Assistant: N/A
 
-# RESPONSE FORMAT #
-Only output the most similar menu item name. Output "N/A" if the user's inputted item name is nothing like any of the available options.
-"""
+        User: coke zero
+        Assistant: N/A
+
+        #########
+
+        # RESPONSE FORMAT #
+        Only output the most similar menu item name. Output "N/A" if the user's inputted item name is nothing like any of the available options.
+        """
+    )
     response = openai_client.chat.completions.create(
         model=openai_model,
         messages=[
@@ -165,11 +174,12 @@ def get_adora_size_id(
         size_id = size_options[key]
         return ConversionResult(True, str(size_id))
     else:
-        sys_prompt = f"""
+        sys_prompt = textwrap.dedent(
+            f"""
             # CONTEXT #
             I am a waiter at a restaurant. I am taking a user's order.
             I want to match a user supplied item size to an available item size on the menu.
-            Here are the available size options {size_options}
+            Here are the AVAILABLE SIZE OPTIONS: {size_options}
 
             #########
 
@@ -179,24 +189,29 @@ def get_adora_size_id(
             #########
 
             # EXAMPLES #
-            If the size options are 12", 14" and 18"
+            EXAMPLE AVAILABLE SIZE OPTIONS: ["Small", "Medium", "Large", "Size 5", "Size 6", "Size 7"]
+
             User: large
-            Assistant: 18"
+            Assistant: Large
 
-            User: medium
-            Assistant: 14"
+            User: Size5
+            Assistant: Size 5
 
-            User: small
-            Assistant: 12"
+            User: Size 8
+            Assistant: N/A
 
-            User: 12 inch
-            Assistant: 12"
+            User: size 4
+            Assistant: N/A
+
+            User: extra large
+            Assistant: N/A
 
             #########
 
             # RESPONSE FORMAT #
             Only output the most similar item size. Output "N/A" if the user's inputted item size is nothing like any of the available options.
-        """
+            """
+        )
         response = openai_client.chat.completions.create(
             model=openai_model,
             messages=[
@@ -272,33 +287,40 @@ def get_similar_modifier_using_openai(
         str: The most similar modifier from the menu or "N/A" if no close match is found.
     """
 
-    sys_prompt = f"""# CONTEXT #
-I am a waiter at a restaurant. I am taking a user's order.
-I want to match a user supplied item modification to an available item modification on the menu.
-Here are the available modification options {modifier_names}
+    sys_prompt = textwrap.dedent(
+        f"""
+        # CONTEXT #
+        I am a waiter at a restaurant. I am taking a user's order.
+        I want to match a user supplied item modification to an available item modification on the menu.
+        Here are the AVAILABLE MODIFICATION OPTIONS: {modifier_names}
 
-#########
+        #########
 
-# OBJECTIVE #
-Match the user's inputted item modification to the closest item modification on the menu as if you were a server/waiter.
+        # OBJECTIVE #
+        Match the user's inputted item modification to the closest item modification on the menu as if you were a server/waiter.
 
-#########
+        #########
 
-# EXAMPLES #
-User: anchoby
-Assistant: Anchovy
+        # EXAMPLES #
+        EXAMPLE AVAILABLE MODIFICATION OPTIONS: ["Rainbow Sprinkles", "Gummy Bears", "Whipped Cream", "Peanuts"]
+        User: rainbow sprinkles
+        Assistant: Rainbow Sprinkles
 
-User: extra cheese
-Assistant: Extra Cheese
+        User: pnuts
+        Assistant: peanuts
 
-User: nutella
-Assistant: N/A
+        User: nutella
+        Assistant: N/A
 
-#########
+        User: cherries
+        Assistant: N/A
 
-# RESPONSE FORMAT #
-Only output the most similar item modification. Output "N/A" if the user's inputted item modification is nothing like any of the available options.
-"""
+        #########
+
+        # RESPONSE FORMAT #
+        Only output the most similar item modification. Output "N/A" if the user's inputted item modification is nothing like any of the available options.
+        """
+    )
     response = openai_client.chat.completions.create(
         model=openai_model,
         messages=[
@@ -519,6 +541,11 @@ def get_adora_modifications(
     adora_order_item.size = adora_size_name
     adora_order_item.quantity = order_item.quantity
     adora_order_item.modifications = new_added_modifications
+
+    print(
+        "[AdoraIntegration._utils.get_adora_modifications]: adora_order_item"
+        f"{adora_order_item.to_log_string()}"
+    )
 
     return True, adora_order_item
 
