@@ -46,7 +46,7 @@ def index_data_from_shopify() -> tuple[int, int]:
 
     indexer = ShopifyImageIndexer()
 
-    MAX_WORKERS = 5
+    MAX_WORKERS = 10
     products_indexed, successes, failures = 0, 0, 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         while catalog:
