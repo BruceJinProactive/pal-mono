@@ -2,6 +2,7 @@ import json
 import re
 from os import getenv
 from typing import Any
+import time
 
 import requests
 import shopify
@@ -13,12 +14,15 @@ from vertexai.vision_models import Image, MultiModalEmbeddingModel
 from utils.log import logger
 from utils.secret import get_client_secret
 
+from collections import defaultdict
+
 
 class ShopifyImageIndexer:
     pinecone_index_name: str = "windsor-demo"
     vertexai_project_id: str = "imagerag-438322"
     vertexai_location: str = "us-central1"
     pinecone_api_key: str | None = getenv("PINECONE_API_KEY")
+    unique_labels: dict[str, set[str]] = defaultdict(set)
 
     def __init__(self):
         google_creds_str = get_client_secret("GOOGLE_APPLICATION_CREDENTIALS")
@@ -162,7 +166,7 @@ class ShopifyImageIndexer:
             logger.info(
                 f"Upserted embedding for product ID {product['id']}\n"
                 f"Response: {upsert_response}\n"
-                f"Product info: {product}"
+                f"Product info: {product}\n"
             )
 
             return True
@@ -172,7 +176,24 @@ class ShopifyImageIndexer:
             )
             return False
 
-    def process_product(self, product: shopify.Product) -> bool:
+    def __check_product_url(self, url: str) -> bool:
+        try:
+            response = requests.head(url, allow_redirects=True, timeout=5)
+            if response.status_code == 200:
+                logger.info(
+                    f"URL is valid: {url} (Status Code: {response.status_code})"
+                )
+                return True
+            elif response.status_code == 404:
+                logger.error(f"URL not found (404): {url}")
+            else:
+                logger.error(f"URL returned status code {response.status_code}: {url}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error checking URL {url}: {e}")
+
+        return False
+
+    def process_product(self, product: shopify.Product, max_retries: int = 5) -> bool:
         """Process a product and upsert it into Pinecone index.
 
         Args:
@@ -188,6 +209,7 @@ class ShopifyImageIndexer:
         ###
         # Create filtered metadata
         # Includes:
+        # - product_url (if doesn't exist, skip indexing product)
         # - product_type
         # - tags
         # - options (colors and sizes)
@@ -197,14 +219,32 @@ class ShopifyImageIndexer:
         # ###
         filtered_metadata = {}
 
+        if metadata.get("handle"):
+            windsor_product_url_prefix = "https://www.windsorstore.com/products/"
+            product_url = windsor_product_url_prefix + metadata["handle"]
+            valid = self.__check_product_url(product_url)
+
+            if valid:
+                filtered_metadata["product_url"] = product_url
+            else:
+                # NOTE: If the product does not have a valid URL, skip indexing it entirely
+                logger.error(f"Product does not have a valid URL: {product_url}")
+                return False
+
         # Format product type in metadata
         if metadata.get("product_type"):
-            filtered_metadata[metadata["product_type"].strip()] = True
+            label = metadata["product_type"].strip().lower()
+            filtered_metadata[label] = True
+            self.unique_labels["product_type"].add(label)
 
         # Format tags in metadata
         if metadata.get("tags"):
             for tag in metadata["tags"].split(","):
-                filtered_metadata[tag.strip()] = True
+                tag = tag.replace("[", "")
+                tag = tag.replace("]", "")
+                tag = tag.strip().lower()
+                filtered_metadata[tag] = True
+                self.unique_labels["tags"].add(tag)
 
         # Format options in metadata
         if metadata.get("options"):
@@ -212,10 +252,14 @@ class ShopifyImageIndexer:
                 option = option_object.attributes
                 if option["name"] == "Color":
                     for color in option["values"]:
-                        filtered_metadata[color.strip()] = True
+                        color = color.strip().lower()
+                        filtered_metadata[color] = True
+                        self.unique_labels["color"].add(color)
                 elif option["name"] == "Size":
                     for size in option["values"]:
-                        filtered_metadata[size.strip()] = True
+                        size = size.strip().lower()
+                        filtered_metadata[size] = True
+                        self.unique_labels["size"].add(size)
 
         # Format image urls in metadata
         if metadata.get("images"):
@@ -240,4 +284,23 @@ class ShopifyImageIndexer:
             "metadata": filtered_metadata,
         }
 
-        return self._upsert(product_data)
+        retries = 0
+        while retries < max_retries:
+            try:
+                result = self._upsert(product_data)
+                return result
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error with upserting product: {e}\n"
+                    f"Product:{product_data}"
+                )
+
+            retries += 1
+            if retries < max_retries:
+                logger.info(f"[{retries+1}/{max_retries}] Retrying request...")
+                time.sleep(2**retries)  # Exponential backoff
+            else:
+                logger.info("Max retries exceeded. Exiting.")
+                break
+
+        return False

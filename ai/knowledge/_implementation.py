@@ -44,7 +44,7 @@ def index_data_from_shopify() -> tuple[int, int]:
 
     indexer = ShopifyImageIndexer()
 
-    MAX_WORKERS = 10
+    MAX_WORKERS = 5
     products_indexed, successes, failures = 0, 0, 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         while catalog:
@@ -78,12 +78,10 @@ def index_data_from_shopify() -> tuple[int, int]:
             else:
                 break
 
-            # TODO: Remove once inital test is working
-            if products_indexed >= 1000:
-                break
-
     logger.info(f"Total number of items upserted: {products_indexed}")
 
     shopify.ShopifyResource.clear_session()  # Clear the session
+
+    logger.info(f"Unique labels found in Shopify Catalog: {indexer.unique_labels}")
 
     return successes, failures
