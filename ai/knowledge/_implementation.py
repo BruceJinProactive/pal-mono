@@ -48,7 +48,7 @@ def index_data_from_shopify() -> tuple[int, int]:
     products_indexed, successes, failures = 0, 0, 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         while catalog:
-            logger.info(catalog)
+            logger.info(f"Current number of products viewed: {products_indexed}")
 
             future_to_product = {
                 executor.submit(indexer.process_product, product): product

@@ -19,6 +19,7 @@ from collections import defaultdict
 
 class ShopifyImageIndexer:
     pinecone_index_name: str = "windsor-demo"
+    pinecone_namespace: str = "cross-modality-embeddings-full"
     vertexai_project_id: str = "imagerag-438322"
     vertexai_location: str = "us-central1"
     pinecone_api_key: str | None = getenv("PINECONE_API_KEY")
@@ -160,7 +161,7 @@ class ShopifyImageIndexer:
                         "metadata": product["metadata"],
                     }
                 ],
-                namespace="cross-modality-embeddings-full",
+                namespace=self.pinecone_namespace,
             )
 
             logger.info(
@@ -185,9 +186,9 @@ class ShopifyImageIndexer:
                 )
                 return True
             elif response.status_code == 404:
-                logger.error(f"URL not found (404): {url}")
+                logger.info(f"URL not found (404): {url}")
             else:
-                logger.error(f"URL returned status code {response.status_code}: {url}")
+                logger.info(f"URL returned status code {response.status_code}: {url}")
         except requests.exceptions.RequestException as e:
             logger.error(f"Error checking URL {url}: {e}")
 
@@ -205,6 +206,17 @@ class ShopifyImageIndexer:
         metadata = product.attributes
 
         image_url = metadata["image"].attributes["src"] if metadata["image"] else ""
+
+        fetch_res = self.index.fetch(
+            ids=[str(metadata["id"])], namespace=self.pinecone_namespace
+        )
+
+        if not fetch_res.get("vectors"):
+            # Product already upserted
+            logger.info(
+                f"Product ID {str(metadata['id'])} already upserted. Skipping..."
+            )
+            return True
 
         ###
         # Create filtered metadata
@@ -228,7 +240,10 @@ class ShopifyImageIndexer:
                 filtered_metadata["product_url"] = product_url
             else:
                 # NOTE: If the product does not have a valid URL, skip indexing it entirely
-                logger.error(f"Product does not have a valid URL: {product_url}")
+                logger.info(
+                    f"Product does not have a valid URL: {product_url}\n"
+                    f"Product:{product}"
+                )
                 return False
 
         # Format product type in metadata
