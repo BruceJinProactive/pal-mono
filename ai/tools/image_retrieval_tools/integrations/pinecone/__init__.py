@@ -2,11 +2,9 @@ import json
 from os import getenv
 
 import vertexai
-import yaml
 from google.oauth2 import service_account
 from openai import OpenAI, OpenAIError
 from pinecone import Pinecone
-from pinecone.exceptions import PineconeException
 from vertexai.vision_models import MultiModalEmbeddingModel
 
 from ai.llm import _settings
@@ -97,7 +95,11 @@ class PineconeIntegration:
             query_embedding = self.emb_model.get_embeddings(
                 contextual_text=img_rag_query, dimension=self.pinecone_dim
             )
+        except Exception as e:
+            logger.error(f"Failed to create embeddings: {e}")
+            return "Failed to retrieve image. Error with creating embedding."
 
+        try:
             query_response = self.index.query(
                 namespace=self.pinecone_namespace,
                 vector=query_embedding.text_embedding,
@@ -105,14 +107,9 @@ class PineconeIntegration:
                 include_values=False,
                 include_metadata=True,
             )
-
-        except PineconeException as e:
-            logger.error(f"Failed to query Pinecone index: {e}")
-            return "Failed to retrieve image. Query to Pinecone failed."
-
         except Exception as e:
-            logger.error(f"Failed to embed and query Pinecone index: {e}")
-            return "Failed to retrieve image. Error with embedding or Pinecone query."
+            logger.error(f"Failed to query Pinecone index: {e}")
+            return "Failed to retrieve image. Error with query to Pinecone index."
 
         # Extract image URL from Pinecone matches
         matches = query_response["matches"]

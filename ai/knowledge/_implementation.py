@@ -41,50 +41,46 @@ def index_data_from_shopify() -> tuple[int, int]:
     shopify.ShopifyResource.activate_session(session)
 
     all_products: list[dict[str, Any]] = []
-    erroneous_products: list[str] = []
     catalog = shopify.Product.find()
+
+    products_indexed = 0
     while catalog:
         for product in catalog:
-            attributes = product.attributes
+            metadata = product.attributes
 
-            if not attributes["image"]:
-                # If there is no image, skip the product for now
-                logger.error(f"Product {attributes['id']} has no image")
-                erroneous_products.append(attributes["id"])
-                continue
+            image_url = metadata["image"].attributes["src"] if metadata["image"] else ""
 
-            # NOTE: Assumption - only index single image for shopify item
-            # We can also modify the filter logic to include different metadata
-            # for embedding
-            metadata = {
-                "id": str(attributes["id"]),
-                "title": str(attributes["title"]),
-                "description": str(attributes["body_html"]),
-                "tags": str(attributes["tags"]),
-                "product_type": str(attributes["product_type"]),
-                "image_url": attributes["image"].attributes["src"],
+            # Format tags in metadata
+            for tag in metadata["tags"].split(","):
+                metadata[tag.strip()] = True
+
+            filtered_metadata = {
+                k: v
+                for k, v in metadata.items()
+                if k not in ["variants", "options", "images", "image"] and v is not None
             }
 
             data = {
-                "id": str(attributes["id"]),
-                "image_url": attributes["image"].attributes["src"],
-                "metadata": metadata,
+                "id": str(metadata["id"]),
+                "image_url": image_url,
+                "metadata": filtered_metadata,
             }
             all_products.append(data)
+
+            products_indexed += 1
 
             if catalog.has_next_page():  # type: ignore
                 catalog = catalog.next_page()  # type: ignore
 
         # TODO: For testing purposes, we only sample a subset of the data
-        break
+        if products_indexed >= 100:
+            break
 
     indexer = ShopifyImageIndexer()
 
-    logger.info(f"Total number of products: {len(all_products)}")
+    logger.info(f"Total number of products to upsert: {len(all_products)}")
     successes, failures = indexer.batch_upsert(all_products)
 
     shopify.ShopifyResource.clear_session()  # Clear the session
 
-    logger.info(f"The following products are missing images: {erroneous_products}")
-
-    return successes, failures + len(erroneous_products)
+    return successes, failures

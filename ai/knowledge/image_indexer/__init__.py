@@ -1,19 +1,13 @@
 import json
+import re
 from os import getenv
 from typing import Any
 
-import pinecone
 import requests
 import vertexai
-import yaml
 from google.oauth2 import service_account
-from pinecone import Index, Pinecone, ServerlessSpec, UpsertResponse
-from streamlit import image
-from vertexai.vision_models import (
-    Image,
-    MultiModalEmbeddingModel,
-    MultiModalEmbeddingResponse,
-)
+from pinecone import Pinecone, ServerlessSpec, UpsertResponse
+from vertexai.vision_models import Image, MultiModalEmbeddingModel
 
 from utils.log import logger
 from utils.secret import get_client_secret
@@ -71,39 +65,63 @@ class ShopifyImageIndexer:
         """Get embedding for image and metadata.
 
         Args:
-            image_url (str): Item image url.
-            metadata (dict[str, Any]): Item metadata.
+            image_url (str): Item's image url.
+            metadata (dict[str, Any]): Item's metadata.
 
         Returns:
             list[float]: The cross-modality embedding.
         """
-        filtered_metadata = {k: v for k, v in metadata.items() if k != "image_url"}
-        metadata_str = ", ".join(str(v) for v in filtered_metadata.values())
+        # Remove HTML tags from body_html
+        clean = re.compile("<.*?>")
+        metadata["body_html"] = re.sub(clean, "", metadata["body_html"])
 
-        multimodal_embedding = self.emb_model.get_embeddings(
-            image=self.__load_image(image_url),
-            contextual_text=metadata_str,
-            dimension=1408,
+        # Embed only title and body_html (description)
+        metadata_str = ", ".join(
+            str(v) for k, v in metadata.items() if k in ["title", "body_html"]
         )
-        text_embedding = multimodal_embedding.text_embedding
-        image_embedding = multimodal_embedding.image_embedding
 
-        if not text_embedding or not image_embedding:
-            raise ValueError("Error with creating cross modality embedding.")
+        # NOTE: We cut the metadata string to 1024 characters to avoid exceeding embedder limit
+        metadata_str = metadata_str[:1024]
 
-        combined = [x + y for x, y in zip(text_embedding, image_embedding)]
-        cross_modality_embedding = list(map(lambda x: x / 2, combined))
+        if not image_url:
+            # If item does not have an image, use only metadata for embedding
+
+            multimodal_embedding = self.emb_model.get_embeddings(
+                contextual_text=metadata_str,
+                dimension=1408,
+            )
+            text_embedding = multimodal_embedding.text_embedding
+
+            if not text_embedding:
+                raise ValueError("Error with creating cross modality embedding.")
+
+            cross_modality_embedding = text_embedding
+
+        else:
+            multimodal_embedding = self.emb_model.get_embeddings(
+                image=self.__load_image(image_url),
+                contextual_text=metadata_str,
+                dimension=1408,
+            )
+            text_embedding = multimodal_embedding.text_embedding
+            image_embedding = multimodal_embedding.image_embedding
+
+            if not text_embedding or not image_embedding:
+                raise ValueError("Error with creating cross modality embedding.")
+
+            combined = [x + y for x, y in zip(text_embedding, image_embedding)]
+            cross_modality_embedding = list(map(lambda x: x / 2, combined))
 
         return cross_modality_embedding
 
     def __create_index_if_not_exists(
-        self, index_name: str, dimension: int = 512
+        self, index_name: str, dimension: int = 1408
     ) -> None:
         """Create Pinecone index if it doesn't exist.
 
         Args:
             index_name (str): The name of the index.
-            dimension (int, optional): The dimension of the index. Defaults to 512.
+            dimension (int, optional): The dimension of the index. Defaults to 1408.
         """
         try:
             self.pc_client.describe_index(index_name)
@@ -156,18 +174,20 @@ class ShopifyImageIndexer:
         failures = 0
         for item in data:
             try:
-                self._upsert(
+                response = self._upsert(
                     id=item["id"],
                     image_url=item["image_url"],
                     metadata=item["metadata"],
                 )
 
                 logger.info(
-                    f"Upserted embedding for '{item['image_url']}' with ID {item['id']}.\n"
+                    f"Upserted embedding for item ID {item['id']}\n"
+                    f"Response: {response}\n"
+                    f"Item info: {item}"
                 )
 
             except Exception as e:
-                logger.error(f"Error upserting item to Pinecone: {e}")
+                logger.error(f"Error upserting item to Pinecone: {e}\nItem: {item}")
                 failures += 1
                 continue
 
