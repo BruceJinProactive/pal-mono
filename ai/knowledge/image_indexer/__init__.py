@@ -72,7 +72,7 @@ class ShopifyImageIndexer:
             list[float]: The cross-modality embedding.
         """
 
-        if metadata["body_html"]:
+        if metadata.get("body_html"):
             # Remove HTML tags from body_html
             clean = re.compile("<.*?>")
             metadata["body_html"] = re.sub(clean, "", metadata["body_html"])
@@ -155,7 +155,6 @@ class ShopifyImageIndexer:
         """
         embedding = self.__get_embedding(image_url, metadata)
 
-        metadata.pop("body_html", "")
         upsert_response = self.index.upsert(
             vectors=[
                 {
