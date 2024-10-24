@@ -154,6 +154,8 @@ class ShopifyImageIndexer:
             UpsertResponse: The response from Pinecone after upsertion.
         """
         embedding = self.__get_embedding(image_url, metadata)
+
+        metadata.pop("body_html", "")
         upsert_response = self.index.upsert(
             vectors=[
                 {
