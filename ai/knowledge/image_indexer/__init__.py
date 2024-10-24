@@ -4,6 +4,7 @@ from os import getenv
 from typing import Any
 
 import requests
+import shopify
 import vertexai
 from google.oauth2 import service_account
 from pinecone import Pinecone, ServerlessSpec, UpsertResponse
@@ -61,38 +62,29 @@ class ShopifyImageIndexer:
         response.raise_for_status()
         return Image(response.content)
 
-    def __get_embedding(
-        self, image_url: str, embedding_data: dict[str, Any]
-    ) -> list[float]:
+    def __get_embedding(self, image_url: str, metadata: dict[str, Any]) -> list[float]:
         """Get embedding for image and metadata.
 
         Args:
-            image_url (str): Item's image url.
-            embedding_data (dict[str, Any]): Item's data to embed.
+            image_url (str): Product's image url.
+            metadata (dict[str, Any]): Product's metadata.
 
         Returns:
             list[float]: The cross-modality embedding.
         """
 
-        if embedding_data.get("description"):
-            # Remove HTML tags from body_html
-            clean = re.compile("<.*?>")
-            embedding_data["description"] = re.sub(
-                clean, "", embedding_data["description"]
-            )
-
-        # Embed only title and body_html (description)
+        # Embed only title and fit_features (description)
         metadata_str = ", ".join(
             str(v)
-            for k, v in embedding_data.items()
-            if k in ["title", "body_html"] and v is not None
+            for k, v in metadata.items()
+            if k in ["title", "fit_features"] and v is not None
         )
 
         # NOTE: We cut the metadata string to 1024 characters to avoid exceeding embedder limit
         metadata_str = metadata_str[:1024]
 
         if not image_url:
-            # If item does not have an image, use only metadata for embedding
+            # If product does not have an image, use only metadata for embedding
 
             multimodal_embedding = self.emb_model.get_embeddings(
                 contextual_text=metadata_str,
@@ -144,65 +136,108 @@ class ShopifyImageIndexer:
             )
             logger.info(f"Index '{index_name}' created successfully.")
 
-    def upsert(
-        self,
-        item: dict[str, Any],
-    ) -> UpsertResponse | None:
+    def _upsert(self, product: dict[str, Any]) -> bool:
         """Upsert into Pinecone index.
 
         Args:
-            item (dict[str, Any]): The item to upsert.
+            product (dict[str, Any]): The product to upsert.
 
         Returns:
-            UpsertResponse: The response from Pinecone after upsertion.
+            bool: True if the product was successfully upserted, False otherwise.
         """
         try:
-            embedding = self.__get_embedding(item["image_url"], item["embedding_data"])
+            embedding = self.__get_embedding(product["image_url"], product["metadata"])
 
             upsert_response = self.index.upsert(
                 vectors=[
                     {
-                        "id": item["id"],
+                        "id": product["id"],
                         "values": embedding,
-                        "metadata": item["metadata"],
+                        "metadata": product["metadata"],
                     }
                 ],
                 namespace="cross-modality-embeddings-full",
             )
 
             logger.info(
-                f"Upserted embedding for item ID {item['id']}\n"
+                f"Upserted embedding for product ID {product['id']}\n"
                 f"Response: {upsert_response}\n"
-                f"Item info: {item}"
+                f"Product info: {product}"
             )
 
-            return upsert_response
+            return True
         except Exception as e:
-            logger.error(f"Error upserting item to Pinecone: {e}\nItem: {item}")
-            return None
+            logger.error(
+                f"Error upserting product to Pinecone: {e}\nProduct: {product}"
+            )
+            return False
 
-    def batch_upsert(self, items: list[dict[str, Any]]) -> tuple[int, int]:
-        """Upsert multiple items into Pinecone index.
+    def process_product(self, product: shopify.Product) -> bool:
+        """Process a product and upsert it into Pinecone index.
 
         Args:
-            items (list[dict[str, Any]]): The list of items to upsert.
+            product (shopify.Product): The product to process.
 
         Returns:
-            tuple[int, int]: A tuple containing the number of successful upsertions and the number of failed upsertions.
+            bool: True if the product was successfully upserted, False otherwise.
         """
-        # TODO: Make this more efficient by batching upsertions
+        metadata = product.attributes
 
-        failures = 0
-        for item in items:
-            try:
-                self.upsert(item)
+        image_url = metadata["image"].attributes["src"] if metadata["image"] else ""
 
-            except Exception as e:
-                logger.error(f"Error upserting item to Pinecone: {e}\nItem: {item}")
-                failures += 1
-                continue
+        ###
+        # Create filtered metadata
+        # Includes:
+        # - product_type
+        # - tags
+        # - options (colors and sizes)
+        # - image_urls
+        # - title
+        # - body_html as fit_features
+        # ###
+        filtered_metadata = {}
 
-        logger.info("Pinecone upsertion complete.")
+        # Format product type in metadata
+        if metadata.get("product_type"):
+            filtered_metadata[metadata["product_type"].strip()] = True
 
-        successes = len(items) - failures
-        return successes, failures
+        # Format tags in metadata
+        if metadata.get("tags"):
+            for tag in metadata["tags"].split(","):
+                filtered_metadata[tag.strip()] = True
+
+        # Format options in metadata
+        if metadata.get("options"):
+            for option_object in metadata["options"]:
+                option = option_object.attributes
+                if option["name"] == "Color":
+                    for color in option["values"]:
+                        filtered_metadata[color.strip()] = True
+                elif option["name"] == "Size":
+                    for size in option["values"]:
+                        filtered_metadata[size.strip()] = True
+
+        # Format image urls in metadata
+        if metadata.get("images"):
+            image_urls: list[str] = []
+            for image in metadata["images"]:
+                image_urls.append(image.attributes["src"])
+            filtered_metadata["image_urls"] = image_urls
+
+        # Format title in metadata
+        if metadata.get("title"):
+            filtered_metadata["title"] = metadata["title"].strip()
+
+        # Format fit features in metadata
+        if metadata.get("body_html"):
+            # Remove HTML tags from body_html
+            clean = re.compile("<.*?>")
+            filtered_metadata["fit_features"] = re.sub(clean, "", metadata["body_html"])
+
+        product_data = {
+            "id": str(metadata["id"]),
+            "image_url": image_url,
+            "metadata": filtered_metadata,
+        }
+
+        return self._upsert(product_data)

@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import shopify
 from phi.knowledge.base import AssistantKnowledge
 from phi.knowledge.combined import CombinedKnowledgeBase
@@ -38,92 +40,49 @@ def index_data_from_shopify() -> tuple[int, int]:
     session = shopify.Session(windsor_shopify_url, api_version, shopify_access_token)
     shopify.ShopifyResource.activate_session(session)
 
-    # all_products: list[dict[str, Any]] = []
     catalog = shopify.Product.find()
 
     indexer = ShopifyImageIndexer()
 
+    MAX_WORKERS = 10
     products_indexed, successes, failures = 0, 0, 0
-    while catalog:
-        logger.info(catalog)
-        for product in catalog:
-            metadata = product.attributes
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        while catalog:
+            logger.info(catalog)
 
-            image_url = metadata["image"].attributes["src"] if metadata["image"] else ""
-
-            ###
-            # Create filtered metadata
-            # Includes:
-            # - product_type
-            # - tags
-            # - options (colors and sizes)
-            # ###
-            filtered_metadata = {}
-
-            # Format product type in metadata
-            if metadata.get("product_type"):
-                filtered_metadata[metadata["product_type"].strip()] = True
-
-            # Format tags in metadata
-            if metadata.get("tags"):
-                for tag in metadata["tags"].split(","):
-                    filtered_metadata[tag.strip()] = True
-
-            # Format options in metadata
-            if metadata.get("options"):
-                for option_object in metadata["options"]:
-                    option = option_object.attributes
-                    if option["name"] == "Color":
-                        for color in option["values"]:
-                            filtered_metadata[color.strip()] = True
-                    elif option["name"] == "Size":
-                        for size in option["values"]:
-                            filtered_metadata[size.strip()] = True
-
-            # Format image urls in metadata
-            if metadata.get("images"):
-                image_urls: list[str] = []
-                for image in metadata["images"]:
-                    image_urls.append(image.attributes["src"])
-                filtered_metadata["image_urls"] = image_urls
-
-            ###
-            # Create embedding information
-            # Includes:
-            # - title
-            # - description (if exists)
-            # ###
-            embedding_data = {
-                "title": metadata["title"],
-                "description": metadata["body_html"],
+            future_to_product = {
+                executor.submit(indexer.process_product, product): product
+                for product in catalog
             }
 
-            item_data = {
-                "id": str(metadata["id"]),
-                "image_url": image_url,
-                "metadata": filtered_metadata,
-                "embedding_data": embedding_data,
-            }
+            for future in as_completed(future_to_product):
+                product = future_to_product[future]
+                products_indexed += 1
 
-            response = indexer.upsert(item_data)
+                try:
+                    # Return True if product was indexed successfully
+                    result = future.result()
+                    if result:
+                        successes += 1
+                    else:
+                        failures += 1
+                except Exception as exc:
+                    logger.error(
+                        f"Product ID {product['id']} generated an exception: {exc}"
+                    )
+                    failures += 1
 
-            if response:
-                successes += 1
+            # Move to the next page if available
+            if catalog.has_next_page():  # type: ignore
+                catalog = catalog.next_page()  # type: ignore
             else:
-                failures += 1
+                break
 
-            products_indexed += 1
+            # TODO: Remove once inital test is working
+            if products_indexed >= 1000:
+                break
 
-        if catalog.has_next_page():  # type: ignore
-            catalog = catalog.next_page()  # type: ignore
-        else:
-            catalog = None
-
-        # TODO: For testing purposes, we only sample a subset of the data
-        if products_indexed >= 1000:
-            break
-
-    logger.info(f"Total number of products to upsert: {products_indexed}")
+    logger.info(f"Total number of items upserted: {products_indexed}")
 
     shopify.ShopifyResource.clear_session()  # Clear the session
 
