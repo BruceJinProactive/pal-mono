@@ -1,3 +1,5 @@
+import json
+
 import streamlit as st
 from sqlalchemy.orm import Session
 
@@ -144,3 +146,10 @@ def universal_picker_ui(db: Session) -> None:
     account_picker_ui(db)
     project_picker_ui(db)
     assistant_picker_ui(db)
+
+
+def json_decode(json_string: str) -> dict:
+    try:
+        return json.loads(json_string)
+    except json.JSONDecodeError:
+        return {}

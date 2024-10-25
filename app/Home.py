@@ -28,6 +28,16 @@ def pages():
             icon=":material/manage_accounts:",
         ),
         st.Page(
+            "pages/clients/agents.py",
+            title="Agents",
+            icon=":material/smart_toy:",
+        ),
+        st.Page(
+            "pages/clients/projects.py",
+            title="Projects",
+            icon=":material/album:",
+        ),
+        st.Page(
             "pages/clients/users.py",
             title="Users",
             icon=":material/group:",
