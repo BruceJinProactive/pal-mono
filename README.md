@@ -12,7 +12,7 @@ This is our main monolith service. It is a Python service that serves 2 artifact
 
 Follow the next steps to run the pal-mono service on your local computer.
 
-1. Make sure Python3 (3.11 recommended), Pip3 and Docker are installed on your Mac.
+1. Make sure Python v3.11, Pip3 and Docker are installed on your Mac.
 2. Checkout the repo and navigate to the root folder.
 3. Create a python virtual environment
 
@@ -30,11 +30,9 @@ phi init
 phi ws setup
 ```
 
-5. Duplicate folder `workspace/example_secrets` and rename it to `workspace/secrets`. Setup `workspace/secrets/dev_app_secrets.yml` to add secrets in your environment variable. Please reach out to Kelvin to get these secrets.
+5. Create a new file named `workspace/secrets/dev_app_secrets.yml` to add environment variable. Please refer to this [doc](https://docs.google.com/document/d/1-P-R0bRgnrss0oVUE6O1vX8Tu3HaMLSGG52T04bkz1s) to get these secrets.
 
-6. [One-time] Uncomment L46: `MIGRATE_DB": ws_settings.dev_db_enabled` in `workspace/dev_resources.py`. This will initialize the database for you locally.
-
-7. Build and run both API and web app locally
+6. Build and run both API and web app locally
 
 ```bash
 phi ws up
@@ -42,7 +40,7 @@ phi ws up
 phi ws up -f (Force rebuild from scratch)
 ```
 
-8. [One-time] Log into the internal app at http://localhost:8501/. Under Root Page, enter account name "proactiveailab" and click "Create Account with Defaults" button. Switch to "Demo" page, you should be able to talk to the agent of "proactiveailab" account.
+7. [One-time] Log into the internal app at http://localhost:8501/. Under Root Page, enter account name "proactiveailab" and click "Create Account with Defaults" button. Switch to "Demo" page, you should be able to talk to the agent of "proactiveailab" account.
 
 ## Others
 
@@ -98,9 +96,9 @@ The CI/CD pipeline consists of 4 environments:
 
 ### Endpoints
 
-| stages | app                                                                | api (Load Balancer)                                                    | api (API Gateway)                                               |
+| stages | app                                                                | api                                                     |  api docs (internal)                                        |
 | ------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
-| dev    | http://localhost:8501/                                             | http://localhost:8000/docs                                             | -                                                               |
-| lat    | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat/docs |
-| stg    | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg/docs |
-| prd    | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/docs  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/prd/docs |
+| dev    | http://localhost:8501/                                             | http://localhost:8000/                                             | http://localhost:8000/docs                                                               |
+| lat    | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat |http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs  |
+| stg    | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs |
+| prd    | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/prd  | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/docs |
