@@ -41,8 +41,8 @@ class MessageRepositoryAsync:
         await self.db.flush()
 
         # Refresh to get the new message ID
-        await self.db.commit()
         await self.db.refresh(message)
+
         return message
 
 
