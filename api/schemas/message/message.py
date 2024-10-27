@@ -20,6 +20,7 @@ class Channel(str, Enum):
     INSTAGRAM = "instagram"
     INTERNAL_APP = "internal_app"
     SMS = "sms"
+    VOICE = "voice"
     WHATSAPP = "whatsapp"
 
 
