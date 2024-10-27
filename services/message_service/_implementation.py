@@ -65,17 +65,19 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
             conversation_id=conversation_id,
         )
 
-        # Get response from assistant
-        response_object = await assistant.arun(message.text.body, stream=False)
-        if isinstance(response_object, str):
-            response = response_object
-        elif isinstance(response_object, OutputModel):
-            response = response_object.content
-            extras = {"escalated": response_object.escalated}
-        else:
-            raise ValueError(
-                f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
-            )
+        # # Get response from assistant
+        # response_object = await assistant.arun(message.text.body, stream=False)
+        # if isinstance(response_object, str):
+        #     response = response_object
+        # elif isinstance(response_object, OutputModel):
+        #     response = response_object.content
+        #     extras = {"escalated": response_object.escalated}
+        # else:
+        #     raise ValueError(
+        #         f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
+        #     )
+
+        response = "[DEBUG] test response"
 
     except Exception:
         # Log any error and set default error response
