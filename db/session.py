@@ -1,4 +1,6 @@
+from fastapi import HTTPException
 from sqlalchemy.engine import Engine, create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -61,5 +63,14 @@ async def get_async_db():
     async with AsyncSessionLocal() as db:
         try:
             yield db
+            await db.commit()  # Commit if no exception occurred
+        except SQLAlchemyError as e:
+            await db.rollback()  # Rollback on database errors
+            logger.error(f"Database error occurred: {str(e)}")
+            raise HTTPException(status_code=500, detail="Database error occurred")
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Unexpected error occurred: {str(e)}")
+            raise
         finally:
             await db.close()
