@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import shopify
@@ -11,8 +12,6 @@ from utils.log import logger
 from utils.secret import get_client_secret
 
 from .image_indexer import ShopifyImageIndexer
-
-import time
 
 
 def get_knowledge(account_name: str) -> AssistantKnowledge:

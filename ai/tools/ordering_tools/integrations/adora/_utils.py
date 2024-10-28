@@ -241,7 +241,12 @@ def get_adora_size_id(
         if size_id:
             return ConversionResult(True, str(size_id))
 
-        return ConversionResult(False, "Size not found in menu.")
+        # Get all the keys as a list
+        size_options = list(size_options.keys())
+
+        return ConversionResult(
+            False, f"Size not found in menu, the options are {size_options}"
+        )
 
 
 def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int]]:
@@ -541,11 +546,6 @@ def get_adora_modifications(
     adora_order_item.size = adora_size_name
     adora_order_item.quantity = order_item.quantity
     adora_order_item.modifications = new_added_modifications
-
-    print(
-        "[AdoraIntegration._utils.get_adora_modifications]: adora_order_item"
-        f"{adora_order_item.to_log_string()}"
-    )
 
     return True, adora_order_item
 

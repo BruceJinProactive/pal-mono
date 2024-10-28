@@ -1,8 +1,9 @@
 import json
 import re
+import time
+from collections import defaultdict
 from os import getenv
 from typing import Any
-import time
 
 import requests
 import shopify
@@ -13,8 +14,6 @@ from vertexai.vision_models import Image, MultiModalEmbeddingModel
 
 from utils.log import logger
 from utils.secret import get_client_secret
-
-from collections import defaultdict
 
 
 class ShopifyImageIndexer:
