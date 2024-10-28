@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -6,7 +7,10 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
 from db.tables import Conversation, Message, User
+from utils.dttm import current_utc
 from utils.log import logger
+
+CONVERSATION_TIMEOUT_SECONDS = 24 * 3600  # 24 hours
 
 
 class MessageRepositoryAsync:
@@ -22,20 +26,46 @@ class MessageRepositoryAsync:
         if not user:
             raise ValueError(f"No user found with id {user_id}")
 
-        # Step 3: Get the conversation ID instead of the full conversation
+        # Step 3: Get only the necessary fields from the latest conversation
         result = await self.db.execute(
-            select(Conversation.id).filter(Conversation.user_id == user.id)
+            select(Conversation.id, Conversation.created_at, Conversation.updated_at)
+            .filter(Conversation.user_id == user.id)
+            .order_by(Conversation.created_at.desc())
+            .limit(1)
         )
-        conversation_id = result.scalar_one_or_none()
+        latest_conversation = result.first()
 
-        # Step 4: If no conversation exists, create one for the user
-        if not conversation_id:
-            conversation = Conversation(user_id=user.id)
-            self.db.add(conversation)
+        # Step 4: Initialize conversation_id and determine if we need a new conversation
+        current_time = current_utc()
+        conversation_id = None
+
+        if latest_conversation:
+            conv_id, created_at, _ = latest_conversation
+
+            # Ensure created_at is UTC
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+            else:
+                created_at = created_at.astimezone(datetime.timezone.utc)
+
+            time_difference = current_time - created_at
+
+            # If created_at is in the future due to clock discrepancies, the time difference calculation could yield negative values, and conversations less than 24 hours old might be overlooked. Consider adding a check to handle this scenario.
+            if time_difference.total_seconds() < 0:
+                time_difference = datetime.timedelta(seconds=0)
+            if (
+                time_difference.total_seconds() < CONVERSATION_TIMEOUT_SECONDS
+            ):  # Less than 24 hours
+                conversation_id = conv_id
+
+        # Step 5: Create a new conversation if needed
+        if conversation_id is None:
+            new_conversation = Conversation(user_id=user.id)
+            self.db.add(new_conversation)
             await self.db.flush()
-            conversation_id = conversation.id  # Get the new conversation ID
+            conversation_id = new_conversation.id
 
-        # Step 5: Create a message with message_body and add it to the conversation
+        # Step 6: Create a message with message_body and add it to the conversation
         message = Message(conversation_id=conversation_id, body=message_body)
         self.db.add(message)
         await self.db.flush()
