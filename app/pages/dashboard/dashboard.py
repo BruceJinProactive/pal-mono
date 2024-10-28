@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
@@ -22,21 +23,33 @@ def main() -> None:
     st.write("---")
     accounts = get_accounts(db)
     st.metric(label="Active Accounts", value=len(accounts), delta="2")
-
-    table_headers = ["Account", "Status", "Active Users", "Details"]
-    for th, col in zip(table_headers, st.columns([1] * len(table_headers))):
-        col.write(th)
-    for acc in accounts:
-        name_col, status_col, users_col, action_col = st.columns(
-            [1] * len(table_headers)
-        )
-
-        name_col.write(acc.name)
-        users_col.write(len(get_inbox_conversations(db, acc.id, max_age=5)))
-        status_col.write("Existing")
-
-        if action_col.button("View", key=acc.name):
-            navigate_accounts(acc.name)
+    st.write(
+        "Please click the checkbox in the leftmost column to navigate to that account"
+    )
+    accounts = get_accounts(db)
+    df = pd.DataFrame(
+        [
+            {
+                "Account": acc.name,
+                "Status": "Active",
+                "Active users": len(get_inbox_conversations(db, acc.id, max_age=5)),
+                "Total users": len(get_inbox_conversations(db, acc.id)),
+            }
+            for acc in accounts
+        ]
+    )
+    event = st.dataframe(
+        df, on_select="rerun", selection_mode="single-row", use_container_width=True
+    )
+    # need this long check for pyright, which claims event["selection"]["rows"] is an invalid retrieval
+    if (
+        "selection" in event
+        and "rows" in event["selection"]
+        and len(event["selection"]["rows"])
+    ):
+        selected_row = event["selection"]["rows"][0]
+        selected_account = df.iloc[selected_row]["Account"]
+        navigate_accounts(selected_account)
 
 
 if user.is_logged_in:
