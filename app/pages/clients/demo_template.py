@@ -45,7 +45,7 @@ def get_prd_assistant(
     if not db_user:
         raise ValueError("User not found in db")
 
-    ai_assistant: Assistant = get_ai_assistant(
+    ai_assistant = get_ai_assistant(
         db,
         assistant_id=assistant_id,
         user_id=db_user.id,
@@ -59,9 +59,9 @@ def demo_ui(
 ) -> None:
     if not user.email:
         st.error(
-            "User email not found. Please ensure you are logged in with a valid email address."
+            "Current is missing an email. Please ensure you are logged in with a valid email address."
         )
-        return
+        st.stop()
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
         assistant = get_prd_assistant(
