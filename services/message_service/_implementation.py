@@ -66,7 +66,10 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
         )
 
         # Get response from assistant
-        response_object = await assistant.arun(message.text.body, stream=False)
+        request_content = (
+            f"User context: {message.context} User message: {message.text.body}"
+        )
+        response_object = await assistant.arun(request_content, stream=False)
         if isinstance(response_object, str):
             response = response_object
         elif isinstance(response_object, OutputModel):

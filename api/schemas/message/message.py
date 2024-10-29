@@ -49,6 +49,7 @@ class Message(BaseModel):
     # Content
     type: Type = Type.TEXT
     text: TextObject
+    context: str = Field(default="", max_length=4096)
     # Extra information
     extras: Optional[Extras] = None
     # Metadata
@@ -71,6 +72,7 @@ class Message(BaseModel):
             "broker": self.broker.value if self.broker is not None else None,
             "type": self.type.value,
             "text": self.text.dict(),
+            "context": self.context,
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
             "extras": self.extras.dict() if self.extras is not None else None,
