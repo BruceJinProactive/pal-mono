@@ -34,14 +34,8 @@ dependencies = [
 
   # DevOps
   "python-json-logger==2.0.7",
-
-  # Validation
-  "black==24.8.0",
-  "isort==5.13.2",
-  "ruff==0.6.2",
   "pytest==8.3.2",
   "pytest-mock==3.14.0",
-  "pyright==1.1.382"
 ]
 
 [build-system]

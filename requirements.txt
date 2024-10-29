@@ -11,7 +11,6 @@ anyio==4.4.0
 asyncpg==0.30.0
 attrs==24.2.0
 beautifulsoup4==4.12.3
-black==24.8.0
 blinker==1.8.2
 boto3==1.35.6
 botocore==1.35.6
@@ -55,7 +54,6 @@ httpcore==1.0.5
 httpx==0.27.2
 idna==3.8
 iniconfig==2.0.0
-isort==5.13.2
 jinja2==3.1.4
 jiter==0.5.0
 jmespath==1.0.1
@@ -71,21 +69,17 @@ markupsafe==2.1.5
 matplotlib==3.9.2
 mdurl==0.1.2
 more-itertools==10.4.0
-mypy-extensions==1.0.0
 narwhals==1.5.5
-nodeenv==1.9.1
 numpy==1.26.4
 openai==1.42.0
 packaging==24.1
 pandas==2.2.2
-pathspec==0.12.1
 pgvector==0.3.2
 phidata==2.4.29
 pillow==10.4.0
 pinecone==5.3.1
 pinecone-plugin-inference==1.1.0
 pinecone-plugin-interface==0.0.7
-platformdirs==4.2.2
 pluggy==1.5.0
 prometheus-client==0.20.0
 proto-plus==1.24.0
@@ -107,7 +101,6 @@ pyjwt[crypto]==2.9.0
 pymdown-extensions==10.9
 pyparsing==3.1.4
 pypdf==5.0.0
-pyright==1.1.382
 pytest==8.3.2
 pytest-mock==3.14.0
 python-dateutil==2.9.0.post0
@@ -120,7 +113,6 @@ requests==2.32.3
 rich==13.8.0
 rpds-py==0.20.0
 rsa==4.9
-ruff==0.6.2
 s3transfer==0.10.2
 shapely==2.0.6
 shellingham==1.5.4

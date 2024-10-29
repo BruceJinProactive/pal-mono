@@ -20,6 +20,14 @@ main() {
 
   pip install --upgrade wheel
 
+  print_heading "Installing validation dependencies"
+  pip install \
+    black==24.8.0 \
+    isort==5.13.2 \
+    ruff==0.6.2 \
+    pyright==1.1.382 \
+    --no-cache
+
   print_heading "Installing requirements.txt"
   pip install --no-deps \
     -r ${REPO_ROOT}/requirements.txt --no-cache

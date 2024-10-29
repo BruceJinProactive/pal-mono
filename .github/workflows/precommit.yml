@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies in virtual environment
         run: |
           venv/bin/python -m pip install --upgrade pip setuptools wheel
-          venv/bin/pip install mypy ruff
+          venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
           venv/bin/pip install --no-deps -r requirements.txt
 
       - name: Format check with black
@@ -86,7 +86,7 @@ jobs:
       - name: Install dependencies in virtual environment
         run: |
           venv/bin/python -m pip install --upgrade pip setuptools wheel
-          venv/bin/pip install mypy ruff
+          venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
           venv/bin/pip install -r requirements.txt
 
       - name: Run pytest
