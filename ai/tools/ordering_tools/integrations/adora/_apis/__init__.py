@@ -102,13 +102,6 @@ def validate_order(
         order_type == AdoraOrderType.Delivery and delivery_address
     ), "Invalid order type, either takeout or need address for delivery"
 
-    # NOTE: Adoro API says "promiseDateTime" is optional, but it's actually required, and it's required to be
-    # less than 24 hours (or 12 hours, need trial and error testing) in the future. Need to check with their Eng to figure out why.
-    # In the mean time, we just create a datatime that's 2 hour in the future to satify Adora Pos API requirement.
-    current_datetime = datetime.now(timezone.utc)
-    future_datetime = current_datetime + timedelta(hours=2)
-    formatted_datetime = future_datetime.strftime("%Y-%m-%dT%H:%M:%SZ")
-
     full_item_list = []
     for order_item in order_items:
         full_item_list.append({"group": [order_item.to_dict()]})
@@ -118,7 +111,6 @@ def validate_order(
         "couponId": coupon_id,
         "orderType": order_type,
         "orderTypeSubType": "PhoneOrder",
-        "promiseDateTime": formatted_datetime,
         "customer": {
             "name": customer.first_name,
             "lastname": customer.last_name,

@@ -103,6 +103,7 @@ class AdoraIntegration:
         delivery_address: GenericDeliveryAddress | None,
         generic_coupon: str,
     ) -> str:
+        logger.debug("[AdoraIntegration.place_order] Placing order...")
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
@@ -118,6 +119,10 @@ class AdoraIntegration:
 
         order_items = []
         order_summary = []  # List to hold the summary of items and their prices
+
+        logger.debug(
+            "[AdoraIntegration.place_order] Converting items to Adora order items..."
+        )
 
         for order_item in cart:
             order_item = OrderItem(
@@ -137,24 +142,40 @@ class AdoraIntegration:
             )
 
             if not convert_item_success and isinstance(adora_order_item, str):
+                logger.debug(
+                    f"[AdoraIntegration.place_order] Failed to convert item {order_item}: {adora_order_item}"
+                )
                 return adora_order_item  # this is an error string
 
             if not isinstance(adora_order_item, AdoraOrderItem):
                 return "Failed to convert order item."
 
             order_items.append(adora_order_item)
+            logger.debug(
+                f"[AdoraIntegration.place_order] Successfully converted item: {order_item.item_name}"
+            )
             # Append item details to order_summary for later display
             order_summary.append(f"{order_item.item_name}")
+
+        logger.debug(
+            "[AdoraIntegration.place_order] Converted items to Adora order items."
+        )
 
         # convert generic coupon to Adora coupon
         if generic_coupon == "N/A":
             adora_coupon_id = 0
         else:
+            logger.debug(
+                "[AdoraIntegration.place_order] Converting generic coupon to Adora coupon..."
+            )
             possible_coupons = _apis.list_coupons(bearer_token, self.store_id)
             adora_coupon = _utils.convert_coupon(
                 possible_coupons, generic_coupon, self.openai_client, self.openai_model
             )
             adora_coupon_id = adora_coupon.id if adora_coupon else 0
+            logger.debug(
+                f"[AdoraIntegration.place_order] Coupon conversion result: {adora_coupon_id if adora_coupon_id else 'No coupon applied'}"
+            )
 
         # convert generic fulfillment strategy to Adora order type
         if fulfillment_strategy == FulfillmentStrategy.NA:
@@ -222,6 +243,7 @@ class AdoraIntegration:
             )
 
         # validate order
+        logger.debug("[AdoraIntegration.place_order] Validating order...")
         validated_order = _apis.validate_order(
             bearer_token,
             self.store_id,
@@ -235,9 +257,8 @@ class AdoraIntegration:
             return "Failed to validate order."
 
         # save validated order to Adora system and get the order ID back
+        logger.debug("[AdoraIntegration.place_order] Saving validated order...")
         saved_order = _apis.save_validate_order(bearer_token, validated_order.Key)
-
-        # TODO race condition here, need to add while loop to retry if order is not found in place_order
 
         # place order
         if saved_order and _apis.place_order(

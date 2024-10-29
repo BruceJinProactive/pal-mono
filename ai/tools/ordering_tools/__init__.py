@@ -100,16 +100,16 @@ class OrderingTools(Toolkit):
     # TODO: Figure out how (if) we want to take in coupons, payment info, delivery type. Hardcode for now.
     def place_order(self, chat_history: list[str]) -> str:
         """
-        Places the user's order based on the chat history.
+        Places the user's order based on the chat history (both user messages and assistant messages).
 
         This function should be used every time the user wants to finish their order, check out, or pay for it.
 
-        The user must provide the fulfillment strategy (delivery, pickup), and the delivery address if the fulfillment strategy is delivery.
+        The user must provide the fulfillment strategy (delivery or pickup), and the delivery address if the fulfillment strategy is delivery.
 
-        Must tell user ordered item, price and order id in the response.
+        You must provide the user with the ordered item, price, and order id in the response.
 
         Args:
-            chat_history (list[str]): Chat history between user and assistant.
+            chat_history (list[str]): Chat history between user and assistant. Be sure to include both user messages and assistant responses.
 
         Returns:
             str: Result of placing the order, including the total and order id if applicable, and payment instructions if applicable.
@@ -133,6 +133,7 @@ class OrderingTools(Toolkit):
         logger.debug(f"[OrderingTools.place_order] Chat history: {chat_history}")
 
         cart = _utils.get_cart_info(chat_history)
+        logger.debug(f"[OrderingTools.place_order] Extracted cart info: {cart}")
         if not cart:
             return "There was an issue processing your order. Please try again."
 

@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 
 import streamlit as st
@@ -21,11 +22,11 @@ def get_prd_assistant(
     new_run: bool = False,
 ) -> Assistant:
     db = next(get_db())
-    assistant = get_assistant(db, assistant_id)
+    prd_assistant = get_assistant(db, assistant_id)
 
     account = None
-    if assistant is not None:
-        account = get_account(db, account_name=assistant.account.name)
+    if prd_assistant is not None:
+        account = get_account(db, account_name=prd_assistant.account.name)
 
     if account is None:
         raise ValueError("Account not found")
@@ -44,18 +45,23 @@ def get_prd_assistant(
     if not db_user:
         raise ValueError("User not found in db")
 
-    assistant: Assistant = get_ai_assistant(
+    ai_assistant: Assistant = get_ai_assistant(
         db,
         assistant_id=assistant_id,
         user_id=db_user.id,
         new_run=new_run,
     )
-    return assistant
+    return ai_assistant
 
 
 def demo_ui(
     assistant_id: uuid.UUID,
 ) -> None:
+    if not user.email:
+        st.error(
+            "User email not found. Please ensure you are logged in with a valid email address."
+        )
+        return
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
         assistant = get_prd_assistant(
@@ -291,6 +297,10 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
     Raises:
     Exception: Raises an exception if an error occurs during response generation after 5 attempts.
     """
+
+    def display_elapsed_time(container, start_time):
+        container.text(f"Response generated in {time.time() - start_time:.2f} seconds")
+
     with st.chat_message(
         "assistant", avatar=Image.open(avatar_path) if avatar_path else None
     ):
@@ -300,6 +310,8 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
             error = ""
             response = ""
             while retries < MAX_RETRIES:
+                start_time = time.time()
+                elapsed_container = st.empty()
                 try:
                     resp_container = st.empty()
                     response_object = assistant.run(question, stream=False)
@@ -316,14 +328,17 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                             )
                             extras = {"escalated": response_object["escalated"]}
                             resp_container.markdown(response)
+                            display_elapsed_time(elapsed_container, start_time)
                             st.json(extras)
                         except Exception:
                             response = response.replace(r"\$", "💲").replace("$", "💲")
                             resp_container.markdown(response)
+                            display_elapsed_time(elapsed_container, start_time)
                     else:
                         response = response_object.content
                         response = response.replace(r"\$", "💲").replace("$", "💲")
                         resp_container.markdown(response)
+                        display_elapsed_time(elapsed_container, start_time)
                         extras = {"escalated": response_object.escalated}
                         st.json(extras)
 
@@ -335,6 +350,7 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                     st.warning(
                         f"An error occurred: Retrying... (Attempt {retries}/{MAX_RETRIES})"
                     )
+                    display_elapsed_time(elapsed_container, start_time)
 
             if retries == MAX_RETRIES:
                 st.error(

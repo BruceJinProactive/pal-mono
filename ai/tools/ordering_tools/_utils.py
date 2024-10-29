@@ -35,7 +35,10 @@ def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
                 "content": [
                     {
                         "type": "text",
-                        "text": "Your role is to process the chat history between a user and an assistant. You will extract the relevant order information into the desired format. You will be provided with the chat history to process.",
+                        "text": "Your role is to process the chat history between a user and an assistant. "
+                        + "You will extract the relevant order information into the desired format. "
+                        + "You will be provided with the chat history to process. "
+                        + "Prioritize assistant messages over user messages because assistant messages contain more precise order item information.",
                     }
                 ],
             },
