@@ -58,7 +58,6 @@ def knowledge_ui(account_name: str) -> None:
                 uploaded_file = st.file_uploader(
                     "Upload PDF Here:",
                     type="pdf",
-                    key=st.session_state["file_uploader_key"],
                 )
                 if uploaded_file is not None:
                     alert = st.info("Processing PDF...", icon="ℹ️")
@@ -77,6 +76,35 @@ def knowledge_ui(account_name: str) -> None:
                     alert.empty()
         with tab_text:
             if knowledge_base:
+                with st.form("my-form-text", clear_on_submit=True):
+                    uploaded_files = st.file_uploader(
+                        "Text Uploader",
+                        type="txt",
+                        accept_multiple_files=True,
+                    )
+                    submitted = st.form_submit_button("UPLOAD")
+
+                if uploaded_files and submitted:
+                    alert = st.info("Processing Text...", icon="ℹ️")
+                    text_documents: List[Document] = []
+
+                    for uploaded_file in uploaded_files:
+                        text_name = uploaded_file.name.split(".")[0]
+                        # Read file content, decode and load as JSON
+                        file_content = uploaded_file.read().decode("utf-8")
+                        json_document = Document(content=file_content, name=text_name)
+                        text_documents.append(json_document)
+                    if text_documents:
+                        knowledge_base.load_documents(text_documents)
+                        st.success(
+                            "Text files processed and loaded into the knowledge base"
+                        )
+                    else:
+                        st.error("No valid Text files to load")
+                    st.session_state["text_uploaded"] = True
+
+                    alert.empty()
+                st.info("Manually upload Text below:")
                 name_input = st.text_input(
                     "Document Name:", key="text_document_name_key"
                 )
@@ -103,6 +131,53 @@ def knowledge_ui(account_name: str) -> None:
                     alert.empty()
         with tab_json:
             if knowledge_base:
+                if "file_uploader_key" not in st.session_state:
+                    st.session_state["file_uploader_key"] = 0
+
+                with st.form("my-form", clear_on_submit=True):
+                    uploaded_files = st.file_uploader(
+                        "JSON Uploader",
+                        type="json",
+                        accept_multiple_files=True,
+                        key=st.session_state["file_uploader_key"],
+                    )
+                    submitted = st.form_submit_button("UPLOAD")
+
+                if uploaded_files and submitted:
+                    alert = st.info("Processing JSON...", icon="ℹ️")
+                    json_documents: List[Document] = []
+
+                    for uploaded_file in uploaded_files:
+                        json_name = uploaded_file.name.split(".")[0]
+
+                        try:
+                            # Read file content, decode and load as JSON
+                            file_content = uploaded_file.read().decode("utf-8")
+                            json_file = json.loads(file_content)
+
+                            # Compress JSON and create Document object
+                            compressed_json = json.dumps(
+                                json_file, separators=(",", ":")
+                            )
+                            json_document = Document(
+                                content=compressed_json, name=json_name
+                            )
+                            json_documents.append(json_document)
+
+                        except json.JSONDecodeError:
+                            st.error(f"Failed to parse JSON file: {uploaded_file.name}")
+
+                    if json_documents:
+                        knowledge_base.load_documents(json_documents)
+                        st.success(
+                            "JSON files processed and loaded into the knowledge base"
+                        )
+                    else:
+                        st.error("No valid JSON files to load")
+                    st.session_state["json_uploaded"] = True
+
+                    alert.empty()
+                st.info("Manually upload JSON below:")
                 json_name_input = st.text_input(
                     "Document Name:", key="json_document_name_key"
                 )
