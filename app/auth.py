@@ -65,10 +65,5 @@ class User:
         self.username = authenticator.get_username()
         self.email = authenticator.get_email()
 
-    def logout(self):
-        self.is_logged_in = False
-        self.username = ""
-        self.email = ""
-
 
 user = User()

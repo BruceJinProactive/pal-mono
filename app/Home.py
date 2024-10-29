@@ -89,9 +89,4 @@ else:
     user.update(authenticator=authenticator)
     pg = st.navigation(pages())
     pg.run()
-
-    if st.sidebar.button("Logout", "logout_btn"):
-        user.logout()
-        authenticator.logout()
-        st.rerun()
     footer_ui()
