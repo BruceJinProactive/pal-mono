@@ -42,6 +42,16 @@ phi ws up -f (Force rebuild from scratch)
 
 7. [One-time] Log into the internal app at http://localhost:8501/. Under Root Page, enter account name "proactiveailab" and click "Create Account with Defaults" button. Switch to "Demo" page, you should be able to talk to the agent of "proactiveailab" account.
 
+
+### Local Environment
+`phi ws up` will automatically spin up new Docker containers that install dependencies in `requirements.txt` that enable `pal-mono` to function. The dependencies are specified in `pyproject.toml` and updates to `requirements.txt` are made with `./scripts/upgrade.sh`.
+
+Since PhiData installs these dependencies in the Docker container environment, our local environment (e.g. VS Code) will not recognize the missing imports. To set up the local environment:
+
+```bash
+./scripts/install.sh
+```
+
 ## Others
 
 1. You can read the API documentation running in your local host http://localhost:8000/docs#/. and the web app running in your local host http://localhost:8501/.
@@ -56,14 +66,9 @@ We use several tools to ensure code quality and consistency. These tools are run
 
 - Format with `black .`
 - Sort imports with `isort .`
-- Lint with `ruff check .`
+- Lint with `ruff check . --fix`
 - Type check with `pyright .`
 
-[One-time] Install the following tools locally:
-
-```bash
-pip3 install black isort ruff pyright
-```
 
 Run the following command to validate your code locally:
 
