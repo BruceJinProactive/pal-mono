@@ -4,7 +4,6 @@ from typing import Any
 from geopy.geocoders import Nominatim
 from openai import OpenAI
 
-from ai.knowledge import get_knowledge
 from ai.llm import _settings
 from ai.tools.ordering_tools.classes import (
     Consumer,
@@ -30,14 +29,14 @@ class AdoraIntegration:
         account_name: str,
         api_key: str,
         api_secret: str,
-        menu_name: str,
         store_id: str,
+        adora_conversion_examples: dict[str, dict[str, str]] = {},
     ):
         self.account_name = account_name
         self.api_key = api_key
         self.api_secret = api_secret
-        self.menu_name = menu_name
         self.store_id = store_id
+        self.adora_conversion_examples = adora_conversion_examples
         self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
         self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
@@ -60,6 +59,9 @@ class AdoraIntegration:
             size_map,
             menu["modifiers"],
             menu["modifier_groups"],
+            self.adora_conversion_examples.get("items", {}),
+            self.adora_conversion_examples.get("sizes", {}),
+            self.adora_conversion_examples.get("modifiers", {}),
             self.openai_client,
             self.openai_model,
         )
@@ -68,6 +70,8 @@ class AdoraIntegration:
 
         if not isinstance(adora_order_item, AdoraOrderItem):
             return "Failed to convert order item."
+
+        # TODO add coupon to order validation here in add_to_order too
 
         # validate order
         validated_order = _apis.validate_order(
@@ -88,7 +92,8 @@ class AdoraIntegration:
 
         if coupons and len(coupons) > 0:
             return (
-                "When listing coupons, do NOT use an ordered list."
+                "List the available coupons below. When listing coupons, do NOT use an ordered list. "
+                + "Also tell the user that to apply a coupon, they must explicitly say the name of the coupon they want to use during checkout.\n"
                 + "Here are the available coupons: "
                 + "\n\n".join([f"{c.name}\n{c.description}" for c in coupons])
             )
@@ -137,6 +142,9 @@ class AdoraIntegration:
                 size_map,
                 menu["modifiers"],
                 menu["modifier_groups"],
+                self.adora_conversion_examples.get("items", {}),
+                self.adora_conversion_examples.get("sizes", {}),
+                self.adora_conversion_examples.get("modifiers", {}),
                 self.openai_client,
                 self.openai_model,
             )
@@ -155,7 +163,9 @@ class AdoraIntegration:
                 f"[AdoraIntegration.place_order] Successfully converted item: {order_item.item_name}"
             )
             # Append item details to order_summary for later display
-            order_summary.append(f"{order_item.item_name}")
+            order_summary.append(
+                f"{order_item.item_name if order_item.quantity == 1 else f'{order_item.quantity}x {order_item.item_name}'}"
+            )
 
         logger.debug(
             "[AdoraIntegration.place_order] Converted items to Adora order items."
@@ -169,10 +179,19 @@ class AdoraIntegration:
                 "[AdoraIntegration.place_order] Converting generic coupon to Adora coupon..."
             )
             possible_coupons = _apis.list_coupons(bearer_token, self.store_id)
-            adora_coupon = _utils.convert_coupon(
-                possible_coupons, generic_coupon, self.openai_client, self.openai_model
+            adora_coupon_res = _utils.convert_coupon(
+                possible_coupons,
+                generic_coupon,
+                self.openai_client,
+                self.openai_model,
+                self.adora_conversion_examples.get("coupons", {}),
             )
-            adora_coupon_id = adora_coupon.id if adora_coupon else 0
+            if not adora_coupon_res.success:
+                logger.warning(
+                    f"[AdoraIntegration.place_order] Failed to convert coupon: {adora_coupon_res.message}"
+                )
+                return adora_coupon_res.message
+            adora_coupon_id = int(adora_coupon_res.message)
             logger.debug(
                 f"[AdoraIntegration.place_order] Coupon conversion result: {adora_coupon_id if adora_coupon_id else 'No coupon applied'}"
             )
@@ -264,7 +283,7 @@ class AdoraIntegration:
         if saved_order and _apis.place_order(
             bearer_token, saved_order.OrderID, self.store_id, consumer.phone_number
         ):
-            res = (
+            successful_order_response = (
                 "Order placed successfully!\n"
                 "Here are the details of your order, list the item name:\n"
                 f"{', '.join(order_summary)}\n"
@@ -273,10 +292,24 @@ class AdoraIntegration:
                 f"Order ID: {saved_order.OrderID}\n"
             )
             logger.debug(
-                f"[AdoraIntegration.place_order] Order placed successfully! Returning: {res}"
+                f"[AdoraIntegration.place_order] Order placed successfully! Returning: {successful_order_response}"
             )
+
+            # To avoid confusion to the user, because of differences between
+            # the subtotal and applied coupons, the response is modified to
+            # replace subtotal with the discount amount.
+            if validated_order.SubTotal > validated_order.Total:
+                successful_order_response = (
+                    "Order placed successfully!\n"
+                    "Here are the details of your order, list the item name:\n"
+                    f"{', '.join(order_summary)}\n"
+                    f"Discount: ${validated_order.Discount}\n"
+                    f"Total with Tax: ${validated_order.Total}\n"
+                    f"Order ID: {saved_order.OrderID}\n"
+                )
+
             # Combine the summary of items with the total price
-            return res
+            return successful_order_response
 
         else:
             logger.debug(

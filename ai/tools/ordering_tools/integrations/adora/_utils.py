@@ -19,27 +19,82 @@ class ConversionResult:
 
 
 def convert_coupon(
-    all_coupons: list[AdoraCoupon], target_coupon: str, openai_client, openai_model: str
-) -> AdoraCoupon | None:
-    """Given a list of all available coupons and a target coupon, convert the target coupon to a Coupon object.
-
-    Args:
-        all_coupons (list[Coupon]): A list of all available coupons as Coupon objects.
-        target_coupon (str): The target coupon to convert.
-        openai_client (OpenAI): The OpenAI client to use for the coupon conversion.
-        openai_model (str): The OpenAI model to use for the coupon conversion.
-
-    Returns:
-        AdoraCoupon | None: The converted Coupon object if the target coupon was found in the list of all coupons.
+    all_coupons: list[AdoraCoupon],
+    target_coupon: str,
+    openai_client,
+    openai_model: str,
+    coupon_conversion_examples: dict[str, str],
+) -> ConversionResult:
     """
+    Finds the closest coupon name in the list of available coupons and consequent coupon id.
+    """
+    coupon_name_to_id_map = {c.name: c.id for c in all_coupons}
+    coupon_conversion_examples_string = textwrap.dedent(
+        """
+        # EXAMPLE #
+        EXAMPLE AVAILABLE COUPONS: ["$5 Off", "20% off", "Free Bagel with Purchase of Coffee"]
 
-    message = (
-        "\n\n".join([f"{c.id}\n{c.name}\n{c.description}" for c in all_coupons])
-        + "\n\n\nTARGET COUPON:\n"
-        + target_coupon
+        User: five bucks off
+        Assistant: $5 Off
+
+        User: twenty percent reduced
+        Assistant: 20% off
+        
+        User: free bagel coupon
+        Assistant: Free Bagel with Purchase of Coffee
+
+        User: $10 Off
+        Assistant: N/A
+
+        User: 30% off
+        Assistant: N/A
+        
+        User: free sandwich
+        Assistant: N/A
+        """
     )
+    if coupon_conversion_examples:
+        coupon_conversion_examples_string = textwrap.dedent(
+            f"""
+            # EXAMPLE #
+            EXAMPLE AVAILABLE COUPONS: {[f"{c.name} ({c.description})" for c in all_coupons]}
+            
+            """
+            + "\n\n".join(
+                [
+                    f"User: {k}\nAssistant: {v}"
+                    for k, v in coupon_conversion_examples.items()
+                ]
+            )
+        )
 
-    response = openai_client.beta.chat.completions.parse(
+    # Get GPT to find the most similar item name
+    sys_prompt = textwrap.dedent(
+        f"""
+        # CONTEXT #
+        I am a waiter at a restaurant. I am taking a user's order. 
+        I want to match a user supplied coupon name to a coupon in the available coupons list. 
+        Here are the AVAILABLE COUPONS: {list(coupon_name_to_id_map.keys())}
+        Here are the AVAILABLE COUPONS along with a helpful description: {[f"{c.name} ({c.description})" for c in all_coupons]}
+
+        #########
+
+        # OBJECTIVE #
+        Match the user's inputted coupon name to the closest coupon option in the list of available coupons as if you were a server/waiter.
+
+        #########
+
+        """
+        + coupon_conversion_examples_string
+        + """
+
+        #########
+
+        # RESPONSE FORMAT #
+        Only output the most similar coupon name. Output "N/A" if the user's inputted coupon name is nothing like any of the available options.
+        """
+    )
+    response = openai_client.chat.completions.create(
         model=openai_model,
         messages=[
             {
@@ -47,36 +102,72 @@ def convert_coupon(
                 "content": [
                     {
                         "type": "text",
-                        "text": """You are given a list of available coupons.
-                        An available coupon has an ID, a name, and a description.
-                        Convert the user's target coupon to a valid coupon from the list.
-                        The target coupon will be at the bottom of the message.
-                        Output the target coupon in the desired format.
-                        If the target coupon does not match any available coupons, then
-                            output 0 in the ID field and "N/A" in the name and description fields.
-                        """,
+                        "text": sys_prompt,
                     }
                 ],
             },
             {
                 "role": "user",
-                "content": [{"type": "text", "text": f"{message}"}],
+                "content": [
+                    {"type": "text", "text": target_coupon},
+                ],
             },
         ],
         temperature=0,
-        max_tokens=2048,
-        response_format=AdoraCoupon,
+        max_tokens=256,
+        response_format={"type": "text"},
     )
 
-    return response.choices[0].message.parsed
+    coupon_name = response.choices[0].message.content
+    if coupon_name in coupon_name_to_id_map:
+        return ConversionResult(True, str(coupon_name_to_id_map[coupon_name]))
+
+    return ConversionResult(False, "Coupon not available.")
 
 
 def get_adora_item_id(
-    menu_name_to_id_map: dict, order_item_name: str, openai_client, openai_model: str
+    menu_name_to_id_map: dict,
+    order_item_name: str,
+    item_id_conversion_examples: dict[str, str],
+    openai_client,
+    openai_model: str,
 ) -> ConversionResult:
     """
     Finds the closest item name in the menu and consequent item id.
     """
+    item_id_conversion_examples_string = textwrap.dedent(
+        """
+        # EXAMPLE #
+        EXAMPLE MENU: ["Coke", "Sprite"]
+
+        User: coke
+        Assistant: Coke
+
+        User: spritw
+        Assistant: Sprite
+
+        User: pepsi
+        Assistant: N/A
+
+        User: coke zero
+        Assistant: N/A
+        """
+    )
+    if item_id_conversion_examples:
+        item_id_conversion_examples_string = textwrap.dedent(
+            f"""
+            # EXAMPLE #
+            EXAMPLE MENU: {list(menu_name_to_id_map.keys())[:20] + ["..."]}
+            
+            """
+            + "\n\n".join(
+                [
+                    f"User: {k}\nAssistant: {v}"
+                    for k, v in item_id_conversion_examples.items()
+                ]
+            )
+        )
+
     # Get GPT to find the most similar item name
     sys_prompt = textwrap.dedent(
         f"""
@@ -92,20 +183,9 @@ def get_adora_item_id(
 
         #########
 
-        # EXAMPLES #
-        EXAMPLE MENU: ["Coke", "Sprite"]
-
-        User: coke
-        Assistant: Coke
-
-        User: spritw
-        Assistant: Sprite
-
-        User: pepsi
-        Assistant: N/A
-
-        User: coke zero
-        Assistant: N/A
+        """
+        + item_id_conversion_examples_string
+        + """
 
         #########
 
@@ -141,7 +221,7 @@ def get_adora_item_id(
     if item_name in menu_name_to_id_map:
         return ConversionResult(True, menu_name_to_id_map[item_name])
 
-    return ConversionResult(False, "Item not found in menu.")
+    return ConversionResult(False, f"Item {order_item_name} not found in menu.")
 
 
 def get_adora_size_id(
@@ -149,6 +229,7 @@ def get_adora_size_id(
     size_map: dict[int, str],
     adora_item_id: int,
     order_item_size: str,
+    size_id_conversion_examples: dict[str, str],
     openai_client,
     openai_model: str,
 ) -> ConversionResult:
@@ -174,21 +255,9 @@ def get_adora_size_id(
         size_id = size_options[key]
         return ConversionResult(True, str(size_id))
     else:
-        sys_prompt = textwrap.dedent(
-            f"""
-            # CONTEXT #
-            I am a waiter at a restaurant. I am taking a user's order.
-            I want to match a user supplied item size to an available item size on the menu.
-            Here are the AVAILABLE SIZE OPTIONS: {size_options}
-
-            #########
-
-            # OBJECTIVE #
-            Match the user's inputted item size to the closest item size on the menu as if you were a server/waiter.
-
-            #########
-
-            # EXAMPLES #
+        size_id_conversion_examples_string = textwrap.dedent(
+            """
+            # EXAMPLE #
             EXAMPLE AVAILABLE SIZE OPTIONS: ["Small", "Medium", "Large", "Size 5", "Size 6", "Size 7"]
 
             User: large
@@ -205,6 +274,40 @@ def get_adora_size_id(
 
             User: extra large
             Assistant: N/A
+            """
+        )
+        if size_id_conversion_examples:
+            size_id_conversion_examples_string = textwrap.dedent(
+                f"""
+                # EXAMPLE #
+                EXAMPLE AVAILABLE SIZE OPTIONS: {size_options}
+                
+                """
+                + "\n\n".join(
+                    [
+                        f"User: {k}\nAssistant: {v}"
+                        for k, v in size_id_conversion_examples.items()
+                    ]
+                )
+            )
+
+        sys_prompt = textwrap.dedent(
+            f"""
+            # CONTEXT #
+            I am a waiter at a restaurant. I am taking a user's order.
+            I want to match a user supplied item size to an available item size on the menu.
+            Here are the AVAILABLE SIZE OPTIONS: {size_options}
+
+            #########
+
+            # OBJECTIVE #
+            Match the user's inputted item size to the closest item size on the menu as if you were a server/waiter.
+
+            #########
+
+            """
+            + size_id_conversion_examples_string
+            + """
 
             #########
 
@@ -278,6 +381,7 @@ def get_similar_modifier_using_openai(
     openai_model: str,
     order_item_modification: str,
     modifier_names: list,
+    modifier_conversion_examples: dict[str, str],
 ) -> str | None:
     """
     Uses OpenAI's language model to match a user-supplied item modification to the most similar modifier on the menu.
@@ -291,6 +395,38 @@ def get_similar_modifier_using_openai(
     Returns:
         str: The most similar modifier from the menu or "N/A" if no close match is found.
     """
+
+    modifier_conversion_examples_string = textwrap.dedent(
+        """
+        # EXAMPLE #
+        EXAMPLE AVAILABLE MODIFICATION OPTIONS: ["Rainbow Sprinkles", "Gummy Bears", "Whipped Cream", "Peanuts"]
+        User: rainbow sprinkles
+        Assistant: Rainbow Sprinkles
+
+        User: pnuts
+        Assistant: peanuts
+
+        User: nutella
+        Assistant: N/A
+
+        User: cherries
+        Assistant: N/A
+        """
+    )
+    if modifier_conversion_examples:
+        modifier_conversion_examples_string = textwrap.dedent(
+            f"""
+            # EXAMPLE #
+            EXAMPLE AVAILABLE MODIFICATION OPTIONS: {modifier_names}
+            
+            """
+            + "\n\n".join(
+                [
+                    f"User: {k}\nAssistant: {v}"
+                    for k, v in modifier_conversion_examples.items()
+                ]
+            )
+        )
 
     sys_prompt = textwrap.dedent(
         f"""
@@ -306,21 +442,12 @@ def get_similar_modifier_using_openai(
 
         #########
 
-        # EXAMPLES #
-        EXAMPLE AVAILABLE MODIFICATION OPTIONS: ["Rainbow Sprinkles", "Gummy Bears", "Whipped Cream", "Peanuts"]
-        User: rainbow sprinkles
-        Assistant: Rainbow Sprinkles
-
-        User: pnuts
-        Assistant: peanuts
-
-        User: nutella
-        Assistant: N/A
-
-        User: cherries
-        Assistant: N/A
+        """
+        + modifier_conversion_examples_string
+        + """
 
         #########
+
 
         # RESPONSE FORMAT #
         Only output the most similar item modification. Output "N/A" if the user's inputted item modification is nothing like any of the available options.
@@ -357,6 +484,7 @@ def process_modifiers(
     order_item_modifications: list,
     openai_client: OpenAI,
     openai_model: str,
+    modifier_conversion_examples: dict[str, str],
 ) -> tuple[list, str]:
     """
     Processes user-supplied order item modifications, classifying them as valid modifiers or comments.
@@ -378,7 +506,11 @@ def process_modifiers(
 
     for order_item_modification in order_item_modifications:
         matched_modifier = get_similar_modifier_using_openai(
-            openai_client, openai_model, order_item_modification, modifier_names
+            openai_client,
+            openai_model,
+            order_item_modification,
+            modifier_names,
+            modifier_conversion_examples,
         )
 
         most_similar_modifier_id = next(
@@ -445,6 +577,7 @@ def get_adora_modifications(
     openai_client: OpenAI,
     openai_model: str,
     order_item: OrderItem,
+    modifier_conversion_examples: dict[str, str],
 ) -> tuple[bool, AdoraOrderItem | str]:
     """
     Maps user-supplied modifications to a specific item in the restaurant's menu, handling both valid modifiers and comments.
@@ -475,7 +608,11 @@ def get_adora_modifications(
 
     # Process order item modifications using OpenAI
     modifiers, comment = process_modifiers(
-        menu_modifiers, order_item.modifications, openai_client, openai_model
+        menu_modifiers,
+        order_item.modifications,
+        openai_client,
+        openai_model,
+        modifier_conversion_examples,
     )
     payload["comment"] = comment
 
@@ -556,6 +693,9 @@ def validate_and_convert_item(
     size_map: dict[int, str],
     menu_modifiers: dict,
     menu_modifier_groups: dict,
+    item_id_conversion_examples: dict[str, str],
+    size_id_conversion_examples: dict[str, str],
+    modifier_conversion_examples: dict[str, str],
     openai_client: OpenAI,
     openai_model: str,
 ) -> tuple[bool, AdoraOrderItem | str]:
@@ -582,6 +722,7 @@ def validate_and_convert_item(
     adora_item_id_res = get_adora_item_id(
         menu_name_to_id_map,
         order_item.item_name,
+        item_id_conversion_examples,
         openai_client,
         openai_model,
     )
@@ -602,6 +743,7 @@ def validate_and_convert_item(
         size_map,
         adora_item_id,
         order_item.size,
+        size_id_conversion_examples,
         openai_client,
         openai_model,
     )
@@ -627,6 +769,7 @@ def validate_and_convert_item(
         openai_client,
         openai_model,
         order_item,
+        modifier_conversion_examples,
     )
 
     return adora_order_item_conversion_res

@@ -137,6 +137,18 @@ class OrderingTools(Toolkit):
         if not cart:
             return "There was an issue processing your order. Please try again."
 
+        fulfillment_strategy = _utils.get_fulfillment_strategy(chat_history)
+        logger.debug(
+            f"[OrderingTools.place_order] Fulfillment strategy: {fulfillment_strategy}"
+        )
+
+        if (
+            not fulfillment_strategy
+            or fulfillment_strategy.strategy == FulfillmentStrategy.NA
+        ):
+            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
+        fulfillment_strategy = fulfillment_strategy.strategy
+
         account_name = self.integration.account_name
         memories = _utils.get_consumer_memory(account_name, self.user_id)
         memory_list = (
@@ -170,18 +182,6 @@ class OrderingTools(Toolkit):
             consumer.phone_number[3:6],
             consumer.phone_number[6:],
         )
-
-        fulfillment_strategy = _utils.get_fulfillment_strategy(chat_history)
-        logger.debug(
-            f"[OrderingTools.place_order] Fulfillment strategy: {fulfillment_strategy}"
-        )
-
-        if (
-            not fulfillment_strategy
-            or fulfillment_strategy.strategy == FulfillmentStrategy.NA
-        ):
-            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
-        fulfillment_strategy = fulfillment_strategy.strategy
 
         delivery_address = None
         if fulfillment_strategy == FulfillmentStrategy.DELIVERY:
