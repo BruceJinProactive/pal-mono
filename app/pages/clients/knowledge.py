@@ -235,7 +235,7 @@ def knowledge_ui(account_name: str) -> None:
             if "confirmation_result" in st.session_state:
                 if st.session_state.confirmation_result is not None:
                     if st.session_state.confirmation_result:
-                        knowledge_base.clear()
+                        knowledge_base.delete()
                         st.session_state["knowledge_base_loaded"] = False
                         st.success("Knowledge base cleared")
                     else:
