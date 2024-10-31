@@ -53,13 +53,14 @@ def knowledge_ui(account_name: str) -> None:
         with tab_pdf:
             # Upload PDF
             if knowledge_base:
-                if "file_uploader_key" not in st.session_state:
-                    st.session_state["file_uploader_key"] = 0
-                uploaded_file = st.file_uploader(
-                    "Upload PDF Here:",
-                    type="pdf",
-                )
-                if uploaded_file is not None:
+                with st.form("my-form-pdf", clear_on_submit=True):
+                    uploaded_file = st.file_uploader(
+                        "Upload PDF Here:",
+                        type="pdf",
+                    )
+                    submitted = st.form_submit_button("UPLOAD")
+
+                if uploaded_file and submitted:
                     alert = st.info("Processing PDF...", icon="ℹ️")
                     pdf_name = uploaded_file.name.split(".")[0]
                     if f"{pdf_name}_uploaded" not in st.session_state:
@@ -95,15 +96,33 @@ def knowledge_ui(account_name: str) -> None:
                         json_document = Document(content=file_content, name=text_name)
                         text_documents.append(json_document)
                     if text_documents:
-                        knowledge_base.load_documents(text_documents)
-                        st.success(
-                            "Text files processed and loaded into the knowledge base"
-                        )
+                        oversized_files = []
+                        for doc in text_documents:
+                            try:
+                                knowledge_base.load_document(doc)
+                            except Exception:
+                                oversized_files.append(doc.name)
+                        if oversized_files:
+                            st.warning(
+                                "Error: The following documents are oversize and have been skipped:\n\n"
+                                + ", ".join(
+                                    [
+                                        f"**{file_name}**"
+                                        for file_name in oversized_files
+                                    ]
+                                )
+                                + "\n\nPlease shorten or contact support."
+                            )
+                        else:
+                            st.success(
+                                "Text files processed and loaded into the knowledge base"
+                            )
+                        alert.empty()
                     else:
                         st.error("No valid Text files to load")
                     st.session_state["text_uploaded"] = True
 
-                    alert.empty()
+                st.write("---")
                 st.info("Manually upload Text below:")
                 name_input = st.text_input(
                     "Document Name:", key="text_document_name_key"
@@ -168,15 +187,34 @@ def knowledge_ui(account_name: str) -> None:
                             st.error(f"Failed to parse JSON file: {uploaded_file.name}")
 
                     if json_documents:
-                        knowledge_base.load_documents(json_documents)
-                        st.success(
-                            "JSON files processed and loaded into the knowledge base"
-                        )
+                        oversized_files = []
+                        for doc in json_documents:
+                            try:
+                                knowledge_base.load_document(doc)
+                            except Exception:
+                                oversized_files.append(doc.name)
+                        if oversized_files:
+                            st.warning(
+                                "Error: The following documents are oversize and have been skipped:\n\n"
+                                + ", ".join(
+                                    [
+                                        f"**{file_name}**"
+                                        for file_name in oversized_files
+                                    ]
+                                )
+                                + "\n\nPlease shorten or contact support."
+                            )
+                        else:
+                            st.success(
+                                "JSON files processed and loaded into the knowledge base"
+                            )
+
                     else:
                         st.error("No valid JSON files to load")
+                    alert.empty()
                     st.session_state["json_uploaded"] = True
 
-                    alert.empty()
+                st.write("---")
                 st.info("Manually upload JSON below:")
                 json_name_input = st.text_input(
                     "Document Name:", key="json_document_name_key"
@@ -206,7 +244,7 @@ def knowledge_ui(account_name: str) -> None:
 
                         except Exception:
                             st.error(
-                                "Sorry, the JSON you provided is **too long** \n. Please provide a shorter JSON or contact support."
+                                "Sorry, the JSON you provided is **too large** \n. Please provide a shorter JSON or contact support."
                             )
 
                     if not json_input:
