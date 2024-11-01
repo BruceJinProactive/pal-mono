@@ -1,9 +1,7 @@
-import json
 import os
 
 import jwt
 import requests
-from jwt.algorithms import RSAAlgorithm
 
 AWS_REGION = os.environ["AWS_REGION"]
 AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
@@ -49,7 +47,8 @@ def get_public_key(jwks, kid):
     """
     for key in jwks["keys"]:
         if key["kid"] == kid:
-            return RSAAlgorithm.from_jwk(json.dumps(key))
+            jwk_obj = jwt.PyJWK.from_dict(key)
+            return jwk_obj.key
     raise ValueError("Public key not found.")
 
 
@@ -71,9 +70,10 @@ def decode_verify_jwt(token, jwks, app_client_id):
     headers = jwt.get_unverified_header(token)
     kid = headers["kid"]
     public_key = get_public_key(jwks, kid)
+
     try:
         claims = jwt.decode(
-            token, public_key, algorithms=["RS256"], audience=app_client_id
+            token, key=public_key, algorithms=["RS256"], audience=app_client_id
         )
     except jwt.ExpiredSignatureError:
         raise ValueError("Token is expired")

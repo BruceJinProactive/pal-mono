@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from requests import Session
+from sqlalchemy.orm import Session
 
 from api.routes.endpoints import endpoints
 from api.schemas.admin.feedback import Feedback
