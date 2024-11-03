@@ -1,7 +1,8 @@
+from enum import Enum
 from os import getenv
 
-from openai import OpenAI
 from phi.embedder.openai import OpenAIEmbedder
+from phi.llm.openai.chat import OpenAIChat
 from phi.llm.openai.like import OpenAILike
 from pydantic import BaseModel, Field
 
@@ -15,23 +16,52 @@ MODEL_ROUTER_BASE_URL = getenv(
 MODEL_ROUTER_API_KEY = getenv("MODEL_ROUTER_API_KEY")
 
 
+class LLM(Enum):
+    OPENAI = "OPENAI"
+    LEPTON = "LEPTON"
+    MODAL = "MODAL"
+    ROUTER = "ROUTER"
+
+
 class OutputModel(BaseModel):
     content: str = Field(..., description="plain response content")
     escalated: bool = Field(..., description="system info escalated field")
 
 
-def get_client():
-    client = OpenAI(
-        api_key="dummy",  # This argument is required by OpenAI(), but not used by model router
-        default_headers={"x-api-key": MODEL_ROUTER_API_KEY},
-        base_url=MODEL_ROUTER_BASE_URL,
-    )
-    return client
-
-
-def get_model(model_name: str = _settings.ai_settings.standard):
-    model = OpenAILike(model=model_name, client=get_client())
-    return model
+def get_llm(llm_name: LLM):
+    if llm_name == LLM.OPENAI:
+        return OpenAIChat(
+            model=_settings.ai_settings.gpt_4o_2024_08_06,
+            max_tokens=4096,
+            temperature=0.9,
+        )
+    elif llm_name == LLM.LEPTON:
+        return OpenAILike(
+            model="gpt-3.5-turbo",
+            api_key=getenv("LEPTON_API_KEY"),
+            base_url="https://kfxrnfa5-pail-test.tin.lepton.run/api/v1/",
+            max_tokens=16384,
+            temperature=0.9,
+            top_p=0.9,
+        )
+    elif llm_name == LLM.MODAL:
+        return OpenAILike(
+            model="OpenHermes-2.5-Mistral-7B-dpo",
+            api_key=getenv("MODAL_API_KEY"),
+            base_url="https://proactive-ai-lab--openai-b-fastapi-app.modal.run/",
+            max_tokens=16384,
+            temperature=0.9,
+            top_p=0.9,
+        )
+    elif llm_name == LLM.ROUTER:
+        return OpenAILike(
+            default_headers={
+                "x-api-key": MODEL_ROUTER_API_KEY,
+            },
+            base_url=MODEL_ROUTER_BASE_URL,
+        )
+    else:
+        raise ValueError(f"Invalid model name: {llm_name}")
 
 
 def get_embedder():
