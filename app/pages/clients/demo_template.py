@@ -12,7 +12,7 @@ from app.auth import user
 from db.session import get_db
 from services.account_service import get_account
 from services.assistant_service import get_ai_assistant, get_assistant
-from services.user_service import get_user_by_channel_identifier
+from services.user_service import get_user_by_channel
 from utils.log import logger
 
 
@@ -34,10 +34,11 @@ def get_prd_assistant(
     if not account.projects:
         raise ValueError("No projects found for this account")
 
-    db_user = get_user_by_channel_identifier(
+    db_user = get_user_by_channel(
         db,
         account_id=account.id,
-        channel_identifier=f"INTERNAL_APP:{user_id}",
+        channel_platform="INTERNAL_APP",
+        channel_identifier=user_id,
         create_new_user=True,
     )
 

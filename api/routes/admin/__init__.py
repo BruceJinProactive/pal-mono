@@ -25,7 +25,7 @@ from services.message_service import (
     get_conversations_by_user,
     get_messages_by_conversation,
 )
-from services.user_service import get_user_by_channel_identifier
+from services.user_service import get_user_by_channel
 
 from . import _auth, _utils
 
@@ -34,7 +34,7 @@ from . import _auth, _utils
 ######################################################
 
 """
-NOTE:
+NOTE: 
 - This code is a work in progress. The rest of the implementation will be done with a fast-follow.
 - Only code with complete Python Docstrings are complete.
 """
@@ -219,10 +219,11 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
         )
 
     # Step 2: Get the user from the account id and cognito:username (latter of which is stored in raw_config)
-    user = get_user_by_channel_identifier(
+    user = get_user_by_channel(
         db=db,
         account_id=account.id,
-        channel_identifier=f"{Channel.API}:{decrypted_id_token["cognito:username"]}",
+        channel_platform=Channel.API,
+        channel_identifier=decrypted_id_token["cognito:username"],
         create_new_user=True,
     )
 
@@ -243,7 +244,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     if not conversations or conversations[0] is None:
         return JSONResponse(content=jsonable_encoder([]))
 
-    """
+    """ 
     We assume that an Admin Console admin only has one conversation.
     If we want an admin to be able to create more than one conversation,
     then we will need to update the DB schema.
@@ -295,10 +296,11 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
 
     # Steps largely the same as the GET endpoint
 
-    user = get_user_by_channel_identifier(
+    user = get_user_by_channel(
         db=db,
         account_id=account.id,
-        channel_identifier=f"{Channel.API}:{decrypted_id_token["cognito:username"]}",
+        channel_platform=Channel.API,
+        channel_identifier=decrypted_id_token["cognito:username"],
         create_new_user=True,
     )
 
@@ -313,7 +315,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
         text=TextObject(body=body_message),
     )
 
-    """
+    """ 
     get_chat_response uses the first conversation associated with the Message.
     Since we assume that an admin console will only ever have one conversation,
     get_chat_response stores the message and the response to the correct conversation.
