@@ -105,7 +105,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
     return response_message
 
 
-async def get_chat_response(db: Session, message: Message) -> Message:
+def get_chat_response(db: Session, message: Message) -> Message:
     user = None
     extras = {}
 
@@ -150,7 +150,7 @@ async def get_chat_response(db: Session, message: Message) -> Message:
         )
 
         # Get response from assistant
-        response_object = await assistant.arun(message.text.body, stream=False)
+        response_object = assistant.run(message.text.body, stream=False)
         if isinstance(response_object, str):
             response = response_object
         elif isinstance(response_object, OutputModel):

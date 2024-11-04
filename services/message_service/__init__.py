@@ -29,7 +29,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
     return await _implementation.get_chat_response_async(db, message)
 
 
-async def get_chat_response(db: Session, message: Message) -> Message:
+def get_chat_response(db: Session, message: Message) -> Message:
     """
     Processes an incoming message and generates a response from the appropriate assistant.
 
@@ -44,7 +44,7 @@ async def get_chat_response(db: Session, message: Message) -> Message:
         ValueError: If any required information (account name, account, projects, user, assistant ID) is not found.
         ValueError: If the response type from the assistant is unexpected.
     """
-    return await _implementation.get_chat_response(db, message)
+    return _implementation.get_chat_response(db, message)
 
 
 def get_messages_by_conversation(
