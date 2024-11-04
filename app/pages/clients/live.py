@@ -3,8 +3,8 @@ from streamlit_extras.switch_page_button import switch_page
 
 from api.schemas.message.message import AuthorType, Channel, Extras, Message, TextObject
 from app.auth import user
+from app.db import get_app_db
 from app.shared import account_picker_ui
-from db.session import get_db
 from services.account_service import get_account
 from services.message_service import (
     get_chat_response,
@@ -15,7 +15,7 @@ from services.user_service import get_user_by_channel_identifier
 
 st.title("Live")
 
-db = next(get_db())
+db = get_app_db()
 
 
 def main() -> None:
