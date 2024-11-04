@@ -1,5 +1,3 @@
-import asyncio
-
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
@@ -78,11 +76,9 @@ def main() -> None:
     ):
         with st.chat_message("assistant"):
             with st.spinner("Working..."):
-                response_message = asyncio.run(
-                    get_chat_response(
-                        db=db,
-                        message=Message.from_dict(st.session_state["messages"][-1]),
-                    )
+                response_message = get_chat_response(
+                    db=db,
+                    message=Message.from_dict(st.session_state["messages"][-1]),
                 ).dict()
             st.session_state["messages"].append(response_message)
             st.write(response_message["text"]["body"])
