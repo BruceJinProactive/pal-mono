@@ -50,7 +50,7 @@ class DbSettings(BaseSettings):
         Generates the database URL using an asynchronous driver.
         """
         # Map synchronous drivers to their async counterparts
-        async_driver_mapping = {
+        driver_mapping_async = {
             "postgresql+psycopg": "postgresql+asyncpg",
             "postgresql+psycopg2": "postgresql+asyncpg",
             "mysql+mysqldb": "mysql+aiomysql",
@@ -59,8 +59,8 @@ class DbSettings(BaseSettings):
         }
 
         # Get the async driver
-        if self.db_driver in async_driver_mapping:
-            async_db_driver = async_driver_mapping[self.db_driver]
+        if self.db_driver in driver_mapping_async:
+            db_driver_async = driver_mapping_async[self.db_driver]
         else:
             # If no mapping is found, default to the original driver
             # or raise an error if necessary
@@ -70,7 +70,7 @@ class DbSettings(BaseSettings):
 
         # Build the async database URL
         db_url = "{}://{}{}@{}:{}/{}".format(
-            async_db_driver,
+            db_driver_async,
             self.db_user,
             f":{self.db_pass}" if self.db_pass else "",
             self.db_host,

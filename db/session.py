@@ -41,7 +41,7 @@ db_url_async = db_settings.get_db_url_async()
 logger.info(f"Database URL Async: {db_url_async}")
 
 # Asynchronous engine
-async_db_engine: AsyncEngine = create_async_engine(
+db_engin_asynce: AsyncEngine = create_async_engine(
     db_url_async,
     pool_size=30,
     max_overflow=50,
@@ -52,11 +52,11 @@ async_db_engine: AsyncEngine = create_async_engine(
 
 # Asynchronous SessionLocal
 AsyncSessionLocal = async_sessionmaker(
-    autocommit=False, autoflush=False, bind=async_db_engine
+    autocommit=False, autoflush=False, bind=db_engin_asynce
 )
 
 
-async def get_async_db():
+async def get_db_async():
     """
     Async dependency to get an asynchronous database session.
     """
