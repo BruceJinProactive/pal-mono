@@ -37,15 +37,15 @@ def main() -> None:
     with message_service_tab:
         st.write("### get_chat_response")
 
-        sender_identifier: str = st.text_input("Sender Channel Identifier")
-        recipient_identifier: str = st.text_input("Recipient Channel Identifier")
-        channel: Channel = st.radio(
+        sender_identifier: str | None = st.text_input("Sender Channel Identifier")
+        recipient_identifier: str | None = st.text_input("Recipient Channel Identifier")
+        channel: Channel | None = st.radio(
             label="Channel",
             options=[channel for channel in Channel],
             format_func=(lambda channel: channel.value),
             key="channel",
         )
-        broker: Broker = st.radio(
+        broker: Broker | None = st.radio(
             label="Broker",
             options=[broker for broker in Broker],
             format_func=(lambda broker: broker.value),
@@ -55,6 +55,10 @@ def main() -> None:
         extras: Extras = Extras(escalated=st.checkbox("Escalated", key="extras"))
 
         if st.button("Get Chat Response"):
+            if not channel:
+                st.error(f"Could not get chat response. Channel is {channel}.")
+                return
+
             input_message = Message(
                 author_type=AuthorType.USER,
                 sender_identifier=sender_identifier,
