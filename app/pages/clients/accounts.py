@@ -12,7 +12,7 @@ db = next(get_db())
 
 
 def main() -> None:
-    st.error("[WARNING] Operations on this page are irreversible.")
+    st.warning("[WARNING] Operations on this page are irreversible.")
     st.write("---")
 
     if "account_name" not in st.session_state:
