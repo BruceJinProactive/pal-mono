@@ -28,30 +28,34 @@ jobs:
       # Create a virtual environment and activate it
       - name: Set up virtual environment
         run: |
-          python -m venv venv
-          source venv/bin/activate
+          python -m venv .venv
+          source .venv/bin/activate
 
       - name: Install dependencies in virtual environment
         run: |
-          venv/bin/python -m pip install --upgrade pip setuptools wheel
-          venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
-          venv/bin/pip install --no-deps -r requirements.txt
+          .venv/bin/python -m pip install --upgrade pip setuptools wheel
+          .venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
+          .venv/bin/pip install -r requirements.txt
 
       - name: Format check with black
         run: |
-          venv/bin/black . --check --diff
+          .venv/bin/black . --check --diff
 
       - name: Lint with ruff
         run: |
-          venv/bin/ruff check .
+          .venv/bin/ruff check .
 
       - name: Sort imports with isort
         run: |
-          venv/bin/isort .
+          .venv/bin/isort .
 
-      # - name: Type-check with mypy
-      #   run: |
-      #     venv/bin/mypy .
+      - name: Set PATHS for pyright
+        run: |
+          echo "${PWD}/.venv/bin" >> $GITHUB_PATH
+
+      - name: Type-check with pyright
+        run: |
+          .venv/bin/pyright .
 
       # If the job fails, send a message to Slack
       - name: Notify Slack
@@ -80,14 +84,14 @@ jobs:
       # Create a virtual environment and activate it
       - name: Set up virtual environment
         run: |
-          python -m venv venv
-          source venv/bin/activate
+          python -m venv .venv
+          source .venv/bin/activate
 
       - name: Install dependencies in virtual environment
         run: |
-          venv/bin/python -m pip install --upgrade pip setuptools wheel
-          venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
-          venv/bin/pip install -r requirements.txt
+          .venv/bin/python -m pip install --upgrade pip setuptools wheel
+          .venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
+          .venv/bin/pip install -r requirements.txt
 
       - name: Run pytest
         env:
@@ -103,7 +107,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ci: true
         run: |
-          venv/bin/pytest
+          .venv/bin/pytest
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
