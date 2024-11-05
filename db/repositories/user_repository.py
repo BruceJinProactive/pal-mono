@@ -1,6 +1,5 @@
 import uuid
 
-from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -74,30 +73,6 @@ class UserRepository:
             self.db.rollback()
             logger.error(f"Error retrieving users: {e}")
             return []
-
-    def get_user_by_channel(
-        self, account_id: uuid.UUID, channel_platform: str, channel_identifier: str
-    ):
-        if not account_id:
-            raise ValueError("'account_id' must be provided")
-        if not channel_platform:
-            raise ValueError("'channel_platform' must be provided")
-        if not channel_identifier:
-            raise ValueError("'channel_identifier' must be provided")
-
-        query = (
-            self.db.query(User)
-            .filter(
-                User.account_id == account_id,
-                text("(raw_config->>'channel_platform') = :channel_platform"),
-                text("(raw_config->>'channel_identifier') = :channel_identifier"),
-            )
-            .params(
-                channel_platform=channel_platform, channel_identifier=channel_identifier
-            )
-        )
-        user = query.first()
-        return user
 
     def get_user_by_channel_identifier(
         self, account_id: uuid.UUID, channel_identifier: str

@@ -5,12 +5,13 @@ from streamlit_extras.switch_page_button import switch_page
 
 from ai.tools.booking_tools import BookingTools
 from ai.tools.ordering_tools import OrderingTools
+from api.schemas.message.message import Channel
 from app.auth import user
 from app.pages.clients.demo import _construct_demo_dict
 from db.session import get_db
 from services.account_service import get_account
 from services.assistant_service import get_assistant
-from services.user_service import get_user_by_channel
+from services.user_service import get_user_by_channel_identifier
 from utils.secret import get_client_secret
 
 st.title("Tools")
@@ -105,11 +106,15 @@ if user.is_logged_in:
     assistant = get_assistant(db, assistant_id)  # type: ignore
 
     account = get_account(db, account_name=assistant.account.name)  # type: ignore
-    db_user = get_user_by_channel(
+
+    if not user.email:
+        st.error("Email is required, please provide an email address.")
+        st.stop()
+
+    db_user = get_user_by_channel_identifier(
         db,
         account_id=account.id,  # type: ignore
-        channel_platform="INTERNAL_APP",
-        channel_identifier=user.email if user.email else "",
+        channel_identifier=f"{Channel.INTERNAL_APP.value}:{user.email}",
         create_new_user=True,
     )
 
