@@ -110,7 +110,7 @@ def get_consumer_memory(account_name: str, user_id: str) -> list[Memory] | None:
     """
     memory = get_memory(account_name)
     memory.user_id = user_id
-    memory.load_memory()
+    memory.load_user_memories()
     memories = memory.memories
     return memories
 

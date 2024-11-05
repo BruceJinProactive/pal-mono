@@ -1,7 +1,12 @@
+from phi.model.openai.chat import OpenAIChat
+from phi.model.openai.like import OpenAILike
+
 from . import _implementation, _settings
 
 
-def get_llm(llm_name: _implementation.LLM = _implementation.LLM.ROUTER):
+def get_llm(
+    llm_name: _implementation.LLM = _implementation.LLM.ROUTER,
+) -> OpenAIChat | OpenAILike:
     """
     Get the appropriate LLM (Large Language Model) instance based on the provided LLM name.
 

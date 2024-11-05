@@ -47,7 +47,7 @@ def generate_markdown_system_prompt(json_data, memory, user_id) -> str:
 
     # Process memories
     memory.user_id = user_id
-    memory.load_memory()
+    memory.load_user_memories()
     memories = memory.memories
     memory_list = (
         "\n".join(f"  - {memory.memory}" for memory in memories) if memories else ""

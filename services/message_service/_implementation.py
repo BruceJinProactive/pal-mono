@@ -58,7 +58,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
         assistant_id = project.assistant_id
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
-        assistant = await assistant_service.get_ai_assistant_async(
+        agent = await assistant_service.get_ai_agent_async(
             db=db,
             assistant_id=assistant_id,
             user_id=user.id,
@@ -69,15 +69,15 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
         request_content = (
             f"User context: {message.context} User message: {message.text.body}"
         )
-        response_object = await assistant.arun(request_content, stream=False)
-        if isinstance(response_object, str):
-            response = response_object
-        elif isinstance(response_object, OutputModel):
+        response_object = await agent.arun(request_content, stream=False)
+        if isinstance(response_object.content, str):
             response = response_object.content
-            extras = {"escalated": response_object.escalated}
+        elif isinstance(response_object.content, OutputModel):
+            response = response_object.content.content
+            extras = {"escalated": response_object.content.escalated}
         else:
             raise ValueError(
-                f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
+                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with text msg {message.text.body}."
             )
 
     except Exception:
@@ -145,21 +145,21 @@ def get_chat_response(db: Session, message: Message) -> Message:
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
 
-        assistant = assistant_service.get_ai_assistant(
+        agent = assistant_service.get_ai_agent(
             db=db, assistant_id=assistant_id, user_id=user.id
         )
 
-        # Get response from assistant
-        response_object = assistant.run(message.text.body, stream=False)
-        if isinstance(response_object, str):
-            response = response_object
-        elif isinstance(response_object, OutputModel):
+        response_object = agent.run(message.text.body, stream=False)
+        if isinstance(response_object.content, str):
             response = response_object.content
-            extras = {"escalated": response_object.escalated}
+        elif isinstance(response_object.content, OutputModel):
+            response = response_object.content.content
+            extras = {"escalated": response_object.content.escalated}
         else:
             raise ValueError(
-                f"Can't handle response type {type(response_object)} for userid {user.id} with text msg {message.text.body}."
+                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with text msg {message.text.body}."
             )
+
     except Exception as e:
         # Log any error and set default error response
         logger.error(e)

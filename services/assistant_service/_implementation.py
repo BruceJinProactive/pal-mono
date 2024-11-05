@@ -1,11 +1,11 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from phi.assistant.assistant import Assistant as AIAssistant
+from phi.agent.agent import Agent as PhiAgent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from ai import integrate_assistant
+from ai import integrate_agent
 from db.repositories.account_repository import AccountRepository
 from db.repositories.assistant_repository import (
     AssistantRepository,
@@ -14,12 +14,12 @@ from db.repositories.assistant_repository import (
 from db.tables import Assistant
 
 
-async def get_ai_assistant_async(
+async def get_ai_agent_async(
     db: AsyncSession,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
-) -> AIAssistant:
+) -> PhiAgent:
     # Retrieve the assistant from the database
     assistant_repository = AssistantRepositoryAsync(db)
     assistant = await assistant_repository.get_assistant(assistant_id=assistant_id)
@@ -28,29 +28,31 @@ async def get_ai_assistant_async(
         raise ValueError("Invalid assistant_id")
 
     # Assuming integrate_assistant is a synchronous function
-    return integrate_assistant(
+    return integrate_agent(
+        agent_id=str(assistant_id),
         account_name=assistant.account.name,
-        assistant_raw_config=assistant.raw_config,
+        agent_raw_config=assistant.raw_config,
         user_id=str(user_id),
         conversation_id=str(conversation_id),
     )
 
 
-def get_ai_assistant(
+def get_ai_agent(
     db: Session,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
     new_run: bool = False,
-) -> AIAssistant:
+) -> PhiAgent:
     # Retrieve the assistant from the database
     assistant_repository = AssistantRepository(db)
     assistant = assistant_repository.get_assistant(assistant_id=assistant_id)
     if assistant is None:
         raise ValueError("Invalid assistant_id")
 
-    return integrate_assistant(
+    return integrate_agent(
+        agent_id=str(assistant_id),
         account_name=assistant.account.name,
-        assistant_raw_config=assistant.raw_config,
+        agent_raw_config=assistant.raw_config,
         user_id=str(user_id),
         new_run=new_run,
     )

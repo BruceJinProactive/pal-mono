@@ -2,7 +2,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import shopify
-from phi.knowledge.base import AssistantKnowledge
+from phi.knowledge.agent import AgentKnowledge
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.vectordb.pgvector.pgvector2 import PgVector2
 
@@ -14,9 +14,9 @@ from utils.secret import get_client_secret
 from .image_indexer import ShopifyImageIndexer
 
 
-def get_knowledge(account_name: str) -> AssistantKnowledge:
+def get_knowledge(account_name: str) -> AgentKnowledge:
     knowledge_table_name = f"{account_name}_knowledge"
-    get_knowledge = CombinedKnowledgeBase(
+    knowledge = CombinedKnowledgeBase(
         sources=[],
         vector_db=PgVector2(
             db_url=db_url,
@@ -27,7 +27,7 @@ def get_knowledge(account_name: str) -> AssistantKnowledge:
         num_documents=10,
     )
 
-    return get_knowledge
+    return knowledge
 
 
 def index_data_from_shopify() -> tuple[int, int]:

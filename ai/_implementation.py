@@ -1,6 +1,6 @@
-from typing import Any, Dict
+from typing import Any
 
-from phi.assistant.assistant import Assistant
+from phi.agent.agent import Agent
 
 from ai.knowledge import get_knowledge
 from ai.llm import OutputModel, get_llm
@@ -10,68 +10,72 @@ from ai.storage import get_storage
 from ai.tools import get_tools
 
 
-def integrate_assistant(
+def integrate_agent(
+    agent_id: str,
     account_name: str,
-    assistant_raw_config: Dict[str, Any],
+    agent_raw_config: dict[str, Any],
     user_id: str,
     conversation_id: str | None = None,
     new_run: bool = False,
-) -> Assistant:
-    # Set up llm
+) -> Agent:
+    # -*- Agent settings
     llm = get_llm()
 
-    # Set up memory
+    # -*- Agent Memory
     memory = get_memory(account_name)
 
-    # Retrieve and build prompts and add memory list
-    system_prompt = get_system_prompt(assistant_raw_config, memory, user_id)
-
-    # Set up storage
-    storage = get_storage(account_name)
-
-    # Set up knowledge base
+    # -*- Agent Knowledge
     knowledge = get_knowledge(account_name)
 
-    # Add tools
-    tools = get_tools(assistant_raw_config, user_id)
+    # -*- Agent Storage
+    storage = get_storage(account_name)
 
-    # Get run id
-    run_id = None
+    # -*- Agent Tools
+    tools = get_tools(agent_raw_config, user_id)
+
+    # -*- System Prompt Settings
+    system_prompt = get_system_prompt(agent_raw_config, memory, user_id)
+
+    # -*- Session settings
+    session_id = None
     if conversation_id:
-        run_id = conversation_id
+        session_id = conversation_id
     elif not new_run:
-        run_ids = storage.get_all_run_ids(user_id=str(user_id))
-        run_id = run_ids[0] if run_ids else None
+        session_ids = storage.get_all_session_ids(
+            user_id=str(user_id), agent_id=agent_id
+        )
+        session_id = session_ids[0] if session_ids else None
 
-    return Assistant(
-        # Assistant settings
-        assistant_data={"assistant_type": "autonomous"},
-        # Run settings
-        run_id=run_id,
-        # User settings
+    return Agent(
+        # -*- Agent settings
+        provider=llm,
+        agent_id=agent_id,
+        agent_data={"agent_type": "autonomous"},
+        # -*- User settings
         user_id=user_id,
-        # Chat Memory
-        add_chat_history_to_messages=True,
-        add_chat_history_to_prompt=False,
-        num_history_messages=10,
-        # Prompt Settings
-        system_prompt=system_prompt,
-        # Storage, knowledge, and memory
-        storage=storage,
-        knowledge_base=knowledge,
+        # -*- Session settings
+        session_id=session_id,
+        # -*- Agent Memory
         memory=memory,
-        create_memories=True,
-        update_memory_after_run=True,
-        # LLM
-        llm=llm,
-        # Tools
+        add_chat_history_to_messages=True,
+        num_history_responses=10,
+        # -*- Agent Knowledge
+        knowledge_base=knowledge,
+        # -*- Agent Storage
+        storage=storage,
+        # -*- Agent Tools
         tools=tools,
-        use_tools=True,
         show_tool_calls=False,
-        search_knowledge=True,
+        # -*- Default tools
         read_chat_history=True,
-        # Configurations
-        debug_mode=False,
-        # Output Format
+        search_knowledge=True,
+        # -*- System Prompt Settings
+        system_prompt=system_prompt,
+        # -*- Agent Response Settings
         output_model=OutputModel,
+        parse_response=True,
+        structured_outputs=False,  # please set to False for JSON mode
+        # -*- Agent run details
+        # -*- Debugging
+        debug_mode=True,
     )

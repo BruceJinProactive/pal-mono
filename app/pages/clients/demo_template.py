@@ -3,26 +3,27 @@ import time
 import uuid
 
 import streamlit as st
-from phi.assistant.assistant import Assistant
+from phi.agent.agent import Agent
 from phi.memory.manager import MemoryManager
 from phi.memory.memory import Memory
+from phi.run.response import RunResponse
 from PIL import Image
 
 from app.auth import user
 from db.session import get_db
 from services.account_service import get_account
-from services.assistant_service import get_ai_assistant, get_assistant
+from services.assistant_service import get_ai_agent, get_assistant
 from services.user_service import get_user_by_channel
 from utils.log import logger
 
 
-def get_prd_assistant(
+def get_prd_agent(
     user_id: str,
-    assistant_id: uuid.UUID,
+    agent_id: uuid.UUID,
     new_run: bool = False,
-) -> Assistant:
+) -> Agent:
     db = next(get_db())
-    prd_assistant = get_assistant(db, assistant_id)
+    prd_assistant = get_assistant(db, agent_id)
 
     account = None
     if prd_assistant is not None:
@@ -45,17 +46,17 @@ def get_prd_assistant(
     if not db_user:
         raise ValueError("User not found in db")
 
-    ai_assistant = get_ai_assistant(
+    ai_agent: Agent = get_ai_agent(
         db,
-        assistant_id=assistant_id,
+        assistant_id=agent_id,
         user_id=db_user.id,
         new_run=new_run,
     )
-    return ai_assistant
+    return ai_agent
 
 
 def demo_ui(
-    assistant_id: uuid.UUID,
+    agent_id: uuid.UUID,
 ) -> None:
     if not user.email:
         st.error(
@@ -64,64 +65,61 @@ def demo_ui(
         st.stop()
     if st.session_state.get("restart_chat"):
         logger.info("Restarting chat")
-        assistant = get_prd_assistant(
+        agent = get_prd_agent(
             user_id=user.email,
-            assistant_id=assistant_id,
+            agent_id=agent_id,
             new_run=True,
         )
-        assistant.memory.chat_history = []
-        assistant.memory.llm_messages = []
+        agent.memory.messages = []
         st.session_state["messages"] = []
     else:
         logger.info("Not restarting chat")
-        assistant = get_prd_assistant(
+        agent = get_prd_agent(
             user_id=user.email,
-            assistant_id=assistant_id,
+            agent_id=agent_id,
             new_run=False,
         )
     st.session_state["restart_chat"] = False
 
     # Reset memory
     if st.session_state.get("reset_memory"):
-        if assistant.memory.manager is None:
-            assistant.memory.manager = MemoryManager(
-                user_id=assistant.memory.user_id, db=assistant.memory.db
+        if agent.memory.manager is None:
+            agent.memory.manager = MemoryManager(
+                user_id=agent.memory.user_id, db=agent.memory.db
             )
-        assistant.memory.manager.clear_memory()
+        agent.memory.manager.clear_memory()
         st.session_state["reset_memory"] = False
 
     # Debug UI
-    debug_ui(assistant)
+    debug_ui(agent)
 
     # Load existing or create new run
-    assistant.create_run()
+    agent.load_session()
     # Messaging UI
-    messaging_ui(assistant)
+    messaging_ui(agent)
     # Settings UI
-    memory_ui(assistant)
+    memory_ui(agent)
     # storage_ui(assistant)
 
 
 demo_system_prompt = ""
 
 
-def debug_ui(assistant: Assistant):
+def debug_ui(agent: Agent):
     # System Prompt
     system_prompt_expander = st.expander("System Prompt")
     global demo_system_prompt
     demo_system_prompt = system_prompt_expander.text_area(
         "System Prompt",
-        assistant.system_prompt,
+        agent.system_prompt,
         height=300,
         label_visibility="collapsed",
     )
     # Debug Info
     with st.expander("Debug Info"):
-        st.info(f"Assistant Name: {assistant.name}")
-        st.info(f"Run ID: {assistant.run_id}")
-        assistant.show_tool_calls = st.toggle(
-            "Show Tool Calls", assistant.show_tool_calls
-        )
+        st.info(f"Agent Name: {agent.name}")
+        st.info(f"Session ID: {agent.session_id}")
+        agent.show_tool_calls = st.toggle("Show Tool Calls", agent.show_tool_calls)
 
     # Restart chat
     def restart_chat():
@@ -141,9 +139,9 @@ def debug_ui(assistant: Assistant):
             reset_memory()
 
 
-def messaging_ui(assistant: Assistant) -> None:
-    assistant_chat_history = assistant.memory.get_chat_history()
-    st.session_state["messages"] = assistant_chat_history
+def messaging_ui(agent: Agent) -> None:
+    agent_chat_history = agent.memory.get_messages()
+    st.session_state["messages"] = agent_chat_history
     # Prompt for user input
     if prompt := st.chat_input():
         st.session_state["messages"].append({"role": "user", "content": prompt})
@@ -154,7 +152,12 @@ def messaging_ui(assistant: Assistant) -> None:
 
         else:
             with st.chat_message(message["role"]):
-                if message["role"] == "assistant":
+                if "content" not in message:
+                    continue  # skip empty messages
+                if message["role"] == "agent":
+                    logger.debug(
+                        f"[demo_template.messaging_ui] agent message: {str(message)}"
+                    )
                     try:
                         response_object = json.loads(message["content"])
                         response = response_object["content"]
@@ -162,6 +165,9 @@ def messaging_ui(assistant: Assistant) -> None:
                         st.write(response)
                         st.json(extras)
                     except Exception:
+                        logger.debug(
+                            f"[demo_template.messaging_ui] agent message: failed to load JSON: {str(message)}"
+                        )
                         ## handle the case when show tool call toggle is on
                         response = message["content"]
                         try:
@@ -177,6 +183,9 @@ def messaging_ui(assistant: Assistant) -> None:
                             st.write(response)
                             st.json(extras)
                         except Exception:
+                            logger.debug(
+                                "[demo_template.messaging_ui] agent message: completely failed to parse JSON"
+                            )
                             # response = response.replace("\$", "💲").replace("$", "💲")
                             st.write(response)
                 else:
@@ -186,25 +195,25 @@ def messaging_ui(assistant: Assistant) -> None:
     try:
         last_message = st.session_state["messages"][-1]
         if last_message.get("role") == "user":
-            assistant.system_prompt = demo_system_prompt
+            agent.system_prompt = demo_system_prompt
             question = last_message["content"]
-            generate_response_in_ui(assistant, question)
+            generate_response_in_ui(agent, question)
     except IndexError:
         pass
 
 
-def memory_ui(assistant: Assistant) -> None:
+def memory_ui(agent: Agent) -> None:
     st.sidebar.write("## Memory")
     # Display existing memories
-    if assistant.memory.memories:
-        for item in assistant.memory.memories:
+    if agent.memory.memories:
+        for item in agent.memory.memories:
             col1, col2 = st.sidebar.columns([12, 2.5])
             with col1:
                 st.warning(item.memory)
             with col2:
                 st.write("")
                 if st.button("✕", key=f"remove_memory_{item}"):
-                    clear_memory(assistant, item)
+                    clear_memory(agent, item)
                     st.rerun()
     # Add the "Add Memory" button
     if "add_memory" not in st.session_state:
@@ -218,39 +227,39 @@ def memory_ui(assistant: Assistant) -> None:
         if st.sidebar.button("Save"):
             if memory_text:
                 new_memory = Memory(input=memory_text, memory=memory_text)
-                add_memory(assistant, new_memory)
+                add_memory(agent, new_memory)
                 # Close the text field after saving
                 st.session_state["add_memory"] = False
                 st.rerun()
     st.sidebar.markdown("---")
 
 
-def add_memory(assistant: Assistant, memory: Memory) -> None:
+def add_memory(agent: Agent, memory: Memory) -> None:
     """
-    Adds the specified memory to both the assistant's memory list and the memory database.
+    Adds the specified memory to both the agent's memory list and the memory database.
 
     Parameters:
-    assistant (Assistant): The `Assistant` instance that will generate the response.
+    agent (Agent): The `Agent` instance that will generate the response.
     memory (Memory): The `Memory` instance to be added.
 
     Returns:
     None
 
     """
-    if assistant.memory.manager is None:
-        assistant.memory.manager = MemoryManager(
-            user_id=assistant.memory.user_id, db=assistant.memory.db
+    if agent.memory.manager is None:
+        agent.memory.manager = MemoryManager(
+            user_id=agent.memory.user_id, db=agent.memory.db
         )
 
-    assistant.memory.manager.add_memory(memory.memory)
+    agent.memory.manager.add_memory(memory.memory)
 
 
-def clear_memory(assistant: Assistant, removed_memory: Memory) -> None:
+def clear_memory(agent: Agent, removed_memory: Memory) -> None:
     """
-    Clears the specified memory from both the assistant's memory list and the memory database.
+    Clears the specified memory from both the agent's memory list and the memory database.
 
     Parameters:
-    assistant (Assistant): The `Assistant` instance that will generate the response.
+    agent (Agent): The `Agent` instance that will generate the response.
     removed_memory (Memory): The `Memory` object to be removed.
 
     Returns:
@@ -258,38 +267,38 @@ def clear_memory(assistant: Assistant, removed_memory: Memory) -> None:
 
     """
 
-    if assistant.memory.manager is None:
-        assistant.memory.manager = MemoryManager(
-            user_id=assistant.memory.user_id, db=assistant.memory.db
+    if agent.memory.manager is None:
+        agent.memory.manager = MemoryManager(
+            user_id=agent.memory.user_id, db=agent.memory.db
         )
 
-    memories = assistant.memory.memories
+    memories = agent.memory.memories
     if memories and removed_memory and removed_memory in memories:
         memories.remove(removed_memory)
-    assistant.memory.manager.clear_memory()
+    agent.memory.manager.clear_memory()
     if memories:
         for memory in memories:
-            assistant.memory.manager.add_memory(memory.memory)
+            agent.memory.manager.add_memory(memory.memory)
 
 
-def storage_ui(assistant: Assistant) -> None:
-    st.sidebar.write("## Storage")
-    assistant.auto_rename_run()
-    st.sidebar.success(assistant.run_name)
-    if assistant.storage:
-        st.sidebar.success(
-            f"Number of chats: {len(assistant.memory.get_chat_history())}"
-        )
+# def storage_ui(assistant: Agent) -> None:
+#     st.sidebar.write("## Storage")
+#     assistant.auto_rename_run()
+#     st.sidebar.success(assistant.run_name)
+#     if assistant.storage:
+#         st.sidebar.success(
+#             f"Number of chats: {len(assistant.memory.get_chat_history())}"
+#         )
 
 
-def generate_response_in_ui(assistant, question, avatar_path=None):
+def generate_response_in_ui(agent: Agent, question, avatar_path=None):
     """
-    Generates a response from the assistant and displays it in the chat interface.
+    Generates a response from the agent and displays it in the chat interface.
 
     Parameters:
-    assistant (object): The assistant object that will generate the response.
-    question (str): The question or prompt to which the assistant will respond.
-    avatar_path (str, optional): The file path to the avatar image to be displayed with the assistant's message. Defaults to None.
+    agent (object): The agent object that will generate the response.
+    question (str): The question or prompt to which the agent will respond.
+    avatar_path (str, optional): The file path to the avatar image to be displayed with the agent's message. Defaults to None.
 
     Returns:
     None
@@ -302,7 +311,7 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
         container.text(f"Response generated in {time.time() - start_time:.2f} seconds")
 
     with st.chat_message(
-        "assistant", avatar=Image.open(avatar_path) if avatar_path else None
+        "agent", avatar=Image.open(avatar_path) if avatar_path else None
     ):
         with st.spinner("Working..."):
             MAX_RETRIES = 5
@@ -314,33 +323,50 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                 elapsed_container = st.empty()
                 try:
                     resp_container = st.empty()
-                    response_object = assistant.run(question, stream=False)
+                    response_object: RunResponse = agent.run(question, stream=False)
                     if isinstance(response_object, str):
-                        response = response_object
-                        try:
-                            ## handle str format when tool call toggle is on
-                            json_start = response.find('''{ "content"''')
-                            if json_start == -1:
-                                json_start = response.find('''{"content"''')
-                            response_object = json.loads(response[json_start:])
-                            response = (
-                                response[:json_start] + response_object["content"]
-                            )
-                            extras = {"escalated": response_object["escalated"]}
-                            resp_container.markdown(response)
-                            display_elapsed_time(elapsed_container, start_time)
-                            st.json(extras)
-                        except Exception:
-                            response = response.replace(r"\$", "💲").replace("$", "💲")
-                            resp_container.markdown(response)
-                            display_elapsed_time(elapsed_container, start_time)
+                        # TODO this case never happens
+                        raise Exception("FATAL ERROR")
+                        # response = response_object
+                        # try:
+                        #     logger.debug(
+                        #         f"[demo_template.generate_response_in_ui] str response: {response}"
+                        #     )
+                        #     ## handle str format when tool call toggle is on
+                        #     json_start = response.find('''{ "content"''')
+                        #     if json_start == -1:
+                        #         json_start = response.find('''{"content"''')
+                        #     response_object = json.loads(response[json_start:])
+                        #     response = (
+                        #         response[:json_start] + response_object["content"]
+                        #     )
+                        #     extras = {"escalated": response_object["escalated"]}
+                        #     resp_container.markdown(response)
+                        #     display_elapsed_time(elapsed_container, start_time)
+                        #     st.json(extras)
+                        # except Exception:
+                        #     logger.debug(
+                        #         f"[demo_template.generate_response_in_ui] str response: failed to load JSON: {response}"
+                        #     )
+                        #     response = response.replace(r"\$", "💲").replace("$", "💲")
+                        #     resp_container.markdown(response)
+                        #     display_elapsed_time(elapsed_container, start_time)
                     else:
                         response = response_object.content
-                        response = response.replace(r"\$", "💲").replace("$", "💲")
-                        resp_container.markdown(response)
-                        display_elapsed_time(elapsed_container, start_time)
-                        extras = {"escalated": response_object.escalated}
+                        logger.debug(
+                            f"[demo_template.generate_response_in_ui] object response: {response}"
+                        )
+                        if not response:
+                            # TODO do something here
+                            return
+                        response_content = response.content
+                        response_content = response_content.replace(
+                            r"\$", "💲"
+                        ).replace("$", "💲")
+                        resp_container.markdown(response_content)
+                        extras = {"escalated": response.escalated}
                         st.json(extras)
+                        display_elapsed_time(elapsed_container, start_time)
 
                     break  # Exit the loop if the response is generated
                 except Exception as e:
@@ -357,4 +383,4 @@ def generate_response_in_ui(assistant, question, avatar_path=None):
                     f"Error: {error}\nFailed to generate a response after multiple attempts."
                 )
 
-        st.session_state["messages"].append({"role": "assistant", "content": response})
+        st.session_state["messages"].append({"role": "agent", "content": response})

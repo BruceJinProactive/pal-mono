@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from phi.assistant.assistant import Assistant as PhiAssistant
+from phi.agent.agent import Agent as PhiAgent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -10,60 +10,60 @@ from db.tables import Assistant
 from . import _implementation
 
 
-async def get_ai_assistant_async(
+async def get_ai_agent_async(
     db: AsyncSession,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
-) -> PhiAssistant:
+) -> PhiAgent:
     """
-    Retrieve a PhiAssistant instance based on the provided assistant ID, user ID, and conversation ID.
+    Retrieve a PhiAgent instance based on the provided agent ID, user ID, and conversation ID.
 
     Args:
         db (AsyncSession): The asynchronous database session to use for the query.
-        assistant_id (uuid.UUID): The unique identifier of the assistant.
+        assistant_id (uuid.UUID): The unique identifier of the agent.
         user_id (uuid.UUID): The unique identifier of the user.
         conversation_id (uuid.UUID): The unique identifier of the conversation.
 
     Returns:
-        PhiAssistant: The retrieved PhiAssistant instance.
+        PhiAgent: The retrieved PhiAgent instance.
     """
-    return await _implementation.get_ai_assistant_async(
+    return await _implementation.get_ai_agent_async(
         db, assistant_id, user_id, conversation_id=conversation_id
     )
 
 
-def get_ai_assistant(
+def get_ai_agent(
     db: Session,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
     new_run: bool = False,
-) -> PhiAssistant:
+) -> PhiAgent:
     """
-    Retrieve a PhiAssistant instance based on the provided assistant ID and user ID.
+    Retrieve a PhiAgent instance based on the provided assistant ID and user ID.
 
     Args:
         db (Session): The database session to use for the query.
-        assistant_id (uuid.UUID): The unique identifier of the assistant.
+        assistant_id (uuid.UUID): The unique identifier of the agent.
         user_id (uuid.UUID): The unique identifier of the user.
         new_run (bool, optional): Flag indicating whether this is a new run. Defaults to False.
 
     Returns:
-        PhiAssistant: The retrieved PhiAssistant instance.
+        PhiAgent: The retrieved PhiAgent instance.
     """
-    return _implementation.get_ai_assistant(db, assistant_id, user_id, new_run=new_run)
+    return _implementation.get_ai_agent(db, assistant_id, user_id, new_run=new_run)
 
 
 def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:
     """
-    Retrieve an Assistant instance based on the provided assistant ID.
+    Retrieve an Agent instance based on the provided assistant ID.
 
     Args:
         db (Session): The database session to use for the query.
-        assistant_id (uuid.UUID): The unique identifier of the assistant.
+        assistant_id (uuid.UUID): The unique identifier of the agent.
 
     Returns:
-        Optional[Assistant]: The retrieved Assistant instance if found, otherwise None.
+        Optional[Assistant]: The retrieved Agent instance if found, otherwise None.
     """
     return _implementation.get_assistant(db, assistant_id)
 
@@ -119,7 +119,7 @@ def replace_assistant_config(
 
 
 __all__ = [
-    "get_ai_assistant",
+    "get_ai_agent",
     "get_assistant",
     "get_assistants_by_account",
     "update_assistant_config",
