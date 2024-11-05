@@ -129,10 +129,6 @@ def validate_order(
 
     payload = json.dumps(payload)
 
-    logger.debug(
-        f"[AdoraIntegration._apis.validate_order] Payload: {json.dumps(json.loads(payload), indent=2)}"
-    )
-
     response = _utils.connect_adora_order_hub(
         "POST",
         bearer_token,
@@ -142,9 +138,6 @@ def validate_order(
         payload=payload,
     )
 
-    logger.debug(
-        f"[AdoraIntegration._apis.validate_order] Response code: {response.status}. Response body: {response.decoded_body}"
-    )
     if response.status == 200:
         return _utils.parse_json(
             AdoraOrderCalculationResult, json.loads(response.decoded_body)

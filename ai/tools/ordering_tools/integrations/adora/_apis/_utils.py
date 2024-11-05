@@ -29,8 +29,23 @@ def connect_adora_order_hub(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: str | None = "",
+    logging: bool = True,
 ) -> AdoraHubResponse:
-    """utility function to connect to Adora Order Hub API"""
+    """Utility function to connect to Adora Order Hub API"""
+
+    if logging:
+        logger.info(
+            f"[AdoraIntegration._apis._utils.connect_adora_order_hub] Calling Adora API: {http_method} {api_function}"
+        )
+        logger.info(
+            f"[AdoraIntegration._apis._utils.connect_adora_order_hub] Query Params: {query_params}"
+        )
+        logger.info(
+            f"[AdoraIntegration._apis._utils.connect_adora_order_hub] Extra Headers: {extra_headers}"
+        )
+        logger.info(
+            f"[AdoraIntegration._apis._utils.connect_adora_order_hub] Payload: {payload}"
+        )
 
     conn = http.client.HTTPSConnection("public.api.adorapos.net")
     headers = {
@@ -59,4 +74,10 @@ def connect_adora_order_hub(
     order_hub_response = AdoraHubResponse(
         status=res.status, reason=res.reason, decoded_body=response_body
     )
+
+    if logging:
+        logger.info(
+            f"[AdoraIntegration._apis._utils.connect_adora_order_hub] Response: {order_hub_response}"
+        )
+
     return order_hub_response

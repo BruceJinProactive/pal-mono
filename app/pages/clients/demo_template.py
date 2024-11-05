@@ -155,9 +155,6 @@ def messaging_ui(agent: Agent) -> None:
                 if "content" not in message:
                     continue  # skip empty messages
                 if message["role"] == "agent":
-                    logger.debug(
-                        f"[demo_template.messaging_ui] agent message: {str(message)}"
-                    )
                     try:
                         response_object = json.loads(message["content"])
                         response = response_object["content"]
@@ -165,9 +162,6 @@ def messaging_ui(agent: Agent) -> None:
                         st.write(response)
                         st.json(extras)
                     except Exception:
-                        logger.debug(
-                            f"[demo_template.messaging_ui] agent message: failed to load JSON: {str(message)}"
-                        )
                         ## handle the case when show tool call toggle is on
                         response = message["content"]
                         try:
@@ -183,9 +177,6 @@ def messaging_ui(agent: Agent) -> None:
                             st.write(response)
                             st.json(extras)
                         except Exception:
-                            logger.debug(
-                                "[demo_template.messaging_ui] agent message: completely failed to parse JSON"
-                            )
                             # response = response.replace("\$", "💲").replace("$", "💲")
                             st.write(response)
                 else:
@@ -327,35 +318,8 @@ def generate_response_in_ui(agent: Agent, question, avatar_path=None):
                     if isinstance(response_object, str):
                         # TODO this case never happens
                         raise Exception("FATAL ERROR")
-                        # response = response_object
-                        # try:
-                        #     logger.debug(
-                        #         f"[demo_template.generate_response_in_ui] str response: {response}"
-                        #     )
-                        #     ## handle str format when tool call toggle is on
-                        #     json_start = response.find('''{ "content"''')
-                        #     if json_start == -1:
-                        #         json_start = response.find('''{"content"''')
-                        #     response_object = json.loads(response[json_start:])
-                        #     response = (
-                        #         response[:json_start] + response_object["content"]
-                        #     )
-                        #     extras = {"escalated": response_object["escalated"]}
-                        #     resp_container.markdown(response)
-                        #     display_elapsed_time(elapsed_container, start_time)
-                        #     st.json(extras)
-                        # except Exception:
-                        #     logger.debug(
-                        #         f"[demo_template.generate_response_in_ui] str response: failed to load JSON: {response}"
-                        #     )
-                        #     response = response.replace(r"\$", "💲").replace("$", "💲")
-                        #     resp_container.markdown(response)
-                        #     display_elapsed_time(elapsed_container, start_time)
                     else:
                         response = response_object.content
-                        logger.debug(
-                            f"[demo_template.generate_response_in_ui] object response: {response}"
-                        )
                         if not response:
                             # TODO do something here
                             return

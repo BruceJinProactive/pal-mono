@@ -77,5 +77,5 @@ def integrate_agent(
         structured_outputs=False,  # please set to False for JSON mode
         # -*- Agent run details
         # -*- Debugging
-        debug_mode=True,
+        debug_mode=False,
     )
