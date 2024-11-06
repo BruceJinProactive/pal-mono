@@ -3,11 +3,17 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class TextObject(BaseModel):
     body: str = Field(..., max_length=4096)
+
+
+class MediaObject(BaseModel):
+    url: str = Field(...)
+    media_type: str = Field(...)
+    caption: str = Field(default="", max_length=1024)
 
 
 class AuthorType(str, Enum):
@@ -32,6 +38,7 @@ class Broker(str, Enum):
 
 class Type(str, Enum):
     TEXT = "text"
+    MEDIA = "media"
 
 
 class Extras(BaseModel):
@@ -48,7 +55,8 @@ class Message(BaseModel):
     broker: Optional[Broker] = None
     # Content
     type: Type = Type.TEXT
-    text: TextObject
+    text: Optional[TextObject] = None
+    media: Optional[MediaObject] = None
     context: str = Field(default="", max_length=4096)
     # Extra information
     extras: Optional[Extras] = None
@@ -56,11 +64,15 @@ class Message(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    @field_validator("type")
-    def validate_type(cls, v):
-        if v != "text":
-            raise ValueError("Currently, only 'text' type is supported")
-        return v
+    @model_validator(mode="after")
+    def validate_model(self):
+        if self.type not in ("text", "media"):
+            raise ValueError("Currently, only 'text', 'media' types are supported")
+        if self.type == "text" and self.text is None:
+            raise ValueError("TextObject is required for 'text' type")
+        elif self.type == "media" and self.media is None:
+            raise ValueError("MediaObject is required for 'media' type")
+        return self
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -71,12 +83,23 @@ class Message(BaseModel):
             "channel": self.channel.value,
             "broker": self.broker.value if self.broker is not None else None,
             "type": self.type.value,
-            "text": self.text.dict(),
+            "text": self.text.dict() if self.text is not None else None,
+            "media": self.media.dict() if self.media is not None else None,
             "context": self.context,
             "timestamp": self.timestamp.isoformat(),
             "metadata": self.metadata,
             "extras": self.extras.dict() if self.extras is not None else None,
         }
+
+    def get_content(self) -> str:
+        if self.text:
+            content = f"User context: {self.context} User message: {self.text.body}"
+        elif self.media:
+            content = f"User context: {self.context} Media Url: {self.media.url} Media Caption: {self.media.caption} Media Type: {self.media.media_type}"
+        else:
+            raise ValueError("Message object not set")
+
+        return content
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Message":
@@ -87,6 +110,10 @@ class Message(BaseModel):
         # Convert text dict to TextObject
         if isinstance(data.get("text"), dict):
             data["text"] = TextObject(**data["text"])
+
+        # Convert media dict to MediaObject
+        if isinstance(data.get("media"), dict):
+            data["media"] = MediaObject(**data["media"])
 
         # Convert extras dict to Extras
         if isinstance(data.get("extras"), dict):

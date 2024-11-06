@@ -66,9 +66,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         )
 
         # Get response from assistant
-        request_content = (
-            f"User context: {message.context} User message: {message.text.body}"
-        )
+        request_content = message.get_content()
         response_object = await agent.arun(request_content, stream=False)
         if isinstance(response_object.content, str):
             response = response_object.content
@@ -77,7 +75,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
             extras = {"escalated": response_object.content.escalated}
         else:
             raise ValueError(
-                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with text msg {message.text.body}."
+                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with request content {request_content}."
             )
 
     except Exception:
@@ -153,7 +151,9 @@ def get_chat_response(db: Session, message: Message) -> Message:
             conversation_id=conversation_id,
         )
 
-        response_object = agent.run(message.text.body, stream=False)
+        # Get response from assistant
+        request_content = message.get_content()
+        response_object = agent.run(request_content, stream=False)
         if isinstance(response_object.content, str):
             response = response_object.content
         elif isinstance(response_object.content, OutputModel):
@@ -161,7 +161,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
             extras = {"escalated": response_object.content.escalated}
         else:
             raise ValueError(
-                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with text msg {message.text.body}."
+                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with request content {request_content}."
             )
 
     except Exception as e:
