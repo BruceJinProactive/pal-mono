@@ -23,31 +23,6 @@ def set_account(account_name):
         st.session_state.pop("assistant_id")
 
 
-def footer_ui():
-    footer = """
-        <style>
-        .sidebar .sidebar-content {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            height: 100%;
-        }
-        .footer {
-            text-align: center;
-            padding: 10px 0;
-            font-size: 12px;
-            color: gray;
-        }
-        </style>
-        <div class="footer">
-            <hr>
-            <p>© 2024 Proactive AI Lab</p>
-        </div>
-        """
-
-    st.sidebar.markdown(footer, unsafe_allow_html=True)
-
-
 def account_picker_ui(db: Session) -> None:
     with st.sidebar:
         st.subheader("Account Picker")

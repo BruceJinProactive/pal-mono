@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_cognito_auth import CognitoAuthenticator
 
 from app.auth import AWS_APP_CLIENT_ID, AWS_APP_CLIENT_SECRET, AWS_USER_POOL_ID, user
-from app.shared import footer_ui, set_page_config
+from app.shared import set_page_config
 
 set_page_config()
 
@@ -89,4 +89,3 @@ else:
     user.update(authenticator=authenticator)
     pg = st.navigation(pages())
     pg.run()
-    footer_ui()
