@@ -34,7 +34,11 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
             return ChatResponse(status="success")
         else:
             # Create and return the ChatResponse with the messages
-            return ChatResponse(messages=response_messages, status="success")
+            return ChatResponse(
+                message=response_messages[0],
+                messages=response_messages,
+                status="success",
+            )
     except ValueError as ve:
         # Log and handle validation errors
         logger.error(f"Error validating message: {ve}")
