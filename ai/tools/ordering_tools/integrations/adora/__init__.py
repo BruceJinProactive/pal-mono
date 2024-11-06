@@ -277,12 +277,12 @@ class AdoraIntegration:
         if not validated_order:
             return "Failed to validate order."
 
-        # save validated order to Adora system and get the order ID back
+        # save validated order in Adora system, get order ID
         logger.debug("[AdoraIntegration.place_order] Saving validated order...")
-        saved_order = _apis.save_validate_order(bearer_token, validated_order.Key)
+        saved_order = _apis.save_validated_order(bearer_token, validated_order.Key)
 
-        # place order
-        if saved_order and _apis.place_order(
+        # send credit card payment link to the consumer
+        if saved_order and _apis.text_payment(
             bearer_token, saved_order.OrderID, self.store_id, consumer.phone_number
         ):
             successful_order_response = (
@@ -317,4 +317,4 @@ class AdoraIntegration:
             logger.debug(
                 f"[AdoraIntegration.place_order] Failed to place order. Saved order ID: {saved_order.OrderID if saved_order else 'NO SAVED ORDER'}"
             )
-            return "There was an issue placing the order. Please try again."
+            return "The service maybe busy. Please try again."

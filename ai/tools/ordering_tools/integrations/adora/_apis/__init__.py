@@ -1,7 +1,6 @@
 import http.client
 import json
 import time
-from datetime import datetime, timedelta, timezone
 
 from ai.tools.ordering_tools.classes import Consumer
 from ai.tools.ordering_tools.integrations.adora.classes import (
@@ -23,8 +22,14 @@ from . import _utils
 
 def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None:
     """
-    Returns a dictionary of the store menu
-    maps to Adora API doc: https://adoraimages.blob.core.windows.net/api-docs/orderhubapi.html#tag/OrderHub/paths/~1api~1v%7Bversion%7D~1OrderHub~1menu/get
+    Retrieve the store menu from Adora.
+
+    Args:
+        store_id (str): The store ID to retrieve the menu for.
+        bearer_token (AdoraAccessToken): The bearer token to authenticate with Adora POS.
+
+    Returns:
+        dict | None: A dictionary of the store menu if successful, None otherwise.
     """
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -42,7 +47,6 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
         # Check if the result is still a JSON string and decode again if necessary
         if isinstance(response_data, str):
             response_data = json.loads(response_data)
-
         return response_data
     else:
         return None
@@ -50,7 +54,14 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
 
 def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
     """
-    Returns a bearer token. It expires in 1 hour.
+    Retrieve the store menu from Adora.
+
+    Args:
+        key (str): The Adora API Key.
+        secret (str): The Adora API Secret.
+
+    Returns:
+        AdoraAccessToken: A bearer token that expires in 1 hour.
     """
     if not key or not secret:
         return None
@@ -83,19 +94,31 @@ def validate_order(
     delivery_address: AdoraDeliveryAddress | None = None,
 ):
     """
-    Validate order with Adora Pos
-    maps to Adora API doc: https://adoraimages.blob.core.windows.net/api-docs/orderhubapi.html#tag/OrderHub/paths/~1api~1v%7Bversion%7D~1OrderHub~1validateOrder/post
-    Example success return value with http status 200:
-    {
-        "Key": "d0a91931-60e8-4ff4-a38d-876f13dabb9c",
-        "IsPaymentRequired": true,
-        "SubTotal": 39.50,
-        "Total": 43.15,
-        "Discount": 0.00,
-        "TaxAmount": 3.65,
-        "ServiceCharge": 0.00,
-        "DeliveryCharge": 0.00
-    }
+    Validate a customer order in Adora system.
+
+    Args:
+        bearer_token (AdoraAccessToken): The bearer token to authenticate with Adora POS.
+        store_id (str): The store ID to place the order with.
+        order_items (list[AdoraOrderItem]): The list of items to be ordered.
+        coupon_id (int): The coupon ID to apply to the order.
+        order_type (AdoraOrderType, optional): The type of order (default is TakeOut).
+        customer (Consumer, optional): The customer details (default is a predefined Consumer).
+        delivery_address (AdoraDeliveryAddress | None, optional): The delivery address if the order is for delivery.
+
+    Returns:
+        dict: A dictionary containing the validation result with keys such as 'Key', 'IsPaymentRequired', 'SubTotal', 'Total', 'Discount', 'TaxAmount', 'ServiceCharge', and 'DeliveryCharge'.
+
+    Example:
+        {
+            "Key": "d0a91931-60e8-4ff4-a38d-876f13dabb9c",
+            "IsPaymentRequired": true,
+            "SubTotal": 39.50,
+            "Total": 43.15,
+            "Discount": 0.00,
+            "TaxAmount": 3.65,
+            "ServiceCharge": 0.00,
+            "DeliveryCharge": 0.00
+        }
     """
 
     assert order_type == AdoraOrderType.TakeOut or (
@@ -149,11 +172,12 @@ def validate_order(
         return None
 
 
-def save_validate_order(
+def save_validated_order(
     bearer_token: AdoraAccessToken,
     order_key: str,
 ) -> AdoraSavedOrderResult | None:
-    """Save an already-validate order to Adora POS.
+    """
+    Save a customer's validated order in the system using the key from the validate_order response.
 
     Args:
         bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
@@ -180,13 +204,14 @@ def save_validate_order(
         return None
 
 
-def place_order(
+def text_payment(
     bearer_token: AdoraAccessToken,
     order_id: int,
     store_id: str,
     phone_number: str,
 ) -> bool:
-    """Place an order with Adora POS.
+    """
+    Send credit card payment link to the customer.
 
     Args:
         bearer_token (AdoraAccessToken): The bearer token to authenticate with Adora POS.
@@ -246,7 +271,8 @@ def place_order(
 def validate_address(
     bearer_token: AdoraAccessToken, store_id: str, lat: str, long: str
 ) -> tuple[bool, list[AdoraValidatedAddress] | str]:
-    """Validate an address (latitude + longitude) with Adora POS.
+    """
+    Validate an address (latitude + longitude) with Adora POS.
 
     Args:
         bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
