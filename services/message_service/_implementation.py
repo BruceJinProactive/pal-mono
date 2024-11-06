@@ -136,9 +136,10 @@ def get_chat_response(db: Session, message: Message) -> Message:
             raise ValueError("User not found")
 
         # Save request message to database
-        MessageRepository(db).create_message(
+        request_message = MessageRepository(db).create_message(
             user_id=user.id, message_body=message.to_dict()
         )
+        conversation_id = request_message.conversation_id
 
         # Get appropriate assistant from account name
         assistant_id = project.assistant_id
@@ -146,7 +147,10 @@ def get_chat_response(db: Session, message: Message) -> Message:
             raise ValueError("Assistant ID not found")
 
         agent = assistant_service.get_ai_agent(
-            db=db, assistant_id=assistant_id, user_id=user.id
+            db=db,
+            assistant_id=assistant_id,
+            user_id=user.id,
+            conversation_id=conversation_id,
         )
 
         response_object = agent.run(message.text.body, stream=False)
@@ -231,3 +235,8 @@ def get_conversations_by_users(
     return conversation_repository.get_conversations_by_users(
         user_ids=user_ids,
     )
+
+
+def create_conversation(db: Session, user_id: uuid.UUID) -> Conversation | None:
+    conversation_repository = ConversationRepository(db)
+    return conversation_repository.create_conversation(user_id=user_id)

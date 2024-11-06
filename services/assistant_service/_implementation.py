@@ -41,6 +41,7 @@ def get_ai_agent(
     db: Session,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
+    conversation_id: uuid.UUID | None = None,
     new_run: bool = False,
 ) -> PhiAgent:
     # Retrieve the assistant from the database
@@ -54,6 +55,7 @@ def get_ai_agent(
         account_name=assistant.account.name,
         agent_raw_config=assistant.raw_config,
         user_id=str(user_id),
+        conversation_id=str(conversation_id) if conversation_id else None,
         new_run=new_run,
     )
 

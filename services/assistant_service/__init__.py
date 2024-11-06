@@ -37,6 +37,7 @@ def get_ai_agent(
     db: Session,
     assistant_id: uuid.UUID,
     user_id: uuid.UUID,
+    conversation_id: uuid.UUID | None = None,
     new_run: bool = False,
 ) -> PhiAgent:
     """
@@ -51,7 +52,9 @@ def get_ai_agent(
     Returns:
         PhiAgent: The retrieved PhiAgent instance.
     """
-    return _implementation.get_ai_agent(db, assistant_id, user_id, new_run=new_run)
+    return _implementation.get_ai_agent(
+        db, assistant_id, user_id, conversation_id, new_run=new_run
+    )
 
 
 def get_assistant(db: Session, assistant_id: uuid.UUID) -> Optional[Assistant]:

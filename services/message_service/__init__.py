@@ -99,6 +99,20 @@ def get_conversations_by_users(
     return _implementation.get_conversations_by_users(db, user_ids)
 
 
+def create_conversation(db: Session, user_id: uuid.UUID) -> Conversation | None:
+    """
+    Creates a new conversation for the user
+
+    Args:
+        db (Session): The database session.
+        user_id (uuid.UUID): The user id associated with the new conversation
+
+    Returns:
+        Conversation: A new conversation
+    """
+    return _implementation.create_conversation(db, user_id)
+
+
 __all__ = [
     "get_chat_response",
     "get_messages_by_conversation",

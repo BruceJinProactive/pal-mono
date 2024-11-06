@@ -88,9 +88,12 @@ class MessageRepository:
         if not user:
             raise ValueError(f"No user found with id {user_id}")
 
-        # Step 3: Get the first conversation from the user
+        # Step 3: Get the last conversation from the user
         conversation = (
-            self.db.query(Conversation).filter(Conversation.user_id == user.id).first()
+            self.db.query(Conversation)
+            .filter(Conversation.user_id == user.id)
+            .order_by(Conversation.created_at.desc())
+            .first()
         )
 
         # Step 4: If no conversation exists, create one for the user

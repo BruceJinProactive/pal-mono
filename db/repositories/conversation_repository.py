@@ -108,9 +108,10 @@ class ConversationRepository:
         """
         try:
             db_conversation = Conversation(user_id=user_id)
-            with self.db.begin():
-                self.db.add(db_conversation)
+            self.db.add(db_conversation)
+            self.db.commit()
             return db_conversation
         except SQLAlchemyError as e:
+            self.db.rollback()
             logger.error(f"Error creating conversation: {e}")
             return None
