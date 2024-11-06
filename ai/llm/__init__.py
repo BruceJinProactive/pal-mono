@@ -1,25 +1,22 @@
-from phi.model.openai.chat import OpenAIChat
+from openai import AsyncOpenAI, OpenAI
 from phi.model.openai.like import OpenAILike
 
 from . import _implementation, _settings
 
 
-def get_llm(
-    llm_name: _implementation.LLM = _implementation.LLM.ROUTER,
-) -> OpenAIChat | OpenAILike:
+def get_model(
+    model_name: str = _settings.ai_settings.medium,
+) -> OpenAILike:
     """
-    Get the appropriate LLM (Large Language Model) instance based on the provided LLM name.
+    Get the appropriate LLM (Large Language Model) instance based on the provided model name.
 
     Args:
-        llm_name (LLM): The name of the LLM to retrieve. Must be one of the LLM enum values.
+        model_name: The name of the model to retrieve. Must be "medium" or "small"
 
     Returns:
-        An instance of OpenAIChat or OpenAILike configured with the appropriate settings.
-
-    Raises:
-        ValueError: If an invalid LLM name is provided.
+        An instance of OpenAILike configured with the model router settings.
     """
-    return _implementation.get_llm(llm_name)
+    return _implementation.get_model(model_name)
 
 
 def get_embedder():
@@ -32,7 +29,26 @@ def get_embedder():
     return _implementation.get_embedder()
 
 
-LLM = _implementation.LLM  # TODO: Remove this after fully migrate to model router
+def get_client() -> OpenAI:
+    """
+    Get the model client instance providied by model router.
+
+    Returns:
+        A instance of model router client with same usage as openai client
+    """
+    return _implementation.get_client()
+
+
+def get_async_client() -> AsyncOpenAI:
+    """
+    Get the model async client instance providied by model router.
+
+    Returns:
+        A instance of model router async client with same usage as async openai client
+    """
+    return _implementation.get_async_client()
+
+
 OutputModel = _implementation.OutputModel
 
 ai_settings = (
@@ -40,4 +56,4 @@ ai_settings = (
 )  # TODO: Remove this after fully migrate to model router
 
 
-__all__ = ["get_llm", "ai_settings"]
+__all__ = ["get_model", "ai_settings"]

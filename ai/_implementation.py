@@ -3,7 +3,7 @@ from typing import Any
 from phi.agent.agent import Agent
 
 from ai.knowledge import get_knowledge
-from ai.llm import OutputModel, get_llm
+from ai.llm import OutputModel, get_model
 from ai.memory import get_memory
 from ai.prompts import get_system_prompt
 from ai.storage import get_storage
@@ -19,7 +19,7 @@ def integrate_agent(
     new_run: bool = False,
 ) -> Agent:
     # -*- Agent settings
-    llm = get_llm()
+    llm = get_model()
 
     # -*- Agent Memory
     memory = get_memory(account_name)

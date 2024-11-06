@@ -1,8 +1,7 @@
-from enum import Enum
 from os import getenv
 
+from openai import AsyncOpenAI, OpenAI
 from phi.embedder.openai import OpenAIEmbedder
-from phi.model.openai.chat import OpenAIChat
 from phi.model.openai.like import OpenAILike
 from pydantic import BaseModel, Field
 
@@ -13,14 +12,7 @@ MODEL_ROUTER_BASE_URL = getenv(
     "MODEL_ROUTER_BASE_URL",
     "https://25qnn07d2j.execute-api.us-west-1.amazonaws.com/lat/",  # lat,
 )
-MODEL_ROUTER_API_KEY = getenv("MODEL_ROUTER_API_KEY")
-
-
-class LLM(Enum):
-    OPENAI = "OPENAI"
-    LEPTON = "LEPTON"
-    MODAL = "MODAL"
-    ROUTER = "ROUTER"
+MODEL_ROUTER_API_KEY = getenv("MODEL_ROUTER_API_KEY", "")
 
 
 class OutputModel(BaseModel):
@@ -28,40 +20,33 @@ class OutputModel(BaseModel):
     escalated: bool = Field(..., description="system info escalated field")
 
 
-def get_llm(llm_name: LLM):
-    if llm_name == LLM.OPENAI:
-        return OpenAIChat(
-            id=_settings.ai_settings.gpt_4o_2024_08_06,
-            max_tokens=4096,
-            temperature=0.9,
-        )
-    elif llm_name == LLM.LEPTON:
-        return OpenAILike(
-            id="gpt-3.5-turbo",
-            api_key=getenv("LEPTON_API_KEY"),
-            base_url="https://kfxrnfa5-pail-test.tin.lepton.run/api/v1/",
-            max_tokens=16384,
-            temperature=0.9,
-            top_p=0.9,
-        )
-    elif llm_name == LLM.MODAL:
-        return OpenAILike(
-            id="OpenHermes-2.5-Mistral-7B-dpo",
-            api_key=getenv("MODAL_API_KEY"),
-            base_url="https://proactive-ai-lab--openai-b-fastapi-app.modal.run/",
-            max_tokens=16384,
-            temperature=0.9,
-            top_p=0.9,
-        )
-    elif llm_name == LLM.ROUTER:
-        return OpenAILike(
-            default_headers={
-                "x-api-key": MODEL_ROUTER_API_KEY,
-            },
-            base_url=MODEL_ROUTER_BASE_URL,
-        )
-    else:
-        raise ValueError(f"Invalid model name: {llm_name}")
+def get_client() -> OpenAI:
+    client = OpenAI(
+        api_key="dummy",  # This argument is required by OpenAI(), but not used by model router
+        default_headers={
+            "x-api-key": MODEL_ROUTER_API_KEY,
+        },
+        base_url=MODEL_ROUTER_BASE_URL,
+    )
+    return client
+
+
+def get_async_client() -> AsyncOpenAI:
+    client = AsyncOpenAI(
+        api_key="dummy",  # This argument is required by AsyncOpenAI(), but not used by model router
+        default_headers={
+            "x-api-key": MODEL_ROUTER_API_KEY,
+        },
+        base_url=MODEL_ROUTER_BASE_URL,
+    )
+    return client
+
+
+def get_model(model_name: str = _settings.ai_settings.medium) -> OpenAILike:
+    model = OpenAILike(
+        id=model_name, client=get_client(), async_client=get_async_client()
+    )
+    return model
 
 
 def get_embedder():
