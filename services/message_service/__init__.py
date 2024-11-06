@@ -11,7 +11,7 @@ from db.tables import Conversation
 from . import _implementation
 
 
-async def get_chat_response_async(db: AsyncSession, message: Message) -> Message:
+async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Message]:
     """
     Processes an incoming message and generates a response from the appropriate assistant.
 
@@ -20,7 +20,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
         message (Message): The incoming message object.
 
     Returns:
-        Message: The response message object.
+        list[Message]: A list of message objects.
 
     Raises:
         ValueError: If any required information (account name, account, projects, user, assistant ID) is not found.

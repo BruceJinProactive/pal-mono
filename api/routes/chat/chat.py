@@ -5,7 +5,7 @@ from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse, ErrorResponse
 from db.session import get_db_async
 from services.message_service import get_chat_response_async
-from services.relay_service import send_message
+from services.relay_service import send_messages
 from utils.log import logger
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
@@ -22,19 +22,19 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
         logger.info(f"Received message: {request.message}")
 
         # Get the response message from message service
-        response_message = await get_chat_response_async(
+        response_messages = await get_chat_response_async(
             db=db,
             message=request.message,
         )
 
         if request.async_response:
             # Return a successful response immediately
-            logger.info(f"Schedule to send message: {response_message}")
-            send_message(response_message)
+            logger.info(f"Schedule to send messages: {response_messages}")
+            send_messages(response_messages)
             return ChatResponse(status="success")
         else:
-            # Create and return the ChatResponse with the message
-            return ChatResponse(message=response_message, status="success")
+            # Create and return the ChatResponse with the messages
+            return ChatResponse(messages=response_messages, status="success")
     except ValueError as ve:
         # Log and handle validation errors
         logger.error(f"Error validating message: {ve}")

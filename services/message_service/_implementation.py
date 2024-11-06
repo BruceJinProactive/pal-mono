@@ -16,7 +16,7 @@ from services import assistant_service, user_service
 from utils.log import logger
 
 
-async def get_chat_response_async(db: AsyncSession, message: Message) -> Message:
+async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Message]:
     user = None
     extras = {}
     message_repo = MessageRepositoryAsync(db)
@@ -102,7 +102,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> Message
             user_id=user.id, message_body=response_message.to_dict()
         )
 
-    return response_message
+    return [response_message]
 
 
 def get_chat_response(db: Session, message: Message) -> Message:

@@ -68,3 +68,14 @@ def send_message(message: Message, delivery_time: datetime = current_utc()) -> d
     except Exception as e:
         # Handle any other unexpected errors
         return {"status": "error", "error_message": str(e)}
+
+
+def send_messages(
+    messages: list[Message], delivery_time: datetime = current_utc()
+) -> list[dict]:
+    responses = []
+
+    for message in messages:
+        responses.append(send_message(message, delivery_time))
+
+    return responses

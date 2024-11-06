@@ -11,7 +11,10 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    # TODO message field deprecated - remove after multi-message support added
     message: Optional[Message] = None
+
+    messages: Optional[list[Message]] = None
     status: str = Field(default="success")
 
 
