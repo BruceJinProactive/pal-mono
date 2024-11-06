@@ -1,5 +1,5 @@
 from os import getenv
-from typing import Any
+from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
 from openai import OpenAI
@@ -30,7 +30,9 @@ class AdoraIntegration:
         api_key: str,
         api_secret: str,
         store_id: str,
-        adora_conversion_examples: dict[str, dict[str, str]] = {},
+        adora_conversion_examples: dict[
+            Literal["items", "sizes", "modifiers", "coupons"], dict[str, str]
+        ] = {},
     ):
         self.account_name = account_name
         self.api_key = api_key
@@ -93,7 +95,7 @@ class AdoraIntegration:
         if coupons and len(coupons) > 0:
             return (
                 "List the available coupons below. When listing coupons, do NOT use an ordered list. "
-                + "Also tell the user that to apply a coupon, they must explicitly say the name of the coupon they want to use during checkout.\n"
+                + "Also, inform the user that to apply a coupon, they must explicitly mention the coupon name during checkout.\n"
                 + "Here are the available coupons: "
                 + "\n\n".join([f"{c.name}\n{c.description}" for c in coupons])
             )

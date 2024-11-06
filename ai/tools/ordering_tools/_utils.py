@@ -18,11 +18,14 @@ openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
 openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
 
-def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
+def get_cart_info(
+    chat_history: list[str], cart_conversion_sys_prompt: str
+) -> LLMCartInfo | None:
     """Extracts the cart information from the chat history.
 
     Args:
         chat_history (str): The chat history to extract the cart information from.
+        cart_conversion_sys_prompt (str): A system prompt to help the model understand the context of the chat history.
 
     Returns:
         LLMCartInfo | None: The parsed cart information.
@@ -38,7 +41,8 @@ def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
                         "text": "Your role is to process the chat history between a user and an assistant. "
                         + "You will extract the relevant order information into the desired format. "
                         + "You will be provided with the chat history to process. "
-                        + "Prioritize assistant messages over user messages because assistant messages contain more precise order item information.",
+                        + "Prioritize assistant messages over user messages because assistant messages contain more precise order item information. "
+                        + f"Additional Instructions: {cart_conversion_sys_prompt}",
                     }
                 ],
             },

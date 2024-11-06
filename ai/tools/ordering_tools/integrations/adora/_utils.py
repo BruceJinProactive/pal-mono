@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from openai import OpenAI
 
 from ai.tools.ordering_tools.classes import OrderItem
+from ai.tools.ordering_tools.integrations.adora._conversion_examples import (
+    COUPON_EXAMPLES,
+    ITEM_ID_EXAMPLES,
+    MODIFIER_EXAMPLES,
+    SIZE_EXAMPLES,
+)
 from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraCoupon,
     AdoraOrderItem,
@@ -21,7 +27,7 @@ class ConversionResult:
 def convert_coupon(
     all_coupons: list[AdoraCoupon],
     target_coupon: str,
-    openai_client,
+    openai_client: OpenAI,
     openai_model: str,
     coupon_conversion_examples: dict[str, str],
 ) -> ConversionResult:
@@ -29,30 +35,7 @@ def convert_coupon(
     Finds the closest coupon name in the list of available coupons and consequent coupon id.
     """
     coupon_name_to_id_map = {c.name: c.id for c in all_coupons}
-    coupon_conversion_examples_string = textwrap.dedent(
-        """
-        # EXAMPLE #
-        EXAMPLE AVAILABLE COUPONS: ["$5 Off", "20% off", "Free Bagel with Purchase of Coffee"]
-
-        User: five bucks off
-        Assistant: $5 Off
-
-        User: twenty percent reduced
-        Assistant: 20% off
-        
-        User: free bagel coupon
-        Assistant: Free Bagel with Purchase of Coffee
-
-        User: $10 Off
-        Assistant: N/A
-
-        User: 30% off
-        Assistant: N/A
-        
-        User: free sandwich
-        Assistant: N/A
-        """
-    )
+    coupon_conversion_examples_string = COUPON_EXAMPLES
     if coupon_conversion_examples:
         coupon_conversion_examples_string = textwrap.dedent(
             f"""
@@ -84,9 +67,7 @@ def convert_coupon(
 
         #########
 
-        """
-        + coupon_conversion_examples_string
-        + """
+        {coupon_conversion_examples_string}
 
         #########
 
@@ -119,6 +100,10 @@ def convert_coupon(
     )
 
     coupon_name = response.choices[0].message.content
+    if not coupon_name:
+        return ConversionResult(
+            False, "Failed to get a response from LLM. Please try again."
+        )
     if coupon_name in coupon_name_to_id_map:
         return ConversionResult(True, str(coupon_name_to_id_map[coupon_name]))
 
@@ -129,30 +114,13 @@ def get_adora_item_id(
     menu_name_to_id_map: dict,
     order_item_name: str,
     item_id_conversion_examples: dict[str, str],
-    openai_client,
+    openai_client: OpenAI,
     openai_model: str,
 ) -> ConversionResult:
     """
     Finds the closest item name in the menu and consequent item id.
     """
-    item_id_conversion_examples_string = textwrap.dedent(
-        """
-        # EXAMPLE #
-        EXAMPLE MENU: ["Coke", "Sprite"]
-
-        User: coke
-        Assistant: Coke
-
-        User: spritw
-        Assistant: Sprite
-
-        User: pepsi
-        Assistant: N/A
-
-        User: coke zero
-        Assistant: N/A
-        """
-    )
+    item_id_conversion_examples_string = ITEM_ID_EXAMPLES
     if item_id_conversion_examples:
         item_id_conversion_examples_string = textwrap.dedent(
             f"""
@@ -183,9 +151,7 @@ def get_adora_item_id(
 
         #########
 
-        """
-        + item_id_conversion_examples_string
-        + """
+        {item_id_conversion_examples_string}
 
         #########
 
@@ -230,7 +196,7 @@ def get_adora_size_id(
     adora_item_id: int,
     order_item_size: str,
     size_id_conversion_examples: dict[str, str],
-    openai_client,
+    openai_client: OpenAI,
     openai_model: str,
 ) -> ConversionResult:
     """
@@ -255,27 +221,7 @@ def get_adora_size_id(
         size_id = size_options[key]
         return ConversionResult(True, str(size_id))
     else:
-        size_id_conversion_examples_string = textwrap.dedent(
-            """
-            # EXAMPLE #
-            EXAMPLE AVAILABLE SIZE OPTIONS: ["Small", "Medium", "Large", "Size 5", "Size 6", "Size 7"]
-
-            User: large
-            Assistant: Large
-
-            User: Size5
-            Assistant: Size 5
-
-            User: Size 8
-            Assistant: N/A
-
-            User: size 4
-            Assistant: N/A
-
-            User: extra large
-            Assistant: N/A
-            """
-        )
+        size_id_conversion_examples_string = SIZE_EXAMPLES
         if size_id_conversion_examples:
             size_id_conversion_examples_string = textwrap.dedent(
                 f"""
@@ -305,9 +251,7 @@ def get_adora_size_id(
 
             #########
 
-            """
-            + size_id_conversion_examples_string
-            + """
+            {size_id_conversion_examples_string}
 
             #########
 
@@ -340,6 +284,10 @@ def get_adora_size_id(
         )
 
         item_size = response.choices[0].message.content
+        if not item_size:
+            return ConversionResult(
+                False, "Failed to get a response from LLM. Please try again."
+            )
         size_id = size_options.get(item_size)
         if size_id:
             return ConversionResult(True, str(size_id))
@@ -396,23 +344,7 @@ def get_similar_modifier_using_openai(
         str: The most similar modifier from the menu or "N/A" if no close match is found.
     """
 
-    modifier_conversion_examples_string = textwrap.dedent(
-        """
-        # EXAMPLE #
-        EXAMPLE AVAILABLE MODIFICATION OPTIONS: ["Rainbow Sprinkles", "Gummy Bears", "Whipped Cream", "Peanuts"]
-        User: rainbow sprinkles
-        Assistant: Rainbow Sprinkles
-
-        User: pnuts
-        Assistant: peanuts
-
-        User: nutella
-        Assistant: N/A
-
-        User: cherries
-        Assistant: N/A
-        """
-    )
+    modifier_conversion_examples_string = MODIFIER_EXAMPLES
     if modifier_conversion_examples:
         modifier_conversion_examples_string = textwrap.dedent(
             f"""
@@ -442,9 +374,7 @@ def get_similar_modifier_using_openai(
 
         #########
 
-        """
-        + modifier_conversion_examples_string
-        + """
+        {modifier_conversion_examples_string}
 
         #########
 
@@ -703,9 +633,15 @@ def validate_and_convert_item(
 
     Args:
         order_item (OrderItem): The generic order item to convert.
-        menu (object): The menu to use to get the item ID and size ID.
-        openai_client (OpenAI): The OpenAI client to use for the item and size ID conversion.
-        openai_model (str): The OpenAI model to use for the item and size ID conversion.
+        menu_maps (tuple): A tuple containing the menu ID to details map and name to ID map.
+        size_map (dict[int, str]): Mapping of size IDs to size descriptions.
+        menu_modifiers (dict): The menu modifiers.
+        menu_modifier_groups (dict): The menu modifier groups.
+        item_id_conversion_examples (dict[str, str]): Dictionary of conversion examples for item IDs.
+        size_id_conversion_examples (dict[str, str]): Dictionary of conversion examples for size IDs.
+        modifier_conversion_examples (dict[str, str]): Dictionary of conversion examples for modifiers.
+        openai_client (OpenAI): The OpenAI client instance.
+        openai_model (str): The OpenAI model name to use.
 
     Returns:
         tuple[bool, AdoraOrderItem | str]: A tuple containing a boolean indicating
@@ -735,7 +671,10 @@ def validate_and_convert_item(
     if item_details:
         adora_item_name = item_details.name
     else:
-        return False, "Failed to get item in the menu."
+        return (
+            False,
+            f"Failed to get item details for item ID {adora_item_id} in the menu.",
+        )
 
     # get Adora-specific size id
     adora_size_id_res = get_adora_size_id(

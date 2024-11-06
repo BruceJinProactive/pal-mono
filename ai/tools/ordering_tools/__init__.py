@@ -51,6 +51,13 @@ class OrderingTools(Toolkit):
         #  Only the valid parameters needed by integration_class are passed during initialization
         self.integration = integration_class(**filtered_settings)
 
+        # Custom system prompts
+        self.cart_conversion_sys_prompt = config.get("cart_conversion_sys_prompt", "")
+        if isinstance(self.cart_conversion_sys_prompt, list):
+            self.cart_conversion_sys_prompt = " ".join(self.cart_conversion_sys_prompt)
+        elif type(self.cart_conversion_sys_prompt) is not str:
+            self.cart_conversion_sys_prompt = ""
+
     # ----------------------------------------
     # Toolkit tools (actions)
     # ----------------------------------------
@@ -132,22 +139,22 @@ class OrderingTools(Toolkit):
         """
         logger.debug(f"[OrderingTools.place_order] Chat history: {chat_history}")
 
-        cart = _utils.get_cart_info(chat_history)
+        cart = _utils.get_cart_info(chat_history, self.cart_conversion_sys_prompt)
         logger.debug(f"[OrderingTools.place_order] Extracted cart info: {cart}")
         if not cart:
             return "There was an issue processing your order. Please try again."
 
-        fulfillment_strategy = _utils.get_fulfillment_strategy(chat_history)
+        fulfillment_strategy_res = _utils.get_fulfillment_strategy(chat_history)
         logger.debug(
-            f"[OrderingTools.place_order] Fulfillment strategy: {fulfillment_strategy}"
+            f"[OrderingTools.place_order] Fulfillment strategy: {fulfillment_strategy_res}"
         )
 
         if (
-            not fulfillment_strategy
-            or fulfillment_strategy.strategy == FulfillmentStrategy.NA
+            not fulfillment_strategy_res
+            or fulfillment_strategy_res.strategy == FulfillmentStrategy.NA
         ):
             return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
-        fulfillment_strategy = fulfillment_strategy.strategy
+        fulfillment_strategy = fulfillment_strategy_res.strategy
 
         account_name = self.integration.account_name
         memories = _utils.get_consumer_memory(account_name, self.user_id)
