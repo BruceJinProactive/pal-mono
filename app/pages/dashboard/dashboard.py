@@ -22,11 +22,10 @@ def navigate_accounts(account_name):
 def main() -> None:
     st.write("---")
     accounts = get_accounts(db)
-    st.metric(label="Active Accounts", value=len(accounts), delta="2")
+    st.metric(label="Total Accounts", value=len(accounts))
     st.write(
         "Please click the checkbox in the leftmost column to navigate to that account"
     )
-    accounts = get_accounts(db)
     df = pd.DataFrame(
         [
             {
