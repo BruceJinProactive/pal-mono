@@ -1,4 +1,7 @@
 # pal-mono
+[![Pre commit](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/precommit.yml/badge.svg)](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/precommit.yml) 
+[![Create build](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-build.yml/badge.svg)](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-build.yml) 
+[![Create release](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-release.yml/badge.svg)](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-release.yml)
 
 ## Overview
 
