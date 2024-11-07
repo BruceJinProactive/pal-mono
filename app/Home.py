@@ -47,7 +47,6 @@ def pages():
             title="Knowledge",
             icon=":material/school:",
         ),
-        st.Page("pages/clients/demo.py", title="Demo", icon=":material/chat:"),
         st.Page("pages/clients/live.py", title="Live", icon=":material/support_agent:"),
     ]
     development_pages = [

@@ -7,9 +7,8 @@ from ai.tools.booking_tools import BookingTools
 from ai.tools.ordering_tools import OrderingTools
 from api.schemas.message.message import Channel
 from app.auth import user
-from app.pages.clients.demo import _construct_demo_dict
 from db.session import get_db
-from services.account_service import get_account
+from services.account_service import get_account, get_accounts
 from services.assistant_service import get_assistant
 from services.user_service import get_user_by_channel_identifier
 from utils.secret import get_client_secret
@@ -83,6 +82,22 @@ def booking_tools_tab_content(user_id):
             st.json(json.loads(retval))
         except Exception as e:
             st.error(f"Failed to get class sessions: {e}")
+
+
+# TODO: Delete this function
+def _construct_demo_dict():
+    """
+    Returns dictionary of account name to assistant id
+    """
+    demo_dict = {}
+    db = next(get_db())
+    accounts = get_accounts(db)
+
+    for account in accounts:
+        for assistant in account.assistants:
+            demo_dict[account.name] = assistant.id
+
+    return demo_dict
 
 
 def main(user_id) -> None:
