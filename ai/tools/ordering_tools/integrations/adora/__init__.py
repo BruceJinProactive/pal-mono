@@ -5,13 +5,7 @@ from geopy.geocoders import Nominatim
 from openai import OpenAI
 
 from ai.llm import _settings
-from ai.tools.ordering_tools.classes import (
-    Consumer,
-    FulfillmentStrategy,
-    GenericDeliveryAddress,
-    LLMOrderItem,
-    OrderItem,
-)
+from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
 from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraDeliveryAddress,
     AdoraOrderCalculationResult,
@@ -104,19 +98,94 @@ class AdoraIntegration:
 
     def place_order(
         self,
-        cart: list[LLMOrderItem],
-        consumer: Consumer,
-        fulfillment_strategy: FulfillmentStrategy,
-        delivery_address: GenericDeliveryAddress | None,
-        generic_coupon: str,
+        chat_history: list[str],
+        user_id: str,
     ) -> str:
         logger.debug("[AdoraIntegration.place_order] Placing order...")
+
+        # Load memories
+        account_name = self.account_name
+        memories = _utils.get_consumer_memory(account_name, user_id)
+        memory_list = (
+            "## Existing Memories\n"
+            + "\n".join(f"- {memory.memory}" for memory in memories)
+            if memories
+            else ""
+        )
+
+        # Get fulfillment strategy
+        fulfillment_strategy_obj = _utils.get_fulfillment_strategy(chat_history)
+        if (
+            not fulfillment_strategy_obj
+            or fulfillment_strategy_obj.strategy == FulfillmentStrategy.NA
+        ):
+            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
+
+        fulfillment_strategy = fulfillment_strategy_obj.strategy
+        generic_fulfillment_conversion_to_adoramap = {
+            FulfillmentStrategy.DELIVERY: AdoraOrderType.Delivery,
+            FulfillmentStrategy.PICKUP: AdoraOrderType.TakeOut,
+        }
+        adora_order_type = generic_fulfillment_conversion_to_adoramap[
+            fulfillment_strategy
+        ]
+
+        # Get the delivery address if the fulfillment strategy is delivery
+        delivery_address = (
+            _utils.get_delivery_address(chat_history, memory_list)
+            if fulfillment_strategy == FulfillmentStrategy.DELIVERY
+            else None
+        )
+
+        if (
+            fulfillment_strategy == FulfillmentStrategy.DELIVERY
+            and not delivery_address
+        ):
+            return "Please provide a complete delivery address."
+
+        # Get consumer information
+        consumer = _utils.get_consumer_info(chat_history, memory_list)
+        logger.debug(f"[OrderingTools.place_order] Consumer: {consumer}")
+        if not consumer:
+            return "Ask the user to provide their first name, last name, phone number, and email address to place an order."
+
+        missing_info = []
+        if consumer.first_name == "N/A":
+            missing_info.append("first name")
+        if consumer.last_name == "N/A":
+            missing_info.append("last name")
+        if consumer.phone_number == "N/A":
+            missing_info.append("phone number")
+        if consumer.email == "N/A":
+            missing_info.append("email address")
+
+        if missing_info:
+            return (
+                f"Please provide your {' and '.join(missing_info)} to place an order."
+            )
+
+        # Format phone number
+        consumer.phone_number = "({}){}-{}".format(
+            consumer.phone_number[:3],
+            consumer.phone_number[3:6],
+            consumer.phone_number[6:],
+        )
+
+        # Get generic coupon
+        generic_coupon_info = _utils.get_generic_coupon_info(chat_history)
+        generic_coupon = generic_coupon_info.coupon if generic_coupon_info else "N/A"
+
+        # Get cart, if empty return the error message
+        cart = _utils.get_cart_info(chat_history)
+        if not cart:
+            return "Your cart is empty. Please add items to your order."
+
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-        # Get menu from knowledge base based on menu name
+        # Get up-to-date menu and construct order payload
         menu = _apis.get_adora_menu(self.store_id, bearer_token)
         if not menu:
             return "Failed to get menu, please try again."
@@ -131,7 +200,7 @@ class AdoraIntegration:
             "[AdoraIntegration.place_order] Converting items to Adora order items..."
         )
 
-        for order_item in cart:
+        for order_item in cart.cart_items:
             order_item = OrderItem(
                 order_item.item_name,
                 order_item.size,
@@ -198,18 +267,9 @@ class AdoraIntegration:
                 f"[AdoraIntegration.place_order] Coupon conversion result: {adora_coupon_id if adora_coupon_id else 'No coupon applied'}"
             )
 
-        # convert generic fulfillment strategy to Adora order type
-        if fulfillment_strategy == FulfillmentStrategy.NA:
-            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
-        fulfillment_conversion_map = {
-            FulfillmentStrategy.DELIVERY: AdoraOrderType.Delivery,
-            FulfillmentStrategy.PICKUP: AdoraOrderType.TakeOut,
-        }
-        order_type = fulfillment_conversion_map[fulfillment_strategy]
-
         # validate address if delivery order
         adora_delivery_address = None
-        if order_type == AdoraOrderType.Delivery:
+        if adora_order_type == AdoraOrderType.Delivery:
             if not delivery_address:
                 return "Ask the user to provide a delivery address to place a delivery order."
 
@@ -270,7 +330,7 @@ class AdoraIntegration:
             self.store_id,
             order_items,
             adora_coupon_id,
-            order_type,
+            adora_order_type,
             consumer,
             adora_delivery_address,
         )

@@ -38,6 +38,7 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
         query_params={"sid": store_id},
         extra_headers=None,
         payload=None,
+        logging=False,
     )
 
     if response.status == 200:

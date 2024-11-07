@@ -1,10 +1,21 @@
 import textwrap
 from collections import defaultdict
 from dataclasses import dataclass
+from os import getenv
 
 from openai import OpenAI
+from phi.memory.memory import Memory
 
-from ai.tools.ordering_tools.classes import OrderItem
+from ai.llm import _settings
+from ai.memory import get_memory
+from ai.tools.ordering_tools.classes import (
+    Consumer,
+    GenericCoupon,
+    GenericDeliveryAddress,
+    LLMCartInfo,
+    LLMFulfillmentStrategy,
+    OrderItem,
+)
 from ai.tools.ordering_tools.integrations.adora._conversion_examples import (
     COUPON_EXAMPLES,
     ITEM_ID_EXAMPLES,
@@ -22,6 +33,10 @@ from ai.tools.ordering_tools.integrations.adora.classes import (
 class ConversionResult:
     success: bool
     message: str
+
+
+openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
+openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
 
 def convert_coupon(
@@ -190,6 +205,127 @@ def get_adora_item_id(
     return ConversionResult(False, f"Item {order_item_name} not found in menu.")
 
 
+def get_adora_modifications(
+    adora_item_name: str,
+    adora_item_id: int,
+    adora_size_name: str,
+    adora_size_id: int,
+    menu_id_to_details_map: dict[int, MenuItemDetails],
+    menu_modifiers: dict,
+    menu_modifier_groups: dict,
+    openai_client: OpenAI,
+    openai_model: str,
+    order_item: OrderItem,
+    modifier_conversion_examples: dict[str, str],
+) -> tuple[bool, AdoraOrderItem | str]:
+    """
+    Maps user-supplied modifications to a specific item in the restaurant's menu, handling both valid modifiers and comments.
+
+    Args:
+        adora_item_name (str): The name of the item in the Adora menu.
+        adora_item_id (int): The ID of the item in the Adora menu.
+        adora_size_name (str): The name of the size in the Adora menu.
+        adora_size_id (int): The ID of the size in the Adora menu.
+        menu (dict): The restaurant's menu data, containing items, modifier groups, and modifiers.
+        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
+        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
+        order_item (OrderItem): The order item object that holds details such as quantity.
+
+    Returns:
+        tuple[bool, AdoraOrderItem | str]:
+            - A boolean indicating whether the modifications were successfully applied.
+            - An AdoraOrderItem object if successful, or an error message if a validation error occurred.
+    """
+
+    # Initialize payload
+    payload = {"comment": "", "modifiers": []}
+
+    # Get modifier groups for the item
+    item_modifier_groups = []
+    if adora_item_id in menu_id_to_details_map:
+        item_modifier_groups = menu_id_to_details_map[adora_item_id].modifier_groups
+
+    # Process order item modifications using OpenAI
+    modifiers, comment = process_modifiers(
+        menu_modifiers,
+        order_item.modifications,
+        openai_client,
+        openai_model,
+        modifier_conversion_examples,
+    )
+    payload["comment"] = comment
+
+    # If there are no modifier groups, create an AdoraOrderItem with no modifications
+    if not item_modifier_groups:
+        if modifiers:
+            return False, "No modifiers are allowed for this item."
+        adora_order_item = AdoraOrderItem(
+            adora_item_id, adora_size_id, order_item.quantity, comment, 0, []
+        )
+        adora_order_item.item_name = adora_item_name
+        adora_order_item.size = adora_size_name
+        adora_order_item.quantity = order_item.quantity
+        adora_order_item.modifications = []
+        return True, adora_order_item
+
+    # Add all default modifiers and track modifier group constraints
+    modifier_group_counter = defaultdict(int)
+    modifier_id_to_group_id = {}
+
+    for item_modifier_group in item_modifier_groups:
+        item_modifier_group_id = item_modifier_group["modifier_group_id"]
+        for modifier in item_modifier_group["modifiers"]:
+            modifier_id_to_group_id[modifier["modifier_id"]] = item_modifier_group_id
+            if modifier["default"]:
+                payload["modifiers"].append(
+                    {
+                        "id": modifier["modifier_id"],
+                        "isDefault": True,
+                        "price": 1,
+                        "weightId": 3,
+                    }
+                )
+                modifier_group_counter[item_modifier_group_id] += 1
+
+    # Add user-provided modifiers to payload and update group counts
+    new_added_modifications: list[str] = []
+    for modifier_item in modifiers:
+        payload["modifiers"].append(
+            {
+                "id": modifier_item["id"],
+                "isDefault": False,
+                "price": 1,  # adjust the price as needed
+                "weightId": 3,  # adjust the weightId as needed
+            }
+        )
+        if modifier_item["id"] in modifier_id_to_group_id:
+            modifier_group_counter[modifier_id_to_group_id[modifier_item["id"]]] += 1
+        new_added_modifications.append(modifier_item["name"])
+
+    # Validate modifier group constraints
+    is_valid, validation_message = validate_modifier_group_constraints(
+        modifier_group_counter, menu_modifier_groups, payload
+    )
+    if not is_valid:
+        return False, validation_message
+
+    adora_order_item = AdoraOrderItem(
+        adora_item_id,
+        adora_size_id,
+        order_item.quantity,
+        payload["comment"],
+        0,
+        payload["modifiers"],
+    )
+
+    adora_order_item.item_name = adora_item_name
+    adora_order_item.size = adora_size_name
+    adora_order_item.quantity = order_item.quantity
+    adora_order_item.modifications = new_added_modifications
+
+    return True, adora_order_item
+
+
 def get_adora_size_id(
     menu_id_to_details_map: dict[int, MenuItemDetails],
     size_map: dict[int, str],
@@ -298,6 +434,226 @@ def get_adora_size_id(
         return ConversionResult(
             False, f"Size not found in menu, the options are {size_options}"
         )
+
+
+def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
+    """Extracts the cart information from the chat history.
+
+    Args:
+        chat_history (str): The chat history to extract the cart information from.
+
+    Returns:
+        LLMCartInfo | None: The parsed cart information.
+    """
+    response = openai_client.beta.chat.completions.parse(
+        model=openai_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Your role is to process the chat history between a user and an assistant. "
+                        + "You will extract the relevant order information into the desired format. "
+                        + "You will be provided with the chat history to process. "
+                        + "Prioritize assistant messages over user messages because assistant messages contain more precise order item information.",
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": f"{chat_history}"}],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=LLMCartInfo,
+    )
+
+    return response.choices[0].message.parsed
+
+
+def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | None:
+    """Extracts the consumer information from the chat history.
+
+    Args:
+        chat_history (str): The chat history to extract the consumer information from.
+        memory_list (str): The list of memories to extract the consumer information from.
+
+    Returns:
+        Consumer | None: The parsed consumer information.
+    """
+    response = openai_client.beta.chat.completions.parse(
+        model=openai_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """Your role is to process the chat history between a user and an assistant.
+                        You will extract the relevant customer information into the desired format.
+                        You will be provided with the chat history to process.
+                        The phone number, if provided, MUST be a 10-digit number and can be in any format.
+                        Extract the phone number as a string of exactly 10 digits without any formatting.
+                        If the customer information is not present, output "N/A" for the missing fields.
+                        """,
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"{chat_history}"},
+                    {"type": "text", "text": f"{memory_list}"},
+                ],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=Consumer,
+    )
+
+    return response.choices[0].message.parsed
+
+
+def get_consumer_memory(account_name: str, user_id: str) -> list[Memory] | None:
+    """Get the list of memories for the given account name.
+
+    Args:
+        account_name (str): The account name to get the memory for.
+
+    Returns:
+        list[Memory] | None: The list of memories object.
+    """
+    memory = get_memory(account_name)
+    memory.user_id = user_id
+    memory.load_user_memories()
+    memories = memory.memories
+    return memories
+
+
+def get_delivery_address(
+    chat_history: list[str], memory_list: str
+) -> GenericDeliveryAddress | None:
+    """Extracts the delivery address from the chat history.
+
+    Args:
+        chat_history (str): The chat history to extract the delivery address from.
+
+    Returns:
+        GenericDeliveryAddress | None: The parsed delivery address. If no delivery address is found, return "N/A".
+    """
+    response = openai_client.beta.chat.completions.parse(
+        model=openai_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """Your role is to process the chat history between a user and an assistant.
+                        You will be provided with the chat history to process.
+                        You will extract the relevant delivery address information.
+                        For the state field, if the user provides an abbreviation, output the full state name.
+                        For example, if the user entered "CA", output "California".
+                        If any field is missing, output "N/A" for that field.
+                        If the user did not provide a delivery address, output "N/A" for all fields.
+                        """,
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"{chat_history}"},
+                    {"type": "text", "text": f"{memory_list}"},
+                ],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=GenericDeliveryAddress,
+    )
+
+    return response.choices[0].message.parsed
+
+
+def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy | None:
+    """Extracts the fulfillment strategy from the chat history.
+
+    Args:
+        chat_history (str): The chat history to extract the fulfillment strategy from.
+
+    Returns:
+        LLMFulfillmentStrategy | None: The parsed fulfillment strategy. If no fulfillment strategy is found, return "N/A".
+    """
+    response = openai_client.beta.chat.completions.parse(
+        model=openai_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """Your role is to process the chat history between a user and an assistant.
+                        You will be provided with the chat history to process.
+                        You will extract the relevant fulfillment strategy.
+                        The possible options are "delivery", "pickup" or "N/A" if no strategy is specified.
+                        """,
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": f"{chat_history}"}],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=LLMFulfillmentStrategy,
+    )
+
+    return response.choices[0].message.parsed
+
+
+def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
+    """Extracts the coupon information from the chat history.
+
+    Args:
+        chat_history (str): The chat history to extract the coupon information from.
+
+    Returns:
+        GenericCoupon | None: The parsed coupon information. If no coupon information is found, return "N/A".
+    """
+    response = openai_client.beta.chat.completions.parse(
+        model=openai_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """Your role is to process the chat history between a user and an assistant.
+                        You will be provided with the chat history to process.
+                        You will extract the relevant coupon information, if the user used a coupon.
+                        A user can only use one coupon per order, so extract the most recent coupon used.
+                        If there is no coupon used, output "N/A" in the coupon field.
+                        """,
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": f"{chat_history}"}],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=GenericCoupon,
+    )
+
+    return response.choices[0].message.parsed
 
 
 def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int]]:
@@ -460,163 +816,6 @@ def process_modifiers(
     return modifiers, comment
 
 
-def validate_modifier_group_constraints(
-    modifier_group_counter: dict, menu_modifier_groups: dict, payload: dict
-) -> tuple[bool, str]:
-    """
-    Validates that the modifier group constraints (e.g., minimum and maximum allowed modifiers) are satisfied.
-
-    Args:
-        modifier_group_counter (dict): A dictionary that tracks how many modifiers have been selected for each modifier group.
-        menu (dict): The restaurant's menu data, containing the modifier groups and their constraints.
-        payload (dict): The order payload that contains the list of selected modifiers.
-
-    Returns:
-        tuple[bool, str]:
-            - A boolean indicating whether all modifier group constraints are satisfied.
-            - A string containing an error message if the constraints are not met, otherwise an empty string.
-    """
-
-    modifier_group_dict = {mg["modifier_group_id"]: mg for mg in menu_modifier_groups}
-
-    for modifier_group_id, count in modifier_group_counter.items():
-        if modifier_group_id in modifier_group_dict:
-            mg = modifier_group_dict[modifier_group_id]
-            if count < mg["min_required_modifier"]:
-                return (
-                    False,
-                    f"Please provide at least {mg['min_required_modifier']} modifiers for {mg['name']}.",
-                )
-            if count > mg["max_allowed_modifier"]:
-                return (
-                    False,
-                    f"Please provide at most {mg['max_allowed_modifier']} modifiers for {mg['name']}.",
-                )
-
-    return True, ""
-
-
-def get_adora_modifications(
-    adora_item_name: str,
-    adora_item_id: int,
-    adora_size_name: str,
-    adora_size_id: int,
-    menu_id_to_details_map: dict[int, MenuItemDetails],
-    menu_modifiers: dict,
-    menu_modifier_groups: dict,
-    openai_client: OpenAI,
-    openai_model: str,
-    order_item: OrderItem,
-    modifier_conversion_examples: dict[str, str],
-) -> tuple[bool, AdoraOrderItem | str]:
-    """
-    Maps user-supplied modifications to a specific item in the restaurant's menu, handling both valid modifiers and comments.
-
-    Args:
-        adora_item_name (str): The name of the item in the Adora menu.
-        adora_item_id (int): The ID of the item in the Adora menu.
-        adora_size_name (str): The name of the size in the Adora menu.
-        adora_size_id (int): The ID of the size in the Adora menu.
-        menu (dict): The restaurant's menu data, containing items, modifier groups, and modifiers.
-        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
-        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
-        order_item (OrderItem): The order item object that holds details such as quantity.
-
-    Returns:
-        tuple[bool, AdoraOrderItem | str]:
-            - A boolean indicating whether the modifications were successfully applied.
-            - An AdoraOrderItem object if successful, or an error message if a validation error occurred.
-    """
-
-    # Initialize payload
-    payload = {"comment": "", "modifiers": []}
-
-    # Get modifier groups for the item
-    item_modifier_groups = []
-    if adora_item_id in menu_id_to_details_map:
-        item_modifier_groups = menu_id_to_details_map[adora_item_id].modifier_groups
-
-    # Process order item modifications using OpenAI
-    modifiers, comment = process_modifiers(
-        menu_modifiers,
-        order_item.modifications,
-        openai_client,
-        openai_model,
-        modifier_conversion_examples,
-    )
-    payload["comment"] = comment
-
-    # If there are no modifier groups, create an AdoraOrderItem with no modifications
-    if not item_modifier_groups:
-        if modifiers:
-            return False, "No modifiers are allowed for this item."
-        adora_order_item = AdoraOrderItem(
-            adora_item_id, adora_size_id, order_item.quantity, comment, 0, []
-        )
-        adora_order_item.item_name = adora_item_name
-        adora_order_item.size = adora_size_name
-        adora_order_item.quantity = order_item.quantity
-        adora_order_item.modifications = []
-        return True, adora_order_item
-
-    # Add all default modifiers and track modifier group constraints
-    modifier_group_counter = defaultdict(int)
-    modifier_id_to_group_id = {}
-
-    for item_modifier_group in item_modifier_groups:
-        item_modifier_group_id = item_modifier_group["modifier_group_id"]
-        for modifier in item_modifier_group["modifiers"]:
-            modifier_id_to_group_id[modifier["modifier_id"]] = item_modifier_group_id
-            if modifier["default"]:
-                payload["modifiers"].append(
-                    {
-                        "id": modifier["modifier_id"],
-                        "isDefault": True,
-                        "price": 1,
-                        "weightId": 3,
-                    }
-                )
-                modifier_group_counter[item_modifier_group_id] += 1
-
-    # Add user-provided modifiers to payload and update group counts
-    new_added_modifications: list[str] = []
-    for modifier_item in modifiers:
-        payload["modifiers"].append(
-            {
-                "id": modifier_item["id"],
-                "isDefault": False,
-                "price": 1,  # adjust the price as needed
-                "weightId": 3,  # adjust the weightId as needed
-            }
-        )
-        if modifier_item["id"] in modifier_id_to_group_id:
-            modifier_group_counter[modifier_id_to_group_id[modifier_item["id"]]] += 1
-        new_added_modifications.append(modifier_item["name"])
-
-    # Validate modifier group constraints
-    is_valid, validation_message = validate_modifier_group_constraints(
-        modifier_group_counter, menu_modifier_groups, payload
-    )
-    if not is_valid:
-        return False, validation_message
-
-    adora_order_item = AdoraOrderItem(
-        adora_item_id,
-        adora_size_id,
-        order_item.quantity,
-        payload["comment"],
-        0,
-        payload["modifiers"],
-    )
-
-    adora_order_item.item_name = adora_item_name
-    adora_order_item.size = adora_size_name
-    adora_order_item.quantity = order_item.quantity
-    adora_order_item.modifications = new_added_modifications
-
-    return True, adora_order_item
-
-
 def validate_and_convert_item(
     order_item: OrderItem,
     menu_maps: tuple[dict[int, MenuItemDetails], dict[str, int]],
@@ -712,3 +911,39 @@ def validate_and_convert_item(
     )
 
     return adora_order_item_conversion_res
+
+
+def validate_modifier_group_constraints(
+    modifier_group_counter: dict, menu_modifier_groups: dict, payload: dict
+) -> tuple[bool, str]:
+    """
+    Validates that the modifier group constraints (e.g., minimum and maximum allowed modifiers) are satisfied.
+
+    Args:
+        modifier_group_counter (dict): A dictionary that tracks how many modifiers have been selected for each modifier group.
+        menu (dict): The restaurant's menu data, containing the modifier groups and their constraints.
+        payload (dict): The order payload that contains the list of selected modifiers.
+
+    Returns:
+        tuple[bool, str]:
+            - A boolean indicating whether all modifier group constraints are satisfied.
+            - A string containing an error message if the constraints are not met, otherwise an empty string.
+    """
+
+    modifier_group_dict = {mg["modifier_group_id"]: mg for mg in menu_modifier_groups}
+
+    for modifier_group_id, count in modifier_group_counter.items():
+        if modifier_group_id in modifier_group_dict:
+            mg = modifier_group_dict[modifier_group_id]
+            if count < mg["min_required_modifier"]:
+                return (
+                    False,
+                    f"Please provide at least {mg['min_required_modifier']} modifiers for {mg['name']}.",
+                )
+            if count > mg["max_allowed_modifier"]:
+                return (
+                    False,
+                    f"Please provide at most {mg['max_allowed_modifier']} modifiers for {mg['name']}.",
+                )
+
+    return True, ""

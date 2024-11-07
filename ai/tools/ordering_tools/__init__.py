@@ -2,11 +2,9 @@ import inspect
 
 from phi.tools.toolkit import Toolkit
 
-from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
+from ai.tools.ordering_tools.classes import OrderItem
 from ai.tools.ordering_tools.integrations.adora import AdoraIntegration
 from utils.log import logger
-
-from . import _utils
 
 
 class OrderingTools(Toolkit):
@@ -139,83 +137,7 @@ class OrderingTools(Toolkit):
         """
         logger.debug(f"[OrderingTools.place_order] Chat history: {chat_history}")
 
-        cart = _utils.get_cart_info(chat_history, self.cart_conversion_sys_prompt)
-        logger.debug(f"[OrderingTools.place_order] Extracted cart info: {cart}")
-        if not cart:
-            return "There was an issue processing your order. Please try again."
-
-        fulfillment_strategy_res = _utils.get_fulfillment_strategy(chat_history)
-        logger.debug(
-            f"[OrderingTools.place_order] Fulfillment strategy: {fulfillment_strategy_res}"
-        )
-
-        if (
-            not fulfillment_strategy_res
-            or fulfillment_strategy_res.strategy == FulfillmentStrategy.NA
-        ):
-            return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
-        fulfillment_strategy = fulfillment_strategy_res.strategy
-
-        account_name = self.integration.account_name
-        memories = _utils.get_consumer_memory(account_name, self.user_id)
-        memory_list = (
-            "## Existing Memories\n"
-            + "\n".join(f"- {memory.memory}" for memory in memories)
-            if memories
-            else ""
-        )
-        consumer = _utils.get_consumer_info(chat_history, memory_list)
-        logger.debug(f"[OrderingTools.place_order] Consumer: {consumer}")
-        if not consumer:
-            return "Ask the user to provide their first name, last name, phone number, and email address to place an order."
-
-        missing_info = []
-        if consumer.first_name == "N/A":
-            missing_info.append("first name")
-        if consumer.last_name == "N/A":
-            missing_info.append("last name")
-        if consumer.phone_number == "N/A":
-            missing_info.append("phone number")
-        if consumer.email == "N/A":
-            missing_info.append("email address")
-
-        if missing_info:
-            return (
-                f"Please provide your {' and '.join(missing_info)} to place an order."
-            )
-        # Format phone number
-        consumer.phone_number = "({}){}-{}".format(
-            consumer.phone_number[:3],
-            consumer.phone_number[3:6],
-            consumer.phone_number[6:],
-        )
-
-        delivery_address = None
-        if fulfillment_strategy == FulfillmentStrategy.DELIVERY:
-            delivery_address = _utils.get_delivery_address(chat_history)
-            logger.debug(
-                f"[OrderingTools.place_order] Delivery address: {delivery_address}"
-            )
-            if (
-                not delivery_address
-                or delivery_address.address == "N/A"
-                or delivery_address.city == "N/A"
-                or delivery_address.state == "N/A"
-                or delivery_address.zip_code == "N/A"
-            ):
-                return "Ask the user to provide a valid and complete delivery address to place a delivery order."
-
-        generic_coupon = _utils.get_generic_coupon_info(chat_history)
-        generic_coupon = generic_coupon.coupon if generic_coupon else "N/A"
-        logger.debug(f"[OrderingTools.place_order] Generic coupon: {generic_coupon}")
-
-        return self.integration.place_order(
-            cart.cart_items,
-            consumer,
-            fulfillment_strategy,
-            delivery_address,
-            generic_coupon,
-        )
+        return self.integration.place_order(chat_history, self.user_id)
 
     def remove_from_order(self):
         """
