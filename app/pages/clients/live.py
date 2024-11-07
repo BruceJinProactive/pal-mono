@@ -104,7 +104,7 @@ def main() -> None:
     for message in st.session_state["messages"]:
         author_type = "assistant" if message["author_type"] == "agent" else "user"
         with st.chat_message(author_type):
-            st.write(message["text"]["body"])
+            st.text(message["text"]["body"])
 
     # generate response if last message is from user
     if (
@@ -118,7 +118,7 @@ def main() -> None:
                     message=Message.from_dict(st.session_state["messages"][-1]),
                 ).dict()
             st.session_state["messages"].append(response_message)
-            st.write(response_message["text"]["body"])
+            st.text(response_message["text"]["body"])
 
 
 if user.is_logged_in:

@@ -44,7 +44,7 @@ def render_conversation(user_id) -> None:
             st.write("No messages in this conversation")
         for message in messages:
             with st.chat_message(message["author_type"]):
-                st.write(message["text"]["body"])
+                st.text(message["text"]["body"])
 
 
 def main() -> None:
