@@ -1,3 +1,4 @@
+from typing import List
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,7 +12,7 @@ class FeedbackRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_feedback(self, feedback: dict):
+    def create_feedback(self, feedback: dict) -> dict:
         db_feedback = dict(
             id="placeholder",
             author_identifier=feedback["author_identifier"],
@@ -33,7 +34,7 @@ class FeedbackRepository:
 
         return db_feedback
 
-    def get_feedback_by_id(self, feedback_id: UUID):
+    def get_feedback_by_id(self, feedback_id: UUID) -> dict:
         try:
             return {"result": f"Found feedback {str(feedback_id)}"}
             # return self.db.query(Feedback).filter(Feedback.id == feedback_id).first()
@@ -42,7 +43,7 @@ class FeedbackRepository:
             logger.error(f"Error retrieving feedback: {e}")
             raise
 
-    def update_feedback_by_id(self, feedback_id: UUID, updated_feedback: dict):
+    def update_feedback_by_id(self, feedback_id: UUID, updated_feedback: dict) -> dict:
         try:
             return {"updated feedback": updated_feedback}
             db_feedback = self.get_feedback_by_id(feedback_id)
@@ -62,3 +63,6 @@ class FeedbackRepository:
                 f"Unexpected error while updating feedback {feedback_id}: {e}"
             )
             raise
+
+    def get_feedback_by_message(self, message_id: UUID) -> List[dict]:
+        return [{"id": "feedback 1"}, {"id": "feedback 2"}, {"id": "feedback 3"}]

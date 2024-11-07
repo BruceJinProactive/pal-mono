@@ -53,6 +53,27 @@ def get_conversation_messages(
     return _implementation.get_conversation_messages(db, account_id, conversation_id)
 
 
+# NOTE: Temporary solution pre-DB migration -- return list of dicts
+def get_conversation_messages_with_feedback(
+    db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+) -> List[dict]:
+    """
+    Verifies that the requester has access to the conversation, then returns all messages
+    in the conversation alongside feedback for each.
+
+    Args:
+        db (Session): The database session.
+        account_id (uuid.UUID): The unique identifier of the incoming request's Account.
+        conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
+
+    Returns:
+        List[dict]: A list of dictionaries including message and feedback
+    """
+    return _implementation.get_conversation_messages_with_feedback(
+        db, account_id, conversation_id
+    )
+
+
 def get_brandings(db: Session, account_name: str) -> list[dict]:
     """
     NOTE: This function is not implemented and is a placeholder.

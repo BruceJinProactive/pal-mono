@@ -11,6 +11,7 @@ from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository
 from services.account_service import get_account
 from services.assistant_service import get_assistants_by_account
+from services.feedback_service import get_feedback_by_message
 from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
@@ -134,6 +135,42 @@ def get_conversation_messages(
     messages = get_messages_by_conversation(db, conversation_id=conversation_id)
 
     return messages
+
+
+def get_conversation_messages_with_feedback(
+    db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+) -> List[dict]:
+    conversation_repository = ConversationRepository(db)
+    user_repository = UserRepository(db)
+
+    # Get the Account ID associated with the Conversation ID
+    conversation = conversation_repository.get_conversation_by_id(conversation_id)
+
+    if not conversation:
+        raise ValueError("Conversation not found.")
+
+    user = user_repository.get_user_by_id(conversation.user_id)
+
+    if not user:
+        raise ValueError("User not found.")
+
+    # If the Account IDs do not match, the Admin does not have access to this Conversation
+    if user.account_id != account_id:
+        raise ValueError(
+            "Account ID of Conversation and requesting Account do not match."
+        )
+
+    messages = get_messages_by_conversation(db, conversation_id=conversation_id)
+
+    messages_with_feedback: List[dict] = []
+    for message in messages:
+        message_with_feedback = {
+            "message": message,
+            "feedback": get_feedback_by_message(db, message.id),
+        }
+        messages_with_feedback.append(message_with_feedback)
+
+    return messages_with_feedback
 
 
 def get_brandings(db: Session, account_name: str) -> list[dict]:
