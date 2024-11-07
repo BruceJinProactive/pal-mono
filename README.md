@@ -55,6 +55,21 @@ Since PhiData installs these dependencies in the Docker container environment, o
 ./scripts/install.sh
 ```
 
+### Channel Configurations
+To open up channels (eg. internal app's live page, api) to talk to a local agent, they need to be configured. In the Channel:Identifier table under the projects page, save the following rows for each account.
+| Channel  | Identifier |
+|----------|----------|
+| internal_app    | <account_name>   |
+| api    | <project_name>   |
+
+For example,
+
+| Channel  | Identifier |
+|----------|----------|
+| internal_app    | proactiveailab  |
+| api    | proactiveailab-default   |
+
+
 ## Others
 
 1. You can read the API documentation running in your local host http://localhost:8000/docs#/. and the web app running in your local host http://localhost:8501/.
