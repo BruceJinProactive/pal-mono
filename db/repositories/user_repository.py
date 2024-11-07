@@ -53,7 +53,7 @@ class UserRepositoryAsync:
         self.db.add(db_user)
         await self.db.flush()
         await self.db.refresh(db_user)
-        await self.db.commit()
+
         return db_user
 
 
