@@ -105,9 +105,9 @@ class OrderingTools(Toolkit):
     # TODO: Figure out how (if) we want to take in coupons, payment info, delivery type. Hardcode for now.
     def place_order(self, chat_history: list[str]) -> str:
         """
-        Places the user's order based on the chat history (both user messages and assistant messages).
+        This function should be called every time the user requests to place order, checkout, or pay.
 
-        This function should be used every time the user wants to finish their order, check out, or pay for it.
+        Places the user's order based on the chat history (both user messages and assistant messages).
 
         The user must provide the fulfillment strategy (delivery or pickup), and the delivery address if the fulfillment strategy is delivery.
 
@@ -139,7 +139,13 @@ class OrderingTools(Toolkit):
 
         return self.integration.place_order(chat_history, self.user_id)
 
-    def remove_from_order(self):
+    def remove_from_order(
+        self,
+        item_name: str,
+        size: str,
+        quantity: int = 1,
+        modifications: list[str] = [],
+    ) -> str:
         """
         Removes a specified item from the order based on user input.
 
@@ -148,11 +154,14 @@ class OrderingTools(Toolkit):
         Args:
             item_name (str): The name of the item to remove.
             size (str): The size of the item to remove.
+            quantity (int): The quantity of the item to remove. Defaults to 1.
             modifications (list[str]): Any modifications for the item to remove. Defaults to an empty list.
 
         Returns:
             str: The result of removing the item from the order.
         """
-        logger.debug("[OrderingTools.remove_from_order] Removing item from order.")
+        logger.debug(
+            f"[OrderingTools.remove_from_order] Removing item from order: {item_name}, Size: {size}, Quantity: {quantity}, Modifications: {modifications}"
+        )
 
-        return "The item was successfully removed from the order!"
+        return self.integration.remove_from_order()

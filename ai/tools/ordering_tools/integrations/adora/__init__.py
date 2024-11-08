@@ -378,3 +378,6 @@ class AdoraIntegration:
                 f"[AdoraIntegration.place_order] Failed to place order. Saved order ID: {saved_order.OrderID if saved_order else 'NO SAVED ORDER'}"
             )
             return "The service maybe busy. Please try again."
+
+    def remove_from_order(self):
+        return "The item was successfully removed from the order!"
