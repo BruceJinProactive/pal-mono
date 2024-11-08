@@ -5,7 +5,7 @@ from streamlit_extras.switch_page_button import switch_page
 
 from api.schemas.message.message import AuthorType, Channel, Extras, Message, TextObject
 from app.auth import user
-from app.shared import account_picker_ui, get_app_db
+from app.shared import account_picker_ui, clear_memory_ui, get_app_db, memory_ui
 from db.repositories.project_repository import ProjectRepository
 from services.account_service import get_account
 from services.message_service import (
@@ -21,11 +21,11 @@ st.title("Live")
 db = get_app_db()
 
 
-def main() -> None:
+def main() -> str | None:
     st.write("---")
     if "account_name" not in st.session_state:
         st.error("Please Select an Account to Chat")
-        return
+        return None
 
     # Get agent
     account_name = st.session_state["account_name"]
@@ -82,11 +82,13 @@ def main() -> None:
         )
         st.info(f"Assistant Name: {assistant_name}")
         st.info(f"Conversation start date: {getattr(conversation, 'created_at', None)}")
-    col1, _, _, _ = st.columns([1] * 4)
+    col1, col2, _, _ = st.columns([1] * 4)
     with col1:
         if st.button("Create new chat"):
             create_conversation(db, db_user.id)
             st.rerun()
+    with col2:
+        clear_memory_ui(account_name, str(db_user.id))
 
     # prompt user
     if prompt := st.chat_input():
@@ -119,10 +121,13 @@ def main() -> None:
                 ).dict()
             st.session_state["messages"].append(response_message)
             st.text(response_message["text"]["body"])
+    return str(db_user.id)
 
 
 if user.is_logged_in:
-    main()
-    account_picker_ui(db)
+    user_id = main()
+    account_picker_ui(db)  # Display account picker first
+    if user_id:
+        memory_ui(st.session_state.get("account_name", ""), user_id)
 else:
     switch_page("home")
