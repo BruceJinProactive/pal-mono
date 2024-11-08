@@ -20,7 +20,7 @@ def get_account(db: Session, account_name: str) -> Optional[Account]:
     return account
 
 
-def create_account_with_defaults(db: Session, account_name: str):
+def create_account_with_defaults(db: Session, account_name: str) -> Account:
     # Instantiate the repositories
     account_repository = AccountRepository(db)
     project_repository = ProjectRepository(db)
@@ -34,3 +34,4 @@ def create_account_with_defaults(db: Session, account_name: str):
         account_id=account.id,
         assistant_id=assistant.id,
     )
+    return account

@@ -34,7 +34,7 @@ def get_account(db: Session, account_name: str) -> Optional[Account]:
     return _implementation.get_account(db, account_name)
 
 
-def create_account_with_defaults(db: Session, account_name: str):
+def create_account_with_defaults(db: Session, account_name: str) -> Account:
     """
     Creates a new account with default settings.
 
@@ -43,7 +43,7 @@ def create_account_with_defaults(db: Session, account_name: str):
         account_name (str): The name of the new account.
 
     Returns:
-        None
+        Account: The created account
     """
     return _implementation.create_account_with_defaults(db, account_name)
 
