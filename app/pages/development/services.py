@@ -27,10 +27,10 @@ db = next(get_db())
 
 (
     message_service_tab,
-    assistant_service_tab,
+    agent_service_tab,
     admin_service_tab,
     relay_service_tab,
-) = st.tabs(["Message Service", "Assistant Service", "Admin Service", "Relay Service"])
+) = st.tabs(["Message Service", "Agent Service", "Admin Service", "Relay Service"])
 
 
 def main() -> None:
@@ -71,8 +71,8 @@ def main() -> None:
             output_message = get_chat_response(db, input_message)
             st.write(output_message.to_dict())
 
-    with assistant_service_tab:
-        st.write("Assistant Service")
+    with agent_service_tab:
+        st.write("Agent Service")
     with admin_service_tab:
         st.write("### get_inbox_conversations")
 

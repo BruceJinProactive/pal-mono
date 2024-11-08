@@ -12,7 +12,7 @@ from db.repositories.message_repository import MessageRepository, MessageReposit
 from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
 from db.repositories.user_repository import UserRepositoryAsync
 from db.tables import Conversation
-from services import assistant_service, user_service
+from services import agent_service, user_service
 from utils.log import logger
 
 
@@ -58,9 +58,9 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         assistant_id = project.assistant_id
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
-        agent = await assistant_service.get_ai_agent_async(
+        agent = await agent_service.get_ai_agent_async(
             db=db,
-            assistant_id=assistant_id,
+            agent_id=assistant_id,
             user_id=user.id,
             conversation_id=conversation_id,
         )
@@ -144,9 +144,9 @@ def get_chat_response(db: Session, message: Message) -> Message:
         if assistant_id is None:
             raise ValueError("Assistant ID not found")
 
-        agent = assistant_service.get_ai_agent(
+        agent = agent_service.get_ai_agent(
             db=db,
-            assistant_id=assistant_id,
+            agent_id=assistant_id,
             user_id=user.id,
             conversation_id=conversation_id,
         )

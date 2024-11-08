@@ -9,7 +9,7 @@ from api.schemas.message.message import Channel
 from app.auth import user
 from db.session import get_db
 from services.account_service import get_account, get_accounts
-from services.assistant_service import get_assistant
+from services.agent_service import get_agent
 from services.user_service import get_user_by_channel_identifier
 from utils.secret import get_client_secret
 
@@ -87,15 +87,15 @@ def booking_tools_tab_content(user_id):
 # TODO: Delete this function
 def _construct_demo_dict():
     """
-    Returns dictionary of account name to assistant id
+    Returns dictionary of account name to agent id
     """
     demo_dict = {}
     db = next(get_db())
     accounts = get_accounts(db)
 
     for account in accounts:
-        for assistant in account.assistants:
-            demo_dict[account.name] = assistant.id
+        for agent in account.assistants:
+            demo_dict[account.name] = agent.id
 
     return demo_dict
 
@@ -116,11 +116,11 @@ if user.is_logged_in:
         list(demo_dict.keys()),
         key="tools_page_demo_select",
     )
-    assistant_id = demo_dict.get(selected_account_name)
+    agent_id = demo_dict.get(selected_account_name)
 
-    assistant = get_assistant(db, assistant_id)  # type: ignore
+    agent = get_agent(db, agent_id)  # type: ignore
 
-    account = get_account(db, account_name=assistant.account.name)  # type: ignore
+    account = get_account(db, account_name=agent.account.name)  # type: ignore
 
     if not user.email:
         st.error("Email is required, please provide an email address.")

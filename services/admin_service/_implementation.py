@@ -10,7 +10,7 @@ from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository
 from services.account_service import get_account
-from services.assistant_service import get_assistants_by_account
+from services.agent_service import get_agents_by_account
 from services.feedback_service import get_feedback_by_message
 from services.message_service import (
     get_conversations_by_users,
@@ -178,15 +178,15 @@ def get_brandings(db: Session, account_name: str) -> list[dict]:
     if not account:
         return []
     account_name = account.name
-    assistants = get_assistants_by_account(db, account_name)
-    if not assistants:
+    agents = get_agents_by_account(db, account_name)
+    if not agents:
         return []
-    # # find the assistant's raw config
+    # # find the agent's raw config
     # parse the raw config with the branding key
     # error check, if it doesn't have the branding key, send back an empty json
     brandings = []
-    for assistant in assistants:
-        if "branding" in assistant.raw_config:
-            branding = assistant.raw_config.get("branding", {})
+    for agent in agents:
+        if "branding" in agent.raw_config:
+            branding = agent.raw_config.get("branding", {})
             brandings.append(branding)
     return brandings
