@@ -6,7 +6,7 @@ from phi.document.base import Document
 from phi.document.reader.pdf import PDFReader
 from streamlit_extras.switch_page_button import switch_page
 
-from ai.knowledge import get_knowledge, index_data_from_shopify
+from ai.knowledge import get_knowledge
 from app.auth import user
 from app.shared import account_picker_ui
 from db.session import get_db
@@ -47,8 +47,8 @@ def knowledge_ui(account_name: str) -> None:
                 st.success("Knowledge base loaded")
                 loading_container.empty()
 
-        tab_pdf, tab_text, tab_json, tab_img = st.tabs(
-            ["PDF Uploader", "Text Uploader", "JSON Uploader", "Image Indexer"]
+        tab_pdf, tab_text, tab_json = st.tabs(
+            ["PDF Uploader", "Text Uploader", "JSON Uploader"]
         )
         with tab_pdf:
             # Upload PDF
@@ -252,19 +252,6 @@ def knowledge_ui(account_name: str) -> None:
 
                     if not json_name_input:
                         st.error("Please provide a document name.")
-        with tab_img:
-            st.warning("THIS TAB IS SPECIFICALLY FOR WINDSOR", icon="ℹ️")
-            if knowledge_base:
-                if st.button("[Windsor] Image Indexing"):
-                    alert = st.info("Indexing...", icon="ℹ️")
-                    try:
-                        successes, failures = index_data_from_shopify()
-                        st.info(
-                            f"Successfully indexed {successes} images. Failed to index {failures} images."
-                        )
-                    except Exception as e:
-                        st.error(f"An error occurred during indexing: {str(e)}")
-                    alert.empty()
 
         if knowledge_base:
             st.text("")

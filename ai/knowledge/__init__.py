@@ -19,15 +19,3 @@ def get_knowledge(account_name: str) -> AgentKnowledge:
         AgentKnowledge: An instance of AgentKnowledge configured with the specified knowledge base.
     """
     return _implementation.get_knowledge(account_name)
-
-
-def index_data_from_shopify() -> tuple[int, int]:
-    """
-    **TEMPORARY** Index data from Shopify.
-
-    This function retrieves images from Shopify and indexes them in the Pinecone index.
-
-    Returns:
-        tuple[int, int]: A tuple containing the number of successful indexes and the number of failed indexes.
-    """
-    return _implementation.index_data_from_shopify()
