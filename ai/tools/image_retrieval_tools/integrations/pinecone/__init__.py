@@ -7,7 +7,7 @@ from openai import OpenAI, OpenAIError
 from pinecone import Pinecone
 from vertexai.vision_models import MultiModalEmbeddingModel
 
-from ai.llm import _settings
+from ai.llm import ModelName, get_client
 from utils.log import logger
 from utils.secret import get_client_secret
 
@@ -54,15 +54,15 @@ class PineconeIntegration:
         self.pinecone_namespace = pinecone_namespace
 
         # OpenAI
-        self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
-        self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
+        self.model_router_client = get_client()
+        self.model_router_model = ModelName.MEDIUM
 
     def retrieve_image_by_chat_history(
         self, chat_history: list[str], top_k: int = 3
     ) -> str:
         try:
-            chat_completion = self.openai_client.chat.completions.create(
-                model=self.openai_model,
+            chat_completion = self.model_router_client.chat.completions.create(
+                model=self.model_router_model,
                 messages=[
                     {
                         "role": "system",

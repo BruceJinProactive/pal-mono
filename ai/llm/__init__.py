@@ -1,11 +1,14 @@
 from openai import AsyncOpenAI, OpenAI
 from phi.model.openai.like import OpenAILike
 
-from . import _implementation, _settings
+from . import _implementation
+
+OutputModel = _implementation.OutputModel
+ModelName = _implementation.ModelName
 
 
 def get_model(
-    model_name: str = _settings.ai_settings.medium,
+    model_name: str = ModelName.MEDIUM,
 ) -> OpenAILike:
     """
     Get the appropriate LLM (Large Language Model) instance based on the provided model name.
@@ -47,13 +50,3 @@ def get_async_client() -> AsyncOpenAI:
         A instance of model router async client with same usage as async openai client
     """
     return _implementation.get_async_client()
-
-
-OutputModel = _implementation.OutputModel
-
-ai_settings = (
-    _settings.ai_settings
-)  # TODO: Remove this after fully migrate to model router
-
-
-__all__ = ["get_model", "ai_settings"]

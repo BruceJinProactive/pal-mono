@@ -1,11 +1,10 @@
+from enum import Enum
 from os import getenv
 
 from openai import AsyncOpenAI, OpenAI
 from phi.embedder.openai import OpenAIEmbedder
 from phi.model.openai.like import OpenAILike
 from pydantic import BaseModel, Field
-
-from . import _settings
 
 # Get the MODEL_ROUTER_BASE_URL environment variable, or use a default value if not set
 MODEL_ROUTER_BASE_URL = getenv(
@@ -18,6 +17,15 @@ MODEL_ROUTER_API_KEY = getenv("MODEL_ROUTER_API_KEY", "")
 class OutputModel(BaseModel):
     content: str = Field(..., description="plain response content")
     escalated: bool = Field(..., description="system info escalated field")
+
+
+class ModelName(str, Enum):
+    MEDIUM = "medium"
+    SMALL = "small"
+
+
+class EmbedderName(str, Enum):
+    SMALL = "text-embedding-3-small"
 
 
 def get_client() -> OpenAI:
@@ -42,7 +50,7 @@ def get_async_client() -> AsyncOpenAI:
     return client
 
 
-def get_model(model_name: str = _settings.ai_settings.medium) -> OpenAILike:
+def get_model(model_name: str = ModelName.MEDIUM) -> OpenAILike:
     model = OpenAILike(
         id=model_name, client=get_client(), async_client=get_async_client()
     )
@@ -50,4 +58,4 @@ def get_model(model_name: str = _settings.ai_settings.medium) -> OpenAILike:
 
 
 def get_embedder():
-    return OpenAIEmbedder(model=_settings.ai_settings.embedding_model)
+    return OpenAIEmbedder(model=EmbedderName.SMALL)

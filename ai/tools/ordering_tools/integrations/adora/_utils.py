@@ -1,12 +1,11 @@
 import textwrap
 from collections import defaultdict
 from dataclasses import dataclass
-from os import getenv
 
 from openai import OpenAI
 from phi.memory.memory import Memory
 
-from ai.llm import _settings
+from ai.llm import ModelName, get_client
 from ai.memory import get_memory
 from ai.tools.ordering_tools.classes import (
     Consumer,
@@ -35,8 +34,8 @@ class ConversionResult:
     message: str
 
 
-openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
-openai_model = _settings.ai_settings.gpt_4o_2024_08_06
+model_router_client = get_client()
+model_router_model = ModelName.MEDIUM
 
 
 def _add_default_modifiers(
@@ -64,8 +63,8 @@ def _add_default_modifiers(
 def convert_coupon(
     all_coupons: list[AdoraCoupon],
     target_coupon: str,
-    openai_client: OpenAI,
-    openai_model: str,
+    model_router_client: OpenAI,
+    model_router_model: str,
     coupon_conversion_examples: dict[str, str],
 ) -> ConversionResult:
     """
@@ -112,8 +111,8 @@ def convert_coupon(
         Only output the most similar coupon name. Output "N/A" if the user's inputted coupon name is nothing like any of the available options.
         """
     )
-    response = openai_client.chat.completions.create(
-        model=openai_model,
+    response = model_router_client.chat.completions.create(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -151,8 +150,8 @@ def get_adora_item_id(
     menu_name_to_id_map: dict,
     order_item_name: str,
     item_id_conversion_examples: dict[str, str],
-    openai_client: OpenAI,
-    openai_model: str,
+    model_router_client: OpenAI,
+    model_router_model: str,
 ) -> ConversionResult:
     """
     Finds the closest item name in the menu and consequent item id.
@@ -196,8 +195,8 @@ def get_adora_item_id(
         Only output the most similar menu item name. Output "N/A" if the user's inputted item name is nothing like any of the available options.
         """
     )
-    response = openai_client.chat.completions.create(
-        model=openai_model,
+    response = model_router_client.chat.completions.create(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -235,8 +234,8 @@ def get_adora_modifications(
     menu_id_to_details_map: dict[int, MenuItemDetails],
     menu_modifiers: dict,
     menu_modifier_groups: dict,
-    openai_client: OpenAI,
-    openai_model: str,
+    model_router_client: OpenAI,
+    model_router_model: str,
     order_item: OrderItem,
     modifier_conversion_examples: dict[str, str],
 ) -> tuple[bool, AdoraOrderItem | str]:
@@ -249,8 +248,8 @@ def get_adora_modifications(
         adora_size_name (str): The name of the size in the Adora menu.
         adora_size_id (int): The ID of the size in the Adora menu.
         menu (dict): The restaurant's menu data, containing items, modifier groups, and modifiers.
-        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
-        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
+        model_router_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
+        model_router_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
         order_item (OrderItem): The order item object that holds details such as quantity.
 
     Returns:
@@ -271,8 +270,8 @@ def get_adora_modifications(
     modifiers, comment = process_modifiers(
         menu_modifiers,
         order_item.modifications,
-        openai_client,
-        openai_model,
+        model_router_client,
+        model_router_model,
         modifier_conversion_examples,
     )
     payload["comment"] = comment
@@ -342,8 +341,8 @@ def get_adora_size_id(
     adora_item_id: int,
     order_item_size: str,
     size_id_conversion_examples: dict[str, str],
-    openai_client: OpenAI,
-    openai_model: str,
+    model_router_client: OpenAI,
+    model_router_model: str,
 ) -> ConversionResult:
     """
     Maps the size to size id.
@@ -405,8 +404,8 @@ def get_adora_size_id(
             Only output the most similar item size. Output "N/A" if the user's inputted item size is nothing like any of the available options.
             """
         )
-        response = openai_client.chat.completions.create(
-            model=openai_model,
+        response = model_router_client.chat.completions.create(
+            model=model_router_model,
             messages=[
                 {
                     "role": "system",
@@ -455,8 +454,8 @@ def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
     Returns:
         LLMCartInfo | None: The parsed cart information.
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -493,8 +492,8 @@ def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | N
     Returns:
         Consumer | None: The parsed consumer information.
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -554,8 +553,8 @@ def get_delivery_address(
     Returns:
         GenericDeliveryAddress | None: The parsed delivery address. If no delivery address is found, return "N/A".
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -598,8 +597,8 @@ def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy 
     Returns:
         LLMFulfillmentStrategy | None: The parsed fulfillment strategy. If no fulfillment strategy is found, return "N/A".
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -636,8 +635,8 @@ def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
     Returns:
         GenericCoupon | None: The parsed coupon information. If no coupon information is found, return "N/A".
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -691,8 +690,8 @@ def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int
 
 
 def get_similar_modifier_using_openai(
-    openai_client: OpenAI,
-    openai_model: str,
+    model_router_client: OpenAI,
+    model_router_model: str,
     order_item_modification: str,
     modifier_names: list,
     modifier_conversion_examples: dict[str, str],
@@ -701,8 +700,8 @@ def get_similar_modifier_using_openai(
     Uses OpenAI's language model to match a user-supplied item modification to the most similar modifier on the menu.
 
     Args:
-        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
-        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
+        model_router_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
+        model_router_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
         order_item_modification (str): The user-provided modification for an order item (e.g., "extra cheese").
         modifier_names (list): A list of available modifier names on the menu.
 
@@ -749,8 +748,8 @@ def get_similar_modifier_using_openai(
         Only output the most similar item modification. Output "N/A" if the user's inputted item modification is nothing like any of the available options.
         """
     )
-    response = openai_client.chat.completions.create(
-        model=openai_model,
+    response = model_router_client.chat.completions.create(
+        model=model_router_model,
         messages=[
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": order_item_modification},
@@ -778,8 +777,8 @@ def get_size_description_map(menu) -> dict[int, str]:
 def process_modifiers(
     menu_modifiers: dict,
     order_item_modifications: list,
-    openai_client: OpenAI,
-    openai_model: str,
+    model_router_client: OpenAI,
+    model_router_model: str,
     modifier_conversion_examples: dict[str, str],
 ) -> tuple[list, str]:
     """
@@ -788,8 +787,8 @@ def process_modifiers(
     Args:
         menu (dict): The restaurant's menu data, containing items and modifiers.
         order_item_modifications (list): A list of modifications provided by the user for a specific order item.
-        openai_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
-        openai_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
+        model_router_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
+        model_router_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
 
     Returns:
         tuple[list, str]:
@@ -802,8 +801,8 @@ def process_modifiers(
 
     for order_item_modification in order_item_modifications:
         matched_modifier = get_similar_modifier_using_openai(
-            openai_client,
-            openai_model,
+            model_router_client,
+            model_router_model,
             order_item_modification,
             modifier_names,
             modifier_conversion_examples,
@@ -835,8 +834,8 @@ def validate_and_convert_item(
     item_id_conversion_examples: dict[str, str],
     size_id_conversion_examples: dict[str, str],
     modifier_conversion_examples: dict[str, str],
-    openai_client: OpenAI,
-    openai_model: str,
+    model_router_client: OpenAI,
+    model_router_model: str,
 ) -> tuple[bool, AdoraOrderItem | str]:
     """Converts a generic order item into an Adora order item.
 
@@ -849,8 +848,8 @@ def validate_and_convert_item(
         item_id_conversion_examples (dict[str, str]): Dictionary of conversion examples for item IDs.
         size_id_conversion_examples (dict[str, str]): Dictionary of conversion examples for size IDs.
         modifier_conversion_examples (dict[str, str]): Dictionary of conversion examples for modifiers.
-        openai_client (OpenAI): The OpenAI client instance.
-        openai_model (str): The OpenAI model name to use.
+        model_router_client (OpenAI): The OpenAI client instance.
+        model_router_model (str): The OpenAI model name to use.
 
     Returns:
         tuple[bool, AdoraOrderItem | str]: A tuple containing a boolean indicating
@@ -868,8 +867,8 @@ def validate_and_convert_item(
         menu_name_to_id_map,
         order_item.item_name,
         item_id_conversion_examples,
-        openai_client,
-        openai_model,
+        model_router_client,
+        model_router_model,
     )
     if not adora_item_id_res.success:
         return False, adora_item_id_res.message
@@ -892,8 +891,8 @@ def validate_and_convert_item(
         adora_item_id,
         order_item.size,
         size_id_conversion_examples,
-        openai_client,
-        openai_model,
+        model_router_client,
+        model_router_model,
     )
     if not adora_size_id_res.success:
         return False, adora_size_id_res.message
@@ -914,8 +913,8 @@ def validate_and_convert_item(
         menu_id_to_details_map,
         menu_modifiers,
         menu_modifier_groups,
-        openai_client,
-        openai_model,
+        model_router_client,
+        model_router_model,
         order_item,
         modifier_conversion_examples,
     )

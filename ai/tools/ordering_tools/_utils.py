@@ -1,9 +1,6 @@
-from os import getenv
-
-from openai import OpenAI
 from phi.memory.memory import Memory
 
-from ai.llm import _settings
+from ai.llm import ModelName, get_client
 from ai.memory import get_memory
 from ai.tools.ordering_tools.classes import (
     Consumer,
@@ -14,8 +11,8 @@ from ai.tools.ordering_tools.classes import (
     LLMOrder,
 )
 
-openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
-openai_model = _settings.ai_settings.gpt_4o_2024_08_06
+model_router_client = get_client()
+model_router_model = ModelName.MEDIUM
 
 
 def get_cart_info(
@@ -30,8 +27,8 @@ def get_cart_info(
     Returns:
         LLMCartInfo | None: The parsed cart information.
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -69,8 +66,8 @@ def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | N
     Returns:
         Consumer | None: The parsed consumer information.
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -128,8 +125,8 @@ def get_delivery_address(chat_history: list[str]) -> GenericDeliveryAddress | No
     Returns:
         GenericDeliveryAddress | None: The parsed delivery address. If no delivery address is found, return "N/A".
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -169,8 +166,8 @@ def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy 
     Returns:
         LLMFulfillmentStrategy | None: The parsed fulfillment strategy. If no fulfillment strategy is found, return "N/A".
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -207,8 +204,8 @@ def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
     Returns:
         GenericCoupon | None: The parsed coupon information. If no coupon information is found, return "N/A".
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
@@ -247,8 +244,8 @@ def get_order_id(validated_order_res: str) -> LLMOrder | None:
     Returns:
         LLMOrder | None: The parsed order ID.
     """
-    response = openai_client.beta.chat.completions.parse(
-        model=openai_model,
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
         messages=[
             {
                 "role": "system",
