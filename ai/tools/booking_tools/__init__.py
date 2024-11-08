@@ -36,8 +36,10 @@ class BookingTools(Toolkit):
     # Toolkit tools (actions)
     # ----------------------------------------
 
+    # NOTE: will add chat history when a new integration is added
     def book_a_class(self) -> str:
-        """Use this function to answer any questions regarding class availability.
+        """
+        Use this function to book a class.
 
         Args:
             num_days (int): Number of days in advance to look for.
@@ -47,16 +49,15 @@ class BookingTools(Toolkit):
         """
         return self.integration.book_a_class()
 
-    def get_classes(self, num_days: int | None) -> str:
-        """Use this function to answer any questions regarding class availability.
+    def get_classes(self, num_days: int = 7) -> str:
+        """
+        Use this function to answer any questions regarding class availability.
+
 
         Args:
-            num_days (int): Number of days in advance to look for.
+            num_days (int): Number of days in advance to look for. Defaults to 7 if user doesn't supply.
 
         Returns:
-            str: JSON string of class availability.
+            str: JSON string of class availability or a class scheduler status update.
         """
-        if num_days is None:
-            return self.integration.get_classes()
-
         return self.integration.get_classes(num_days)

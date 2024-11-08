@@ -3,21 +3,25 @@ import json
 
 import httpx
 
+from utils.log import logger
+
 
 class MindZeroIntegration:
     def book_a_class(self) -> str:
-        """Use this function to book a class session.
+        """
+        Use this function to book a class.
 
         Returns:
             str: JSON string of class session booking status.
         """
         return "Please contact a sales representative to book a class session."
 
-    def get_classes(self, num_days: int = 7) -> str:
-        """Use this function to answer any questions regarding class session availability.
+    def get_classes(self, num_days: int) -> str:
+        """
+        Use this function to answer any questions regarding class session availability.
 
         Args:
-            num_days (int): Number of days in advance to look for. Defaults to 7 if user doesn't supply.
+            num_days (int): Number of days in advance to look for.
 
         Returns:
             str: JSON string of class session availability.
@@ -25,11 +29,18 @@ class MindZeroIntegration:
         # Date range to search within: [Today, Today+num_days]
         min_date = datetime.datetime.today().strftime("%Y-%m-%d")
         max_date = datetime.date.today() + datetime.timedelta(days=num_days)
+        try:
+            response = httpx.get(
+                f"https://mindzero.marianatek.com/api/class_sessions?include=employee_public_profiles%2Clayout%2Ctags&location=48717&max_date={max_date}&min_date={min_date}&ordering=start_datetime&page_size=20"
+            )
+            response.raise_for_status()  # Raise an exception for HTTP errors
+            data = response.json().get("data", [])
 
-        response = httpx.get(
-            f"https://mindzero.marianatek.com/api/class_sessions?include=employee_public_profiles%2Clayout%2Ctags&location=48717&max_date={max_date}&min_date={min_date}&ordering=start_datetime&page_size=20"
-        )
-        data = response.json()["data"]
+        except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as e:
+            logger.error(f"[MindZeroIntegration.get_classes] Error occurred: {e}")
+            return (
+                "The class scheduler is currently unavailable. Please try again later."
+            )
 
         # Returns whether the session is in the future (True) or not (False)
         def date_in_the_future(session_date_str):
