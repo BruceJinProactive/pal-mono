@@ -39,6 +39,28 @@ openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
 openai_model = _settings.ai_settings.gpt_4o_2024_08_06
 
 
+def _add_default_modifiers(
+    item_modifier_groups: list, modifier_id_to_group_id: dict
+) -> tuple[list, dict]:
+    modifiers = []
+    modifier_group_counter = defaultdict(int)
+    for group in item_modifier_groups:
+        group_id = group["modifier_group_id"]
+        for modifier in group["modifiers"]:
+            if modifier["default"]:
+                modifiers.append(
+                    {
+                        "id": modifier["modifier_id"],
+                        "isDefault": True,
+                        "price": 1,
+                        "weightId": 3,
+                    }
+                )
+                modifier_group_counter[group_id] += 1
+            modifier_id_to_group_id[modifier["modifier_id"]] = group_id
+    return modifiers, modifier_group_counter
+
+
 def convert_coupon(
     all_coupons: list[AdoraCoupon],
     target_coupon: str,
@@ -269,23 +291,11 @@ def get_adora_modifications(
         return True, adora_order_item
 
     # Add all default modifiers and track modifier group constraints
-    modifier_group_counter = defaultdict(int)
     modifier_id_to_group_id = {}
-
-    for item_modifier_group in item_modifier_groups:
-        item_modifier_group_id = item_modifier_group["modifier_group_id"]
-        for modifier in item_modifier_group["modifiers"]:
-            modifier_id_to_group_id[modifier["modifier_id"]] = item_modifier_group_id
-            if modifier["default"]:
-                payload["modifiers"].append(
-                    {
-                        "id": modifier["modifier_id"],
-                        "isDefault": True,
-                        "price": 1,
-                        "weightId": 3,
-                    }
-                )
-                modifier_group_counter[item_modifier_group_id] += 1
+    default_modifiers, modifier_group_counter = _add_default_modifiers(
+        item_modifier_groups, modifier_id_to_group_id
+    )
+    payload["modifiers"].extend(default_modifiers)
 
     # Add user-provided modifiers to payload and update group counts
     new_added_modifications: list[str] = []
