@@ -23,7 +23,7 @@ class AdoraIntegration:
         account_name: str,
         api_key: str,
         api_secret: str,
-        store_id: str,
+        store_information: dict[str, str],
         adora_conversion_examples: dict[
             Literal["items", "sizes", "modifiers", "coupons"], dict[str, str]
         ] = {},
@@ -31,7 +31,7 @@ class AdoraIntegration:
         self.account_name = account_name
         self.api_key = api_key
         self.api_secret = api_secret
-        self.store_id = store_id
+        self.store_information = store_information
         self.adora_conversion_examples = adora_conversion_examples
         self.openai_client = OpenAI(api_key=getenv("OPENAI_API_KEY"))
         self.openai_model = _settings.ai_settings.gpt_4o_2024_08_06
@@ -43,7 +43,7 @@ class AdoraIntegration:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
         # Get menu from knowledge base based on menu name
-        menu = _apis.get_adora_menu(self.store_id, bearer_token)
+        menu = _apis.get_adora_menu(self.store_information["store_id"], bearer_token)
         if not menu:
             return "Failed to get menu, please try again."
         menu_maps = _utils.get_menu_maps(menu)
@@ -71,7 +71,7 @@ class AdoraIntegration:
 
         # validate order
         validated_order = _apis.validate_order(
-            bearer_token, self.store_id, [adora_order_item], 0
+            bearer_token, self.store_information["store_id"], [adora_order_item], 0
         )
 
         if isinstance(validated_order, AdoraOrderCalculationResult):
@@ -84,7 +84,7 @@ class AdoraIntegration:
         if not bearer_token:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-        coupons = _apis.list_coupons(bearer_token, self.store_id)
+        coupons = _apis.list_coupons(bearer_token, self.store_information["store_id"])
 
         if coupons and len(coupons) > 0:
             return (
@@ -186,7 +186,7 @@ class AdoraIntegration:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
         # Get up-to-date menu and construct order payload
-        menu = _apis.get_adora_menu(self.store_id, bearer_token)
+        menu = _apis.get_adora_menu(self.store_information["store_id"], bearer_token)
         if not menu:
             return "Failed to get menu, please try again."
 
@@ -249,7 +249,9 @@ class AdoraIntegration:
             logger.debug(
                 "[AdoraIntegration.place_order] Converting generic coupon to Adora coupon..."
             )
-            possible_coupons = _apis.list_coupons(bearer_token, self.store_id)
+            possible_coupons = _apis.list_coupons(
+                bearer_token, self.store_information["store_id"]
+            )
             adora_coupon_res = _utils.convert_coupon(
                 possible_coupons,
                 generic_coupon,
@@ -301,7 +303,7 @@ class AdoraIntegration:
             # call Adora address validation API
             validated_address_success, validated_address = _apis.validate_address(
                 bearer_token,
-                self.store_id,
+                self.store_information["store_id"],
                 str(geocoded_loc.latitude),
                 str(geocoded_loc.longitude),
             )
@@ -327,7 +329,7 @@ class AdoraIntegration:
         logger.debug("[AdoraIntegration.place_order] Validating order...")
         validated_order = _apis.validate_order(
             bearer_token,
-            self.store_id,
+            self.store_information["store_id"],
             order_items,
             adora_coupon_id,
             adora_order_type,
@@ -342,42 +344,52 @@ class AdoraIntegration:
         saved_order = _apis.save_validated_order(bearer_token, validated_order.Key)
 
         # send credit card payment link to the consumer
-        if saved_order and _apis.text_payment(
-            bearer_token, saved_order.OrderID, self.store_id, consumer.phone_number
-        ):
-            successful_order_response = (
-                "Order placed successfully!\n"
-                "Here are the details of your order, list the item name:\n"
-                f"{', '.join(order_summary)}\n"
-                f"Subtotal: ${validated_order.SubTotal}\n"
-                f"Total with Tax: ${validated_order.Total}\n"
-                f"Order ID: {saved_order.OrderID}\n"
-            )
-            logger.debug(
-                f"[AdoraIntegration.place_order] Order placed successfully! Returning: {successful_order_response}"
-            )
-
-            # To avoid confusion to the user, because of differences between
-            # the subtotal and applied coupons, the response is modified to
-            # replace subtotal with the discount amount.
-            if validated_order.SubTotal > validated_order.Total:
-                successful_order_response = (
+        try:
+            if saved_order and _apis.text_payment(
+                bearer_token,
+                saved_order.OrderID,
+                self.store_information["store_id"],
+                consumer.phone_number,
+            ):
+                successful_order_details = (
                     "Order placed successfully!\n"
-                    "Here are the details of your order, list the item name:\n"
+                    "Here are the details of your order, list the item names + prices:\n"
                     f"{', '.join(order_summary)}\n"
-                    f"Discount: ${validated_order.Discount}\n"
-                    f"Total with Tax: ${validated_order.Total}\n"
-                    f"Order ID: {saved_order.OrderID}\n"
                 )
 
-            # Combine the summary of items with the total price
-            return successful_order_response
+                # Add discount, otherwise add subtotal
+                if validated_order.SubTotal > validated_order.Total:
+                    successful_order_details += (
+                        f"Discount: ${validated_order.Discount}\n"
+                    )
+                else:
+                    successful_order_details += (
+                        f"Subtotal: ${validated_order.SubTotal}\n"
+                    )
 
-        else:
-            logger.debug(
-                f"[AdoraIntegration.place_order] Failed to place order. Saved order ID: {saved_order.OrderID if saved_order else 'NO SAVED ORDER'}"
+                successful_order_details += (
+                    f"Total with Tax: ${validated_order.Total}\n"
+                    f"Order ID: {saved_order.OrderID}\n"
+                    f"Store Phone: {self.store_information['phone']}\n"
+                )
+
+                logger.debug(
+                    f"[AdoraIntegration.place_order] Order placed successfully! Returning: {successful_order_details}"
+                )
+
+                # Combine the summary of items with the total price
+                return successful_order_details
+
+            else:
+                logger.debug(
+                    f"[AdoraIntegration.place_order] Failed to place order. Saved order ID: {saved_order.OrderID if saved_order else 'NO SAVED ORDER'}"
+                )
+                return "The service maybe busy. Please try again."
+        except Exception as e:
+            logger.error(
+                f"[AdoraIntegration.place_order] Error returning placed order information back to user! Error: {e}"
             )
-            return "The service maybe busy. Please try again."
+            return "Failed to place order. Please try again."
 
     def remove_from_order(self):
         return "The item was successfully removed from the order!"
