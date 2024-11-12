@@ -5,7 +5,13 @@ from streamlit_extras.switch_page_button import switch_page
 
 from api.schemas.message.message import AuthorType, Channel, Extras, Message, TextObject
 from app.auth import user
-from app.shared import account_picker_ui, clear_memory_ui, get_app_db, memory_ui
+from app.shared import (
+    account_picker_ui,
+    chat_render_toggle,
+    clear_memory_ui,
+    get_app_db,
+    memory_ui,
+)
 from db.repositories.project_repository import ProjectRepository
 from services.account_service import get_account
 from services.message_service import (
@@ -23,6 +29,8 @@ db = get_app_db()
 
 def main() -> str | None:
     st.write("---")
+    if "chat_render_method" not in st.session_state:
+        st.session_state["chat_render_method"] = st.text
     if "account_name" not in st.session_state:
         st.error("Please Select an Account to Chat")
         return None
@@ -82,6 +90,7 @@ def main() -> str | None:
         )
         st.info(f"Assistant Name: {assistant_name}")
         st.info(f"Conversation start date: {getattr(conversation, 'created_at', None)}")
+        chat_render_toggle()
     col1, col2, _, _ = st.columns([1] * 4)
     with col1:
         if st.button("Create new chat"):
@@ -106,7 +115,7 @@ def main() -> str | None:
     for message in st.session_state["messages"]:
         author_type = "assistant" if message["author_type"] == "agent" else "user"
         with st.chat_message(author_type):
-            st.text(message["text"]["body"])
+            st.session_state["chat_render_method"](message["text"]["body"])
 
     # generate response if last message is from user
     if (
@@ -120,7 +129,7 @@ def main() -> str | None:
                     message=Message.from_dict(st.session_state["messages"][-1]),
                 ).dict()
             st.session_state["messages"].append(response_message)
-            st.text(response_message["text"]["body"])
+            st.session_state["chat_render_method"](response_message["text"]["body"])
     return str(db_user.id)
 
 

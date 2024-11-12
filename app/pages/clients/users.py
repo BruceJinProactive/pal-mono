@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
 from app.auth import user
-from app.shared import account_picker_ui
+from app.shared import account_picker_ui, chat_render_toggle
 from db.session import get_db
 from services.account_service import get_account
 from services.message_service import (
@@ -44,14 +44,18 @@ def render_conversation(user_id) -> None:
             st.write("No messages in this conversation")
         for message in messages:
             with st.chat_message(message["author_type"]):
-                st.text(message["text"]["body"])
+                st.session_state["chat_render_method"](message["text"]["body"])
 
 
 def main() -> None:
     st.write("---")
+    if "chat_render_method" not in st.session_state:
+        st.session_state["chat_render_method"] = st.text
     if "account_name" not in st.session_state:
         st.error("Please Select an Account to View Users")
         return
+
+    # get users
     account = get_account(db, st.session_state["account_name"])
     if not account:
         raise ValueError(
@@ -60,6 +64,8 @@ def main() -> None:
     account_id = account.id
     account_users = get_users_by_account_id(db, account_id)
 
+    # display users table
+    chat_render_toggle()
     table_headers = ["Identifier", "Channel", "Id", "Conversation"]
     col_widths = [2] + [1] * (len(table_headers) - 1)
     for th, col in zip(table_headers, st.columns(col_widths)):

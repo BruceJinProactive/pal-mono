@@ -224,3 +224,17 @@ async def get_app_db_async() -> AsyncSession:
             st.error("Async database connection error")
             raise RuntimeError(f"Failed to connect to async database: {str(e)}")
     return st.session_state.db_async
+
+
+def chat_render_toggle():
+
+    def swap_render_method():
+        st.session_state["chat_render_method"] = (
+            st.write if st.session_state["chat_render_method"] == st.text else st.text
+        )
+
+    return st.toggle(
+        "Render markdown",
+        value=st.session_state["chat_render_method"] == st.write,
+        on_change=swap_render_method,
+    )
