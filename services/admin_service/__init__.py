@@ -54,7 +54,7 @@ def get_conversation_messages(
 
 
 # NOTE: Temporary solution pre-DB migration -- return list of dicts
-def get_conversation_messages_with_feedback(
+def get_messages_by_conversation_id(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> List[dict]:
     """
@@ -69,7 +69,7 @@ def get_conversation_messages_with_feedback(
     Returns:
         List[dict]: A list of dictionaries including message and feedback
     """
-    return _implementation.get_conversation_messages_with_feedback(
+    return _implementation.get_messages_by_conversation_id(
         db, account_id, conversation_id
     )
 

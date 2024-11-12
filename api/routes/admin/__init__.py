@@ -14,6 +14,7 @@ from services.admin_service import (
     get_brandings,
     get_conversation_messages,
     get_inbox_conversations,
+    get_messages_by_conversation_id,
 )
 from services.feedback_service import (
     create_feedback,
@@ -119,6 +120,52 @@ def read_inbox(request: Request, db: Session = Depends(get_db)):
     inbox = get_inbox_conversations(db, account_id=account.id)
 
     return JSONResponse(content=jsonable_encoder(inbox))
+
+
+@admin_router.get("/conversations/{conversation_id}/messages")
+def get_messages_with_feedback_by_conversation_id(
+    request: Request, conversation_id: uuid.UUID, db: Session = Depends(get_db)
+):
+    """
+    This endpoint retrieves all Messages within a specific Conversation, along with their associated Feedback.
+    """
+    # Validate ID Token
+    try:
+        decrypted_id_token = _auth.parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Get Account from ID Token
+    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+
+    if account is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Account not found.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        messages = get_messages_by_conversation_id(db, account.id, conversation_id)
+    except ValueError:
+        """
+        Only say "Conversation not found" because if the Admin does not
+        have access to the conversation, they should not know that
+        the conversation exists in the first place.
+        """
+        raise HTTPException(
+            status_code=400,
+            detail="Conversation not found.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return messages
 
 
 @admin_router.get("/inbox/{conversation_id}")

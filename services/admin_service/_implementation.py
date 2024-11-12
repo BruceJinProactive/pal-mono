@@ -137,7 +137,7 @@ def get_conversation_messages(
     return messages
 
 
-def get_conversation_messages_with_feedback(
+def get_messages_by_conversation_id(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> List[dict]:
     conversation_repository = ConversationRepository(db)
