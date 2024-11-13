@@ -12,7 +12,7 @@ from ai.memory import (
     set_memory_manager,
 )
 from db.session import get_db, get_db_async
-from services.account_service import get_accounts
+from services.account_service import get_account, get_accounts
 
 
 def set_page_config():
@@ -22,10 +22,27 @@ def set_page_config():
     )
 
 
-def set_account(account_name):
+def set_account(db: Session, account_name: str) -> None:
+    """
+    Sets the account name into the steamlit state.
+    Also sets the project name to the first project in the account.
+
+    Args:
+        db (Session): The database session.
+        account_name (str): The name of the account.
+
+    Returns:
+        None
+    """
     st.session_state["account_name"] = account_name
-    if "project_name" in st.session_state:
-        st.session_state.pop("project_name")
+    account = get_account(db, account_name)
+    if not account:
+        raise ValueError(
+            "There was an error accessing account details. Please reselect from picker"
+        )
+    st.session_state["project_name"] = (
+        account.projects[0].name if account.projects else "No Project"
+    )
     if "assistant_id" in st.session_state:
         st.session_state.pop("assistant_id")
 
@@ -46,26 +63,22 @@ def account_picker_ui(db: Session) -> None:
             ),
         )
 
-        if account_name != st.session_state.get("account_name"):
-            set_account(account_name)
+        if account_name and account_name != st.session_state.get("account_name"):
+            set_account(db, account_name)
             st.rerun()
 
 
 def project_picker_ui(db: Session) -> None:
     if "account_name" in st.session_state:
-        account = None
-        for acc in get_accounts(db):
-            if acc.name == st.session_state["account_name"]:
-                account = acc
-                break
+        account = get_account(db, st.session_state["account_name"])
 
         if account and account.projects:
             with st.sidebar:
                 st.subheader("Project Picker")
 
-                name_to_project = {}
-                for project in account.projects:
-                    name_to_project[project.name] = project
+                name_to_project = {
+                    project.name: project for project in account.projects
+                }
 
                 project_names = [project.name for project in account.projects]
                 project_names.append("No Project")
@@ -79,7 +92,7 @@ def project_picker_ui(db: Session) -> None:
                     index=project_names.index(st.session_state["project_name"]),
                 )
 
-                if project_name != st.session_state["project_name"]:
+                if project_name and project_name != st.session_state["project_name"]:
                     st.session_state["project_name"] = project_name
                     if "assistant_id" in st.session_state:
                         st.session_state.pop("assistant_id")
@@ -87,6 +100,7 @@ def project_picker_ui(db: Session) -> None:
                         st.session_state["assistant_id"] = name_to_project[
                             project_name
                         ].assistant_id
+                    st.rerun()
 
 
 def assistant_picker_ui(db: Session) -> None:

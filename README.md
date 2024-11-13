@@ -59,14 +59,14 @@ Since PhiData installs these dependencies in the Docker container environment, o
 To open up channels (eg. internal app's live page, api) to talk to a local agent, they need to be configured. In the Channel:Identifier table under the projects page, save the following rows for each account.
 | Channel  | Identifier |
 |----------|----------|
-| internal_app    | <account_name>   |
+| internal_app    | <project_name>   |
 | api    | <project_name>   |
 
 For example,
 
 | Channel  | Identifier |
 |----------|----------|
-| internal_app    | proactiveailab  |
+| internal_app    | proactiveailab-default  |
 | api    | proactiveailab-default   |
 
 

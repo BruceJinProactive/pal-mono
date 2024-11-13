@@ -15,7 +15,7 @@ db = next(get_db())
 
 def navigate_accounts(account_name):
     if account_name != st.session_state.get("account_name"):
-        set_account(account_name)
+        set_account(db, account_name)
     st.switch_page("./pages/clients/accounts.py")
 
 

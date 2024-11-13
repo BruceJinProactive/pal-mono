@@ -6,11 +6,11 @@ from streamlit_extras.switch_page_button import switch_page
 from api.schemas.message.message import AuthorType, Channel, Extras, Message, TextObject
 from app.auth import user
 from app.shared import (
-    account_picker_ui,
     chat_render_toggle,
     clear_memory_ui,
     get_app_db,
     memory_ui,
+    universal_picker_ui,
 )
 from db.repositories.project_repository import ProjectRepository
 from services.account_service import get_account
@@ -32,8 +32,14 @@ def main() -> str | None:
     if "chat_render_method" not in st.session_state:
         st.session_state["chat_render_method"] = st.text
     if "account_name" not in st.session_state:
-        st.error("Please Select an Account to Chat")
-        return None
+        st.error("Please select an account to chat")
+        return
+    if (
+        "project_name" not in st.session_state
+        or st.session_state["project_name"] == "No Project"
+    ):
+        st.error("Please select a project to chat")
+        return
 
     # Get agent
     account_name = st.session_state["account_name"]
@@ -42,8 +48,9 @@ def main() -> str | None:
         raise ValueError(
             "There was an error accessing account details. Please reselect from picker"
         )
+    project_name = st.session_state["project_name"]
     project = ProjectRepository(db).get_project_by_channel_identifier(
-        f"{Channel.INTERNAL_APP.value}:{account_name}"
+        f"{Channel.INTERNAL_APP.value}:{project_name}"
     )
     if not project:
         raise ValueError(
@@ -104,7 +111,7 @@ def main() -> str | None:
         user_message = Message(
             author_type=AuthorType.USER,
             sender_identifier=str(user.email),
-            recipient_identifier=account_name,
+            recipient_identifier=project_name,
             channel=Channel.INTERNAL_APP,
             text=TextObject(body=prompt),
             extras=Extras(),
@@ -135,7 +142,7 @@ def main() -> str | None:
 
 if user.is_logged_in:
     user_id = main()
-    account_picker_ui(db)  # Display account picker first
+    universal_picker_ui(db)
     if user_id:
         memory_ui(st.session_state.get("account_name", ""), user_id)
 else:
