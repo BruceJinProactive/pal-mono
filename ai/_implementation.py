@@ -3,8 +3,8 @@ from typing import Any
 from phi.agent.agent import Agent
 
 from ai.knowledge import get_knowledge
-from ai.llm import OutputModel, get_model
 from ai.memory import get_memory
+from ai.model import OutputModel, get_model
 from ai.prompts import get_system_prompt
 from ai.storage import get_storage
 from ai.tools import get_tools
@@ -19,7 +19,7 @@ def integrate_agent(
     new_run: bool = False,
 ) -> Agent:
     # -*- Agent settings
-    llm = get_model()
+    model = get_model()
 
     # -*- Agent Memory
     memory = get_memory(account_name)
@@ -48,7 +48,7 @@ def integrate_agent(
 
     return Agent(
         # -*- Agent settings
-        provider=llm,
+        provider=model,
         agent_id=agent_id,
         agent_data={"agent_type": "autonomous"},
         # -*- User settings

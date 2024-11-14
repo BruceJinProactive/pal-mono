@@ -7,7 +7,7 @@ from openai import OpenAI, OpenAIError
 from pinecone import Pinecone
 from vertexai.vision_models import MultiModalEmbeddingModel
 
-from ai.llm import ModelName, get_client
+from ai.model import ModelName, get_client
 from utils.log import logger
 from utils.secret import get_client_secret
 

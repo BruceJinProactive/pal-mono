@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
 
-from ai.llm import ModelName, get_client
+from ai.model import ModelName, get_client
 from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
 from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraDeliveryAddress,

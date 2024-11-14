@@ -1,7 +1,7 @@
 from phi.memory.memory import Memory
 
-from ai.llm import ModelName, get_client
 from ai.memory import get_memory
+from ai.model import ModelName, get_client
 from ai.tools.ordering_tools.classes import (
     Consumer,
     GenericCoupon,

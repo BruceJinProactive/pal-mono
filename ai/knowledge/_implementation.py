@@ -2,7 +2,7 @@ from phi.knowledge.agent import AgentKnowledge
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.vectordb.pgvector.pgvector2 import PgVector2
 
-from ai.llm import get_embedder
+from ai.model import get_embedder
 from db.session import db_url
 
 

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db.tables as db
-from ai.llm import OutputModel
+from ai.model import OutputModel
 from api.schemas.message.message import AuthorType, Extras, Message, TextObject
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository, MessageRepositoryAsync
