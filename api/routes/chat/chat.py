@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse, ErrorResponse
+from api.schemas.chat.message import Message, TextObject
 from db.session import get_db_async
 from services.message_service import get_chat_response_async
 from services.relay_service import send_messages
@@ -27,6 +28,32 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
             message=request.message,
         )
 
+        legacy_support_message = Message(
+            author_type=response_messages[0].author_type,
+            sender_identifier=response_messages[0].sender_identifier,
+            recipient_identifier=response_messages[0].recipient_identifier,
+            channel=response_messages[0].channel,
+            broker=response_messages[0].broker,
+            metadata=response_messages[0].metadata,
+            extras=response_messages[0].extras,
+            text=TextObject(
+                body=" ".join(
+                    [
+                        (
+                            msg.text.body
+                            if msg.type == "text" and msg.text
+                            else (
+                                msg.media.url
+                                if msg.type == "media" and msg.media
+                                else ""
+                            )
+                        )
+                        for msg in response_messages
+                    ]
+                )
+            ),
+        )
+
         if request.async_response:
             # Return a successful response immediately
             logger.info(f"Schedule to send messages: {response_messages}")
@@ -35,7 +62,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
         else:
             # Create and return the ChatResponse with the messages
             return ChatResponse(
-                message=response_messages[0],
+                message=legacy_support_message,
                 messages=response_messages,
                 status="success",
             )

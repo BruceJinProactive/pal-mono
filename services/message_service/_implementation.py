@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 
 import db.tables as db
 from ai.model import OutputModel
-from api.schemas.chat.message import AuthorType, Extras, Message, TextObject
+from api.schemas.chat.message import (
+    AuthorType,
+    Extras,
+    MediaObject,
+    Message,
+    TextObject,
+)
+from api.schemas.chat.message import Type as MessageType
 from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.message_repository import MessageRepository, MessageRepositoryAsync
 from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
@@ -20,6 +27,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
     user = None
     extras = {}
     message_repo = MessageRepositoryAsync(db)
+    response_messages = []
     try:
         # find project with matching channel platform, identifier pair
         project_channel_identifier = (
@@ -68,14 +76,54 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         # Get response from agent
         request_content = message.get_content()
         response_object = await agent.arun(request_content, stream=False)
-        if isinstance(response_object.content, str):
-            response = response_object.content
-        elif isinstance(response_object.content, OutputModel):
-            response = response_object.content.content
-            extras = {"escalated": response_object.content.escalated}
+        response_content = response_object.content
+        if isinstance(response_content, str):
+            response = response_content
+        elif isinstance(response_content, OutputModel):
+            response = response_content.content
+            extras = {"escalated": response_content.escalated}
+            response_parts = process_regex(response)
+
+            # process each part of the response after regex processing
+            response_message = None
+            for msg_type, msg_content in response_parts:
+                if msg_type == "text":
+                    response_message = Message(
+                        author_type=AuthorType.AGENT,
+                        sender_identifier=message.recipient_identifier,  # Swap sender and recipient
+                        recipient_identifier=message.sender_identifier,
+                        channel=message.channel,
+                        broker=message.broker,
+                        text=TextObject(body=msg_content),
+                        metadata={"instance": "BaseModel"},
+                        extras=Extras(**extras),
+                    )
+                elif msg_type == "image":
+                    response_message = Message(
+                        author_type=AuthorType.AGENT,
+                        sender_identifier=message.recipient_identifier,  # Swap sender and recipient
+                        recipient_identifier=message.sender_identifier,
+                        channel=message.channel,
+                        broker=message.broker,
+                        type=MessageType.MEDIA,
+                        media=MediaObject(
+                            url=msg_content, media_type="image", caption=msg_content
+                        ),
+                        metadata={"instance": "BaseModel"},
+                        extras=Extras(**extras),
+                    )
+
+                if response_message:
+                    if user:
+                        # Save response message to database
+                        await message_repo.create_message(
+                            user_id=user.id, message_body=response_message.to_dict()
+                        )
+
+                    response_messages.append(response_message)
         else:
             raise ValueError(
-                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with request content {request_content}."
+                f"Can't handle response content type {type(response_content)} for userid {user.id} with request content {request_content}."
             )
 
     except Exception:
@@ -83,24 +131,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         logger.exception("Error in get_chat_response")
         response = "Something went wrong. Please try again."
 
-    response_message = Message(
-        author_type=AuthorType.AGENT,
-        sender_identifier=message.recipient_identifier,  # Swap sender and recipient
-        recipient_identifier=message.sender_identifier,
-        channel=message.channel,
-        broker=message.broker,
-        text=TextObject(body=response),
-        metadata={"instance": "BaseModel"},
-        extras=Extras(**extras),
-    )
-
-    if user:
-        # Save response message to database
-        await message_repo.create_message(
-            user_id=user.id, message_body=response_message.to_dict()
-        )
-
-    return [response_message]
+    return response_messages
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
@@ -240,3 +271,43 @@ def get_conversations_by_users(
 def create_conversation(db: Session, user_id: uuid.UUID) -> Conversation | None:
     conversation_repository = ConversationRepository(db)
     return conversation_repository.create_conversation(user_id=user_id)
+
+
+def process_regex(markdown_text: str) -> list[tuple[str, str]]:
+    """
+    Process markdown text to extract image URLs and split text into parts.
+
+    Args:
+        markdown_text: The markdown text to process
+
+    Returns:
+        list[str]: List of text parts with image markdown removed
+    """
+    import re
+
+    pattern = r"!?\[.*?\]\((https?:\/\/[^\s)]+)\)"
+    processed_parts = []
+    last_end = 0
+
+    try:
+        for match in re.finditer(pattern, markdown_text):
+            start, end = match.span()
+            # Extract text before the image
+            if start > last_end:
+                text_part = markdown_text[last_end:start].strip()
+                if text_part:
+                    processed_parts.append(("text", text_part))
+            # Extract the image URL
+            image_url = match.group(1)
+            processed_parts.append(("image", image_url))
+            last_end = end
+        # Extract any remaining text after the last image
+        if last_end < len(markdown_text):
+            text_part = markdown_text[last_end:].strip()
+            if text_part:
+                processed_parts.append(("text", text_part))
+        return processed_parts
+
+    except re.error as e:
+        logger.error(f"Error processing markdown: {e}")
+        return [("text", markdown_text)]
