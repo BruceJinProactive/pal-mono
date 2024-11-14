@@ -1,11 +1,19 @@
 import json
-from typing import List
+import uuid
+from typing import Any, List
 
 import streamlit as st
 from phi.document.base import Document
 from phi.document.reader.pdf import PDFReader
 from streamlit_extras.switch_page_button import switch_page
-
+from sqlalchemy import String, Text, DateTime, MetaData
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm.session import Session
+from sqlalchemy.sql import func
+from sqlalchemy.sql.expression import text
 from ai.knowledge import get_knowledge
 from app.auth import user
 from app.shared import account_picker_ui
@@ -47,9 +55,13 @@ def knowledge_ui(account_name: str) -> None:
                 st.success("Knowledge base loaded")
                 loading_container.empty()
 
-        tab_pdf, tab_text, tab_json = st.tabs(
-            ["PDF Uploader", "Text Uploader", "JSON Uploader"]
+        dashboards, tab_pdf, tab_text, tab_json = st.tabs(
+            ["Dashboards", "PDF Uploader", "Text Uploader", "JSON Uploader"]
         )
+        with dashboards:
+            if knowledge_base:
+                knowledge_dashboard_ui(account_name)
+
         with tab_pdf:
             # Upload PDF
             if knowledge_base:
@@ -269,6 +281,176 @@ def knowledge_ui(account_name: str) -> None:
 
     else:
         st.error("Please Select an Account to Edit Knowledge Base")
+
+
+def knowledge_dashboard_ui(account_name: str) -> None:
+    knowledge_base_ai = get_knowledge_by_account_name(db, account_name)
+    # Define page size and initialize session state for pagination
+    if knowledge_base_ai:
+        PAGE_SIZE = 10  # Number of items per page
+        page_key = f"{account_name}_page_number"
+        st.session_state.setdefault(page_key, 0)
+
+        # Convert the list of objects to a list of dictionaries for easier table display
+        knowledge_data = [
+            {
+                "name": item.name,
+                "content": item.content,
+                "id": item.id,
+            }  # Assuming `id` uniquely identifies each entry
+            for item in knowledge_base_ai
+        ]
+        if knowledge_data:
+            # Function to get the current page of data
+            def get_page_data(data, page_number, page_size):
+                start = page_number * page_size
+                end = start + page_size
+                return data[start:end]
+
+            # Calculate total number of pages
+            total_pages = max((len(knowledge_data) - 1) // PAGE_SIZE + 1, 1)
+
+            # Get data for the current page
+            current_page_data = get_page_data(
+                knowledge_data,
+                st.session_state[page_key],
+                PAGE_SIZE,
+            )
+
+            # Display header
+            st.write(f"### {account_name}'s Knowledge Base")
+
+            def is_json(item):
+                try:
+                    json.loads(item)
+                    return True
+                except ValueError:
+                    return False
+
+            # Display each entry in an expandable "card" format
+            for entry in current_page_data:
+                with st.expander(f"**{entry['name']}**", expanded=False):
+                    col1, col2 = st.columns([10, 1])  # Adjust ratios as needed
+                    with col2:
+                        if st.button("x", key=f"delete_{entry['id']}"):
+                            delete_knowledge_by_id(db, account_name, entry["id"])
+                            st.rerun()
+                    if is_json(entry["content"]):
+                        st.json(entry["content"])
+                    else:
+                        st.text(entry["content"])
+
+            # Pagination Controls
+            col1, _, col2, _, col3 = st.columns([1, 1, 1, 1, 1])
+
+            with col1:
+                # Disable the Previous button if on the first page
+                if st.session_state[page_key] > 0:
+                    if st.button("Previous"):
+                        st.session_state[page_key] -= 1
+                        st.rerun()
+            # Display page information in the center column
+            with col2:
+                st.write(f"Page {st.session_state[page_key] + 1} of {total_pages}")
+
+            with col3:
+                # Disable the Next button if on the last page
+                if st.session_state[page_key] < total_pages - 1:
+                    if st.button("Next"):
+                        st.session_state[page_key] += 1
+                        st.rerun()
+
+
+class AIBase(DeclarativeBase):
+    """
+    Base class for SQLAlchemy model definitions in the AI schema.
+    """
+
+    metadata = MetaData(schema="ai")
+
+
+class KnowledgeBase(AIBase):
+    __abstract__ = True
+
+    id = mapped_column(
+        String,
+        primary_key=True,
+        default=lambda: str(uuid.uuid4()),
+        nullable=False,
+        index=True,
+    )
+    name = mapped_column(String, nullable=False)
+    meta_data = mapped_column(JSONB, nullable=True)
+    content = mapped_column(Text, nullable=False)
+    embedding = mapped_column(Text, nullable=True)
+    usage = mapped_column(JSONB, nullable=True)
+    created_at = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
+    )
+    updated_at = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
+    )
+
+    content_hash = mapped_column(String, nullable=False, unique=True)
+
+
+# Cache for dynamically created Knowledge classes with unique table names
+knowledge_table_cache = {}
+
+
+def get_knowledge_table(account_name: str):
+    if account_name in knowledge_table_cache:
+        return knowledge_table_cache[account_name]
+
+    # Dynamically create a Knowledge class with a specific table name
+    knowledge_table = type(
+        f"{account_name}_Knowledge",
+        (KnowledgeBase,),
+        {
+            "__tablename__": f"{account_name}_knowledge",
+            "__table_args__": {"extend_existing": True},
+        },
+    )
+    knowledge_table_cache[account_name] = knowledge_table
+    return knowledge_table
+
+
+def get_knowledge_by_account_name(db: Session, account_name: str) -> List[Any]:
+    """
+    Retrieve the AI knowledge for a given account name.
+
+    Args:
+        account_name (str): The account name to retrieve the AI knowledge for.
+    Returns:
+        List[Any]: A list of AI knowledge.
+    """
+    # Get the dynamically generated Knowledge class with the appropriate table name
+    knowledge_table = get_knowledge_table(account_name)
+    return db.query(knowledge_table).all()
+
+
+def delete_knowledge_by_id(db: Session, account_name: str, knowledge_id: str) -> None:
+    """
+    Delete AI knowledge by the knowledge ID.
+
+    Args:
+        account_name (str): The account name to retrieve the AI knowledge for
+        knowledge_id (str): The ID of the knowledge to delete.
+    Returns:
+        KnowledgeBase | None: The deleted AI knowledge or None if no such knowledge is found.
+    """
+    knowledge_class = get_knowledge_table(account_name)
+    deleted_knowledge = (
+        db.query(knowledge_class).filter(knowledge_class.id == knowledge_id).first()
+    )
+    try:
+        if deleted_knowledge:
+            db.delete(deleted_knowledge)
+            db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error deleting account: {e}")
+    return None
 
 
 def main() -> None:
