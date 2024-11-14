@@ -163,9 +163,7 @@ def validate_order(
     )
 
     if response.status == 200:
-        return _utils.parse_json(
-            AdoraOrderCalculationResult, json.loads(response.decoded_body)
-        )
+        return _utils.parse_json(AdoraOrderCalculationResult, response.decoded_body)
     else:
         logger.error(
             f"[AdoraIntegration._apis.validate_order] Order validation failed with status {response.status}: {response.decoded_body}"

@@ -78,14 +78,14 @@ class AdoraOrderCalculationResult(BaseModel):
     """
 
     # Key is used on the Adora Pos API side in subsequent API calls to refer to the order.
-    Key: str
-    IsPaymentRequired: bool
-    SubTotal: float
-    Total: float
-    Discount: float
-    TaxAmount: float
-    ServiceCharge: float
-    DeliveryCharge: float
+    key: str
+    isPaymentRequired: bool
+    subTotal: float
+    total: float
+    discount: float
+    taxAmount: float
+    serviceCharge: float
+    deliveryCharge: float
 
 
 class AdoraOrderItem(OrderItem):

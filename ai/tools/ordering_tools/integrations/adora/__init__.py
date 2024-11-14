@@ -1,4 +1,3 @@
-from os import getenv
 from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
@@ -74,7 +73,7 @@ class AdoraIntegration:
         )
 
         if isinstance(validated_order, AdoraOrderCalculationResult):
-            return f"In the response, include quantity: {adora_order_item.quantity}, size: {adora_order_item.size}, item_name: {adora_order_item.item_name}, with modifications: {adora_order_item.modifications} for price: {validated_order.SubTotal} to your cart."
+            return f"In the response, include quantity: {adora_order_item.quantity}, size: {adora_order_item.size}, item_name: {adora_order_item.item_name}, with modifications: {adora_order_item.modifications} for price: {validated_order.subTotal} to your cart."
         else:
             return "Failed to validate order."
 
@@ -389,7 +388,7 @@ class AdoraIntegration:
 
         # save validated order in Adora system, get order ID
         logger.debug("[AdoraIntegration.place_order] Saving validated order...")
-        saved_order = _apis.save_validated_order(bearer_token, validated_order.Key)
+        saved_order = _apis.save_validated_order(bearer_token, validated_order.key)
 
         # send credit card payment link to the consumer
         try:
@@ -406,17 +405,17 @@ class AdoraIntegration:
                 )
 
                 # Add discount, otherwise add subtotal
-                if validated_order.SubTotal > validated_order.Total:
+                if validated_order.subTotal > validated_order.total:
                     successful_order_details += (
-                        f"Discount: ${validated_order.Discount}\n"
+                        f"Discount: ${validated_order.discount}\n"
                     )
                 else:
                     successful_order_details += (
-                        f"Subtotal: ${validated_order.SubTotal}\n"
+                        f"Subtotal: ${validated_order.subTotal}\n"
                     )
 
                 successful_order_details += (
-                    f"Total with Tax: ${validated_order.Total}\n"
+                    f"Total with Tax: ${validated_order.total}\n"
                     f"Order ID: {saved_order.OrderID}\n"
                     f"Store Phone: {self.store_information['phone']}\n"
                 )
