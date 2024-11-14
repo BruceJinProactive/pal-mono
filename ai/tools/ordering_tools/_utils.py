@@ -35,10 +35,10 @@ def get_cart_info(
                 "content": [
                     {
                         "type": "text",
-                        "text": "Your role is to process the chat history between a user and an assistant. "
+                        "text": "Your role is to process the chat history between a user and an agent. "
                         + "You will extract the relevant order information into the desired format. "
                         + "You will be provided with the chat history to process. "
-                        + "Prioritize assistant messages over user messages because assistant messages contain more precise order item information. "
+                        + "Prioritize agent messages over user messages because agent messages contain more precise order item information. "
                         + f"Additional Instructions: {cart_conversion_sys_prompt}",
                     }
                 ],
@@ -74,7 +74,7 @@ def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | N
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will extract the relevant customer information into the desired format.
                         You will be provided with the chat history to process.
                         The phone number, if provided, MUST be a 10-digit number and can be in any format.
@@ -133,7 +133,7 @@ def get_delivery_address(chat_history: list[str]) -> GenericDeliveryAddress | No
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will be provided with the chat history to process.
                         You will extract the relevant delivery address information.
                         For the state field, if the user provides an abbreviation, output the full state name.
@@ -174,7 +174,7 @@ def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy 
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will be provided with the chat history to process.
                         You will extract the relevant fulfillment strategy.
                         The possible options are "delivery", "pickup" or "N/A" if no strategy is specified.
@@ -212,7 +212,7 @@ def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will be provided with the chat history to process.
                         You will extract the relevant coupon information, if the user used a coupon.
                         A user can only use one coupon per order, so extract the most recent coupon used.

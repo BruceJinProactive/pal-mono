@@ -1,12 +1,12 @@
 from . import _implementation
 
 
-def get_tools(assistant_raw_config, user_id):
+def get_tools(agent_raw_config, user_id):
     """
-    Initialize and return a list of toolkits based on the assistant raw configuration.
+    Initialize and return a list of toolkits based on the agent raw configuration.
 
     Args:
-        assistant_raw_config (dict): The raw configuration dictionary containing toolkit configurations.
+        agent_raw_config (dict): The raw configuration dictionary containing toolkit configurations.
 
     Returns:
         list: A list of initialized toolkit instances.
@@ -16,7 +16,7 @@ def get_tools(assistant_raw_config, user_id):
         TypeError: If the "tools" key is not a list or if the "config" key is not a dictionary.
 
     Example:
-        assistant_raw_config = {
+        agent_raw_config = {
             "tools": [
                 {
                     "toolkit": "OrderingTools",
@@ -28,9 +28,9 @@ def get_tools(assistant_raw_config, user_id):
                 }
             ]
         }
-        tools = get_tools(assistant_raw_config)
+        tools = get_tools(agent_raw_config)
     """
-    return _implementation.get_tools(assistant_raw_config, user_id)
+    return _implementation.get_tools(agent_raw_config, user_id)
 
 
 __all__ = ["get_tools"]

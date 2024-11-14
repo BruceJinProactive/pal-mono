@@ -3,22 +3,22 @@ COUPON_EXAMPLES = """
 EXAMPLE AVAILABLE COUPONS: ["$5 Off", "20% off", "Free Bagel with Purchase of Coffee"]
 
 User: five bucks off
-Assistant: $5 Off
+Agent: $5 Off
 
 User: twenty percent reduced
-Assistant: 20% off
+Agent: 20% off
 
 User: free bagel coupon
-Assistant: Free Bagel with Purchase of Coffee
+Agent: Free Bagel with Purchase of Coffee
 
 User: $10 Off
-Assistant: N/A
+Agent: N/A
 
 User: 30% off
-Assistant: N/A
+Agent: N/A
 
 User: free sandwich
-Assistant: N/A
+Agent: N/A
 """
 
 ITEM_ID_EXAMPLES = """
@@ -26,16 +26,16 @@ ITEM_ID_EXAMPLES = """
 EXAMPLE MENU: ["Coke", "Sprite"]
 
 User: coke
-Assistant: Coke
+Agent: Coke
 
 User: spritw
-Assistant: Sprite
+Agent: Sprite
 
 User: pepsi
-Assistant: N/A
+Agent: N/A
 
 User: coke zero
-Assistant: N/A
+Agent: N/A
 """
 
 SIZE_EXAMPLES = """
@@ -43,33 +43,33 @@ SIZE_EXAMPLES = """
 EXAMPLE AVAILABLE SIZE OPTIONS: ["Small", "Medium", "Large", "Size 5", "Size 6", "Size 7"]
 
 User: large
-Assistant: Large
+Agent: Large
 
 User: Size5
-Assistant: Size 5
+Agent: Size 5
 
 User: Size 8
-Assistant: N/A
+Agent: N/A
 
 User: size 4
-Assistant: N/A
+Agent: N/A
 
 User: extra large
-Assistant: N/A
+Agent: N/A
 """
 
 MODIFIER_EXAMPLES = """
 # EXAMPLE #
 EXAMPLE AVAILABLE MODIFICATION OPTIONS: ["Rainbow Sprinkles", "Gummy Bears", "Whipped Cream", "Peanuts"]
 User: rainbow sprinkles
-Assistant: Rainbow Sprinkles
+Agent: Rainbow Sprinkles
 
 User: pnuts
-Assistant: peanuts
+Agent: peanuts
 
 User: nutella
-Assistant: N/A
+Agent: N/A
 
 User: cherries
-Assistant: N/A
+Agent: N/A
 """

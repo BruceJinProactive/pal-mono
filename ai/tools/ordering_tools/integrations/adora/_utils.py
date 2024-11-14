@@ -60,6 +60,45 @@ def _add_default_modifiers(
     return modifiers, modifier_group_counter
 
 
+def convert_address_string(address: str) -> GenericDeliveryAddress | None:
+    """Given a delivery address string, parse it into a GenericDeliveryAddress object.
+
+    Args:
+        address (str): The address.
+
+    Returns:
+        GenericDeliveryAddress | None: The parsed delivery address.
+    """
+    response = model_router_client.beta.chat.completions.parse(
+        model=model_router_model,
+        messages=[
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """You are given an address.
+                        For the state field, if the user provides an abbreviation, output the full state name.
+                        For example, if the user entered "CA", output "California".
+                        If any field is missing, output "N/A" for that field.
+                        If the user did not provide a delivery address, output "N/A" for all fields.
+                        """,
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": f"{address}"}],
+            },
+        ],
+        temperature=0,
+        max_tokens=2048,
+        response_format=GenericDeliveryAddress,
+    )
+
+    return response.choices[0].message.parsed
+
+
 def convert_coupon(
     all_coupons: list[AdoraCoupon],
     target_coupon: str,
@@ -81,7 +120,7 @@ def convert_coupon(
             """
             + "\n\n".join(
                 [
-                    f"User: {k}\nAssistant: {v}"
+                    f"User: {k}\nAgent: {v}"
                     for k, v in coupon_conversion_examples.items()
                 ]
             )
@@ -166,7 +205,7 @@ def get_adora_item_id(
             """
             + "\n\n".join(
                 [
-                    f"User: {k}\nAssistant: {v}"
+                    f"User: {k}\nAgent: {v}"
                     for k, v in item_id_conversion_examples.items()
                 ]
             )
@@ -376,7 +415,7 @@ def get_adora_size_id(
                 """
                 + "\n\n".join(
                     [
-                        f"User: {k}\nAssistant: {v}"
+                        f"User: {k}\nAgent: {v}"
                         for k, v in size_id_conversion_examples.items()
                     ]
                 )
@@ -462,10 +501,10 @@ def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
                 "content": [
                     {
                         "type": "text",
-                        "text": "Your role is to process the chat history between a user and an assistant. "
+                        "text": "Your role is to process the chat history between a user and an agent. "
                         + "You will extract the relevant order information into the desired format. "
                         + "You will be provided with the chat history to process. "
-                        + "Prioritize assistant messages over user messages because assistant messages contain more precise order item information.",
+                        + "Prioritize agent messages over user messages because agent messages contain more precise order item information.",
                     }
                 ],
             },
@@ -500,7 +539,7 @@ def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | N
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will extract the relevant customer information into the desired format.
                         You will be provided with the chat history to process.
                         The phone number, if provided, MUST be a 10-digit number and can be in any format.
@@ -561,7 +600,7 @@ def get_delivery_address(
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will be provided with the chat history to process.
                         You will extract the relevant delivery address information.
                         For the state field, if the user provides an abbreviation, output the full state name.
@@ -605,7 +644,7 @@ def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy 
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will be provided with the chat history to process.
                         You will extract the relevant fulfillment strategy.
                         The possible options are "delivery", "pickup" or "N/A" if no strategy is specified.
@@ -643,7 +682,7 @@ def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
                 "content": [
                     {
                         "type": "text",
-                        "text": """Your role is to process the chat history between a user and an assistant.
+                        "text": """Your role is to process the chat history between a user and an agent.
                         You will be provided with the chat history to process.
                         You will extract the relevant coupon information, if the user used a coupon.
                         A user can only use one coupon per order, so extract the most recent coupon used.
@@ -719,7 +758,7 @@ def get_similar_modifier_using_openai(
             """
             + "\n\n".join(
                 [
-                    f"User: {k}\nAssistant: {v}"
+                    f"User: {k}\nAgent: {v}"
                     for k, v in modifier_conversion_examples.items()
                 ]
             )

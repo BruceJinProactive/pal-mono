@@ -7,11 +7,8 @@ from sqlalchemy.orm import Session
 
 from ai import integrate_agent
 from db.repositories.account_repository import AccountRepository
-from db.repositories.assistant_repository import (
-    AssistantRepository,
-    AssistantRepositoryAsync,
-)
-from db.tables import Assistant
+from db.repositories.agent_repository import AgentRepository, AgentRepositoryAsync
+from db.tables import Agent
 
 
 async def get_ai_agent_async(
@@ -21,8 +18,8 @@ async def get_ai_agent_async(
     conversation_id: uuid.UUID,
 ) -> PhiAgent:
     # Retrieve the agent from the database
-    agent_repository = AssistantRepositoryAsync(db)
-    agent = await agent_repository.get_assistant(assistant_id=agent_id)
+    agent_repository = AgentRepositoryAsync(db)
+    agent = await agent_repository.get_agent(agent_id=agent_id)
 
     if agent is None:
         raise ValueError("Invalid agent_id")
@@ -45,8 +42,8 @@ def get_ai_agent(
     new_run: bool = False,
 ) -> PhiAgent:
     # Retrieve the agent from the database
-    agent_repository = AssistantRepository(db)
-    agent = agent_repository.get_assistant(assistant_id=agent_id)
+    agent_repository = AgentRepository(db)
+    agent = agent_repository.get_agent(agent_id=agent_id)
     if agent is None:
         raise ValueError("Invalid agent_id")
 
@@ -60,35 +57,33 @@ def get_ai_agent(
     )
 
 
-def get_agent(db: Session, agent_id: uuid.UUID) -> Optional[Assistant]:
+def get_agent(db: Session, agent_id: uuid.UUID) -> Optional[Agent]:
     # Retrieve the agent from the database
-    agent_repository = AssistantRepository(db)
-    agent = agent_repository.get_assistant(assistant_id=agent_id)
+    agent_repository = AgentRepository(db)
+    agent = agent_repository.get_agent(agent_id=agent_id)
     return agent
 
 
-def get_agents_by_account(db: Session, account_name: str) -> Optional[List[Assistant]]:
+def get_agents_by_account(db: Session, account_name: str) -> Optional[List[Agent]]:
     # Retrieve the agent from the database
     account_repository = AccountRepository(db)
     account = account_repository.get_account(account_name)
     agents = []
     if account:
         account_id = account.id
-        agents = AssistantRepository(db).get_assistants_by_account(
-            account_id=account_id
-        )
+        agents = AgentRepository(db).get_agents_by_account(account_id=account_id)
     return agents
 
 
 def update_agent_config(
     db: Session, agent_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
-    agent_repository = AssistantRepository(db)
-    agent_repository.update_assistant_config(assistant_id=agent_id, config=config)
+    agent_repository = AgentRepository(db)
+    agent_repository.update_agent_config(agent_id=agent_id, config=config)
 
 
 def replace_agent_config(
     db: Session, agent_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
-    agent_repository = AssistantRepository(db)
-    agent_repository.replace_assistant_config(assistant_id=agent_id, config=config)
+    agent_repository = AgentRepository(db)
+    agent_repository.replace_agent_config(agent_id=agent_id, config=config)

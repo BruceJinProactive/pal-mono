@@ -94,7 +94,7 @@ def _construct_demo_dict():
     accounts = get_accounts(db)
 
     for account in accounts:
-        for agent in account.assistants:
+        for agent in account.agents:
             demo_dict[account.name] = agent.id
 
     return demo_dict

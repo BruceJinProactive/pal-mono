@@ -107,14 +107,14 @@ class OrderingTools(Toolkit):
         """
         This function should be called every time the user requests to place order, checkout, or pay.
 
-        Places the user's order based on the chat history (both user messages and assistant messages).
+        Places the user's order based on the chat history (both user messages and agent messages).
 
         The user must provide the fulfillment strategy (delivery or pickup), and the delivery address if the fulfillment strategy is delivery.
 
         You must provide the user with the ordered item, price, and order id in the response.
 
         Args:
-            chat_history (list[str]): Chat history between user and assistant. Be sure to include both user messages and assistant responses.
+            chat_history (list[str]): Chat history between user and agent. Be sure to include both user messages and agent responses.
 
         Returns:
             str: Result of placing the order, including the total and order id if applicable, and payment instructions if applicable.

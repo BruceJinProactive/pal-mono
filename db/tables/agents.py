@@ -19,8 +19,8 @@ if TYPE_CHECKING:
     from db.tables.projects import Project
 
 
-class Assistant(Base):
-    __tablename__ = "assistants"
+class Agent(Base):
+    __tablename__ = "agents"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -47,7 +47,5 @@ class Assistant(Base):
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False, index=True
     )
-    account: Mapped["Account"] = relationship("Account", back_populates="assistants")
-    projects: Mapped[List["Project"]] = relationship(
-        "Project", back_populates="assistant"
-    )
+    account: Mapped["Account"] = relationship("Account", back_populates="agents")
+    projects: Mapped[List["Project"]] = relationship("Project", back_populates="agent")

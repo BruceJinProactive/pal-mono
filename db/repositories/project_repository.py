@@ -39,10 +39,10 @@ class ProjectRepository:
         self.db = db
 
     def create_project(
-        self, project_name: str, account_id: uuid.UUID, assistant_id: uuid.UUID
+        self, project_name: str, account_id: uuid.UUID, agent_id: uuid.UUID
     ) -> Project:
         db_project = Project(
-            name=project_name, account_id=account_id, assistant_id=assistant_id
+            name=project_name, account_id=account_id, agent_id=agent_id
         )
         self.db.add(db_project)
         self.db.commit()

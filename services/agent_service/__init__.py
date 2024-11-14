@@ -5,7 +5,7 @@ from phi.agent.agent import Agent as PhiAgent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from db.tables import Assistant
+from db.tables import Agent
 
 from . import _implementation
 
@@ -57,7 +57,7 @@ def get_ai_agent(
     )
 
 
-def get_agent(db: Session, agent_id: uuid.UUID) -> Optional[Assistant]:
+def get_agent(db: Session, agent_id: uuid.UUID) -> Optional[Agent]:
     """
     Retrieve an Agent instance based on the provided agent ID.
 
@@ -66,21 +66,21 @@ def get_agent(db: Session, agent_id: uuid.UUID) -> Optional[Assistant]:
         agent_id (uuid.UUID): The unique identifier of the agent.
 
     Returns:
-        Optional[Assistant]: The retrieved Agent instance if found, otherwise None.
+        Optional[Agent]: The retrieved Agent instance if found, otherwise None.
     """
     return _implementation.get_agent(db, agent_id)
 
 
-def get_agents_by_account(db: Session, account_name: str) -> Optional[List[Assistant]]:
+def get_agents_by_account(db: Session, account_name: str) -> Optional[List[Agent]]:
     """
-    Retrieve a list of Assistants instance based on the provided agent ID.
+    Retrieve a list of Agents instance based on the provided agent ID.
 
     Args:
         db (Session): The database session to use for the query.
         account_name (str): The unique identifier of the agent.
 
     Returns:
-        Optional[List[Assistant]]: Return the list of agents if found, otherwise None
+        Optional[List[Agent]]: Return the list of agents if found, otherwise None
     """
     return _implementation.get_agents_by_account(db, account_name)
 

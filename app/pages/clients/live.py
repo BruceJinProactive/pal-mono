@@ -56,7 +56,7 @@ def main() -> str | None:
         raise ValueError(
             "Account has no associated project. Please ensure the internal_app channel identifier is set up."
         )
-    assistant = project.assistant
+    agent = project.agent
 
     # Get conversation
     channel_identifier = f"{Channel.INTERNAL_APP.value}:{str(user.email)}"
@@ -85,17 +85,17 @@ def main() -> str | None:
     with st.expander("System Prompt"):
         st.text_area(
             "System Prompt",
-            json.dumps(assistant.raw_config, indent=4),
+            json.dumps(agent.raw_config, indent=4),
             height=300,
             label_visibility="collapsed",
         )
     with st.expander("Debug Info"):
-        assistant_name = (
-            assistant.raw_config.get("system_prompt", {})
+        agent_name = (
+            agent.raw_config.get("system_prompt", {})
             .get("character", {})
             .get("name", "None")
         )
-        st.info(f"Assistant Name: {assistant_name}")
+        st.info(f"Agent Name: {agent_name}")
         st.info(f"Conversation start date: {getattr(conversation, 'created_at', None)}")
         chat_render_toggle()
     col1, col2, _, _ = st.columns([1] * 4)
@@ -120,7 +120,7 @@ def main() -> str | None:
 
     # render messages
     for message in st.session_state["messages"]:
-        author_type = "assistant" if message["author_type"] == "agent" else "user"
+        author_type = "agent" if message["author_type"] == "agent" else "user"
         with st.chat_message(author_type):
             st.session_state["chat_render_method"](message["text"]["body"])
 
@@ -129,7 +129,7 @@ def main() -> str | None:
         st.session_state["messages"]
         and st.session_state["messages"][-1]["author_type"] == AuthorType.USER.value
     ):
-        with st.chat_message("assistant"):
+        with st.chat_message("agent"):
             with st.spinner("Working..."):
                 response_message = get_chat_response(
                     db=db,

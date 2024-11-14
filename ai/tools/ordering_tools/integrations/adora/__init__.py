@@ -2,7 +2,6 @@ from os import getenv
 from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
-from openai import OpenAI
 
 from ai.llm import ModelName, get_client
 from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
@@ -119,6 +118,9 @@ class AdoraIntegration:
             not fulfillment_strategy_obj
             or fulfillment_strategy_obj.strategy == FulfillmentStrategy.NA
         ):
+            logger.debug(
+                f"[OrderingTools.place_order] Missing fulfillment strategy: {fulfillment_strategy_obj}"
+            )
             return "Ask the user to provide a fulfillment strategy to place an order, e.g., delivery, pickup."
 
         fulfillment_strategy = fulfillment_strategy_obj.strategy
@@ -160,6 +162,9 @@ class AdoraIntegration:
             missing_info.append("email address")
 
         if missing_info:
+            logger.debug(
+                f"[OrderingTools.place_order] Missing consumer info: {missing_info}"
+            )
             return (
                 f"Please provide your {' and '.join(missing_info)} to place an order."
             )
@@ -183,11 +188,15 @@ class AdoraIntegration:
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
+            logger.error(
+                "[AdoraIntegration.place_order] Failed to authenticate ordering tool."
+            )
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
         # Get up-to-date menu and construct order payload
         menu = _apis.get_adora_menu(self.store_information["store_id"], bearer_token)
         if not menu:
+            logger.error("[AdoraIntegration.place_order] Failed to get menu.")
             return "Failed to get menu, please try again."
 
         menu_maps = _utils.get_menu_maps(menu)
@@ -274,24 +283,44 @@ class AdoraIntegration:
         if adora_order_type == AdoraOrderType.Delivery:
             if not delivery_address:
                 return "Ask the user to provide a delivery address to place a delivery order."
+            if delivery_address.address == "N/A" or delivery_address.city == "N/A":
+                return "Ask the user to provide at least a street address and city."
 
-            # convert address to lat long coordinates
+            # setup Nominatim to convert address to lat long coordinates
             # TODO: Usage limited to 1qps without API key. Upgrade to paid plan when needed.
             # TODO: https://aws.amazon.com/location/
             geolocator = Nominatim(user_agent="pal")
+
             geo_payload = {
                 "street": delivery_address.address,
                 "city": delivery_address.city,
-                "state": delivery_address.state,
+                "state": (
+                    delivery_address.state if delivery_address.state != "N/A" else ""
+                ),
                 "country": "USA",
-                "postalcode": delivery_address.zip_code,
+                "postalcode": (
+                    delivery_address.zip_code
+                    if delivery_address.zip_code != "N/A"
+                    else ""
+                ),
             }
             logger.debug(
                 "[AdoraIntegration.place_order] Geolocator payload: " + str(geo_payload)
             )
             geocoded_loc: Any = geolocator.geocode(geo_payload)
             if not geocoded_loc:
-                return "The address that the user provided is invalid. Please provide a valid address."
+                logger.debug(
+                    "[AdoraIntegration.place_order] Failed to geocode address."
+                )
+                return (
+                    "The address that the user provided is invalid. Please provide a valid address. "
+                    + (
+                        "Try providing a state and zipcode."
+                        if delivery_address.state == "N/A"
+                        or delivery_address.zip_code == "N/A"
+                        else ""
+                    )
+                )
 
             logger.debug(
                 "[AdoraIntegration.place_order] Nominatim API result: "
@@ -299,6 +328,25 @@ class AdoraIntegration:
                 + ", "
                 + str(geocoded_loc.longitude)
             )
+
+            # auto-populate state and zipcode
+            if delivery_address.state == "N/A" or delivery_address.zip_code == "N/A":
+                delivery_address = _utils.convert_address_string(geocoded_loc.address)
+                logger.debug(
+                    f"[AdoraIntegration.place_order] Auto-populated address: {delivery_address}"
+                )
+
+            if (
+                not delivery_address
+                or delivery_address.address == "N/A"
+                or delivery_address.city == "N/A"
+                or delivery_address.state == "N/A"
+                or delivery_address.zip_code == "N/A"
+            ):
+                logger.debug(
+                    f"[AdoraIntegration.place_order] Failed to convert address. Delivery address object: {delivery_address}"
+                )
+                return "Something went wrong with delivery address conversion. Please try again."
 
             # call Adora address validation API
             validated_address_success, validated_address = _apis.validate_address(

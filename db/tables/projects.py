@@ -16,7 +16,7 @@ from db.tables.base import Base
 
 if TYPE_CHECKING:
     from db.tables.accounts import Account
-    from db.tables.assistants import Assistant
+    from db.tables.agents import Agent
 
 
 class Project(Base):
@@ -52,9 +52,7 @@ class Project(Base):
         UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False, index=True
     )
     account: Mapped["Account"] = relationship("Account", back_populates="projects")
-    assistant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("assistants.id"), nullable=False, index=True
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id"), nullable=False, index=True
     )
-    assistant: Mapped["Assistant"] = relationship(
-        "Assistant", back_populates="projects"
-    )
+    agent: Mapped["Agent"] = relationship("Agent", back_populates="projects")

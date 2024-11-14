@@ -24,7 +24,7 @@ def main() -> None:
 
     account_name = st.session_state["account_name"]
     account = get_account(db, account_name)
-    agent = get_agent(db, account.assistants[0].id) if account else None
+    agent = get_agent(db, account.agents[0].id) if account else None
 
     if agent is None:
         st.write("Agent not found")

@@ -122,7 +122,7 @@ def main() -> None:
                         project_id=project.id,
                         config=update_config_json,
                     )
-                    st.success("Successfully updated the assistant config")
+                    st.success("Successfully updated the agent config")
                 else:
                     st.error("Invalid JSON format")
 

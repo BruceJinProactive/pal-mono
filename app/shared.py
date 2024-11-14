@@ -43,8 +43,8 @@ def set_account(db: Session, account_name: str) -> None:
     st.session_state["project_name"] = (
         account.projects[0].name if account.projects else "No Project"
     )
-    if "assistant_id" in st.session_state:
-        st.session_state.pop("assistant_id")
+    if "agent_id" in st.session_state:
+        st.session_state.pop("agent_id")
 
 
 def account_picker_ui(db: Session) -> None:
@@ -94,16 +94,16 @@ def project_picker_ui(db: Session) -> None:
 
                 if project_name and project_name != st.session_state["project_name"]:
                     st.session_state["project_name"] = project_name
-                    if "assistant_id" in st.session_state:
-                        st.session_state.pop("assistant_id")
+                    if "agent_id" in st.session_state:
+                        st.session_state.pop("agent_id")
                     if project_name != "No Project":
-                        st.session_state["assistant_id"] = name_to_project[
+                        st.session_state["agent_id"] = name_to_project[
                             project_name
-                        ].assistant_id
+                        ].agent_id
                     st.rerun()
 
 
-def assistant_picker_ui(db: Session) -> None:
+def agent_picker_ui(db: Session) -> None:
     if (
         "account_name" in st.session_state
         and "project_name" in st.session_state
@@ -115,33 +115,33 @@ def assistant_picker_ui(db: Session) -> None:
                 account = acc
                 break
 
-        if account and account.assistants:
+        if account and account.agents:
             with st.sidebar:
-                st.subheader("Assistant Picker")
+                st.subheader("Agent Picker")
 
-                # assistants don't have names, just list all
-                assistant_ids = []
-                for assistant in account.assistants:
-                    assistant_ids.append(assistant.id)
+                # agents don't have names, just list all
+                agent_ids = []
+                for agent in account.agents:
+                    agent_ids.append(agent.id)
 
-                if "assistant_id" not in st.session_state:
-                    st.session_state["assistant_id"] = account.assistants[0].id
+                if "agent_id" not in st.session_state:
+                    st.session_state["agent_id"] = account.agents[0].id
 
-                assistant_id = st.selectbox(
-                    "Select an assistant",
-                    assistant_ids,
-                    index=assistant_ids.index(st.session_state["assistant_id"]),
+                agent_id = st.selectbox(
+                    "Select an agent",
+                    agent_ids,
+                    index=agent_ids.index(st.session_state["agent_id"]),
                 )
 
-                if assistant_id != st.session_state["assistant_id"]:
-                    st.session_state["assistant_id"] = assistant_id
+                if agent_id != st.session_state["agent_id"]:
+                    st.session_state["agent_id"] = agent_id
                     st.rerun()
 
 
 def universal_picker_ui(db: Session) -> None:
     account_picker_ui(db)
     project_picker_ui(db)
-    assistant_picker_ui(db)
+    agent_picker_ui(db)
 
 
 def memory_ui(account_name: str, user_id: str) -> None:

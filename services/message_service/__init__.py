@@ -13,7 +13,7 @@ from . import _implementation
 
 async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Message]:
     """
-    Processes an incoming message and generates a response from the appropriate assistant.
+    Processes an incoming message and generates a response from the appropriate agent.
 
     Args:
         db (Session): The database session.
@@ -23,15 +23,15 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         list[Message]: A list of message objects.
 
     Raises:
-        ValueError: If any required information (account name, account, projects, user, assistant ID) is not found.
-        ValueError: If the response type from the assistant is unexpected.
+        ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
+        ValueError: If the response type from the agent is unexpected.
     """
     return await _implementation.get_chat_response_async(db, message)
 
 
 def get_chat_response(db: Session, message: Message) -> Message:
     """
-    Processes an incoming message and generates a response from the appropriate assistant.
+    Processes an incoming message and generates a response from the appropriate agent.
 
     Args:
         db (Session): The database session.
@@ -41,8 +41,8 @@ def get_chat_response(db: Session, message: Message) -> Message:
         Message: The response message object.
 
     Raises:
-        ValueError: If any required information (account name, account, projects, user, assistant ID) is not found.
-        ValueError: If the response type from the assistant is unexpected.
+        ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
+        ValueError: If the response type from the agent is unexpected.
     """
     return _implementation.get_chat_response(db, message)
 

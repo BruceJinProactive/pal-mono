@@ -54,18 +54,18 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
 
-        # Get appropriate assistant from account name
-        assistant_id = project.assistant_id
-        if assistant_id is None:
-            raise ValueError("Assistant ID not found")
+        # Get appropriate agent from account name
+        agent_id = project.agent_id
+        if agent_id is None:
+            raise ValueError("Agent ID not found")
         agent = await agent_service.get_ai_agent_async(
             db=db,
-            agent_id=assistant_id,
+            agent_id=agent_id,
             user_id=user.id,
             conversation_id=conversation_id,
         )
 
-        # Get response from assistant
+        # Get response from agent
         request_content = message.get_content()
         response_object = await agent.arun(request_content, stream=False)
         if isinstance(response_object.content, str):
@@ -139,19 +139,19 @@ def get_chat_response(db: Session, message: Message) -> Message:
         )
         conversation_id = request_message.conversation_id
 
-        # Get appropriate assistant from account name
-        assistant_id = project.assistant_id
-        if assistant_id is None:
-            raise ValueError("Assistant ID not found")
+        # Get appropriate agent from account name
+        agent_id = project.agent_id
+        if agent_id is None:
+            raise ValueError("Agent ID not found")
 
         agent = agent_service.get_ai_agent(
             db=db,
-            agent_id=assistant_id,
+            agent_id=agent_id,
             user_id=user.id,
             conversation_id=conversation_id,
         )
 
-        # Get response from assistant
+        # Get response from agent
         request_content = message.get_content()
         response_object = agent.run(request_content, stream=False)
         if isinstance(response_object.content, str):

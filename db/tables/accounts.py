@@ -13,7 +13,7 @@ from sqlalchemy.types import DateTime, String
 from db.tables.base import Base
 
 if TYPE_CHECKING:
-    from db.tables.assistants import Assistant
+    from db.tables.agents import Agent
     from db.tables.projects import Project
     from db.tables.users import User
 
@@ -42,7 +42,5 @@ class Account(Base):
     projects: Mapped[List["Project"]] = relationship(
         "Project", back_populates="account"
     )
-    assistants: Mapped[List["Assistant"]] = relationship(
-        "Assistant", back_populates="account"
-    )
+    agents: Mapped[List["Agent"]] = relationship("Agent", back_populates="account")
     users: Mapped[List["User"]] = relationship("User", back_populates="account")

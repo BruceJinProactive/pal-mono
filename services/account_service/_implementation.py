@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from db.repositories.account_repository import AccountRepository
-from db.repositories.assistant_repository import AssistantRepository
+from db.repositories.agent_repository import AgentRepository
 from db.repositories.project_repository import ProjectRepository
 from db.tables import Account
 
@@ -24,14 +24,14 @@ def create_account_with_defaults(db: Session, account_name: str) -> Account:
     # Instantiate the repositories
     account_repository = AccountRepository(db)
     project_repository = ProjectRepository(db)
-    assistant_repository = AssistantRepository(db)
+    agent_repository = AgentRepository(db)
 
-    # Use the repositories to create the account, project, and assistant
+    # Use the repositories to create the account, project, and agent
     account = account_repository.create_account(account_name)
-    assistant = assistant_repository.create_assistant(account_id=account.id)
+    agent = agent_repository.create_agent(account_id=account.id)
     project_repository.create_project(
         project_name=f"{account_name}-default",
         account_id=account.id,
-        assistant_id=assistant.id,
+        agent_id=agent.id,
     )
     return account

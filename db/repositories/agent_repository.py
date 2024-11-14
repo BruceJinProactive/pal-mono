@@ -1,0 +1,118 @@
+import uuid
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import Session, selectinload
+
+from db.tables import Agent
+from utils.log import logger
+
+
+class AgentRepositoryAsync:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def get_agent(self, agent_id: uuid.UUID) -> Optional[Agent]:
+        result = await self.db.execute(
+            select(Agent)
+            # [IMPORTANT] The next fixes the following error: 2024-10-21 00:17:10 {"asctime": "2024-10-21 07:17:10,747", "name": "pal-mono", "levelname": "ERROR", "message": "Error in get_chat_response: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place? (Background on this error at: https://sqlalche.me/e/20/xd2s)"}
+            .options(selectinload(Agent.account)).where(Agent.id == agent_id)
+        )
+        return result.scalars().first()
+
+
+class AgentRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_agents(self, skip: int = 0, limit: int = 100) -> List[Agent]:
+        """Retrieve a list of agents with pagination."""
+        try:
+            return self.db.query(Agent).offset(skip).limit(limit).all()
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving agents: {e}")
+            return []
+
+    def get_agent(self, agent_id: uuid.UUID) -> Optional[Agent]:
+        """Retrieve a single agent by its ID."""
+        try:
+            return self.db.query(Agent).filter(Agent.id == agent_id).first()
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving agent: {e}")
+            return None
+
+    def get_agents_by_account(self, account_id: uuid.UUID) -> List[Agent] | None:
+        """Retrieve a list of agents by its account name."""
+        try:
+            return self.db.query(Agent).filter(Agent.account_id == account_id).all()
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving agent: {e}")
+            return None
+
+    def create_agent(self, account_id: uuid.UUID) -> Agent:
+        """Create a new agent with a unique UUID."""
+        try:
+            db_agent = Agent(id=uuid.uuid4(), account_id=account_id)
+            self.db.add(db_agent)
+            self.db.commit()
+            self.db.refresh(db_agent)
+            return db_agent
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error creating agent: {e}")
+            raise
+
+    def update_agent_config(self, agent_id: uuid.UUID, config: Dict[str, Any]) -> None:
+        """Update an agent's config in the database.
+
+        This function is best used to update specific fields in the configuration object.
+
+        Args:
+            agent_id (uuid.UUID): The unique identifier of the agent.
+            config (Dict[str, Any]): The configuration dictionary to update the agent's config with.
+
+        Raises:
+            ValueError: If the agent with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            agent = self.get_agent(agent_id)
+            if agent is None:
+                raise ValueError(f"Agent {agent_id} not found")
+
+            agent.raw_config.update(config)
+            self.db.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.db.rollback()
+            logger.error(f"Error updating agent config: {e}")
+            raise
+
+    def replace_agent_config(self, agent_id: uuid.UUID, config: Dict[str, Any]) -> None:
+        """Replace an agent's config in the database.
+
+        This function replaces the entire `raw_config` for the specified agent.
+
+        Args:
+            agent_id (uuid.UUID): The unique identifier of the agent.
+            config (Dict[str, Any]): The new `raw_config` to replace the existing one.
+
+        Raises:
+            ValueError: If the agent with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            agent = self.get_agent(agent_id)
+            if agent is None:
+                raise ValueError(f"Agent {agent_id} not found")
+
+            agent.raw_config = config
+            self.db.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.db.rollback()
+            logger.error(f"Error replacing agent config: {e}")
+            raise
