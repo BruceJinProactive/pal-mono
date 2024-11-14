@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from api.routes.endpoints import endpoints
 from api.schemas.admin.feedback import Feedback
-from api.schemas.message.message import AuthorType, Broker, Channel, Message, TextObject
+from api.schemas.chat.message import AuthorType, Broker, Channel, Message, TextObject
 from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (

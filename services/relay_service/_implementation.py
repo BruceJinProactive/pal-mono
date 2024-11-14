@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
-from api.schemas.message.message import Message
+from api.schemas.chat.message import Message
 from utils.dttm import current_utc
 from utils.log import logger
 

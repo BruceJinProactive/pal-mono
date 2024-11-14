@@ -5,7 +5,7 @@ from streamlit_extras.switch_page_button import switch_page
 
 from ai.tools.booking_tools import BookingTools
 from ai.tools.ordering_tools import OrderingTools
-from api.schemas.message.message import Channel
+from api.schemas.chat.message import Channel
 from app.auth import user
 from db.session import get_db
 from services.account_service import get_account, get_accounts

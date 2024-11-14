@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from api.schemas.message.message import Message
+from api.schemas.chat.message import Message
 
 
 class ChatRequest(BaseModel):

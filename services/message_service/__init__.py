@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db.tables as db
-from api.schemas.message.message import Message
+from api.schemas.chat.message import Message
 from db.tables import Conversation
 
 from . import _implementation

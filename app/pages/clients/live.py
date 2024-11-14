@@ -3,7 +3,7 @@ import json
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-from api.schemas.message.message import AuthorType, Channel, Extras, Message, TextObject
+from api.schemas.chat.message import AuthorType, Channel, Extras, Message, TextObject
 from app.auth import user
 from app.shared import (
     chat_render_toggle,

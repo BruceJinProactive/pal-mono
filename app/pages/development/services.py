@@ -5,7 +5,7 @@ import streamlit as st
 from sqlalchemy.exc import IntegrityError
 from streamlit_extras.switch_page_button import switch_page
 
-from api.schemas.message.message import (
+from api.schemas.chat.message import (
     AuthorType,
     Broker,
     Channel,
