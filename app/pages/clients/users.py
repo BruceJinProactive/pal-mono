@@ -71,11 +71,16 @@ def main() -> None:
     for th, col in zip(table_headers, st.columns(col_widths)):
         col.write(th)
     for account_user in account_users:
-        identifier_col, platform_col, id_col, conversation_col = st.columns(col_widths)
-        if account_user.channel_identifiers:
-            platform, identifier = account_user.channel_identifiers[0].split(":")
-            identifier_col.write(identifier)
-            platform_col.write(platform)
+        channel_col, identifier_col, id_col, conversation_col = st.columns(col_widths)
+        try:
+            if account_user.channel_identifiers:
+                channel, identifier = account_user.channel_identifiers[0].split(":")
+            else:
+                raise ValueError
+        except ValueError:
+            channel, identifier = "Unknown", "Unknown"
+        channel_col.write(channel)
+        identifier_col.write(identifier)
         id_col.write(account_user.id)
 
         if conversation_col.toggle("View", key=str(account_user.id)):
