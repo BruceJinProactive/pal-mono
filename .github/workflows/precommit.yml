@@ -102,18 +102,6 @@ jobs:
           .venv/bin/pip install -r requirements.txt
 
       - name: Run pytest
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_USER_POOL_ID: ${{ secrets.AWS_USER_POOL_ID }}
-          AWS_APP_CLIENT_ID: ${{ secrets.AWS_APP_CLIENT_ID }}
-          AWS_APP_CLIENT_SECRET: ${{ secrets.AWS_APP_CLIENT_SECRET }}
-          AWS_ADMIN_CONSOLE_USER_POOL_ID: ${{ secrets.AWS_ADMIN_CONSOLE_USER_POOL_ID }}
-          AWS_CLIENT_SECRET_NAME: ${{ secrets.AWS_CLIENT_SECRET_NAME }}
-          AWS_ADMIN_CONSOLE_APP_CLIENT_ID: ${{ secrets.AWS_ADMIN_CONSOLE_APP_CLIENT_ID }}
-          ADMIN_CONSOLE_AWS_CLIENT_ID: ${{ secrets.ADMIN_CONSOLE_AWS_CLIENT_ID }}
-          MODAL_API_KEY: ${{ secrets.MODAL_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ci: true
         run: |
           .venv/bin/pytest
 
