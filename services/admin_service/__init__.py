@@ -53,7 +53,6 @@ def get_conversation_messages(
     return _implementation.get_conversation_messages(db, account_id, conversation_id)
 
 
-# NOTE: Temporary solution pre-DB migration -- return list of dicts
 def get_messages_by_conversation_id(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> List[dict]:

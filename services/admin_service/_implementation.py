@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 import db.tables as db_
 from api.schemas.admin.conversation import ConversationPreview
 from db.repositories.conversation_repository import ConversationRepository
+from db.repositories.feedback_repository import FeedbackRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository
 from services.account_service import get_account
 from services.agent_service import get_agents_by_account
-from services.feedback_service import get_feedback_by_message
 from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
@@ -142,6 +142,7 @@ def get_messages_by_conversation_id(
 ) -> List[dict]:
     conversation_repository = ConversationRepository(db)
     user_repository = UserRepository(db)
+    feedback_repository = FeedbackRepository(db)
 
     # Get the Account ID associated with the Conversation ID
     conversation = conversation_repository.get_conversation_by_id(conversation_id)
@@ -161,16 +162,17 @@ def get_messages_by_conversation_id(
         )
 
     messages = get_messages_by_conversation(db, conversation_id=conversation_id)
+    message_jsons = [vars(message) for message in messages]
 
-    messages_with_feedback: List[dict] = []
-    for message in messages:
-        message_with_feedback = {
-            "message": message,
-            "feedback": get_feedback_by_message(db, message.id),
-        }
-        messages_with_feedback.append(message_with_feedback)
+    message_ids = [message.id for message in messages]
+    message_id_to_feedback = feedback_repository.get_feedback_by_message_ids(
+        message_ids
+    )
 
-    return messages_with_feedback
+    for message_json in message_jsons:
+        message_json["feedback"] = message_id_to_feedback[message_json["id"]]
+
+    return message_jsons
 
 
 def get_brandings(db: Session, account_name: str) -> list[dict]:

@@ -1,4 +1,3 @@
-from typing import List
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -64,5 +63,12 @@ class FeedbackRepository:
             )
             raise
 
-    def get_feedback_by_message(self, message_id: UUID) -> List[dict]:
-        return [{"id": "feedback 1"}, {"id": "feedback 2"}, {"id": "feedback 3"}]
+    def get_feedback_by_message_ids(self, message_ids: list[UUID]) -> dict:
+        message_id_to_feedback = {}
+        for message_id in message_ids:
+            message_id_to_feedback[message_id] = [
+                {"note": "This is awesome!"},
+                {"note": "This is not good."},
+                {"note": "Amazing response!"},
+            ]
+        return message_id_to_feedback

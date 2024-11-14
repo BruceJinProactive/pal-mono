@@ -1,4 +1,3 @@
-from typing import List
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -53,23 +52,8 @@ def update_feedback_by_id(
     return _implementation.update_feedback_by_id(db, feedback_id, updated_feedback)
 
 
-def get_feedback_by_message(db: Session, message_id: UUID) -> List[dict]:
-    """
-    Retrieves all feedback for a given message
-
-    Args:
-        db (Session): The database session.
-        message_id (UUID): The unique identifier of the message.
-
-    Returns:
-        List[dict]: A list of Feedback objects associated with the message.
-    """
-    return _implementation.get_feedback_by_message(db, message_id)
-
-
 __all__ = [
     "create_feedback",
     "get_feedback_by_id",
     "update_feedback_by_id",
-    "get_feedback_by_message",
 ]

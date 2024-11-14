@@ -1,4 +1,3 @@
-from typing import List
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -23,9 +22,3 @@ def update_feedback_by_id(
 ) -> dict:
     feedback_repository = FeedbackRepository(db)
     return feedback_repository.update_feedback_by_id(feedback_id, updated_feedback)
-
-
-def get_feedback_by_message(db: Session, message_id: UUID) -> List[dict]:
-    feedback_repository = FeedbackRepository(db)
-    feedback_for_message = feedback_repository.get_feedback_by_message(message_id)
-    return feedback_for_message
