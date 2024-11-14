@@ -147,14 +147,14 @@ class AdoraSavedOrderResult(BaseModel):
     This is the shape of the response from the Adora API at the save_validate_order step.
     """
 
-    Success: int
-    OrderID: int  # this is the important value -- you need this to checkout the order using /textPaymentLink
-    OrderNo: int
-    CustomerID: int
-    AddressID: int
-    ProfileID: int
+    success: int
+    orderID: int  # this is the important value -- you need this to checkout the order using /textPaymentLink
+    orderNo: int
+    customerID: int
+    addressID: int
+    profileID: int
     msg: str
-    ProfUpdated: int
+    profUpdated: int
 
 
 class AdoraValidatedAddress(BaseModel):

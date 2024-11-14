@@ -196,9 +196,7 @@ def save_validated_order(
     )
 
     if response.status == 200:
-        return _utils.parse_json(
-            AdoraSavedOrderResult, json.loads(response.decoded_body)
-        )
+        return _utils.parse_json(AdoraSavedOrderResult, response.decoded_body)
     else:
         return None
 

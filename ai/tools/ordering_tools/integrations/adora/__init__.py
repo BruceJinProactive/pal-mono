@@ -394,7 +394,7 @@ class AdoraIntegration:
         try:
             if saved_order and _apis.text_payment(
                 bearer_token,
-                saved_order.OrderID,
+                saved_order.orderID,
                 self.store_information["store_id"],
                 consumer.phone_number,
             ):
@@ -416,7 +416,7 @@ class AdoraIntegration:
 
                 successful_order_details += (
                     f"Total with Tax: ${validated_order.total}\n"
-                    f"Order ID: {saved_order.OrderID}\n"
+                    f"Order ID: {saved_order.orderID}\n"
                     f"Store Phone: {self.store_information['phone']}\n"
                 )
 
@@ -429,7 +429,7 @@ class AdoraIntegration:
 
             else:
                 logger.debug(
-                    f"[AdoraIntegration.place_order] Failed to place order. Saved order ID: {saved_order.OrderID if saved_order else 'NO SAVED ORDER'}"
+                    f"[AdoraIntegration.place_order] Failed to place order. Saved order ID: {saved_order.orderID if saved_order else 'NO SAVED ORDER'}"
                 )
                 return "The service maybe busy. Please try again."
         except Exception as e:
