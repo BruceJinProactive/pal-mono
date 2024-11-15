@@ -2,7 +2,6 @@ import textwrap
 from collections import defaultdict
 from dataclasses import dataclass
 
-from openai import OpenAI
 from phi.memory.memory import Memory
 
 from ai.memory import get_memory
@@ -102,8 +101,6 @@ def convert_address_string(address: str) -> GenericDeliveryAddress | None:
 def convert_coupon(
     all_coupons: list[AdoraCoupon],
     target_coupon: str,
-    model_router_client: OpenAI,
-    model_router_model: str,
     coupon_conversion_examples: dict[str, str],
 ) -> ConversionResult:
     """
@@ -189,8 +186,6 @@ def get_adora_item_id(
     menu_name_to_id_map: dict,
     order_item_name: str,
     item_id_conversion_examples: dict[str, str],
-    model_router_client: OpenAI,
-    model_router_model: str,
 ) -> ConversionResult:
     """
     Finds the closest item name in the menu and consequent item id.
@@ -273,8 +268,6 @@ def get_adora_modifications(
     menu_id_to_details_map: dict[int, MenuItemDetails],
     menu_modifiers: dict,
     menu_modifier_groups: dict,
-    model_router_client: OpenAI,
-    model_router_model: str,
     order_item: OrderItem,
     modifier_conversion_examples: dict[str, str],
 ) -> tuple[bool, AdoraOrderItem | str]:
@@ -287,8 +280,6 @@ def get_adora_modifications(
         adora_size_name (str): The name of the size in the Adora menu.
         adora_size_id (int): The ID of the size in the Adora menu.
         menu (dict): The restaurant's menu data, containing items, modifier groups, and modifiers.
-        model_router_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
-        model_router_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
         order_item (OrderItem): The order item object that holds details such as quantity.
 
     Returns:
@@ -309,8 +300,6 @@ def get_adora_modifications(
     modifiers, comment = process_modifiers(
         menu_modifiers,
         order_item.modifications,
-        model_router_client,
-        model_router_model,
         modifier_conversion_examples,
     )
     payload["comment"] = comment
@@ -380,8 +369,6 @@ def get_adora_size_id(
     adora_item_id: int,
     order_item_size: str,
     size_id_conversion_examples: dict[str, str],
-    model_router_client: OpenAI,
-    model_router_model: str,
 ) -> ConversionResult:
     """
     Maps the size to size id.
@@ -729,8 +716,6 @@ def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int
 
 
 def get_similar_modifier_using_openai(
-    model_router_client: OpenAI,
-    model_router_model: str,
     order_item_modification: str,
     modifier_names: list,
     modifier_conversion_examples: dict[str, str],
@@ -739,8 +724,6 @@ def get_similar_modifier_using_openai(
     Uses OpenAI's language model to match a user-supplied item modification to the most similar modifier on the menu.
 
     Args:
-        model_router_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
-        model_router_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
         order_item_modification (str): The user-provided modification for an order item (e.g., "extra cheese").
         modifier_names (list): A list of available modifier names on the menu.
 
@@ -816,8 +799,6 @@ def get_size_description_map(menu) -> dict[int, str]:
 def process_modifiers(
     menu_modifiers: dict,
     order_item_modifications: list,
-    model_router_client: OpenAI,
-    model_router_model: str,
     modifier_conversion_examples: dict[str, str],
 ) -> tuple[list, str]:
     """
@@ -826,8 +807,6 @@ def process_modifiers(
     Args:
         menu (dict): The restaurant's menu data, containing items and modifiers.
         order_item_modifications (list): A list of modifications provided by the user for a specific order item.
-        model_router_client (OpenAI): The OpenAI client instance used for interacting with the OpenAI API.
-        model_router_model (str): The OpenAI model name (e.g., "gpt-4") used to generate completions.
 
     Returns:
         tuple[list, str]:
@@ -840,8 +819,6 @@ def process_modifiers(
 
     for order_item_modification in order_item_modifications:
         matched_modifier = get_similar_modifier_using_openai(
-            model_router_client,
-            model_router_model,
             order_item_modification,
             modifier_names,
             modifier_conversion_examples,
@@ -873,8 +850,6 @@ def validate_and_convert_item(
     item_id_conversion_examples: dict[str, str],
     size_id_conversion_examples: dict[str, str],
     modifier_conversion_examples: dict[str, str],
-    model_router_client: OpenAI,
-    model_router_model: str,
 ) -> tuple[bool, AdoraOrderItem | str]:
     """Converts a generic order item into an Adora order item.
 
@@ -887,8 +862,6 @@ def validate_and_convert_item(
         item_id_conversion_examples (dict[str, str]): Dictionary of conversion examples for item IDs.
         size_id_conversion_examples (dict[str, str]): Dictionary of conversion examples for size IDs.
         modifier_conversion_examples (dict[str, str]): Dictionary of conversion examples for modifiers.
-        model_router_client (OpenAI): The OpenAI client instance.
-        model_router_model (str): The OpenAI model name to use.
 
     Returns:
         tuple[bool, AdoraOrderItem | str]: A tuple containing a boolean indicating
@@ -906,8 +879,6 @@ def validate_and_convert_item(
         menu_name_to_id_map,
         order_item.item_name,
         item_id_conversion_examples,
-        model_router_client,
-        model_router_model,
     )
     if not adora_item_id_res.success:
         return False, adora_item_id_res.message
@@ -930,8 +901,6 @@ def validate_and_convert_item(
         adora_item_id,
         order_item.size,
         size_id_conversion_examples,
-        model_router_client,
-        model_router_model,
     )
     if not adora_size_id_res.success:
         return False, adora_size_id_res.message
@@ -952,8 +921,6 @@ def validate_and_convert_item(
         menu_id_to_details_map,
         menu_modifiers,
         menu_modifier_groups,
-        model_router_client,
-        model_router_model,
         order_item,
         modifier_conversion_examples,
     )

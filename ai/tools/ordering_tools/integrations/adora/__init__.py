@@ -2,7 +2,6 @@ from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
 
-from ai.model import ModelName, get_client
 from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
 from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraDeliveryAddress,
@@ -31,8 +30,6 @@ class AdoraIntegration:
         self.api_secret = api_secret
         self.store_information = store_information
         self.adora_conversion_examples = adora_conversion_examples
-        self.model_router_client = get_client()
-        self.model_router_model = ModelName.MEDIUM
 
     def add_to_order(self, order_item: OrderItem) -> str:
         # Get bearer token
@@ -56,8 +53,6 @@ class AdoraIntegration:
             self.adora_conversion_examples.get("items", {}),
             self.adora_conversion_examples.get("sizes", {}),
             self.adora_conversion_examples.get("modifiers", {}),
-            self.model_router_client,
-            self.model_router_model,
         )
         if not convert_item_success and isinstance(adora_order_item, str):
             return adora_order_item  # this is an error string
@@ -224,8 +219,6 @@ class AdoraIntegration:
                 self.adora_conversion_examples.get("items", {}),
                 self.adora_conversion_examples.get("sizes", {}),
                 self.adora_conversion_examples.get("modifiers", {}),
-                self.model_router_client,
-                self.model_router_model,
             )
 
             if not convert_item_success and isinstance(adora_order_item, str):
@@ -263,8 +256,6 @@ class AdoraIntegration:
             adora_coupon_res = _utils.convert_coupon(
                 possible_coupons,
                 generic_coupon,
-                self.model_router_client,
-                self.model_router_model,
                 self.adora_conversion_examples.get("coupons", {}),
             )
             if not adora_coupon_res.success:

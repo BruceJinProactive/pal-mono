@@ -5,15 +5,15 @@ from typing import Any, List
 import streamlit as st
 from phi.document.base import Document
 from phi.document.reader.pdf import PDFReader
-from streamlit_extras.switch_page_button import switch_page
-from sqlalchemy import String, Text, DateTime, MetaData
+from sqlalchemy import DateTime, MetaData, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import DeclarativeBase, mapped_column
 from sqlalchemy.orm.session import Session
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
+from streamlit_extras.switch_page_button import switch_page
+
 from ai.knowledge import get_knowledge
 from app.auth import user
 from app.shared import account_picker_ui
