@@ -15,6 +15,7 @@ from db.tables.base import Base
 
 if TYPE_CHECKING:
     from db.tables.conversations import Conversation
+    from db.tables.feedback import Feedback
 
 
 class Message(Base):
@@ -45,4 +46,7 @@ class Message(Base):
     )
     conversation: Mapped["Conversation"] = relationship(
         "Conversation", back_populates="messages"
+    )
+    feedback: Mapped[list["Feedback"]] = relationship(
+        "Feedback", back_populates="message"
     )
