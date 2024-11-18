@@ -1,4 +1,5 @@
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import List
 
@@ -139,7 +140,7 @@ def get_conversation_messages(
 
 def get_messages_by_conversation_id(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[dict]:
+) -> List[db_.Message]:
     conversation_repository = ConversationRepository(db)
     user_repository = UserRepository(db)
     feedback_repository = FeedbackRepository(db)
@@ -162,17 +163,18 @@ def get_messages_by_conversation_id(
         )
 
     messages = get_messages_by_conversation(db, conversation_id=conversation_id)
-    message_jsons = [vars(message) for message in messages]
 
     message_ids = [message.id for message in messages]
-    message_id_to_feedback = feedback_repository.get_feedback_by_message_ids(
-        message_ids
-    )
+    feedback_for_messages = feedback_repository.get_feedback_by_message_ids(message_ids)
 
-    for message_json in message_jsons:
-        message_json["feedback"] = message_id_to_feedback[message_json["id"]]
+    message_id_to_feedback = defaultdict(list)
+    for feedback in feedback_for_messages:
+        message_id_to_feedback[feedback.message_id].append(feedback)
 
-    return message_jsons
+    for message in messages:
+        message.feedback = message_id_to_feedback[message.id]
+
+    return messages
 
 
 def get_brandings(db: Session, account_name: str) -> list[dict]:

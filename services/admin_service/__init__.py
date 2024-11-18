@@ -55,7 +55,7 @@ def get_conversation_messages(
 
 def get_messages_by_conversation_id(
     db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[dict]:
+) -> List[db.Message]:
     """
     Verifies that the requester has access to the conversation, then returns all messages
     in the conversation alongside feedback for each.
@@ -66,7 +66,7 @@ def get_messages_by_conversation_id(
         conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
 
     Returns:
-        List[dict]: A list of dictionaries including message and feedback
+        List[Message]: A list of Message objects including associated feedback
     """
     return _implementation.get_messages_by_conversation_id(
         db, account_id, conversation_id

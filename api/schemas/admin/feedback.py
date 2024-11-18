@@ -13,7 +13,7 @@ class FeedbackReaction(str, Enum):
 
 
 class FeedbackTag(str, Enum):
-    """ "Feedback Tags"""
+    """Feedback Tags"""
 
     FACTUAL_ERROR = "factual_error"
     INSTRUCTION_ERROR = "instruction_error"
@@ -24,7 +24,7 @@ class Feedback(BaseModel):
 
     id: Optional[str] = None
     message_id: str
-    author_identifier: str
+    author_identifier: Optional[str] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     reaction: Optional[FeedbackReaction] = None
     tags: Optional[List[FeedbackTag]] = None

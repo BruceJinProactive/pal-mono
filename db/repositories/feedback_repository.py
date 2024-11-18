@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-# from db.tables.feedback import Feedback
+from db.tables import Feedback
 from utils.log import logger
 
 
@@ -11,16 +11,14 @@ class FeedbackRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_feedback(self, feedback: dict) -> dict:
-        db_feedback = dict(
-            id="placeholder",
+    def create_feedback(self, feedback: dict) -> Feedback:
+        db_feedback = Feedback(
             author_identifier=feedback["author_identifier"],
             reaction=feedback["reaction"],
             tags=feedback["tags"],
             note=feedback["note"],
             message_id=feedback["message_id"],
         )
-        return db_feedback
 
         try:
             self.db.add(db_feedback)
@@ -33,18 +31,18 @@ class FeedbackRepository:
 
         return db_feedback
 
-    def get_feedback_by_id(self, feedback_id: UUID) -> dict:
+    def get_feedback_by_id(self, feedback_id: UUID) -> Feedback | None:
         try:
-            return {"result": f"Found feedback {str(feedback_id)}"}
-            # return self.db.query(Feedback).filter(Feedback.id == feedback_id).first()
+            return self.db.query(Feedback).filter(Feedback.id == feedback_id).first()
         except SQLAlchemyError as e:
             self.db.rollback()
             logger.error(f"Error retrieving feedback: {e}")
             raise
 
-    def update_feedback_by_id(self, feedback_id: UUID, updated_feedback: dict) -> dict:
+    def update_feedback_by_id(
+        self, feedback_id: UUID, updated_feedback: dict
+    ) -> Feedback:
         try:
-            return {"updated feedback": updated_feedback}
             db_feedback = self.get_feedback_by_id(feedback_id)
             if db_feedback is None:
                 raise ValueError(f"Feedback {feedback_id} not found")
@@ -52,6 +50,7 @@ class FeedbackRepository:
                 setattr(db_feedback, key, value)
             self.db.commit()
             self.db.refresh(db_feedback)
+            return db_feedback
         except (SQLAlchemyError, ValueError) as e:
             self.db.rollback()
             logger.error(f"Error updating feedback: {e}")
@@ -63,12 +62,14 @@ class FeedbackRepository:
             )
             raise
 
-    def get_feedback_by_message_ids(self, message_ids: list[UUID]) -> dict:
-        message_id_to_feedback = {}
-        for message_id in message_ids:
-            message_id_to_feedback[message_id] = [
-                {"note": "This is awesome!"},
-                {"note": "This is not good."},
-                {"note": "Amazing response!"},
-            ]
-        return message_id_to_feedback
+    def get_feedback_by_message_ids(self, message_ids: list[UUID]) -> list[Feedback]:
+        try:
+            return (
+                self.db.query(Feedback)
+                .filter(Feedback.message_id.in_(message_ids))
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"Error retrieving feedback by message ids: {e}")
+            raise

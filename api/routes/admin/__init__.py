@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from api.routes.endpoints import endpoints
 from api.schemas.admin.feedback import Feedback
-from api.schemas.chat.message import AuthorType, Broker, Channel, Message, TextObject
+from api.schemas.chat.message import AuthorType, Channel, Message, TextObject
 from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (
@@ -165,7 +165,7 @@ def get_messages_with_feedback_by_conversation_id(
             headers={"Content-Type": "application/json"},
         )
 
-    return messages
+    return JSONResponse(content=jsonable_encoder(messages))
 
 
 @admin_router.get("/inbox/{conversation_id}")
@@ -472,7 +472,7 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
 
     return {
         "message": "Feedback successfully submitted",
-        "feedback_id": db_feedback["id"],
+        "feedback_id": db_feedback.id,
         "submitted_at": feedback.timestamp,
     }
 
@@ -510,6 +510,13 @@ def retrieve_feedback_by_id(
         raise HTTPException(
             status_code=500,
             detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if not feedback:
+        raise HTTPException(
+            status_code=404,
+            detail="Feedback not found.",
             headers={"Content-Type": "application/json"},
         )
 

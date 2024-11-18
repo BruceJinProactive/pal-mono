@@ -2,12 +2,12 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from db.tables import Feedback
+
 from . import _implementation
 
-# from db.tables.feedback import Feedback
 
-
-def create_feedback(db: Session, feedback: dict) -> dict:
+def create_feedback(db: Session, feedback: dict) -> Feedback:
     """
     Creates feedback in the database.
 
@@ -21,7 +21,7 @@ def create_feedback(db: Session, feedback: dict) -> dict:
     return _implementation.create_feedback(db, feedback)
 
 
-def get_feedback_by_id(db: Session, feedback_id: UUID) -> dict:
+def get_feedback_by_id(db: Session, feedback_id: UUID) -> Feedback | None:
     """
     Retrieves feedback by id from the database.
 
@@ -30,14 +30,14 @@ def get_feedback_by_id(db: Session, feedback_id: UUID) -> dict:
         feedback_id (UUID): The feedback to retrieve.
 
     Returns:
-        Feedback: The DB Feedback object associated with the id if it exists
+        Feedback | None: The DB Feedback object associated with the id if it exists else None
     """
     return _implementation.get_feedback_by_id(db, feedback_id)
 
 
 def update_feedback_by_id(
     db: Session, feedback_id: UUID, updated_feedback: dict
-) -> dict:
+) -> Feedback:
     """
     Updates feedback by id in the database.
 
