@@ -16,6 +16,7 @@ async def get_ai_agent_async(
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
+    stream: bool = False,
 ) -> PhiAgent:
     # Retrieve the agent from the database
     agent_repository = AgentRepositoryAsync(db)
@@ -31,6 +32,7 @@ async def get_ai_agent_async(
         agent_raw_config=agent.raw_config,
         user_id=str(user_id),
         conversation_id=str(conversation_id),
+        stream=stream,
     )
 
 

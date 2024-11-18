@@ -17,9 +17,10 @@ def integrate_agent(
     user_id: str,
     conversation_id: str | None = None,
     new_run: bool = False,
+    stream: bool = False,
 ) -> Agent:
     # -*- Agent settings
-    model = get_model()
+    model = get_model(stream=stream)
 
     # -*- Agent Memory
     memory = get_memory(account_name)
@@ -72,7 +73,7 @@ def integrate_agent(
         # -*- System Prompt Settings
         system_prompt=system_prompt,
         # -*- Agent Response Settings
-        output_model=OutputModel,
+        output_model=None if stream else OutputModel,
         parse_response=True,
         structured_outputs=False,  # please set to False for JSON mode
         # -*- Agent run details

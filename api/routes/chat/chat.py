@@ -1,11 +1,15 @@
+from typing import AsyncIterator
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from phi.run.response import RunResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse, ErrorResponse
 from api.schemas.chat.message import Message, TextObject
 from db.session import get_db_async
-from services.message_service import get_chat_response_async
+from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_messages
 from utils.log import logger
 
@@ -21,6 +25,48 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
     try:
         # Process the message
         logger.info(f"Received message: {request.message}")
+
+        if request.stream:
+
+            async def generate() -> AsyncIterator[str]:
+                try:
+                    response_stream = await get_chat_response_stream(
+                        db=db, message=request.message
+                    )
+
+                    if response_stream:
+                        async for chunk in response_stream:
+                            if isinstance(chunk, RunResponse):
+                                content = chunk.get_content_as_string()
+                                if content:
+                                    yield f"data: {content}\n\n"
+                            elif isinstance(chunk, tuple):
+                                yield f"data: {chunk[0]}\n\n"
+                            elif chunk:
+                                if not isinstance(chunk, (str, int, float, bool)):
+                                    logger.warning(
+                                        f"Unexpected chunk type: {type(chunk)}"
+                                    )
+                                    continue
+                                content = str(chunk)
+                                logger.debug(f"Sending chunk: {content}")
+                                yield f"data: {content}\n\n"
+
+                        # Send completion signal
+                        yield "data: [DONE]\n\n"
+                except Exception as e:
+                    logger.error(f"Error in generate(): {str(e)}")
+                    yield "data: [ERROR] An error occurred while streaming the response.\n\n"
+
+            return StreamingResponse(
+                generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",  # For nginx
+                },
+            )
 
         # Get the response message from message service
         response_messages = await get_chat_response_async(

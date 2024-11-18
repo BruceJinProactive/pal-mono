@@ -1,5 +1,5 @@
 from openai import AsyncOpenAI, OpenAI
-from phi.model.openai.like import OpenAILike
+from phi.model.openai.chat import OpenAIChat
 
 from . import _implementation
 
@@ -9,7 +9,8 @@ ModelName = _implementation.ModelName
 
 def get_model(
     model_name: str = ModelName.MEDIUM,
-) -> OpenAILike:
+    stream: bool = False,
+) -> OpenAIChat:
     """
     Get the appropriate LLM (Large Language Model) instance based on the provided model name.
 
@@ -19,7 +20,7 @@ def get_model(
     Returns:
         An instance of OpenAILike configured with the model router settings.
     """
-    return _implementation.get_model(model_name)
+    return _implementation.get_model(model_name, stream=stream)
 
 
 def get_embedder():

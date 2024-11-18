@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import AsyncIterator, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -132,6 +132,82 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         response = "Something went wrong. Please try again."
 
     return response_messages
+
+
+async def get_chat_response_stream(
+    db: AsyncSession, message: Message
+) -> AsyncIterator[Message]:
+    user = None
+    message_repo = MessageRepositoryAsync(db)
+
+    async def error_response_generator() -> AsyncIterator[Message]:
+        error_message = Message(
+            author_type=AuthorType.AGENT,
+            sender_identifier=message.recipient_identifier,
+            recipient_identifier=message.sender_identifier,
+            channel=message.channel,
+            broker=message.broker,
+            text=TextObject(body="Something went wrong. Please try again."),
+            metadata={"instance": "BaseModel"},
+            extras=Extras(),
+        )
+        yield error_message
+
+    try:
+        # find project with matching channel platform, identifier pair
+        project_channel_identifier = (
+            f"{message.channel.value}:{message.recipient_identifier}"
+        )
+        project_repo = ProjectRepositoryAsync(db)
+        project = await project_repo.get_project_by_channel_identifier(
+            project_channel_identifier
+        )
+        if project is None:
+            raise ValueError(
+                f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
+            )
+
+        # Get user_id by sender channel/number with user_service
+        user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
+        user_repo = UserRepositoryAsync(db)
+        user = await user_repo.get_user_by_channel_identifier(
+            account_id=project.account_id,
+            channel_identifier=user_channel_identifier,
+        )
+        if user is None:
+            user = await user_repo.create_user(
+                project.account_id, user_channel_identifier
+            )
+
+        # Save request message to database
+        request_message = await message_repo.create_message(
+            user_id=user.id, message_body=message.to_dict()
+        )
+        if not request_message:
+            raise ValueError("Failed to create request message")
+        conversation_id = request_message.conversation_id
+
+        # Get appropriate agent from account name
+        agent_id = project.agent_id
+        if agent_id is None:
+            raise ValueError("Agent ID not found")
+        agent = await agent_service.get_ai_agent_async(
+            db=db,
+            agent_id=agent_id,
+            user_id=user.id,
+            conversation_id=conversation_id,
+            stream=True,
+        )
+
+        # Get response from agent
+        request_content = message.get_content()
+        response_stream = await agent.arun(request_content, stream=True)
+        return response_stream
+
+    except Exception:
+        # Log any error and return error message stream
+        logger.exception("Error in get_chat_response_stream")
+        return error_response_generator()
 
 
 def get_chat_response(db: Session, message: Message) -> Message:

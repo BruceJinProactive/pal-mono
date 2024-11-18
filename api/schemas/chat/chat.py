@@ -8,6 +8,7 @@ from api.schemas.chat.message import Message
 class ChatRequest(BaseModel):
     message: Message
     async_response: bool = False
+    stream: bool = False
 
 
 class ChatResponse(BaseModel):

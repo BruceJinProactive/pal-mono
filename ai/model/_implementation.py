@@ -3,6 +3,7 @@ from os import getenv
 
 from openai import AsyncOpenAI, OpenAI
 from phi.embedder.openai import OpenAIEmbedder
+from phi.model.openai.chat import OpenAIChat
 from phi.model.openai.like import OpenAILike
 from pydantic import BaseModel, Field
 
@@ -50,11 +51,15 @@ def get_async_client() -> AsyncOpenAI:
     return client
 
 
-def get_model(model_name: str = ModelName.MEDIUM) -> OpenAILike:
-    model = OpenAILike(
-        id=model_name, client=get_client(), async_client=get_async_client()
-    )
-    return model
+def get_model(model_name: str = ModelName.MEDIUM, stream: bool = False) -> OpenAIChat:
+    if stream:
+        model = OpenAIChat(id="gpt-4o")
+        return model
+    else:
+        model = OpenAILike(
+            id=model_name, client=get_client(), async_client=get_async_client()
+        )
+        return model
 
 
 def get_embedder():

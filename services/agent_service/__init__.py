@@ -15,6 +15,7 @@ async def get_ai_agent_async(
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
+    stream: bool = False,
 ) -> PhiAgent:
     """
     Retrieve a PhiAgent instance based on the provided agent ID, user ID, and conversation ID.
@@ -29,7 +30,7 @@ async def get_ai_agent_async(
         PhiAgent: The retrieved PhiAgent instance.
     """
     return await _implementation.get_ai_agent_async(
-        db, agent_id, user_id, conversation_id=conversation_id
+        db, agent_id, user_id, conversation_id=conversation_id, stream=stream
     )
 
 

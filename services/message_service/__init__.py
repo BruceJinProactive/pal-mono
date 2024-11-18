@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import AsyncIterator, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -27,6 +27,30 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         ValueError: If the response type from the agent is unexpected.
     """
     return await _implementation.get_chat_response_async(db, message)
+
+
+async def get_chat_response_stream(
+    db: AsyncSession, message: Message
+) -> AsyncIterator[Message]:
+    """
+     Get a stream of chat responses for a given message.
+
+     This function retrieves a stream of chat responses from the agent for the provided message.
+     It saves the request message to the database, retrieves the appropriate agent, and streams
+     the responses from the agent.
+
+     Args:
+         db (AsyncSession): The asynchronous database session to use for the query.
+         message (Message): The message object containing the details of the user's message.
+
+     Returns:
+        AsyncIterator[Message]: A stream of response messages from the agent.
+
+    Raises:
+        ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
+        ValueError: If the response type from the agent is unexpected.
+    """
+    return await _implementation.get_chat_response_stream(db, message)
 
 
 def get_chat_response(db: Session, message: Message) -> Message:

@@ -12,6 +12,7 @@ def integrate_agent(
     user_id: str,
     conversation_id: str | None = None,
     new_run: bool = False,
+    stream: bool = False,
 ) -> Agent:
     """
     Integrate and configure an AI agent for a specific account and user.
@@ -45,4 +46,5 @@ def integrate_agent(
         user_id=user_id,
         conversation_id=conversation_id,
         new_run=new_run,
+        stream=stream,
     )
