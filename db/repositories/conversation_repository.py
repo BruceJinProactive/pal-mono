@@ -9,8 +9,8 @@ from utils.log import logger
 
 
 class ConversationRepository:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, session: Session):
+        self.session = session
 
     def get_conversations(self, skip: int = 0, limit: int = 100):
         """
@@ -24,9 +24,9 @@ class ConversationRepository:
             List[Conversation] | None: A list of conversation objects, or None if an error occurs.
         """
         try:
-            return self.db.query(Conversation).offset(skip).limit(limit).all()
+            return self.session.query(Conversation).offset(skip).limit(limit).all()
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving conversations: {e}")
             return None
 
@@ -47,12 +47,12 @@ class ConversationRepository:
             raise ValueError("'user_id' must be provided")
         try:
             return (
-                self.db.query(Conversation)
+                self.session.query(Conversation)
                 .filter(Conversation.user_id == user_id)
                 .all()
             )
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving conversations by user: {e}")
             return None
 
@@ -75,24 +75,24 @@ class ConversationRepository:
 
         try:
             return (
-                self.db.query(Conversation)
+                self.session.query(Conversation)
                 .filter(Conversation.user_id.in_(user_ids))
                 .all()
             )
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving conversations by users: {e}")
             return []
 
     def get_conversation_by_id(self, conversation_id: uuid.UUID):
         try:
             return (
-                self.db.query(Conversation)
+                self.session.query(Conversation)
                 .filter(Conversation.id == conversation_id)
                 .first()
             )
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving conversation by id: {e}")
             return None
 
@@ -108,10 +108,10 @@ class ConversationRepository:
         """
         try:
             db_conversation = Conversation(user_id=user_id)
-            self.db.add(db_conversation)
-            self.db.commit()
+            self.session.add(db_conversation)
+            self.session.commit()
             return db_conversation
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error creating conversation: {e}")
             return None

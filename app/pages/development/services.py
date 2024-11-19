@@ -5,6 +5,7 @@ import streamlit as st
 from sqlalchemy.exc import IntegrityError
 from streamlit_extras.switch_page_button import switch_page
 
+import db
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
@@ -14,7 +15,6 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from app.auth import user
-from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import get_conversation_messages, get_inbox_conversations
 from services.message_service import get_chat_response
@@ -23,7 +23,7 @@ from utils.dttm import current_utc
 
 st.title("Services")
 
-db = next(get_db())
+session = next(db.get_db())
 
 (
     message_service_tab,
@@ -68,7 +68,7 @@ def main() -> None:
                 broker=broker,
                 extras=extras,
             )
-            output_message = get_chat_response(db, input_message)
+            output_message = get_chat_response(session, input_message)
             st.write(output_message.to_dict())
 
     with agent_service_tab:
@@ -81,9 +81,9 @@ def main() -> None:
 
         for name in account_names:
             try:
-                accounts.append(create_account_with_defaults(db, name))
+                accounts.append(create_account_with_defaults(session, name))
             except IntegrityError:  # account already exists
-                account = get_account(db, name)
+                account = get_account(session, name)
 
                 if not account:
                     continue
@@ -115,7 +115,7 @@ def main() -> None:
             if selected_account:
                 account_id = selected_account.split()[0]
                 st.session_state.conversations = get_inbox_conversations(
-                    db, uuid.UUID(account_id)
+                    session, uuid.UUID(account_id)
                 )
                 st.session_state.loaded_conversations = (
                     True  # Set flag to True after loading
@@ -144,7 +144,7 @@ def main() -> None:
                         )
                         account_id = selected_account.split()[0]
                         messages = get_conversation_messages(
-                            db,
+                            session,
                             uuid.UUID(account_id),
                             uuid.UUID(selected_conversation_id),
                         )

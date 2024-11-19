@@ -6,8 +6,8 @@ from phi.knowledge.agent import AgentKnowledge
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.vectordb.pgvector.pgvector2 import PgVector2
 
+import db
 from ai.model import get_embedder
-from db.session import db_url
 
 
 def get_knowledge(account_name: str) -> AgentKnowledge:
@@ -15,7 +15,7 @@ def get_knowledge(account_name: str) -> AgentKnowledge:
     knowledge = CombinedKnowledgeBase(
         sources=[],
         vector_db=PgVector2(
-            db_url=db_url,
+            db_url=db.db_url,
             collection=knowledge_table_name,
             embedder=get_embedder(),
         ),

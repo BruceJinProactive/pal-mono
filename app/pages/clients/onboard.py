@@ -1,13 +1,13 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
+import db
 from app.auth import user
-from db.session import get_db
 from services.account_service import create_account_with_defaults
 from services.agent_service import replace_agent_config
 
 st.title("Onboard")
-db = next(get_db())
+session = next(db.get_db())
 
 
 def main() -> None:
@@ -30,9 +30,9 @@ def main() -> None:
                     }
                 }
             }
-            new_account = create_account_with_defaults(db, account_name)
+            new_account = create_account_with_defaults(session, account_name)
             replace_agent_config(
-                db,
+                session,
                 agent_id=new_account.agents[0].id,
                 config=config,
             )

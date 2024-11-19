@@ -4,8 +4,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from db.settings import db_settings
 from utils.log import logger
+
+from .settings import db_settings
 
 # Sync database URL
 db_url = db_settings.get_db_url()

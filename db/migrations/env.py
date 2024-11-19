@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from db.session import db_url
-from db.tables import Base
+from db.tables.base import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

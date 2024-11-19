@@ -12,10 +12,10 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import ARRAY, DateTime, String
 
-from db.tables.base import Base
+from .base import Base
 
 if TYPE_CHECKING:
-    from db.tables.messages import Message
+    from .messages import Message
 
 
 class Feedback(Base):

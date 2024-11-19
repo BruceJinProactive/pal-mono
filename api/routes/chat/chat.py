@@ -5,10 +5,10 @@ from fastapi.responses import StreamingResponse
 from phi.run.response import RunResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import db
 from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse, ErrorResponse
 from api.schemas.chat.message import Message, TextObject
-from db.session import get_db_async
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_messages
 from utils.log import logger
@@ -21,7 +21,7 @@ chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
     response_model=ChatResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
+async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_async)):
     try:
         # Process the message
         logger.info(f"Received message: {request.message}")
@@ -31,7 +31,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
             async def generate() -> AsyncIterator[str]:
                 try:
                     response_stream = await get_chat_response_stream(
-                        db=db, message=request.message
+                        session=session, message=request.message
                     )
 
                     if response_stream:
@@ -70,7 +70,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db_async)):
 
         # Get the response message from message service
         response_messages = await get_chat_response_async(
-            db=db,
+            session=session,
             message=request.message,
         )
 

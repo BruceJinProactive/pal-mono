@@ -14,12 +14,12 @@ CONVERSATION_TIMEOUT_SECONDS = 24 * 3600  # 24 hours
 
 
 class MessageRepositoryAsync:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
     async def create_message(self, user_id: uuid.UUID, message_body: dict):
         # Step 1: Get the user from the database
-        result = await self.db.execute(select(User).filter(User.id == user_id))
+        result = await self.session.execute(select(User).filter(User.id == user_id))
         user = result.scalar_one_or_none()
 
         # Step 2: If no such user exists, raise an error
@@ -27,7 +27,7 @@ class MessageRepositoryAsync:
             raise ValueError(f"No user found with id {user_id}")
 
         # Step 3: Get only the necessary fields from the latest conversation
-        result = await self.db.execute(
+        result = await self.session.execute(
             select(Conversation.id, Conversation.created_at, Conversation.updated_at)
             .filter(Conversation.user_id == user.id)
             .order_by(Conversation.created_at.desc())
@@ -61,28 +61,28 @@ class MessageRepositoryAsync:
         # Step 5: Create a new conversation if needed
         if conversation_id is None:
             new_conversation = Conversation(user_id=user.id)
-            self.db.add(new_conversation)
-            await self.db.flush()
+            self.session.add(new_conversation)
+            await self.session.flush()
             conversation_id = new_conversation.id
 
         # Step 6: Create a message with message_body and add it to the conversation
         message = Message(conversation_id=conversation_id, body=message_body)
-        self.db.add(message)
-        await self.db.flush()
+        self.session.add(message)
+        await self.session.flush()
 
         # Refresh to get the new message ID
-        await self.db.refresh(message)
+        await self.session.refresh(message)
 
         return message
 
 
 class MessageRepository:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, session: Session):
+        self.session = session
 
     def create_message(self, user_id: uuid.UUID, message_body: dict):
         # Step 1: Get the user from the database
-        user = self.db.query(User).filter(User.id == user_id).first()
+        user = self.session.query(User).filter(User.id == user_id).first()
 
         # Step 2: If no such user exists, raise an error
         if not user:
@@ -90,7 +90,7 @@ class MessageRepository:
 
         # Step 3: Get the last conversation from the user
         conversation = (
-            self.db.query(Conversation)
+            self.session.query(Conversation)
             .filter(Conversation.user_id == user.id)
             .order_by(Conversation.created_at.desc())
             .first()
@@ -99,15 +99,15 @@ class MessageRepository:
         # Step 4: If no conversation exists, create one for the user
         if not conversation:
             conversation = Conversation(user_id=user.id)
-            self.db.add(conversation)
-            self.db.commit()
-            self.db.refresh(conversation)  # Refresh to get the new conversation ID
+            self.session.add(conversation)
+            self.session.commit()
+            self.session.refresh(conversation)  # Refresh to get the new conversation ID
 
         # Step 5: Create a message with message_body and add it to the conversation
         message = Message(conversation_id=conversation.id, body=message_body)
-        self.db.add(message)
-        self.db.commit()
-        self.db.refresh(message)  # Refresh to get the new message ID
+        self.session.add(message)
+        self.session.commit()
+        self.session.refresh(message)  # Refresh to get the new message ID
 
         return message
 
@@ -124,7 +124,7 @@ class MessageRepository:
         """
         try:
             messages = (
-                self.db.query(Message)
+                self.session.query(Message)
                 .filter(Message.conversation_id == conversation_id)
                 .order_by(
                     # filter by created_at ascending so messages are in chronological order
@@ -135,7 +135,7 @@ class MessageRepository:
 
             return messages
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving last message: {e}")
             return []
 
@@ -152,7 +152,7 @@ class MessageRepository:
         """
         try:
             message = (
-                self.db.query(Message)
+                self.session.query(Message)
                 .filter(Message.conversation_id == conversation_id)
                 .order_by(
                     # filter by created_at desc so first message is most recent
@@ -166,7 +166,7 @@ class MessageRepository:
 
             return message
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving last message: {e}")
             return None
 
@@ -183,13 +183,13 @@ class MessageRepository:
         """
         try:
             message_count = (
-                self.db.query(Message)
+                self.session.query(Message)
                 .filter(Message.conversation_id == conversation_id)
                 .count()
             )
 
             return message_count
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving message count: {e}")
             return 0

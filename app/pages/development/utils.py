@@ -1,13 +1,13 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
+import db
 from app.auth import user
-from db.session import get_db
 from utils.secret import get_client_secret
 
 st.title("Services")
 
-db = next(get_db())
+session = next(db.get_db())
 
 (secret_tab,) = st.tabs(["Secret"])
 

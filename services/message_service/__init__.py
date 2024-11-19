@@ -4,19 +4,20 @@ from typing import AsyncIterator, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-import db.tables as db
+import db
 from api.schemas.chat.message import Message
-from db.tables import Conversation
 
 from . import _implementation
 
 
-async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Message]:
+async def get_chat_response_async(
+    session: AsyncSession, message: Message
+) -> list[Message]:
     """
     Processes an incoming message and generates a response from the appropriate agent.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         message (Message): The incoming message object.
 
     Returns:
@@ -26,11 +27,11 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
         ValueError: If the response type from the agent is unexpected.
     """
-    return await _implementation.get_chat_response_async(db, message)
+    return await _implementation.get_chat_response_async(session, message)
 
 
 async def get_chat_response_stream(
-    db: AsyncSession, message: Message
+    session: AsyncSession, message: Message
 ) -> AsyncIterator[Message]:
     """
      Get a stream of chat responses for a given message.
@@ -40,7 +41,7 @@ async def get_chat_response_stream(
      the responses from the agent.
 
      Args:
-         db (AsyncSession): The asynchronous database session to use for the query.
+         session (AsyncSession): The asynchronous database session to use for the query.
          message (Message): The message object containing the details of the user's message.
 
      Returns:
@@ -50,15 +51,15 @@ async def get_chat_response_stream(
         ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
         ValueError: If the response type from the agent is unexpected.
     """
-    return await _implementation.get_chat_response_stream(db, message)
+    return await _implementation.get_chat_response_stream(session, message)
 
 
-def get_chat_response(db: Session, message: Message) -> Message:
+def get_chat_response(session: Session, message: Message) -> Message:
     """
     Processes an incoming message and generates a response from the appropriate agent.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         message (Message): The incoming message object.
 
     Returns:
@@ -68,73 +69,73 @@ def get_chat_response(db: Session, message: Message) -> Message:
         ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
         ValueError: If the response type from the agent is unexpected.
     """
-    return _implementation.get_chat_response(db, message)
+    return _implementation.get_chat_response(session, message)
 
 
 def get_messages_by_conversation(
-    db: Session, conversation_id: uuid.UUID
+    session: Session, conversation_id: uuid.UUID
 ) -> List[db.Message]:
     """
     Retrieves all messages for a given conversation.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         conversation_id (uuid.UUID): The unique identifier of the conversation.
 
     Returns:
-        List[Message]: A list of Message objects associated with the conversation.
+        List[db.Message]: A list of Message objects associated with the conversation.
     """
-    return _implementation.get_messages_by_conversation(db, conversation_id)
+    return _implementation.get_messages_by_conversation(session, conversation_id)
 
 
 def get_conversations_by_user(
-    db: Session, user_id: uuid.UUID, create_new_conversation: bool = False
+    session: Session, user_id: uuid.UUID, create_new_conversation: bool = False
 ) -> List[db.Conversation]:
     """
     Retrieves all conversations associated with a given user ID. Optionally creates a new conversation
     if no existing conversations are found and the 'create_new_conversation' flag is set to True.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         user_id (uuid.UUID): The unique identifier of the user.
         create_new_conversation (bool): Flag to determine if a new conversation should be created if none exist.
 
     Returns:
-        List[Conversation]: A list of Conversation objects.
+        List[db.Conversation]: A list of Conversation objects.
     """
     return _implementation.get_conversations_by_user(
-        db, user_id, create_new_conversation
+        session, user_id, create_new_conversation
     )
 
 
 def get_conversations_by_users(
-    db: Session, user_ids: List[uuid.UUID]
-) -> List[Conversation]:
+    session: Session, user_ids: List[uuid.UUID]
+) -> List[db.Conversation]:
     """
     Retrieves conversations associated with a list of user IDs.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         user_ids (List[uuid.UUID]): List of user IDs to retrieve conversations for.
 
     Returns:
-        List[Conversation]: A list of conversations associated with the specified user IDs.
+        List[db.Conversation]: A list of conversations associated with the specified user IDs.
     """
-    return _implementation.get_conversations_by_users(db, user_ids)
+    return _implementation.get_conversations_by_users(session, user_ids)
 
 
-def create_conversation(db: Session, user_id: uuid.UUID) -> Conversation | None:
+def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:
     """
     Creates a new conversation for the user
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         user_id (uuid.UUID): The user id associated with the new conversation
 
     Returns:
-        Conversation: A new conversation
+        db.Conversation: A new conversation
     """
-    return _implementation.create_conversation(db, user_id)
+    return _implementation.create_conversation(session, user_id)
 
 
 __all__ = [

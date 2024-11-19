@@ -4,9 +4,9 @@ import pandas as pd
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
+import db
 from app.auth import user
 from app.shared import json_decode, universal_picker_ui
-from db.session import get_db
 from services.account_service import get_account
 from services.project_service import (
     get_project,
@@ -17,7 +17,7 @@ from services.project_service import (
 
 st.title("Projects")
 
-db = next(get_db())
+session = next(db.get_db())
 
 
 def main() -> None:
@@ -29,8 +29,8 @@ def main() -> None:
         return
 
     account_name = st.session_state["account_name"]
-    account = get_account(db, account_name)
-    project = get_project(db, account.projects[0].id) if account else None
+    account = get_account(session, account_name)
+    project = get_project(session, account.projects[0].id) if account else None
 
     if project is None:
         st.write("Project not found")
@@ -64,7 +64,7 @@ def main() -> None:
                     new_channel_identifiers.append(f"{channel}:{identifier}")
 
             replace_project_channel_identifiers(
-                db,
+                session,
                 project_id=project.id,
                 channel_identifiers=new_channel_identifiers,
             )
@@ -92,7 +92,7 @@ def main() -> None:
                 replace_config_json = json_decode(replace_config)
                 if replace_config_json:
                     replace_project_config(
-                        db,
+                        session,
                         project_id=project.id,
                         config=replace_config_json,
                     )
@@ -118,7 +118,7 @@ def main() -> None:
                 update_config_json = json_decode(update_config)
                 if update_config_json:
                     update_project_config(
-                        db,
+                        session,
                         project_id=project.id,
                         config=update_config_json,
                     )
@@ -134,7 +134,7 @@ def main() -> None:
 
 
 if user.is_logged_in:
-    universal_picker_ui(db)
+    universal_picker_ui(session)
     main()
 else:
     switch_page("home")

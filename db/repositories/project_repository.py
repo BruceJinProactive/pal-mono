@@ -12,8 +12,8 @@ from utils.log import logger
 
 
 class ProjectRepositoryAsync:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
     async def get_project_by_channel_identifier(
         self, channel_identifier: str
@@ -29,14 +29,14 @@ class ProjectRepositoryAsync:
         query = select(Project).filter(
             Project.channel_identifiers.contains([channel_identifier])
         )
-        result = await self.db.execute(query)
+        result = await self.session.execute(query)
         project = result.scalar_one_or_none()
         return project
 
 
 class ProjectRepository:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, session: Session):
+        self.session = session
 
     def create_project(
         self, project_name: str, account_id: uuid.UUID, agent_id: uuid.UUID
@@ -44,12 +44,12 @@ class ProjectRepository:
         db_project = Project(
             name=project_name, account_id=account_id, agent_id=agent_id
         )
-        self.db.add(db_project)
-        self.db.commit()
+        self.session.add(db_project)
+        self.session.commit()
         return db_project
 
     def get_project(self, project_id: uuid.UUID) -> Project | None:
-        return self.db.query(Project).filter(Project.id == project_id).first()
+        return self.session.query(Project).filter(Project.id == project_id).first()
 
     def get_project_by_channel(self, channel_platform: str, channel_identifier: str):
         """
@@ -78,7 +78,7 @@ class ProjectRepository:
         @> to match the pair.
         """
         query = (
-            self.db.query(Project)
+            self.session.query(Project)
             .filter(
                 text(
                     "EXISTS (SELECT 1 FROM jsonb_array_elements(raw_config->'channels') AS elem "
@@ -105,7 +105,7 @@ class ProjectRepository:
         """
         # Use the `contains` operator for fast lookup
         project = (
-            self.db.query(Project)
+            self.session.query(Project)
             .filter(Project.channel_identifiers.contains([channel_identifier]))
             .first()
         )
@@ -130,9 +130,9 @@ class ProjectRepository:
                 raise ValueError(f"Project {project_id} not found")
 
             project.raw_config.update(config)
-            self.db.commit()
+            self.session.commit()
         except (SQLAlchemyError, ValueError) as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error updating project config: {e}")
             raise
 
@@ -157,9 +157,9 @@ class ProjectRepository:
                 raise ValueError(f"project {project_id} not found")
 
             project.channel_identifiers = channel_identifiers
-            self.db.commit()
+            self.session.commit()
         except (SQLAlchemyError, ValueError) as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error replacing project channel identifiers: {e}")
             raise
 
@@ -184,8 +184,8 @@ class ProjectRepository:
                 raise ValueError(f"project {project_id} not found")
 
             project.raw_config = config
-            self.db.commit()
+            self.session.commit()
         except (SQLAlchemyError, ValueError) as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error replacing project config: {e}")
             raise

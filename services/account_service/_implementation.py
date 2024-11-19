@@ -2,29 +2,26 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from db.repositories.account_repository import AccountRepository
-from db.repositories.agent_repository import AgentRepository
-from db.repositories.project_repository import ProjectRepository
-from db.tables import Account
+import db
 
 
-def get_accounts(db: Session) -> List[Account]:
-    account_repository = AccountRepository(db)
+def get_accounts(session: Session) -> List[db.Account]:
+    account_repository = db.AccountRepository(session)
     accounts = account_repository.get_accounts()
     return accounts
 
 
-def get_account(db: Session, account_name: str) -> Optional[Account]:
-    account_repository = AccountRepository(db)
+def get_account(session: Session, account_name: str) -> Optional[db.Account]:
+    account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name=account_name)
     return account
 
 
-def create_account_with_defaults(db: Session, account_name: str) -> Account:
+def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
     # Instantiate the repositories
-    account_repository = AccountRepository(db)
-    project_repository = ProjectRepository(db)
-    agent_repository = AgentRepository(db)
+    account_repository = db.AccountRepository(session)
+    project_repository = db.ProjectRepository(session)
+    agent_repository = db.AgentRepository(session)
 
     # Use the repositories to create the account, project, and agent
     account = account_repository.create_account(account_name)

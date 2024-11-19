@@ -2,50 +2,50 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from db.tables import Account
+import db
 
 from . import _implementation
 
 
-def get_accounts(db: Session) -> List[Account]:
+def get_accounts(session: Session) -> List[db.Account]:
     """
     Retrieve a list of all Accounts.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
 
     Returns:
         List[Account]: A list of all Accounts.
     """
-    return _implementation.get_accounts(db)
+    return _implementation.get_accounts(session)
 
 
-def get_account(db: Session, account_name: str) -> Optional[Account]:
+def get_account(session: Session, account_name: str) -> Optional[db.Account]:
     """
     Retrieve an Account by its name.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         account_name (str): The name of the Account to retrieve.
 
     Returns:
         Account: The Account with the given name, or None if no such Account is found.
     """
-    return _implementation.get_account(db, account_name)
+    return _implementation.get_account(session, account_name)
 
 
-def create_account_with_defaults(db: Session, account_name: str) -> Account:
+def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
     """
     Creates a new account with default settings.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         account_name (str): The name of the new account.
 
     Returns:
         Account: The created account
     """
-    return _implementation.create_account_with_defaults(db, account_name)
+    return _implementation.create_account_with_defaults(session, account_name)
 
 
 __all__ = [

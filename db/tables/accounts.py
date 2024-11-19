@@ -10,12 +10,12 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
-from db.tables.base import Base
+from .base import Base
 
 if TYPE_CHECKING:
-    from db.tables.agents import Agent
-    from db.tables.projects import Project
-    from db.tables.users import User
+    from .agents import Agent
+    from .projects import Project
+    from .users import User
 
 
 class Account(Base):

@@ -5,13 +5,13 @@ from phi.agent.agent import Agent as PhiAgent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from db.tables import Agent
+import db
 
 from . import _implementation
 
 
 async def get_ai_agent_async(
-    db: AsyncSession,
+    session: AsyncSession,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
@@ -21,7 +21,7 @@ async def get_ai_agent_async(
     Retrieve a PhiAgent instance based on the provided agent ID, user ID, and conversation ID.
 
     Args:
-        db (AsyncSession): The asynchronous database session to use for the query.
+        session (AsyncSession): The asynchronous database session to use for the query.
         agent_id (uuid.UUID): The unique identifier of the agent.
         user_id (uuid.UUID): The unique identifier of the user.
         conversation_id (uuid.UUID): The unique identifier of the conversation.
@@ -30,12 +30,12 @@ async def get_ai_agent_async(
         PhiAgent: The retrieved PhiAgent instance.
     """
     return await _implementation.get_ai_agent_async(
-        db, agent_id, user_id, conversation_id=conversation_id, stream=stream
+        session, agent_id, user_id, conversation_id=conversation_id, stream=stream
     )
 
 
 def get_ai_agent(
-    db: Session,
+    session: Session,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID | None = None,
@@ -45,7 +45,7 @@ def get_ai_agent(
     Retrieve a PhiAgent instance based on the provided agent ID and user ID.
 
     Args:
-        db (Session): The database session to use for the query.
+        session (Session): The database session to use for the query.
         agent_id (uuid.UUID): The unique identifier of the agent.
         user_id (uuid.UUID): The unique identifier of the user.
         new_run (bool, optional): Flag indicating whether this is a new run. Defaults to False.
@@ -54,70 +54,72 @@ def get_ai_agent(
         PhiAgent: The retrieved PhiAgent instance.
     """
     return _implementation.get_ai_agent(
-        db, agent_id, user_id, conversation_id, new_run=new_run
+        session, agent_id, user_id, conversation_id, new_run=new_run
     )
 
 
-def get_agent(db: Session, agent_id: uuid.UUID) -> Optional[Agent]:
+def get_agent(session: Session, agent_id: uuid.UUID) -> Optional[db.Agent]:
     """
     Retrieve an Agent instance based on the provided agent ID.
 
     Args:
-        db (Session): The database session to use for the query.
+        session (Session): The database session to use for the query.
         agent_id (uuid.UUID): The unique identifier of the agent.
 
     Returns:
         Optional[Agent]: The retrieved Agent instance if found, otherwise None.
     """
-    return _implementation.get_agent(db, agent_id)
+    return _implementation.get_agent(session, agent_id)
 
 
-def get_agents_by_account(db: Session, account_name: str) -> Optional[List[Agent]]:
+def get_agents_by_account(
+    session: Session, account_name: str
+) -> Optional[List[db.Agent]]:
     """
     Retrieve a list of Agents instance based on the provided agent ID.
 
     Args:
-        db (Session): The database session to use for the query.
+        session (Session): The database session to use for the query.
         account_name (str): The unique identifier of the agent.
 
     Returns:
         Optional[List[Agent]]: Return the list of agents if found, otherwise None
     """
-    return _implementation.get_agents_by_account(db, account_name)
+    return _implementation.get_agents_by_account(session, account_name)
 
 
 def update_agent_config(
-    db: Session, agent_id: uuid.UUID, config: Dict[str, Any]
+    session: Session, agent_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
     """
     Update the raw_config of the agent associated with the provided agent ID.
 
     Args:
-        db (Session): The database session to use for the update.
+        session (Session): The database session to use for the update.
         agent_id (uuid.UUID): The unique identifier of the agent.
         config (Dict[str, Any]): A dictionary containing the configuration settings to update.
 
     Returns:
         None
     """
-    return _implementation.update_agent_config(db, agent_id, config)
+    return _implementation.update_agent_config(session, agent_id, config)
 
 
 def replace_agent_config(
-    db: Session, agent_id: uuid.UUID, config: Dict[str, Any]
+    session: Session, agent_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
     """
     Replace the raw_config of the agent associated with the provided agent ID.
 
     Args:
-        db (Session): The database session to use for the update.
+        session (Session): The database session to use for the update.
         agent_id (uuid.UUID): The unique identifier of the agent.
         config (Dict[str, Any]): A dictionary containing the new configuration settings.
 
     Returns:
         None
     """
-    return _implementation.replace_agent_config(db, agent_id, config)
+    return _implementation.replace_agent_config(session, agent_id, config)
 
 
 __all__ = [

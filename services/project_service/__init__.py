@@ -6,29 +6,29 @@ from sqlalchemy.orm import Session
 from . import _implementation
 
 
-def get_project(db: Session, project_id: uuid.UUID):
+def get_project(session: Session, project_id: uuid.UUID):
     """
     Gets a specific project using its unique identifier.
 
     Args:
-        db (Session): The database connection.
+        session (Session): The database connection.
         project_id (uuid.UUID): The unique identifier of the project.
 
     Returns:
         The Project with the matching unique identifier, or None if no such Project exists.
     """
 
-    return _implementation.get_project(db, project_id)
+    return _implementation.get_project(session, project_id)
 
 
 def replace_project_channel_identifiers(
-    db: Session, project_id: uuid.UUID, channel_identifiers: List[str]
+    session: Session, project_id: uuid.UUID, channel_identifiers: List[str]
 ) -> None:
     """
     Replaces a project's channel identifiers.
 
     Args:
-        db (Session): The database connection.
+        session (Session): The database connection.
         project_id (uuid.UUID): The unique identifier of the project whose configuration is being replaced.
         channel_identifiers (List[str]): A list of the new channel identifiers.
 
@@ -37,18 +37,18 @@ def replace_project_channel_identifiers(
     """
 
     return _implementation.replace_project_channel_identifiers(
-        db, project_id, channel_identifiers
+        session, project_id, channel_identifiers
     )
 
 
 def update_project_config(
-    db: Session, project_id: uuid.UUID, config: Dict[str, Any]
+    session: Session, project_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
     """
     Updates specific key-value pairs in the configuration of a given project.
 
     Args:
-        db (Session): The database connection.
+        session (Session): The database connection.
         project_id (uuid.UUID): The unique identifier of the project whose configuration is being updated.
         config (Dict[str, Any]): A dictionary containing the config keys to update in the project's configuration.
 
@@ -56,17 +56,17 @@ def update_project_config(
         None
     """
 
-    return _implementation.update_project_config(db, project_id, config)
+    return _implementation.update_project_config(session, project_id, config)
 
 
 def replace_project_config(
-    db: Session, project_id: uuid.UUID, config: Dict[str, Any]
+    session: Session, project_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
     """
     Replaces entire configuration of a given project.
 
     Args:
-        db (Session): The database connection.
+        session (Session): The database connection.
         project_id (uuid.UUID): The unique identifier of the project whose configuration is being replaced.
         config (Dict[str, Any]): A dictionary containing the config that will replace the existing project's configuration.
 
@@ -74,7 +74,7 @@ def replace_project_config(
         None
     """
 
-    return _implementation.replace_project_config(db, project_id, config)
+    return _implementation.replace_project_config(session, project_id, config)
 
 
 __all__ = [

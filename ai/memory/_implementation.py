@@ -3,7 +3,7 @@ from phi.memory.db.postgres import PgMemoryDb
 from phi.memory.manager import MemoryManager
 from phi.memory.memory import Memory
 
-from db.session import db_url
+import db
 
 
 def add_memory(memory: AgentMemory, new_memory_input: str) -> None:
@@ -78,7 +78,7 @@ def get_memory(account_name: str) -> AgentMemory:
     memory_table_name = f"{account_name}_memory"
     memory = AgentMemory(
         db=PgMemoryDb(
-            db_url=db_url,
+            db_url=db.db_url,
             table_name=memory_table_name,
         ),
         create_user_memories=True,

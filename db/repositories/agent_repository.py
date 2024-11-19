@@ -11,11 +11,11 @@ from utils.log import logger
 
 
 class AgentRepositoryAsync:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
     async def get_agent(self, agent_id: uuid.UUID) -> Optional[Agent]:
-        result = await self.db.execute(
+        result = await self.session.execute(
             select(Agent)
             # [IMPORTANT] The next fixes the following error: 2024-10-21 00:17:10 {"asctime": "2024-10-21 07:17:10,747", "name": "pal-mono", "levelname": "ERROR", "message": "Error in get_chat_response: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place? (Background on this error at: https://sqlalche.me/e/20/xd2s)"}
             .options(selectinload(Agent.account)).where(Agent.id == agent_id)
@@ -24,33 +24,35 @@ class AgentRepositoryAsync:
 
 
 class AgentRepository:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, session: Session):
+        self.session = session
 
     def get_agents(self, skip: int = 0, limit: int = 100) -> List[Agent]:
         """Retrieve a list of agents with pagination."""
         try:
-            return self.db.query(Agent).offset(skip).limit(limit).all()
+            return self.session.query(Agent).offset(skip).limit(limit).all()
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving agents: {e}")
             return []
 
     def get_agent(self, agent_id: uuid.UUID) -> Optional[Agent]:
         """Retrieve a single agent by its ID."""
         try:
-            return self.db.query(Agent).filter(Agent.id == agent_id).first()
+            return self.session.query(Agent).filter(Agent.id == agent_id).first()
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving agent: {e}")
             return None
 
     def get_agents_by_account(self, account_id: uuid.UUID) -> List[Agent] | None:
         """Retrieve a list of agents by its account name."""
         try:
-            return self.db.query(Agent).filter(Agent.account_id == account_id).all()
+            return (
+                self.session.query(Agent).filter(Agent.account_id == account_id).all()
+            )
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving agent: {e}")
             return None
 
@@ -58,12 +60,12 @@ class AgentRepository:
         """Create a new agent with a unique UUID."""
         try:
             db_agent = Agent(id=uuid.uuid4(), account_id=account_id)
-            self.db.add(db_agent)
-            self.db.commit()
-            self.db.refresh(db_agent)
+            self.session.add(db_agent)
+            self.session.commit()
+            self.session.refresh(db_agent)
             return db_agent
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error creating agent: {e}")
             raise
 
@@ -86,9 +88,9 @@ class AgentRepository:
                 raise ValueError(f"Agent {agent_id} not found")
 
             agent.raw_config.update(config)
-            self.db.commit()
+            self.session.commit()
         except (SQLAlchemyError, ValueError) as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error updating agent config: {e}")
             raise
 
@@ -111,8 +113,8 @@ class AgentRepository:
                 raise ValueError(f"Agent {agent_id} not found")
 
             agent.raw_config = config
-            self.db.commit()
+            self.session.commit()
         except (SQLAlchemyError, ValueError) as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error replacing agent config: {e}")
             raise

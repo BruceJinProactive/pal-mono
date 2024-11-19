@@ -5,8 +5,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy.orm import Session
 
-from db.repositories.conversation_repository import ConversationRepository
-from db.repositories.user_repository import UserRepository
+import db
 
 from . import _implementation
 
@@ -62,9 +61,11 @@ def test_get_conversation_messages_valid_user(mocker):
     messages = ["mock_message1", "mock_message2"]
 
     mocker.patch.object(
-        ConversationRepository, "get_conversation_by_id", return_value=conversation_mock
+        db.ConversationRepository,
+        "get_conversation_by_id",
+        return_value=conversation_mock,
     )
-    mocker.patch.object(UserRepository, "get_user_by_id", return_value=user_mock)
+    mocker.patch.object(db.UserRepository, "get_user_by_id", return_value=user_mock)
     mocker.patch(
         "services.admin_service._implementation.get_messages_by_conversation",
         return_value=messages,
@@ -89,9 +90,11 @@ def test_get_conversation_messages_invalid_auth(mocker):
     user_mock.account_id = 1
 
     mocker.patch.object(
-        ConversationRepository, "get_conversation_by_id", return_value=conversation_mock
+        db.ConversationRepository,
+        "get_conversation_by_id",
+        return_value=conversation_mock,
     )
-    mocker.patch.object(UserRepository, "get_user_by_id", return_value=user_mock)
+    mocker.patch.object(db.UserRepository, "get_user_by_id", return_value=user_mock)
     with pytest.raises(ValueError):
         get_conversation_messages(
             mock_session, mock_account_uuid, mock_conversation_uuid

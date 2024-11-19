@@ -12,14 +12,14 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from streamlit_extras.switch_page_button import switch_page
 
+import db
 from ai.knowledge import create_document, get_knowledge, process_pdf
 from app.auth import user
 from app.shared import account_picker_ui
-from db.session import get_db
 from utils.log import logger
 
 st.title("Knowledge")
-db = next(get_db())
+session = next(db.get_db())
 account_name = ""
 
 
@@ -285,7 +285,7 @@ def knowledge_ui(account_name: str) -> None:
 
 
 def knowledge_dashboard_ui(account_name: str) -> None:
-    knowledge_base_ai = get_knowledge_by_account_name(db, account_name)
+    knowledge_base_ai = get_knowledge_by_account_name(session, account_name)
     # Define page size and initialize session state for pagination
     if knowledge_base_ai:
         PAGE_SIZE = 10  # Number of items per page
@@ -334,7 +334,7 @@ def knowledge_dashboard_ui(account_name: str) -> None:
                     col1, col2 = st.columns([10, 1])  # Adjust ratios as needed
                     with col2:
                         if st.button("x", key=f"delete_{entry['id']}"):
-                            delete_knowledge_by_id(db, account_name, entry["id"])
+                            delete_knowledge_by_id(session, account_name, entry["id"])
                             st.rerun()
                     if is_json(entry["content"]):
                         st.json(entry["content"])
@@ -416,25 +416,29 @@ def get_knowledge_table(account_name: str):
     return knowledge_table
 
 
-def get_knowledge_by_account_name(db: Session, account_name: str) -> List[Any]:
+def get_knowledge_by_account_name(session: Session, account_name: str) -> List[Any]:
     """
     Retrieve the AI knowledge for a given account name.
 
     Args:
+        session (Session): The session to use.
         account_name (str): The account name to retrieve the AI knowledge for.
     Returns:
         List[Any]: A list of AI knowledge.
     """
     # Get the dynamically generated Knowledge class with the appropriate table name
     knowledge_table = get_knowledge_table(account_name)
-    return db.query(knowledge_table).all()
+    return session.query(knowledge_table).all()
 
 
-def delete_knowledge_by_id(db: Session, account_name: str, knowledge_id: str) -> None:
+def delete_knowledge_by_id(
+    session: Session, account_name: str, knowledge_id: str
+) -> None:
     """
     Delete AI knowledge by the knowledge ID.
 
     Args:
+        session (Session): The session to use.
         account_name (str): The account name to retrieve the AI knowledge for
         knowledge_id (str): The ID of the knowledge to delete.
     Returns:
@@ -442,14 +446,16 @@ def delete_knowledge_by_id(db: Session, account_name: str, knowledge_id: str) ->
     """
     knowledge_class = get_knowledge_table(account_name)
     deleted_knowledge = (
-        db.query(knowledge_class).filter(knowledge_class.id == knowledge_id).first()
+        session.query(knowledge_class)
+        .filter(knowledge_class.id == knowledge_id)
+        .first()
     )
     try:
         if deleted_knowledge:
-            db.delete(deleted_knowledge)
-            db.commit()
+            session.delete(deleted_knowledge)
+            session.commit()
     except SQLAlchemyError as e:
-        db.rollback()
+        session.rollback()
         logger.error(f"Error deleting account: {e}")
     return None
 
@@ -464,7 +470,7 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
-    account_picker_ui(db)
+    account_picker_ui(session)
 
 
 else:

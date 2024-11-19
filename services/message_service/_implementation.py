@@ -4,7 +4,7 @@ from typing import AsyncIterator, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-import db.tables as db
+import db
 from ai.model import OutputModel
 from api.schemas.chat.message import (
     AuthorType,
@@ -14,26 +14,23 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from api.schemas.chat.message import Type as MessageType
-from db.repositories.conversation_repository import ConversationRepository
-from db.repositories.message_repository import MessageRepository, MessageRepositoryAsync
-from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
-from db.repositories.user_repository import UserRepositoryAsync
-from db.tables import Conversation
 from services import agent_service, user_service
 from utils.log import logger
 
 
-async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Message]:
+async def get_chat_response_async(
+    session: AsyncSession, message: Message
+) -> list[Message]:
     user = None
     extras = {}
-    message_repo = MessageRepositoryAsync(db)
+    message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
     try:
         # find project with matching channel platform, identifier pair
         project_channel_identifier = (
             f"{message.channel.value}:{message.recipient_identifier}"
         )
-        project_repo = ProjectRepositoryAsync(db)
+        project_repo = db.ProjectRepositoryAsync(session)
         project = await project_repo.get_project_by_channel_identifier(
             project_channel_identifier
         )
@@ -44,7 +41,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
-        user_repo = UserRepositoryAsync(db)
+        user_repo = db.UserRepositoryAsync(session)
         user = await user_repo.get_user_by_channel_identifier(
             account_id=project.account_id,
             channel_identifier=user_channel_identifier,
@@ -67,7 +64,7 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
         if agent_id is None:
             raise ValueError("Agent ID not found")
         agent = await agent_service.get_ai_agent_async(
-            db=db,
+            session=session,
             agent_id=agent_id,
             user_id=user.id,
             conversation_id=conversation_id,
@@ -135,10 +132,10 @@ async def get_chat_response_async(db: AsyncSession, message: Message) -> list[Me
 
 
 async def get_chat_response_stream(
-    db: AsyncSession, message: Message
+    session: AsyncSession, message: Message
 ) -> AsyncIterator[Message]:
     user = None
-    message_repo = MessageRepositoryAsync(db)
+    message_repo = db.MessageRepositoryAsync(session)
 
     async def error_response_generator() -> AsyncIterator[Message]:
         error_message = Message(
@@ -158,7 +155,7 @@ async def get_chat_response_stream(
         project_channel_identifier = (
             f"{message.channel.value}:{message.recipient_identifier}"
         )
-        project_repo = ProjectRepositoryAsync(db)
+        project_repo = db.ProjectRepositoryAsync(session)
         project = await project_repo.get_project_by_channel_identifier(
             project_channel_identifier
         )
@@ -169,7 +166,7 @@ async def get_chat_response_stream(
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
-        user_repo = UserRepositoryAsync(db)
+        user_repo = db.UserRepositoryAsync(session)
         user = await user_repo.get_user_by_channel_identifier(
             account_id=project.account_id,
             channel_identifier=user_channel_identifier,
@@ -192,7 +189,7 @@ async def get_chat_response_stream(
         if agent_id is None:
             raise ValueError("Agent ID not found")
         agent = await agent_service.get_ai_agent_async(
-            db=db,
+            session=session,
             agent_id=agent_id,
             user_id=user.id,
             conversation_id=conversation_id,
@@ -210,7 +207,7 @@ async def get_chat_response_stream(
         return error_response_generator()
 
 
-def get_chat_response(db: Session, message: Message) -> Message:
+def get_chat_response(session: Session, message: Message) -> Message:
     user = None
     extras = {}
 
@@ -219,7 +216,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         project_channel_identifier = (
             f"{message.channel.value}:{message.recipient_identifier}"
         )
-        project = ProjectRepository(db).get_project_by_channel_identifier(
+        project = db.ProjectRepository(session).get_project_by_channel_identifier(
             project_channel_identifier
         )
 
@@ -231,7 +228,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
         user = user_service.get_user_by_channel_identifier(
-            db=db,
+            session=session,
             account_id=project.account_id,
             channel_identifier=user_channel_identifier,
             create_new_user=True,
@@ -241,7 +238,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
             raise ValueError("User not found")
 
         # Save request message to database
-        request_message = MessageRepository(db).create_message(
+        request_message = db.MessageRepository(session).create_message(
             user_id=user.id, message_body=message.to_dict()
         )
         conversation_id = request_message.conversation_id
@@ -252,7 +249,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
             raise ValueError("Agent ID not found")
 
         agent = agent_service.get_ai_agent(
-            db=db,
+            session=session,
             agent_id=agent_id,
             user_id=user.id,
             conversation_id=conversation_id,
@@ -289,7 +286,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
 
     if user:
         # Save response message to database
-        MessageRepository(db).create_message(
+        db.MessageRepository(session).create_message(
             user_id=user.id, message_body=response_message.to_dict()
         )
 
@@ -297,7 +294,7 @@ def get_chat_response(db: Session, message: Message) -> Message:
 
 
 def get_messages_by_conversation(
-    db: Session, conversation_id: uuid.UUID
+    session: Session, conversation_id: uuid.UUID
 ) -> List[db.Message]:
     """
     Retrieves all Messages for a given Conversation.
@@ -305,22 +302,22 @@ def get_messages_by_conversation(
     This function queries the database to fetch all Messages associated with the specified Conversation ID.
 
     Args:
-        db (Session): The database connection.
+        session (Session): The database connection.
         conversation_id (uuid.UUID): The unique identifier of the Conversation for which Messages are being retrieved.
 
     Returns:
         List[db.Message]: A list of Message objects representing the messages in the specified Conversation.
     """
-    messages = MessageRepository(db).get_messages_by_conversation(
+    messages = db.MessageRepository(session).get_messages_by_conversation(
         conversation_id=conversation_id
     )
     return messages
 
 
 def get_conversations_by_user(
-    db: Session, user_id: uuid.UUID, create_new_conversation: bool = False
+    session: Session, user_id: uuid.UUID, create_new_conversation: bool = False
 ) -> List[db.Conversation]:
-    conversation_repository = ConversationRepository(db)
+    conversation_repository = db.ConversationRepository(session)
     conversations = conversation_repository.get_conversations_by_user(
         user_id=user_id,
     )
@@ -336,16 +333,16 @@ def get_conversations_by_user(
 
 
 def get_conversations_by_users(
-    db: Session, user_ids: List[uuid.UUID]
-) -> List[Conversation]:
-    conversation_repository = ConversationRepository(db)
+    session: Session, user_ids: List[uuid.UUID]
+) -> List[db.Conversation]:
+    conversation_repository = db.ConversationRepository(session)
     return conversation_repository.get_conversations_by_users(
         user_ids=user_ids,
     )
 
 
-def create_conversation(db: Session, user_id: uuid.UUID) -> Conversation | None:
-    conversation_repository = ConversationRepository(db)
+def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:
+    conversation_repository = db.ConversationRepository(session)
     return conversation_repository.create_conversation(user_id=user_id)
 
 

@@ -4,12 +4,8 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 from sqlalchemy.orm import Session
 
-import db.tables as db_
+import db
 from api.schemas.admin.conversation import ConversationPreview
-from db.repositories.conversation_repository import ConversationRepository
-from db.repositories.feedback_repository import FeedbackRepository
-from db.repositories.message_repository import MessageRepository
-from db.repositories.user_repository import UserRepository
 
 from services.account_service import get_account
 from services.agent_service import get_agents_by_account
@@ -20,7 +16,7 @@ from services.message_service import (
 from services.user_service import get_users_by_account_id
 
 
-def _include_conversation_preview(message: db_.Message, max_age: int) -> bool:
+def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
     """
     An internal filter function that determines whether a conversation should be included in get_inbox_conversations
     The conversation cannot be older than max_age, if specified.
@@ -40,23 +36,23 @@ def _include_conversation_preview(message: db_.Message, max_age: int) -> bool:
 
 
 def get_inbox_conversations(
-    db: Session, account_id: uuid.UUID, max_age: int
+    session: Session, account_id: uuid.UUID, max_age: int
 ) -> List[ConversationPreview]:
     # Get users associated with the account
-    users = get_users_by_account_id(db, account_id=account_id)
+    users = get_users_by_account_id(session, account_id=account_id)
 
     # Get all conversations involving a user with the account id
     conversations = get_conversations_by_users(
-        db, user_ids=list(map(lambda user: user.id, users))
+        session, user_ids=list(map(lambda user: user.id, users))
     )
     conversation_user_ids = list(
         map(lambda conv: (conv.id, conv.user_id), conversations)
     )
 
     message_counts: List[int] = []
-    last_messages: List[db_.Message] = []
+    last_messages: List[db.Message] = []
 
-    message_repository = MessageRepository(db)
+    message_repository = db.MessageRepository(session)
     for id, _ in conversation_user_ids:
         # Get most recent message for each conversation
         last_message = message_repository.get_last_message_by_conversation(id)
@@ -104,10 +100,10 @@ def get_inbox_conversations(
 
 
 def get_conversation_messages(
-    db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[db_.Message]:
-    conversation_repository = ConversationRepository(db)
-    user_repository = UserRepository(db)
+    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+) -> List[db.Message]:
+    conversation_repository = db.ConversationRepository(session)
+    user_repository = db.UserRepository(session)
 
     """
     First we need to ensure that the requesting Account can access this Conversation.
@@ -133,17 +129,17 @@ def get_conversation_messages(
         )
 
     # Requesting Account matches Account associated with Conversation, so get messages and return
-    messages = get_messages_by_conversation(db, conversation_id=conversation_id)
+    messages = get_messages_by_conversation(session, conversation_id=conversation_id)
 
     return messages
 
 
 def get_messages_by_conversation_id(
-    db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[db_.Message]:
-    conversation_repository = ConversationRepository(db)
-    user_repository = UserRepository(db)
-    feedback_repository = FeedbackRepository(db)
+    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+) -> List[db.Message]:
+    conversation_repository = db.ConversationRepository(session)
+    user_repository = db.UserRepository(session)
+    feedback_repository = db.FeedbackRepository(session)
 
     # Get the Account ID associated with the Conversation ID
     conversation = conversation_repository.get_conversation_by_id(conversation_id)
@@ -162,7 +158,7 @@ def get_messages_by_conversation_id(
             "Account ID of Conversation and requesting Account do not match."
         )
 
-    messages = get_messages_by_conversation(db, conversation_id=conversation_id)
+    messages = get_messages_by_conversation(session, conversation_id=conversation_id)
 
     message_ids = [message.id for message in messages]
     feedback_for_messages = feedback_repository.get_feedback_by_message_ids(message_ids)
@@ -177,12 +173,12 @@ def get_messages_by_conversation_id(
     return messages
 
 
-def get_brandings(db: Session, account_name: str) -> list[dict]:
-    account = get_account(db, account_name)
+def get_brandings(session: Session, account_name: str) -> list[dict]:
+    account = get_account(session, account_name)
     if not account:
         return []
     account_name = account.name
-    agents = get_agents_by_account(db, account_name)
+    agents = get_agents_by_account(session, account_name)
     if not agents:
         return []
     # # find the agent's raw config

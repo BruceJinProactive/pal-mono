@@ -3,17 +3,16 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-import db.tables as db
-from db.repositories.user_repository import UserRepository
+import db as db
 
 
 def get_user_by_channel_identifier(
-    db: Session,
+    session: Session,
     account_id: uuid.UUID,
     channel_identifier: str,
     create_new_user: bool = False,
 ) -> db.User | None:
-    user_repository = UserRepository(db)
+    user_repository = db.UserRepository(session)
     user = user_repository.get_user_by_channel_identifier(
         account_id=account_id,
         channel_identifier=channel_identifier,
@@ -32,10 +31,10 @@ def get_user_by_channel_identifier(
 
 
 def get_users_by_account_id(
-    db: Session,
+    session: Session,
     account_id: uuid.UUID,
 ) -> List[db.User]:
-    user_repository = UserRepository(db)
+    user_repository = db.UserRepository(session)
     users = user_repository.get_users_by_account_id(account_id=account_id)
 
     return users

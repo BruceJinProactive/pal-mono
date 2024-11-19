@@ -4,6 +4,7 @@ import streamlit as st
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+import db
 from ai.memory import (
     add_memory,
     clear_memory,
@@ -11,7 +12,6 @@ from ai.memory import (
     get_memory,
     set_memory_manager,
 )
-from db.session import get_db, get_db_async
 from services.account_service import get_account, get_accounts
 
 
@@ -22,20 +22,20 @@ def set_page_config():
     )
 
 
-def set_account(db: Session, account_name: str) -> None:
+def set_account(session: Session, account_name: str) -> None:
     """
     Sets the account name into the steamlit state.
     Also sets the project name to the first project in the account.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         account_name (str): The name of the account.
 
     Returns:
         None
     """
     st.session_state["account_name"] = account_name
-    account = get_account(db, account_name)
+    account = get_account(session, account_name)
     if not account:
         raise ValueError(
             "There was an error accessing account details. Please reselect from picker"
@@ -47,11 +47,11 @@ def set_account(db: Session, account_name: str) -> None:
         st.session_state.pop("agent_id")
 
 
-def account_picker_ui(db: Session) -> None:
+def account_picker_ui(session: Session) -> None:
     with st.sidebar:
         st.subheader("Account Picker")
 
-        account_names = [account.name for account in get_accounts(db)]
+        account_names = [account.name for account in get_accounts(session)]
 
         account_name = st.selectbox(
             "Select an account",
@@ -64,13 +64,13 @@ def account_picker_ui(db: Session) -> None:
         )
 
         if account_name and account_name != st.session_state.get("account_name"):
-            set_account(db, account_name)
+            set_account(session, account_name)
             st.rerun()
 
 
-def project_picker_ui(db: Session) -> None:
+def project_picker_ui(session: Session) -> None:
     if "account_name" in st.session_state:
-        account = get_account(db, st.session_state["account_name"])
+        account = get_account(session, st.session_state["account_name"])
 
         if account and account.projects:
             with st.sidebar:
@@ -103,14 +103,14 @@ def project_picker_ui(db: Session) -> None:
                     st.rerun()
 
 
-def agent_picker_ui(db: Session) -> None:
+def agent_picker_ui(session: Session) -> None:
     if (
         "account_name" in st.session_state
         and "project_name" in st.session_state
         and st.session_state["project_name"] == "No Project"
     ):
         account = None
-        for acc in get_accounts(db):
+        for acc in get_accounts(session):
             if acc.name == st.session_state["account_name"]:
                 account = acc
                 break
@@ -138,10 +138,10 @@ def agent_picker_ui(db: Session) -> None:
                     st.rerun()
 
 
-def universal_picker_ui(db: Session) -> None:
-    account_picker_ui(db)
-    project_picker_ui(db)
-    agent_picker_ui(db)
+def universal_picker_ui(session: Session) -> None:
+    account_picker_ui(session)
+    project_picker_ui(session)
+    agent_picker_ui(session)
 
 
 def memory_ui(account_name: str, user_id: str) -> None:
@@ -207,7 +207,7 @@ def get_app_db() -> Session:
     """
     if "db" not in st.session_state:
         try:
-            session = next(get_db(), None)
+            session = next(db.get_db(), None)
             if session is None:
                 raise RuntimeError("Failed to establish database connection")
             st.session_state.db = session
@@ -229,7 +229,7 @@ async def get_app_db_async() -> AsyncSession:
     """
     if "db_async" not in st.session_state:
         try:
-            async_gen = get_db_async()
+            async_gen = db.get_db_async()
             session = await anext(async_gen, None)
             if session is None:
                 raise RuntimeError("Failed to establish async database connection")
@@ -241,7 +241,6 @@ async def get_app_db_async() -> AsyncSession:
 
 
 def chat_render_toggle():
-
     def swap_render_method():
         st.session_state["chat_render_method"] = (
             st.write if st.session_state["chat_render_method"] == st.text else st.text

@@ -10,8 +10,8 @@ from utils.log import logger
 
 
 class UserRepositoryAsync:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
     async def get_user_by_channel_identifier(
         self, account_id: uuid.UUID, channel_identifier: str
@@ -34,7 +34,7 @@ class UserRepositoryAsync:
             User.account_id == account_id,
             User.channel_identifiers.contains([channel_identifier]),
         )
-        result = await self.db.execute(query)
+        result = await self.session.execute(query)
         user = result.scalar_one_or_none()
         return user
 
@@ -50,27 +50,27 @@ class UserRepositoryAsync:
             User: The newly created user.
         """
         db_user = User(account_id=account_id, channel_identifiers=[channel_identifier])
-        self.db.add(db_user)
-        await self.db.flush()
-        await self.db.refresh(db_user)
+        self.session.add(db_user)
+        await self.session.flush()
+        await self.session.refresh(db_user)
 
         return db_user
 
 
 class UserRepository:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, session: Session):
+        self.session = session
 
     def get_users(self, skip: int = 0, limit: int = 100):
-        return self.db.query(User).offset(skip).limit(limit).all()
+        return self.session.query(User).offset(skip).limit(limit).all()
 
     def get_users_by_account_id(self, account_id: uuid.UUID):
         # no argument validation needed
 
         try:
-            return self.db.query(User).filter(User.account_id == account_id).all()
+            return self.session.query(User).filter(User.account_id == account_id).all()
         except SQLAlchemyError as e:
-            self.db.rollback()
+            self.session.rollback()
             logger.error(f"Error retrieving users: {e}")
             return []
 
@@ -94,7 +94,7 @@ class UserRepository:
 
         # Use the `contains` operator to search for the channel identifier
         user = (
-            self.db.query(User)
+            self.session.query(User)
             .filter(
                 User.account_id == account_id,
                 User.channel_identifiers.contains([channel_identifier]),
@@ -104,7 +104,7 @@ class UserRepository:
         return user
 
     def get_user_by_id(self, user_id: uuid.UUID):
-        query = self.db.query(User).filter(
+        query = self.session.query(User).filter(
             User.id == user_id,
         )
         user = query.first()
@@ -112,15 +112,15 @@ class UserRepository:
 
     def create_user(self, account_id: uuid.UUID, channel_identifier: str = ""):
         db_user = User(account_id=account_id, channel_identifiers=[channel_identifier])
-        self.db.add(db_user)
-        self.db.commit()
+        self.session.add(db_user)
+        self.session.commit()
         return db_user
 
     def update_user(self, user_id: uuid.UUID, raw_config: dict):
-        query = self.db.query(User).filter(User.id == user_id)
+        query = self.session.query(User).filter(User.id == user_id)
         user = query.first()
         if user:
             user.raw_config.update(raw_config)
-            self.db.commit()
+            self.session.commit()
             return user
         return None

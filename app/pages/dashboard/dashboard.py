@@ -2,26 +2,26 @@ import pandas as pd
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
+import db
 from app.auth import user
 from app.shared import set_account
-from db.session import get_db
 from services.account_service import get_accounts
 from services.admin_service import get_inbox_conversations
 
 st.title("Dashboard")
 
-db = next(get_db())
+session = next(db.get_db())
 
 
 def navigate_accounts(account_name):
     if account_name != st.session_state.get("account_name"):
-        set_account(db, account_name)
+        set_account(session, account_name)
     st.switch_page("./pages/clients/accounts.py")
 
 
 def main() -> None:
     st.write("---")
-    accounts = get_accounts(db)
+    accounts = get_accounts(session)
     st.metric(label="Total Accounts", value=len(accounts))
     st.write(
         "Please click the checkbox in the leftmost column to navigate to that account"
@@ -31,8 +31,10 @@ def main() -> None:
             {
                 "Account": acc.name,
                 "Status": "Active",
-                "Active users": len(get_inbox_conversations(db, acc.id, max_age=5)),
-                "Total users": len(get_inbox_conversations(db, acc.id)),
+                "Active users": len(
+                    get_inbox_conversations(session, acc.id, max_age=5)
+                ),
+                "Total users": len(get_inbox_conversations(session, acc.id)),
             }
             for acc in accounts
         ]

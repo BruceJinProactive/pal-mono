@@ -5,10 +5,10 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+import db
 from api.routes.endpoints import endpoints
 from api.schemas.admin.feedback import Feedback
 from api.schemas.chat.message import AuthorType, Channel, Message, TextObject
-from db.session import get_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (
     get_brandings,
@@ -45,13 +45,14 @@ admin_router = APIRouter(prefix=endpoints.ADMIN, tags=["Admin"])
 
 
 @admin_router.post("/create_account")
-def create_account(request: Request, db: Session = Depends(get_db)):
+def create_account(request: Request, session: Session = Depends(db.get_db)):
     """
     This endpoint is used to create an account in the database.
     Without the account in the database, the rest of the functionality will not work.
 
     Args:
         request (Request): The request object containing the headers and other request data.
+        session (Session): The database connection.
 
     Returns:
         str: A JSON string indicating that the account has been created.
@@ -59,7 +60,7 @@ def create_account(request: Request, db: Session = Depends(get_db)):
     decrypted_id_token = _auth.parse_admin_console_id_token(
         request.headers.get("Authorization")
     )
-    create_account_with_defaults(db, decrypted_id_token["custom:account_name"])
+    create_account_with_defaults(session, decrypted_id_token["custom:account_name"])
     return '{"message": "Account created"}'
 
 
@@ -80,13 +81,13 @@ def read_account(request: Request):
 
 
 @admin_router.get("/inbox")
-def read_inbox(request: Request, db: Session = Depends(get_db)):
+def read_inbox(request: Request, session: Session = Depends(db.get_db)):
     """
     This endpoint allows an Admin to retrieve a list of `ConversationPreview` objects.
 
     Args:
         request (Request): The request object containing the headers and other request data.
-        db (Session): The database connection.
+        session (Session): The database connection.
 
     Returns:
         JSONResponse: A JSON-encoded list of ConversationPreviews.
@@ -108,7 +109,9 @@ def read_inbox(request: Request, db: Session = Depends(get_db)):
         )
 
     # Get Account from ID Token
-    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
 
     if account is None:
         raise HTTPException(
@@ -117,14 +120,14 @@ def read_inbox(request: Request, db: Session = Depends(get_db)):
             headers={"Content-Type": "application/json"},
         )
 
-    inbox = get_inbox_conversations(db, account_id=account.id)
+    inbox = get_inbox_conversations(session, account_id=account.id)
 
     return JSONResponse(content=jsonable_encoder(inbox))
 
 
 @admin_router.get("/conversations/{conversation_id}/messages")
 def get_messages_with_feedback_by_conversation_id(
-    request: Request, conversation_id: uuid.UUID, db: Session = Depends(get_db)
+    request: Request, conversation_id: uuid.UUID, session: Session = Depends(db.get_db)
 ):
     """
     This endpoint retrieves all Messages within a specific Conversation, along with their associated Feedback.
@@ -142,7 +145,9 @@ def get_messages_with_feedback_by_conversation_id(
         )
 
     # Get Account from ID Token
-    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
 
     if account is None:
         raise HTTPException(
@@ -152,7 +157,7 @@ def get_messages_with_feedback_by_conversation_id(
         )
 
     try:
-        messages = get_messages_by_conversation_id(db, account.id, conversation_id)
+        messages = get_messages_by_conversation_id(session, account.id, conversation_id)
     except ValueError:
         """
         Only say "Conversation not found" because if the Admin does not
@@ -170,7 +175,7 @@ def get_messages_with_feedback_by_conversation_id(
 
 @admin_router.get("/inbox/{conversation_id}")
 def read_conversation(
-    request: Request, conversation_id: uuid.UUID, db: Session = Depends(get_db)
+    request: Request, conversation_id: uuid.UUID, session: Session = Depends(db.get_db)
 ):
     """
     This endpoint allows an Admin to retrieve all Messages within a specific Conversation.
@@ -178,7 +183,7 @@ def read_conversation(
     Args:
         request (Request): The request object containing the headers and other request data.
         conversation_id (uuid.UUID): The unique identifier of the Conversation requested, as a path param.
-        db (Session): The database connection.
+        session (Session): The database connection.
 
     Returns:
         JSONResponse: A JSON-encoded list of messages in the specified conversation.
@@ -201,7 +206,9 @@ def read_conversation(
         )
 
     # Get Account from ID Token
-    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
 
     if account is None:
         raise HTTPException(
@@ -211,7 +218,7 @@ def read_conversation(
         )
 
     try:
-        messages = get_conversation_messages(db, account.id, conversation_id)
+        messages = get_conversation_messages(session, account.id, conversation_id)
     except ValueError:
         """
         Only say "Conversation not found" because if the Admin does not
@@ -228,14 +235,14 @@ def read_conversation(
 
 
 @admin_router.get("/chat")
-def read_chat(request: Request, db: Session = Depends(get_db)):
+def read_chat(request: Request, session: Session = Depends(db.get_db)):
     """
     This endpoint allows an Admin to retrieve all Messages within the Conversation within
     the Admin Console chat, which is assumed to be unique.
 
     Args:
         request (Request): The request object containing the headers and other request data.
-        db (Session): The database connection.
+        session (Session): The database connection.
 
     Returns:
         JSONResponse: A JSON-encoded list of Messages.
@@ -256,7 +263,9 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
         )
 
     # Step 1: Get the account information from the ID Token
-    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
 
     if account is None:
         raise HTTPException(
@@ -267,7 +276,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
 
     # Step 2: Get the user from the account id and cognito:username (latter of which is stored in raw_config)
     user = get_user_by_channel_identifier(
-        db=db,
+        session=session,
         account_id=account.id,
         channel_identifier=f"{Channel.API}:{decrypted_id_token['cognito:username']}",
         create_new_user=True,
@@ -282,7 +291,7 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
 
     # Step 3: Get all conversations associated with the admin
     conversations = get_conversations_by_user(
-        db=db, user_id=user.id, create_new_conversation=True
+        session=session, user_id=user.id, create_new_conversation=True
     )
 
     # Skip the rest of the steps if there are no conversations
@@ -295,13 +304,15 @@ def read_chat(request: Request, db: Session = Depends(get_db)):
     If we want an admin to be able to create more than one conversation,
     then we will need to update the DB schema.
     """
-    messages = get_messages_by_conversation(db=db, conversation_id=conversations[0].id)
+    messages = get_messages_by_conversation(
+        session=session, conversation_id=conversations[0].id
+    )
 
     return JSONResponse(content=jsonable_encoder(messages))
 
 
 @admin_router.post("/chat")
-async def respond_to_message(request: Request, db: Session = Depends(get_db)):
+async def respond_to_message(request: Request, session: Session = Depends(db.get_db)):
     """
     Endpoint to handle chat messages from the Admin Console.
 
@@ -311,7 +322,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     Args:
         request (Request): The incoming request containing headers and a JSON
             body with the chat message, e.g., {'message': 'test'}.
-        db (Session): The database session for storing messages and responses.
+        session (Session): The database session for storing messages and responses.
 
     Returns:
         JSONResponse: A JSON-encoded response containing the chat message and the generated reply.
@@ -333,7 +344,9 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
             headers={"Content-Type": "application/json"},
         )
 
-    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
 
     if account is None:
         raise HTTPException(status_code=500, detail="Account not found")
@@ -343,7 +356,7 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     # Steps largely the same as the GET endpoint
 
     user = get_user_by_channel_identifier(
-        db=db,
+        session=session,
         account_id=account.id,
         channel_identifier=f"{Channel.API}:{decrypted_id_token['cognito:username']}",
         create_new_user=True,
@@ -365,12 +378,12 @@ async def respond_to_message(request: Request, db: Session = Depends(get_db)):
     Since we assume that an admin console will only ever have one conversation,
     get_chat_response stores the message and the response to the correct conversation.
     """
-    chat_response = get_chat_response(db, message)
+    chat_response = get_chat_response(session, message)
     return JSONResponse(content=jsonable_encoder(chat_response))
 
 
 @admin_router.get("/brandings")
-def read_brandings(request: Request, db: Session = Depends(get_db)):
+def read_brandings(request: Request, session: Session = Depends(db.get_db)):
     try:
         decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
@@ -383,7 +396,9 @@ def read_brandings(request: Request, db: Session = Depends(get_db)):
             headers={"Content-Type": "application/json"},
         )
 
-    account = get_account(db, account_name=decrypted_id_token["custom:account_name"])
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
     if account is None:
         raise HTTPException(status_code=500, detail="Account not found")
 
@@ -391,7 +406,7 @@ def read_brandings(request: Request, db: Session = Depends(get_db)):
     """
     get_brandings returns a list of JSON object that represents the brandings.
     """
-    branding_jsons = get_brandings(db, account_name)
+    branding_jsons = get_brandings(session, account_name)
     return branding_jsons
 
 
@@ -433,7 +448,7 @@ def read_campaigns(request: Request):
 
 
 @admin_router.post("/feedback", status_code=200)
-async def submit_feedback(request: Request, db: Session = Depends(get_db)):
+async def submit_feedback(request: Request, session: Session = Depends(db.get_db)):
     """
     This endpoint is used to create feedback in the database.
     """
@@ -462,7 +477,7 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
 
     # Pass Feedback object into service layer
     try:
-        db_feedback = create_feedback(db, feedback_dict)
+        db_feedback = create_feedback(session, feedback_dict)
     except Exception:
         raise HTTPException(
             status_code=500,
@@ -479,7 +494,7 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
 
 @admin_router.get("/feedback/{feedback_id}", status_code=200)
 def retrieve_feedback_by_id(
-    feedback_id: str, request: Request, db: Session = Depends(get_db)
+    feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
     """
     This endpoint is used to retrieve feedback by id from the database.
@@ -505,7 +520,7 @@ def retrieve_feedback_by_id(
 
     # Get Feedback object from service layer
     try:
-        feedback = get_feedback_by_id(db, feedback_uuid)
+        feedback = get_feedback_by_id(session, feedback_uuid)
     except Exception:
         raise HTTPException(
             status_code=500,
@@ -525,7 +540,7 @@ def retrieve_feedback_by_id(
 
 @admin_router.post("/feedback/{feedback_id}", status_code=200)
 async def change_feedback_by_id(
-    feedback_id: str, request: Request, db: Session = Depends(get_db)
+    feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
     """
     This endpoint is used to update feedback by id in the database.
@@ -555,7 +570,7 @@ async def change_feedback_by_id(
 
     # Pass Feedback object into service layer
     try:
-        update_feedback_by_id(db, feedback_uuid, feedback_dict)
+        update_feedback_by_id(session, feedback_uuid, feedback_dict)
     except Exception:
         raise HTTPException(
             status_code=500,

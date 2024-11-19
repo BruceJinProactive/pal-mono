@@ -12,11 +12,11 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime
 
-from db.tables.base import Base
+from .base import Base
 
 if TYPE_CHECKING:
-    from db.tables.accounts import Account
-    from db.tables.projects import Project
+    from .accounts import Account
+    from .projects import Project
 
 
 class Agent(Base):

@@ -1,9 +1,9 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
+import db
 from app.auth import user
 from app.shared import account_picker_ui, chat_render_toggle
-from db.session import get_db
 from services.account_service import get_account
 from services.message_service import (
     get_conversations_by_user,
@@ -13,12 +13,12 @@ from services.user_service import get_users_by_account_id
 
 st.title("Users")
 
-db = next(get_db())
+session = next(db.get_db())
 
 
 def render_conversation(user_id) -> None:
     CHAT_HEIGHT = 500
-    conversations = get_conversations_by_user(db, user_id)
+    conversations = get_conversations_by_user(session, user_id)
     if not conversations:
         st.write("No conversations found for this user")
         return
@@ -37,7 +37,7 @@ def render_conversation(user_id) -> None:
         messages = [
             message.body
             for message in get_messages_by_conversation(
-                db, conversations[active_conversation].id
+                session, conversations[active_conversation].id
             )
         ]
         if not messages:
@@ -56,13 +56,13 @@ def main() -> None:
         return
 
     # get users
-    account = get_account(db, st.session_state["account_name"])
+    account = get_account(session, st.session_state["account_name"])
     if not account:
         raise ValueError(
             "There was an error accessing account details. Please reselect from picker"
         )
     account_id = account.id
-    account_users = get_users_by_account_id(db, account_id)
+    account_users = get_users_by_account_id(session, account_id)
 
     # display users table
     chat_render_toggle()
@@ -89,6 +89,6 @@ def main() -> None:
 
 if user.is_logged_in:
     main()
-    account_picker_ui(db)
+    account_picker_ui(session)
 else:
     switch_page("home")

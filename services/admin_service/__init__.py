@@ -3,14 +3,14 @@ from typing import List
 
 from sqlalchemy.orm import Session
 
-import db.tables as db
+import db
 from api.schemas.admin.conversation import ConversationPreview
 
 from . import _implementation
 
 
 def get_inbox_conversations(
-    db: Session, account_id: uuid.UUID, max_age: int = 0
+    session: Session, account_id: uuid.UUID, max_age: int = 0
 ) -> List[ConversationPreview]:
     """
     Retrieves a list of conversation previews for all conversations associated with the given account.
@@ -21,25 +21,25 @@ def get_inbox_conversations(
     in descending order.
 
     Args:
-        db (Session): The database session used to perform queries.
+        session (Session): The database session used to perform queries.
         account_id (uuid.UUID): The unique identifier of the account for which Conversations are being retrieved.
 
     Returns:
         List[ConversationPreview]: A list of `ConversationPreview` objects representing the Conversations,
         each containing the Conversation ID, User ID, number of Messages, and the text of the last Message.
     """
-    return _implementation.get_inbox_conversations(db, account_id, max_age)
+    return _implementation.get_inbox_conversations(session, account_id, max_age)
 
 
 def get_conversation_messages(
-    db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> List[db.Message]:
     """
     Verifies that the requester has access to the conversation, then returns all messages
     in the conversation.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         account_id (uuid.UUID): The unique identifier of the incoming request's Account.
         conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
 
@@ -50,18 +50,20 @@ def get_conversation_messages(
         ValueError: If the Admin does not have access to the Conversation.
         ValueError: If the Conversation or User is not found.
     """
-    return _implementation.get_conversation_messages(db, account_id, conversation_id)
+    return _implementation.get_conversation_messages(
+        session, account_id, conversation_id
+    )
 
 
 def get_messages_by_conversation_id(
-    db: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> List[db.Message]:
     """
     Verifies that the requester has access to the conversation, then returns all messages
     in the conversation alongside feedback for each.
 
     Args:
-        db (Session): The database session.
+        session (Session): The database session.
         account_id (uuid.UUID): The unique identifier of the incoming request's Account.
         conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
 
@@ -69,11 +71,11 @@ def get_messages_by_conversation_id(
         List[Message]: A list of Message objects including associated feedback
     """
     return _implementation.get_messages_by_conversation_id(
-        db, account_id, conversation_id
+        session, account_id, conversation_id
     )
 
 
-def get_brandings(db: Session, account_name: str) -> list[dict]:
+def get_brandings(session: Session, account_name: str) -> list[dict]:
     """
     NOTE: This function is not implemented and is a placeholder.
 
@@ -83,7 +85,7 @@ def get_brandings(db: Session, account_name: str) -> list[dict]:
         list[dict]: A list of JSON dictionary containing structured information about the company's profile, branding,
         and foundational story for AI application.
     """
-    return _implementation.get_brandings(db, account_name)
+    return _implementation.get_brandings(session, account_name)
 
 
 __all__ = [
