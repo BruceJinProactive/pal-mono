@@ -1,3 +1,7 @@
+from typing import Any
+
+from phi.document.base import Document
+from phi.document.reader.pdf import PDFReader
 from phi.knowledge.agent import AgentKnowledge
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.vectordb.pgvector.pgvector2 import PgVector2
@@ -20,3 +24,33 @@ def get_knowledge(account_name: str) -> AgentKnowledge:
     )
 
     return knowledge
+
+
+def process_pdf(uploaded_file: Any) -> list[Document]:
+    """
+    Process a PDF file and return a list of documents.
+
+    Args:
+        uploaded_file (Any): The uploaded PDF file.
+
+    Returns:
+        List[Document]: A list of Document objects created from the PDF file.
+    """
+
+    reader = PDFReader()
+    return reader.read(uploaded_file)
+
+
+def create_document(content: str, name: str) -> Document:
+    """
+    Create a Document object from the provided text content and name.
+
+    Args:
+        content (str): The text content for the document.
+        name (str): The name of the document.
+
+    Returns:
+        Document: A Document object.
+    """
+
+    return Document(content=content, name=name)

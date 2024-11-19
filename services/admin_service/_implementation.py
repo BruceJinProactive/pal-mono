@@ -2,7 +2,6 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import List
-
 from sqlalchemy.orm import Session
 
 import db.tables as db_
@@ -11,6 +10,7 @@ from db.repositories.conversation_repository import ConversationRepository
 from db.repositories.feedback_repository import FeedbackRepository
 from db.repositories.message_repository import MessageRepository
 from db.repositories.user_repository import UserRepository
+
 from services.account_service import get_account
 from services.agent_service import get_agents_by_account
 from services.message_service import (

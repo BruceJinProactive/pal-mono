@@ -3,8 +3,6 @@ import uuid
 from typing import Any, List
 
 import streamlit as st
-from phi.document.base import Document
-from phi.document.reader.pdf import PDFReader
 from sqlalchemy import DateTime, MetaData, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,7 +12,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from streamlit_extras.switch_page_button import switch_page
 
-from ai.knowledge import get_knowledge
+from ai.knowledge import create_document, get_knowledge, process_pdf
 from app.auth import user
 from app.shared import account_picker_ui
 from db.session import get_db
@@ -76,8 +74,7 @@ def knowledge_ui(account_name: str) -> None:
                     alert = st.info("Processing PDF...", icon="ℹ️")
                     pdf_name = uploaded_file.name.split(".")[0]
                     if f"{pdf_name}_uploaded" not in st.session_state:
-                        reader = PDFReader()
-                        pdf_documents: List[Document] = reader.read(uploaded_file)
+                        pdf_documents = process_pdf(uploaded_file)
                         if pdf_documents:
                             knowledge_base.load_documents(pdf_documents)
                             st.success(
@@ -99,13 +96,15 @@ def knowledge_ui(account_name: str) -> None:
 
                 if uploaded_files and submitted:
                     alert = st.info("Processing Text...", icon="ℹ️")
-                    text_documents: List[Document] = []
+                    text_documents = []
 
                     for uploaded_file in uploaded_files:
                         text_name = uploaded_file.name.split(".")[0]
                         # Read file content, decode and load as JSON
                         file_content = uploaded_file.read().decode("utf-8")
-                        json_document = Document(content=file_content, name=text_name)
+                        json_document = create_document(
+                            content=file_content, name=text_name
+                        )
                         text_documents.append(json_document)
                     if text_documents:
                         oversized_files = []
@@ -146,7 +145,7 @@ def knowledge_ui(account_name: str) -> None:
                     alert = st.info("Processing Submitted Text...", icon="ℹ️")
                     if text_input and name_input:
                         try:
-                            text_document = Document(
+                            text_document = create_document(
                                 content=text_input, name=name_input
                             )
                             knowledge_base.load_document(text_document)
@@ -176,7 +175,7 @@ def knowledge_ui(account_name: str) -> None:
 
                 if uploaded_files and submitted:
                     alert = st.info("Processing JSON...", icon="ℹ️")
-                    json_documents: List[Document] = []
+                    json_documents = []
 
                     for uploaded_file in uploaded_files:
                         json_name = uploaded_file.name.split(".")[0]
@@ -190,7 +189,7 @@ def knowledge_ui(account_name: str) -> None:
                             compressed_json = json.dumps(
                                 json_file, separators=(",", ":")
                             )
-                            json_document = Document(
+                            json_document = create_document(
                                 content=compressed_json, name=json_name
                             )
                             json_documents.append(json_document)
@@ -246,7 +245,9 @@ def knowledge_ui(account_name: str) -> None:
                             )
                             # Pass the JSON string to the knowledge base for loading
                             knowledge_base.load_document(
-                                Document(content=compressed_json, name=json_name_input)
+                                create_document(
+                                    content=compressed_json, name=json_name_input
+                                )
                             )
 
                             st.success("JSON processed and loaded into knowledge base.")
