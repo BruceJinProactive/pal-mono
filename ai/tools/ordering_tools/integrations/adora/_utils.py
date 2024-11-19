@@ -34,7 +34,7 @@ class ConversionResult:
 
 
 model_router_client = get_client()
-model_router_model = ModelName.MEDIUM
+model_router_model = ModelName.SMALL
 
 
 def _add_default_modifiers(
