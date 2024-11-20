@@ -113,7 +113,6 @@ def convert_coupon(
             f"""
             # EXAMPLE #
             EXAMPLE AVAILABLE COUPONS: {[f"{c.name} ({c.description})" for c in all_coupons]}
-            
             """
             + "\n\n".join(
                 [
@@ -127,8 +126,8 @@ def convert_coupon(
     sys_prompt = textwrap.dedent(
         f"""
         # CONTEXT #
-        I am a waiter at a restaurant. I am taking a user's order. 
-        I want to match a user supplied coupon name to a coupon in the available coupons list. 
+        I am a waiter at a restaurant. I am taking a user's order.
+        I want to match a user supplied coupon name to a coupon in the available coupons list.
         Here are the AVAILABLE COUPONS: {list(coupon_name_to_id_map.keys())}
         Here are the AVAILABLE COUPONS along with a helpful description: {[f"{c.name} ({c.description})" for c in all_coupons]}
 
@@ -196,7 +195,6 @@ def get_adora_item_id(
             f"""
             # EXAMPLE #
             EXAMPLE MENU: {list(menu_name_to_id_map.keys())[:20] + ["..."]}
-            
             """
             + "\n\n".join(
                 [
@@ -210,8 +208,8 @@ def get_adora_item_id(
     sys_prompt = textwrap.dedent(
         f"""
         # CONTEXT #
-        I am a waiter at a restaurant. I am taking a user's order. 
-        I want to match a user supplied item name to an item on the menu. 
+        I am a waiter at a restaurant. I am taking a user's order.
+        I want to match a user supplied item name to an item on the menu.
         Here is the MENU: {list(menu_name_to_id_map.keys())}
 
         #########
@@ -309,7 +307,7 @@ def get_adora_modifications(
         if modifiers:
             return False, "No modifiers are allowed for this item."
         adora_order_item = AdoraOrderItem(
-            adora_item_id, adora_size_id, order_item.quantity, comment, 0, []
+            adora_item_id, adora_size_id, order_item.quantity, comment, 0.0, []
         )
         adora_order_item.item_name = adora_item_name
         adora_order_item.size = adora_size_name
@@ -343,6 +341,7 @@ def get_adora_modifications(
     is_valid, validation_message = validate_modifier_group_constraints(
         modifier_group_counter, menu_modifier_groups, payload
     )
+
     if not is_valid:
         return False, validation_message
 
@@ -351,7 +350,7 @@ def get_adora_modifications(
         adora_size_id,
         order_item.quantity,
         payload["comment"],
-        0,
+        0.0,
         payload["modifiers"],
     )
 
@@ -398,7 +397,6 @@ def get_adora_size_id(
                 f"""
                 # EXAMPLE #
                 EXAMPLE AVAILABLE SIZE OPTIONS: {size_options}
-                
                 """
                 + "\n\n".join(
                     [
@@ -737,7 +735,6 @@ def get_similar_modifier_using_openai(
             f"""
             # EXAMPLE #
             EXAMPLE AVAILABLE MODIFICATION OPTIONS: {modifier_names}
-            
             """
             + "\n\n".join(
                 [

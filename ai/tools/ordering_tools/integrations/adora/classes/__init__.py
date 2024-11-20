@@ -78,14 +78,18 @@ class AdoraOrderCalculationResult(BaseModel):
     """
 
     # Key is used on the Adora Pos API side in subsequent API calls to refer to the order.
-    key: str
-    isPaymentRequired: bool
-    subTotal: float
-    total: float
-    discount: float
-    taxAmount: float
-    serviceCharge: float
-    deliveryCharge: float
+    key: str | None = None
+    isPaymentRequired: bool | None = None
+    subTotal: float | None = None
+    total: float | None = None
+    discount: float | None = None
+    taxAmount: float | None = None
+    serviceCharge: float | None = None
+    deliveryCharge: float | None = None
+
+    class Config:
+        # Allow extra fields in case API response includes additional data
+        extra = "allow"
 
 
 class AdoraOrderItem(OrderItem):
@@ -99,7 +103,7 @@ class AdoraOrderItem(OrderItem):
         size_id: int,
         quantity: int,
         comment: str,
-        price: int,
+        price: float,
         modifiers: list,
     ):
         self.itemId = item_id
@@ -147,14 +151,20 @@ class AdoraSavedOrderResult(BaseModel):
     This is the shape of the response from the Adora API at the save_validate_order step.
     """
 
-    success: int
-    orderID: int  # this is the important value -- you need this to checkout the order using /textPaymentLink
-    orderNo: int
-    customerID: int
-    addressID: int
-    profileID: int
-    msg: str
-    profUpdated: int
+    success: int | None = None
+    orderID: int | None = (
+        None  # this is the important value -- you need this to checkout the order using /textPaymentLink
+    )
+    orderNo: int | None = None
+    customerID: int | None = None
+    addressID: int | None = None
+    profileID: int | None = None
+    msg: str = ""
+    profUpdated: int | None = None
+
+    class Config:
+        # Allow extra fields in case API response includes additional data
+        extra = "allow"
 
 
 class AdoraValidatedAddress(BaseModel):

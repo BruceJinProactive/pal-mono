@@ -374,12 +374,15 @@ class AdoraIntegration:
             consumer,
             adora_delivery_address,
         )
-        if not validated_order:
-            return "Failed to validate order."
+        if not validated_order or not validated_order.key:
+            return "Failed to validate order. Please try again."
 
         # save validated order in Adora system, get order ID
         logger.debug("[AdoraIntegration.place_order] Saving validated order...")
         saved_order = _apis.save_validated_order(bearer_token, validated_order.key)
+
+        if not saved_order or not saved_order.orderID:
+            return "Failed to save order in Adora system. Please try again."
 
         # send credit card payment link to the consumer
         try:
@@ -394,6 +397,10 @@ class AdoraIntegration:
                     "Here are the details of your order, list the item names + prices:\n"
                     f"{', '.join(order_summary)}\n"
                 )
+
+                # Type check
+                if validated_order.subTotal is None or validated_order.total is None:
+                    return "Failed to place order. Please try again."
 
                 # Add discount, otherwise add subtotal
                 if validated_order.subTotal > validated_order.total:
