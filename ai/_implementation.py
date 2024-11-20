@@ -3,7 +3,7 @@ from typing import Any
 from phi.agent.agent import Agent
 
 from ai.knowledge import get_knowledge
-from ai.memory import get_memory
+from ai.memory import get_history_responses, get_memory
 from ai.model import OutputModel, get_model
 from ai.prompts import get_system_prompt
 from ai.storage import get_storage
@@ -24,6 +24,7 @@ def integrate_agent(
 
     # -*- Agent Memory
     memory = get_memory(account_name)
+    num_history_responses = get_history_responses(agent_raw_config)
 
     # -*- Agent Knowledge
     knowledge = get_knowledge(account_name)
@@ -59,7 +60,7 @@ def integrate_agent(
         # -*- Agent Memory
         memory=memory,
         add_chat_history_to_messages=True,
-        num_history_responses=10,
+        num_history_responses=num_history_responses,
         # -*- Agent Knowledge
         knowledge_base=knowledge,
         # -*- Agent Storage

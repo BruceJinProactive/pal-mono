@@ -1,9 +1,13 @@
+from typing import Any
+
 from phi.memory.agent import AgentMemory
 from phi.memory.db.postgres import PgMemoryDb
 from phi.memory.manager import MemoryManager
 from phi.memory.memory import Memory
 
 import db
+
+DEFAULT_NUM_HISTORY_RESPONSES = 10
 
 
 def add_memory(memory: AgentMemory, new_memory_input: str) -> None:
@@ -63,6 +67,30 @@ def delete_memory(memory: AgentMemory, removed_memory: Memory) -> None:
     if memories:
         for memo in memories:
             memory.manager.add_memory(memo.memory)
+
+
+def get_history_responses(agent_raw_config: dict[str, Any]) -> int:
+    """
+    Get the number of history responses from the agent's raw configuration.
+
+    Parameters:
+        agent_raw_config (dict[str, Any]): The raw configuration of the agent.
+
+    Returns:
+        int: The number of history responses.
+
+     Example:
+        agent_raw_config = {
+            "num_history_responses": 5
+        }
+        num_history_responses = get_history_responses(agent_raw_config)
+    """
+    num_history_responses = DEFAULT_NUM_HISTORY_RESPONSES
+    if "num_history_responses" in agent_raw_config:
+        value = agent_raw_config.get("num_history_responses")
+        if isinstance(value, int):
+            num_history_responses = value
+    return num_history_responses
 
 
 def get_memory(account_name: str) -> AgentMemory:

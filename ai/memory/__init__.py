@@ -1,3 +1,5 @@
+from typing import Any
+
 from phi.memory.agent import AgentMemory
 from phi.memory.memory import Memory
 
@@ -62,6 +64,26 @@ def get_memory(account_name: str) -> AgentMemory:
         AgentMemory: An instance of AgentMemory configured with the specified memory table.
     """
     return _implementation.get_memory(account_name)
+
+
+def get_history_responses(agent_raw_config: dict[str, Any]) -> int:
+    """
+    Get the number of history responses to be stored in the agent's memory.
+
+    Args:
+        agent_raw_config (dict[str, Any]): The raw configuration data for the agent.
+
+    Returns:
+        int: The number of history responses to be stored in the agent's memory.
+
+    Example:
+        agent_raw_config = {
+            "num_history_responses": 10
+        }
+        num_history_responses = get_history_responses(agent_raw_config)
+    """
+
+    return _implementation.get_history_responses(agent_raw_config)
 
 
 def set_memory_manager(memory: AgentMemory, memory_id: str) -> None:
