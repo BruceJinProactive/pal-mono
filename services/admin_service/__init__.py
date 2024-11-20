@@ -88,8 +88,69 @@ def get_brandings(session: Session, account_name: str) -> list[dict]:
     return _implementation.get_brandings(session, account_name)
 
 
+def get_instagram_connected(db: Session, project_id: uuid.UUID) -> bool:
+    """
+    Check if a project has an Instagram account connected.
+
+    Args:
+        db (Session): The database session.
+        project_id (uuid.UUID): The unique identifier of the project.
+
+    Returns:
+        bool: True if the project has an Instagram account connected, False otherwise
+
+    Raises:
+        ValueError: If the project is not found.
+        RuntimeError: If there is an error checking the connection.
+    """
+
+    return _implementation.get_instagram_connected(db, project_id)
+
+
+def set_instagram_access_token(db: Session, project_id: uuid.UUID, access_token: str):
+    """
+    Store the Instagram access token for a project in AWS Secrets Manager.
+
+    Args:
+        db (Session): The database session.
+        project_id (uuid.UUID): The unique identifier of the project.
+        access_token (str): The Instagram access token.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the project is not found.
+        RuntimeError: If there is an error storing the token.
+    """
+
+    return _implementation.set_instagram_access_token(db, project_id, access_token)
+
+
+def remove_instagram_access_token(db: Session, project_id: uuid.UUID):
+    """
+    Remove the Instagram access token for a project from AWS Secrets Manager.
+
+    Args:
+        db (Session): The database session.
+        project_id (uuid.UUID): The unique identifier of the project.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the project is not found.
+        RuntimeError: If there is an error removing the token.
+    """
+
+    return _implementation.remove_instagram_access_token(db, project_id)
+
+
 __all__ = [
     "get_inbox_conversations",
     "get_conversation_messages",
     "get_brandings",
+    "get_instagram_connected",
+    "set_instagram_access_token",
+    "remove_instagram_access_token",
 ]
