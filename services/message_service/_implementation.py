@@ -209,7 +209,6 @@ async def get_chat_response_stream(
 
 def get_chat_response(session: Session, message: Message) -> Message:
     user = None
-    metadata = {"instance": "BaseModel"}
     extras = {}
 
     try:
@@ -225,8 +224,6 @@ def get_chat_response(session: Session, message: Message) -> Message:
             raise ValueError(
                 f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
             )
-
-        metadata["project_name"] = project.name
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
@@ -283,7 +280,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         channel=message.channel,
         broker=message.broker,
         text=TextObject(body=response),
-        metadata=metadata,
+        metadata={"instance": "BaseModel"},
         extras=Extras(**extras),
     )
 

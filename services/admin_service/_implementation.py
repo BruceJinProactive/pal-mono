@@ -13,10 +13,7 @@ from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
 )
-from services.project_service import get_project
 from services.user_service import get_users_by_account_id
-from utils import secret
-from utils.log import logger
 
 
 def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
@@ -193,54 +190,3 @@ def get_brandings(session: Session, account_name: str) -> list[dict]:
             branding = agent.raw_config.get("branding", {})
             brandings.append(branding)
     return brandings
-
-
-def _project_name_to_ig_access_token_key(project_name: str) -> str:
-    return f"{project_name.upper()}_INSTAGRAM_ACCESS_TOKEN"
-
-
-def get_instagram_connected(db: Session, project_id: uuid.UUID) -> bool:
-    project = get_project(db, project_id)
-    if not project:
-        raise ValueError("Project not found.")
-
-    secret_tag_key = _project_name_to_ig_access_token_key(project.name)
-    try:
-        # if successful, then the key exists, and hence the project is connected
-        secret.get_client_secret(secret_tag_key)
-        return True
-    except KeyError:
-        # if the key does not exist, then the project is not connected
-        return False
-    except Exception as e:
-        # if any other error occurs, log and raise
-        logger.info(f"Unable to get Instagram access token: {e}")
-        raise RuntimeError(f"Unable to get Instagram access token: {e}")
-
-
-def set_instagram_access_token(
-    db: Session, project_id: uuid.UUID, access_token: str
-) -> None:
-    project = get_project(db, project_id)
-    if not project:
-        raise ValueError("Project not found.")
-
-    secret_tag_key = _project_name_to_ig_access_token_key(project.name)
-    try:
-        secret.tag_client_resource(secret_tag_key, access_token)
-    except Exception as e:
-        logger.error(f"Unable to set Instagram access token: {e}")
-        raise RuntimeError(f"Unable to set Instagram access token: {e}")
-
-
-def remove_instagram_access_token(db: Session, project_id: uuid.UUID) -> None:
-    project = get_project(db, project_id)
-    if not project:
-        raise ValueError("Project not found.")
-
-    secret_tag_key = _project_name_to_ig_access_token_key(project.name)
-    try:
-        secret.untag_client_resource(secret_tag_key)
-    except Exception as e:
-        logger.error(f"Unable to remove Instagram access token: {e}")
-        raise RuntimeError(f"Unable to remove Instagram access token: {e}")
