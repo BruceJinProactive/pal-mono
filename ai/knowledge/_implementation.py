@@ -34,7 +34,7 @@ def process_pdf(uploaded_file: Any) -> list[Document]:
         uploaded_file (Any): The uploaded PDF file.
 
     Returns:
-        List[Document]: A list of Document objects created from the PDF file.
+        list[Document]: A list of Document objects created from the PDF file.
     """
 
     reader = PDFReader()

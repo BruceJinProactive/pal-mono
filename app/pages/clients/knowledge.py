@@ -1,6 +1,6 @@
 import json
 import uuid
-from typing import Any, List
+from typing import Any
 
 import streamlit as st
 from sqlalchemy import DateTime, MetaData, String, Text
@@ -288,9 +288,34 @@ def knowledge_dashboard_ui(account_name: str) -> None:
     knowledge_base_ai = get_knowledge_by_account_name(session, account_name)
     # Define page size and initialize session state for pagination
     if knowledge_base_ai:
-        PAGE_SIZE = 10  # Number of items per page
+        PAGE_SIZE = 10
         page_key = f"{account_name}_page_number"
+        search_key = f"{account_name}_search_query"
+        knowledge_title = f"### {account_name}'s Knowledge Base"
+
+        # Initialize session state for pagination and search
         st.session_state.setdefault(page_key, 0)
+        st.session_state.setdefault(search_key, "")
+
+        # Layout for search bar
+        search_query = st.text_input(
+            "Search Knowledge Base",
+            placeholder="Enter keyword here ...",
+            value=st.session_state.get(search_key, ""),
+            key=search_key,
+        )
+
+        # Update session state for search only when the button is clicked
+        if st.session_state[search_key] and search_query.strip():
+            knowledge_base_ai = search_knowledge_by_content(
+                session, account_name, search_query.strip()
+            )
+            knowledge_title = f"### Search Results for '{search_query}'"
+            if not knowledge_base_ai:
+                knowledge_title = f"### No search results found for '{search_query}'"
+
+        # Display header
+        st.write(knowledge_title)
 
         # Convert the list of objects to a list of dictionaries for easier table display
         knowledge_data = [
@@ -298,7 +323,7 @@ def knowledge_dashboard_ui(account_name: str) -> None:
                 "name": item.name,
                 "content": item.content,
                 "id": item.id,
-            }  # Assuming `id` uniquely identifies each entry
+            }
             for item in knowledge_base_ai
         ]
         if knowledge_data:
@@ -317,9 +342,6 @@ def knowledge_dashboard_ui(account_name: str) -> None:
                 st.session_state[page_key],
                 PAGE_SIZE,
             )
-
-            # Display header
-            st.write(f"### {account_name}'s Knowledge Base")
 
             def is_json(item):
                 try:
@@ -360,6 +382,8 @@ def knowledge_dashboard_ui(account_name: str) -> None:
                     if st.button("Next"):
                         st.session_state[page_key] += 1
                         st.rerun()
+    else:
+        st.write("### No knowledge base entries found.")
 
 
 class AIBase(DeclarativeBase):
@@ -416,7 +440,7 @@ def get_knowledge_table(account_name: str):
     return knowledge_table
 
 
-def get_knowledge_by_account_name(session: Session, account_name: str) -> List[Any]:
+def get_knowledge_by_account_name(session: Session, account_name: str) -> list[Any]:
     """
     Retrieve the AI knowledge for a given account name.
 
@@ -424,7 +448,7 @@ def get_knowledge_by_account_name(session: Session, account_name: str) -> List[A
         session (Session): The session to use.
         account_name (str): The account name to retrieve the AI knowledge for.
     Returns:
-        List[Any]: A list of AI knowledge.
+        list[Any]: A list of AI knowledge.
     """
     # Get the dynamically generated Knowledge class with the appropriate table name
     knowledge_table = get_knowledge_table(account_name)
@@ -458,6 +482,26 @@ def delete_knowledge_by_id(
         session.rollback()
         logger.error(f"Error deleting account: {e}")
     return None
+
+
+def search_knowledge_by_content(
+    db: Session, account_name: str, search_content: str
+) -> list[Any]:
+    """
+    Search AI knowledge by content for a given account name.
+
+    Args:
+        account_name (str): The account name to search the AI knowledge for.
+        search_content (str): The content to search for in the AI knowledge.
+    Returns:
+        list[Any]: A list of AI knowledge that matches the search content.
+    """
+    knowledge_table = get_knowledge_table(account_name)
+    return (
+        db.query(knowledge_table)
+        .filter(knowledge_table.content.ilike(f"%{search_content}%"))
+        .all()
+    )
 
 
 def main() -> None:

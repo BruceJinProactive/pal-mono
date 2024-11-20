@@ -32,7 +32,7 @@ def process_pdf(upload_file: Any) -> list[Document]:
         upload_file (Any): The uploaded file.
 
     Returns:
-        List[Document]: A list of Document objects created from the PDF file.
+        list[Document]: A list of Document objects created from the PDF file.
     """
     return _implementation.process_pdf(upload_file)
 
