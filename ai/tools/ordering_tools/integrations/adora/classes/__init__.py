@@ -1,3 +1,4 @@
+from decimal import Decimal
 from enum import Enum
 
 from pydantic import BaseModel
@@ -80,12 +81,12 @@ class AdoraOrderCalculationResult(BaseModel):
     # Key is used on the Adora Pos API side in subsequent API calls to refer to the order.
     key: str | None = None
     isPaymentRequired: bool | None = None
-    subTotal: float | None = None
-    total: float | None = None
-    discount: float | None = None
-    taxAmount: float | None = None
-    serviceCharge: float | None = None
-    deliveryCharge: float | None = None
+    subTotal: Decimal | None = None
+    total: Decimal | None = None
+    discount: Decimal | None = None
+    taxAmount: Decimal | None = None
+    serviceCharge: Decimal | None = None
+    deliveryCharge: Decimal | None = None
 
     class Config:
         # Allow extra fields in case API response includes additional data
@@ -103,7 +104,7 @@ class AdoraOrderItem(OrderItem):
         size_id: int,
         quantity: int,
         comment: str,
-        price: float,
+        price: Decimal,
         modifiers: list,
     ):
         self.itemId = item_id
@@ -120,10 +121,10 @@ class AdoraOrderItem(OrderItem):
         self.modifiers = modifiers
 
     def __str__(self):
-        return f"quantity: {self.quantity} sizeId: {self.sizeId} itemId: {self.itemId} with {self.modifiers} for {self.price}"
+        return f"quantity: {self.quantity} sizeId: {self.sizeId} itemId: {self.itemId} with {self.modifiers} for {str(self.price)}"
 
     def to_log_string(self):
-        return f"{self.quantity} {self.size} (sizeId: {self.sizeId}) {self.item_name} (itemId: {self.itemId}) with {self.modifications} ({self.modifiers}) for {self.price}"
+        return f"{self.quantity} {self.size} (sizeId: {self.sizeId}) {self.item_name} (itemId: {self.itemId}) with {self.modifications} ({self.modifiers}) for {str(self.price)}"
 
     def to_dict(self):
         """
@@ -172,8 +173,8 @@ class AdoraValidatedAddress(BaseModel):
     This is the shape of the response from the Adora API at the validate_address step, part of AdoraValidatedAddressList.
     """
 
-    charge: float
-    minimumCharge: float
+    charge: Decimal | None = None
+    minimumCharge: Decimal | None = None
     typeId: int
     description: str
 

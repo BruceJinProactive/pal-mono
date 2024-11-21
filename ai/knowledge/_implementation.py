@@ -1,12 +1,13 @@
 from typing import Any
 
-import db
-from ai.model import get_embedder
 from phi.document.base import Document
 from phi.document.reader.pdf import PDFReader
 from phi.knowledge.agent import AgentKnowledge
 from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.vectordb.pgvector.pgvector2 import PgVector2
+
+import db
+from ai.model import get_embedder
 
 
 def get_knowledge(account_name: str) -> AgentKnowledge:

@@ -151,7 +151,7 @@ def validate_order(
     if order_type == AdoraOrderType.Delivery and delivery_address:
         payload["deliveryAddress"] = delivery_address.model_dump()
 
-    payload = json.dumps(payload)
+    payload = json.dumps(payload, cls=_utils.DecimalEncoder)
 
     response = _utils.connect_adora_order_hub(
         "POST",

@@ -2,11 +2,11 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import List
+
 from sqlalchemy.orm import Session
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
-
 from services.account_service import get_account
 from services.agent_service import get_agents_by_account
 from services.message_service import (

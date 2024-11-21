@@ -1,6 +1,7 @@
 import textwrap
 from collections import defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 
 from phi.memory.memory import Memory
 
@@ -307,7 +308,7 @@ def get_adora_modifications(
         if modifiers:
             return False, "No modifiers are allowed for this item."
         adora_order_item = AdoraOrderItem(
-            adora_item_id, adora_size_id, order_item.quantity, comment, 0.0, []
+            adora_item_id, adora_size_id, order_item.quantity, comment, Decimal(0.0), []
         )
         adora_order_item.item_name = adora_item_name
         adora_order_item.size = adora_size_name
@@ -350,7 +351,7 @@ def get_adora_modifications(
         adora_size_id,
         order_item.quantity,
         payload["comment"],
-        0.0,
+        Decimal(0.0),
         payload["modifiers"],
     )
 
