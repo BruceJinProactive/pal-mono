@@ -93,9 +93,19 @@ class Message(BaseModel):
 
     def get_content(self) -> str:
         if self.text:
-            content = f"User context: {self.context} User message: {self.text.body}"
+            content = (
+                f"<message_channel>{self.channel.value}</message_channel>\n\n"
+                + f"<user_context>{self.context}</user_context>\n\n"
+                + f"<user_message>{self.text.body}</user_message>"
+            )
         elif self.media:
-            content = f"User context: {self.context} Media Url: {self.media.url} Media Caption: {self.media.caption} Media Type: {self.media.media_type}"
+            content = (
+                f"<message_channel>{self.channel.value}</message_channel>\n\n"
+                + f"<user_context>{self.context}</user_context>\n\n"
+                + f"<media_url>{self.media.url}</media_url>\n\n"
+                + f"<media_caption>{self.media.caption}</media_caption>\n\n"
+                + f"<media_type>{self.media.media_type}</media_type>"
+            )
         else:
             raise ValueError("Message object not set")
 
