@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 from phi.agent.agent import Agent
@@ -48,6 +49,9 @@ def integrate_agent(
         )
         session_id = session_ids[0] if session_ids else None
 
+    # -*- Debug settings
+    DEBUG_MODE = os.getenv("DEBUG_MODE", "False") == "True"
+
     return Agent(
         # -*- Agent settings
         provider=model,
@@ -77,7 +81,6 @@ def integrate_agent(
         output_model=None if stream else OutputModel,
         parse_response=True,
         structured_outputs=False,  # please set to False for JSON mode
-        # -*- Agent run details
-        # -*- Debugging
-        debug_mode=False,
+        # -*- Debug settings
+        debug_mode=DEBUG_MODE,
     )
