@@ -83,20 +83,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
             metadata=response_messages[0].metadata,
             extras=response_messages[0].extras,
             text=TextObject(
-                body=" ".join(
-                    [
-                        (
-                            msg.text.body
-                            if msg.type == "text" and msg.text
-                            else (
-                                msg.media.url
-                                if msg.type == "media" and msg.media
-                                else ""
-                            )
-                        )
-                        for msg in response_messages
-                    ]
-                )
+                body="[WARNING] `message` field is deprecated. Please use `messages` field instead."
             ),
         )
 
