@@ -2,15 +2,14 @@ import pandas as pd
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-import db
 from app.auth import user
-from app.shared import set_account
+from app.shared import get_app_db, set_account
 from services.account_service import get_accounts
 from services.admin_service import get_inbox_conversations
 
 st.title("Dashboard")
 
-session = next(db.get_db())
+session = get_app_db()
 
 
 def navigate_accounts(account_name):

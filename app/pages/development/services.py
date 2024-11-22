@@ -5,7 +5,6 @@ import streamlit as st
 from sqlalchemy.exc import IntegrityError
 from streamlit_extras.switch_page_button import switch_page
 
-import db
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
@@ -15,6 +14,7 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from app.auth import user
+from app.shared import get_app_db
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import get_conversation_messages, get_inbox_conversations
 from services.message_service import get_chat_response
@@ -23,7 +23,7 @@ from utils.dttm import current_utc
 
 st.title("Services")
 
-session = next(db.get_db())
+session = get_app_db()
 
 (
     message_service_tab,

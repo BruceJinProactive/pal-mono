@@ -3,11 +3,11 @@ import json
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-import db
 from ai.tools.booking_tools import BookingTools
 from ai.tools.ordering_tools import OrderingTools
 from api.schemas.chat.message import Channel
 from app.auth import user
+from app.shared import get_app_db
 from services.account_service import get_account, get_accounts
 from services.agent_service import get_agent
 from services.user_service import get_user_by_channel_identifier
@@ -15,7 +15,7 @@ from utils.secret import get_client_secret
 
 st.title("Tools")
 
-session = next(db.get_db())
+session = get_app_db()
 
 (ordering_tools_tab, booking_tools_tab) = st.tabs(["Ordering Tools", "Booking Tools"])
 
@@ -90,7 +90,7 @@ def _construct_demo_dict():
     Returns dictionary of account name to agent id
     """
     demo_dict = {}
-    session = next(db.get_db())
+    session = get_app_db()
     accounts = get_accounts(session)
 
     for account in accounts:

@@ -1,14 +1,13 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-import db
 from app.auth import user
-from app.shared import universal_picker_ui
+from app.shared import get_app_db, universal_picker_ui
 from services.account_service import get_account
 
 st.title("Accounts")
 
-session = next(db.get_db())
+session = get_app_db()
 
 
 def main() -> None:

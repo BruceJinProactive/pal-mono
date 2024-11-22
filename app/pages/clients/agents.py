@@ -3,15 +3,14 @@ import json
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-import db
 from app.auth import user
-from app.shared import json_decode, universal_picker_ui
+from app.shared import get_app_db, json_decode, universal_picker_ui
 from services.account_service import get_account
 from services.agent_service import get_agent, replace_agent_config
 
 st.title("Agents")
 
-session = next(db.get_db())
+session = get_app_db()
 
 
 def main() -> None:

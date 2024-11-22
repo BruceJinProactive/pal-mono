@@ -1,13 +1,13 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-import db
 from app.auth import user
+from app.shared import get_app_db
 from services.account_service import create_account_with_defaults
 from services.agent_service import replace_agent_config
 
 st.title("Onboard")
-session = next(db.get_db())
+session = get_app_db()
 
 
 def main() -> None:

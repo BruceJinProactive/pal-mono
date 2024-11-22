@@ -1,9 +1,8 @@
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-import db
 from app.auth import user
-from app.shared import account_picker_ui, chat_render_toggle
+from app.shared import account_picker_ui, chat_render_toggle, get_app_db
 from services.account_service import get_account
 from services.message_service import (
     get_conversations_by_user,
@@ -13,7 +12,7 @@ from services.user_service import get_users_by_account_id
 
 st.title("Users")
 
-session = next(db.get_db())
+session = get_app_db()
 
 
 def render_conversation(user_id) -> None:
