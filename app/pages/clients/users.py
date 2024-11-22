@@ -65,8 +65,8 @@ def main() -> None:
 
     # display users table
     chat_render_toggle()
-    table_headers = ["Identifier", "Channel", "Id", "Conversation"]
-    col_widths = [2] + [1] * (len(table_headers) - 1)
+    table_headers = ["Channel", "Identifier", "Id", "Conversation"]
+    col_widths = [1, 2, 1, 1]
     for th, col in zip(table_headers, st.columns(col_widths)):
         col.write(th)
     for account_user in account_users:
