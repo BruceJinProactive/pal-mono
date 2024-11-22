@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.endpoints import endpoints
-from api.schemas.admin.feedback import Feedback
 from api.schemas.chat.message import AuthorType, Channel, Message, TextObject
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (
@@ -15,14 +14,8 @@ from services.admin_service import (
     get_conversation_messages,
     get_inbox_conversations,
     get_instagram_connected,
-    get_messages_by_conversation_id,
     remove_instagram_access_token,
     set_instagram_access_token,
-)
-from services.feedback_service import (
-    create_feedback,
-    get_feedback_by_id,
-    update_feedback_by_id,
 )
 from services.message_service import (
     get_chat_response,
@@ -31,7 +24,7 @@ from services.message_service import (
 )
 from services.user_service import get_user_by_channel_identifier
 
-from . import _auth, _utils
+from . import _auth, _implementation, _utils
 
 ######################################################
 ## Router for Admin Console
@@ -132,48 +125,9 @@ def read_inbox(request: Request, session: Session = Depends(db.get_db)):
 def get_messages_with_feedback_by_conversation_id(
     request: Request, conversation_id: uuid.UUID, session: Session = Depends(db.get_db)
 ):
-    """
-    This endpoint retrieves all Messages within a specific Conversation, along with their associated Feedback.
-    """
-    # Validate ID Token
-    try:
-        decrypted_id_token = _auth.parse_admin_console_id_token(
-            request.headers.get("Authorization")
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=401,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Get Account from ID Token
-    account = get_account(
-        session, account_name=decrypted_id_token["custom:account_name"]
+    return _implementation.get_messages_with_feedback_by_conversation_id(
+        request, conversation_id, session
     )
-
-    if account is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Account not found.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    try:
-        messages = get_messages_by_conversation_id(session, account.id, conversation_id)
-    except ValueError:
-        """
-        Only say "Conversation not found" because if the Admin does not
-        have access to the conversation, they should not know that
-        the conversation exists in the first place.
-        """
-        raise HTTPException(
-            status_code=400,
-            detail="Conversation not found.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    return JSONResponse(content=jsonable_encoder(messages))
 
 
 @admin_router.get("/inbox/{conversation_id}")
@@ -455,137 +409,21 @@ async def submit_feedback(request: Request, session: Session = Depends(db.get_db
     """
     This endpoint is used to create feedback in the database.
     """
-    # Validate ID token
-    try:
-        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
-    except ValueError as e:
-        raise HTTPException(
-            status_code=401,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Try to create Feedback object
-    try:
-        feedback_data = await request.json()
-        feedback = Feedback(**feedback_data)
-        feedback_dict = feedback.to_dict()
-        feedback_dict["message_id"] = uuid.UUID(feedback_dict["message_id"])
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid feedback data: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Pass Feedback object into service layer
-    try:
-        db_feedback = create_feedback(session, feedback_dict)
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    return {
-        "message": "Feedback successfully submitted",
-        "feedback_id": db_feedback.id,
-        "submitted_at": feedback.timestamp,
-    }
+    return await _implementation.submit_feedback(request, session)
 
 
 @admin_router.get("/feedback/{feedback_id}", status_code=200)
 def retrieve_feedback_by_id(
     feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
-    """
-    This endpoint is used to retrieve feedback by id from the database.
-    """
-    try:
-        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
-    except ValueError as e:
-        raise HTTPException(
-            status_code=401,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Validate feedback_id
-    try:
-        feedback_uuid = uuid.UUID(feedback_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid feedback UUID: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Get Feedback object from service layer
-    try:
-        feedback = get_feedback_by_id(session, feedback_uuid)
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    if not feedback:
-        raise HTTPException(
-            status_code=404,
-            detail="Feedback not found.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    return feedback
+    return _implementation.retrieve_feedback_by_id(feedback_id, request, session)
 
 
 @admin_router.post("/feedback/{feedback_id}", status_code=200)
 async def change_feedback_by_id(
     feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
-    """
-    This endpoint is used to update feedback by id in the database.
-    """
-    try:
-        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
-    except ValueError as e:
-        raise HTTPException(
-            status_code=401,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Try to create Feedback object
-    try:
-        feedback_data = await request.json()
-        feedback = Feedback(**feedback_data)
-        feedback_dict = feedback.to_dict()
-        feedback_dict["message_id"] = uuid.UUID(feedback_dict["message_id"])
-        feedback_uuid = uuid.UUID(feedback_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid feedback data: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Pass Feedback object into service layer
-    try:
-        update_feedback_by_id(session, feedback_uuid, feedback_dict)
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    return {
-        "message": "Feedback successfully updated",
-        "feedback_id": feedback_id,
-        "submitted_at": feedback.timestamp,
-    }
+    return await _implementation.change_feedback_by_id(feedback_id, request, session)
 
 
 @admin_router.get("/projects", status_code=200)

@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class FeedbackReaction(str, Enum):
@@ -19,23 +18,31 @@ class FeedbackTag(str, Enum):
     INSTRUCTION_ERROR = "instruction_error"
 
 
-class Feedback(BaseModel):
-    """Feedback Model"""
+class CreateFeedbackRequest(BaseModel):
+    """Create Feedback Request Model"""
 
-    id: Optional[str] = None
+    message_id: UUID
+    author_identifier: str | None = None
+    reaction: FeedbackReaction | None = None
+    tags: list[FeedbackTag] | None = None
+    note: str | None = None
+
+
+class CreateFeedbackResponse(BaseModel):
+    """Create Feedback Response Model"""
+
+    feedback_id: str
+    submitted_at: str
+
+
+class GetFeedbackResponse(BaseModel):
+    """Get Feedback Response Model"""
+
+    id: str
+    timestamp: str
+
     message_id: str
-    author_identifier: Optional[str] = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    reaction: Optional[FeedbackReaction] = None
-    tags: Optional[List[FeedbackTag]] = None
-    note: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "message_id": self.message_id,
-            "author_identifier": self.author_identifier,
-            "timestamp": self.timestamp.isoformat(),
-            "reaction": self.reaction.value if self.reaction is not None else None,
-            "tags": [tag.value for tag in self.tags] if self.tags is not None else None,
-            "note": self.note,
-        }
+    author_identifier: str | None = None
+    reaction: str | None = None
+    tags: list[str] | None = None
+    note: str | None = None

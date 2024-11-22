@@ -7,7 +7,7 @@ import db
 from . import _implementation
 
 
-def create_feedback(session: Session, feedback: dict) -> db.Feedback:
+def create_feedback(session: Session, feedback: db.Feedback) -> db.Feedback:
     """
     Creates feedback in the database.
 
@@ -36,7 +36,7 @@ def get_feedback_by_id(session: Session, feedback_id: UUID) -> db.Feedback | Non
 
 
 def update_feedback_by_id(
-    session: Session, feedback_id: UUID, updated_feedback: dict
+    session: Session, feedback_id: UUID, updated_feedback: db.Feedback
 ) -> db.Feedback:
     """
     Updates feedback by id in the database.

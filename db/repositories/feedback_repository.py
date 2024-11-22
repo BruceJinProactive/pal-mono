@@ -11,14 +11,15 @@ class FeedbackRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def create_feedback(self, feedback: dict) -> Feedback:
-        db_feedback = Feedback(
-            author_identifier=feedback["author_identifier"],
-            reaction=feedback["reaction"],
-            tags=feedback["tags"],
-            note=feedback["note"],
-            message_id=feedback["message_id"],
-        )
+    def create_feedback(self, feedback: Feedback) -> Feedback:
+        db_feedback = Feedback()
+        for key, value in vars(feedback).items():
+            if hasattr(Feedback, key) and key not in {
+                "id",
+                "created_at",
+                "updated_at",
+            }:
+                setattr(db_feedback, key, value)
 
         try:
             self.session.add(db_feedback)
@@ -42,14 +43,19 @@ class FeedbackRepository:
             raise
 
     def update_feedback_by_id(
-        self, feedback_id: UUID, updated_feedback: dict
+        self, feedback_id: UUID, updated_feedback: Feedback
     ) -> Feedback:
         try:
             db_feedback = self.get_feedback_by_id(feedback_id)
             if db_feedback is None:
                 raise ValueError(f"Feedback {feedback_id} not found")
-            for key, value in updated_feedback.items():
-                setattr(db_feedback, key, value)
+            for key, value in vars(updated_feedback).items():
+                if hasattr(Feedback, key) and key not in {
+                    "id",
+                    "created_at",
+                    "updated_at",
+                }:
+                    setattr(db_feedback, key, value)
             self.session.commit()
             self.session.refresh(db_feedback)
             return db_feedback

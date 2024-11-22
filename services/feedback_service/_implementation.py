@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 import db
 
 
-def create_feedback(session: Session, feedback: dict) -> db.Feedback:
+def create_feedback(session: Session, feedback: db.Feedback) -> db.Feedback:
     feedback_repository = db.FeedbackRepository(session)
     return feedback_repository.create_feedback(feedback)
 
@@ -16,7 +16,7 @@ def get_feedback_by_id(session: Session, feedback_id: UUID) -> db.Feedback | Non
 
 
 def update_feedback_by_id(
-    session: Session, feedback_id: UUID, updated_feedback: dict
+    session: Session, feedback_id: UUID, updated_feedback: db.Feedback
 ) -> db.Feedback:
     feedback_repository = db.FeedbackRepository(session)
     return feedback_repository.update_feedback_by_id(feedback_id, updated_feedback)
