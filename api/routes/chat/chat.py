@@ -89,7 +89,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
 
         if request.async_response:
             # Return a successful response immediately
-            logger.info(f"Schedule to send messages: {response_messages}")
+            logger.info(f"Chat API, schedule to send messages: {response_messages}")
             send_messages(response_messages)
             return ChatResponse(status="success")
         else:

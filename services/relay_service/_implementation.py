@@ -17,7 +17,7 @@ AWS_RELAY_STATE_MACHINE_ARN = os.getenv("AWS_RELAY_STATE_MACHINE_ARN")
 
 
 def send_message(message: Message, delivery_time: datetime = current_utc()) -> dict:
-    logger.info(f"Schedule to send message: {message}")
+    logger.info(f"relay_service.send_message: {message}")
     try:
         # Ensure delivery_time is a datetime object
         if isinstance(delivery_time, str):
