@@ -23,6 +23,7 @@ async def get_chat_response_async(
 ) -> list[Message]:
     user = None
     extras = {}
+    metadata = {"instance": "BaseModel"}
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
     try:
@@ -38,6 +39,8 @@ async def get_chat_response_async(
             raise ValueError(
                 f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
             )
+
+        metadata["project_name"] = project.name
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
@@ -92,7 +95,7 @@ async def get_chat_response_async(
                         channel=message.channel,
                         broker=message.broker,
                         text=TextObject(body=msg_content),
-                        metadata={"instance": "BaseModel"},
+                        metadata=metadata,
                         extras=Extras(**extras),
                     )
                 elif msg_type == "image":
@@ -106,7 +109,7 @@ async def get_chat_response_async(
                         media=MediaObject(
                             url=msg_content, media_type="image", caption=msg_content
                         ),
-                        metadata={"instance": "BaseModel"},
+                        metadata=metadata,
                         extras=Extras(**extras),
                     )
 
@@ -209,6 +212,7 @@ async def get_chat_response_stream(
 
 def get_chat_response(session: Session, message: Message) -> Message:
     user = None
+    metadata = {"instance": "BaseModel"}
     extras = {}
 
     try:
@@ -224,6 +228,8 @@ def get_chat_response(session: Session, message: Message) -> Message:
             raise ValueError(
                 f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
             )
+
+        metadata["project_name"] = project.name
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
@@ -280,7 +286,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         channel=message.channel,
         broker=message.broker,
         text=TextObject(body=response),
-        metadata={"instance": "BaseModel"},
+        metadata=metadata,
         extras=Extras(**extras),
     )
 
