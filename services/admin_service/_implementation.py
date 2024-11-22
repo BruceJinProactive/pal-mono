@@ -64,6 +64,10 @@ def get_inbox_conversations(
         if last_message is None:
             continue
 
+        # If the last message is from datadog, skip this conversation
+        if last_message.body.get("sender_identifier", "") == "datadog":
+            continue
+
         last_messages.append(last_message)
 
         # Get most number of messages for each conversation
@@ -84,17 +88,20 @@ def get_inbox_conversations(
         reverse=True,
     )
 
+    def _get_last_message_text(message: db.Message) -> str:
+        if message.body.get("text") is not None:
+            return message.body.get("text", {}).get("body", "")
+        elif message.body.get("media") is not None:
+            return message.body.get("media", {}).get("url", "")
+        return ""
+
     # Reformat conversations
     inbox: List[ConversationPreview] = [
         ConversationPreview(
             id=str(conversation[0]),
             user_id=str(conversation[1]),
             num_messages=conversation[2],
-            last_message_text=(
-                conversation[3].body.get("text", {}).get("body", "")
-                if conversation[3].body is not None
-                else ""
-            ),
+            last_message_text=_get_last_message_text(conversation[3]),
         )
         for conversation in conversation_previews
     ]
