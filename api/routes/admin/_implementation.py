@@ -1,16 +1,15 @@
 import uuid
 
 from fastapi import Depends, HTTPException, Request
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
     CreateFeedbackResponse,
-    GetFeedbackResponse,
+    Feedback,
 )
+from api.schemas.admin.message import GetMessageResponse
 from services.account_service import get_account
 from services.admin_service import get_messages_by_conversation_id
 from services.feedback_service import (
@@ -71,7 +70,30 @@ def get_messages_with_feedback_by_conversation_id(
             headers={"Content-Type": "application/json"},
         )
 
-    return JSONResponse(content=jsonable_encoder(messages))
+    # Cast to API response schema
+    messages_response: list[GetMessageResponse] = [
+        GetMessageResponse(
+            id=str(message.id),
+            timestamp=message.created_at.isoformat(),
+            conversation_id=str(message.conversation_id),
+            body=message.body,
+            feedback=[
+                Feedback(
+                    id=str(f.id),
+                    message_id=str(f.message_id),
+                    author_identifier=f.author_identifier,
+                    reaction=f.reaction,
+                    tags=f.tags,
+                    note=f.note,
+                    timestamp=f.updated_at.isoformat(),
+                )
+                for f in message.feedback
+            ],
+        )
+        for message in messages
+    ]
+
+    return messages_response
 
 
 async def submit_feedback(request: Request, session: Session = Depends(db.get_db)):
@@ -115,7 +137,7 @@ async def submit_feedback(request: Request, session: Session = Depends(db.get_db
 
     response = CreateFeedbackResponse(
         feedback_id=str(persisted_feedback.id),
-        submitted_at=str(persisted_feedback.created_at.isoformat()),
+        submitted_at=persisted_feedback.created_at.isoformat(),
     )
 
     return response
@@ -156,14 +178,14 @@ def retrieve_feedback_by_id(
             headers={"Content-Type": "application/json"},
         )
 
-    feedback_response = GetFeedbackResponse(
+    feedback_response = Feedback(
         id=str(persisted_feedback.id),
         message_id=str(persisted_feedback.message_id),
         author_identifier=persisted_feedback.author_identifier,
         reaction=persisted_feedback.reaction,
         tags=persisted_feedback.tags,
         note=persisted_feedback.note,
-        timestamp=str(persisted_feedback.updated_at.isoformat()),
+        timestamp=persisted_feedback.updated_at.isoformat(),
     )
 
     return feedback_response
@@ -213,7 +235,7 @@ async def change_feedback_by_id(
 
     response = CreateFeedbackResponse(
         feedback_id=str(persisted_feedback.id),
-        submitted_at=str(persisted_feedback.updated_at.isoformat()),
+        submitted_at=persisted_feedback.updated_at.isoformat(),
     )
 
     return response

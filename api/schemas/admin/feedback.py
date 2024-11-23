@@ -22,6 +22,7 @@ class CreateFeedbackRequest(BaseModel):
     """Create Feedback Request Model"""
 
     message_id: UUID
+
     author_identifier: str | None = None
     reaction: FeedbackReaction | None = None
     tags: list[FeedbackTag] | None = None
@@ -35,13 +36,13 @@ class CreateFeedbackResponse(BaseModel):
     submitted_at: str
 
 
-class GetFeedbackResponse(BaseModel):
-    """Get Feedback Response Model"""
+class Feedback(BaseModel):
+    """Feedback Model"""
 
     id: str
     timestamp: str
-
     message_id: str
+
     author_identifier: str | None = None
     reaction: str | None = None
     tags: list[str] | None = None
