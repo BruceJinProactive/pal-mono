@@ -234,7 +234,10 @@ def set_instagram_access_token(
 
     secret_tag_key = _project_name_to_ig_access_token_key(project.name)
     try:
-        secret.tag_client_resource(secret_tag_key, access_token)
+        secret.add_client_secret(secret_tag_key, access_token)
+    except KeyError as e:
+        # if the key already exists, then the project is already connected
+        logger.info(e)
     except Exception as e:
         logger.error(f"Unable to set Instagram access token: {e}")
         raise RuntimeError(f"Unable to set Instagram access token: {e}")
@@ -247,7 +250,10 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
 
     secret_tag_key = _project_name_to_ig_access_token_key(project.name)
     try:
-        secret.untag_client_resource(secret_tag_key)
+        secret.remove_client_secret(secret_tag_key)
+    except KeyError as e:
+        # if the key does not exist, then the project is not connected
+        logger.info(e)
     except Exception as e:
         logger.error(f"Unable to remove Instagram access token: {e}")
         raise RuntimeError(f"Unable to remove Instagram access token: {e}")
