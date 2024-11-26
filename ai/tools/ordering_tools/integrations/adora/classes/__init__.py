@@ -113,11 +113,8 @@ class AdoraOrderItem(OrderItem):
         self.comment = comment
         self.price = price
 
-        # TODO should taxes field stay here or get moved to constructor param?
         self.taxes = [{"id": 0, "taxAmount": 0}]
 
-        # TODO transform self.modifications into self.modifiers
-        # self.modifiers = [{"id": 0, "isDefault": True, "price": 0, "weightId": 0}]
         self.modifiers = modifiers
 
     def __str__(self):

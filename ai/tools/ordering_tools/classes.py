@@ -39,7 +39,6 @@ class GenericDeliveryAddress(BaseModel):
     city: str
     state: str
     zip_code: str
-    # TODO: Consider adding a second address line for suite numbers or other additional address information.
 
 
 class FulfillmentStrategy(Enum):

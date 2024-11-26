@@ -25,7 +25,6 @@ class OrderingTools(Toolkit):
 
         # Toolkit integrations
         # Map the integration type to the respective class
-        # TODO: consider an abstract class for each integration?
         self.integration_map = {
             "adora": AdoraIntegration,
             # Add other integrations here
@@ -102,7 +101,6 @@ class OrderingTools(Toolkit):
 
         return self.integration.list_coupons()
 
-    # TODO: Figure out how (if) we want to take in coupons, payment info, delivery type. Hardcode for now.
     def place_order(self, chat_history: list[str]) -> str:
         """
         This function should be called every time the user requests to place order, checkout, or pay.

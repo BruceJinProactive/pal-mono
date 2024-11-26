@@ -60,8 +60,6 @@ class AdoraIntegration:
         if not isinstance(adora_order_item, AdoraOrderItem):
             return "Failed to convert order item."
 
-        # TODO add coupon to order validation here in add_to_order too
-
         # validate order
         validated_order = _apis.validate_order(
             bearer_token, self.store_information["store_id"], [adora_order_item], 0
@@ -359,7 +357,6 @@ class AdoraIntegration:
                 lat=geocoded_loc.latitude,
                 lng=geocoded_loc.longitude,
                 # set the typeId from the validated address
-                # TODO why does Adora return an array of addresses?
                 typeId=validated_address[0].typeId,
             )
 
@@ -382,7 +379,7 @@ class AdoraIntegration:
         saved_order = _apis.save_validated_order(bearer_token, validated_order.key)
 
         if not saved_order or not saved_order.orderID:
-            return "Failed to save order in Adora system. Please try again."
+            return "Failed to place order. Please try again."
 
         # send credit card payment link to the consumer
         try:
