@@ -161,6 +161,10 @@ class AdoraIntegration:
                 f"Please provide your {' and '.join(missing_info)} to place an order."
             )
 
+        # Add a note to the customer's name to indicate that the order was placed via Jimmy
+        if "(via Jimmy)" not in consumer.last_name:
+            consumer.last_name += " (via Jimmy)"
+
         # Format phone number
         consumer.phone_number = "({}){}-{}".format(
             consumer.phone_number[:3],
