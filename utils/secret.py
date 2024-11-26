@@ -13,6 +13,34 @@ These can be added to or removed from a secret using the AWS Secrets Manager API
 """
 
 
+def get_client_secret_with_fallback(secret_key: str) -> str:
+    """
+    Retrieve the value of a secret key from AWS Secrets Manager or fallback to an environment variables.
+
+    Args:
+        secret_key (str): The key of the secret to retrieve.
+
+    Returns:
+        str: The value of the secret.
+
+    Raises:
+        ValueError: If the secret is not found in AWS Secrets Manager or environment variables.
+    """
+    try:
+        # Attempt to retrieve the secret from AWS Secrets Manager
+        secret_value = get_client_secret(secret_key)
+    except Exception:
+        # Fallback to environment variable
+        secret_value = os.getenv(secret_key, "")
+
+    if not secret_value:
+        raise ValueError(
+            f"Secret not found in AWS Secrets Manager or environment variables for key: {secret_key}"
+        )
+
+    return secret_value
+
+
 def get_client_secret(secret_key: str) -> str:
     """
     Retrieve a secret value from AWS Secrets Manager using a secret_key

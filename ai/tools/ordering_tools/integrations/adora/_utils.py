@@ -26,6 +26,7 @@ from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraOrderItem,
     MenuItemDetails,
 )
+from utils.secret import get_client_secret_with_fallback
 
 
 @dataclass
@@ -361,6 +362,23 @@ def get_adora_modifications(
     adora_order_item.modifications = new_added_modifications
 
     return True, adora_order_item
+
+
+def get_adora_secret(account_name: str, secret_type: str) -> str:
+    """
+    Retrieve the Adora secret (API key or secret) for the given account_name.
+    First tries Secrets Manager, falls back to environment variable if an error occurs.
+
+    Args:
+        account_name (str): The account name for which to retrieve the secret.
+        secret_type (str): The type of secret (e.g., "ADORA_API_KEY" or "ADORA_API_SECRET").
+
+    Returns:
+        str: The retrieved secret value.
+    """
+    secret_key = f"{account_name.upper()}_ADORA_{secret_type}"
+    secret_value = get_client_secret_with_fallback(secret_key)
+    return secret_value
 
 
 def get_adora_size_id(

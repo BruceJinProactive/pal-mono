@@ -18,16 +18,14 @@ class AdoraIntegration:
     def __init__(
         self,
         account_name: str,
-        api_key: str,
-        api_secret: str,
         store_information: dict[str, str],
         adora_conversion_examples: dict[
             Literal["items", "sizes", "modifiers", "coupons"], dict[str, str]
         ] = {},
     ):
         self.account_name = account_name
-        self.api_key = api_key
-        self.api_secret = api_secret
+        self.api_key = _utils.get_adora_secret(account_name, "API_KEY")
+        self.api_secret = _utils.get_adora_secret(account_name, "API_SECRET")
         self.store_information = store_information
         self.adora_conversion_examples = adora_conversion_examples
 
