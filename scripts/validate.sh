@@ -28,6 +28,7 @@ main() {
   isort ${REPO_ROOT}
 
   print_heading "Running: pyright ${REPO_ROOT}"
+  export PYRIGHT_PYTHON_FORCE_VERSION=latest # ignore latest pyright version warning
   pyright ${REPO_ROOT}
 }
 
