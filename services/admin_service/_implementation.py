@@ -141,6 +141,14 @@ def get_conversation_messages(
     # Requesting Account matches Account associated with Conversation, so get messages and return
     messages = get_messages_by_conversation(session, conversation_id=conversation_id)
 
+    # Sort messages by timestamp
+    messages.sort(
+        key=lambda m: (
+            0 if isinstance(m, str) else 1,
+            m if isinstance(m, str) else m.body.get("timestamp", datetime.min),
+        ),
+    )
+
     return messages
 
 
