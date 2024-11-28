@@ -1,12 +1,14 @@
 from . import _implementation
 
 
-def get_tools(agent_raw_config, user_id):
+def get_tools(agent_raw_config, user_id, session_id):
     """
     Initialize and return a list of toolkits based on the agent raw configuration.
 
     Args:
         agent_raw_config (dict): The raw configuration dictionary containing toolkit configurations.
+        user_id (str): The user ID.
+        session_id (str): The session ID.
 
     Returns:
         list: A list of initialized toolkit instances.
@@ -30,7 +32,7 @@ def get_tools(agent_raw_config, user_id):
         }
         tools = get_tools(agent_raw_config)
     """
-    return _implementation.get_tools(agent_raw_config, user_id)
+    return _implementation.get_tools(agent_raw_config, user_id, session_id)
 
 
 __all__ = ["get_tools"]

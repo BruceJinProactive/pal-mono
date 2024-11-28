@@ -6,7 +6,7 @@ from .image_retrieval_tools import ImageRetrievalTools
 from .ordering_tools import OrderingTools
 
 
-def get_tools(agent_raw_config, user_id):
+def get_tools(agent_raw_config, user_id, session_id):
     tools = []
     toolkit_map = {
         "OrderingTools": OrderingTools,
@@ -27,6 +27,10 @@ def get_tools(agent_raw_config, user_id):
                 continue
             toolkit_name, toolkit_config = toolkit["toolkit"], toolkit["config"]
 
-            tools.append(toolkit_map[toolkit_name](toolkit_config, user_id))
+            tools.append(
+                toolkit_map[toolkit_name](
+                    toolkit_config, user_id=user_id, session_id=session_id
+                )
+            )
 
     return tools

@@ -9,11 +9,11 @@ class ImageRetrievalTools(Toolkit):
     def __str__(self):
         return "ImageRetrievalTools"
 
-    def __init__(self, config: dict, user_id: str):
+    def __init__(self, config: dict, **kwargs):
         super().__init__(name="image_retrieval_tools")
 
         # Load user_id
-        self.user_id = user_id
+        self.user_id = kwargs["user_id"]
 
         # Toolkit tools (actions)
         self.register(self.retrieve_image_by_chat_history)

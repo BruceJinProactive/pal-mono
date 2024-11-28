@@ -5,7 +5,7 @@ class EscalationTools(Toolkit):
     def __str__(self):
         return "EscalationTools"
 
-    def __init__(self, config: dict, user_id: str):
+    def __init__(self, config: dict, **kwargs):
         super().__init__(name="escalation_tools")
 
         # Toolkit tools (actions)

@@ -1,4 +1,5 @@
 import inspect
+from uuid import uuid4
 
 from phi.tools.toolkit import Toolkit
 
@@ -11,11 +12,16 @@ class OrderingTools(Toolkit):
     def __str__(self):
         return "OrderingTools"
 
-    def __init__(self, config: dict, user_id: str):
+    def __init__(self, config: dict, **kwargs: str):
         super().__init__(name="ordering_tools")
 
         # Load user_id
-        self.user_id = user_id
+        if "user_id" not in kwargs:
+            raise ValueError("user_id is required for OrderingTools")
+        self.user_id = kwargs["user_id"]
+
+        # Load session id
+        self.session_id = kwargs.get("session_id", str(uuid4()))
 
         # Toolkit tools (actions)
         self.register(self.add_to_order)
@@ -101,7 +107,7 @@ class OrderingTools(Toolkit):
 
         return self.integration.list_coupons()
 
-    def place_order(self, chat_history: list[str]) -> str:
+    def place_order(self, current_user_query: str) -> str:
         """
         This function should be called every time the user requests to place order, checkout, or pay.
 
@@ -112,30 +118,38 @@ class OrderingTools(Toolkit):
         You must provide the user with the ordered item, price, and order id in the response.
 
         Args:
-            chat_history (list[str]): Chat history between user and agent. Be sure to include both user messages and agent responses.
+            str: The current user query, exactly as it was received from the user.
 
         Returns:
             str: Result of placing the order, including the total and order id if applicable, and payment instructions if applicable.
-
+        """
+        """
         Examples:
             User: Place my order
-            Tool: place_order()
+            Tool: place_order("Place my order")
 
             User: checkout
-            Tool: place_order()
+            Tool: place_order("checkout")
 
             User: that'll be all
-            Tool: place_order()
+            Tool: place_order("that'll be all")
 
             User: I'm ready to pay
-            Tool: place_order()
+            Tool: place_order("I'm ready to pay")
 
             User: just those items please
-            Tool: place_order()
-        """
-        logger.debug(f"[OrderingTools.place_order] Chat history: {chat_history}")
+            Tool: place_order("just those items please")
 
-        return self.integration.place_order(chat_history, self.user_id)
+            User: How's the weather today? I want to use the $5 coupon. Check out please.
+            Tool: place_order("How's the weather today? I want to use the $5 coupon. Check out please.")
+        """
+        logger.debug(
+            f"[OrderingTools.place_order] Placing order. Current query: {current_user_query}"
+        )
+
+        return self.integration.place_order(
+            self.user_id, self.session_id, current_user_query
+        )
 
     def remove_from_order(
         self,

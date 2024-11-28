@@ -36,7 +36,7 @@ class ConversionResult:
 
 
 model_router_client = get_client()
-model_router_model = ModelName.SMALL
+model_router_model = ModelName.MEDIUM
 
 
 def _add_default_modifiers(
@@ -508,7 +508,8 @@ def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
                         "text": "Your role is to process the chat history between a user and an agent. "
                         + "You will extract the relevant order information into the desired format. "
                         + "You will be provided with the chat history to process. "
-                        + "Prioritize agent messages over user messages because agent messages contain more precise order item information.",
+                        + "If agent messages exist, prioritize agent messages over user messages because agent messages contain more precise order item information. "
+                        + "Do not try to add coupons or discounts to the cart. Do not try to add the word 'pickup' or 'delivery' to the cart.",
                     }
                 ],
             },

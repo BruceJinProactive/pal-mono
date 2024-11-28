@@ -1,7 +1,11 @@
+import json
 from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
+from phi.agent.session import AgentSession
+from phi.storage.agent.base import AgentStorage
 
+from ai.storage import get_storage
 from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
 from ai.tools.ordering_tools.integrations.adora.classes import (
     AdoraDeliveryAddress,
@@ -86,11 +90,33 @@ class AdoraIntegration:
             return "There are no available coupons at this time."
 
     def place_order(
-        self,
-        chat_history: list[str],
-        user_id: str,
+        self, user_id: str, session_id: str, current_user_query: str
     ) -> str:
         logger.debug("[AdoraIntegration.place_order] Placing order...")
+
+        # chat history will be reversed later
+        chat_history = [f"User message: {current_user_query}"]
+
+        storage: AgentStorage = get_storage(self.account_name)
+        session: AgentSession | None = storage.read(session_id, user_id)
+        if session and session.memory and "runs" in session.memory:
+            for run in session.memory["runs"][::-1]:
+                run_content = json.loads(run["response"]["content"])
+                if run_content["placed_order_id"] != "":
+                    break  # stop at the most recent order placed
+
+                chat_history.append(
+                    f"User message: {run['message']['content']}\n\nAgent message: {run_content['content']}"
+                )
+
+        if not chat_history:
+            logger.error(
+                "[AdoraIntegration.place_order] Failed to get chat history because chat_history is empty."
+            )
+            return "Failed to place order. Please try again."
+
+        # Reverse chat history to restore original order of messages AFTER most recent order placed
+        chat_history = chat_history[::-1]
 
         # Load memories
         account_name = self.account_name
@@ -173,9 +199,12 @@ class AdoraIntegration:
         # Get generic coupon
         generic_coupon_info = _utils.get_generic_coupon_info(chat_history)
         generic_coupon = generic_coupon_info.coupon if generic_coupon_info else "N/A"
+        logger.debug(f"[OrderingTools.place_order] Generic coupon: {generic_coupon}")
 
         # Get cart, if empty return the error message
         cart = _utils.get_cart_info(chat_history)
+        logger.debug(f"[AdoraIntegration.place_order] Generic cart: {cart}")
+
         if not cart:
             return "Your cart is empty. Please add items to your order."
 

@@ -1,11 +1,12 @@
 import os
 from typing import Any
+from uuid import uuid4
 
 from phi.agent.agent import Agent
 
 from ai.knowledge import get_knowledge
 from ai.memory import get_history_responses, get_memory
-from ai.model import OutputModel, get_model
+from ai.model import generate_output_model, get_model
 from ai.prompts import get_system_prompt
 from ai.storage import get_storage
 from ai.tools import get_tools
@@ -33,21 +34,24 @@ def integrate_agent(
     # -*- Agent Storage
     storage = get_storage(account_name)
 
-    # -*- Agent Tools
-    tools = get_tools(agent_raw_config, user_id)
-
     # -*- System Prompt Settings
     system_prompt = get_system_prompt(agent_raw_config, memory, user_id)
 
     # -*- Session settings
-    session_id = None
+    session_id = str(uuid4())
     if conversation_id:
         session_id = conversation_id
     elif not new_run:
         session_ids = storage.get_all_session_ids(
             user_id=str(user_id), agent_id=agent_id
         )
-        session_id = session_ids[0] if session_ids else None
+        session_id = session_ids[0] if session_ids else str(uuid4())
+
+    # -*- Agent Tools
+    tools = get_tools(agent_raw_config, user_id, session_id)
+
+    # -*- Structured Output Model
+    output_model = generate_output_model(tools)
 
     # -*- Debug settings
     DEBUG_MODE = os.getenv("DEBUG_MODE", "False") == "True"
@@ -78,7 +82,7 @@ def integrate_agent(
         # -*- System Prompt Settings
         system_prompt=system_prompt,
         # -*- Agent Response Settings
-        output_model=None if stream else OutputModel,
+        output_model=None if stream else output_model,
         parse_response=True,
         structured_outputs=False,  # please set to False for JSON mode
         # -*- Debug settings

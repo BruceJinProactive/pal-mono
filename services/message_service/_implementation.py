@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from ai.model import OutputModel
+from ai.model import BaseOutputModel
 from api.schemas.chat.message import (
     AuthorType,
     Extras,
@@ -79,7 +79,7 @@ async def get_chat_response_async(
         response_content = response_object.content
         if isinstance(response_content, str):
             response = response_content
-        elif isinstance(response_content, OutputModel):
+        elif isinstance(response_content, BaseOutputModel):
             response = response_content.content
             extras = {"escalated": response_content.escalated}
             response_parts = process_regex(response)
@@ -266,7 +266,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         response_object = agent.run(request_content, stream=False)
         if isinstance(response_object.content, str):
             response = response_object.content
-        elif isinstance(response_object.content, OutputModel):
+        elif isinstance(response_object.content, BaseOutputModel):
             response = response_object.content.content
             extras = {"escalated": response_object.content.escalated}
         else:

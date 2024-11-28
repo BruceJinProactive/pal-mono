@@ -1,4 +1,5 @@
 import json
+from uuid import uuid4
 
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
@@ -28,12 +29,18 @@ def ordering_tools_tab_content(user_id):
             "settings": {
                 "api_key": get_client_secret("PIZZAMYHEART_ADORA_API_KEY"),
                 "api_secret": get_client_secret("PIZZAMYHEART_ADORA_API_SECRET"),
-                "store_id": "9WHCV",
+                "store_id": "9WHCV",  # obsolete
+                "menu_name": "Pizza_My_Heart_Adora_Menu",  # obsolete
                 "account_name": "pizzamyheart",
-                "menu_name": "Pizza_My_Heart_Adora_Menu",
+                "store_information": {
+                    "phone": "650-327-9400",
+                    "address": "220 University Ave, Palo Alto, CA 94301",
+                    "store_id": "9WHCV",
+                },
             },
         },
-        user_id,
+        user_id=user_id,
+        session_id=str(uuid4()),
     )
 
     st.write("### Add to Order")
@@ -59,11 +66,9 @@ def ordering_tools_tab_content(user_id):
     if st.button("Place Order"):
         try:
             retval = toolkit.place_order(
-                chat_history=[
-                    "my name is John Doe. My email is 123@abc.com and my phone number is 123-456-7890. "
-                    + f"add {quantity} {size} {item_name} with {modifications} to cart. "
-                    + "when I place order, do pickup."
-                ]
+                current_user_query="my name is John Doe. My email is 123@abc.com and my phone number is 123-456-7890. "
+                + f"add {quantity} {size} {item_name} with {modifications} to cart. "
+                + "when I place order, do pickup."
             )
             st.write(retval)
         except Exception as e:
@@ -72,7 +77,9 @@ def ordering_tools_tab_content(user_id):
 
 def booking_tools_tab_content(user_id):
     st.write("# Booking Tools")
-    toolkit = BookingTools({"type": "mindzero", "settings": {}}, user_id)
+    toolkit = BookingTools(
+        {"type": "mindzero", "settings": {}}, user_id=user_id, session_id=uuid4()
+    )
 
     st.write("### Get Class Sessions")
     num_days = st.number_input("Number of Days", value=7)
