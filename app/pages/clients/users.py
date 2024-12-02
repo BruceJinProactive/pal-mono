@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
@@ -15,7 +16,7 @@ st.title("Users")
 session = get_app_db()
 
 
-def render_conversation(user_id) -> None:
+def _render_conversation(user_id) -> None:
     CHAT_HEIGHT = 500
     conversations = get_conversations_by_user(session, user_id)
     if not conversations:
@@ -65,12 +66,9 @@ def main() -> None:
 
     # display users table
     chat_render_toggle()
-    table_headers = ["Channel", "Identifier", "Id", "Conversation"]
-    col_widths = [1, 2, 1, 1]
-    for th, col in zip(table_headers, st.columns(col_widths)):
-        col.write(th)
+    st.write("Click the checkbox in the leftmost column to view conversations")
+    user_dicts = []
     for account_user in account_users:
-        channel_col, identifier_col, id_col, conversation_col = st.columns(col_widths)
         try:
             if account_user.channel_identifiers:
                 channel, identifier = account_user.channel_identifiers[0].split(":")
@@ -78,12 +76,28 @@ def main() -> None:
                 raise ValueError
         except ValueError:
             channel, identifier = "Unknown", "Unknown"
-        channel_col.write(channel)
-        identifier_col.write(identifier)
-        id_col.write(account_user.id)
+        id = account_user.id
+        user_dicts.append(
+            {
+                "Channel": channel,
+                "Identifier": identifier,
+                "User ID": id,
+            }
+        )
+    df = pd.DataFrame(user_dicts)
 
-        if conversation_col.toggle("View", key=str(account_user.id)):
-            render_conversation(account_user.id)
+    event = st.dataframe(
+        df, on_select="rerun", selection_mode="single-row", use_container_width=True
+    )
+    # need this long check for pyright, which flags event["selection"]["rows"] as an invalid retrieval
+    if (
+        "selection" in event
+        and "rows" in event["selection"]
+        and len(event["selection"]["rows"])
+    ):
+        selected_row = event["selection"]["rows"][0]
+        selected_identifier = df.iloc[selected_row]["User ID"]
+        _render_conversation(selected_identifier)
 
 
 if user.is_logged_in:
