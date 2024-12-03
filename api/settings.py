@@ -52,8 +52,30 @@ class ApiSettings(BaseSettings):
             # 8501 is the default port for streamlit
             # 3000 is the default port for create-react-app
             valid_cors.extend(
-                ["http://localhost", "http://localhost:8501", "http://localhost:3000"]
+                [
+                    "http://localhost",
+                    "http://localhost:8501",
+                    "http://localhost:3000",
+                    "http://localhost:5173/",
+                ]
             )
+
+        # Proactive AI Lab
+        valid_cors.extend(
+            [
+                "https://proactiveailab.com",
+                "https://console.proactiveailab.com",
+                "https://www.proactiveailab.com",
+            ]
+        )
+
+        # Velotric Bike
+        valid_cors.extend(
+            [
+                "https://velotricbike.com",
+                "https://www.velotricbike.com",
+            ]
+        )
 
         return valid_cors
 
