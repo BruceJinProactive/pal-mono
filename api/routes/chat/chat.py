@@ -1,3 +1,4 @@
+import asyncio
 from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -68,6 +69,23 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                 },
             )
 
+        if request.async_response:
+
+            async def generate_and_send():
+                async for new_session in db.get_db_async():
+                    response_messages = await get_chat_response_async(
+                        session=new_session, message=request.message
+                    )
+                    result = send_messages(response_messages)
+                    logger.info(
+                        f"Chat API, schedule to send messages: {response_messages}, result: {result}"
+                    )
+
+            asyncio.create_task(generate_and_send())
+
+            # Return a successful response immediately
+            return ChatResponse(status="success")
+
         # Get the response message from message service
         response_messages = await get_chat_response_async(
             session=session,
@@ -87,18 +105,12 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
             ),
         )
 
-        if request.async_response:
-            # Return a successful response immediately
-            logger.info(f"Chat API, schedule to send messages: {response_messages}")
-            send_messages(response_messages)
-            return ChatResponse(status="success")
-        else:
-            # Create and return the ChatResponse with the messages
-            return ChatResponse(
-                message=legacy_support_message,
-                messages=response_messages,
-                status="success",
-            )
+        # Create and return the ChatResponse with the messages
+        return ChatResponse(
+            message=legacy_support_message,
+            messages=response_messages,
+            status="success",
+        )
     except ValueError as ve:
         # Log and handle validation errors
         logger.error(f"Error validating message: {ve}")
