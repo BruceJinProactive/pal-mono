@@ -43,7 +43,15 @@ phi ws up
 phi ws up -f (Force rebuild from scratch)
 ```
 
-7. [One-time] Log into the internal app at http://localhost:8501/. Under Root Page, enter account name "proactiveailab" and click "Create Account with Defaults" button. Switch to "Demo" page, you should be able to talk to the agent of "proactiveailab" account.
+7. [One-time] Log into the internal app at http://localhost:8501/. Under the 'Onboarding' page, enter account name "proactiveailab" (other fields can be left blank), and click 'Create Account' button. 
+
+8. [One-time] Go to the 'Projects' page, and add this row into the 'Project Update' table:
+
+| Channel  | Identifier |
+|----------|----------|
+| internal_app    | proactiveailab-default  |
+
+9. Under the 'Live' page, you should be able to talk to the agent of "proactiveailab" account.
 
 
 ### Local Environment

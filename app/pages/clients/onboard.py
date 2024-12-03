@@ -20,7 +20,10 @@ def main() -> None:
         faqs = st.text_area("FAQs")
 
         # create account and save config into agent
-        if st.form_submit_button("Save"):
+        if st.form_submit_button("Create Account"):
+            if not account_name:
+                st.error("Account name is required")
+                return
             config = {
                 "system_prompt": {
                     "character": {
