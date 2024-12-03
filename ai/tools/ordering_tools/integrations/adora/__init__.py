@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any, Literal
 
 from geopy.geocoders import Nominatim
@@ -411,6 +412,9 @@ class AdoraIntegration:
 
         if not saved_order or not saved_order.orderID:
             return "Failed to place order. Please try again."
+
+        # delay 1 second to allow Adora to synchronize the order
+        time.sleep(1)
 
         # send credit card payment link to the consumer
         try:
