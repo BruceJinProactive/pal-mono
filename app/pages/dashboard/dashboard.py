@@ -20,8 +20,11 @@ def navigate_accounts(account_name):
 
 def main() -> None:
     st.write("---")
+    col_accounts, col_users = st.columns(2)
     accounts = get_accounts(session)
-    st.metric(label="Total Accounts", value=len(accounts))
+    col_accounts.metric(label="Total Accounts", value=len(accounts))
+    total_user_count = sum(len(account.users) for account in accounts)
+    col_users.metric(label="Total Users", value=total_user_count)
     st.write(
         "Please click the checkbox in the leftmost column to navigate to that account"
     )
