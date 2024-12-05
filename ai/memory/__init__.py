@@ -48,7 +48,9 @@ def delete_memory(memory: AgentMemory, removed_memory: Memory) -> None:
     return _implementation.delete_memory(memory, removed_memory)
 
 
-def get_memory(account_name: str) -> AgentMemory:
+def get_memory(
+    account_name: str, agent_raw_config: dict[str, Any] | None = None
+) -> AgentMemory:
     """
     Creates and returns an AgentMemory instance for the specified account.
 
@@ -60,10 +62,11 @@ def get_memory(account_name: str) -> AgentMemory:
 
     Args:
         account_name (str): The name of the account for which the memory is being created.
+        agent_raw_config (dict[str, Any]): The raw configuration data (Optional) for the agent.
     Returns:
         AgentMemory: An instance of AgentMemory configured with the specified memory table.
     """
-    return _implementation.get_memory(account_name)
+    return _implementation.get_memory(account_name, agent_raw_config)
 
 
 def get_history_responses(agent_raw_config: dict[str, Any]) -> int:

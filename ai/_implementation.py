@@ -25,7 +25,7 @@ def integrate_agent(
     model = get_model(stream=stream)
 
     # -*- Agent Memory
-    memory = get_memory(account_name)
+    memory = get_memory(account_name, agent_raw_config)
     num_history_responses = get_history_responses(agent_raw_config)
 
     # -*- Agent Knowledge

@@ -1,11 +1,15 @@
 from typing import Any
 
 from phi.memory.agent import AgentMemory
+from phi.memory.classifier import MemoryClassifier
 from phi.memory.db.postgres import PgMemoryDb
 from phi.memory.manager import MemoryManager
 from phi.memory.memory import Memory
+from phi.model.base import Model
+from phi.model.message import Message
 
 import db
+from ai.model import ModelName, get_model
 
 DEFAULT_NUM_HISTORY_RESPONSES = 10
 
@@ -93,12 +97,15 @@ def get_history_responses(agent_raw_config: dict[str, Any]) -> int:
     return num_history_responses
 
 
-def get_memory(account_name: str) -> AgentMemory:
+def get_memory(
+    account_name: str, agent_raw_config: dict[str, Any] | None = None
+) -> AgentMemory:
     """
     Creates and returns an AgentMemory instance for the specified account.
 
     Parameters:
         account_name (str): The name of the account for which the memory is being created.
+        agent_raw_config (dict[str, Any]): The raw configuration (Optional) of the agent,.
 
     Returns:
         AgentMemory: The AgentMemory instance for the specified
@@ -111,6 +118,17 @@ def get_memory(account_name: str) -> AgentMemory:
         ),
         create_user_memories=True,
     )
+    system_prompt_lines = None
+    # Use custom system prompt lines if provided, if not use default
+    if (
+        agent_raw_config
+        and "memory_prompt" in agent_raw_config
+        and agent_raw_config["memory_prompt"]
+    ):
+        system_prompt_lines = agent_raw_config["memory_prompt"]
+        memory.classifier = CustomMemoryClassifier(
+            memory_system_prompt_lines=system_prompt_lines
+        )
     return memory
 
 
@@ -127,3 +145,40 @@ def set_memory_manager(memory: AgentMemory, user_id) -> None:
     """
     memory.manager = MemoryManager(user_id=user_id, db=memory.db)
     return None
+
+
+class CustomMemoryClassifier(MemoryClassifier):
+    memory_system_prompt_lines: list[str] = []
+
+    def __init__(self, memory_system_prompt_lines: list[str]):
+        super().__init__()
+        # Use custom system prompt lines if provided, otherwise use default
+        self.memory_system_prompt_lines = memory_system_prompt_lines
+        # Initialize instance-specific attributes
+        self.model: Model | None = None
+        self.system_prompt: str | None = None
+
+    # Overridden to utilize our model router
+    def update_model(self) -> None:
+        if self.model is None:
+            self.model = get_model(model_name=ModelName.MEDIUM, stream=False)
+
+    # Overridden to utilize current markdown formatting strategy
+    def get_system_message(self) -> Message:
+        # -*- Return a system message for classification
+        system_prompt_lines = self.memory_system_prompt_lines
+
+        if self.existing_memories and len(self.existing_memories) > 0:
+            system_prompt_lines.extend(
+                [
+                    "\n ## Existing Memories: \n"
+                    + "\n".join([f"  - {m.memory}" for m in self.existing_memories])
+                ]
+            )
+
+        return Message(
+            role="system",
+            content="\n".join(system_prompt_lines),
+            tool_call_name=None,
+            tool_call_arguments=None,
+        )

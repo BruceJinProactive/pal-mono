@@ -153,7 +153,7 @@ def memory_ui(account_name: str, user_id: str) -> None:
     set_memory_manager(memory, user_id)
     memory.load_user_memories()
 
-    # # Display existing memories
+    # Display existing memories
     if memory.memories:
         for item in memory.memories:
             col1, col2 = st.sidebar.columns([12, 2.5])
