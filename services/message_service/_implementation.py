@@ -1,3 +1,4 @@
+import re
 import uuid
 from typing import AsyncIterator, List
 
@@ -82,7 +83,7 @@ async def get_chat_response_async(
         elif isinstance(response_content, BaseOutputModel):
             response = response_content.content
             extras = {"escalated": response_content.escalated}
-            response_parts = process_regex(response)
+            response_parts = process_response(response)
 
             # process each part of the response after regex processing
             response_message = None
@@ -352,41 +353,44 @@ def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation
     return conversation_repository.create_conversation(user_id=user_id)
 
 
-def process_regex(markdown_text: str) -> list[tuple[str, str]]:
+def process_response(response: str) -> list[tuple[str, str]]:
     """
-    Process markdown text to extract image URLs and split text into parts.
+    Process response text to extract image URLs
+    Returns the original text and any image URLs found.
 
     Args:
-        markdown_text: The markdown text to process
+        response: The response text to process
 
     Returns:
-        list[str]: List of text parts with image markdown removed
+        list[tuple[str, str]]: List of tuples containing (type, content)
+            where type is either "text" or "image"
     """
-    import re
-
-    pattern = r"!?\[.*?\]\((https?:\/\/[^\s)]+)\)"
     processed_parts = []
-    last_end = 0
 
+    # 1. Keep response text unchanged
+    if response.strip():
+        processed_parts.append(("text", response))
+
+    # 2. Extract image URLs
+    pattern = r"""
+        (https?:\/\/                # http:// or https://
+        [^\s)]+\.                  # URL path until extension (no spaces or closing parens)
+        (?i:                       # Case insensitive match for extensions
+            jpg|jpeg|png|apng|     # Common image formats
+            gif|webp|svg|bmp|      # More image formats
+            tiff?|ico|             # Even more formats
+            heic|heif|avif|        # Modern formats
+            jfif|pjpeg|pjp         # JPEG variants
+        )
+        (?:\/[^\s)]*)?            # Optional additional path segments
+        (?:[?#][^\s)]*)?          # Optional query params or hash fragments
+        )
+    """
     try:
-        for match in re.finditer(pattern, markdown_text):
-            start, end = match.span()
-            # Extract text before the image
-            if start > last_end:
-                text_part = markdown_text[last_end:start].strip()
-                if text_part:
-                    processed_parts.append(("text", text_part))
-            # Extract the image URL
-            image_url = match.group(1)
-            processed_parts.append(("image", image_url))
-            last_end = end
-        # Extract any remaining text after the last image
-        if last_end < len(markdown_text):
-            text_part = markdown_text[last_end:].strip()
-            if text_part:
-                processed_parts.append(("text", text_part))
-        return processed_parts
-
+        image_urls = re.findall(pattern, response, re.VERBOSE)
+        for url in image_urls:
+            processed_parts.append(("image", url))
     except re.error as e:
-        logger.error(f"Error processing markdown: {e}")
-        return [("text", markdown_text)]
+        logger.error(f"Error extracting image URLs: {e}")
+
+    return processed_parts
