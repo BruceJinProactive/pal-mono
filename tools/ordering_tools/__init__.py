@@ -3,8 +3,8 @@ from uuid import uuid4
 
 from phi.tools.toolkit import Toolkit
 
-from ai.tools.ordering_tools.classes import OrderItem
-from ai.tools.ordering_tools.integrations.adora import AdoraIntegration
+from tools.ordering_tools.classes import OrderItem
+from tools.ordering_tools.integrations.adora import AdoraIntegration
 from utils.log import logger
 
 

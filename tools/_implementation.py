@@ -1,8 +1,8 @@
 from utils.log import logger
 
 from .booking_tools import BookingTools
+from .booking_tools.image_retrieval_tools import ImageRetrievalTools
 from .escalation_tools import EscalationTools
-from .image_retrieval_tools import ImageRetrievalTools
 from .ordering_tools import OrderingTools
 
 

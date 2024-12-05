@@ -7,7 +7,7 @@ from phi.memory.memory import Memory
 
 from ai.memory import get_memory
 from ai.model import ModelName, get_client
-from ai.tools.ordering_tools.classes import (
+from tools.ordering_tools.classes import (
     Consumer,
     GenericCoupon,
     GenericDeliveryAddress,
@@ -15,13 +15,13 @@ from ai.tools.ordering_tools.classes import (
     LLMFulfillmentStrategy,
     OrderItem,
 )
-from ai.tools.ordering_tools.integrations.adora._conversion_examples import (
+from tools.ordering_tools.integrations.adora._conversion_examples import (
     COUPON_EXAMPLES,
     ITEM_ID_EXAMPLES,
     MODIFIER_EXAMPLES,
     SIZE_EXAMPLES,
 )
-from ai.tools.ordering_tools.integrations.adora.classes import (
+from tools.ordering_tools.integrations.adora.classes import (
     AdoraCoupon,
     AdoraOrderItem,
     MenuItemDetails,

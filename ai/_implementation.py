@@ -9,7 +9,7 @@ from ai.memory import get_history_responses, get_memory
 from ai.model import generate_output_model, get_model
 from ai.prompts import get_system_prompt
 from ai.storage import get_storage
-from ai.tools import get_tools
+from tools import get_tools
 
 
 def integrate_agent(

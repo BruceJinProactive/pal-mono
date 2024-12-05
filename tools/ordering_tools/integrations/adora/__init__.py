@@ -7,8 +7,8 @@ from phi.agent.session import AgentSession
 from phi.storage.agent.base import AgentStorage
 
 from ai.storage import get_storage
-from ai.tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
-from ai.tools.ordering_tools.integrations.adora.classes import (
+from tools.ordering_tools.classes import FulfillmentStrategy, OrderItem
+from tools.ordering_tools.integrations.adora.classes import (
     AdoraDeliveryAddress,
     AdoraOrderCalculationResult,
     AdoraOrderItem,

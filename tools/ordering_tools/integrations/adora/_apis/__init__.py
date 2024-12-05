@@ -2,8 +2,8 @@ import http.client
 import json
 import time
 
-from ai.tools.ordering_tools.classes import Consumer
-from ai.tools.ordering_tools.integrations.adora.classes import (
+from tools.ordering_tools.classes import Consumer
+from tools.ordering_tools.integrations.adora.classes import (
     AdoraAccessToken,
     AdoraCoupon,
     AdoraCouponList,

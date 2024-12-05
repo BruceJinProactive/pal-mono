@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from ai.tools.ordering_tools.classes import OrderItem
+from tools.ordering_tools.classes import OrderItem
 
 
 class AdoraAccessToken(BaseModel):

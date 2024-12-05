@@ -1,6 +1,6 @@
 from phi.tools.toolkit import Toolkit
 
-from ai.tools.booking_tools.integrations.mindzero import MindZeroIntegration
+from tools.booking_tools.integrations.mindzero import MindZeroIntegration
 
 
 class BookingTools(Toolkit):

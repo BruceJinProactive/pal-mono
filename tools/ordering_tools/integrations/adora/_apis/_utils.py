@@ -5,7 +5,7 @@ from json import JSONEncoder
 
 from jsonschema import ValidationError
 
-from ai.tools.ordering_tools.integrations.adora.classes import (
+from tools.ordering_tools.integrations.adora.classes import (
     AdoraAccessToken,
     AdoraHubResponse,
 )

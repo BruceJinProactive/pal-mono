@@ -4,14 +4,14 @@ from uuid import uuid4
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
-from ai.tools.booking_tools import BookingTools
-from ai.tools.ordering_tools import OrderingTools
 from api.schemas.chat.message import Channel
 from app.auth import user
 from app.shared import get_app_db
 from services.account_service import get_account, get_accounts
 from services.agent_service import get_agent
 from services.user_service import get_user_by_channel_identifier
+from tools.booking_tools import BookingTools
+from tools.ordering_tools import OrderingTools
 from utils.secret import get_client_secret
 
 st.title("Tools")
