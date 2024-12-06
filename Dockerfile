@@ -1,6 +1,7 @@
 FROM phidata/python:3.11.5
 
 ARG USER=app
+ARG USER_LOCAL_DIR=/usr/local
 ARG APP_DIR=${USER_LOCAL_DIR}/${USER}
 ENV APP_DIR=${APP_DIR}
 # Add APP_DIR to PYTHONPATH
