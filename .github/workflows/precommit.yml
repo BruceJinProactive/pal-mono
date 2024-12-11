@@ -100,10 +100,25 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip setuptools wheel
           .venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
           .venv/bin/pip install -r requirements.txt
-
-      - name: Run pytest
+      
+      - name: Run pytest report
+        id: get_coverage
         run: |
-          .venv/bin/pytest
+          echo "coverage<<EOF" >> $GITHUB_OUTPUT
+          echo "$(.venv/bin/pytest --cov=. | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: PR comment
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "```\n${{ steps.get_coverage.outputs.coverage }}```"
+            })
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
