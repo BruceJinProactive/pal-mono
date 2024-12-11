@@ -108,7 +108,8 @@ jobs:
           echo "$(.venv/bin/pytest --cov=. | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
       
-      - name: PR comment
+      - name: PR testing coverage comment
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
