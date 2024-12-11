@@ -1,10 +1,3 @@
 # Changes in root and first level need Kelvin's approval
 /* kelvin@proactiveailab.com
 /*/* kelvin@proactiveailab.com
-
-# Changes to __init__.py in first and second levels need Kelvin's approval
-/*/__init__.py kelvin@proactiveailab.com
-/*/*/__init__.py kelvin@proactiveailab.com
-
-# Changes to ai/ need Ilbum's approval
-/ai/** ilbum@proactiveailab.com
