@@ -13,8 +13,18 @@ from botocore.exceptions import (
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
 from utils.log import logger
 
-BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME", "pal-mono-assets-bucket")
-REGION_NAME = os.getenv("AWS_ASSET_REGION_NAME", "us-west-1")
+AWS_ASSET_BUCKET_NAME = os.environ["AWS_ASSET_BUCKET_NAME"]
+AWS_REGION = os.environ["AWS_REGION"]
+
+
+def _check_bucket_name() -> None:
+    if AWS_ASSET_BUCKET_NAME:
+        raise ValueError("AWS_ASSET_BUCKET_NAME not found in environment variables")
+
+
+def _check_region_name() -> None:
+    if AWS_REGION:
+        raise ValueError("AWS_REGION not found in environment variables")
 
 
 def _init_s3(region_name: str) -> botocore.client.BaseClient:
@@ -35,19 +45,21 @@ def _construct_s3_url(bucket_name: str, region_name: str, file_name: str) -> str
 
 def write_asset(file: WriteAssetRequest) -> AssetResponse:
     try:
-        s3_client = _init_s3(REGION_NAME)
+        _check_region_name()
+        s3_client = _init_s3(AWS_REGION)
 
         logger.info(
-            f"Uploading `{file.name}` to bucket `{BUCKET_NAME}`"
+            f"Uploading `{file.name}` to bucket `{AWS_ASSET_BUCKET_NAME}`"
             f"Metadata: {file.metadata}"
         )
+        _check_bucket_name()
         s3_client.put_object(
-            Bucket=BUCKET_NAME,
+            Bucket=AWS_ASSET_BUCKET_NAME,
             Key=file.name,
             Body=file.content,
             Metadata=file.metadata,
         )
-        url = _construct_s3_url(BUCKET_NAME, REGION_NAME, file.name)
+        url = _construct_s3_url(AWS_ASSET_BUCKET_NAME, AWS_REGION, file.name)
 
         logger.info("Asset file uploaded successfully.")
         return AssetResponse(url=url)
@@ -62,19 +74,22 @@ def write_asset(file: WriteAssetRequest) -> AssetResponse:
 ## Read ##
 def read_asset(file: ReadAssetRequest) -> list[AssetResponse]:
     try:
-        s3_client = _init_s3(REGION_NAME)
+        _check_region_name()
+        s3_client = _init_s3(AWS_REGION)
 
         found_urls: list[AssetResponse] = []
         if file.name:
-            head = s3_client.head_object(Bucket=BUCKET_NAME, Key=file.name)
-            url = _construct_s3_url(BUCKET_NAME, REGION_NAME, file.name)
+            _check_bucket_name()
+            head = s3_client.head_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=file.name)
+            url = _construct_s3_url(AWS_ASSET_BUCKET_NAME, AWS_REGION, file.name)
             found_urls.append(AssetResponse(url=url))
         else:
             # Set up the paginator for listing objects
             paginator = s3_client.get_paginator("list_objects_v2")
 
+            _check_bucket_name()
             # Paginate through all objects in the bucket
-            for page in paginator.paginate(Bucket=BUCKET_NAME):
+            for page in paginator.paginate(Bucket=AWS_ASSET_BUCKET_NAME):
                 contents = page.get("Contents", [])
 
                 for obj in contents:
@@ -82,12 +97,16 @@ def read_asset(file: ReadAssetRequest) -> list[AssetResponse]:
 
                     try:
                         # Retrieve the object's metadata
-                        head = s3_client.head_object(Bucket=BUCKET_NAME, Key=key)
+                        head = s3_client.head_object(
+                            Bucket=AWS_ASSET_BUCKET_NAME, Key=key
+                        )
                         metadata = head.get("Metadata", {})
 
                         # Check if all metadata_filters match
                         if all(metadata.get(k) == v for k, v in file.metadata.items()):
-                            url = _construct_s3_url(BUCKET_NAME, REGION_NAME, key)
+                            url = _construct_s3_url(
+                                AWS_ASSET_BUCKET_NAME, AWS_REGION, key
+                            )
                             found_urls.append(AssetResponse(url=url))
 
                     except ClientError as e:
@@ -103,14 +122,14 @@ def read_asset(file: ReadAssetRequest) -> list[AssetResponse]:
         error_code = e.response["Error"]["Code"]
         error_message = e.response["Error"]["Message"]
         if error_code == "NoSuchBucket":
-            logger.error(f"The bucket {BUCKET_NAME} does not exist.")
-            raise RuntimeError(f"The bucket {BUCKET_NAME} does not exist.")
+            logger.error(f"The bucket {AWS_ASSET_BUCKET_NAME} does not exist.")
+            raise RuntimeError(f"The bucket {AWS_ASSET_BUCKET_NAME} does not exist.")
         elif error_code == "NoSuchKey":
             logger.error(
-                f"The file {file.name} does not exist in bucket {BUCKET_NAME}."
+                f"The file {file.name} does not exist in bucket {AWS_ASSET_BUCKET_NAME}."
             )
             raise RuntimeError(
-                f"The file {file.name} does not exist in bucket {BUCKET_NAME}."
+                f"The file {file.name} does not exist in bucket {AWS_ASSET_BUCKET_NAME}."
             )
         else:
             logger.error(f"AWS ClientError: {error_code}, Message: {error_message}")
