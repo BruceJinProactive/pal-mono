@@ -108,7 +108,7 @@ def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
 
 
 def set_instagram_access_token(
-    session: Session, project_id: uuid.UUID, access_token: str
+    session: Session, project_id: uuid.UUID, access_token: str, user_id: str
 ):
     """
     Store the Instagram access token for a project in AWS Secrets Manager.
@@ -117,6 +117,7 @@ def set_instagram_access_token(
         session (Session): The database session.
         project_id (uuid.UUID): The unique identifier of the project.
         access_token (str): The Instagram access token.
+        user_id (str): The unique identifier of the instagram account.
 
     Returns:
         None
@@ -126,7 +127,9 @@ def set_instagram_access_token(
         RuntimeError: If there is an error storing the token.
     """
 
-    return _implementation.set_instagram_access_token(session, project_id, access_token)
+    return _implementation.set_instagram_access_token(
+        session, project_id, access_token, user_id
+    )
 
 
 def remove_instagram_access_token(session: Session, project_id: uuid.UUID):
@@ -148,6 +151,26 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID):
     return _implementation.remove_instagram_access_token(session, project_id)
 
 
+def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
+    """
+    Deauthorize the Instagram access token for a project from AWS Secrets Manager
+    using the Instagram user id.
+
+    Args:
+        session (Session): The database session.
+        ig_user_id (str): The unique identifier of the Instagram user.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the project is not found.
+        RuntimeError: If there is an error removing the token.
+    """
+
+    return _implementation.deauthorize_instagram_access_token(session, ig_user_id)
+
+
 __all__ = [
     "get_inbox_conversations",
     "get_conversation_messages",
@@ -155,4 +178,5 @@ __all__ = [
     "get_instagram_connected",
     "set_instagram_access_token",
     "remove_instagram_access_token",
+    "deauthorize_instagram_access_token",
 ]

@@ -1,4 +1,11 @@
+import base64
+import hashlib
+import hmac
+import json
+
 from fastapi import HTTPException, Request
+
+from utils import secret
 
 
 async def retrieve_body_message(request: Request) -> str:
@@ -34,3 +41,40 @@ async def retrieve_body_message(request: Request) -> str:
             status_code=422,  # Unprocessable Entity
             detail=f"Validation error: {e}\n\nInvalid request body: {body}",
         )
+
+
+def verify_instagram_deauthorize_signature(
+    encoded_payload: str, encoded_signature: str
+):
+    try:
+        # Decode and parse the payload
+        # Need to pad with '=' before decoding
+        encoded_payload_padding = "=" * (-len(encoded_payload) % 4)
+        payload_json = json.loads(
+            base64.urlsafe_b64decode(encoded_payload + encoded_payload_padding)
+        )
+
+        if not isinstance(payload_json, dict) or "user_id" not in payload_json:
+            raise ValueError("Invalid payload")
+
+        app_secret = secret.get_client_secret("INSTAGRAM_APP_SECRET")
+
+        # Verify the signature using app secret
+        expected_signature_bytes = hmac.new(
+            bytes(app_secret, "utf-8"),
+            bytes(encoded_payload, "utf-8"),
+            hashlib.sha256,
+        ).digest()
+
+        # Compare the expected and actual signatures
+        # Need to pad with '=' before decoding
+        encoded_signature_padding = "=" * (-len(encoded_signature) % 4)
+        if not hmac.compare_digest(
+            expected_signature_bytes,
+            base64.urlsafe_b64decode(encoded_signature + encoded_signature_padding),
+        ):
+            raise ValueError("Invalid signature")
+
+        return payload_json
+    except Exception as e:
+        raise ValueError(f"Error during signature verification: {e}")

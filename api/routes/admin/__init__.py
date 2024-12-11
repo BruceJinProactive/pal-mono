@@ -10,6 +10,7 @@ from api.routes.endpoints import endpoints
 from api.schemas.chat.message import AuthorType, Channel, Message, TextObject
 from services.account_service import create_account_with_defaults, get_account
 from services.admin_service import (
+    deauthorize_instagram_access_token,
     get_brandings,
     get_conversation_messages,
     get_inbox_conversations,
@@ -494,7 +495,7 @@ async def get_project_instagram_connected(
     return {"connected": connected}
 
 
-@admin_router.post("/projects/{project_id}/instagram/connect/", status_code=200)
+@admin_router.post("/projects/{project_id}/instagram/connect", status_code=200)
 async def connect_instagram(
     project_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -512,10 +513,11 @@ async def connect_instagram(
         )
 
     ig_access_token = request.headers.get("Access-Token", "")
-    if not ig_access_token:
+    ig_user_id = request.headers.get("User-Id", "")
+    if not all([ig_access_token, ig_user_id]):
         raise HTTPException(
             status_code=400,
-            detail="No IG access token provided",
+            detail="Missing required headers: Access-Token and/or User-Id",
             headers={"Content-Type": "application/json"},
         )
 
@@ -529,7 +531,7 @@ async def connect_instagram(
         )
 
     try:
-        set_instagram_access_token(session, project_uuid, ig_access_token)
+        set_instagram_access_token(session, project_uuid, ig_access_token, ig_user_id)
     except ValueError as e:
         raise HTTPException(
             status_code=404,
@@ -588,3 +590,53 @@ async def disconnect_instagram(
         )
 
     return {"message": "Instagram account disconnected"}
+
+
+@admin_router.delete("/instagram/deauthorize/{ig_user_id}", status_code=200)
+async def handle_instagram_deauthorization(
+    ig_user_id: str, request: Request, session: Session = Depends(db.get_db)
+):
+    """
+    This endpoint is used when the Admin Console receives a
+    Instagram deauthorization request.
+    """
+
+    encoded_signature = request.headers.get("Encoded-Signature", "")
+    encoded_payload = request.headers.get("Encoded-Payload", "")
+
+    # Check for missing headers
+    if not all([encoded_signature, encoded_payload]):
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required headers: Encoded-Signature and/or Encoded-Payload",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Verify the incoming request
+    try:
+        _utils.verify_instagram_deauthorize_signature(
+            encoded_payload, encoded_signature
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        deauthorize_instagram_access_token(session, ig_user_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    except RuntimeError:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return {"message": "Instagram account deauthorized"}

@@ -1,3 +1,4 @@
+import json
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -214,15 +215,19 @@ def _project_name_to_ig_access_token_key(project_name: str) -> str:
     return f"{project_name.upper()}_INSTAGRAM_ACCESS_TOKEN"
 
 
+def _ig_user_id_to_ig_project_name_key(user_id: str) -> str:
+    return f"INSTAGRAM_USER_{user_id}_PROJECT_KEY"
+
+
 def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
     project = get_project(session, project_id)
     if not project:
         raise ValueError("Project not found.")
 
-    secret_tag_key = _project_name_to_ig_access_token_key(project.name)
+    project_secret_key = _project_name_to_ig_access_token_key(project.name)
     try:
         # if successful, then the key exists, and hence the project is connected
-        secret.get_client_secret(secret_tag_key)
+        secret.get_client_secret(project_secret_key)
         return True
     except KeyError:
         # if the key does not exist, then the project is not connected
@@ -234,34 +239,207 @@ def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
 
 
 def set_instagram_access_token(
-    session: Session, project_id: uuid.UUID, access_token: str
+    session: Session, project_id: uuid.UUID, access_token: str, user_id: str
 ) -> None:
+    """
+    Add both project and user secrets atomically, with rollback attempt if necessary
+    """
     project = get_project(session, project_id)
     if not project:
         raise ValueError("Project not found.")
 
-    secret_tag_key = _project_name_to_ig_access_token_key(project.name)
+    project_secret_key = _project_name_to_ig_access_token_key(project.name)
+    project_secret_value = json.dumps(
+        {"access_token": access_token, "user_id": user_id}
+    )
+
+    user_secret_key = _ig_user_id_to_ig_project_name_key(user_id)
+    user_secret_value = project_secret_key
+
+    # Add secrets, and rollback if necessary
     try:
-        secret.add_client_secret(secret_tag_key, access_token)
+        # Attempt to add both secrets one by one
+        secret.add_client_secret(project_secret_key, project_secret_value)
+        try:
+            secret.add_client_secret(user_secret_key, user_secret_value)
+        except Exception as add_e:
+            # Rollback first secret if second secret fails
+            logger.error(
+                f"Unable to add user secret, try rolling back project secret: {add_e}"
+            )
+            try:
+                secret.remove_client_secret(project_secret_key)
+            except Exception as rollback_e:
+                logger.error(f"Unable to roll back project secret: {rollback_e}")
+                raise RuntimeError(
+                    "Unable to roll back project secret."
+                ) from rollback_e
+            raise RuntimeError(
+                "Unable to add user secret, succsesfully rolled back project secret."
+            ) from add_e
     except KeyError as e:
-        # if the key already exists, then the project is already connected
+        # If the project_secret_key already exists, check whether the user_secret_key exists
         logger.info(e)
+        try:
+            # if user_secret_key exists as well, then the project is already connected
+            secret.get_client_secret(user_secret_key)
+        except KeyError as get_e:
+            # If the project_secret_key exists but the user_secret_key does not, something went wrong
+            logger.error(
+                f"Inconsistent state, project secret exists but user secret does not: {get_e}"
+            )
+            raise RuntimeError(
+                "Inconsistent state, project secret exists but user secret does not."
+            ) from get_e
+        except Exception as get_e:
+            # Log error and raise
+            logger.error(f"Unable to verify if user secret exists : {get_e}")
+            raise RuntimeError("Unable to verify if user secret exists.") from get_e
     except Exception as e:
         logger.error(f"Unable to set Instagram access token: {e}")
-        raise RuntimeError(f"Unable to set Instagram access token: {e}")
+        raise RuntimeError("Unable to set Instagram access token.") from e
 
 
 def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> None:
+    """
+    Remove both project and user secrets using the project secret key
+    """
     project = get_project(session, project_id)
     if not project:
         raise ValueError("Project not found.")
 
-    secret_tag_key = _project_name_to_ig_access_token_key(project.name)
+    project_secret_key = _project_name_to_ig_access_token_key(project.name)
+
     try:
-        secret.remove_client_secret(secret_tag_key)
+        secret_value = secret.get_client_secret(project_secret_key)
     except KeyError as e:
         # if the key does not exist, then the project is not connected
         logger.info(e)
+        return
     except Exception as e:
         logger.error(f"Unable to remove Instagram access token: {e}")
         raise RuntimeError(f"Unable to remove Instagram access token: {e}")
+
+    try:
+        if not isinstance(secret_value, dict):
+            secret_dict = json.loads(secret_value)
+        else:
+            secret_dict = secret_value
+    except Exception as e:
+        logger.error(f"Unable to parse project secret value: {e}")
+        raise RuntimeError("Unable to parse project secret value.") from e
+
+    ig_user_id = secret_dict.get("user_id", "")
+    if not ig_user_id:
+        raise RuntimeError("Instagram user ID not found in project secret.")
+
+    user_secret_key = _ig_user_id_to_ig_project_name_key(ig_user_id)
+
+    try:
+        # Remove both secrets
+        secret.remove_client_secret(project_secret_key)
+
+        try:
+            secret.remove_client_secret(user_secret_key)
+        except KeyError as e:
+            # if the user_secret_key does not exist, log and continue
+            logger.info(
+                f"user secret {user_secret_key} does not exist, continuing: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Unable to remove user secret: {e}")
+            raise RuntimeError("Unable to remove user secret.") from e
+    except KeyError as e:
+        # If the project_secret_key does not exist, check whether the user_secret_key exists
+        logger.info(
+            f"project secret does not exist, checking whether user secret exists: {e}"
+        )
+
+        try:
+            secret.get_client_secret(user_secret_key)
+        except KeyError as get_e:
+            # Neither keys exists, so the project was already disconnected
+            logger.info(
+                f"Neither project secret nor user secret exist, continuing: {get_e}"
+            )
+            return
+        except Exception as get_e:
+            # Log error and raise
+            logger.error(f"Unable to verify if user secret exists: {get_e}")
+            raise RuntimeError("Unable to verify if user secret exists.") from get_e
+
+        # if user_secret_key exists, log data inconsistency
+        logger.error(
+            "Inconsistent state, user secret exists but project secret does not."
+        )
+        raise RuntimeError(
+            "Inconsistent state, user secret exists but project secret does not."
+        )
+    except Exception as e:
+        logger.error(f"Unable to remove Instagram access token: {e}")
+        raise RuntimeError("Unable to remove Instagram access token.") from e
+
+
+def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> None:
+    """
+    Remove both project and user secrets using the user secret key
+    """
+    if not ig_user_id:
+        raise ValueError("Instagram user ID is required.")
+
+    user_secret_key = _ig_user_id_to_ig_project_name_key(ig_user_id)
+
+    try:
+        project_secret_key = secret.get_client_secret(user_secret_key)
+    except KeyError as e:
+        # if the key does not exist, then the project is not connected
+        logger.info(e)
+        return
+    except Exception as e:
+        logger.error(f"Unable to deauthorize Instagram access token: {e}")
+        raise RuntimeError(f"Unable to deauthorize Instagram access token: {e}")
+
+    try:
+        # Remove both secrets
+        secret.remove_client_secret(project_secret_key)
+
+        try:
+            secret.remove_client_secret(user_secret_key)
+        except KeyError as e:
+            # if the user_secret_key does not exist, log and continue
+            logger.info(
+                f"user secret {user_secret_key} does not exist, continuing: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Unable to remove user secret: {e}")
+            raise RuntimeError("Unable to remove user secret.") from e
+    except KeyError as e:
+        # If the project_secret_key does not exist, check whether the user_secret_key exists
+        logger.info(
+            f"project secret does not exist, checking whether user secret exists: {e}"
+        )
+
+        try:
+            # if user_secret_key exists, log data inconsistency
+            secret.get_client_secret(user_secret_key)
+        except KeyError as get_e:
+            # Neither keys exists, so the project was already disconnected
+            logger.info(
+                f"Neither project secret nor user secret exist, continuing: {get_e}"
+            )
+            return
+        except Exception as get_e:
+            # Log error and raise
+            logger.error(f"Unable to verify if user secret exists: {get_e}")
+            raise RuntimeError("Unable to verify if user secret exists.") from get_e
+
+        # if user_secret_key exists, log data inconsistency
+        logger.error(
+            "Inconsistent state, user secret exists but project secret does not."
+        )
+        raise RuntimeError(
+            "Inconsistent state, user secret exists but project secret does not."
+        )
+    except Exception as e:
+        logger.error(f"Unable to remove Instagram access token: {e}")
+        raise RuntimeError("Unable to remove Instagram access token.") from e
