@@ -3,6 +3,7 @@ from typing import Any
 from uuid import uuid4
 
 from phi.agent.agent import Agent
+from phi.model.google import Gemini
 
 from ai.knowledge import get_knowledge
 from ai.memory import get_history_responses, get_memory
@@ -22,7 +23,8 @@ def integrate_agent(
     stream: bool = False,
 ) -> Agent:
     # -*- Agent settings
-    model = get_model(stream=stream)
+    # model = get_model(stream=stream)
+    model = Gemini(id="gemini-1.5-flash")
 
     # -*- Agent Memory
     memory = get_memory(account_name, agent_raw_config)
