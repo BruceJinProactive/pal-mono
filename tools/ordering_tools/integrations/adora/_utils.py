@@ -488,11 +488,14 @@ def get_adora_size_id(
         )
 
 
-def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
+def get_cart_info(
+    chat_history: list[str], cart_conversion_sys_prompt: str
+) -> LLMCartInfo | None:
     """Extracts the cart information from the chat history.
 
     Args:
         chat_history (str): The chat history to extract the cart information from.
+        cart_conversion_sys_prompt (str): A system prompt to help the model understand the context of the chat history.
 
     Returns:
         LLMCartInfo | None: The parsed cart information.
@@ -505,11 +508,17 @@ def get_cart_info(chat_history: list[str]) -> LLMCartInfo | None:
                 "content": [
                     {
                         "type": "text",
-                        "text": "Your role is to process the chat history between a user and an agent. "
-                        + "You will extract the relevant order information into the desired format. "
-                        + "You will be provided with the chat history to process. "
-                        + "If agent messages exist, prioritize agent messages over user messages because agent messages contain more precise order item information. "
-                        + "Do not try to add coupons or discounts to the cart. Do not try to add the word 'pickup' or 'delivery' to the cart.",
+                        "text": (
+                            "Your role is to process the chat history between a user and an agent. "
+                            + "You will extract the relevant order information into the desired format. "
+                            + "You will be provided with the chat history to process. "
+                            + "If agent messages exist, prioritize agent messages over user messages because agent messages contain more precise order item information. "
+                            + (
+                                f"\nAdditional Instructions: {cart_conversion_sys_prompt}"
+                                if cart_conversion_sys_prompt
+                                else ""
+                            )
+                        ),
                     }
                 ],
             },

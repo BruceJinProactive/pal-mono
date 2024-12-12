@@ -54,13 +54,6 @@ class OrderingTools(Toolkit):
         #  Only the valid parameters needed by integration_class are passed during initialization
         self.integration = integration_class(**filtered_settings)
 
-        # Custom system prompts
-        self.cart_conversion_sys_prompt = config.get("cart_conversion_sys_prompt", "")
-        if isinstance(self.cart_conversion_sys_prompt, list):
-            self.cart_conversion_sys_prompt = " ".join(self.cart_conversion_sys_prompt)
-        elif type(self.cart_conversion_sys_prompt) is not str:
-            self.cart_conversion_sys_prompt = ""
-
     # ----------------------------------------
     # Toolkit tools (actions)
     # ----------------------------------------

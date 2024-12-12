@@ -27,12 +27,14 @@ class AdoraIntegration:
         adora_conversion_examples: dict[
             Literal["items", "sizes", "modifiers", "coupons"], dict[str, str]
         ] = {},
+        cart_conversion_sys_prompt: str | list[str] = "",
     ):
         self.account_name = account_name
         self.api_key = _utils.get_adora_secret(account_name, "API_KEY")
         self.api_secret = _utils.get_adora_secret(account_name, "API_SECRET")
         self.store_information = store_information
         self.adora_conversion_examples = adora_conversion_examples
+        self.cart_conversion_sys_prompt = cart_conversion_sys_prompt
 
     def add_to_order(self, order_item: OrderItem) -> str:
         # Get bearer token
@@ -203,7 +205,11 @@ class AdoraIntegration:
         logger.debug(f"[OrderingTools.place_order] Generic coupon: {generic_coupon}")
 
         # Get cart, if empty return the error message
-        cart = _utils.get_cart_info(chat_history)
+        if isinstance(self.cart_conversion_sys_prompt, list):
+            self.cart_conversion_sys_prompt = " ".join(self.cart_conversion_sys_prompt)
+        elif type(self.cart_conversion_sys_prompt) is not str:
+            self.cart_conversion_sys_prompt = ""
+        cart = _utils.get_cart_info(chat_history, self.cart_conversion_sys_prompt)
         logger.debug(f"[AdoraIntegration.place_order] Generic cart: {cart}")
 
         if not cart:
