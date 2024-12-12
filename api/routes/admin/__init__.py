@@ -15,6 +15,7 @@ from services.admin_service import (
     get_conversation_messages,
     get_inbox_conversations,
     get_instagram_connected,
+    get_instagram_username,
     remove_instagram_access_token,
     set_instagram_access_token,
 )
@@ -495,6 +496,71 @@ async def get_project_instagram_connected(
     return {"connected": connected}
 
 
+@admin_router.get("/projects/{project_id}/instagram/username", status_code=200)
+async def get_project_instagram_username(
+    project_id: str, request: Request, session: Session = Depends(db.get_db)
+):
+    """
+    This endpoint is used to obtain the username of the project's connected instagram account.
+    """
+    try:
+        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid project UUID",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Verify the project is connected to instagram
+    try:
+        connected = get_instagram_connected(session, project_uuid)
+        if not connected:
+            raise HTTPException(
+                status_code=404,
+                detail="Project not connected to Instagram",
+                headers={"Content-Type": "application/json"},
+            )
+    except ValueError:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found",
+            headers={"Content-Type": "application/json"},
+        )
+    except RuntimeError:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        username = get_instagram_username(session, project_uuid)
+    except ValueError:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not connected to Instagram",
+            headers={"Content-Type": "application/json"},
+        )
+    except RuntimeError:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return {"username": username}
+
+
 @admin_router.post("/projects/{project_id}/instagram/connect", status_code=200)
 async def connect_instagram(
     project_id: str, request: Request, session: Session = Depends(db.get_db)
@@ -514,10 +580,12 @@ async def connect_instagram(
 
     ig_access_token = request.headers.get("Access-Token", "")
     ig_user_id = request.headers.get("User-Id", "")
-    if not all([ig_access_token, ig_user_id]):
+    ig_username = request.headers.get("Username", "")
+
+    if not all([ig_access_token, ig_user_id, ig_username]):
         raise HTTPException(
             status_code=400,
-            detail="Missing required headers: Access-Token and/or User-Id",
+            detail="Missing required header(s): Access-Token, Username and/or User-Id",
             headers={"Content-Type": "application/json"},
         )
 
@@ -531,7 +599,9 @@ async def connect_instagram(
         )
 
     try:
-        set_instagram_access_token(session, project_uuid, ig_access_token, ig_user_id)
+        set_instagram_access_token(
+            session, project_uuid, ig_access_token, ig_user_id, ig_username
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=404,

@@ -107,8 +107,31 @@ def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
     return _implementation.get_instagram_connected(session, project_id)
 
 
+def get_instagram_username(session: Session, project_id: uuid.UUID) -> str:
+    """
+    Get the username of a connected Instagram account.
+
+    Args:
+        session (Session): The database session.
+        project_id (uuid.UUID): The unique identifier of the project.
+
+    Returns:
+        str: Username of the connected Instagram account.
+
+    Raises:
+        ValueError: If the project is not found or the project is not connected to Instagram.
+        RuntimeError: If there is an error getting the Instagram username.
+    """
+
+    return _implementation.get_instagram_username(session, project_id)
+
+
 def set_instagram_access_token(
-    session: Session, project_id: uuid.UUID, access_token: str, user_id: str
+    session: Session,
+    project_id: uuid.UUID,
+    access_token: str,
+    user_id: str,
+    username: str,
 ):
     """
     Store the Instagram access token for a project in AWS Secrets Manager.
@@ -128,7 +151,7 @@ def set_instagram_access_token(
     """
 
     return _implementation.set_instagram_access_token(
-        session, project_id, access_token, user_id
+        session, project_id, access_token, user_id, username
     )
 
 
@@ -176,6 +199,7 @@ __all__ = [
     "get_conversation_messages",
     "get_brandings",
     "get_instagram_connected",
+    "get_instagram_username",
     "set_instagram_access_token",
     "remove_instagram_access_token",
     "deauthorize_instagram_access_token",

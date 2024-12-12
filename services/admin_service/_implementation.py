@@ -5,7 +5,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-import requests
 from sqlalchemy.orm import Session
 
 import db
@@ -221,6 +220,19 @@ def _ig_user_id_to_ig_project_name_key(user_id: str) -> str:
     return f"INSTAGRAM_USER_{user_id}_PROJECT_KEY"
 
 
+def _parse_ig_project_secret_value(secret_value) -> dict:
+    try:
+        if not isinstance(secret_value, dict):
+            secret_dict = json.loads(secret_value)
+        else:
+            secret_dict = secret_value
+
+        return secret_dict
+    except Exception as e:
+        logger.error(f"Unable to parse project secret value: {e}")
+        raise RuntimeError("Unable to parse project secret value.") from e
+
+
 def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
     project = get_project(session, project_id)
     if not project:
@@ -240,8 +252,42 @@ def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
         raise RuntimeError(f"Unable to get Instagram access token: {e}")
 
 
+def get_instagram_username(session: Session, project_id: uuid.UUID) -> str:
+    project = get_project(session, project_id)
+    if not project:
+        raise ValueError("Project not found.")
+
+    project_secret_key = _project_name_to_ig_access_token_key(project.name)
+
+    # Ensure the project is connected to Instagram
+    try:
+        # if successful, then the key exists, and hence the project is connected
+        secret_value = secret.get_client_secret(project_secret_key)
+    except KeyError:
+        # if the key does not exist, then the project is not connected
+        # log and raise
+        logger.info("Project is not connected to Instagram.")
+        raise ValueError("Project is not connected to Instagram.")
+    except Exception as e:
+        # if any other error occurs, log and raise
+        logger.info(f"Unable to get Instagram access token: {e}")
+        raise RuntimeError(f"Unable to get Instagram access token: {e}")
+
+    try:
+        secret_dict = _parse_ig_project_secret_value(secret_value)
+    except RuntimeError as e:
+        logger.error(f"Unable to parse project secret value: {e}")
+        raise RuntimeError("Unable to parse project secret value.") from e
+
+    return secret_dict.get("username", "")
+
+
 def set_instagram_access_token(
-    session: Session, project_id: uuid.UUID, access_token: str, user_id: str
+    session: Session,
+    project_id: uuid.UUID,
+    access_token: str,
+    user_id: str,
+    username: str,
 ) -> None:
     """
     Add both project and user secrets atomically, with rollback attempt if necessary
@@ -250,32 +296,9 @@ def set_instagram_access_token(
     if not project:
         raise ValueError("Project not found.")
 
-    # First record this access token in secret manager
-    try:
-        all_access_tokens = secret.get_client_secret("INSTAGRAM_ALL_ACCESS_TOKENS")
-    except Exception as e:
-        logger.error(f"Unable to get all Instagram access tokens: {e}")
-        raise RuntimeError("Unable to get all Instagram access tokens.") from e
-
-    if access_token not in all_access_tokens:
-        token_list = all_access_tokens.split(",")
-        token_list.append(access_token)
-        new_all_access_tokens = ",".join(token_list)
-
-        # remove-then-add because update functionality does not exist
-        secret.remove_client_secret("INSTAGRAM_ALL_ACCESS_TOKENS")
-
-        # Temporary solution to try to avoid versioning errors
-        time.sleep(5)
-
-        # add new access token list to secret manager
-        secret.add_client_secret("INSTAGRAM_ALL_ACCESS_TOKENS", new_all_access_tokens)
-
-    # Then do specific handling for this account
-
     project_secret_key = _project_name_to_ig_access_token_key(project.name)
     project_secret_value = json.dumps(
-        {"access_token": access_token, "user_id": user_id}
+        {"access_token": access_token, "user_id": user_id, "username": username}
     )
 
     user_secret_key = _ig_user_id_to_ig_project_name_key(user_id)
@@ -350,11 +373,8 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
         raise RuntimeError(f"Unable to remove Instagram access token: {e}")
 
     try:
-        if not isinstance(secret_value, dict):
-            secret_dict = json.loads(secret_value)
-        else:
-            secret_dict = secret_value
-    except Exception as e:
+        secret_dict = _parse_ig_project_secret_value(secret_value)
+    except RuntimeError as e:
         logger.error(f"Unable to parse project secret value: {e}")
         raise RuntimeError("Unable to parse project secret value.") from e
 
@@ -412,31 +432,6 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
         raise RuntimeError("Unable to remove Instagram access token.") from e
 
 
-def _get_app_scoped_instagram_user_id(ig_user_id: str) -> str:
-    """ig_user_id received in deauthorization is non-app-scoped, must convert to app-scoped"""
-
-    try:
-        all_access_tokens = secret.get_client_secret("INSTAGRAM_ALL_ACCESS_TOKENS")
-    except Exception as e:
-        logger.error(f"Unable to get all Instagram access tokens: {e}")
-        raise RuntimeError("Unable to get all Instagram access tokens.") from e
-
-    # loop over every single access token we have ever received, and attempt to convert
-    token_list = all_access_tokens.split(",")
-
-    for token in token_list:
-        url = f"https://graph.instagram.com/{ig_user_id}?fields=id,username&access_token={token}"
-        response = requests.get(url)
-        if response.ok:
-            app_scoped_id = response.json().get("id", "")
-            logger.info(
-                f"Successfully converted Instagram user ID {ig_user_id} to app-scoped: {app_scoped_id}."
-            )
-            return app_scoped_id
-
-    return ""
-
-
 def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> None:
     """
     Remove both project and user secrets using the user secret key
@@ -445,22 +440,6 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
         raise ValueError("Instagram user ID is required.")
 
     user_secret_key = _ig_user_id_to_ig_project_name_key(ig_user_id)
-
-    # ig_user_id is non-app-scoped, must convert to app-scoped
-    try:
-        app_scoped_id = _get_app_scoped_instagram_user_id(ig_user_id)
-    except Exception as e:
-        logger.error(f"Unable to convert Instagram user ID {ig_user_id}: {e}")
-        raise RuntimeError(f"Unable to convert Instagram user ID {ig_user_id}.") from e
-
-    if not app_scoped_id:
-        logger.error(f"Did not find app-scoped Instagram user ID for id {ig_user_id}.")
-        raise RuntimeError(
-            f"Did not find app-scoped Instagram user ID for id {ig_user_id}."
-        )
-
-    # continue as normal after converting to app-scoped
-    ig_user_id = app_scoped_id
 
     try:
         project_secret_key = secret.get_client_secret(user_secret_key)
