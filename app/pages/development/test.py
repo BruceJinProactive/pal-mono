@@ -1,21 +1,15 @@
 import time
+
+import pandas as pd
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
-import pandas as pd
+
 import db
 from api.schemas.chat.message import AuthorType, Channel, Extras, Message, TextObject
 from app.auth import user
-from app.shared import (
-    clear_memory_ui,
-    get_app_db,
-    memory_ui,
-    universal_picker_ui,
-)
+from app.shared import clear_memory_ui, get_app_db, memory_ui, universal_picker_ui
 from services.account_service import get_account
-from services.message_service import (
-    get_chat_response,
-    create_conversation,
-)
+from services.message_service import create_conversation, get_chat_response
 from services.user_service import get_user_by_channel_identifier
 
 st.title("Test")
