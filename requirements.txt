@@ -27,6 +27,7 @@ distro==1.9.0
 docstring-parser==0.16
 entrypoints==0.4
 envs==1.4
+et-xmlfile==2.0.0
 extra-streamlit-components==0.1.71
 faker==28.0.0
 fastapi==0.112.2
@@ -73,6 +74,7 @@ more-itertools==10.4.0
 narwhals==1.5.5
 numpy==1.26.4
 openai==1.42.0
+openpyxl==3.1.5
 packaging==24.1
 pandas==2.2.2
 pgvector==0.3.2

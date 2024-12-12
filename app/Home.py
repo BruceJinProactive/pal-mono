@@ -55,6 +55,7 @@ def pages():
             title="Services",
             icon=":material/room_service:",
         ),
+        st.Page("pages/development/test.py", title="Test", icon=":material/quiz:"),
         st.Page(
             "pages/development/tools.py",
             title="Tools",
