@@ -10,7 +10,6 @@ from phi.aws.resources import AwsResources
 from phi.docker.resource.image import DockerImage
 from phi.docker.resources import DockerResources
 
-from workspace.configs import current_config
 from workspace.settings import ws_settings
 
 #
@@ -144,15 +143,16 @@ prd_db = DbInstance(
     port=prd_db_port,
     engine="postgres",
     engine_version="16.1",
-    allocated_storage=current_config.allocated_storage,
-    db_instance_class=current_config.db_instance_class,
+    allocated_storage=64,
+    # NOTE: For production, use a larger instance type.
+    # Last checked price: ~$25 per month
+    db_instance_class="db.t4g.small",
     db_security_groups=[prd_db_sg],
     db_subnet_group=prd_db_subnet_group,
     availability_zone=ws_settings.aws_az1,
     publicly_accessible=False,
     enable_performance_insights=True,
     aws_secret=prd_db_secret,
-    storage_encrypted=True,
     skip_delete=skip_delete,
     save_output=save_output,
     # Do not wait for the db to be deleted
@@ -181,7 +181,7 @@ container_env = {
     # Wait for database to be available before starting the application
     "WAIT_FOR_DB": ws_settings.prd_db_enabled,
     # Migrate database on startup using alembic
-    "MIGRATE_DB": True,
+    "MIGRATE_DB": False,
 }
 
 # -*- Streamlit running on ECS

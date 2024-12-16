@@ -2,8 +2,6 @@ from pathlib import Path
 
 from phi.workspace.settings import WorkspaceSettings
 
-from workspace.configs import current_config
-
 #
 # -*- Define workspace settings using a WorkspaceSettings object
 # these values can also be set using environment variables or a .env file
@@ -19,23 +17,28 @@ ws_settings = WorkspaceSettings(
     dev_api_enabled=True,
     dev_db_enabled=True,
     # -*- Production settings
-    prd_env=current_config.prd_env,
+    prd_env="lat",
+    # prd_env="stg",
+    # prd_env="prd",
     prd_app_enabled=True,
     prd_api_enabled=True,
     prd_db_enabled=True,
     # -*- AWS settings
     # Region for AWS resources
-    aws_region=current_config.aws_region,
+    aws_region="us-west-1",
     # Availability Zones for AWS resources
-    aws_az1=current_config.aws_az1,
-    aws_az2=current_config.aws_az2,
+    aws_az1="us-west-1a",
+    aws_az2="us-west-1b",
     # Subnet IDs in the aws_region
-    subnet_ids=current_config.subnet_ids,
+    subnet_ids=[
+        "subnet-0de9d04f262744f09",  # subnet of az us-west-1a
+        "subnet-031217b631485686d",  # subnet of az us-west-1b
+    ],
     # -*- Image Settings
     # Name of the image
     image_name="pal-mono",
     # Repository for the image
-    image_repo=f"{current_config.account_id}.dkr.ecr.{current_config.aws_region}.amazonaws.com",
+    image_repo="767398151610.dkr.ecr.us-west-1.amazonaws.com",
     # Build images locally
     build_images=True,
     # Push images after building
