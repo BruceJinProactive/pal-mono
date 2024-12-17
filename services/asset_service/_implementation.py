@@ -13,7 +13,7 @@ from botocore.exceptions import (
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
 from utils.log import logger
 
-AWS_ASSET_BUCKET_NAME = os.environ["AWS_ASSET_BUCKET_NAME"]
+AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME", default="DEFAULT_BUCKET")
 AWS_REGION = os.environ["AWS_REGION"]
 
 
