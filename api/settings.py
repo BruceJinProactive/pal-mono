@@ -77,6 +77,14 @@ class ApiSettings(BaseSettings):
             ]
         )
 
+        # Wyze
+        valid_cors.extend(
+            [
+                "https://wyze.com",
+                "https://www.wyze.com",
+            ]
+        )
+
         return valid_cors
 
 
