@@ -134,13 +134,14 @@ def set_instagram_access_token(
     username: str,
 ):
     """
-    Store the Instagram access token for a project in AWS Secrets Manager.
+    Store the Instagram access token for a project in AWS Secrets Manager. If successful, also adds user_id to channel_identifiers of project.
 
     Args:
         session (Session): The database session.
         project_id (uuid.UUID): The unique identifier of the project.
         access_token (str): The Instagram access token.
         user_id (str): The unique identifier of the instagram account.
+        username (str): The username of the instagram account.
 
     Returns:
         None

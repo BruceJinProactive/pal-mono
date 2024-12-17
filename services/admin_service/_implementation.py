@@ -16,7 +16,7 @@ from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
 )
-from services.project_service import get_project
+from services.project_service import get_project, replace_project_channel_identifiers
 from services.user_service import get_users_by_account_id
 from utils import secret
 from utils.log import logger
@@ -359,6 +359,26 @@ def set_instagram_access_token(
     except Exception as e:
         logger.error(f"Unable to set Instagram access token: {e}")
         raise RuntimeError("Unable to set Instagram access token.") from e
+
+    try:
+        channel_identifiers = project.channel_identifiers
+
+        # Modifying the existing array does not work, copy to new array instead
+        new_channel_identifiers = []
+        if channel_identifiers:
+            for channel_identifier in channel_identifiers:
+                new_channel_identifiers.append(channel_identifier)
+
+        # Add the new channel identifier for the connected instagram account
+        instagram_channel_identifier = f"instagram:{user_id}"
+        if instagram_channel_identifier not in new_channel_identifiers:
+            new_channel_identifiers.append(instagram_channel_identifier)
+        replace_project_channel_identifiers(
+            session, project_id, new_channel_identifiers
+        )
+    except Exception as e:
+        logger.error(f"Unable to update project channel identifiers: {e}")
+        raise RuntimeError("Unable to update project channel identifiers.") from e
 
 
 def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> None:
