@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from api.routes.endpoints import endpoints
-from api.schemas.chat.chat import ChatRequest, ChatResponse, ErrorResponse
+from api.schemas.chat.chat import ChatRequest, ChatResponse
 from api.schemas.chat.message import Message, TextObject
+from api.schemas.error.error import ErrorResponse
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_messages
 from utils.log import logger

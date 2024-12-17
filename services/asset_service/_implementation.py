@@ -18,12 +18,12 @@ AWS_REGION = os.environ["AWS_REGION"]
 
 
 def _check_bucket_name() -> None:
-    if AWS_ASSET_BUCKET_NAME:
+    if not AWS_ASSET_BUCKET_NAME:
         raise ValueError("AWS_ASSET_BUCKET_NAME not found in environment variables")
 
 
 def _check_region_name() -> None:
-    if AWS_REGION:
+    if not AWS_REGION:
         raise ValueError("AWS_REGION not found in environment variables")
 
 
@@ -45,6 +45,12 @@ def _construct_s3_url(bucket_name: str, region_name: str, file_name: str) -> str
 
 def write_asset(file: WriteAssetRequest) -> AssetResponse:
     try:
+        if not file.name:
+            raise ValueError("File name must be provided.")
+
+        if not file.content:
+            raise ValueError("File content must be provided.")
+
         _check_region_name()
         s3_client = _init_s3(AWS_REGION)
 
@@ -72,16 +78,19 @@ def write_asset(file: WriteAssetRequest) -> AssetResponse:
 
 
 ## Read ##
-def read_asset(file: ReadAssetRequest) -> list[AssetResponse]:
+def read_assets(request: ReadAssetRequest) -> list[AssetResponse]:
     try:
+        if not request.name and not request.metadata:
+            raise ValueError("At least one of `name` or `metadata` must be provided.")
+
         _check_region_name()
         s3_client = _init_s3(AWS_REGION)
 
         found_urls: list[AssetResponse] = []
-        if file.name:
+        if request.name:
             _check_bucket_name()
-            head = s3_client.head_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=file.name)
-            url = _construct_s3_url(AWS_ASSET_BUCKET_NAME, AWS_REGION, file.name)
+            head = s3_client.head_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=request.name)
+            url = _construct_s3_url(AWS_ASSET_BUCKET_NAME, AWS_REGION, request.name)
             found_urls.append(AssetResponse(url=url))
         else:
             # Set up the paginator for listing objects
@@ -103,7 +112,9 @@ def read_asset(file: ReadAssetRequest) -> list[AssetResponse]:
                         metadata = head.get("Metadata", {})
 
                         # Check if all metadata_filters match
-                        if all(metadata.get(k) == v for k, v in file.metadata.items()):
+                        if all(
+                            metadata.get(k) == v for k, v in request.metadata.items()
+                        ):
                             url = _construct_s3_url(
                                 AWS_ASSET_BUCKET_NAME, AWS_REGION, key
                             )
@@ -126,10 +137,10 @@ def read_asset(file: ReadAssetRequest) -> list[AssetResponse]:
             raise RuntimeError(f"The bucket {AWS_ASSET_BUCKET_NAME} does not exist.")
         elif error_code == "NoSuchKey":
             logger.error(
-                f"The file {file.name} does not exist in bucket {AWS_ASSET_BUCKET_NAME}."
+                f"The file {request.name} does not exist in bucket {AWS_ASSET_BUCKET_NAME}."
             )
             raise RuntimeError(
-                f"The file {file.name} does not exist in bucket {AWS_ASSET_BUCKET_NAME}."
+                f"The file {request.name} does not exist in bucket {AWS_ASSET_BUCKET_NAME}."
             )
         else:
             logger.error(f"AWS ClientError: {error_code}, Message: {error_message}")

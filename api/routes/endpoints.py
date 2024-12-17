@@ -7,6 +7,7 @@ class ApiEndpoints:
     CHAT: str = "/chat"
     HEALTH: str = "/health"
     PING: str = "/ping"
+    ASSETS: str = "/assets"
 
 
 endpoints = ApiEndpoints()

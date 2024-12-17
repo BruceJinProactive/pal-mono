@@ -3,39 +3,25 @@ from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetR
 from . import _implementation
 
 
-def write_asset(
-    file_name: str, content: bytes, metadata: dict[str, str] = {}
-) -> AssetResponse:
+def write_asset(asset: WriteAssetRequest) -> AssetResponse:
     """Write assets to S3 bucket.
 
     Args:
-        file_name (str): Name of the file to write.
-        content (bytes): File content in bytes.
-        metadata (dict[str, str], optional): Metadata to attach to the file. Defaults to {}.
+        asset (WriteAssetRequest): The asset to write.
 
     Returns:
-        AssetResponse: S3 URL of the written file.
+        AssetResponse: An asset object containing the S3 URL of the written file.
     """
-
-    asset = WriteAssetRequest(name=file_name, content=content, metadata=metadata)
     return _implementation.write_asset(asset)
 
 
-def read_asset(
-    file_name: str | None = None, metadata: dict[str, str] = {}
-) -> list[AssetResponse]:
+def read_assets(request: ReadAssetRequest) -> list[AssetResponse]:
     """Read assets from S3 bucket.
 
     Args:
-        file_name (str | None, optional): Name of the file to read. Defaults to None.
-        metadata (dict[str, str], optional): Metadata to filter by. Defaults to {}.
+        request (ReadAssetRequest): The asset details to find by. Assets can fetched by matching name or metadata.
 
     Returns:
-        list[AssetResponse]: A list of S3 URLs for the requested assets.
+        list[AssetResponse]: A list of asset objects each containing the S3 URL of the fetched file.
     """
-
-    if not file_name and not metadata:
-        raise ValueError("At least one of `file_name` or `metadata` must be provided.")
-
-    asset = ReadAssetRequest(name=file_name, metadata=metadata)
-    return _implementation.read_asset(asset)
+    return _implementation.read_assets(request)
