@@ -170,6 +170,40 @@ class MessageRepository:
             logger.error(f"Error retrieving last message: {e}")
             return None
 
+    def get_last_user_message_by_conversation(self, conversation_id: uuid.UUID):
+        """
+        Retrieves the most recently created message associated with a specific
+        conversation id that was created by a user.
+
+        Args:
+            conversation_id (uuid.UUID): The unique identifier for the conversation.
+
+        Returns:
+            Message | None: The most recent user-generated message, or None of an error occurs.
+        """
+        try:
+            message = (
+                self.session.query(Message)
+                .filter(Message.conversation_id == conversation_id)
+                # filter by author_type to get only user-generated messages
+                .filter(Message.body.has_key("author_type"))
+                .filter(Message.body["author_type"].astext == "user")
+                .order_by(
+                    # filter by created_at desc so first message is most recent
+                    Message.created_at.desc()
+                )
+                .first()
+            )
+
+            if not message:
+                return None
+
+            return message
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving last message: {e}")
+            return None
+
     def get_message_count_by_conversation(self, conversation_id: uuid.UUID):
         """
         Retrieves the number of messages associated with a specific
