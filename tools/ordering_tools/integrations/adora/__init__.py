@@ -47,11 +47,13 @@ class AdoraIntegration:
         if not menu:
             return "Failed to get menu, please try again."
         menu_maps = _utils.get_menu_maps(menu)
+        modifier_weights_map = _utils.get_modifier_weights_map(menu)
         size_map = _utils.get_size_description_map(menu)
 
         convert_item_success, adora_order_item = _utils.validate_and_convert_item(
             order_item,
             menu_maps,
+            modifier_weights_map,
             size_map,
             menu["modifiers"],
             menu["modifier_groups"],
@@ -230,6 +232,7 @@ class AdoraIntegration:
             return "Failed to get menu, please try again."
 
         menu_maps = _utils.get_menu_maps(menu)
+        modifier_weights_map = _utils.get_modifier_weights_map(menu)
         size_map = _utils.get_size_description_map(menu)
 
         order_items = []
@@ -249,6 +252,7 @@ class AdoraIntegration:
             convert_item_success, adora_order_item = _utils.validate_and_convert_item(
                 order_item,
                 menu_maps,
+                modifier_weights_map,
                 size_map,
                 menu["modifiers"],
                 menu["modifier_groups"],

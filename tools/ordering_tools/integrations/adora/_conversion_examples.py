@@ -60,16 +60,30 @@ Agent: N/A
 
 MODIFIER_EXAMPLES = """
 # EXAMPLE #
-EXAMPLE AVAILABLE MODIFICATION OPTIONS: ["Rainbow Sprinkles", "Gummy Bears", "Whipped Cream", "Peanuts"]
-User: rainbow sprinkles
-Agent: Rainbow Sprinkles
+EXAMPLE AVAILABLE MODIFICATION OPTIONS: ["Rainbow Sprinkles", "Gummy Bears", "Whipped Cream", "Peanuts", "Extra Chocolate"]
+EXAMPLE  AVAILABLE MODIFICATION WEIGHTS OPTIONS: ["None", "Light", "Regular", "Extra"]
 
-User: pnuts
-Agent: peanuts
+User: extra peanut
+Agent: Peanuts(Extra)
+
+User: rainbow sprinkles
+Agent: Rainbow Sprinkles(Regular)
+
+User: extra chocolate
+Agent: Extra Chocolate(Regular)  # Prioritize Searching the Name of the Modifier over the Weight
+
+User: No pnuts
+Agent: Peanuts(None)
+
+User: little gummy bears
+Agent: Gummy Bears(Light)
+
+User: more rainbow sprinkles
+Agent: Rainbow Sprinkles(Extra)
 
 User: nutella
-Agent: N/A
+Agent: N/A(Regular)
 
 User: cherries
-Agent: N/A
+Agent: N/A(Regular)
 """

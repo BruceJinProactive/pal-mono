@@ -1,5 +1,4 @@
 import textwrap
-from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -43,7 +42,7 @@ def _add_default_modifiers(
     item_modifier_groups: list, modifier_id_to_group_id: dict
 ) -> tuple[list, dict]:
     modifiers = []
-    modifier_group_counter = defaultdict(int)
+    modifier_group_counter = {}
     for group in item_modifier_groups:
         group_id = group["modifier_group_id"]
         for modifier in group["modifiers"]:
@@ -56,7 +55,9 @@ def _add_default_modifiers(
                         "weightId": 3,
                     }
                 )
-                modifier_group_counter[group_id] += 1
+                if group_id not in modifier_group_counter:
+                    modifier_group_counter[group_id] = []
+                modifier_group_counter[group_id].append(modifier["modifier_id"])
             modifier_id_to_group_id[modifier["modifier_id"]] = group_id
     return modifiers, modifier_group_counter
 
@@ -268,6 +269,7 @@ def get_adora_modifications(
     menu_id_to_details_map: dict[int, MenuItemDetails],
     menu_modifiers: dict,
     menu_modifier_groups: dict,
+    modifier_weights_map: dict,
     order_item: OrderItem,
     modifier_conversion_examples: dict[str, str],
 ) -> tuple[bool, AdoraOrderItem | str]:
@@ -279,7 +281,10 @@ def get_adora_modifications(
         adora_item_id (int): The ID of the item in the Adora menu.
         adora_size_name (str): The name of the size in the Adora menu.
         adora_size_id (int): The ID of the size in the Adora menu.
-        menu (dict): The restaurant's menu data, containing items, modifier groups, and modifiers.
+        menu_id_to_details_map (dict): A mapping of item IDs to their details.
+        menu_modifiers (dict): The restaurant's menu modifiers.
+        menu_modifier_groups (dict): The restaurant's menu modifier groups.
+        modifier_weights_map (dict): A mapping of modifier weights to their IDs.
         order_item (OrderItem): The order item object that holds details such as quantity.
 
     Returns:
@@ -300,6 +305,7 @@ def get_adora_modifications(
     modifiers, comment = process_modifiers(
         menu_modifiers,
         order_item.modifications,
+        modifier_weights_map,
         modifier_conversion_examples,
     )
     payload["comment"] = comment
@@ -326,18 +332,15 @@ def get_adora_modifications(
 
     # Add user-provided modifiers to payload and update group counts
     new_added_modifications: list[str] = []
-    for modifier_item in modifiers:
-        payload["modifiers"].append(
-            {
-                "id": modifier_item["id"],
-                "isDefault": False,
-                "price": 1,  # adjust the price as needed
-                "weightId": 3,  # adjust the weightId as needed
-            }
-        )
-        if modifier_item["id"] in modifier_id_to_group_id:
-            modifier_group_counter[modifier_id_to_group_id[modifier_item["id"]]] += 1
-        new_added_modifications.append(modifier_item["name"])
+    modifier_lookup = {modifier["id"]: modifier for modifier in payload["modifiers"]}
+    process_added_modifiers(
+        modifier_group_counter,
+        modifier_id_to_group_id,
+        modifier_lookup,
+        modifiers,
+        new_added_modifications,
+        payload,
+    )
 
     # Validate modifier group constraints
     is_valid, validation_message = validate_modifier_group_constraints(
@@ -360,7 +363,6 @@ def get_adora_modifications(
     adora_order_item.size = adora_size_name
     adora_order_item.quantity = order_item.quantity
     adora_order_item.modifications = new_added_modifications
-
     return True, adora_order_item
 
 
@@ -743,9 +745,27 @@ def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int
     return id_to_details_map, name_to_id_map
 
 
+def get_modifier_weights_map(menu) -> dict[str, int]:
+    """
+    Extracts the modifier weight map from the menu data.
+
+    Args:
+        menu (dict): The menu data containing the modifier weights.
+
+    Returns:
+        dict: A dictionary mapping modifier weight names to their corresponding IDs.
+    """
+
+    return {
+        weight["name"]: weight["modifier_weight_id"]
+        for weight in menu["modifier_weights"]
+    }
+
+
 def get_similar_modifier_using_openai(
     order_item_modification: str,
     modifier_names: list,
+    modifier_weights_map: dict[str, int],
     modifier_conversion_examples: dict[str, str],
 ) -> str | None:
     """
@@ -754,6 +774,7 @@ def get_similar_modifier_using_openai(
     Args:
         order_item_modification (str): The user-provided modification for an order item (e.g., "extra cheese").
         modifier_names (list): A list of available modifier names on the menu.
+        modifier_weights_map (dict): A mapping of modifier weights to their IDs.
 
     Returns:
         str: The most similar modifier from the menu or "N/A" if no close match is found.
@@ -765,6 +786,7 @@ def get_similar_modifier_using_openai(
             f"""
             # EXAMPLE #
             EXAMPLE AVAILABLE MODIFICATION OPTIONS: {modifier_names}
+            EXAMPLE AVAILABLE MODIFICATION WEIGHTS OPTIONS: {modifier_weights_map}
             """
             + "\n\n".join(
                 [
@@ -780,11 +802,15 @@ def get_similar_modifier_using_openai(
         I am a waiter at a restaurant. I am taking a user's order.
         I want to match a user supplied item modification to an available item modification on the menu.
         Here are the AVAILABLE MODIFICATION OPTIONS: {modifier_names}
+        Here are the AVAILABLE MODIFICATION WEIGHTS OPTIONS: {modifier_weights_map}
 
         #########
 
         # OBJECTIVE #
-        Match the user's inputted item modification to the closest item modification on the menu as if you were a server/waiter.
+        Match the user's inputted item modification with the weight to the closest item modification on the menu as if you were a server/waiter.
+        If there is a conflict between the name and the weight (e.g., "extra cheese"), prioritize the name over the weight, otherwise prioritize the weight.
+        If there is no weight provided, default to "Regular."
+        Treat words like "extra," "light," or "none" as descriptors for the weight only if they are not part of the actual modifier name.
 
         #########
 
@@ -795,6 +821,7 @@ def get_similar_modifier_using_openai(
 
         # RESPONSE FORMAT #
         Only output the most similar item modification. Output "N/A" if the user's inputted item modification is nothing like any of the available options.
+        The output should always be in the format: "<Modifier Name>(<Weight>)"
         """
     )
     response = model_router_client.chat.completions.create(
@@ -826,6 +853,7 @@ def get_size_description_map(menu) -> dict[int, str]:
 def process_modifiers(
     menu_modifiers: dict,
     order_item_modifications: list,
+    modifier_weights_map: dict[str, int],
     modifier_conversion_examples: dict[str, str],
 ) -> tuple[list, str]:
     """
@@ -833,6 +861,7 @@ def process_modifiers(
 
     Args:
         menu (dict): The restaurant's menu data, containing items and modifiers.
+        modifier_weights_map (dict): A mapping of modifier weights to their IDs.
         order_item_modifications (list): A list of modifications provided by the user for a specific order item.
 
     Returns:
@@ -845,11 +874,21 @@ def process_modifiers(
     comment = ""
 
     for order_item_modification in order_item_modifications:
-        matched_modifier = get_similar_modifier_using_openai(
+        matched_modifier_with_weight = get_similar_modifier_using_openai(
             order_item_modification,
             modifier_names,
+            modifier_weights_map,
             modifier_conversion_examples,
         )
+
+        # Split into parts
+        if matched_modifier_with_weight:
+            matched_modifier, weights = matched_modifier_with_weight.split("(")
+        else:
+            matched_modifier, weights = "N/A", "N/A"
+
+        # Clean up the weight part by removing the closing parenthesis
+        weights = weights.rstrip(")")
 
         most_similar_modifier_id = next(
             (
@@ -861,16 +900,87 @@ def process_modifiers(
         )
 
         if most_similar_modifier_id:
-            modifiers.append({"id": most_similar_modifier_id, "name": matched_modifier})
+            modifiers.append(
+                {
+                    "id": most_similar_modifier_id,
+                    "name": matched_modifier,
+                    "weightId": modifier_weights_map[weights],
+                }
+            )
         else:
             comment += order_item_modification + ". "
+    print("hello", modifiers)
 
     return modifiers, comment
+
+
+def process_added_modifiers(
+    modifier_group_counter: dict,
+    modifier_id_to_group_id: dict,
+    modifier_lookup: dict,
+    modifiers: list[dict],
+    new_added_modifications: list[str],
+    payload: dict,
+):
+    """
+    Processes user-provided modifiers, updating existing modifiers in payload or appending new ones.
+    Args:
+        modifier_group_counter (dict): Counter for modifier group constraints.
+        modifier_id_to_group_id (dict): Mapping of modifier IDs to their group IDs.
+        modifier_lookup (dict): Lookup dictionary for existing modifiers by ID.
+        modifiers (list[dict]): List of user-provided modifiers.
+        new_added_modifications (list[str]): List to store names of newly added modifications.
+        payload (dict): The payload containing existing modifiers and comment.
+
+    Returns:
+        None: Modifies the payload, modifier_lookup, and counters in-place.
+    """
+    for modifier_item in modifiers:
+        if modifier_item["id"] in modifier_lookup:
+            # if the modifier is already in the payload, update the weight
+            existing_modifier = modifier_lookup[modifier_item["id"]]
+
+            # Update the existing modifier with the new weight
+            existing_modifier.update(
+                {
+                    "id": modifier_item["id"],
+                    "isDefault": True,
+                    "price": 1,
+                    "weightId": modifier_item["weightId"],
+                }
+            )
+        elif modifier_item["weightId"] == 1:
+            # if the modifier is not in the payload and the weight is "NONE", skip
+            continue
+        else:
+            # Add the new modifier and update the lookup
+            new_modifier = {
+                "id": modifier_item["id"],
+                "isDefault": False,
+                "price": 1,  # Default price to 1 if not provided
+                "weightId": modifier_item["weightId"],
+            }
+            payload["modifiers"].append(new_modifier)
+            modifier_lookup[modifier_item["id"]] = new_modifier
+
+        if modifier_item["id"] in modifier_id_to_group_id:
+            if (
+                modifier_id_to_group_id[modifier_item["id"]]
+                not in modifier_group_counter
+            ):
+                modifier_group_counter[modifier_id_to_group_id[modifier_item["id"]]] = (
+                    []
+                )
+            modifier_group_counter[modifier_id_to_group_id[modifier_item["id"]]].append(
+                modifier_item["id"]
+            )
+        new_added_modifications.append(modifier_item["name"])
 
 
 def validate_and_convert_item(
     order_item: OrderItem,
     menu_maps: tuple[dict[int, MenuItemDetails], dict[str, int]],
+    modifier_weights_map: dict[str, int],
     size_map: dict[int, str],
     menu_modifiers: dict,
     menu_modifier_groups: dict,
@@ -948,6 +1058,7 @@ def validate_and_convert_item(
         menu_id_to_details_map,
         menu_modifiers,
         menu_modifier_groups,
+        modifier_weights_map,
         order_item,
         modifier_conversion_examples,
     )
@@ -956,7 +1067,9 @@ def validate_and_convert_item(
 
 
 def validate_modifier_group_constraints(
-    modifier_group_counter: dict, menu_modifier_groups: dict, payload: dict
+    modifier_group_counter: dict,
+    menu_modifier_groups: dict,
+    payload: dict,
 ) -> tuple[bool, str]:
     """
     Validates that the modifier group constraints (e.g., minimum and maximum allowed modifiers) are satisfied.
@@ -971,10 +1084,13 @@ def validate_modifier_group_constraints(
             - A boolean indicating whether all modifier group constraints are satisfied.
             - A string containing an error message if the constraints are not met, otherwise an empty string.
     """
+    DEFAULT_MODIFIER_COUNT = 2
+    DEFAULT_MODIFIER_MAX_COUNT = 1
 
     modifier_group_dict = {mg["modifier_group_id"]: mg for mg in menu_modifier_groups}
 
-    for modifier_group_id, count in modifier_group_counter.items():
+    for modifier_group_id, modifiers in modifier_group_counter.items():
+        count = len(modifiers)
         if modifier_group_id in modifier_group_dict:
             mg = modifier_group_dict[modifier_group_id]
             if count < mg["min_required_modifier"]:
@@ -983,6 +1099,19 @@ def validate_modifier_group_constraints(
                     f"Please provide at least {mg['min_required_modifier']} modifiers for {mg['name']}.",
                 )
             if count > mg["max_allowed_modifier"]:
+                # limit to 2 modifiers for default modifier
+                if (
+                    mg["max_allowed_modifier"] == DEFAULT_MODIFIER_MAX_COUNT
+                    and count == DEFAULT_MODIFIER_COUNT
+                ):
+                    # remove the first modifier
+                    default_modifier, _ = modifiers
+                    payload["modifiers"] = [
+                        mod
+                        for mod in payload["modifiers"]
+                        if mod["id"] != default_modifier
+                    ]
+                    return True, ""
                 return (
                     False,
                     f"Please provide at most {mg['max_allowed_modifier']} modifiers for {mg['name']}.",
