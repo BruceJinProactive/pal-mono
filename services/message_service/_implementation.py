@@ -9,6 +9,7 @@ import db
 from ai.model import BaseOutputModel
 from api.schemas.chat.message import (
     AuthorType,
+    Channel,
     Extras,
     MediaObject,
     Message,
@@ -44,10 +45,10 @@ async def get_chat_response_async(
         metadata["project_name"] = project.name
 
         # Add MessageSid or CallSid to the metadata based on the channel
-        if message.channel.value == "sms" and "MessageSid" in message.metadata:
+        if message.channel == Channel.SMS and "MessageSid" in message.metadata:
             metadata["MessageSid"] = message.metadata["MessageSid"]
-        elif message.channel.value == "voice" and "MessageSid" in message.metadata:
-            metadata["CallSid"] = message.metadata["MessageSid"]
+        elif message.channel == Channel.VOICE and "CallSid" in message.metadata:
+            metadata["CallSid"] = message.metadata["CallSid"]
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
@@ -239,10 +240,10 @@ def get_chat_response(session: Session, message: Message) -> Message:
         metadata["project_name"] = project.name
 
         # Add MessageSid or CallSid to the metadata based on the channel
-        if message.channel.value == "sms" and "MessageSid" in message.metadata:
+        if message.channel == Channel.SMS and "MessageSid" in message.metadata:
             metadata["MessageSid"] = message.metadata["MessageSid"]
-        elif message.channel.value == "voice" and "MessageSid" in message.metadata:
-            metadata["CallSid"] = message.metadata["MessageSid"]
+        elif message.channel == Channel.VOICE and "CallSid" in message.metadata:
+            metadata["CallSid"] = message.metadata["CallSid"]
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
