@@ -77,7 +77,6 @@ def _render_agent_config_form_list(
 
 
 def main() -> None:
-    st.warning("[WARNING] Operations on this page are irreversible.")
     st.write("---")
 
     if "account_name" not in st.session_state:
@@ -96,13 +95,28 @@ def main() -> None:
         st.write(
             ":orange-background[Please __double-check any modifications__ before submitting.]"
         )
+        st.divider()
 
         unformatted_json = dict(agent.raw_config)
         formatted_json = json.dumps(unformatted_json, indent=4, ensure_ascii=False)
         formatted_json_str = str(formatted_json)
+        if f"{agent.id}_starting_config" not in st.session_state:
+            st.session_state[f"{agent.id}_starting_config"] = unformatted_json
+
+        st.write(":red[__Revert__] agent config to start of session")
+        if st.button("Revert"):
+            replace_agent_config(
+                session,
+                agent_id=agent.id,
+                config=st.session_state[f"{agent.id}_starting_config"],
+            )
+            # flash message, then rerun to reflect changes
+            st.success("Successfully reverted the agent config. Rerunning...")
+            time.sleep(1)
+            st.rerun()
+        st.divider()
 
         st.write(":red[__Replace__] the entire agent config")
-
         with st.form(key="replace_agent_config_form"):
             replace_config_expander = st.expander("Replace Agent Config")
             replace_config = replace_config_expander.text_area(
@@ -126,7 +140,6 @@ def main() -> None:
                     st.rerun()
                 else:
                     st.error("Invalid JSON format")
-
         st.divider()
 
         st.write(":red[__Edit__] agent config values")
