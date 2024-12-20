@@ -401,6 +401,11 @@ class AdoraIntegration:
                 # set the typeId from the validated address
                 typeId=validated_address[0].typeId,
             )
+        # get wait time
+        logger.debug("[AdoraIntegration.place_order] Getting the waiting time...")
+        wait_time = _apis.get_wait_time(
+            bearer_token, self.store_information["store_id"], fulfillment_strategy.value
+        )
 
         # validate order
         logger.debug("[AdoraIntegration.place_order] Validating order...")
@@ -459,6 +464,10 @@ class AdoraIntegration:
                     f"Order ID: {saved_order.orderID}\n"
                     f"Store Phone: {self.store_information['phone']}\n"
                 )
+                if wait_time is not None and wait_time >= 30:
+                    successful_order_details += (
+                        f"Estimated wait time: {wait_time} minutes\n"
+                    )
 
                 logger.debug(
                     f"[AdoraIntegration.place_order] Order placed successfully! Returning: {successful_order_details}"

@@ -1,6 +1,7 @@
 import http.client
 import json
 import time
+from datetime import date
 
 from tools.ordering_tools.classes import Consumer
 from tools.ordering_tools.integrations.adora.classes import (
@@ -78,6 +79,35 @@ def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
     bearer_token_json = data.decode("utf-8")
 
     return _utils.parse_json(AdoraAccessToken, bearer_token_json)
+
+
+def get_wait_time(
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+    strategy: str,
+) -> int | None:
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "store/info",
+        query_params={
+            "sid": store_id,
+            "date": date.today().isoformat(),
+        },
+        extra_headers=None,
+        payload=None,
+    )
+    store_info = json.loads(response.decoded_body)
+
+    if response.status == 200:
+        if strategy == "pickup":
+            return store_info["takeOutWaitTime"]
+        elif strategy == "delivery":
+            return store_info["deliveryWaitTime"]
+        else:
+            return None
+    else:
+        return None
 
 
 def validate_order(
