@@ -50,8 +50,6 @@ def _add_default_modifiers(
                 modifiers.append(
                     {
                         "id": modifier["modifier_id"],
-                        "isDefault": True,
-                        "price": 1,
                         "weightId": 3,
                     }
                 )
@@ -808,7 +806,7 @@ def get_similar_modifier_using_openai(
 
         # OBJECTIVE #
         Match the user's inputted item modification with the weight to the closest item modification on the menu as if you were a server/waiter.
-        If there is a conflict between the name and the weight (e.g., "extra cheese"), prioritize the name over the weight, otherwise prioritize the weight.
+        If there is a conflict between the name and the weight , prioritize the name over the weight (e.g., "extra cheese"), otherwise prioritize the weight ("extra sausage").
         If there is no weight provided, default to "Regular."
         Treat words like "extra," "light," or "none" as descriptors for the weight only if they are not part of the actual modifier name.
 
@@ -909,7 +907,6 @@ def process_modifiers(
             )
         else:
             comment += order_item_modification + ". "
-    print("hello", modifiers)
 
     return modifiers, comment
 
@@ -944,8 +941,6 @@ def process_added_modifiers(
             existing_modifier.update(
                 {
                     "id": modifier_item["id"],
-                    "isDefault": True,
-                    "price": 1,
                     "weightId": modifier_item["weightId"],
                 }
             )
@@ -956,8 +951,6 @@ def process_added_modifiers(
             # Add the new modifier and update the lookup
             new_modifier = {
                 "id": modifier_item["id"],
-                "isDefault": False,
-                "price": 1,  # Default price to 1 if not provided
                 "weightId": modifier_item["weightId"],
             }
             payload["modifiers"].append(new_modifier)
