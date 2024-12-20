@@ -4,11 +4,11 @@ from uuid import uuid4
 
 from phi.agent.agent import Agent
 
-from ai.knowledge import get_knowledge
-from ai.memory import get_history_responses, get_memory
-from ai.model import generate_output_model, get_model
-from ai.prompts import get_system_prompt
-from ai.storage import get_storage
+from agent.knowledge import get_knowledge
+from agent.memory import get_history_responses, get_memory
+from agent.model import generate_output_model, get_model
+from agent.prompts import get_system_prompt
+from agent.storage import get_storage
 from tools import get_tools
 
 

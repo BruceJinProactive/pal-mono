@@ -9,7 +9,7 @@ from phi.model.base import Model
 from phi.model.message import Message
 
 import db
-from ai.model import ModelName, get_model
+from agent.model import ModelName, get_model
 
 DEFAULT_NUM_HISTORY_RESPONSES = 10
 

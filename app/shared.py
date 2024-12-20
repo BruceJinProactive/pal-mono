@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from ai.memory import (
+from agent.memory import (
     add_memory,
     clear_memory,
     delete_memory,

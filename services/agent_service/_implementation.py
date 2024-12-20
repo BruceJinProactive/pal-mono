@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from ai import integrate_agent
+from agent import integrate_agent
 
 
 async def get_ai_agent_async(

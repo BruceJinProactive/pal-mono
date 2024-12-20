@@ -7,7 +7,7 @@ from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.vectordb.pgvector.pgvector2 import PgVector2
 
 import db
-from ai.model import get_embedder
+from agent.model import get_embedder
 
 
 def get_knowledge(account_name: str) -> AgentKnowledge:

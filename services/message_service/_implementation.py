@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from ai.model import BaseOutputModel
+from agent.model import BaseOutputModel
 from api.schemas.chat.message import (
     AuthorType,
     Channel,

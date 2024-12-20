@@ -12,7 +12,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from streamlit_extras.switch_page_button import switch_page
 
-from ai.knowledge import create_document, get_knowledge, process_pdf
+from agent.knowledge import create_document, get_knowledge, process_pdf
 from app.auth import user
 from app.shared import account_picker_ui, get_app_db
 from utils.log import logger

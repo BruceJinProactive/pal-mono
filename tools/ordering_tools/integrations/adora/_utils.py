@@ -4,8 +4,8 @@ from decimal import Decimal
 
 from phi.memory.memory import Memory
 
-from ai.memory import get_memory
-from ai.model import ModelName, get_client
+from agent.memory import get_memory
+from agent.model import ModelName, get_client
 from tools.ordering_tools.classes import (
     Consumer,
     GenericCoupon,
