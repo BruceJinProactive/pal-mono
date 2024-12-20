@@ -64,7 +64,7 @@ def get_inbox_conversations(
         last_message = message_repository.get_last_user_message_by_conversation(id)
 
         # If there are no messages, skip this conversation
-        if last_message is None:
+        if last_message is None or last_message.body is None:
             continue
 
         # If the last message is from the testing phone number, skip this conversation
@@ -75,6 +75,9 @@ def get_inbox_conversations(
             continue
 
         # If the last message ends with "latest" or "staging", skip this conversation
+        if not last_message.body.get("text"):
+            continue
+
         last_message_text = last_message.body.get("text", {}).get("body", "").lower()
         if re.search(r"\b(?:latest|staging)\b$", last_message_text):
             continue
