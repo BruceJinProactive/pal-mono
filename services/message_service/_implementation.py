@@ -136,7 +136,7 @@ async def get_chat_response_async(
 
     except Exception:
         # Log any error and set default error response
-        logger.exception("Error in get_chat_response")
+        logger.exception("Error in get_chat_response_async")
         response = "Something went wrong. Please try again."
 
     return response_messages
