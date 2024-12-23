@@ -72,8 +72,50 @@ jobs:
         env:
           SLACK_WEBHOOK_URL_BUILD: ${{ secrets.SLACK_WEBHOOK_URL_BUILD }}
 
+  pre-coverage:
+    runs-on: ubuntu-latest
+
+    outputs:
+      main_coverage: ${{ steps.get_main_coverage.outputs.coverage }}
+
+    strategy:
+      matrix:
+        python-version: [3.11]
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      # Create a virtual environment and activate it
+      - name: Set up virtual environment
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+
+      - name: Install dependencies in virtual environment
+        run: |
+          .venv/bin/python -m pip install --upgrade pip setuptools wheel
+          .venv/bin/pip install -r requirements.txt
+      
+      - name: Run main pytest report
+        id: get_main_coverage
+        run: |
+          echo "coverage<<EOF" >> $GITHUB_OUTPUT
+          echo "$(.venv/bin/pytest --cov=. | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+  
   test:
     runs-on: ubuntu-latest
+
+    needs: pre-coverage
 
     strategy:
       matrix:
@@ -101,11 +143,24 @@ jobs:
           .venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
           .venv/bin/pip install -r requirements.txt
       
-      - name: Run pytest report
-        id: get_coverage
+      - name: Run new pytest report
+        id: get_new_coverage
         run: |
           echo "coverage<<EOF" >> $GITHUB_OUTPUT
           echo "$(.venv/bin/pytest --cov=. | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v45
+      
+      - name: Get coverage warnings
+        env:
+          ALL_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        id: get_coverage_warnings
+        run: |
+          echo "warnings<<EOF" >> $GITHUB_OUTPUT
+          echo "$(.venv/bin/python ./.github/workflows/coverage_analysis.py '${{ needs.pre-coverage.outputs.main_coverage }}' '${{ steps.get_new_coverage.outputs.coverage }}' ${ALL_CHANGED_FILES[@]} | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
       
       - name: PR testing coverage comment
@@ -118,7 +173,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: "<details><summary>Code coverage</summary>\n\n```\n${{ steps.get_coverage.outputs.coverage }}```\n\n</details>"
+              body: "${{ steps.get_coverage_warnings.outputs.warnings }}<details><summary>Code coverage</summary>\n\n```\n${{ steps.get_new_coverage.outputs.coverage }}```\n\n</details>"
             })
 
       - name: Set up Docker Buildx
