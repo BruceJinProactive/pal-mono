@@ -133,4 +133,4 @@ The CI/CD pipeline consists of 4 environments:
 | dev    | http://localhost:8501/                                             | http://localhost:8000/                                     | http://localhost:8000/docs                                             |
 | lat    | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat | http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs |
 | stg    | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs |
-| prd    | http://pal-mono-prd-app-lb-270235957.us-west-1.elb.amazonaws.com/  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/prd | http://pal-mono-prd-api-lb-222574634.us-west-1.elb.amazonaws.com/docs  |
+| prd    | http://prd-pal-mono-app-lb-1794342643.us-east-1.elb.amazonaws.com/  | https://33x9nc53yf.execute-api.us-east-1.amazonaws.com/prd | http://prd-pal-mono-api-lb-1684526284.us-east-1.elb.amazonaws.com/docs  |
