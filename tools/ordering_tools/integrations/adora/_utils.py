@@ -410,6 +410,13 @@ def get_adora_size_id(
         size_id = size_options[key]
         return ConversionResult(True, str(size_id))
     else:
+        # If no size was supplied but multiple size options are available for item -> error
+        if not order_item_size:
+            return ConversionResult(
+                False,
+                f"Please provide a size for the item. Available size options: {size_options}",
+            )
+
         size_id_conversion_examples_string = SIZE_EXAMPLES
         if size_id_conversion_examples:
             size_id_conversion_examples_string = textwrap.dedent(

@@ -61,7 +61,7 @@ class OrderingTools(Toolkit):
     def add_to_order(
         self,
         item_name: str,
-        size: str,
+        size: str = "",
         quantity: int = 1,
         modifications: list[str] = [],
     ) -> str:
@@ -72,7 +72,7 @@ class OrderingTools(Toolkit):
 
         Args:
             item_name (str): The name of the item to add.
-            size (str): The size of the item to add.
+            size (str): The size of the item to add. Defaults to empty string "".
             quantity (int): The quantity of the item to add. Defaults to 1.
             modifications (list[str]): Any modifications for the item to add. Defaults to an empty list.
 
