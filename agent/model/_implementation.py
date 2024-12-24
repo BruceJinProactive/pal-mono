@@ -5,8 +5,7 @@ from openai import AsyncOpenAI, OpenAI
 from phi.embedder.openai import OpenAIEmbedder
 from phi.model.openai.chat import OpenAIChat
 from phi.model.openai.like import OpenAILike
-from phi.tools.toolkit import Toolkit
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field
 
 # Get the MODEL_ROUTER_BASE_URL environment variable, or use a default value if not set
 MODEL_ROUTER_BASE_URL = getenv(
@@ -65,36 +64,3 @@ def get_model(model_name: str = ModelName.MEDIUM, stream: bool = False) -> OpenA
 
 def get_embedder():
     return OpenAIEmbedder(model=EmbedderName.SMALL)
-
-
-def generate_output_model(tools: list[Toolkit]):
-    class Empty(BaseModel):
-        pass
-
-    class OrderingFields(BaseModel):
-        placed_order_id: str = Field(
-            ..., description="The ID of the order after it has been placed"
-        )
-
-    toolkit_field_map = {"ordering_tools": OrderingFields}
-
-    OutputModel = create_model(
-        "OutputModel",
-        __config__=None,
-        __doc__=None,
-        __module__=__name__,
-        __validators__=None,
-        __cls_kwargs__=None,
-        __base__=BaseOutputModel,
-        # dynamically create fields for each toolkit
-        **{
-            key: (
-                value.annotation,
-                Field(..., description=value.description),
-            )
-            for t in tools
-            for key, value in toolkit_field_map.get(t.name, Empty).model_fields.items()
-        },
-    )
-
-    return OutputModel

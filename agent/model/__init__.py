@@ -52,17 +52,3 @@ def get_async_client() -> AsyncOpenAI:
         A instance of model router async client with same usage as async openai client
     """
     return _implementation.get_async_client()
-
-
-def generate_output_model(tools: list[Toolkit]):
-    """
-    Dynamically generate a Pydantic model to structure the output of the LLM,
-    based on necessary fields as determined by the toolkits used.
-
-    Args:
-        tools (list[Toolkit]): A list of toolkit instances used by the assistant.
-
-    Returns:
-        OutputModel: A Pydantic model class that structures the output of the LLM.
-    """
-    return _implementation.generate_output_model(tools)

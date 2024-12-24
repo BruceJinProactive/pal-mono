@@ -1,3 +1,7 @@
+from phi.tools.toolkit import Toolkit
+from pydantic import BaseModel, Field, create_model
+
+from agent.model import BaseOutputModel
 from utils.log import logger
 
 from .booking_tools import BookingTools
@@ -34,3 +38,36 @@ def get_tools(agent_raw_config, user_id, session_id):
             )
 
     return tools
+
+
+def generate_output_model(tools: list[Toolkit]):
+    class Empty(BaseModel):
+        pass
+
+    class OrderingFields(BaseModel):
+        placed_order_id: str = Field(
+            ..., description="The ID of the order after it has been placed"
+        )
+
+    toolkit_field_map = {"ordering_tools": OrderingFields}
+
+    OutputModel = create_model(
+        "OutputModel",
+        __config__=None,
+        __doc__=None,
+        __module__=__name__,
+        __validators__=None,
+        __cls_kwargs__=None,
+        __base__=BaseOutputModel,
+        # dynamically create fields for each toolkit
+        **{
+            key: (
+                value.annotation,
+                Field(..., description=value.description),
+            )
+            for t in tools
+            for key, value in toolkit_field_map.get(t.name, Empty).model_fields.items()
+        },
+    )
+
+    return OutputModel

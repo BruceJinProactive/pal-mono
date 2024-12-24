@@ -1,3 +1,6 @@
+from phi.tools.toolkit import Toolkit
+from pydantic import BaseModel, Field, create_model
+
 from . import _implementation
 
 
@@ -35,4 +38,18 @@ def get_tools(agent_raw_config, user_id, session_id):
     return _implementation.get_tools(agent_raw_config, user_id, session_id)
 
 
-__all__ = ["get_tools"]
+def generate_output_model(tools: list[Toolkit]):
+    """
+    Dynamically generate a Pydantic model to structure the output of the LLM,
+    based on necessary fields as determined by the toolkits used.
+
+    Args:
+        tools (list[Toolkit]): A list of toolkit instances used by the assistant.
+
+    Returns:
+        OutputModel: A Pydantic model class that structures the output of the LLM.
+    """
+    return _implementation.generate_output_model(tools)
+
+
+__all__ = ["get_tools", "generate_output_model"]

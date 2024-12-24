@@ -6,10 +6,10 @@ from phi.agent.agent import Agent
 
 from agent.knowledge import get_knowledge
 from agent.memory import get_history_responses, get_memory
-from agent.model import generate_output_model, get_model
+from agent.model import get_model
 from agent.prompts import get_system_prompt
 from agent.storage import get_storage
-from tools import get_tools
+from tools import generate_output_model, get_tools
 
 
 def integrate_agent(
