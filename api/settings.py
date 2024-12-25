@@ -64,8 +64,9 @@ class ApiSettings(BaseSettings):
         valid_cors.extend(
             [
                 "https://proactiveailab.com",
-                "https://console.proactiveailab.com",
                 "https://www.proactiveailab.com",
+                "https://console.proactiveailab.com",
+                "https://staging-pal-website.vercel.app",
             ]
         )
 
