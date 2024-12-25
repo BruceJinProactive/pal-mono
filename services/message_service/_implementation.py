@@ -1,4 +1,3 @@
-import re
 import uuid
 from typing import AsyncIterator, List
 
@@ -18,6 +17,8 @@ from api.schemas.chat.message import (
 from api.schemas.chat.message import Type as MessageType
 from services import agent_service, user_service
 from utils.log import logger
+
+from . import _utils
 
 
 async def get_chat_response_async(
@@ -85,17 +86,20 @@ async def get_chat_response_async(
         request_content = message.get_content()
         response_object = await agent.arun(request_content, stream=False)
         response_content = response_object.content
+
         if isinstance(response_content, str):
             response = response_content
         elif isinstance(response_content, BaseOutputModel):
             response = response_content.content
             extras = {"escalated": response_content.escalated}
-            response_parts = process_response(response)
+            response_parts = _utils.extract_image_links(response)
 
             # process each part of the response after regex processing
             response_message = None
             for msg_type, msg_content in response_parts:
                 if msg_type == "text":
+                    # Strip markdown content from response
+                    msg_content = _utils.strip_markdown_content(msg_content)
                     response_message = Message(
                         author_type=AuthorType.AGENT,
                         sender_identifier=message.recipient_identifier,  # Swap sender and recipient
@@ -288,6 +292,9 @@ def get_chat_response(session: Session, message: Message) -> Message:
                 f"Can't handle response content type {type(response_object.content)} for userid {user.id} with request content {request_content}."
             )
 
+        # Strip markdown content from response
+        response = _utils.strip_markdown_content(response)
+
     except Exception as e:
         # Log any error and set default error response
         logger.error(e)
@@ -364,46 +371,3 @@ def get_conversations_by_users(
 def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:
     conversation_repository = db.ConversationRepository(session)
     return conversation_repository.create_conversation(user_id=user_id)
-
-
-def process_response(response: str) -> list[tuple[str, str]]:
-    """
-    Process response text to extract image URLs
-    Returns the original text and any image URLs found.
-
-    Args:
-        response: The response text to process
-
-    Returns:
-        list[tuple[str, str]]: List of tuples containing (type, content)
-            where type is either "text" or "image"
-    """
-    processed_parts = []
-
-    # 1. Keep response text unchanged
-    if response.strip():
-        processed_parts.append(("text", response))
-
-    # 2. Extract image URLs
-    pattern = r"""
-        (https?:\/\/                # http:// or https://
-        [^\s)]+\.                  # URL path until extension (no spaces or closing parens)
-        (?i:                       # Case insensitive match for extensions
-            jpg|jpeg|png|apng|     # Common image formats
-            gif|webp|svg|bmp|      # More image formats
-            tiff?|ico|             # Even more formats
-            heic|heif|avif|        # Modern formats
-            jfif|pjpeg|pjp         # JPEG variants
-        )
-        (?:\/[^\s)]*)?            # Optional additional path segments
-        (?:[?#][^\s)]*)?          # Optional query params or hash fragments
-        )
-    """
-    try:
-        image_urls = re.findall(pattern, response, re.VERBOSE)
-        for url in image_urls:
-            processed_parts.append(("image", url))
-    except re.error as e:
-        logger.error(f"Error extracting image URLs: {e}")
-
-    return processed_parts
