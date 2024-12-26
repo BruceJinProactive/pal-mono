@@ -8,6 +8,7 @@ from app.auth import user
 from app.shared import get_app_db, json_decode, universal_picker_ui
 from services.account_service import get_account
 from services.project_service import (
+    create_project,
     get_project,
     replace_project_channel_identifiers,
     replace_project_config,
@@ -29,10 +30,43 @@ def main() -> None:
 
     account_name = st.session_state["account_name"]
     account = get_account(session, account_name)
-    project = get_project(session, account.projects[0].id) if account else None
+
+    st.subheader("Create Project")
+    if account and account.agents:
+        new_project_name = st.text_input("New Project Name", key="new_project_name")
+
+        agent_ids = [agent.id for agent in account.agents]
+        agent_id = st.selectbox(
+            "Select an agent",
+            agent_ids,
+            key="new_project_agent_id",
+            index=agent_ids.index(account.agents[0].id),
+        )
+
+        if st.button("Create Project", key="create_project"):
+            if agent_id:
+                new_project = create_project(
+                    session, new_project_name, account.id, agent_id
+                )
+                if new_project:
+                    st.success("Successfully created a new project")
+                    st.rerun()
+                else:
+                    st.error("Failed to create a new project")
+            else:
+                st.error("Please select an agent to assign to this project")
+    else:
+        st.error("No agents found for this account")
+    st.write("---")
+
+    project = (
+        get_project(session, st.session_state["project_id"])
+        if (account and st.session_state["project_id"])
+        else None
+    )
 
     if project is None:
-        st.write("Project not found")
+        st.write("Project not found or no project selected")
     else:
         st.subheader("Project Update")
 

@@ -79,6 +79,7 @@ async def get_chat_response_async(
             session=session,
             agent_id=agent_id,
             user_id=user.id,
+            project_id=project.id,
             conversation_id=conversation_id,
         )
 
@@ -207,6 +208,7 @@ async def get_chat_response_stream(
             session=session,
             agent_id=agent_id,
             user_id=user.id,
+            project_id=project.id,
             conversation_id=conversation_id,
             stream=True,
         )
@@ -276,6 +278,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
             session=session,
             agent_id=agent_id,
             user_id=user.id,
+            project_id=project.id,
             conversation_id=conversation_id,
         )
 

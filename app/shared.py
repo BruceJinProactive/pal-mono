@@ -83,8 +83,12 @@ def project_picker_ui(session: Session) -> None:
                 project_names = [project.name for project in account.projects]
                 project_names.append("No Project")
 
-                if "project_name" not in st.session_state:
+                if (
+                    "project_name" not in st.session_state
+                    or "project_id" not in st.session_state
+                ):
                     st.session_state["project_name"] = account.projects[0].name
+                    st.session_state["project_id"] = account.projects[0].id
 
                 project_name = st.selectbox(
                     "Select a project",
@@ -94,6 +98,11 @@ def project_picker_ui(session: Session) -> None:
 
                 if project_name and project_name != st.session_state["project_name"]:
                     st.session_state["project_name"] = project_name
+                    st.session_state["project_id"] = (
+                        name_to_project[project_name].id
+                        if project_name != "No Project"
+                        else None
+                    )
                     if "agent_id" in st.session_state:
                         st.session_state.pop("agent_id")
                     if project_name != "No Project":
@@ -120,9 +129,7 @@ def agent_picker_ui(session: Session) -> None:
                 st.subheader("Agent Picker")
 
                 # agents don't have names, just list all
-                agent_ids = []
-                for agent in account.agents:
-                    agent_ids.append(agent.id)
+                agent_ids = [agent.id for agent in account.agents]
 
                 if "agent_id" not in st.session_state:
                     st.session_state["agent_id"] = account.agents[0].id

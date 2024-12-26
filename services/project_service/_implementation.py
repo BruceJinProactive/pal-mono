@@ -6,6 +6,13 @@ from sqlalchemy.orm import Session
 import db
 
 
+def create_project(
+    session: Session, project_name: str, account_id: uuid.UUID, agent_id: uuid.UUID
+):
+    project_repository = db.ProjectRepository(session)
+    return project_repository.create_project(project_name, account_id, agent_id)
+
+
 def get_project(session: Session, project_id: uuid.UUID):
     project_repository = db.ProjectRepository(session)
     return project_repository.get_project(project_id)

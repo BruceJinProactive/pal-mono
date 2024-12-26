@@ -1,7 +1,7 @@
 from . import _implementation
 
 
-def get_system_prompt(json_data, memory, user_id) -> str:
+def get_system_prompt(agent_raw_config, project_raw_config, memory, user_id) -> str:
     """
     Currently generates a markdown-formatted system prompt from the raw_config JSON data.
 
@@ -58,7 +58,9 @@ def get_system_prompt(json_data, memory, user_id) -> str:
           - Jane Doe's phone number is 555-555-5555
           - Jane Doe's email is jane@proactiveailab.com
     """
-    return _implementation.generate_markdown_system_prompt(json_data, memory, user_id)
+    return _implementation.generate_markdown_system_prompt(
+        agent_raw_config, project_raw_config, memory, user_id
+    )
 
 
 __all__ = [

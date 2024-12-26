@@ -6,6 +6,25 @@ from sqlalchemy.orm import Session
 from . import _implementation
 
 
+def create_project(
+    session: Session, project_name: str, account_id: uuid.UUID, agent_id: uuid.UUID
+):
+    """
+    Creates a new project with the given name, account, and agent.
+
+    Args:
+        session (Session): The database connection.
+        project_name (str): The name of the project.
+        account_id (uuid.UUID): The unique identifier of the account to which the project belongs.
+        agent_id (uuid.UUID): The unique identifier of the agent associated with the project.
+
+    Returns:
+        The newly created Project.
+    """
+
+    return _implementation.create_project(session, project_name, account_id, agent_id)
+
+
 def get_project(session: Session, project_id: uuid.UUID):
     """
     Gets a specific project using its unique identifier.
@@ -78,6 +97,7 @@ def replace_project_config(
 
 
 __all__ = [
+    "create_project",
     "get_project",
     "replace_project_channel_identifiers",
     "update_project_config",

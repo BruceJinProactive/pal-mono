@@ -14,23 +14,31 @@ async def get_ai_agent_async(
     session: AsyncSession,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
+    project_id: uuid.UUID,
     conversation_id: uuid.UUID,
     stream: bool = False,
 ) -> PhiAgent:
     """
-    Retrieve a PhiAgent instance based on the provided agent ID, user ID, and conversation ID.
+    Retrieve a PhiAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
 
     Args:
         session (AsyncSession): The asynchronous database session to use for the query.
         agent_id (uuid.UUID): The unique identifier of the agent.
         user_id (uuid.UUID): The unique identifier of the user.
+        project_id (uuid.UUID): The unique identifier of the project.
         conversation_id (uuid.UUID): The unique identifier of the conversation.
+        stream (bool, optional): If True, enables streaming mode for the agent. Defaults to False.
 
     Returns:
         PhiAgent: The retrieved PhiAgent instance.
     """
     return await _implementation.get_ai_agent_async(
-        session, agent_id, user_id, conversation_id=conversation_id, stream=stream
+        session,
+        agent_id,
+        user_id,
+        project_id,
+        conversation_id=conversation_id,
+        stream=stream,
     )
 
 
@@ -38,23 +46,31 @@ def get_ai_agent(
     session: Session,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
+    project_id: uuid.UUID,
     conversation_id: uuid.UUID | None = None,
     new_run: bool = False,
 ) -> PhiAgent:
     """
-    Retrieve a PhiAgent instance based on the provided agent ID and user ID.
+    Retrieve a PhiAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
 
     Args:
         session (Session): The database session to use for the query.
         agent_id (uuid.UUID): The unique identifier of the agent.
         user_id (uuid.UUID): The unique identifier of the user.
-        new_run (bool, optional): Flag indicating whether this is a new run. Defaults to False.
+        project_id (uuid.UUID): The unique identifier of the project.
+        conversation_id (uuid.UUID | None, optional): The unique identifier of the conversation. Defaults to None.
+        new_run (bool, optional): If True, starts a new run. If False, attempts to continue from the last run. Defaults to False.
 
     Returns:
         PhiAgent: The retrieved PhiAgent instance.
     """
     return _implementation.get_ai_agent(
-        session, agent_id, user_id, conversation_id, new_run=new_run
+        session,
+        agent_id,
+        user_id,
+        project_id,
+        conversation_id,
+        new_run=new_run,
     )
 
 

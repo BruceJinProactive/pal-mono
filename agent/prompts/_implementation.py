@@ -21,15 +21,17 @@ def format_section(title, section_data):
     return formatted_section
 
 
-def generate_markdown_system_prompt(json_data, memory, user_id) -> str:
+def generate_markdown_system_prompt(
+    agent_raw_config, project_raw_config, memory, user_id
+) -> str:
     markdown_output = []
 
     # Determine the level at which character and guardrails are located
     # Note: this may change in the future
-    if "system_prompt" in json_data:
-        data = json_data["system_prompt"]
+    if "system_prompt" in agent_raw_config:
+        data = agent_raw_config["system_prompt"]
     else:
-        data = json_data
+        data = agent_raw_config
 
     # Process character description
     character_description = data.get("character")

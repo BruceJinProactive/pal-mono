@@ -33,6 +33,19 @@ class ProjectRepositoryAsync:
         project = result.scalar_one_or_none()
         return project
 
+    async def get_project(self, id: uuid.UUID) -> Project | None:
+        """
+        Retrieve a project by its ID asynchronously.
+        Args:
+            id (uuid.UUID): The unique identifier of the project.
+        Returns:
+            Project, or None if no such Project is found.
+        """
+        query = select(Project).filter(Project.id == id)
+        result = await self.session.execute(query)
+        project = result.scalar_one_or_none()
+        return project
+
 
 class ProjectRepository:
     def __init__(self, session: Session):

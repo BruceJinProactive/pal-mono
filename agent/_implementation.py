@@ -16,6 +16,7 @@ def integrate_agent(
     agent_id: str,
     account_name: str,
     agent_raw_config: dict[str, Any],
+    project_raw_config: dict[str, Any],
     user_id: str,
     conversation_id: str | None = None,
     new_run: bool = False,
@@ -35,7 +36,9 @@ def integrate_agent(
     storage = get_storage(account_name)
 
     # -*- System Prompt Settings
-    system_prompt = get_system_prompt(agent_raw_config, memory, user_id)
+    system_prompt = get_system_prompt(
+        agent_raw_config, project_raw_config, memory, user_id
+    )
 
     # -*- Session settings
     session_id = str(uuid4())
