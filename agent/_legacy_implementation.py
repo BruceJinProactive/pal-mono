@@ -1,3 +1,4 @@
+import copy
 import os
 from typing import Any
 from uuid import uuid4
@@ -22,12 +23,15 @@ def integrate_agent(
     new_run: bool = False,
     stream: bool = False,
 ) -> Agent:
+    # Merge project configuration into agent configuration
+    raw_config = merge_configs(agent_raw_config, project_raw_config)
+
     # -*- Agent settings
     model = get_model(stream=stream)
 
     # -*- Agent Memory
-    memory = get_memory(account_name, agent_raw_config)
-    num_history_responses = get_history_responses(agent_raw_config)
+    memory = get_memory(account_name, raw_config)
+    num_history_responses = get_history_responses(raw_config)
 
     # -*- Agent Knowledge
     knowledge = get_knowledge(account_name)
@@ -36,9 +40,7 @@ def integrate_agent(
     storage = get_storage(account_name)
 
     # -*- System Prompt Settings
-    system_prompt = get_system_prompt(
-        agent_raw_config, project_raw_config, memory, user_id
-    )
+    system_prompt = get_system_prompt(raw_config, memory, user_id)
 
     # -*- Session settings
     session_id = str(uuid4())
@@ -51,7 +53,7 @@ def integrate_agent(
         session_id = session_ids[0] if session_ids else str(uuid4())
 
     # -*- Agent Tools
-    tools = get_tools(agent_raw_config, user_id, session_id)
+    tools = get_tools(raw_config, user_id, session_id)
 
     # -*- Structured Output Model
     output_model = generate_output_model(tools)
@@ -91,3 +93,49 @@ def integrate_agent(
         # -*- Debug settings
         debug_mode=DEBUG_MODE,
     )
+
+
+def merge_configs(
+    agent_config: dict[str, Any], project_config: dict[str, Any]
+) -> dict[str, Any]:
+    """
+        Merge project configuration into agent configuration. If a field exists in both,
+        the project configuration field will replace the agent configuration field.
+    ``
+        Args:
+            agent_config (dict[str, Any]): The agent's configuration.
+            project_config (dict[str, Any]): The project's configuration.
+
+        Returns:
+            dict[str, Any]: The merged configuration.
+    """
+    # NOTE: you can use shallow .copy() to speed up performance, but it will alter agent_config parameter, as long as you are aware
+    merged_config = copy.deepcopy(agent_config)
+
+    for key, value in project_config.items():
+        if key == "tools" and isinstance(value, list):
+            agent_tools = {
+                tool["toolkit"]: tool
+                for tool in merged_config.get("tools", [])
+                if "toolkit" in tool
+            }
+            for tool in value:
+                toolkit = tool.get("toolkit")
+                if not toolkit:
+                    continue
+                if toolkit in agent_tools:
+                    agent_tools[toolkit]["config"] = merge_configs(
+                        agent_tools[toolkit].get("config", {}), tool.get("config", {})
+                    )
+                else:
+                    agent_tools[toolkit] = tool
+            merged_config["tools"] = list(agent_tools.values())
+        elif (
+            isinstance(value, dict)
+            and key in merged_config
+            and isinstance(merged_config[key], dict)
+        ):
+            merged_config[key] = merge_configs(merged_config[key], value)
+        else:
+            merged_config[key] = value
+    return merged_config

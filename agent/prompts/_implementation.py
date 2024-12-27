@@ -1,3 +1,8 @@
+from typing import Any
+
+from phi.memory.agent import AgentMemory
+
+
 def format_section(title, section_data):
     """
     Format a section of the markdown output.
@@ -22,16 +27,17 @@ def format_section(title, section_data):
 
 
 def generate_markdown_system_prompt(
-    agent_raw_config, project_raw_config, memory, user_id
+    raw_config: dict[str, Any],
+    memory: AgentMemory,
+    user_id: str,
 ) -> str:
     markdown_output = []
-
     # Determine the level at which character and guardrails are located
     # Note: this may change in the future
-    if "system_prompt" in agent_raw_config:
-        data = agent_raw_config["system_prompt"]
+    if "system_prompt" in raw_config:
+        data = raw_config["system_prompt"]
     else:
-        data = agent_raw_config
+        data = raw_config
 
     # Process character description
     character_description = data.get("character")
