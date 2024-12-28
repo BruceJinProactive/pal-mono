@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from phi.memory.memory import Memory
 
-from agent.memory import get_memory
+from agent.memory import delete_memory, get_memory, set_memory_manager
 from agent.model import ModelName, get_client
 from tools.ordering_tools.classes import (
     Consumer,
@@ -600,6 +600,39 @@ def get_consumer_memory(account_name: str, user_id: str) -> list[Memory] | None:
     memory.load_user_memories()
     memories = memory.memories
     return memories
+
+
+def add_order_to_memory(account_name: str, user_id: str, order_details: str) -> None:
+    """Add the consumer memory for the given account name.
+
+    Args:
+        account_name (str): The account name to add the memory for.
+        user_id (str): The user ID to add the memory for.
+        order_details (str): The order details to add to the memory.
+
+    Returns:
+        None
+    """
+    order_details = "User's previous order details: " + order_details
+    memory = get_memory(account_name)
+    memory.user_id = user_id
+    set_memory_manager(memory, user_id)
+    memory.load_user_memories()
+    order_memories = []
+    memories = memory.memories
+    # Get the oldest order memory
+    if memories:
+        order_memories = [
+            memo
+            for memo in memories
+            if memo.memory.startswith("User's previous order details:")
+        ]
+    # If there are more than 2 order memories, delete the oldest one
+    if memory.manager and len(order_memories) >= 2:
+        oldest_order_memory = order_memories[1]
+        delete_memory(memory, oldest_order_memory)
+    if memory.manager:
+        memory.manager.add_memory(order_details)
 
 
 def get_delivery_address(

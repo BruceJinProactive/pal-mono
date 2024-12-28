@@ -464,6 +464,8 @@ class AdoraIntegration:
                     f"Order ID: {saved_order.orderID}\n"
                     f"Store Phone: {self.store_information['phone']}\n"
                 )
+                order_record = f"Order ID: {saved_order.orderID}, Total: ${validated_order.total}, Order items: {', '.join(order_summary)}"
+                _utils.add_order_to_memory(account_name, user_id, order_record)
                 if wait_time is not None and wait_time >= 30:
                     successful_order_details += (
                         f"Estimated wait time: {wait_time} minutes\n"
