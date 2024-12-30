@@ -888,6 +888,32 @@ def get_size_description_map(menu) -> dict[int, str]:
     return {size["size_id"]: size["name"] for size in menu["sizes"]}
 
 
+def convert_to_adora_item(generic_cart) -> dict[str, AdoraOrderItem] | None:
+    """Parses the string-based cart from an LLM's structured output field into an array of objects.
+
+    Args:
+        generic_cart (dict): A dictionary containing the cart items with required details for AdoraItem.
+
+    Returns:
+        dict[str, AdoraOrderItem] | None: The parsed cart items as AdoraOrderItem objects.
+
+    """
+    if not generic_cart:
+        return None
+    cart = {}
+    for item in generic_cart:
+        order_item = AdoraOrderItem(
+            int(item["itemId"]),
+            int(item["sizeId"]),
+            int(item["quantity"]),
+            item.get("comment", ""),
+            Decimal(item["price"]),
+            item["modifiers"],
+        )
+        cart[item["itemName"]] = order_item
+    return cart
+
+
 def process_modifiers(
     menu_modifiers: dict,
     order_item_modifications: list,

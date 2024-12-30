@@ -8,6 +8,7 @@ from .booking_tools import BookingTools
 from .booking_tools.image_retrieval_tools import ImageRetrievalTools
 from .escalation_tools import EscalationTools
 from .ordering_tools import OrderingTools
+from .ordering_tools.classes import OrderingFields
 
 
 def get_tools(agent_raw_config, user_id, session_id):
@@ -43,11 +44,6 @@ def get_tools(agent_raw_config, user_id, session_id):
 def generate_output_model(tools: list[Toolkit]):
     class Empty(BaseModel):
         pass
-
-    class OrderingFields(BaseModel):
-        placed_order_id: str = Field(
-            ..., description="The ID of the order after it has been placed"
-        )
 
     toolkit_field_map = {"ordering_tools": OrderingFields}
 

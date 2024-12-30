@@ -73,7 +73,13 @@ class AdoraIntegration:
         )
 
         if isinstance(validated_order, AdoraOrderCalculationResult):
-            return f"In the response, include quantity: {adora_order_item.quantity}, size: {adora_order_item.size}, item_name: {adora_order_item.item_name}, with modifications: {adora_order_item.modifications} for price: {validated_order.subTotal} to your cart."
+            return (
+                "In the response to the user (content field of output), in your agent's tone, tell the user this was added: "
+                + f"QUANTITY: {adora_order_item.quantity}, SIZE: {adora_order_item.size}, ITEM NAME: {adora_order_item.item_name}, "
+                + f"with MODIFICATIONS: {adora_order_item.modifications} for PRICE: {validated_order.subTotal} to your cart.\n\n"
+                + "In the cart field of the structured output, add this item to the cart in this json format: "
+                + f"{{'itemName': {adora_order_item.item_name}',itemId': {adora_order_item.itemId}, 'quantity': {adora_order_item.quantity}, 'sizeId': {adora_order_item.sizeId}, 'modifiers': {adora_order_item.modifiers}, 'price': {adora_order_item.price}, 'comment': {adora_order_item.comment}, 'taxes': {adora_order_item.taxes}}}"
+            )
         else:
             return "Failed to validate order."
 
@@ -101,6 +107,7 @@ class AdoraIntegration:
 
         # chat history will be reversed later
         chat_history = [f"User message: {current_user_query}"]
+        latest_cart = []
 
         storage: AgentStorage = get_storage(self.account_name)
         session: AgentSession | None = storage.read(session_id, user_id)
@@ -109,6 +116,10 @@ class AdoraIntegration:
                 run_content = json.loads(run["response"]["content"])
                 if run_content["placed_order_id"] != "":
                     break  # stop at the most recent order placed
+
+                # if there's no cart set yet and we found one, set the cart
+                if not latest_cart and run_content["cart"]:
+                    latest_cart = run_content["cart"]
 
                 chat_history.append(
                     f"User message: {run['message']['content']}\n\nAgent message: {run_content['content']}"
@@ -119,6 +130,16 @@ class AdoraIntegration:
                 "[AdoraIntegration.place_order] Failed to get chat history because chat_history is empty."
             )
             return "Failed to place order. Please try again."
+
+        if not latest_cart:
+            logger.debug(
+                "[AdoraIntegration.place_order] Failed to place order because all cart fields of previous structured output messages are empty."
+            )
+            return (
+                "Failed to place order because there are no items in the cart. "
+                + "Add the relevant items to the cart field of the structured output field (as instructed by the add_to_order function) "
+                + "then nicely tell the user to try again."
+            )
 
         # Reverse chat history to restore original order of messages AFTER most recent order placed
         chat_history = chat_history[::-1]
@@ -207,16 +228,12 @@ class AdoraIntegration:
         logger.debug(f"[OrderingTools.place_order] Generic coupon: {generic_coupon}")
 
         # Get cart, if empty return the error message
-        if isinstance(self.cart_conversion_sys_prompt, list):
-            self.cart_conversion_sys_prompt = " ".join(self.cart_conversion_sys_prompt)
-        elif type(self.cart_conversion_sys_prompt) is not str:
-            self.cart_conversion_sys_prompt = ""
-        cart = _utils.get_cart_info(chat_history, self.cart_conversion_sys_prompt)
+        cart = _utils.convert_to_adora_item(latest_cart)
         logger.debug(f"[AdoraIntegration.place_order] Generic cart: {cart}")
 
         if not cart:
             return "Your cart is empty. Please add items to your order."
-
+        adora_cart = list(cart.values())
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
@@ -225,58 +242,16 @@ class AdoraIntegration:
             )
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-        # Get up-to-date menu and construct order payload
-        menu = _apis.get_adora_menu(self.store_information["store_id"], bearer_token)
-        if not menu:
-            logger.error("[AdoraIntegration.place_order] Failed to get menu.")
-            return "Failed to get menu, please try again."
-
-        menu_maps = _utils.get_menu_maps(menu)
-        modifier_weights_map = _utils.get_modifier_weights_map(menu)
-        size_map = _utils.get_size_description_map(menu)
-
-        order_items = []
         order_summary = []  # List to hold the summary of items and their prices
 
         logger.debug(
             "[AdoraIntegration.place_order] Converting items to Adora order items..."
         )
 
-        for order_item in cart.cart_items:
-            order_item = OrderItem(
-                order_item.item_name,
-                order_item.size,
-                order_item.quantity,
-                order_item.modifications,
-            )
-            convert_item_success, adora_order_item = _utils.validate_and_convert_item(
-                order_item,
-                menu_maps,
-                modifier_weights_map,
-                size_map,
-                menu["modifiers"],
-                menu["modifier_groups"],
-                self.adora_conversion_examples.get("items", {}),
-                self.adora_conversion_examples.get("sizes", {}),
-                self.adora_conversion_examples.get("modifiers", {}),
-            )
-
-            if not convert_item_success and isinstance(adora_order_item, str):
-                logger.debug(
-                    f"[AdoraIntegration.place_order] Failed to convert item {order_item}: {adora_order_item}"
-                )
-                return adora_order_item  # this is an error string
-
-            if not isinstance(adora_order_item, AdoraOrderItem):
-                return "Failed to convert order item."
-
-            order_items.append(adora_order_item)
-            logger.debug(
-                f"[AdoraIntegration.place_order] Successfully converted item: {order_item.item_name}"
-            )
+        for adora_order_item in cart:
             # Append item details to order_summary for later display
             order_summary.append(
-                f"{order_item.item_name if order_item.quantity == 1 else f'{order_item.quantity}x {order_item.item_name}'}"
+                f"{adora_order_item if cart[adora_order_item].quantity == 1 else f'{cart[adora_order_item].quantity }x {adora_order_item}'}"
             )
 
         logger.debug(
@@ -412,7 +387,7 @@ class AdoraIntegration:
         validated_order = _apis.validate_order(
             bearer_token,
             self.store_information["store_id"],
-            order_items,
+            adora_cart,
             adora_coupon_id,
             adora_order_type,
             consumer,

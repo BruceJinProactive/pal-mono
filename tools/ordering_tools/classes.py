@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 """
 - This module defines data models in the ordering tools layer.
@@ -99,3 +99,13 @@ class OrderItem:
 
     def __str__(self):
         return f"{self.quantity} {self.size} {self.item_name} with {self.modifications}"
+
+
+class OrderingFields(BaseModel):
+    placed_order_id: str = Field(
+        ..., description="The ID of the order after it has been placed"
+    )
+    cart: list[dict] = Field(
+        ...,
+        description="The current contents of the cart, including item names, sizes, and quantities",
+    )
