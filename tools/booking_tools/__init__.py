@@ -1,3 +1,5 @@
+import inspect
+
 from phi.tools.toolkit import Toolkit
 
 from tools.booking_tools.integrations.mindzero import MindZeroIntegration
@@ -29,8 +31,18 @@ class BookingTools(Toolkit):
         if not integration_class:
             raise ValueError(f"Unknown integration type: {config['type']}")
 
-        # Lazy load integration
-        self.integration = integration_class()
+        # Get the list of valid parameters for the integration_class constructor
+        valid_params = inspect.signature(integration_class).parameters
+
+        # Filter the config["settings"] dictionary to include only valid parameters
+        filtered_settings = {
+            parameter: value
+            for parameter, value in config["settings"].items()
+            if parameter in valid_params
+        }
+
+        #  Only the valid parameters needed by integration_class are passed during initialization
+        self.integration = integration_class(**filtered_settings)
 
     # ----------------------------------------
     # Toolkit tools (actions)

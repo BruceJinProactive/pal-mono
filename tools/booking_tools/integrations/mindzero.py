@@ -45,6 +45,12 @@ def _date_in_the_future(session_date_str: str) -> bool:
 
 
 class MindZeroIntegration:
+    def __init__(
+        self,
+        location_id: str,
+    ):
+        self.location_id = location_id
+
     def book_a_class(self) -> str:
         """
         Use this function to book a class.
@@ -69,7 +75,7 @@ class MindZeroIntegration:
         max_date = datetime.date.today() + datetime.timedelta(days=num_days)
         try:
             response = httpx.get(
-                f"https://mindzero.marianatek.com/api/class_sessions?include=employee_public_profiles%2Clayout%2Ctags&location=48717&max_date={max_date}&min_date={min_date}&ordering=start_datetime&page_size=20"
+                f"https://mindzero.marianatek.com/api/class_sessions?include=employee_public_profiles%2Clayout%2Ctags&location={self.location_id}&max_date={max_date}&min_date={min_date}&ordering=start_datetime&page_size=20"
             )
             response.raise_for_status()  # Raise an exception for HTTP errors
             data = response.json().get("data", [])
