@@ -34,6 +34,8 @@ def main() -> str | None:
     if "account_name" not in st.session_state:
         st.error("Please select an account to chat")
         return
+    if "new_chat" not in st.session_state:
+        st.session_state["new_chat"] = False
     if (
         "project_name" not in st.session_state
         or st.session_state["project_name"] == "No Project"
@@ -100,9 +102,14 @@ def main() -> str | None:
         chat_render_toggle()
     col1, col2, _, _ = st.columns([1] * 4)
     with col1:
-        if st.button("Create new chat"):
-            create_conversation(session, db_user.id)
-            st.rerun()
+        if st.button("Create new chat") and not st.session_state["new_chat"]:
+            st.session_state["new_chat"] = True
+            try:
+                create_conversation(session, db_user.id)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error creating new chat: {e}")
+                st.session_state["new_chat"] = False
     with col2:
         clear_memory_ui(account_name, str(db_user.id))
 
@@ -129,6 +136,7 @@ def main() -> str | None:
         st.session_state["messages"]
         and st.session_state["messages"][-1]["author_type"] == AuthorType.USER.value
     ):
+        st.session_state["new_chat"] = False
         with st.chat_message("agent"):
             with st.spinner("Working..."):
                 response_message = get_chat_response(

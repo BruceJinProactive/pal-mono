@@ -4,7 +4,6 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import List
 
 from sqlalchemy.orm import Session
 
@@ -43,7 +42,7 @@ def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
 
 def get_inbox_conversations(
     session: Session, account_id: uuid.UUID, max_age: int
-) -> List[ConversationPreview]:
+) -> list[ConversationPreview]:
     # Get users associated with the account
     users = get_users_by_account_id(session, account_id=account_id)
 
@@ -55,8 +54,8 @@ def get_inbox_conversations(
         map(lambda conv: (conv.id, conv.user_id), conversations)
     )
 
-    message_counts: List[int] = []
-    last_messages: List[db.Message] = []
+    message_counts: dict[uuid.UUID, int] = {}
+    last_messages: dict[uuid.UUID, db.Message] = {}
 
     message_repository = db.MessageRepository(session)
     for id, _ in conversation_user_ids:
@@ -82,21 +81,25 @@ def get_inbox_conversations(
         if re.search(r"\b(?:latest|staging)\b$", last_message_text):
             continue
 
-        last_messages.append(last_message)
+        last_messages[id] = last_message
 
         # Get most number of messages for each conversation
-        message_counts.append(message_repository.get_message_count_by_conversation(id))
+        message_counts[id] = message_repository.get_message_count_by_conversation(id)
 
     # filter conversations by recency of last message, and sort descending by created_at
     conversation_previews = sorted(
         filter(
             lambda preview: _include_conversation_preview(preview[3], max_age),
-            zip(
-                [id for id, _ in conversation_user_ids],  # conversation IDs
-                [user_id for _, user_id in conversation_user_ids],  # user IDs,
-                message_counts,
-                last_messages,
-            ),
+            [
+                (
+                    id,
+                    user_id,
+                    message_counts[id],
+                    last_messages[id],
+                )
+                for id, user_id in conversation_user_ids
+                if id in message_counts and id in last_messages
+            ],
         ),
         key=lambda preview: preview[3].created_at,
         reverse=True,
@@ -110,7 +113,7 @@ def get_inbox_conversations(
         return ""
 
     # Reformat conversations
-    inbox: List[ConversationPreview] = [
+    inbox: list[ConversationPreview] = [
         ConversationPreview(
             id=str(conversation[0]),
             user_id=str(conversation[1]),
@@ -125,7 +128,7 @@ def get_inbox_conversations(
 
 def get_conversation_messages(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[db.Message]:
+) -> list[db.Message]:
     conversation_repository = db.ConversationRepository(session)
     user_repository = db.UserRepository(session)
 
@@ -168,7 +171,7 @@ def get_conversation_messages(
 
 def get_messages_by_conversation_id(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[db.Message]:
+) -> list[db.Message]:
     conversation_repository = db.ConversationRepository(session)
     user_repository = db.UserRepository(session)
     feedback_repository = db.FeedbackRepository(session)
