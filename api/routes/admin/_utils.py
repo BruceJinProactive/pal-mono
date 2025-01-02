@@ -8,6 +8,43 @@ from fastapi import HTTPException, Request
 from utils import secret
 
 
+async def retrieve_body_branding(request: Request) -> tuple[str, str]:
+    """
+    Retrieves the 'brandingKey' and 'brandingValue' fields from the request body.
+
+    Args:
+        request (Request): The FastAPI request object containing the JSON body to validate.
+
+    Returns:
+        tuple[str, str]: A tuple containing the validated 'brandingKey' and 'brandingValue' fields from the request body.
+
+    Raises:
+        HTTPException: If the 'brandingKey' or 'brandingValue' field is missing or not a string, or if there is
+                       an error in processing the request body.
+    """
+    body = await request.json()
+    try:
+        branding_key = body["brandingKey"]
+        branding_value = body["brandingValue"]
+        if not isinstance(branding_key, str) or not isinstance(branding_value, str):
+            raise HTTPException(
+                status_code=422,
+                detail="Validation error: 'brandingKey' and 'brandingValue' must be a string",
+            )
+        return (branding_key, branding_value)
+    except KeyError:
+        raise HTTPException(
+            status_code=422,
+            detail="Validation error: missing 'brandingKey' or 'brandingValue'\n\n"
+            f"Invalid request body: {body}",
+        )
+    except (ValueError, TypeError) as e:
+        raise HTTPException(
+            status_code=422,  # Unprocessable Entity
+            detail=f"Validation error: {e}\n\nInvalid request body: {body}",
+        )
+
+
 async def retrieve_body_message(request: Request) -> str:
     """
     Retrieves the 'message' field to be injected into a Message object.

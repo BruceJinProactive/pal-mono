@@ -19,6 +19,7 @@ from services.admin_service import (
     remove_instagram_access_token,
     set_instagram_access_token,
 )
+from services.agent_service import get_agent, update_agent_config
 from services.message_service import (
     get_chat_response,
     get_conversations_by_user,
@@ -343,6 +344,23 @@ async def respond_to_message(request: Request, session: Session = Depends(db.get
 
 @admin_router.get("/brandings")
 def read_brandings(request: Request, session: Session = Depends(db.get_db)):
+    """
+    Retrieves branding information for an account.
+
+    This endpoint retrieves the 'Authorization' token from the request headers,
+    validates it, and fetches the branding information for the associated account.
+
+    Args:
+        request (Request): The FastAPI request object containing the headers with the authorization token.
+        session (Session): The database session dependency.
+
+    Returns:
+        list: A list of branding JSON objects for the account.
+
+    Raises:
+        HTTPException: If the authorization token is invalid, the account is not found,
+                       or if there is an error in processing the request.
+    """
     try:
         decrypted_id_token = _auth.parse_admin_console_id_token(
             request.headers.get("Authorization")
@@ -362,11 +380,65 @@ def read_brandings(request: Request, session: Session = Depends(db.get_db)):
         raise HTTPException(status_code=500, detail="Account not found")
 
     account_name = account.name
-    """
-    get_brandings returns a list of JSON object that represents the brandings.
-    """
     branding_jsons = get_brandings(session, account_name)
     return branding_jsons
+
+
+@admin_router.post("/brandings")
+async def upsert_brandings(request: Request, session: Session = Depends(db.get_db)):
+    """
+    Upserts branding information for an account.
+
+    This endpoint retrieves the 'brandingKey' and 'brandingValue' fields from the request body,
+    updates the agent's branding configuration, and saves it to the database.
+
+    Args:
+        request (Request): The FastAPI request object containing the JSON body with branding information.
+        session (Session): The database session dependency.
+
+    Returns:
+        dict: The updated agent raw configuration.
+
+    Raises:
+        HTTPException: If the authorization token is invalid, the account or agent is not found,
+                       or if there is an error in processing the request body.
+    """
+    try:
+        decrypted_id_token = _auth.parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
+    if account is None:
+        raise HTTPException(status_code=500, detail="Account not found")
+
+    agent = get_agent(session, account.agents[0].id) if account else None
+    if agent is None:
+        raise HTTPException(status_code=500, detail="Agent not found")
+
+    agent_raw_config = dict(agent.raw_config)
+    branding_key_value = await _utils.retrieve_body_branding(request)
+
+    if "branding" not in agent_raw_config:
+        agent_raw_config["branding"] = {}
+    agent_raw_config["branding"][branding_key_value[0]] = branding_key_value[1]
+
+    update_agent_config(
+        session,
+        agent_id=agent.id,
+        config=agent_raw_config,
+    )
+
+    return agent_raw_config
 
 
 # This renders the "Users" page in the Admin Console.
