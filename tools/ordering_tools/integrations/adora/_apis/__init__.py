@@ -84,6 +84,29 @@ def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
 def get_wait_time(
     bearer_token: AdoraAccessToken,
     store_id: str,
+) -> str | None:
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "store/info",
+        query_params={
+            "sid": store_id,
+            "date": date.today().isoformat(),
+        },
+        extra_headers=None,
+        payload=None,
+    )
+    store_info = json.loads(response.decoded_body)
+
+    if response.status == 200:
+        return f'pickup wait time: {str(store_info["takeOutWaitTime"])}, delivery wait time: {str(store_info["deliveryWaitTime"])}'
+    else:
+        return None
+
+
+def get_wait_time_with_strategy(
+    bearer_token: AdoraAccessToken,
+    store_id: str,
     strategy: str,
 ) -> int | None:
     response = _utils.connect_adora_order_hub(

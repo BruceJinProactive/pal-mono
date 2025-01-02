@@ -25,6 +25,7 @@ class OrderingTools(Toolkit):
 
         # Toolkit tools (actions)
         self.register(self.add_to_order)
+        self.register(self.get_wait_time)
         self.register(self.list_coupons)
         self.register(self.place_order)
         self.register(self.remove_from_order)
@@ -87,6 +88,17 @@ class OrderingTools(Toolkit):
 
         # Call integration's add_to_order method
         return self.integration.add_to_order(generic_order_item)
+
+    def get_wait_time(self) -> str:
+        """
+        Gets the estimated wait time for the user's order.
+
+        Use this function when the user wants to know the estimated wait time for their order.
+
+        Returns:
+            str: A message indicating the estimated wait time or fallback instructions.
+        """
+        return self.integration.get_wait_time()
 
     def list_coupons(self):
         """

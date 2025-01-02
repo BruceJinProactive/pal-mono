@@ -83,6 +83,18 @@ class AdoraIntegration:
         else:
             return "Failed to validate order."
 
+    def get_wait_time(self) -> str:
+        bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
+        if not bearer_token:
+            return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+        wait_time = _apis.get_wait_time(
+            bearer_token, self.store_information["store_id"]
+        )
+        if wait_time:
+            return f"The estimated wait time is {wait_time} minutes."
+        else:
+            return f"Please call the store at {self.store_information['phone']} for the estimated wait time."
+
     def list_coupons(self):
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
@@ -378,7 +390,7 @@ class AdoraIntegration:
             )
         # get wait time
         logger.debug("[AdoraIntegration.place_order] Getting the waiting time...")
-        wait_time = _apis.get_wait_time(
+        wait_time = _apis.get_wait_time_with_strategy(
             bearer_token, self.store_information["store_id"], fulfillment_strategy.value
         )
 
