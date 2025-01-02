@@ -2,7 +2,7 @@ from typing import Any
 
 from phi.agent.agent import Agent
 
-from . import _legacy_implementation
+from . import _implementation
 
 
 def integrate_agent(
@@ -43,7 +43,7 @@ def integrate_agent(
         The agent is configured with debug mode enabled and default tools.
     """
 
-    return _legacy_implementation.integrate_agent(
+    return _implementation.integrate_agent(
         agent_id=agent_id,
         account_name=account_name,
         agent_raw_config=agent_raw_config,

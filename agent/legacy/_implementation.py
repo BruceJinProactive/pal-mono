@@ -5,12 +5,12 @@ from uuid import uuid4
 
 from phi.agent.agent import Agent
 
-from agent.knowledge import get_knowledge
-from agent.memory import get_history_responses, get_memory
+from agent.legacy.knowledge import get_knowledge
+from agent.legacy.memory import get_history_responses, get_memory
+from agent.legacy.prompts import get_system_prompt
+from agent.legacy.storage import get_storage
 from agent.model import get_model
-from agent.prompts import get_system_prompt
-from agent.storage import get_storage
-from tools import generate_output_model, get_tools
+from tools.legacy import generate_output_model, get_tools
 
 
 def integrate_agent(

@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from phi.memory.memory import Memory
 
-from agent.memory import delete_memory, get_memory, set_memory_manager
+from agent.legacy.memory import delete_memory, get_memory, set_memory_manager
 from agent.model import ModelName, get_client
 from tools.ordering_tools.classes import (
     Consumer,
