@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse
-from api.schemas.chat.message import Message, TextObject
 from api.schemas.error.error import ErrorResponse
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_messages
@@ -93,22 +92,8 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
             message=request.message,
         )
 
-        legacy_support_message = Message(
-            author_type=response_messages[0].author_type,
-            sender_identifier=response_messages[0].sender_identifier,
-            recipient_identifier=response_messages[0].recipient_identifier,
-            channel=response_messages[0].channel,
-            broker=response_messages[0].broker,
-            metadata=response_messages[0].metadata,
-            extras=response_messages[0].extras,
-            text=TextObject(
-                body="[WARNING] `message` field is deprecated. Please use `messages` field instead."
-            ),
-        )
-
         # Create and return the ChatResponse with the messages
         return ChatResponse(
-            message=legacy_support_message,
             messages=response_messages,
             status="success",
         )
