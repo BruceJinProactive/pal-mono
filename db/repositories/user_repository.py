@@ -35,7 +35,9 @@ class UserRepositoryAsync:
             User.channel_identifiers.contains([channel_identifier]),
         )
         result = await self.session.execute(query)
-        user = result.scalar_one_or_none()
+        # In a rare case that multiple users are found with the same channel identifier, we return the first one.
+        # A long term fix on the DB race condition prevention should be made to avoid this.
+        user = result.scalars().first()
         return user
 
     async def create_user(
