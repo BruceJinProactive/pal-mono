@@ -43,26 +43,6 @@ NOTE:
 admin_router = APIRouter(prefix=endpoints.ADMIN, tags=["Admin"])
 
 
-@admin_router.post("/create_account")
-def create_account(request: Request, session: Session = Depends(db.get_db)):
-    """
-    This endpoint is used to create an account in the database.
-    Without the account in the database, the rest of the functionality will not work.
-
-    Args:
-        request (Request): The request object containing the headers and other request data.
-        session (Session): The database connection.
-
-    Returns:
-        str: A JSON string indicating that the account has been created.
-    """
-    decrypted_id_token = _auth.parse_admin_console_id_token(
-        request.headers.get("Authorization")
-    )
-    create_account_with_defaults(session, decrypted_id_token["custom:account_name"])
-    return '{"message": "Account created"}'
-
-
 @admin_router.get("/account")
 def read_account(request: Request):
     try:
@@ -77,6 +57,13 @@ def read_account(request: Request):
         )
     json_compatible_item_data = jsonable_encoder(decrypted_id_token)
     return JSONResponse(content=json_compatible_item_data)
+
+
+@admin_router.get("/agent_config")
+def get_agent_config(
+    request: Request, session: Session = Depends(db.get_db)
+) -> JSONResponse:
+    return _implementation.get_agent_config(request, session)
 
 
 @admin_router.get("/inbox")

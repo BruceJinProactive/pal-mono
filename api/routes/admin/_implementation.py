@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
@@ -46,6 +47,13 @@ def _get_account_from_id_token(request: Request, session: Session) -> db.Account
         )
 
     return account
+
+
+def get_agent_config(
+    request: Request, session: Session = Depends(db.get_db)
+) -> JSONResponse:
+    account = _get_account_from_id_token(request, session)
+    return JSONResponse(account.agents[0].raw_config)
 
 
 def get_messages_with_feedback_by_conversation_id(
