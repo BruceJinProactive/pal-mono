@@ -8,34 +8,34 @@ from fastapi import HTTPException, Request
 from utils import secret
 
 
-async def retrieve_body_branding(request: Request) -> tuple[str, str]:
+async def retrieve_body_brand(request: Request) -> tuple[str, str]:
     """
-    Retrieves the 'brandingKey' and 'brandingValue' fields from the request body.
+    Retrieves the 'brandKey' and 'brandValue' fields from the request body.
 
     Args:
         request (Request): The FastAPI request object containing the JSON body to validate.
 
     Returns:
-        tuple[str, str]: A tuple containing the validated 'brandingKey' and 'brandingValue' fields from the request body.
+        tuple[str, str]: A tuple containing the validated 'brandKey' and 'brandValue' fields from the request body.
 
     Raises:
-        HTTPException: If the 'brandingKey' or 'brandingValue' field is missing or not a string, or if there is
+        HTTPException: If the 'brandKey' or 'brandValue' field is missing or not a string, or if there is
                        an error in processing the request body.
     """
     body = await request.json()
     try:
-        branding_key = body["brandingKey"]
-        branding_value = body["brandingValue"]
-        if not isinstance(branding_key, str) or not isinstance(branding_value, str):
+        brand_key = body["brandKey"]
+        brand_value = body["brandValue"]
+        if not isinstance(brand_key, str) or not isinstance(brand_value, str):
             raise HTTPException(
                 status_code=422,
-                detail="Validation error: 'brandingKey' and 'brandingValue' must be a string",
+                detail=f"Validation error: 'brandKey' and 'brandValue' must be strings. Received types: {type(brand_key)}, {type(brand_value)}",
             )
-        return (branding_key, branding_value)
+        return (brand_key, brand_value)
     except KeyError:
         raise HTTPException(
             status_code=422,
-            detail="Validation error: missing 'brandingKey' or 'brandingValue'\n\n"
+            detail="Validation error: missing 'brandKey' or 'brandValue'\n\n"
             f"Invalid request body: {body}",
         )
     except (ValueError, TypeError) as e:

@@ -2,6 +2,22 @@ import os
 
 import jwt
 import requests
+from fastapi import HTTPException, Request
+from sqlalchemy.orm import Session
+
+import db
+from services.account_service import get_account
+
+"""
+This module provides authentication and authorization utilities for the admin console using AWS Cognito.
+
+The functions are ordered by responsibility:
+1. Fetching and caching the JSON Web Key Set (JWKS) from AWS Cognito.
+2. Decoding and verifying JSON Web Tokens (JWT) using the JWKS.
+3. Parsing ID tokens issued by AWS Cognito for the admin console.
+4. Extracting account information from ID tokens.
+5. Retrieving account details from the database based on the ID token.
+"""
 
 AWS_REGION = os.environ["AWS_REGION"]
 AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
@@ -145,3 +161,76 @@ def get_account_name(id_token):
     except Exception as e:
         print(f"Error parsing ID token: {e}")
         return None
+
+
+def decrypt_id_token(request: Request) -> dict:
+    """
+    Decrypts the ID token from the request headers.
+
+    This function retrieves the 'Authorization' header from the request,
+    decrypts the ID token, and returns the decrypted token as a dictionary.
+
+    Args:
+        request (Request): The FastAPI request object containing the headers with the authorization token.
+
+    Returns:
+        dict: The decrypted ID token.
+
+    Raises:
+        HTTPException: If the ID token is invalid or missing.
+    """
+    try:
+        decrypted_id_token = parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    return decrypted_id_token
+
+
+def get_account_from_id_token(request: Request, session: Session) -> db.Account:
+    """
+    Retrieves the account associated with the ID token from the request headers.
+
+    This function decrypts the ID token from the 'Authorization' header,
+    retrieves the account information from the database using the account name
+    in the decrypted token, and returns the account.
+
+    Args:
+        request (Request): The FastAPI request object containing the headers with the authorization token.
+        session (Session): The SQLAlchemy session for database access.
+
+    Returns:
+        db.Account: The account associated with the ID token.
+
+    Raises:
+        HTTPException: If the ID token is invalid or missing, or if the account is not found.
+    """
+    try:
+        decrypted_id_token = parse_admin_console_id_token(
+            request.headers.get("Authorization")
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Get Account from ID Token
+    account = get_account(
+        session, account_name=decrypted_id_token["custom:account_name"]
+    )
+
+    if account is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Account not found.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return account

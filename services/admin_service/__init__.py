@@ -75,17 +75,15 @@ def get_messages_by_conversation_id(
     )
 
 
-def get_brandings(session: Session, account_name: str) -> list[dict]:
+def get_brand(session: Session, account_name: str) -> list[dict]:
     """
-    NOTE: This function is not implemented and is a placeholder.
-
-    Retrieves the branding base content, formatted as a list of JSON structure, which includes branding, and frequently asked questions.
+    Retrieves the brand content, formatted as a list of key value pairs.
 
     Returns:
-        list[dict]: A list of JSON dictionary containing structured information about the company's profile, branding,
+        list[dict]: A list of key value pairs containing structured information about the company's profile, branding,
         and foundational story for AI application.
     """
-    return _implementation.get_brandings(session, account_name)
+    return _implementation.get_brand(session, account_name)
 
 
 def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
@@ -198,7 +196,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
 __all__ = [
     "get_inbox_conversations",
     "get_conversation_messages",
-    "get_brandings",
+    "get_brand",
     "get_instagram_connected",
     "get_instagram_username",
     "set_instagram_access_token",

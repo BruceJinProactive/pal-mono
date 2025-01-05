@@ -208,7 +208,7 @@ def get_messages_by_conversation_id(
     return messages
 
 
-def get_brandings(session: Session, account_name: str) -> list[dict]:
+def get_brand(session: Session, account_name: str) -> list[dict]:
     account = get_account(session, account_name)
     if not account:
         return []
@@ -219,12 +219,12 @@ def get_brandings(session: Session, account_name: str) -> list[dict]:
     # # find the agent's raw config
     # parse the raw config with the branding key
     # error check, if it doesn't have the branding key, send back an empty json
-    brandings = []
+    brand = []
     for agent in agents:
-        if "branding" in agent.raw_config:
-            branding = agent.raw_config.get("branding", {})
-            brandings.append(branding)
-    return brandings
+        if "brand" in agent.raw_config:
+            brand_item = agent.raw_config.get("brand", {})
+            brand.append(brand_item)
+    return brand
 
 
 def _project_name_to_ig_access_token_key(project_name: str) -> str:
