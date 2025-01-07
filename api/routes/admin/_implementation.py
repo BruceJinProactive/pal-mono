@@ -7,10 +7,26 @@ from sqlalchemy.orm import Session
 
 import db
 from services.admin_service import get_brand as get_brand_from_db
-from services.admin_service import get_conversation_messages, get_inbox_conversations
+from services.admin_service import (
+    get_conversation_messages,
+    get_inbox_conversations,
+    get_knowledge_base,
+    get_knowledge_base_by_document_id,
+)
 from services.agent_service import update_agent_config
 
 from . import _auth, _utils
+
+"""
+######################################################
+# Guide for Admin API implementation
+######################################################
+
+- Keep all functions in alphabetical order.
+- Use `Depends` to inject the database session.
+- Use type hints for all arguments and the return value.
+- Feel free to decouple specific namespaces to separate modules (i.e. `_projects`).
+"""
 
 
 def get_agent_config(
@@ -47,10 +63,26 @@ def get_conversation(
     return JSONResponse(content=jsonable_encoder(messages))
 
 
+def get_document(
+    request: Request, document_id: str, session: Session = Depends(db.get_db)
+):
+    account = _auth.get_account_from_id_token(request, session)
+    account_name = account.name
+    document = get_knowledge_base_by_document_id(session, account_name, document_id)
+    return JSONResponse(content=jsonable_encoder(document))
+
+
 def get_inbox(request: Request, session: Session = Depends(db.get_db)):
     account = _auth.get_account_from_id_token(request, session)
     inbox = get_inbox_conversations(session, account_id=account.id)
     return JSONResponse(content=jsonable_encoder(inbox))
+
+
+def get_knowledge(request: Request, session: Session = Depends(db.get_db)):
+    account = _auth.get_account_from_id_token(request, session)
+    account_name = account.name
+    knowledge_json = get_knowledge_base(session, account_name)
+    return knowledge_json
 
 
 def read_account(request: Request):

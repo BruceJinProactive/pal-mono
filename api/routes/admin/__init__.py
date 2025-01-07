@@ -11,7 +11,7 @@ from . import _feedback, _implementation, _projects
 
 """
 ######################################################
-Routes for the Admin Console.
+# Guide for the Admin APIs
 ######################################################
 
 The API routes for the Admin Console are organized in alphabetical order for
@@ -219,6 +219,39 @@ async def handle_instagram_deauthorization(
     return await _projects.handle_instagram_deauthorization(
         ig_user_id, request, session
     )
+
+
+@admin_router.get("/knowledge")
+def get_knowledge(request: Request, session: Session = Depends(db.get_db)):
+    """
+    Retrieve the knowledge base for the account associated with the request.
+
+    Args:
+        request: The incoming HTTP request.
+        session: The database session.
+
+    Returns:
+        JSONResponse: The knowledge base.
+    """
+    return _implementation.get_knowledge(request, session)
+
+
+@admin_router.get("/knowledge/{document_id}")
+def get_document(
+    document_id: str, request: Request, session: Session = Depends(db.get_db)
+):
+    """
+    Retrieve a document by its ID.
+
+    Args:
+        document_id: The ID of the document.
+        request: The incoming HTTP request.
+        session: The database session.
+
+    Returns:
+        JSONResponse: The document.
+    """
+    return _implementation.get_document(request, document_id, session)
 
 
 @admin_router.get("/projects", status_code=200)

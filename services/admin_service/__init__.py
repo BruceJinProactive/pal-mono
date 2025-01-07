@@ -86,6 +86,41 @@ def get_brand(session: Session, account_name: str) -> list[dict]:
     return _implementation.get_brand(session, account_name)
 
 
+def get_knowledge_base(session: Session, account_name: str) -> list[dict]:
+    """
+    Retrieves the knowledge base content, formatted as a list of key value pairs.
+
+    Args:
+        session (Session): The database session.
+        account_name (str): The name of the account to retrieve the knowledge base for.
+
+    Returns:
+        list[dict]: A list of key value pairs containing structured information about the company's knowledge base.
+
+    """
+    return _implementation.get_knowledge_base(session, account_name)
+
+
+def get_knowledge_base_by_document_id(
+    session: Session, account_name: str, document_id: str
+) -> dict:
+    """
+    Retrieves the knowledge base content for a specific document, formatted as a dictionary.
+
+    Args:
+        session (Session): The database session.
+        account_name (str): The name of the account to retrieve the knowledge base for.
+        document_id (str): The unique identifier of the document.
+
+    Returns:
+        dict: A dictionary containing structured information about the company's knowledge base for the specified document.
+
+    """
+    return _implementation.get_knowledge_base_by_document_id(
+        session, account_name, document_id
+    )
+
+
 def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
     """
     Check if a project has an Instagram account connected.
@@ -197,6 +232,8 @@ __all__ = [
     "get_inbox_conversations",
     "get_conversation_messages",
     "get_brand",
+    "get_knowledge_base",
+    "get_knowledge_base_by_document_id",
     "get_instagram_connected",
     "get_instagram_username",
     "set_instagram_access_token",

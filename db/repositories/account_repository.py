@@ -50,6 +50,9 @@ class AccountRepository:
     def create_account(self, account_name: str) -> Account:
         """Create a new account with a unique UUID."""
         try:
+            existing_account = self.get_account(account_name)
+            if existing_account:
+                return existing_account
             db_account = Account(id=uuid.uuid4(), name=account_name)
             self.session.add(db_account)
             self.session.commit()

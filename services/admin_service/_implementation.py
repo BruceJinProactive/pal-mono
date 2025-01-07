@@ -5,7 +5,9 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, declarative_base
+from sqlalchemy import Table
+
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
@@ -225,6 +227,54 @@ def get_brand(session: Session, account_name: str) -> list[dict]:
             brand_item = agent.raw_config.get("brand", {})
             brand.append(brand_item)
     return brand
+
+
+def get_knowledge_base(session: Session, account_name: str) -> list:
+    Base = declarative_base()
+
+    if not account_name:
+        raise ValueError("Account not found.")
+
+    try:
+        # Dynamically get the table name
+        table_name = f"{account_name}_knowledge"
+
+        # Fetch the table dynamically by reflecting the table from the database schema
+        knowledge_table = Table(
+            table_name, Base.metadata, autoload_with=session.bind, schema="ai"
+        )
+
+        # Query the dynamically selected table
+        knowledge_base_list = session.query(knowledge_table).all()
+
+        # Map results into a list of dictionaries
+        knowledge_base_list = [
+            {
+                "content": item.content,
+                "id": item.id,
+                "name": item.name,
+                "created_at": item.created_at,
+            }
+            for item in knowledge_base_list
+        ]
+
+        return knowledge_base_list
+
+    except Exception as e:
+        logger.error(f"Unable to get knowledge base: {e}")
+        raise RuntimeError("Unable to get knowledge base.") from e
+
+
+def get_knowledge_base_by_document_id(
+    session: Session, account_name: str, document_id: str
+) -> dict:
+    knowledge = get_knowledge_base(session, account_name)
+    if not knowledge:
+        return {}
+    for item in knowledge:
+        if item["id"] == document_id:
+            return item
+    return {}
 
 
 def _project_name_to_ig_access_token_key(project_name: str) -> str:
