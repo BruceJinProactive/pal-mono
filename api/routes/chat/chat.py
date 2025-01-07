@@ -69,7 +69,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                 },
             )
 
-        if request.async_response:
+        if request.async_response or request.relay_response:
 
             async def generate_and_send():
                 async for new_session in db.get_db_async():
