@@ -26,7 +26,7 @@ def main() -> None:
                 return
             config = {
                 "system_prompt": {
-                    "character": {
+                    "brand": {
                         "brand_story": brand_story,
                         "highlights": highlights,
                         "faqs": faqs,
