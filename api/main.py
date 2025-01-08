@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=api_settings.cors_origin_list or [],
+        allow_origin_regex=r"https://.*-proactiveailab\.vercel\.app",  # For Vercel Preview URLs
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
