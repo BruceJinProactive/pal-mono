@@ -6,6 +6,8 @@ from datetime import date
 
 import requests
 
+from api.schemas.asset.asset import ReadAssetRequest, WriteAssetRequest
+from services.asset_service import read_asset_by_name, write_asset
 from tools.ordering_tools.classes import Consumer
 from tools.ordering_tools.integrations.adora.classes import (
     AdoraAccessToken,
@@ -38,23 +40,18 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
         dict | None: A dictionary of the store menu if successful, None otherwise.
     """
 
-    FASTAPI_ENDPOINT = os.getenv("FASTAPI_ENDPOINT", LOCAL_FASTAPI_ENDPOINT)
-
-    # ex. "http://localhost:8000/v1/assets"
-    ASSET_SERVICE_ENDPOINT = FASTAPI_ENDPOINT.rstrip("/") + "/assets"
     FILENAME = f"pizzamyheart/<project_name>/menu-{store_id}.json"
 
     # Perform get to check if the asset exists
-    logger.info(f"The asset service endpoint is: {ASSET_SERVICE_ENDPOINT}")
-    asset_response = requests.get(ASSET_SERVICE_ENDPOINT, params={"name": FILENAME})
+    read_request = ReadAssetRequest(name=FILENAME)
+    asset_response = read_asset_by_name(read_request)
 
-    if asset_response.status_code == 200 and asset_response.json().get("url"):
+    if asset_response.url:
         # Response is 200 and not empty URL
         logger.info("Getting menu from s3 bucket via asset service.")
 
         # TODO: able to retrieve but getting 403
-        url = asset_response.json().get("url")
-        url_response = requests.get(url)
+        url_response = requests.get(asset_response.url)
 
         url_response.raise_for_status()
 
@@ -75,8 +72,12 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
             logger.info("Uploading menu to s3 bucket via asset service.")
 
             json_content = response.decoded_body
-            files = {"asset": (FILENAME, json_content, "application/json")}
-            response = requests.post(ASSET_SERVICE_ENDPOINT, files=files)
+
+            # Write to S3 bucket
+            write_request = WriteAssetRequest(
+                name=FILENAME, content=json_content.encode("utf-8")
+            )
+            write_asset(write_request)
 
             # Decode the JSON string once
             response_data = json.loads(json_content)
