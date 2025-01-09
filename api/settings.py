@@ -81,8 +81,12 @@ class ApiSettings(BaseSettings):
         # Wyze
         valid_cors.extend(
             [
-                "https://wyze.com",
+                "http://local.wyze.com",
+                "http://local.wyze.com:10003",
+                "https://beta-new.my.wyze.com",
+                "https://my.wyze.com",
                 "https://www.wyze.com",
+                "https://wyze.com",
             ]
         )
 
