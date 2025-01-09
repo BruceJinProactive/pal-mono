@@ -18,3 +18,12 @@ async def upload_asset(
     asset: UploadFile = File(...), metadata: dict = {}
 ) -> AssetResponse:
     return await _implementation.upload_asset(asset, metadata)
+
+
+@asset_router.get(
+    "/",
+    response_model=AssetResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
+async def get_asset_by_name(name: str) -> AssetResponse:
+    return await _implementation.get_asset_by_name(name)

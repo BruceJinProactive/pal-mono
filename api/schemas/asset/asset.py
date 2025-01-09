@@ -22,8 +22,4 @@ class ReadAssetRequest(BaseModel):
 
 
 class AssetResponse(BaseModel):
-    url: str = Field(
-        ...,
-        description="S3 URL of the written file.",
-        pattern=r"^https://[a-zA-Z0-9-]+\.s3\.[a-zA-Z0-9-]+\.amazonaws\.com/[^/]+$",
-    )
+    url: str = Field(..., description="S3 URL of the written file.")

@@ -41,6 +41,14 @@ dependencies = [
   "pytest-cov==6.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "black==24.8.0",
+    "isort==5.13.2",
+    "ruff==0.6.2",
+    "pyright==1.1.382",
+]
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"

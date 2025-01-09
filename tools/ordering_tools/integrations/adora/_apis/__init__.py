@@ -1,7 +1,10 @@
 import http.client
 import json
+import os
 import time
 from datetime import date
+
+import requests
 
 from tools.ordering_tools.classes import Consumer
 from tools.ordering_tools.integrations.adora.classes import (
@@ -20,6 +23,8 @@ from utils.log import logger
 
 from . import _utils
 
+LOCAL_FASTAPI_ENDPOINT = "http://host.docker.internal:8000/v1/"
+
 
 def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None:
     """
@@ -32,26 +37,57 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
     Returns:
         dict | None: A dictionary of the store menu if successful, None otherwise.
     """
-    response = _utils.connect_adora_order_hub(
-        "GET",
-        bearer_token,
-        "menu",
-        query_params={"sid": store_id},
-        extra_headers=None,
-        payload=None,
-        logging=False,
-    )
 
-    if response.status == 200:
-        # Decode the JSON string once
-        response_data = json.loads(response.decoded_body)
+    FASTAPI_ENDPOINT = os.getenv("FASTAPI_ENDPOINT", LOCAL_FASTAPI_ENDPOINT)
 
-        # Check if the result is still a JSON string and decode again if necessary
-        if isinstance(response_data, str):
-            response_data = json.loads(response_data)
-        return response_data
+    # ex. "http://localhost:8000/v1/assets"
+    ASSET_SERVICE_ENDPOINT = FASTAPI_ENDPOINT.rstrip("/") + "/assets"
+    FILENAME = f"pizzamyheart/<project_name>/menu-{store_id}.json"
+
+    # Perform get to check if the asset exists
+    logger.info(f"The asset service endpoint is: {ASSET_SERVICE_ENDPOINT}")
+    asset_response = requests.get(ASSET_SERVICE_ENDPOINT, params={"name": FILENAME})
+
+    if asset_response.status_code == 200 and asset_response.json().get("url"):
+        # Response is 200 and not empty URL
+        logger.info("Getting menu from s3 bucket via asset service.")
+
+        # TODO: able to retrieve but getting 403
+        url = asset_response.json().get("url")
+        url_response = requests.get(url)
+
+        url_response.raise_for_status()
+
+        return url_response.json()
     else:
-        return None
+        # Fallback and connect to adora to get the menu
+        response = _utils.connect_adora_order_hub(
+            "GET",
+            bearer_token,
+            "menu",
+            query_params={"sid": store_id},
+            extra_headers=None,
+            payload=None,
+            logging=False,
+        )
+
+        if response.status == 200:
+            logger.info("Uploading menu to s3 bucket via asset service.")
+
+            json_content = response.decoded_body
+            files = {"asset": (FILENAME, json_content, "application/json")}
+            response = requests.post(ASSET_SERVICE_ENDPOINT, files=files)
+
+            # Decode the JSON string once
+            response_data = json.loads(json_content)
+
+            # Check if the result is still a JSON string and decode again if necessary
+            if isinstance(response_data, str):
+                response_data = json.loads(response_data)  # return menu
+
+            return response_data
+
+    return None
 
 
 def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
