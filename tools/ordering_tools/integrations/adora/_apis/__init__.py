@@ -7,7 +7,7 @@ from datetime import date
 import requests
 
 from api.schemas.asset.asset import ReadAssetRequest, WriteAssetRequest
-from services.asset_service import read_asset_by_name, write_asset
+from services.asset_service import read_asset_by_name, read_asset_response, write_asset
 from tools.ordering_tools.classes import Consumer
 from tools.ordering_tools.integrations.adora.classes import (
     AdoraAccessToken,
@@ -50,12 +50,11 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
         # Response is 200 and not empty URL
         logger.info("Getting menu from s3 bucket via asset service.")
 
-        # TODO: able to retrieve but getting 403
-        url_response = requests.get(asset_response.url)
+        bytes = read_asset_response(asset_response)
+        json_str = bytes.decode("utf-8")
+        response_data = json.loads(json_str)
 
-        url_response.raise_for_status()
-
-        return url_response.json()
+        return response_data
     else:
         # Fallback and connect to adora to get the menu
         response = _utils.connect_adora_order_hub(

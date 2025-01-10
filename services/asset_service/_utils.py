@@ -62,13 +62,17 @@ def construct_s3_url(bucket_name: str, region_name: str, file_name: str) -> str:
 
 def init_s3(region_name: str) -> botocore.client.BaseClient:
     try:
-        s3_client = boto3.client(
-            "s3",
-            region_name=region_name,
-            aws_access_key_id=os.getenv("LOCAL_AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("LOCAL_AWS_SECRET_ACCESS_KEY"),
-            aws_session_token=os.getenv("LOCAL_AWS_SESSION_TOKEN"),
-        )
+        if AWS_ASSET_BUCKET_NAME == LOCAL_BUCKET:
+            logger.info("Using local aws credentials.")
+            s3_client = boto3.client(
+                "s3",
+                region_name=region_name,
+                aws_access_key_id=os.getenv("LOCAL_AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.getenv("LOCAL_AWS_SECRET_ACCESS_KEY"),
+                aws_session_token=os.getenv("LOCAL_AWS_SESSION_TOKEN"),
+            )
+        else:
+            s3_client = boto3.client("s3", region_name=region_name)
         return s3_client
     except NoCredentialsError as e:
         raise RuntimeError(f"AWS credentials invalid or not found: {e}")

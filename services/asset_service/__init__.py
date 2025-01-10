@@ -1,3 +1,5 @@
+from typing import Any
+
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
 
 from . import _implementation
@@ -13,6 +15,18 @@ def write_asset(asset: WriteAssetRequest) -> AssetResponse:
         AssetResponse: An asset object containing the S3 URL of the written file.
     """
     return _implementation.write_asset(asset)
+
+
+def read_asset_response(asset_response: AssetResponse) -> bytes:
+    """Read the content of an asset response.
+
+    Args:
+        response (AssetResponse): The asset response object to read.
+
+    Returns:
+        bytes: The content of the asset
+    """
+    return _implementation.read_asset_response(asset_response)
 
 
 def read_asset_by_name(request: ReadAssetRequest) -> AssetResponse:
