@@ -12,7 +12,6 @@ from . import _constants
 
 AWS_ASSET_BUCKET_NAME = _constants.AWS_ASSET_BUCKET_NAME
 AWS_REGION = _constants.AWS_REGION
-LOCAL_BUCKET = _constants.LOCAL_BUCKET
 
 
 def handle_s3_errors(func):
@@ -62,7 +61,7 @@ def construct_s3_url(bucket_name: str, region_name: str, file_name: str) -> str:
 
 def init_s3(region_name: str) -> botocore.client.BaseClient:
     try:
-        if AWS_ASSET_BUCKET_NAME == LOCAL_BUCKET:
+        if os.getenv("LOCAL_AWS_ACCESS_KEY_ID"):
             logger.info("Using local aws credentials.")
             s3_client = boto3.client(
                 "s3",
