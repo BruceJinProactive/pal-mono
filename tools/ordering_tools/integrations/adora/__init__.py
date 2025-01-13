@@ -77,6 +77,8 @@ class AdoraIntegration:
                 "In the response to the user (content field of output), in your agent's tone, tell the user this was added: "
                 + f"QUANTITY: {adora_order_item.quantity}, SIZE: {adora_order_item.size}, ITEM NAME: {adora_order_item.item_name}, "
                 + f"with MODIFICATIONS: {adora_order_item.modifications} for PRICE: {validated_order.subTotal} to your cart.\n\n"
+                + "In a new line, show users the current cart with bullet points"
+                + "with the format of '{quantity} x {item_size} {item_name} with {modification} for {price}'.\n\n"
                 + "In the cart field of the structured output, add this item to the cart in this json format: "
                 + f"{{'itemName': {adora_order_item.item_name}',itemId': {adora_order_item.itemId}, 'quantity': {adora_order_item.quantity}, 'sizeId': {adora_order_item.sizeId}, 'modifiers': {adora_order_item.modifiers}, 'price': {adora_order_item.price}, 'comment': {adora_order_item.comment}, 'taxes': {adora_order_item.taxes}}}"
             )
@@ -120,6 +122,14 @@ class AdoraIntegration:
         # chat history will be reversed later
         chat_history = [f"User message: {current_user_query}"]
         latest_cart = []
+
+        bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
+        if not bearer_token:
+            return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+
+        # Get menu from knowledge base based on menu name
+        menu = _apis.get_adora_menu(self.store_information["store_id"], bearer_token)
+        size_map = _utils.get_size_description_map(menu)
 
         storage: AgentStorage = get_storage(self.account_name)
         session: AgentSession | None = storage.read(session_id, user_id)
@@ -261,10 +271,17 @@ class AdoraIntegration:
         )
 
         for adora_order_item in cart:
-            # Append item details to order_summary for later display
-            order_summary.append(
-                f"{adora_order_item if cart[adora_order_item].quantity == 1 else f'{cart[adora_order_item].quantity }x {adora_order_item}'}"
-            )
+            item = cart[adora_order_item]
+            size_id = item.sizeId
+            item_size = size_map.get(size_id, "N/A")
+            if item_size == "N/A":
+                order_summary.append(
+                    f"{adora_order_item if item.quantity == 1 else f'{item.quantity}x {adora_order_item}'}"
+                )
+            else:
+                order_summary.append(
+                    f"{adora_order_item if item.quantity == 1 else f'{item.quantity}x {adora_order_item}'} with size {item_size}"
+                )
 
         logger.debug(
             "[AdoraIntegration.place_order] Converted items to Adora order items."
@@ -477,4 +494,4 @@ class AdoraIntegration:
             return "Failed to place order. Please try again."
 
     def remove_from_order(self):
-        return "The item was successfully removed from the order!"
+        return "The item was successfully removed from the order! Here is your current cart:"
