@@ -1,5 +1,6 @@
 import inspect
 
+from ddtrace.llmobs.decorators import tool
 from phi.tools.toolkit import Toolkit
 
 from tools.booking_tools.integrations.mindzero import MindZeroIntegration
@@ -49,6 +50,7 @@ class BookingTools(Toolkit):
     # ----------------------------------------
 
     # NOTE: will add chat history when a new integration is added
+    @tool
     def book_a_class(self) -> str:
         """
         Use this function to book a class.
@@ -61,6 +63,7 @@ class BookingTools(Toolkit):
         """
         return self.integration.book_a_class()
 
+    @tool
     def get_classes(self, num_days: int = 7) -> str:
         """
         Use this function to answer any questions regarding class availability.

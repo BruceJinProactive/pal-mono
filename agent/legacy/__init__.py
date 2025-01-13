@@ -1,3 +1,6 @@
+# Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+# pyright: reportCallIssue=false, reportReturnType=false
+
 from typing import Any
 
 from phi.agent.agent import Agent

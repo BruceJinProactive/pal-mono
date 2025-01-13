@@ -1,5 +1,6 @@
 import inspect
 
+from ddtrace.llmobs.decorators import tool
 from phi.tools.toolkit import Toolkit
 
 from .integrations.pinecone import PineconeIntegration
@@ -45,7 +46,7 @@ class ImageRetrievalTools(Toolkit):
     # ----------------------------------------
     # Toolkit tools (actions)
     # ----------------------------------------
-
+    @tool
     def retrieve_image_by_chat_history(self, chat_history: list[str]) -> str:
         """Retrieves an image from a vector database based on the user's chat history.
 

@@ -1,6 +1,7 @@
 import inspect
 from uuid import uuid4
 
+from ddtrace.llmobs.decorators import tool
 from phi.tools.toolkit import Toolkit
 
 from tools.ordering_tools.classes import OrderItem
@@ -58,7 +59,7 @@ class OrderingTools(Toolkit):
     # ----------------------------------------
     # Toolkit tools (actions)
     # ----------------------------------------
-
+    @tool
     def add_to_order(
         self,
         item_name: str,
@@ -89,6 +90,7 @@ class OrderingTools(Toolkit):
         # Call integration's add_to_order method
         return self.integration.add_to_order(generic_order_item)
 
+    @tool
     def get_wait_time(self) -> str:
         """
         Gets the estimated wait time for the user's order.
@@ -100,6 +102,7 @@ class OrderingTools(Toolkit):
         """
         return self.integration.get_wait_time()
 
+    @tool
     def list_coupons(self):
         """
         Lists all available coupons. Do NOT use an ordered list with numbers when listing the coupons.
@@ -112,6 +115,7 @@ class OrderingTools(Toolkit):
 
         return self.integration.list_coupons()
 
+    @tool
     def place_order(self, current_user_query: str) -> str:
         """
         This function should be called every time the user requests to place order, checkout, or pay.
@@ -156,6 +160,7 @@ class OrderingTools(Toolkit):
             self.user_id, self.session_id, current_user_query
         )
 
+    @tool
     def remove_from_order(
         self,
         item_name: str,

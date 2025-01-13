@@ -1,3 +1,4 @@
+from ddtrace.llmobs.decorators import tool
 from phi.tools.toolkit import Toolkit
 
 
@@ -19,7 +20,7 @@ class EscalationTools(Toolkit):
     # ----------------------------------------
     # Toolkit tools (actions)
     # ----------------------------------------
-
+    @tool
     def get_criteria(self) -> str:
         """
         Always call this function first to retrieve the criteria for deciding whether a user prompt needs escalation.
@@ -29,6 +30,7 @@ class EscalationTools(Toolkit):
         """
         return self.criteria
 
+    @tool
     def get_response(self) -> str:
         """
         Always call this function first to retrieve the response to reply to user when a user prompt needs to be escalated.

@@ -3,6 +3,8 @@ import os
 from typing import Any
 from uuid import uuid4
 
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import agent
 from phi.agent.agent import Agent
 
 from agent.legacy.knowledge import get_knowledge
@@ -13,6 +15,7 @@ from agent.model import get_model
 from tools.legacy import generate_output_model, get_tools
 
 
+@agent
 def integrate_agent(
     agent_id: str,
     account_name: str,
@@ -60,6 +63,13 @@ def integrate_agent(
 
     # -*- Debug settings
     DEBUG_MODE = os.getenv("DEBUG_MODE", "False") == "True"
+
+    # Set up Datadog LLM Observability
+    LLMObs.enable(
+        ml_app=account_name,
+        agentless_enabled=True,
+    )
+    LLMObs.annotate(tags={"user_id": user_id, "session_id": conversation_id})
 
     return Agent(
         # -*- Agent settings
