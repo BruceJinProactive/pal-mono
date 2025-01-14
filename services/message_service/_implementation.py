@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from agent import Agent
+from agent.input_output import Output
 from agent.model import BaseOutputModel
 from api.schemas.chat.message import (
     AuthorType,
@@ -24,6 +26,7 @@ from . import _utils
 async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
+    logger.info(f"get_chat_response_async received message: {message}")
     user = None
     extras = {}
     metadata = {"instance": "BaseModel"}
@@ -75,13 +78,49 @@ async def get_chat_response_async(
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
-        agent = await agent_service.get_ai_agent_async(
-            session=session,
-            agent_id=agent_id,
-            user_id=user.id,
-            project_id=project.id,
-            conversation_id=conversation_id,
-        )
+
+        logger.info(f"User channel identifier: {user_channel_identifier}")
+
+        # ========================== New - Start ==========================
+
+        if user_channel_identifier.endswith("kelvin@proactiveailab.com"):
+            logger.info("Test new agent building flow.")
+
+            # Construct config
+            config = await agent_service.construct_agent_config(
+                session=session,
+                agent_id=agent_id,
+                user_id=user.id,
+                project_id=project.id,
+                conversation_id=conversation_id,
+                stream=False,
+            )
+            logger.info(f"Agent config: {config}")
+            agent = Agent(config=config)
+
+            # Get Input
+            input = _utils.get_agent_input_from_message(message=message)
+            logger.info(f"Input: {input}")
+
+            # Get Output
+            output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+
+            logger.info(f"Output: {output}")
+
+            return _utils.get_messages_from_agent_output(
+                output=output, input_message=message
+            )
+
+        # ========================== New - End ==========================
+
+        else:
+            agent = await agent_service.get_ai_agent_async(
+                session=session,
+                agent_id=agent_id,
+                user_id=user.id,
+                project_id=project.id,
+                conversation_id=conversation_id,
+            )
 
         # Get response from agent
         request_content = message.get_content()

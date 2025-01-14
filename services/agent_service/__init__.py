@@ -6,8 +6,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from agent import Agent, AgentConfig
 
 from . import _implementation
+
+
+async def construct_agent_config(
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    stream: bool = False,
+) -> AgentConfig:
+    return await _implementation.construct_agent_config(
+        session,
+        agent_id,
+        user_id,
+        project_id,
+        conversation_id,
+        stream=stream,
+    )
 
 
 async def get_ai_agent_async(

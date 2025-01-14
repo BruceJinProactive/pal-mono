@@ -1,6 +1,8 @@
 import re
-from typing import Any
+from typing import Any, List
 
+from agent.input_output import Input, Output
+from api.schemas.chat.message import AuthorType, Message, TextObject
 from utils.log import logger
 
 
@@ -76,3 +78,41 @@ def extract_image_links(response: str) -> list[tuple[str, str]]:
         logger.error(f"Error extracting image URLs: {e}")
 
     return processed_parts
+
+
+def get_agent_input_from_message(message: Message) -> Input:
+    """
+    Converts a Message object into an Input object for the Agent.
+
+    Args:
+        message (Message): The Message object to be converted.
+
+    Returns:
+        Input: The Input object created from the Message.
+    """
+    content = message.text.body if message.text else ""
+    return Input(content=content, context=message.context)
+
+
+def get_messages_from_agent_output(
+    output: Output, input_message: Message
+) -> List[Message]:
+    """
+    Converts an Output object from the Agent into a Message object.
+
+    Args:
+        output (Output): The Output object to be converted.
+
+    Returns:
+        Message: The Message object created from the Output.
+    """
+    return [
+        Message(
+            author_type=AuthorType.AGENT,
+            sender_identifier=input_message.recipient_identifier,
+            recipient_identifier=input_message.sender_identifier,
+            channel=input_message.channel,
+            broker=input_message.broker,
+            text=TextObject(body=output.content),
+        )
+    ]

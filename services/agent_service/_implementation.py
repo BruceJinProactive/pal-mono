@@ -6,7 +6,71 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from agent import (
+    AgentConfig,
+    AgentMetadata,
+    AgentPersona,
+    KnowledgeConfig,
+    MemoryConfig,
+    ModelConfig,
+    ToolConfig,
+)
 from agent.legacy import integrate_agent
+
+
+async def construct_agent_config(
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    stream: bool = False,
+) -> AgentConfig:
+    # Retrieve the agent from the database
+    agent_repository = db.AgentRepositoryAsync(session)
+    db_agent = await agent_repository.get_agent(agent_id=agent_id)
+    if db_agent is None:
+        raise ValueError("Invalid agent_id")
+
+    # Retrieve the project from the database
+    project_repository = db.ProjectRepositoryAsync(session)
+    db_project = await project_repository.get_project(project_id)
+    if db_project is None:
+        raise ValueError("Invalid project_id")
+
+    # Sample agent config
+    config = AgentConfig(
+        persona=AgentPersona(
+            name="Anna",
+            role="Coffee Barista",
+            description="Anna is 24 years old. She is from Southern California. She went to collage in SolCal and is now studying LSAT to go to law school next year.",
+        ),
+        model=ModelConfig(
+            identifier="medium",
+            stream=stream,
+        ),
+        memory=MemoryConfig(
+            enabled=True,
+            identifier=db_agent.account.name,
+            instruction="Don't remember user's gender",
+        ),
+        knowledge=KnowledgeConfig(
+            enabled=True,
+            identifier=db_agent.account.name,
+        ),
+        tool=ToolConfig(
+            identifiers=["calculator_tool"],
+        ),
+        metadata=AgentMetadata(
+            account_name=db_agent.account.name,
+            agent_id=str(agent_id),
+            user_id=str(user_id),
+            session_id=str(conversation_id),
+            framework="phidata",
+        ),
+    )
+
+    return config
 
 
 async def get_ai_agent_async(
