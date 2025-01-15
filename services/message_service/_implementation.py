@@ -82,8 +82,9 @@ async def get_chat_response_async(
         logger.info(f"User channel identifier: {user_channel_identifier}")
 
         # ========================== New - Start ==========================
-
-        if user_channel_identifier.endswith("kelvin@proactiveailab.com"):
+        # Explicitly load the project.account attribute
+        await session.refresh(project, attribute_names=["account"])
+        if project.account.name == "palona":
             logger.info("Test new agent building flow.")
 
             # Construct config
