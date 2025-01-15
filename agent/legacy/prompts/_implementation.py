@@ -2,6 +2,8 @@ from typing import Any
 
 from phi.memory.agent import AgentMemory
 
+from agent.legacy.storage import get_user_id_by_conversation_id
+
 
 def format_section(title, section_data):
     """
@@ -27,6 +29,8 @@ def format_section(title, section_data):
 
 
 def generate_markdown_system_prompt(
+    account_name: str,
+    conversation_id: str | None,
     raw_config: dict[str, Any],
     memory: AgentMemory,
     user_id: str,
@@ -57,6 +61,14 @@ def generate_markdown_system_prompt(
     memory.user_id = user_id
     memory.load_user_memories()
     memories = memory.memories
+
+    if not memories and conversation_id:
+        new_user_id = get_user_id_by_conversation_id(account_name, conversation_id)
+        if new_user_id:
+            memory.user_id = new_user_id
+            memory.load_user_memories()
+            memories = memory.memories
+
     memory_list = (
         "\n".join(f"  - {memory.memory}" for memory in memories) if memories else ""
     )

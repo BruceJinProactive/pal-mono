@@ -6,6 +6,8 @@ from . import _implementation
 
 
 def get_system_prompt(
+    account_name: str,
+    conversation_id: str | None,
     raw_config: dict[str, Any],
     memory: AgentMemory,
     user_id: str,
@@ -17,9 +19,12 @@ def get_system_prompt(
     first level or nested under a "system_prompt" key.
 
     Args:
+        account_name (str): The name of the account associated with this agent.
+        conversation_id (str | None): The ID of the conversation, if any.
         raw_config (dict[str, Any]): The input JSON data containing the agent's and project's configuration.
         memory (AgentMemory): The memory object associated with the user.
         user_id (str): The ID of the user associated with this agent.
+
 
     Returns:
         str: A markdown-formatted string representing the system prompt.
@@ -67,7 +72,9 @@ def get_system_prompt(
           - Jane Doe's phone number is 555-555-5555
           - Jane Doe's email is jane@proactiveailab.com
     """
-    return _implementation.generate_markdown_system_prompt(raw_config, memory, user_id)
+    return _implementation.generate_markdown_system_prompt(
+        account_name, conversation_id, raw_config, memory, user_id
+    )
 
 
 __all__ = [

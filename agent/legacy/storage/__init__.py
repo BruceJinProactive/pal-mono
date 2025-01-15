@@ -19,3 +19,22 @@ def get_storage(account_name: str) -> AgentStorage:
         AgentStorage: An instance of AgentStorage configured with the specified storage table.
     """
     return _implementation.get_storage(account_name)
+
+
+def get_user_id_by_conversation_id(
+    account_name: str, conversation_id: str
+) -> str | None:
+    """
+    Retrieves a user ID associated with the specified conversation ID.
+
+    This function queries the storage system to find the user ID associated
+    with a given conversation ID within the specified account's context.
+
+    Args:
+        account_name (str): The name of the account to query.
+        conversation_id (str): The ID of the conversation to look up.
+
+    Returns:
+        str | None: The associated user ID if found, None otherwise.
+    """
+    return _implementation.get_user_id_by_conversation_id(account_name, conversation_id)
