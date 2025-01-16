@@ -10,9 +10,13 @@ from api.schemas.admin.feedback import (
     Feedback,
 )
 from api.schemas.admin.message import GetMessageResponse
-from services.admin_service import get_messages_by_conversation_id
+from services.admin_service import (
+    get_conversation_id_by_message_id,
+    get_messages_by_conversation_id,
+)
 from services.feedback_service import (
     create_feedback,
+    get_feedbacks,
     get_feedback_by_id,
     update_feedback_by_id,
 )
@@ -110,6 +114,42 @@ def get_messages_with_feedback_by_conversation_id(
     ]
 
     return messages_response
+
+
+def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_db)):
+    _auth.get_account_from_id_token(request, session)
+
+    # Get Feedback objects from service layer
+    try:
+        feedbacks = get_feedbacks(session)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+    if feedbacks:
+        feedbacks_response = [
+            {
+                "feedback": Feedback(
+                    id=str(feedback.id),
+                    message_id=str(feedback.message_id),
+                    author_identifier=feedback.author_identifier,
+                    reaction=feedback.reaction,
+                    tags=feedback.tags,
+                    note=feedback.note,
+                    timestamp=feedback.updated_at.isoformat(),
+                ),
+                "conversation_id": get_conversation_id_by_message_id(
+                    session, feedback.message_id
+                ),
+            }
+            for feedback in feedbacks
+        ]
+    else:
+        feedbacks_response = []
+
+    return feedbacks_response
 
 
 def retrieve_feedback_by_id(

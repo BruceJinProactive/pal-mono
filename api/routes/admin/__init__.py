@@ -114,6 +114,21 @@ def get_messages_with_feedback_by_conversation_id(
     )
 
 
+@admin_router.get("/feedback", status_code=200)
+def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_db)):
+    """
+    Retrieve all feedback from the database.
+
+    Args:
+        request (Request): The HTTP request object.
+        session (Session): The database session.
+
+    Returns:
+        list[Feedback]: A list of feedback objects.
+    """
+    return _feedback.retrieve_all_feedbacks(request, session)
+
+
 @admin_router.post("/feedback", status_code=200)
 async def submit_feedback(request: Request, session: Session = Depends(db.get_db)):
     """

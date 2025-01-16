@@ -170,6 +170,34 @@ def get_conversation_messages(
     return messages
 
 
+def get_conversation_id_by_message_id(
+    session: Session,
+    message_id: uuid.UUID,
+) -> str:
+    """
+    Verifies that the requester has access to the conversation, then returns all messages
+    in the conversation.
+
+    Args:
+        session (Session): The database session.
+        message_id (uuid.UUID): The unique identifier of the requested Message.
+
+    Returns:
+        str: A string of the conversation_id from the Message.
+
+    Raises:
+        ValueError: If the Admin does not have access to the Conversation.
+        ValueError: If the Conversation is not found.
+    """
+    message_repository = db.MessageRepository(session)
+    conversation_id = message_repository.get_conversation_id_by_message_id(
+        message_id=message_id
+    )
+    if not conversation_id:
+        raise ValueError("Conversation not found.")
+    return str(conversation_id)
+
+
 def get_messages_by_conversation_id(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> list[db.Message]:

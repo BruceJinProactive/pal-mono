@@ -227,3 +227,26 @@ class MessageRepository:
             self.session.rollback()
             logger.error(f"Error retrieving message count: {e}")
             return 0
+
+    def get_conversation_id_by_message_id(self, message_id: uuid.UUID):
+        """
+        Retrieves the conversation id associated with a specific message id.
+
+        Args:
+            message_id (uuid.UUID): The unique identifier for the message.
+
+        Returns:
+            str: The conversation id, None if an error occurs.
+        """
+        try:
+            conversation_id = (
+                self.session.query(Message.conversation_id)
+                .filter(Message.id == message_id)
+                .scalar()
+            )
+
+            return conversation_id
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving conversation id: {e}")
+            return None

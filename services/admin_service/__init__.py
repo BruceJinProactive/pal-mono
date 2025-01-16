@@ -55,6 +55,23 @@ def get_conversation_messages(
     )
 
 
+def get_conversation_id_by_message_id(session: Session, message_id: uuid.UUID) -> str:
+    """
+    Retrieves the conversation ID associated with a specific message ID.
+
+    Args:
+        session (Session): The database session.
+        message_id (uuid.UUID): The unique identifier of the requested Message.
+
+    Returns:
+        str: A string of the conversation_id from the Message.
+
+    Raises:
+        ValueError: If the Conversation is not found.
+    """
+    return _implementation.get_conversation_id_by_message_id(session, message_id)
+
+
 def get_messages_by_conversation_id(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> List[db.Message]:

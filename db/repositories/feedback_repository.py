@@ -32,6 +32,14 @@ class FeedbackRepository:
 
         return db_feedback
 
+    def get_feedbacks(self) -> list[Feedback] | None:
+        try:
+            return self.session.query(Feedback).all()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving feedback: {e}")
+            raise
+
     def get_feedback_by_id(self, feedback_id: UUID) -> Feedback | None:
         try:
             return (

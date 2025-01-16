@@ -1,5 +1,5 @@
 import uuid
-from typing import AsyncIterator, List
+from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -365,7 +365,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
 
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
-) -> List[db.Message]:
+) -> list[db.Message]:
     """
     Retrieves all Messages for a given Conversation.
 
@@ -376,7 +376,7 @@ def get_messages_by_conversation(
         conversation_id (uuid.UUID): The unique identifier of the Conversation for which Messages are being retrieved.
 
     Returns:
-        List[db.Message]: A list of Message objects representing the messages in the specified Conversation.
+        list[db.Message]: A list of Message objects representing the messages in the specified Conversation.
     """
     messages = db.MessageRepository(session).get_messages_by_conversation(
         conversation_id=conversation_id
@@ -386,7 +386,7 @@ def get_messages_by_conversation(
 
 def get_conversations_by_user(
     session: Session, user_id: uuid.UUID, create_new_conversation: bool = False
-) -> List[db.Conversation]:
+) -> list[db.Conversation]:
     conversation_repository = db.ConversationRepository(session)
     conversations = conversation_repository.get_conversations_by_user(
         user_id=user_id,
@@ -403,8 +403,8 @@ def get_conversations_by_user(
 
 
 def get_conversations_by_users(
-    session: Session, user_ids: List[uuid.UUID]
-) -> List[db.Conversation]:
+    session: Session, user_ids: list[uuid.UUID]
+) -> list[db.Conversation]:
     conversation_repository = db.ConversationRepository(session)
     return conversation_repository.get_conversations_by_users(
         user_ids=user_ids,
