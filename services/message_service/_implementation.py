@@ -10,6 +10,7 @@ from agent.input_output import Output
 from agent.model import BaseOutputModel
 from api.schemas.chat.message import (
     AuthorType,
+    Broker,
     Channel,
     Extras,
     MediaObject,
@@ -62,9 +63,34 @@ async def get_chat_response_async(
             channel_identifier=user_channel_identifier,
         )
         if user is None:
+            # Create new user record
             user = await user_repo.create_user(
                 project.account_id, user_channel_identifier
             )
+
+            # If the user doesn't exist and the broker is Twilio, create the user and append the opt-in message
+            if message.broker == Broker.TWILIO:
+                opt_in_text = "You have successfully been subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply."
+
+                opt_in_message = Message(
+                    author_type=AuthorType.AGENT,
+                    sender_identifier=message.recipient_identifier,  # Swap sender and recipient
+                    recipient_identifier=message.sender_identifier,
+                    channel=message.channel,
+                    broker=message.broker,
+                    text=TextObject(body=opt_in_text),
+                    metadata=metadata,
+                    extras=Extras(**extras),
+                )
+
+                if opt_in_message:
+                    if user:
+                        # Save the opt-in message to the database
+                        await message_repo.create_message(
+                            user_id=user.id, message_body=opt_in_message.to_dict()
+                        )
+
+                    response_messages.append(opt_in_message)
 
         # Save request message to database
         request_message = await message_repo.create_message(
@@ -297,11 +323,47 @@ def get_chat_response(session: Session, message: Message) -> Message:
             session=session,
             account_id=project.account_id,
             channel_identifier=user_channel_identifier,
-            create_new_user=True,
+            create_new_user=False,
         )
 
         if user is None:
-            raise ValueError("User not found")
+            # Return user opt-in message if broker is Twilio
+            if message.broker == Broker.TWILIO:
+                opt_in_text = "You have successfully been subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply."
+
+                response_message = Message(
+                    author_type=AuthorType.AGENT,
+                    sender_identifier=message.recipient_identifier,  # Swap sender and recipient
+                    recipient_identifier=message.sender_identifier,
+                    channel=message.channel,
+                    broker=message.broker,
+                    text=TextObject(body=opt_in_text),
+                    metadata=metadata,
+                    extras=Extras(**extras),
+                )
+
+                # Create new user record right away:
+                user = user_service.get_user_by_channel_identifier(
+                    session=session,
+                    account_id=project.account_id,
+                    channel_identifier=user_channel_identifier,
+                    create_new_user=True,
+                )
+
+                if user:
+                    # Save request message to database
+                    db.MessageRepository(session).create_message(
+                        user_id=user.id, message_body=message.to_dict()
+                    )
+
+                    # Save response message to database
+                    db.MessageRepository(session).create_message(
+                        user_id=user.id, message_body=response_message.to_dict()
+                    )
+
+                return response_message
+            else:
+                raise ValueError("User not found")
 
         # Save request message to database
         request_message = db.MessageRepository(session).create_message(
