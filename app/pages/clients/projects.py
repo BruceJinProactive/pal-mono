@@ -9,6 +9,7 @@ from app.shared import get_app_db, json_decode, universal_picker_ui
 from services.account_service import get_account
 from services.project_service import (
     create_project,
+    delete_project,
     get_project,
     replace_project_channel_identifiers,
     replace_project_config,
@@ -164,6 +165,24 @@ def main() -> None:
 
         st.subheader("Project Database Information")
         st.write(project)
+
+        st.divider()
+
+        # Delete project
+        st.subheader("Delete Project")
+        st.write(":red[__Warning: This action is irreversible!__]")
+
+        if st.button("Delete Project", key="delete_project"):
+            if st.session_state.get("confirm_delete", False):
+                delete_project(session, project.id)
+                st.success("Project deleted successfully")
+                st.session_state["confirm_delete"] = False
+                st.rerun()
+            else:
+                st.session_state["confirm_delete"] = True
+                st.warning(
+                    "Are you sure you want to delete this project? Click the button again to confirm."
+                )
 
 
 if user.is_logged_in:

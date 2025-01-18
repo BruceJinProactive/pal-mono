@@ -39,3 +39,8 @@ def replace_project_config(
 ) -> None:
     project_repository = db.ProjectRepository(session)
     project_repository.replace_project_config(project_id=project_id, config=config)
+
+
+def delete_project(session: Session, project_id: uuid.UUID) -> None:
+    project_repository = db.ProjectRepository(session)
+    project_repository.delete_project(project_id)

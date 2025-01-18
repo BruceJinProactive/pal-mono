@@ -96,10 +96,25 @@ def replace_project_config(
     return _implementation.replace_project_config(session, project_id, config)
 
 
+def delete_project(session: Session, project_id: uuid.UUID) -> None:
+    """
+    Deletes a specific project using its unique identifier.
+
+    Args:
+        session (Session): The database connection.
+        project_id (uuid.UUID): The unique identifier of the project.
+
+    Returns:
+        None
+    """
+    return _implementation.delete_project(session, project_id)
+
+
 __all__ = [
     "create_project",
     "get_project",
     "replace_project_channel_identifiers",
     "update_project_config",
     "replace_project_config",
+    "delete_project",
 ]

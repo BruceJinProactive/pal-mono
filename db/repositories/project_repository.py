@@ -202,3 +202,25 @@ class ProjectRepository:
             self.session.rollback()
             logger.error(f"Error replacing project config: {e}")
             raise
+
+    def delete_project(self, project_id: uuid.UUID) -> None:
+        """Delete a project from the database.
+
+        Args:
+            project_id (uuid.UUID): The unique identifier of the project.
+
+        Raises:
+            ValueError: If the project with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            project = self.get_project(project_id)
+            if project is None:
+                raise ValueError(f"Project {project_id} not found")
+
+            self.session.delete(project)
+            self.session.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.session.rollback()
+            logger.error(f"Error deleting project: {e}")
+            raise
