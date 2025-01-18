@@ -16,7 +16,7 @@ class ApiSettings(BaseSettings):
     version: str = "1.0"
 
     # Api runtime_env derived from the `runtime_env` environment variable.
-    # Valid values include "dev", "stg", "prd"
+    # Valid values include "dev", "lat", "stg", "prd"
     runtime_env: str = "dev"
 
     # Set to False to disable docs at /docs and /redoc
@@ -34,7 +34,7 @@ class ApiSettings(BaseSettings):
     def validate_runtime_env(cls, runtime_env):
         """Validate runtime_env."""
 
-        valid_runtime_envs = ["dev", "stg", "prd"]
+        valid_runtime_envs = ["dev", "lat", "stg", "prd"]
         if runtime_env not in valid_runtime_envs:
             raise ValueError(f"Invalid runtime_env: {runtime_env}")
 
@@ -48,7 +48,7 @@ class ApiSettings(BaseSettings):
         valid_cors.extend(["https://phidata.app", "https://www.phidata.app"])
 
         runtime_env = info.data.get("runtime_env")
-        if runtime_env == "dev":
+        if runtime_env == "dev" or runtime_env == "lat":
             # 8501 is the default port for streamlit
             # 3000 is the default port for create-react-app
             valid_cors.extend(
