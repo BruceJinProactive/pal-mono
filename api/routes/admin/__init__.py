@@ -269,6 +269,13 @@ def get_document(
     return _implementation.get_document(request, document_id, session)
 
 
+@admin_router.post("/knowledge/{document_id}")
+async def update_document(
+    document_id: str, request: Request, session: Session = Depends(db.get_db)
+):
+    return await _implementation.update_document(request, document_id, session)
+
+
 @admin_router.get("/projects", status_code=200)
 async def read_projects(request: Request, session: Session = Depends(db.get_db)):
     """

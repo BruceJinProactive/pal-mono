@@ -138,6 +138,28 @@ def get_knowledge_base_by_document_id(
     )
 
 
+def update_knowledge_by_id(
+    session: Session, account_name: str, document_id: str, content: str
+):
+    """
+    Updates the knowledge base content for a specific document.
+
+    Args:
+        session (Session): The database session.
+        account_name (str): The name of the account to update the knowledge base for.
+        document_id (str): The unique identifier of the document.
+        content (dict): The updated content for the document.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If the document is not found.
+        RuntimeError: If there is an error updating the knowledge base.
+    """
+    return _implementation.update_knowledge(session, account_name, document_id, content)
+
+
 def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
     """
     Check if a project has an Instagram account connected.
@@ -251,6 +273,7 @@ __all__ = [
     "get_brand",
     "get_knowledge_base",
     "get_knowledge_base_by_document_id",
+    "update_knowledge_by_id",
     "get_instagram_connected",
     "get_instagram_username",
     "set_instagram_access_token",

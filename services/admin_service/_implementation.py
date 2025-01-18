@@ -304,6 +304,50 @@ def get_knowledge_base_by_document_id(
     return {}
 
 
+def update_knowledge(
+    session: Session, account_name: str, knowledge_id: str, content: str
+) -> None:
+    """
+    Update AI knowledge content by the knowledge ID.
+
+    Args:
+        session (Session): The session to use.
+        account_name (str): The account name to retrieve the AI knowledge for.
+        knowledge_id (str): The ID of the knowledge to update.
+        content (str): The new content to update the AI knowledge with.
+
+    Returns:
+        KnowledgeBase | None: The updated AI knowledge or None if no such knowledge is found.
+    """
+    Base = declarative_base()
+
+    if not account_name:
+        raise ValueError("Account not found.")
+
+    try:
+        table_name = f"{account_name}_knowledge"
+
+        knowledge_table = Table(
+            table_name, Base.metadata, autoload_with=session.bind, schema="ai"
+        )
+
+        result = session.execute(
+            knowledge_table.update()
+            .where(knowledge_table.c.id == knowledge_id)
+            .values(content=content)
+        )
+
+        if result.rowcount == 0:
+            raise ValueError("Knowledge not found.")
+
+        session.commit()
+        print("Knowledge updated successfully.")
+
+    except Exception as e:
+        logger.error(f"Unable to update knowledge by ID: {e}")
+        raise RuntimeError("Unable to update knowledge by ID.") from e
+
+
 def _project_name_to_ig_access_token_key(project_name: str) -> str:
     return f"{project_name.upper()}_INSTAGRAM_ACCESS_TOKEN"
 

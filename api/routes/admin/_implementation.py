@@ -12,6 +12,7 @@ from services.admin_service import (
     get_inbox_conversations,
     get_knowledge_base,
     get_knowledge_base_by_document_id,
+    update_knowledge_by_id,
 )
 from services.agent_service import update_agent_config
 
@@ -89,6 +90,30 @@ def read_account(request: Request):
     decrypted_id_token = _auth.decrypt_id_token(request)
     json_compatible_item_data = jsonable_encoder(decrypted_id_token)
     return JSONResponse(content=json_compatible_item_data)
+
+
+async def update_document(
+    request: Request, document_id: str, session: Session = Depends(db.get_db)
+):
+    account = _auth.get_account_from_id_token(request, session)
+    account_name = account.name
+    content_data = await request.json()
+    content = content_data["content"]
+    try:
+        update_knowledge_by_id(
+            session,
+            account_name,
+            document_id,
+            content,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        ) from e
+
+    return {"document_id": document_id}
 
 
 async def upsert_brand(request: Request, session: Session = Depends(db.get_db)):
