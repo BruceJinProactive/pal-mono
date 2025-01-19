@@ -56,6 +56,7 @@ class ApiSettings(BaseSettings):
                     "http://localhost",
                     "http://localhost:8501",
                     "http://localhost:3000",
+                    "http://localhost:3001",
                     "http://localhost:5173/",
                 ]
             )
