@@ -162,13 +162,13 @@ def memory_ui(account_name: str, user_id: str) -> None:
 
     # Display existing memories
     if memory.memories:
-        for item in memory.memories:
+        for idx, item in enumerate(memory.memories):
             col1, col2 = st.sidebar.columns([12, 2.5])
             with col1:
                 st.warning(item.memory)
             with col2:
                 st.write("")
-                if st.button("✕", key=f"remove_memory_{item}"):
+                if st.button("✕", key=f"remove_memory_{idx}"):
                     delete_memory(memory, item)
                     st.rerun()
     # Add the "Add Memory" button
@@ -177,7 +177,7 @@ def memory_ui(account_name: str, user_id: str) -> None:
     if st.sidebar.button("Add Memory"):
         st.session_state["add_memory"] = not st.session_state["add_memory"]
 
-    # # Show the text input field when "Add Memory" is clicked
+    # Show the text input field when "Add Memory" is clicked
     if st.session_state["add_memory"]:
         new_memory = st.sidebar.text_input("Enter memory")
         if st.sidebar.button("Save"):
