@@ -68,8 +68,8 @@ async def get_chat_response_async(
                 project.account_id, user_channel_identifier
             )
 
-            # If the user doesn't exist and the broker is Twilio, create the user and append the opt-in message
-            if message.broker == Broker.TWILIO:
+            # If the user doesn't exist, the broker is Twilio, and the channel is SMS, then append the opt-in message
+            if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
                 opt_in_text = "You have successfully been subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply."
 
                 opt_in_message = Message(
@@ -328,7 +328,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
 
         if user is None:
             # Return user opt-in message if broker is Twilio
-            if message.broker == Broker.TWILIO:
+            if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
                 opt_in_text = "You have successfully been subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply."
 
                 response_message = Message(
