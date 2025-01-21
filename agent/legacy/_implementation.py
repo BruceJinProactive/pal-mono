@@ -43,9 +43,7 @@ def integrate_agent(
     storage = get_storage(account_name)
 
     # -*- System Prompt Settings
-    system_prompt = get_system_prompt(
-        account_name, conversation_id, raw_config, memory, user_id
-    )
+    system_prompt = get_system_prompt(raw_config, memory, user_id)
 
     # -*- Session settings
     session_id = str(uuid4())
