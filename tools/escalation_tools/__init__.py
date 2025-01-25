@@ -11,33 +11,48 @@ class EscalationTools(Toolkit):
 
         # Toolkit tools (actions)
         self.register(self.get_criteria)
-        self.register(self.get_response)
+        self.register(self.get_escalated_response)
+        self.register(self.get_emergency_response)
 
         # Toolkit configuration
         self.criteria = config["settings"].get("criteria", None)
-        self.response = config["settings"].get("response", None)
+        self.escalated_response = config["settings"].get("escalated_response", None)
+        self.emergency_response = config["settings"].get("emergency_response", None)
 
     # ----------------------------------------
     # Toolkit tools (actions)
     # ----------------------------------------
+
     @tool
     def get_criteria(self) -> str:
         """
         Always call this function first to retrieve the criteria for deciding whether a user prompt needs escalation.
 
         Returns:
-            str: The criteria used to determine if a user prompt should be escalated.
+            str: The criteria used to determine if a user prompt should get_escalated_response or get_emergency_response.
         """
         return self.criteria
 
     @tool
-    def get_response(self) -> str:
+    def get_escalated_response(self) -> str:
         """
-        Always call this function first to retrieve the response to reply to user when a user prompt needs to be escalated.
+        Always call this function to retrieve the escalated response to reply a message.
 
-        Always reply with the response retrieved by this function exactly when a user prompt needs to be escalated, do not reword.
+        Always reply with the response retrieved by this function exactly, do not reword.
 
         Returns:
-            str: The escalation response.
+            str: The escalated response.
         """
-        return self.response
+        return self.escalated_response
+
+    @tool
+    def get_emergency_response(self) -> str:
+        """
+        Always call this function to retrieve the emergency response to reply a message.
+
+        Always reply with the response retrieved by this function exactly, do not reword.
+
+        Returns:
+            str: The emergency response.
+        """
+        return self.emergency_response
