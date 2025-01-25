@@ -11,7 +11,7 @@ from api.schemas.admin.feedback import (
 )
 from api.schemas.admin.message import GetMessageResponse
 from services.admin_service import (
-    get_conversation_id_by_message_id,
+    get_conversation_ids_by_message_ids,
     get_messages_by_conversation_id,
 )
 from services.feedback_service import (
@@ -129,6 +129,9 @@ def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_d
             headers={"Content-Type": "application/json"},
         )
     if feedbacks:
+        message_ids = [feedback.message_id for feedback in feedbacks]
+        conversation_ids = get_conversation_ids_by_message_ids(session, message_ids)
+
         feedbacks_response = [
             {
                 "feedback": Feedback(
@@ -140,9 +143,7 @@ def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_d
                     note=feedback.note,
                     timestamp=feedback.updated_at.isoformat(),
                 ),
-                "conversation_id": get_conversation_id_by_message_id(
-                    session, feedback.message_id
-                ),
+                "conversation_id": conversation_ids.get(feedback.message_id),
             }
             for feedback in feedbacks
         ]

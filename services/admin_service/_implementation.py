@@ -170,32 +170,36 @@ def get_conversation_messages(
     return messages
 
 
-def get_conversation_id_by_message_id(
+def get_conversation_ids_by_message_ids(
     session: Session,
-    message_id: uuid.UUID,
-) -> str:
+    message_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, str]:
     """
-    Verifies that the requester has access to the conversation, then returns all messages
-    in the conversation.
+    Retrieves the conversation ID associated with each given message ID.
 
     Args:
         session (Session): The database session.
-        message_id (uuid.UUID): The unique identifier of the requested Message.
+        message_ids (list[uuid.UUID]): A list of unique identifiers for the requested messages.
 
     Returns:
-        str: A string of the conversation_id from the Message.
+        dict[uuid.UUID, str]: A dictionary mapping each message ID to its conversation ID.
 
     Raises:
-        ValueError: If the Admin does not have access to the Conversation.
-        ValueError: If the Conversation is not found.
+        ValueError: If a message ID does not have an associated conversation ID.
     """
     message_repository = db.MessageRepository(session)
-    conversation_id = message_repository.get_conversation_id_by_message_id(
-        message_id=message_id
-    )
-    if not conversation_id:
-        raise ValueError("Conversation not found.")
-    return str(conversation_id)
+
+    # Create a mapping of message IDs to conversation IDs
+    result = {}
+    for message_id in message_ids:
+        conversation_id = message_repository.get_conversation_id_by_message_id(
+            message_id=message_id
+        )
+        if not conversation_id:
+            raise ValueError(f"Conversation not found for message ID: {message_id}")
+        result[message_id] = str(conversation_id)
+
+    return result
 
 
 def get_messages_by_conversation_id(

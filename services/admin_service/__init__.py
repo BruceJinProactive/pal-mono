@@ -55,21 +55,24 @@ def get_conversation_messages(
     )
 
 
-def get_conversation_id_by_message_id(session: Session, message_id: uuid.UUID) -> str:
+def get_conversation_ids_by_message_ids(
+    session: Session,
+    message_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, str]:
     """
-    Retrieves the conversation ID associated with a specific message ID.
+    Retrieves the conversation ID associated with each given message ID.
 
     Args:
         session (Session): The database session.
-        message_id (uuid.UUID): The unique identifier of the requested Message.
+        message_ids (list[uuid.UUID]): A list of unique identifiers for the requested messages.
 
     Returns:
-        str: A string of the conversation_id from the Message.
+        dict[uuid.UUID, str]: A dictionary mapping each message ID to its conversation ID.
 
     Raises:
-        ValueError: If the Conversation is not found.
+        ValueError: If a message ID does not have an associated conversation ID.
     """
-    return _implementation.get_conversation_id_by_message_id(session, message_id)
+    return _implementation.get_conversation_ids_by_message_ids(session, message_ids)
 
 
 def get_messages_by_conversation_id(
@@ -270,6 +273,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
 __all__ = [
     "get_inbox_conversations",
     "get_conversation_messages",
+    "get_conversation_ids_by_message_ids",
     "get_brand",
     "get_knowledge_base",
     "get_knowledge_base_by_document_id",
