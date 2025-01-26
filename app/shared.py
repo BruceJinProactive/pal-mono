@@ -37,6 +37,9 @@ def set_account(session: Session, account_name: str) -> None:
     st.session_state["project_name"] = (
         account.projects[0].name if account.projects else "No Project"
     )
+    st.session_state["project_id"] = (
+        account.projects[0].id if account.projects else None
+    )
     if "agent_id" in st.session_state:
         st.session_state.pop("agent_id")
 
