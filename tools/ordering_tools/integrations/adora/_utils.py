@@ -614,25 +614,35 @@ def add_order_to_memory(account_name: str, user_id: str, order_details: str) -> 
         None
     """
     order_details = "User's previous order details: " + order_details
+
+    # Get all of the memories for the the account
     memory = get_memory(account_name)
+
+    # Set the user ID and load the user memories
     memory.user_id = user_id
-    set_memory_manager(memory, user_id)
-    memory.load_user_memories()
-    order_memories = []
-    memories = memory.memories
+    memory_manager = set_memory_manager(memory, user_id)
+    memory_rows = memory_manager.get_existing_memories()
+
     # Get the oldest order memory
-    if memories:
+    if memory_rows:
         order_memories = [
-            memo
-            for memo in memories
-            if memo.memory.startswith("User's previous order details:")
+            memory_row
+            for memory_row in memory_rows
+            if isinstance(memory_row.memory["memory"], str)
+            and memory_row.memory["memory"].startswith("User's previous order details:")
         ]
-    # If there are more than 2 order memories, delete the oldest one
-    if memory.manager and len(order_memories) >= 2:
-        oldest_order_memory = order_memories[1]
-        delete_memory(memory, oldest_order_memory)
-    if memory.manager:
-        memory.manager.add_memory(order_details)
+        # Check if "created_at" exists before sorting
+        order_memories = [
+            memory_row
+            for memory_row in order_memories
+            if getattr(memory_row, "created_at", None)
+        ]
+        # Remove all but the most recent order memory
+        for order_memory in order_memories[:-1]:
+            if isinstance(order_memory.id, str):
+                delete_memory(memory, order_memory.id)
+
+    memory_manager.add_memory(order_details)
 
 
 def get_delivery_address(

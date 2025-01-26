@@ -10,6 +10,7 @@ from phi.model.message import Message
 
 import db
 from agent.model import ModelName, get_model
+from utils.log import logger
 
 DEFAULT_NUM_HISTORY_RESPONSES = 10
 
@@ -49,28 +50,23 @@ def clear_memory(account_name: str, user_id: str) -> None:
     memory.manager.clear_memory()
 
 
-def delete_memory(memory: AgentMemory, removed_memory: Memory) -> None:
+def delete_memory(memory: AgentMemory, memory_id: str) -> None:
     """
     Delete the specified memory from both the agent's memory list and the memory database.
-
     Parameters:
         memory (AgentMemory): The `AgentMemory` object to be updated.
-        removed_memory (Memory): The `Memory` object to be removed.
-
+        memory_id (str): The unique identifier of the memory to be removed.
     Returns:
         None
+    Raises:
+        ValueError: If the memory_id is invalid or not found
     """
-
     if memory.manager is None:
         memory.manager = MemoryManager(user_id=memory.user_id, db=memory.db)
-
-    memories = memory.memories
-    if memories and removed_memory and removed_memory in memories:
-        memories.remove(removed_memory)
-    memory.manager.clear_memory()
-    if memories:
-        for memo in memories:
-            memory.manager.add_memory(memo.memory)
+    try:
+        memory.manager.delete_memory(memory_id)
+    except Exception as e:
+        logger.error("[legacy.memory.delete_memory] Failed to delete memory: %s", e)
 
 
 def get_history_responses(agent_raw_config: dict[str, Any]) -> int:
@@ -132,7 +128,7 @@ def get_memory(
     return memory
 
 
-def set_memory_manager(memory: AgentMemory, user_id) -> None:
+def set_memory_manager(memory: AgentMemory, user_id: str) -> MemoryManager:
     """
     Set the memory manager for the agent's memory.
 
@@ -144,7 +140,7 @@ def set_memory_manager(memory: AgentMemory, user_id) -> None:
         None
     """
     memory.manager = MemoryManager(user_id=user_id, db=memory.db)
-    return None
+    return memory.manager
 
 
 class CustomMemoryClassifier(MemoryClassifier):

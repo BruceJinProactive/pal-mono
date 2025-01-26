@@ -1,6 +1,7 @@
 from typing import Any
 
 from phi.memory.agent import AgentMemory
+from phi.memory.manager import MemoryManager
 from phi.memory.memory import Memory
 
 from . import _implementation
@@ -34,18 +35,18 @@ def clear_memory(account_name: str, user_id: str) -> None:
     return _implementation.clear_memory(account_name, user_id)
 
 
-def delete_memory(memory: AgentMemory, removed_memory: Memory) -> None:
+def delete_memory(memory: AgentMemory, memory_id: str) -> None:
     """
     Delete the specified memory from both the agent's memory list and the memory database.
 
     Args:
         memory (AgentMemory): The `AgentMemory` object to be updated.
-        removed_memory (str): The memory to be removed.
+        memory_id (str): The id of `Memory` object to be removed.
 
     Returns:
         None
     """
-    return _implementation.delete_memory(memory, removed_memory)
+    return _implementation.delete_memory(memory, memory_id)
 
 
 def get_memory(
@@ -89,7 +90,7 @@ def get_history_responses(agent_raw_config: dict[str, Any]) -> int:
     return _implementation.get_history_responses(agent_raw_config)
 
 
-def set_memory_manager(memory: AgentMemory, memory_id: str) -> None:
+def set_memory_manager(memory: AgentMemory, memory_id: str) -> MemoryManager:
     """
     Set the memory manager for the agent's memory list and the memory database.
 
