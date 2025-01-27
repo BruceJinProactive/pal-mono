@@ -92,6 +92,12 @@ class Message(BaseModel):
         }
 
     def get_content(self) -> str:
+        if self.channel in [Channel.SMS, Channel.VOICE]:
+            phone_number = f"My phone number is: {self.sender_identifier}"
+            self.context = (
+                f"{self.context}|{phone_number}" if self.context else phone_number
+            )
+
         if self.text:
             content = (
                 f"<message_channel>{self.channel.value}</message_channel>\n\n"
