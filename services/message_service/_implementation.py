@@ -1,4 +1,5 @@
 import random
+import time
 import uuid
 from typing import AsyncIterator
 
@@ -23,7 +24,6 @@ from services import agent_service, user_service
 from utils.log import logger
 
 from . import _utils
-import time
 
 
 def get_filler_message(message: Message) -> Message:
@@ -57,6 +57,7 @@ def get_filler_message(message: Message) -> Message:
         broker=message.broker,
         text=TextObject(body=filler_content),
     )
+    _add_message_info_to_metadata(message=message, metadata=filler_message.metadata)
     return filler_message
 
 
@@ -91,10 +92,7 @@ async def get_chat_response_async(
         metadata["project_name"] = project.name
 
         # Add MessageSid or CallSid to the metadata based on the channel
-        if message.channel == Channel.SMS and "MessageSid" in message.metadata:
-            metadata["MessageSid"] = message.metadata["MessageSid"]
-        elif message.channel == Channel.VOICE and "CallSid" in message.metadata:
-            metadata["CallSid"] = message.metadata["CallSid"]
+        _add_message_info_to_metadata(message, metadata)
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
@@ -372,10 +370,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         metadata["project_name"] = project.name
 
         # Add MessageSid or CallSid to the metadata based on the channel
-        if message.channel == Channel.SMS and "MessageSid" in message.metadata:
-            metadata["MessageSid"] = message.metadata["MessageSid"]
-        elif message.channel == Channel.VOICE and "CallSid" in message.metadata:
-            metadata["CallSid"] = message.metadata["CallSid"]
+        _add_message_info_to_metadata(message=message, metadata=metadata)
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
@@ -483,6 +478,20 @@ def get_chat_response(session: Session, message: Message) -> Message:
         )
 
     return response_message
+
+
+def _add_message_info_to_metadata(message: Message, metadata: dict) -> None:
+    """
+    Add MessageSid or CallSid to the metadata based on the channel type.
+
+    Args:
+        message (Message): The message containing channel and metadata information
+        metadata (dict): The metadata dictionary to update
+    """
+    if message.channel == Channel.SMS and "MessageSid" in message.metadata:
+        metadata["MessageSid"] = message.metadata["MessageSid"]
+    elif message.channel == Channel.VOICE and "CallSid" in message.metadata:
+        metadata["CallSid"] = message.metadata["CallSid"]
 
 
 def get_messages_by_conversation(
