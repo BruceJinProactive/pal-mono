@@ -1,13 +1,12 @@
 import http.client
 import json
-import os
 import time
 from datetime import date
 
 import requests
 
 from api.schemas.asset.asset import ReadAssetRequest, WriteAssetRequest
-from services.asset_service import read_asset_by_name, read_asset_response, write_asset
+from services.asset_service import read_asset_by_name, write_asset
 from tools.ordering_tools.classes import Consumer
 from tools.ordering_tools.integrations.adora.classes import (
     AdoraAccessToken,
@@ -50,7 +49,8 @@ def get_adora_menu(store_id: str, bearer_token: AdoraAccessToken) -> dict | None
         # Response is 200 and not empty URL
         logger.info("Getting menu from s3 bucket via asset service.")
 
-        bytes = read_asset_response(asset_response)
+        response = requests.get(asset_response.url)
+        bytes = response.content
         json_str = bytes.decode("utf-8")
         response_data = json.loads(json_str)
 

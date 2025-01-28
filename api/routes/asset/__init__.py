@@ -1,4 +1,6 @@
-from fastapi import APIRouter, File, UploadFile
+import json
+
+from fastapi import APIRouter, File, Form, Path, UploadFile
 
 from api.routes.endpoints import endpoints
 from api.schemas.asset.asset import AssetResponse
@@ -15,9 +17,22 @@ asset_router = APIRouter(prefix=endpoints.ASSETS, tags=["Assets"])
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 async def upload_asset(
-    asset: UploadFile = File(...), metadata: dict = {}
+    asset: UploadFile = File(...),
+    path: str = Form("", description="The desired upload path"),
+    metadata: str | None = Form(None),
 ) -> AssetResponse:
-    return await _implementation.upload_asset(asset, metadata)
+    from utils.log import logger
+
+    try:
+        if not metadata:
+            metadata_dict = {}
+        else:
+            metadata_dict = json.loads(metadata)
+    except json.JSONDecodeError:
+        logger.error("Invalid metadata format")
+        raise ValueError(f"Invalid metadata format: {metadata}")
+
+    return await _implementation.upload_asset(asset, path, metadata_dict)
 
 
 @asset_router.get(

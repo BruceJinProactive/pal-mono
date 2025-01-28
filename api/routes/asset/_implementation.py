@@ -1,3 +1,5 @@
+import os
+
 from fastapi import HTTPException, UploadFile
 
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
@@ -6,18 +8,19 @@ from services.asset_service import read_asset_by_name, write_asset
 from utils.log import logger
 
 
-async def upload_asset(asset: UploadFile, metadata: dict) -> AssetResponse:
+async def upload_asset(asset: UploadFile, path: str, metadata: dict) -> AssetResponse:
     try:
         # Process the message
-        logger.info(f"Received asset to upload: {asset.filename}")
+        logger.info(f"Received asset to upload: {asset.filename} and path")
 
         if not asset.filename:
             raise ValueError("File name is required to upload asset.")
 
         content = await asset.read()
 
+        file_path = os.path.join(path, asset.filename)
         write_asset_req = WriteAssetRequest(
-            name=asset.filename,
+            name=file_path,
             content=content,
             metadata=metadata,
         )

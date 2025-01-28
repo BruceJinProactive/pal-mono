@@ -1,5 +1,3 @@
-from urllib.parse import urlparse
-
 from botocore.exceptions import ClientError, ParamValidationError
 
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
@@ -46,22 +44,6 @@ def write_asset(file: WriteAssetRequest) -> AssetResponse:
 
 
 ## Read ##
-@_utils.handle_s3_errors
-def read_asset_response(asset_response: AssetResponse) -> bytes:
-    _utils.check_region_name()
-    s3_client = _utils.init_s3(AWS_REGION)
-
-    _utils.check_bucket_name()
-
-    parsed_url = urlparse(asset_response.url)
-    bucket_name = parsed_url.netloc.split(".")[0]
-    object_key = parsed_url.path.lstrip("/")
-
-    response = s3_client.get_object(Bucket=bucket_name, Key=object_key)
-    content = response["Body"].read()  # Read the object content
-    return content
-
-
 @_utils.handle_s3_errors
 def read_asset_by_name(request: ReadAssetRequest) -> AssetResponse:
     """Read single asset by name."""
