@@ -11,11 +11,48 @@ from agent import (
     AgentMetadata,
     AgentPersona,
     KnowledgeConfig,
+    KnowledgeProvider,
     MemoryConfig,
     ModelConfig,
     ToolConfig,
 )
 from agent.legacy import integrate_agent
+
+# Sample agent config
+ANNA_CONFIG = AgentConfig(
+    persona=AgentPersona(
+        name="Anna",
+        role="Coffee Barista",
+        description="""You are Anna. A 24 years old from Southern California. You went to collage in SolCal and are now studying LSAT to go to law school next year.
+            
+            Do not hallucinate. Use only information provided on the menu.
+            """,
+    ),
+    model=ModelConfig(
+        identifier="medium",
+        stream=False,
+    ),
+    memory=MemoryConfig(
+        enabled=True,
+        identifier="palona",
+        instruction="Don't remember user's gender",
+    ),
+    knowledge=KnowledgeConfig(
+        enabled=True,
+        provider=KnowledgeProvider.LLAMAINDEX,
+        identifier="palona",
+    ),
+    tool=ToolConfig(
+        identifiers=["calculator_tool"],
+    ),
+    metadata=AgentMetadata(
+        account_name="palona",
+        agent_id="123",
+        user_id="123",
+        session_id="123",
+        framework="phidata",
+    ),
+)
 
 
 async def construct_agent_config(
@@ -38,39 +75,7 @@ async def construct_agent_config(
     if db_project is None:
         raise ValueError("Invalid project_id")
 
-    # Sample agent config
-    config = AgentConfig(
-        persona=AgentPersona(
-            name="Anna",
-            role="Coffee Barista",
-            description="Anna is 24 years old. She is from Southern California. She went to collage in SolCal and is now studying LSAT to go to law school next year.",
-        ),
-        model=ModelConfig(
-            identifier="medium",
-            stream=stream,
-        ),
-        memory=MemoryConfig(
-            enabled=True,
-            identifier=db_agent.account.name,
-            instruction="Don't remember user's gender",
-        ),
-        knowledge=KnowledgeConfig(
-            enabled=True,
-            identifier=db_agent.account.name,
-        ),
-        tool=ToolConfig(
-            identifiers=["calculator_tool"],
-        ),
-        metadata=AgentMetadata(
-            account_name=db_agent.account.name,
-            agent_id=str(agent_id),
-            user_id=str(user_id),
-            session_id=str(conversation_id),
-            framework="phidata",
-        ),
-    )
-
-    return config
+    return ANNA_CONFIG
 
 
 async def get_ai_agent_async(

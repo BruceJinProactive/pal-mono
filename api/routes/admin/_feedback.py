@@ -16,8 +16,8 @@ from services.admin_service import (
 )
 from services.feedback_service import (
     create_feedback,
-    get_feedbacks,
     get_feedback_by_id,
+    get_feedbacks,
     update_feedback_by_id,
 )
 

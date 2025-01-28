@@ -1,8 +1,8 @@
-from enum import Enum
+from enum import StrEnum
 
 from agent.framework.phidata import PhiDataAgent
 
 
-class Framework(str, Enum):
+class Framework(StrEnum):
     PHIDATA = "phidata"
     CREWAI = "crewai"

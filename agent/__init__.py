@@ -4,7 +4,11 @@ from .config import (
     AgentMetadata,
     AgentPersona,
     KnowledgeConfig,
+    KnowledgeProvider,
     MemoryConfig,
+    MemoryProvider,
     ModelConfig,
+    ModelProvider,
     ToolConfig,
+    ToolProvider,
 )
