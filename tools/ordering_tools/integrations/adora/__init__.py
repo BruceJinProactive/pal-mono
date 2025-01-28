@@ -467,6 +467,7 @@ class AdoraIntegration:
                     f"Total with Tax: ${validated_order.total}\n"
                     f"Order ID: {saved_order.orderID}\n"
                     f"Store Phone: {self.store_information['phone']}\n"
+                    f"Store Address: {self.store_information['address']}\n"
                 )
                 order_record = f"Order ID: {saved_order.orderID}, Total: ${validated_order.total}, Order items: {', '.join(order_summary)}"
                 _utils.add_order_to_memory(account_name, user_id, order_record)
