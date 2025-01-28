@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse
+from api.schemas.chat.message import Channel
 from api.schemas.error.error import ErrorResponse
 from services.message_service import (
     get_chat_response_async,
@@ -85,14 +86,18 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                     logger.info(f"Sending filler message: {filler_message}")
 
                 async for new_session in db.get_db_async():
-                    # Start the filler message task
-                    filler_message_task = asyncio.create_task(send_filler_message())
+                    # Start the filler message task only if the message channel is VOICE
+                    if request.message.channel == Channel.VOICE:
+                        filler_message_task = asyncio.create_task(send_filler_message())
+                    else:
+                        filler_message_task = None
                     # Get the actual response
                     response_messages = await get_chat_response_async(
                         session=new_session, message=request.message
                     )
                     # Cancel the filler message task if it hasn't triggered yet
-                    filler_message_task.cancel()
+                    if filler_message_task:
+                        filler_message_task.cancel()
 
                     result = send_messages(response_messages)
                     logger.info(
