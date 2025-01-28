@@ -33,7 +33,7 @@ def write_asset(file: WriteAssetRequest) -> AssetResponse:
             Body=file.content,
             Metadata=file.metadata,
         )
-        url = _utils.construct_s3_url(AWS_ASSET_BUCKET_NAME, AWS_REGION, file.name)
+        url = _utils.generate_presigned_url(s3_client, AWS_ASSET_BUCKET_NAME, file.name)
 
         logger.info("Asset file uploaded successfully.")
         return AssetResponse(url=url)
@@ -77,7 +77,9 @@ def read_asset_by_name(request: ReadAssetRequest) -> AssetResponse:
     try:
         # Attempt to construct the URL only if the object exists
         s3_client.head_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=request.name)
-        url = _utils.construct_s3_url(AWS_ASSET_BUCKET_NAME, AWS_REGION, request.name)
+        url = _utils.generate_presigned_url(
+            s3_client, AWS_ASSET_BUCKET_NAME, request.name
+        )
         return AssetResponse(url=url)
     except ClientError as e:
         # Handle object not found
@@ -102,7 +104,9 @@ def read_assets(request: ReadAssetRequest) -> list[AssetResponse]:
         # Find by file name
         _utils.check_bucket_name()
         head = s3_client.head_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=request.name)
-        url = _utils.construct_s3_url(AWS_ASSET_BUCKET_NAME, AWS_REGION, request.name)
+        url = _utils.generate_presigned_url(
+            s3_client, AWS_ASSET_BUCKET_NAME, request.name
+        )
         found_urls.append(AssetResponse(url=url))
     else:
         # Find by metadata filters
@@ -125,8 +129,8 @@ def read_assets(request: ReadAssetRequest) -> list[AssetResponse]:
 
                     # Check if all metadata_filters match
                     if all(metadata.get(k) == v for k, v in request.metadata.items()):
-                        url = _utils.construct_s3_url(
-                            AWS_ASSET_BUCKET_NAME, AWS_REGION, key
+                        url = _utils.generate_presigned_url(
+                            s3_client, AWS_ASSET_BUCKET_NAME, key
                         )
                         found_urls.append(AssetResponse(url=url))
 

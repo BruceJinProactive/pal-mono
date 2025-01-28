@@ -4,7 +4,12 @@ import os
 import boto3
 import botocore
 import botocore.client
-from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    NoCredentialsError,
+    PartialCredentialsError,
+)
 
 from utils.log import logger
 
@@ -30,7 +35,7 @@ def handle_s3_errors(func):
                 f"AWS ClientError: {error_code}, Message: {error_message}"
             ) from e
 
-        except NoCredentialsError as e:
+        except (NoCredentialsError, PartialCredentialsError) as e:
             logger.error(f"AWS credentials invalid or not found: {e}")
             raise RuntimeError(f"AWS credentials invalid or not found: {e}") from e
 
@@ -55,8 +60,26 @@ def check_region_name() -> None:
         raise ValueError("AWS_REGION not found in environment variables")
 
 
-def construct_s3_url(bucket_name: str, region_name: str, file_name: str) -> str:
-    return f"https://{bucket_name}.s3.{region_name}.amazonaws.com/{file_name}"
+def generate_presigned_url(
+    s3_client: botocore.client.BaseClient,
+    bucket_name: str,
+    object_key: str,
+    expiration: int = 86400,  # 24 hours
+) -> str:
+    try:
+        response = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket_name, "Key": object_key},
+            ExpiresIn=expiration,
+        )
+    except (NoCredentialsError, PartialCredentialsError) as e:
+        logger.error("Credentials not available:", e)
+        return ""
+    except Exception as e:
+        logger.error("Error generating presigned URL:", e)
+        return ""
+
+    return response
 
 
 def init_s3(region_name: str) -> botocore.client.BaseClient:
@@ -73,7 +96,7 @@ def init_s3(region_name: str) -> botocore.client.BaseClient:
         else:
             s3_client = boto3.client("s3", region_name=region_name)
         return s3_client
-    except NoCredentialsError as e:
+    except (NoCredentialsError, PartialCredentialsError) as e:
         raise RuntimeError(f"AWS credentials invalid or not found: {e}")
     except BotoCoreError as e:
         raise RuntimeError(f"Issue with boto3: {e}")
