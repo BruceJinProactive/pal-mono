@@ -6,7 +6,9 @@ from phi.knowledge.agent import AgentKnowledge
 from . import _implementation
 
 
-def get_knowledge(account_name: str) -> AgentKnowledge:
+def get_knowledge(
+    account_name: str, agent_raw_config: dict[str, Any] | None = None
+) -> AgentKnowledge:
     """
     Creates and returns an AgentKnowledge instance for the specified account.
 
@@ -17,11 +19,12 @@ def get_knowledge(account_name: str) -> AgentKnowledge:
 
     Args:
         account_name (str): The name of the account for which the knowledge base is being created.
+        agent_raw_config (dict[str, Any] | None): The raw configuration for the agent. Defaults to None.
 
     Returns:
         AgentKnowledge: An instance of AgentKnowledge configured with the specified knowledge base.
     """
-    return _implementation.get_knowledge(account_name)
+    return _implementation.get_knowledge(account_name, agent_raw_config)
 
 
 def process_pdf(upload_file: Any) -> list[Document]:

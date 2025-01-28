@@ -37,7 +37,7 @@ def integrate_agent(
     num_history_responses = get_history_responses(raw_config)
 
     # -*- Agent Knowledge
-    knowledge = get_knowledge(account_name)
+    knowledge = get_knowledge(account_name, raw_config)
 
     # -*- Agent Storage
     storage = get_storage(account_name)

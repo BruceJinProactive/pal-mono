@@ -10,8 +10,16 @@ import db
 from agent.model import get_embedder
 
 
-def get_knowledge(account_name: str) -> AgentKnowledge:
+def get_knowledge(
+    account_name: str, agent_raw_config: dict[str, Any] | None = None
+) -> AgentKnowledge:
     knowledge_table_name = f"{account_name}_knowledge"
+    num_documents = (
+        agent_raw_config.get("knowledge", {}).get("num_documents", 10)
+        if agent_raw_config
+        else 10
+    )
+    num_documents = num_documents if isinstance(num_documents, int) else 10
     knowledge = CombinedKnowledgeBase(
         sources=[],
         vector_db=PgVector2(
@@ -20,7 +28,7 @@ def get_knowledge(account_name: str) -> AgentKnowledge:
             embedder=get_embedder(),
         ),
         # 2 references are added to the prompt
-        num_documents=10,
+        num_documents=num_documents,
     )
 
     return knowledge
