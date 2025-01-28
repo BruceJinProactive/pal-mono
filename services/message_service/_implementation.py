@@ -1,3 +1,4 @@
+import random
 import uuid
 from typing import AsyncIterator
 
@@ -23,6 +24,40 @@ from utils.log import logger
 
 from . import _utils
 import time
+
+
+def get_filler_message(message: Message) -> Message:
+    # Collection of filler phrases for voice responses
+    FILLER_PHRASES = [
+        "One moment, please.",
+        "Just a moment, please.",
+        "I'll be right with you.",
+        "I'm working on your request now.",
+        "I'm gathering the information you need.",
+        "Please bear with me for a moment.",
+        "I'm working on your request right now.",
+        "Please stay on the line while I assist you.",
+        "I'm here to help, just give me a moment.",
+        "Your request is important to me, please hold.",
+        "I'll have an answer for you momentarily.",
+        "One brief moment while I handle your request.",
+        "Just a brief moment, please.",
+        "Please hold the line.",
+        "I'm working on your request.",
+        "Please remain on the line.",
+        "Just a short wait.",
+    ]
+    # Randomly select a filler phrase
+    filler_content = random.choice(FILLER_PHRASES)
+    filler_message = Message(
+        author_type=AuthorType.AGENT,
+        sender_identifier=message.recipient_identifier,
+        recipient_identifier=message.sender_identifier,
+        channel=message.channel,
+        broker=message.broker,
+        text=TextObject(body=filler_content),
+    )
+    return filler_message
 
 
 async def get_chat_response_async(

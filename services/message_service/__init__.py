@@ -10,6 +10,10 @@ from api.schemas.chat.message import Message
 from . import _implementation
 
 
+def get_filler_message(message: Message) -> Message:
+    return _implementation.get_filler_message(message)
+
+
 async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:

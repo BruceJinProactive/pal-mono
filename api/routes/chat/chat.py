@@ -10,7 +10,11 @@ import db
 from api.routes.endpoints import endpoints
 from api.schemas.chat.chat import ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
-from services.message_service import get_chat_response_async, get_chat_response_stream
+from services.message_service import (
+    get_chat_response_async,
+    get_chat_response_stream,
+    get_filler_message,
+)
 from services.relay_service import send_messages
 from utils.log import logger
 
@@ -72,10 +76,24 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
         if request.relay_response:
 
             async def generate_and_send():
+                async def send_filler_message():
+                    await asyncio.sleep(
+                        2.0
+                    )  # Send filler message if it takes longer than 2 seconds go get the response
+                    filler_message = get_filler_message(request.message)
+                    send_messages([filler_message])
+                    logger.info(f"Sending filler message: {filler_message}")
+
                 async for new_session in db.get_db_async():
+                    # Start the filler message task
+                    filler_message_task = asyncio.create_task(send_filler_message())
+                    # Get the actual response
                     response_messages = await get_chat_response_async(
                         session=new_session, message=request.message
                     )
+                    # Cancel the filler message task if it hasn't triggered yet
+                    filler_message_task.cancel()
+
                     result = send_messages(response_messages)
                     logger.info(
                         f"Chat API, schedule to send messages: {response_messages}, result: {result}"
