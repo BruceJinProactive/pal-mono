@@ -22,6 +22,7 @@ from services import agent_service, user_service
 from utils.log import logger
 
 from . import _utils
+import time
 
 
 async def get_chat_response_async(
@@ -33,7 +34,10 @@ async def get_chat_response_async(
     metadata = {"instance": "BaseModel"}
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
+    start_time = time.time()  # Start time for profiling latency
     try:
+        logger.info(f"Step 1: Initialization - {time.time() - start_time:.4f}s")
+
         # find project with matching channel platform, identifier pair
         project_channel_identifier = (
             f"{message.channel.value}:{message.recipient_identifier}"
@@ -46,6 +50,8 @@ async def get_chat_response_async(
             raise ValueError(
                 f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
             )
+
+        logger.info(f"Step 2: Retrieved project - {time.time() - start_time:.4f}s")
 
         metadata["project_name"] = project.name
 
@@ -92,6 +98,10 @@ async def get_chat_response_async(
 
                     response_messages.append(opt_in_message)
 
+        logger.info(
+            f"Step 3: Retrieved or created user - {time.time() - start_time:.4f}s"
+        )
+
         # Save request message to database
         request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
@@ -99,6 +109,8 @@ async def get_chat_response_async(
         if not request_message:
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
+
+        logger.info(f"Step 4: Saved request message - {time.time() - start_time:.4f}s")
 
         # Get appropriate agent from account name
         agent_id = project.agent_id
@@ -149,10 +161,16 @@ async def get_chat_response_async(
                 conversation_id=conversation_id,
             )
 
+        logger.info(f"Step 5: Retrieved agent - {time.time() - start_time:.4f}s")
+
         # Get response from agent
         request_content = message.get_content()
         response_object = await agent.arun(request_content, stream=False)
         response_content = response_object.content
+
+        logger.info(
+            f"Step 6: Agent response received - {time.time() - start_time:.4f}s"
+        )
 
         if isinstance(response_content, str):
             response = response_content
@@ -200,6 +218,10 @@ async def get_chat_response_async(
                         )
 
                     response_messages.append(response_message)
+
+                logger.info(
+                    f"Step 8: Response processing completed - {time.time() - start_time:.4f}s"
+                )
         else:
             raise ValueError(
                 f"Can't handle response content type {type(response_content)} for userid {user.id} with request content {request_content}."
@@ -210,6 +232,7 @@ async def get_chat_response_async(
         logger.exception("Error in get_chat_response_async")
         response = "Something went wrong. Please try again."
 
+    logger.info(f"Total execution time: {time.time() - start_time:.4f}s")
     return response_messages
 
 
@@ -291,6 +314,8 @@ async def get_chat_response_stream(
 
 
 def get_chat_response(session: Session, message: Message) -> Message:
+    logger.info(message)
+
     user = None
     metadata = {"instance": "BaseModel"}
     extras = {}
