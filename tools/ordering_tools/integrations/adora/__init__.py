@@ -28,6 +28,7 @@ class AdoraIntegration:
             Literal["items", "sizes", "modifiers", "coupons"], dict[str, str]
         ] = {},
         cart_conversion_sys_prompt: str | list[str] = "",
+        coupon_id: int | None = None,
     ):
         self.account_name = account_name
         self.api_key = _utils.get_adora_secret(account_name, "API_KEY")
@@ -35,6 +36,7 @@ class AdoraIntegration:
         self.store_information = store_information
         self.adora_conversion_examples = adora_conversion_examples
         self.cart_conversion_sys_prompt = cart_conversion_sys_prompt
+        self.adora_coupon_id = coupon_id if coupon_id else 134
 
     def add_to_order(self, order_item: OrderItem) -> str:
         # Get bearer token
@@ -69,7 +71,7 @@ class AdoraIntegration:
 
         # validate order
         validated_order = _apis.validate_order(
-            bearer_token, self.store_information["store_id"], [adora_order_item], 0
+            bearer_token, self.store_information["store_id"], [adora_order_item], None
         )
 
         if isinstance(validated_order, AdoraOrderCalculationResult):
@@ -98,21 +100,7 @@ class AdoraIntegration:
             return f"Please call the store at {self.store_information['phone']} for the estimated wait time."
 
     def list_coupons(self):
-        bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
-        if not bearer_token:
-            return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
-
-        coupons = _apis.list_coupons(bearer_token, self.store_information["store_id"])
-
-        if coupons and len(coupons) > 0:
-            return (
-                "List the available coupons below. When listing coupons, do NOT use an ordered list. "
-                + "Also, inform the user that to apply a coupon, they must explicitly mention the coupon name during checkout.\n"
-                + "Here are the available coupons: "
-                + "\n\n".join([f"{c.name}\n{c.description}" for c in coupons])
-            )
-        else:
-            return "There are no available coupons at this time."
+        return "Share a polite message about no coupons available, but a 20% discount will be applied for using the Jimmy beta."
 
     def place_order(
         self, user_id: str, session_id: str, current_user_query: str
@@ -245,9 +233,11 @@ class AdoraIntegration:
         )
 
         # Get generic coupon
-        generic_coupon_info = _utils.get_generic_coupon_info(chat_history)
-        generic_coupon = generic_coupon_info.coupon if generic_coupon_info else "N/A"
-        logger.debug(f"[OrderingTools.place_order] Generic coupon: {generic_coupon}")
+        # Previously it called the get_coupon function, but PMH decided on "secret coupon" for now.
+        adora_coupon_id = self.adora_coupon_id  # Hardcoded secret coupon
+        logger.debug(
+            f"[OrderingTools.place_order] Adding secret coupon: {adora_coupon_id}"
+        )
 
         # Get cart, if empty return the error message
         cart = _utils.convert_to_adora_item(latest_cart)
@@ -286,31 +276,6 @@ class AdoraIntegration:
         logger.debug(
             "[AdoraIntegration.place_order] Converted items to Adora order items."
         )
-
-        # convert generic coupon to Adora coupon
-        if generic_coupon == "N/A":
-            adora_coupon_id = 0
-        else:
-            logger.debug(
-                "[AdoraIntegration.place_order] Converting generic coupon to Adora coupon..."
-            )
-            possible_coupons = _apis.list_coupons(
-                bearer_token, self.store_information["store_id"]
-            )
-            adora_coupon_res = _utils.convert_coupon(
-                possible_coupons,
-                generic_coupon,
-                self.adora_conversion_examples.get("coupons", {}),
-            )
-            if not adora_coupon_res.success:
-                logger.warning(
-                    f"[AdoraIntegration.place_order] Failed to convert coupon: {adora_coupon_res.message}"
-                )
-                return adora_coupon_res.message
-            adora_coupon_id = int(adora_coupon_res.message)
-            logger.debug(
-                f"[AdoraIntegration.place_order] Coupon conversion result: {adora_coupon_id if adora_coupon_id else 'No coupon applied'}"
-            )
 
         # validate address if delivery order
         adora_delivery_address = None
@@ -422,6 +387,11 @@ class AdoraIntegration:
             consumer,
             adora_delivery_address,
         )
+
+        logger.debug(
+            f"[AdoraIntegration.place_order] Validated order: {validated_order}"
+        )
+
         if not validated_order or not validated_order.key:
             return "Failed to validate order. Please try again."
 

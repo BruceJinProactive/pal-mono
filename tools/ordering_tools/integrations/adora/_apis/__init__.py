@@ -173,11 +173,11 @@ def validate_order(
     bearer_token: AdoraAccessToken,
     store_id: str,
     order_items: list[AdoraOrderItem],
-    coupon_id: int,
+    coupon_id: int | None,
     order_type: AdoraOrderType = AdoraOrderType.TakeOut,
     customer: Consumer = Consumer(
         first_name="Jimmy",
-        last_name="ProactiveAiLab",
+        last_name="ProactiveAiLab (via Jimmy)",
         phone_number="(555)555-5555",
         email="jimmythesurfer@proactiveailab.com",
     ),
@@ -221,7 +221,6 @@ def validate_order(
 
     payload = {
         "storeId": store_id,
-        "couponId": coupon_id,
         "orderType": order_type,
         "orderTypeSubType": "PhoneOrder",
         "customer": {
@@ -236,11 +235,17 @@ def validate_order(
         "orderComment": " ",
     }
 
+    # If a `0` is provided for `coupon_id`, Adora's API will return a 500 error.
+    if coupon_id is not None and coupon_id > 0:
+        payload["coupons"] = [{"coupon_id": coupon_id}]
+
     # add delivery address
     if order_type == AdoraOrderType.Delivery and delivery_address:
         payload["deliveryAddress"] = delivery_address.model_dump()
 
     payload = json.dumps(payload, cls=_utils.DecimalEncoder)
+
+    logger.debug(f"[AdoraIntegration._apis.validate_order] Payload: {payload}")
 
     response = _utils.connect_adora_order_hub(
         "POST",
