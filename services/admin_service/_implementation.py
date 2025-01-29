@@ -106,12 +106,24 @@ def get_inbox_conversations(
         reverse=True,
     )
 
-    def _get_last_message_text(message: db.Message) -> str:
+    def _get_last_message_details(message: db.Message):
+        """Extracts relevant message details including text, media, channel, sender, recipient, and broker."""
+
+        last_message_text = ""
+
+        # Extract text if available
         if message.body.get("text") is not None:
-            return message.body.get("text", {}).get("body", "")
+            last_message_text = message.body.get("text", {}).get("body", "")
+        # Extract media URL if text is unavailable
         elif message.body.get("media") is not None:
-            return message.body.get("media", {}).get("url", "")
-        return ""
+            last_message_text = message.body.get("media", {}).get("url", "")
+
+        channel = message.body.get("channel", "")
+        sender_identifier = message.body.get("sender_identifier", "")
+        recipient_identifier = message.body.get("recipient_identifier", "")
+        broker = message.body.get("broker", None)
+
+        return last_message_text, channel, sender_identifier, recipient_identifier, broker  # type: ignore
 
     # Reformat conversations
     inbox: list[ConversationPreview] = [
@@ -119,9 +131,16 @@ def get_inbox_conversations(
             id=str(conversation[0]),
             user_id=str(conversation[1]),
             num_messages=conversation[2],
-            last_message_text=_get_last_message_text(conversation[3]),
+            last_message_text=last_text,
+            channel=channel,
+            sender_identifier=sender_identifier,
+            recipient_identifier=recipient_identifier,
+            broker=broker,
         )
         for conversation in conversation_previews
+        for last_text, channel, sender_identifier, recipient_identifier, broker in [
+            _get_last_message_details(conversation[3])
+        ]
     ]
 
     return inbox
