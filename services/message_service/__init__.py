@@ -1,5 +1,5 @@
 import uuid
-from typing import AsyncIterator, List
+from typing import AsyncIterator, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -144,7 +144,10 @@ def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation
 
 __all__ = [
     "get_chat_response",
+    "get_chat_response_async",
+    "get_chat_response_stream",
     "get_messages_by_conversation",
     "get_conversations_by_user",
     "get_conversations_by_users",
+    "create_conversation",
 ]
