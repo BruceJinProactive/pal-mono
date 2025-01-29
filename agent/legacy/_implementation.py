@@ -86,6 +86,8 @@ def integrate_agent(
         num_history_responses=num_history_responses,
         # -*- Agent Knowledge
         knowledge_base=knowledge,
+        add_references=True,
+        references_format="json",
         # -*- Agent Storage
         storage=storage,
         # -*- Agent Tools
