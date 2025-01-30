@@ -1,7 +1,7 @@
 import random
 import time
 import uuid
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -75,17 +75,7 @@ async def get_chat_response_async(
         logger.info(f"Step 1: Initialization - {time.time() - start_time:.4f}s")
 
         # find project with matching channel platform, identifier pair
-        project_channel_identifier = (
-            f"{message.channel.value}:{message.recipient_identifier}"
-        )
-        project_repo = db.ProjectRepositoryAsync(session)
-        project = await project_repo.get_project_by_channel_identifier(
-            project_channel_identifier
-        )
-        if project is None:
-            raise ValueError(
-                f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
-            )
+        project = await get_project_async(session, message)
 
         logger.info(f"Step 2: Retrieved project - {time.time() - start_time:.4f}s")
 
@@ -95,41 +85,26 @@ async def get_chat_response_async(
         _add_message_info_to_metadata(message, metadata)
 
         # Get user_id by sender channel/number with user_service
-        user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
-        user_repo = db.UserRepositoryAsync(session)
-        user = await user_repo.get_user_by_channel_identifier(
-            account_id=project.account_id,
-            channel_identifier=user_channel_identifier,
-        )
+        user = await get_user_async(session, project, message)
+
         if user is None:
             # Create new user record
+            user_repo = db.UserRepositoryAsync(session)
             user = await user_repo.create_user(
-                project.account_id, user_channel_identifier
+                project.account_id,
+                f"{message.channel.value}:{message.sender_identifier}",
             )
 
-            # If the user doesn't exist, the broker is Twilio, and the channel is SMS, then append the opt-in message
-            if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
-                opt_in_text = "You have successfully been subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply."
+            # Get opt-in message and append to list of messages if applicable
+            opt_in_message = build_opt_in_message(message, metadata, extras)
+            if opt_in_message:
+                if user:
+                    # Save the opt-in message to the database
+                    await message_repo.create_message(
+                        user_id=user.id, message_body=opt_in_message.to_dict()
+                    )
 
-                opt_in_message = Message(
-                    author_type=AuthorType.AGENT,
-                    sender_identifier=message.recipient_identifier,  # Swap sender and recipient
-                    recipient_identifier=message.sender_identifier,
-                    channel=message.channel,
-                    broker=message.broker,
-                    text=TextObject(body=opt_in_text),
-                    metadata=metadata,
-                    extras=Extras(**extras),
-                )
-
-                if opt_in_message:
-                    if user:
-                        # Save the opt-in message to the database
-                        await message_repo.create_message(
-                            user_id=user.id, message_body=opt_in_message.to_dict()
-                        )
-
-                    response_messages.append(opt_in_message)
+                response_messages.append(opt_in_message)
 
         logger.info(
             f"Step 3: Retrieved or created user - {time.time() - start_time:.4f}s"
@@ -150,7 +125,9 @@ async def get_chat_response_async(
         if agent_id is None:
             raise ValueError("Agent ID not found")
 
-        logger.info(f"User channel identifier: {user_channel_identifier}")
+        logger.info(
+            f"User channel identifier: {message.channel.value}:{message.sender_identifier}"
+        )
 
         # ========================== New - Start ==========================
         # Explicitly load the project.account attribute
@@ -290,28 +267,17 @@ async def get_chat_response_stream(
 
     try:
         # find project with matching channel platform, identifier pair
-        project_channel_identifier = (
-            f"{message.channel.value}:{message.recipient_identifier}"
-        )
-        project_repo = db.ProjectRepositoryAsync(session)
-        project = await project_repo.get_project_by_channel_identifier(
-            project_channel_identifier
-        )
-        if project is None:
-            raise ValueError(
-                f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
-            )
+        project = await get_project_async(session, message)
 
         # Get user_id by sender channel/number with user_service
-        user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
-        user_repo = db.UserRepositoryAsync(session)
-        user = await user_repo.get_user_by_channel_identifier(
-            account_id=project.account_id,
-            channel_identifier=user_channel_identifier,
-        )
+        user = await get_user_async(session, project, message)
         if user is None:
+            # If user not found, just create one (no opt-in here)
+            user_repo = db.UserRepositoryAsync(session)
+
             user = await user_repo.create_user(
-                project.account_id, user_channel_identifier
+                project.account_id,
+                f"{message.channel.value}:{message.sender_identifier}",
             )
 
         # Save request message to database
@@ -355,12 +321,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
 
     try:
         # find project with matching channel platform, identifier pair
-        project_channel_identifier = (
-            f"{message.channel.value}:{message.recipient_identifier}"
-        )
-        project = db.ProjectRepository(session).get_project_by_channel_identifier(
-            project_channel_identifier
-        )
+        project = get_project_sync(session, message)
 
         if project is None:
             raise ValueError(
@@ -383,20 +344,8 @@ def get_chat_response(session: Session, message: Message) -> Message:
 
         if user is None:
             # Return user opt-in message if broker is Twilio
-            if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
-                opt_in_text = "You have successfully been subscribed to messages from this number. Reply STOP to unsubscribe. Msg&Data Rates May Apply."
-
-                response_message = Message(
-                    author_type=AuthorType.AGENT,
-                    sender_identifier=message.recipient_identifier,  # Swap sender and recipient
-                    recipient_identifier=message.sender_identifier,
-                    channel=message.channel,
-                    broker=message.broker,
-                    text=TextObject(body=opt_in_text),
-                    metadata=metadata,
-                    extras=Extras(**extras),
-                )
-
+            opt_in_message = build_opt_in_message(message, metadata, extras)
+            if opt_in_message:
                 # Create new user record right away:
                 user = user_service.get_user_by_channel_identifier(
                     session=session,
@@ -413,10 +362,10 @@ def get_chat_response(session: Session, message: Message) -> Message:
 
                     # Save response message to database
                     db.MessageRepository(session).create_message(
-                        user_id=user.id, message_body=response_message.to_dict()
+                        user_id=user.id, message_body=opt_in_message.to_dict()
                     )
 
-                return response_message
+                return opt_in_message
             else:
                 raise ValueError("User not found")
 
@@ -545,3 +494,68 @@ def get_conversations_by_users(
 def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:
     conversation_repository = db.ConversationRepository(session)
     return conversation_repository.create_conversation(user_id=user_id)
+
+
+async def get_project_async(session: AsyncSession, message: Message) -> db.Project:
+    project_channel_identifier = (
+        f"{message.channel.value}:{message.recipient_identifier}"
+    )
+    project_repo = db.ProjectRepositoryAsync(session)
+    project = await project_repo.get_project_by_channel_identifier(
+        project_channel_identifier
+    )
+    if project is None:
+        raise ValueError(
+            f"Project with channel platform '{message.channel.value}', "
+            f"channel_identifier '{message.recipient_identifier}' not found."
+        )
+    return project
+
+
+async def get_user_async(
+    session: AsyncSession, project: db.Project, message: Message
+) -> db.User | None:
+    user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
+    user_repo = db.UserRepositoryAsync(session)
+    user = await user_repo.get_user_by_channel_identifier(
+        account_id=project.account_id,
+        channel_identifier=user_channel_identifier,
+    )
+    return user
+
+
+def get_project_sync(session: Session, message: Message) -> db.Project:
+    project_channel_identifier = (
+        f"{message.channel.value}:{message.recipient_identifier}"
+    )
+    project = db.ProjectRepository(session).get_project_by_channel_identifier(
+        project_channel_identifier
+    )
+    if project is None:
+        raise ValueError(
+            f"Project with channel platform '{message.channel.value}', "
+            f"channel_identifier '{message.recipient_identifier}' not found."
+        )
+    return project
+
+
+def build_opt_in_message(
+    message: Message, metadata: dict, extras: dict
+) -> Optional[Message]:
+    if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
+        opt_in_text = (
+            "You have successfully been subscribed to messages from this number. "
+            "Reply STOP to unsubscribe. Msg&Data Rates May Apply."
+        )
+        return Message(
+            author_type=AuthorType.AGENT,
+            sender_identifier=message.recipient_identifier,  # Swap sender and recipient
+            recipient_identifier=message.sender_identifier,
+            channel=message.channel,
+            broker=message.broker,
+            text=TextObject(body=opt_in_text),
+            metadata=metadata,
+            extras=Extras(**extras),
+        )
+
+    return None
