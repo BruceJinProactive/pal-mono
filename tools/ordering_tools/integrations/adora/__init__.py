@@ -115,10 +115,6 @@ class AdoraIntegration:
         if not bearer_token:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-        # Get menu from knowledge base based on menu name
-        menu = _apis.get_adora_menu(self.store_information["store_id"], bearer_token)
-        size_map = _utils.get_size_description_map(menu)
-
         storage: AgentStorage = get_storage(self.account_name)
         session: AgentSession | None = storage.read(session_id, user_id)
         if session and session.memory and "runs" in session.memory:
@@ -262,16 +258,9 @@ class AdoraIntegration:
 
         for adora_order_item in cart:
             item = cart[adora_order_item]
-            size_id = item.sizeId
-            item_size = size_map.get(size_id, "N/A")
-            if item_size == "N/A":
-                order_summary.append(
-                    f"{adora_order_item if item.quantity == 1 else f'{item.quantity}x {adora_order_item}'}"
-                )
-            else:
-                order_summary.append(
-                    f"{adora_order_item if item.quantity == 1 else f'{item.quantity}x {adora_order_item}'} with size {item_size}"
-                )
+            order_summary.append(
+                f"{adora_order_item if item.quantity == 1 else f'{item.quantity}x {adora_order_item}'}"
+            )
 
         logger.debug(
             "[AdoraIntegration.place_order] Converted items to Adora order items."
@@ -415,7 +404,7 @@ class AdoraIntegration:
             ):
                 successful_order_details = (
                     "Order placed successfully!\n"
-                    "Here are the details of your order, list the item names + prices:\n"
+                    "Here are the details of your order, MUST list the item names + item size + modfications:\n"
                     f"{', '.join(order_summary)}\n"
                 )
 
