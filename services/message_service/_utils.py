@@ -104,8 +104,17 @@ def get_messages_from_agent_output(
         output (Output): The Output object to be converted.
 
     Returns:
-        Message: The Message object created from the Output.
+        List[Message]: The Message object created from the Output.
     """
+
+    # NOTE: For now we only support returning image documents
+
+    msg_text = f"{output.content}"
+    if output.documents:
+        msg_text += f"\n\nDocuments:\n{output.documents}"
+    if output.images:
+        msg_text += f"\n\nImages:\n{output.images}"
+
     return [
         Message(
             author_type=AuthorType.AGENT,
@@ -113,6 +122,6 @@ def get_messages_from_agent_output(
             recipient_identifier=input_message.sender_identifier,
             channel=input_message.channel,
             broker=input_message.broker,
-            text=TextObject(body=output.content),
+            text=TextObject(body=msg_text),
         )
     ]

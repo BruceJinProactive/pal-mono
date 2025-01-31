@@ -44,6 +44,7 @@ class KnowledgeConfig(BaseModel):
     enabled: bool = True
     provider: KnowledgeProvider = KnowledgeProvider.DEFAULT
     identifier: str
+    settings: Optional[dict] = None
 
 
 class ToolConfig(BaseModel):

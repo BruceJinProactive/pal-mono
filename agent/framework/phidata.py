@@ -27,6 +27,7 @@ class PhiDataAgent:
             memory=get_memory(config.memory),
             # knowledge
             knowledge_base=get_knowledge(config.knowledge),
+            search_knowledge=config.knowledge.enabled,
             add_references=True,
             references_format="json",
             # tools
@@ -46,4 +47,26 @@ class PhiDataAgent:
     async def arun(self, input: Input) -> Output:
         result = await self._agent.arun(input.get_prompt())
         content = result.content
-        return Output(content=content) if content is not None else Output(content="")
+
+        documents = []
+        images = []
+
+        if result.extra_data and result.extra_data.references:
+            res_references = result.extra_data.references[0].references
+            for reference in res_references:
+                ref_type = None
+                metadata = reference["meta_data"]
+
+                if "file_type" in metadata:
+                    ref_type = metadata["file_type"]
+
+                if ref_type and ref_type.startswith("image"):
+                    images.append(metadata["file_path"])
+                else:
+                    documents.append(metadata["file_path"])
+
+        return (
+            Output(content=content, documents=documents, images=images)
+            if content is not None
+            else Output(content="", documents=documents, images=images)
+        )

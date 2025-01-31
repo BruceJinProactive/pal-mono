@@ -41,6 +41,7 @@ ANNA_CONFIG = AgentConfig(
         enabled=True,
         provider=KnowledgeProvider.LLAMAINDEX,
         identifier="palona",
+        settings={"pinecone_index_name": "agents"},
     ),
     tool=ToolConfig(
         identifiers=["calculator_tool"],

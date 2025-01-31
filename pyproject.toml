@@ -36,6 +36,7 @@ dependencies = [
   "ddtrace==2.18.1",
   "llama-index==0.12.12",
   "llama-index-vector-stores-pinecone==0.4.4",
+  "llama-index-embeddings-cohere==0.4.0",
   
   # DevOps
   "python-json-logger==2.0.7",

@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel
 
 # TODO: Support output structure
@@ -35,7 +36,18 @@ class Output(BaseModel):
     A class used to represent an Output.
 
     content : str
-        The actual content from the agent, for example "As a coffee barista, I offer a variety of services and features to enhance your coffee experience.\n\nFeel free to let me know if there's anything specific you'd like to know!".
+        The actual content from the agent, for example "As a coffee barista, I offer a
+        variety of services and features to enhance your coffee experience.\n\nFeel free
+        to let me know if there's anything specific you'd like to know!".
+
+    documents : list, optional
+        A list of documents that can be used to provide additional information
+        (default is an empty list). Examples include, a menu of the services offered.
+
+    images : list, optional
+        A list of images retrieved.
     """
 
     content: str
+    documents: list[Any] = []
+    images: list[Any] = []
