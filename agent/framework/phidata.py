@@ -28,8 +28,6 @@ class PhiDataAgent:
             # knowledge
             knowledge_base=get_knowledge(config.knowledge),
             search_knowledge=config.knowledge.enabled,
-            add_references=True,
-            references_format="json",
             # tools
             tools=[tool for tool in get_tools(config.tool)],
             # Phidata required
