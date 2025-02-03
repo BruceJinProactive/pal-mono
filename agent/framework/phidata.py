@@ -49,8 +49,8 @@ class PhiDataAgent:
         documents = []
         images = []
 
-        if result.extra_data and result.extra_data.references:
-            res_references = result.extra_data.references[0].references
+        if result.extra_data and result.extra_data.context:
+            res_references = result.extra_data.context[0].docs
             for reference in res_references:
                 ref_type = None
                 metadata = reference["meta_data"]

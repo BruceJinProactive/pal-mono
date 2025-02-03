@@ -1,7 +1,9 @@
 import json
+import os
 from os import getenv
 
 import vertexai
+import yaml
 from google.oauth2 import service_account
 from openai import OpenAI, OpenAIError
 from pinecone import Pinecone
@@ -25,8 +27,12 @@ class PineconeIntegration:
         vertexai_location: str = "us-central1",
     ):
         # NOTE: Temporary use of vertex ai multimodal embedding model
-        google_creds_str = get_client_secret("GOOGLE_APPLICATION_CREDENTIALS")
-        google_creds_dict = json.loads(google_creds_str)
+        try:
+            google_creds_str = get_client_secret("GOOGLE_APPLICATION_CREDENTIALS")
+            google_creds_dict = json.loads(google_creds_str)
+        except Exception:
+            google_creds_str = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+            google_creds_dict = yaml.safe_load(google_creds_str)
 
         # Ensure the private key has the correct format
         if "private_key" in google_creds_dict:
