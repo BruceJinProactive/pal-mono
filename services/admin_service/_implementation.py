@@ -268,15 +268,13 @@ def get_brand(session: Session, account_name: str) -> list[dict]:
     agents = get_agents_by_account(session, account_name)
     if not agents:
         return []
-    # # find the agent's raw config
-    # parse the raw config with the branding key
-    # error check, if it doesn't have the branding key, send back an empty json
-    brand = []
+
     for agent in agents:
-        if "brand" in agent.raw_config:
-            brand_item = agent.raw_config.get("brand", {})
-            brand.append(brand_item)
-    return brand
+        if "character" in agent.raw_config:
+            character = agent.raw_config.get("character", {})
+            if "brand" in character:
+                return [character["brand"]]
+    return []
 
 
 def get_knowledge_base(session: Session, account_name: str) -> list:
