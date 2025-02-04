@@ -1,7 +1,11 @@
 import uuid
 from typing import Any, Dict, List
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+
+import db
+from api.schemas.chat.message import Message
 
 from . import _implementation
 
@@ -110,6 +114,34 @@ def delete_project(session: Session, project_id: uuid.UUID) -> None:
     return _implementation.delete_project(session, project_id)
 
 
+async def get_project_async(session: AsyncSession, message: Message) -> db.Project:
+    """
+    Asynchronously gets a specific project using the channel platform and identifier from the message.
+
+    Args:
+        session (AsyncSession): The asynchronous database connection.
+        message (Message): The message containing the channel and recipient information.
+
+    Returns:
+        The Project with the matching channel platform and identifier, or raises a ValueError if no such Project exists.
+    """
+    return await _implementation.get_project_async(session, message)
+
+
+def get_project_sync(session: Session, message: Message) -> db.Project:
+    """
+    Synchronously gets a specific project using the channel platform and identifier from the message.
+
+    Args:
+        session (Session): The database connection.
+        message (Message): The message containing the channel and recipient information.
+
+    Returns:
+        The Project with the matching channel platform and identifier, or raises a ValueError if no such Project exists.
+    """
+    return _implementation.get_project_sync(session, message)
+
+
 __all__ = [
     "create_project",
     "get_project",
@@ -117,4 +149,6 @@ __all__ = [
     "update_project_config",
     "replace_project_config",
     "delete_project",
+    "get_project_async",
+    "get_project_sync",
 ]

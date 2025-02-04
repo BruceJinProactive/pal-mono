@@ -1,9 +1,11 @@
 import uuid
-from typing import List
+from typing import List, Optional, Tuple
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from api.schemas.chat.message import Message
 
 from . import _implementation
 
@@ -48,4 +50,25 @@ def get_users_by_account_id(
     return _implementation.get_users_by_account_id(session, account_id)
 
 
-__all__ = ["get_user_by_channel_identifier", "get_users_by_account_id"]
+async def get_user_async(
+    session: AsyncSession, project: db.Project, message: Message
+) -> Tuple[Optional[db.User], bool]:
+    """
+    Asynchronously retrieve a user based on the provided project and message.
+
+    Args:
+        session (AsyncSession): The asynchronous database session to use for the query.
+        project (db.Project): The project associated with the user.
+        message (Message): The message containing the channel and sender information.
+
+    Returns:
+        Tuple[Optional[db.User], bool]: A tuple containing the retrieved user if found (otherwise None) and a boolean indicating if an opt-in message is needed.
+    """
+    return await _implementation.get_user_async(session, project, message)
+
+
+__all__ = [
+    "get_user_by_channel_identifier",
+    "get_users_by_account_id",
+    "get_user_async",
+]
