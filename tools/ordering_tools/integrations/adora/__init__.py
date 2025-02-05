@@ -364,9 +364,6 @@ class AdoraIntegration:
             bearer_token, self.store_information["store_id"], fulfillment_strategy.value
         )
 
-        # get special instructions
-        order_comment = _utils.get_special_instructions(chat_history) or ""
-
         # validate order
         logger.debug("[AdoraIntegration.place_order] Validating order...")
         validated_order = _apis.validate_order(
@@ -377,7 +374,6 @@ class AdoraIntegration:
             adora_order_type,
             consumer,
             adora_delivery_address,
-            order_comment,
         )
 
         logger.debug(

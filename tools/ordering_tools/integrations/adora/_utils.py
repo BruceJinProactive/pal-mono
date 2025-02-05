@@ -885,45 +885,6 @@ def get_similar_modifier_using_openai(
     return response.choices[0].message.content
 
 
-def get_special_instructions(chat_history: list[str]) -> str | None:
-    """Extracts the special instructions from the chat history.
-
-    Args:
-        chat_history (str): The chat history to extract the special instructions from.
-
-    Returns:
-        str: The extracted special instructions.
-    """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Your role is to process the chat history between a user and an agent.
-                        You will be provided with the chat history to process.
-                        You will extract the relevant special instructions.
-                        For example, if the user asks for extra napkins, output "extra napkins".
-                        If there are no special instructions, output "".
-                        """,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": f"{chat_history}"}],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
-        response_format=str,
-    )
-
-    return response.choices[0].message.parsed
-
-
 def get_size_description_map(menu) -> dict[int, str]:
     """
     Extracts the size description map from the menu data.
