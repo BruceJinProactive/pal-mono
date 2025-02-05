@@ -197,7 +197,7 @@ class AdoraIntegration:
         consumer = _utils.get_consumer_info(chat_history, memory_list)
         logger.debug(f"[OrderingTools.place_order] Consumer: {consumer}")
         if not consumer:
-            return "Ask the user to provide their first name, last name, phone number, and email address to place an order."
+            return "Ask the user to provide their first name, last name, and phone number to place an order."
 
         missing_info = []
         if consumer.first_name == "N/A":
@@ -206,9 +206,6 @@ class AdoraIntegration:
             missing_info.append("last name")
         if consumer.phone_number == "N/A":
             missing_info.append("phone number")
-        if consumer.email == "N/A":
-            missing_info.append("email address")
-
         if missing_info:
             logger.debug(
                 f"[OrderingTools.place_order] Missing consumer info: {missing_info}"
@@ -227,6 +224,8 @@ class AdoraIntegration:
             consumer.phone_number[3:6],
             consumer.phone_number[6:],
         )
+        # Set consumer email
+        consumer.email = "adora.receipts@proactiveailab.com"
 
         # Get generic coupon
         # Previously it called the get_coupon function, but PMH decided on "secret coupon" for now.
