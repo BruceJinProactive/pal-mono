@@ -18,6 +18,8 @@ from utils.log import logger
 
 from . import _apis, _utils
 
+ADORA_PAYMENT_URL = "https://pizzamyheart.adorapos.net/OnlineOrdering/OrderHubPayment/?storeKey={store_id}&orderId={order_id}"
+
 
 class AdoraIntegration:
     def __init__(
@@ -395,14 +397,15 @@ class AdoraIntegration:
 
         # send credit card payment link to the consumer
         try:
-            if saved_order and _apis.text_payment(
-                bearer_token,
-                saved_order.orderID,
-                self.store_information["store_id"],
-                consumer.phone_number,
-            ):
+            if saved_order:
+                text_payment_url = ADORA_PAYMENT_URL.format(
+                    store_id=self.store_information["store_id"],
+                    order_id=saved_order.orderID,
+                )
+
                 successful_order_details = (
-                    "Order placed successfully!\n"
+                    "Your order is pending!\n"
+                    f"Please proceed to the payment link to complete your order: {text_payment_url}\n"
                     "Here are the details of your order, MUST list the item names + item size + modfications:\n"
                     f"{', '.join(order_summary)}\n"
                 )

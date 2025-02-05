@@ -5,10 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db as db
-from api.schemas.chat.message import (
-    Channel,
-    Message,
-)
+from api.schemas.chat.message import Channel, Message
 
 
 def get_user_by_channel_identifier(
