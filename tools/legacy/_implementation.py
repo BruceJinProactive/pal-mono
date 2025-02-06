@@ -6,7 +6,6 @@ from utils.log import logger
 
 from ..booking_tools import BookingTools
 from ..escalation_tools import EscalationTools
-from ..image_retrieval_tools import ImageRetrievalTools
 from ..ordering_tools import OrderingTools
 from ..ordering_tools.classes import OrderingFields
 
@@ -17,7 +16,6 @@ def get_tools(agent_raw_config, user_id, session_id):
         "OrderingTools": OrderingTools,
         "BookingTools": BookingTools,
         "EscalationTools": EscalationTools,
-        "ImageRetrievalTools": ImageRetrievalTools,
     }
 
     if "tools" in agent_raw_config and type(agent_raw_config["tools"]) is list:

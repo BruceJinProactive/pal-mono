@@ -123,7 +123,13 @@ def get_inbox_conversations(
         recipient_identifier = message.body.get("recipient_identifier", "")
         broker = message.body.get("broker", None)
 
-        return last_message_text, channel, sender_identifier, recipient_identifier, broker  # type: ignore
+        return (
+            last_message_text,
+            channel,
+            sender_identifier,
+            recipient_identifier,
+            broker,
+        )  # type: ignore
 
     # Reformat conversations
     inbox: list[ConversationPreview] = [

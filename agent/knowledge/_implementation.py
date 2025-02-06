@@ -1,6 +1,6 @@
 import os
 
-from llama_index.core import Settings, StorageContext
+from llama_index.core import Settings
 from llama_index.core.indices import MultiModalVectorStoreIndex
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
@@ -11,34 +11,33 @@ from phi.vectordb.pgvector.pgvector2 import PgVector2
 
 import db
 from agent.config import KnowledgeConfig, KnowledgeProvider
+from agent.knowledge.integrations.pinecone import PineconeIntegration
 from agent.model import get_embedder
-from tools.image_retrieval_tools.integrations.pinecone import PineconeIntegration
+from utils.log import logger
 
 
 def get_knowledge(config: KnowledgeConfig) -> AgentKnowledge:
     if config.provider == KnowledgeProvider.LLAMAINDEX:
         # Use llamaindex
-        pinecone_key = os.getenv("PINECONE_API_KEY")
-        if not pinecone_key:
-            raise ValueError("Pinecone API key not found")
-
         if not config.settings:
             raise ValueError(
                 "KnowledgeConfig settings required but not found in config"
             )
 
-        if not config.settings.get("pinecone_index_name"):
+        index_name = config.settings.get("pinecone_index_name")
+        namespace = config.settings.get("pinecone_namespace")
+
+        if not index_name:
             raise ValueError(
                 "Pinecone index name not found in KnowledgeConfig settings"
             )
 
-        pinecone_integration = PineconeIntegration(
-            pinecone_api_key=pinecone_key,
-            pinecone_index_name=config.settings["pinecone_index_name"],
-            pinecone_namespace="default",
-            pinecone_dim=1408,
-            vertexai_project_id="windsor-demo",
-        )
+        if not namespace:
+            raise ValueError("Pinecone namspace not found in KnowledgeConfig settings")
+
+        logger.debug(f"pinecone: {index_name} | {namespace}")
+
+        pinecone_index = PineconeIntegration.get_pinecone_index(index_name)
 
         cohere_api_key = os.getenv("COHERE_API_KEY")
         if not cohere_api_key:
@@ -48,18 +47,21 @@ def get_knowledge(config: KnowledgeConfig) -> AgentKnowledge:
         Settings.embed_model = CohereEmbedding(
             api_key=cohere_api_key, model_name="embed-english-v3.0"
         )
-        vector_store = PineconeVectorStore(pinecone_index=pinecone_integration.index)
 
-        storage_context = StorageContext.from_defaults(
-            vector_store=vector_store, image_store=vector_store
+        vector_store = PineconeVectorStore(
+            pinecone_index=pinecone_index, namespace=namespace
         )
 
-        index = MultiModalVectorStoreIndex.from_documents(
-            [], storage_context=storage_context, image_embed_model=Settings.embed_model
+        index = MultiModalVectorStoreIndex.from_vector_store(
+            vector_store=vector_store,
+            embed_model=Settings.embed_model,
+            image_embed_model=Settings.embed_model,
         )
+
         retriever_engine = index.as_retriever(
             similarity_top_k=3, image_similarity_top_k=3
         )
+
         knowledge = LlamaIndexKnowledgeBase(retriever=retriever_engine)
 
     elif config.provider == KnowledgeProvider.DEFAULT:

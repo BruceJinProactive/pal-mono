@@ -135,7 +135,7 @@ async def get_chat_response_async(
         # ========================== New - Start ==========================
         # Explicitly load the project.account attribute
         await session.refresh(project, attribute_names=["account"])
-        if project.account.name == "palona":
+        if project.account.name == "palona" or project.account.name == "windsor":
             logger.info("Test new agent building flow.")
 
             # Construct config
