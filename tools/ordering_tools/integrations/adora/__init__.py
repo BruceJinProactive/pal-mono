@@ -366,6 +366,9 @@ class AdoraIntegration:
             bearer_token, self.store_information["store_id"], fulfillment_strategy.value
         )
 
+        # get special instructions
+        order_comment = _utils.get_special_instructions(chat_history) or ""
+
         # validate order
         logger.debug("[AdoraIntegration.place_order] Validating order...")
         validated_order = _apis.validate_order(
@@ -376,6 +379,7 @@ class AdoraIntegration:
             adora_order_type,
             consumer,
             adora_delivery_address,
+            order_comment,
         )
 
         logger.debug(
@@ -402,8 +406,11 @@ class AdoraIntegration:
                     store_id=self.store_information["store_id"],
                     order_id=saved_order.orderID,
                 )
-
                 successful_order_details = (
+                    "For the information below, MUST show all of them in order\n"
+                )
+
+                successful_order_details += (
                     "Your order is pending!\n"
                     f"Please proceed to the payment link to complete your order: {text_payment_url}\n"
                     "Here are the details of your order, MUST list the item names + item size + modfications:\n"
@@ -413,6 +420,9 @@ class AdoraIntegration:
                 # Type check
                 if validated_order.subTotal is None or validated_order.total is None:
                     return "Failed to place order. Please try again."
+
+                if order_comment and order_comment != "N/A":
+                    successful_order_details += f"Comments: ${order_comment}\n"
 
                 # Add discount, otherwise add subtotal
                 if validated_order.subTotal > validated_order.total:

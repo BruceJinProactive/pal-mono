@@ -182,6 +182,7 @@ def validate_order(
         email="jimmythesurfer@proactiveailab.com",
     ),
     delivery_address: AdoraDeliveryAddress | None = None,
+    order_comment: str = "",
 ):
     """
     Validate a customer order in Adora system.
@@ -194,6 +195,7 @@ def validate_order(
         order_type (AdoraOrderType, optional): The type of order (default is TakeOut).
         customer (Consumer, optional): The customer details (default is a predefined Consumer).
         delivery_address (AdoraDeliveryAddress | None, optional): The delivery address if the order is for delivery.
+        order_comment (str, optional): The order comment.
 
     Returns:
         dict: A dictionary containing the validation result with keys such as 'Key', 'IsPaymentRequired', 'SubTotal', 'Total', 'Discount', 'TaxAmount', 'ServiceCharge', and 'DeliveryCharge'.
@@ -232,7 +234,7 @@ def validate_order(
         "items": full_item_list,
         "discount": 0,
         "paid": False,
-        "orderComment": " ",
+        "orderComment": order_comment,
     }
 
     # If a `0` is provided for `coupon_id`, Adora's API will return a 500 error.
