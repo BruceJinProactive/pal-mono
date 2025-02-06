@@ -78,12 +78,12 @@ class AdoraIntegration:
 
         if isinstance(validated_order, AdoraOrderCalculationResult):
             return (
-                "In the response to the user (content field of output), in your agent's tone, tell the user this was added: "
+                "Step 1 :In the response to the user (content field of output), in your agent's tone, tell the user this was added: "
                 + f"QUANTITY: {adora_order_item.quantity}, SIZE: {adora_order_item.size}, ITEM NAME: {adora_order_item.item_name}, "
                 + f"with MODIFICATIONS: {adora_order_item.modifications} for PRICE: {validated_order.subTotal} to your cart.\n\n"
-                + "In a new line, show users the current cart with bullet points"
+                + "Step 2: In a new line, show users the current cart with bullet points and DO NOT miscount the quantity of items."
                 + "with the format of '{quantity} x {item_size} {item_name} with {modification} for {price}'.\n\n"
-                + "In the cart field of the structured output, add this item to the cart in this json format: "
+                + "Step 3: In the cart field of the structured output, add this item to the cart in this json format and DO NOT miscount the quantity of items: "
                 + f"{{'itemName': {adora_order_item.item_name}',itemId': {adora_order_item.itemId}, 'quantity': {adora_order_item.quantity}, 'sizeId': {adora_order_item.sizeId}, 'modifiers': {adora_order_item.modifiers}, 'price': {adora_order_item.price}, 'comment': {adora_order_item.comment}, 'taxes': {adora_order_item.taxes}}}"
             )
         else:

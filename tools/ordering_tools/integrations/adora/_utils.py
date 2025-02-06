@@ -25,6 +25,7 @@ from tools.ordering_tools.integrations.adora.classes import (
     AdoraOrderItem,
     MenuItemDetails,
 )
+from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
 
@@ -1169,6 +1170,10 @@ def validate_and_convert_item(
         order_item,
         modifier_conversion_examples,
     )
+    if adora_order_item_conversion_res[0]:
+        logger.info(
+            f"Adora Order Item Conversion successfully : {adora_order_item_conversion_res[1]}"
+        )
 
     return adora_order_item_conversion_res
 
