@@ -139,16 +139,6 @@ class AdoraIntegration:
             )
             return "Failed to place order. Please try again."
 
-        if not latest_cart:
-            logger.debug(
-                "[AdoraIntegration.place_order] Failed to place order because all cart fields of previous structured output messages are empty."
-            )
-            return (
-                "Failed to place order because there are no items in the cart. "
-                + "Add the relevant items to the cart field of the structured output field (as instructed by the add_to_order function) "
-                + "then nicely tell the user to try again."
-            )
-
         # Reverse chat history to restore original order of messages AFTER most recent order placed
         chat_history = chat_history[::-1]
 
@@ -238,10 +228,70 @@ class AdoraIntegration:
 
         # Get cart, if empty return the error message
         cart = _utils.convert_to_adora_item(latest_cart)
-        logger.debug(f"[AdoraIntegration.place_order] Generic cart: {cart}")
 
+        # If the structured output does not work
         if not cart:
-            return "Your cart is empty. Please add items to your order."
+            if isinstance(self.cart_conversion_sys_prompt, list):
+                self.cart_conversion_sys_prompt = " ".join(
+                    self.cart_conversion_sys_prompt
+                )
+            elif type(self.cart_conversion_sys_prompt) is not str:
+                self.cart_conversion_sys_prompt = ""
+            llmcart = _utils.get_cart_info(
+                chat_history, self.cart_conversion_sys_prompt
+            )
+            menu = _apis.get_adora_menu(
+                self.store_information["store_id"], bearer_token
+            )
+            if not menu:
+                logger.error("[AdoraIntegration.place_order] Failed to get menu.")
+                return "Failed to get menu, please try again."
+
+            menu_maps = _utils.get_menu_maps(menu)
+            modifier_weights_map = _utils.get_modifier_weights_map(menu)
+            size_map = _utils.get_size_description_map(menu)
+
+            if llmcart:
+                for order_item in llmcart.cart_items:
+                    order_item = OrderItem(
+                        order_item.item_name,
+                        order_item.size,
+                        order_item.quantity,
+                        order_item.modifications,
+                    )
+                    convert_item_success, adora_order_item = (
+                        _utils.validate_and_convert_item(
+                            order_item,
+                            menu_maps,
+                            modifier_weights_map,
+                            size_map,
+                            menu["modifiers"],
+                            menu["modifier_groups"],
+                            self.adora_conversion_examples.get("items", {}),
+                            self.adora_conversion_examples.get("sizes", {}),
+                            self.adora_conversion_examples.get("modifiers", {}),
+                        )
+                    )
+
+                    if not convert_item_success and isinstance(adora_order_item, str):
+                        logger.debug(
+                            f"[AdoraIntegration.place_order] Failed to convert item {order_item}: {adora_order_item}"
+                        )
+                        return adora_order_item
+
+                    if not isinstance(adora_order_item, AdoraOrderItem):
+                        return "Failed to convert order item."
+
+                    cart[order_item.item_name] = adora_order_item
+                    logger.debug(
+                        f"[AdoraIntegration.place_order] Successfully converted item: {order_item.item_name}"
+                    )
+        # If the cart is still empty
+        if not cart:
+            return (
+                "Your cart is empty. Please add items to your cart to place an order."
+            )
+
         adora_cart = list(cart.values())
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)

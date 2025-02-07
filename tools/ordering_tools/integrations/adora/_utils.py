@@ -937,20 +937,27 @@ def get_size_description_map(menu) -> dict[int, str]:
     return {size["size_id"]: size["name"] for size in menu["sizes"]}
 
 
-def convert_to_adora_item(generic_cart) -> dict[str, AdoraOrderItem] | None:
-    """Parses the string-based cart from an LLM's structured output field into an array of objects.
+def convert_to_adora_item(generic_cart) -> dict[str, AdoraOrderItem]:
+    """Parses the string-based cart from an LLM's structured output field into a dictionary of AdoraOrderItem objects.
 
     Args:
-        generic_cart (dict): A dictionary containing the cart items with required details for AdoraItem.
+        generic_cart (dict): A dictionary containing the cart items with required details for AdoraOrderItem.
 
     Returns:
-        dict[str, AdoraOrderItem] | None: The parsed cart items as AdoraOrderItem objects.
+        Dict[str, AdoraOrderItem]: The parsed cart items as AdoraOrderItem objects. Returns an empty dictionary if any required attribute is missing.
+
 
     """
     if not generic_cart:
-        return None
+        return {}
+
     cart = {}
+    required_keys = {"itemId", "sizeId", "quantity", "price", "modifiers", "itemName"}
+
     for item in generic_cart:
+        # Return None immediately if any required attribute is missing
+        if not required_keys.issubset(item):
+            return {}
         order_item = AdoraOrderItem(
             int(item["itemId"]),
             int(item["sizeId"]),
