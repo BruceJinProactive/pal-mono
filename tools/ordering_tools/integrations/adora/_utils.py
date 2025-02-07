@@ -1123,8 +1123,8 @@ def validate_and_convert_item(
     # detect invalid quantity
     if order_item.quantity < 1:
         return False, f"{order_item.item_name}: Quantity must be at least 1."
-    if order_item.quantity > 100:
-        return False, f"{order_item.item_name}: Quantity must be at most 100."
+    if order_item.quantity > 20:
+        return False, f"{order_item.item_name}: Quantity must be at most 20."
 
     # get Adora-specific item id
     adora_item_id_res = get_adora_item_id(
