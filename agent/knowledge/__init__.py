@@ -3,10 +3,11 @@ from typing import Any
 from phi.document.base import Document
 from phi.knowledge.agent import AgentKnowledge
 
-from agent.config import KnowledgeConfig
+from . import _config, _implementation
 
-from . import _implementation
+KnowledgeConfig = _config.KnowledgeConfig
+KnowledgeProvider = _config.KnowledgeProvider
+VectorStoreProvider = _config.VectorStoreProvider
+VectorStoreModality = _config.VectorStoreModality
 
-
-def get_knowledge(config: KnowledgeConfig) -> AgentKnowledge:
-    return _implementation.get_knowledge(config)
+get_knowledge = _implementation.get_knowledge

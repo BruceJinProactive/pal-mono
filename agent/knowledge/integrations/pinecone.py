@@ -12,5 +12,4 @@ class PineconeIntegration:
 
         pc = Pinecone(api_key=pinecone_api_key)
         index = pc.Index(pinecone_index_name)
-
         return index

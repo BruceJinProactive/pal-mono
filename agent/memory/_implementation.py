@@ -4,12 +4,13 @@ from phi.memory.db.postgres import PgMemoryDb
 from phi.model.message import Message
 
 import db
-from agent.config import MemoryConfig
 from agent.model import ModelName, get_model
 from utils.log import logger
 
+from . import _config
 
-def get_memory(config: MemoryConfig) -> AgentMemory:
+
+def get_memory(config: _config.MemoryConfig) -> AgentMemory:
     memory_table_name = f"{config.identifier}_memory"
     memory = AgentMemory(
         db=PgMemoryDb(

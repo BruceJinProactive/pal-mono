@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from agent import Agent, AgentConfig
+from agent import AgentConfig
 
 from . import _implementation
 

@@ -3,10 +3,9 @@ from typing import Any
 from phi.memory.agent import AgentMemory
 from phi.memory.memory import Memory
 
-from agent.config import MemoryConfig
+from . import _config, _implementation
 
-from . import _implementation
+MemoryConfig = _config.MemoryConfig
+MemoryProvider = _config.MemoryProvider
 
-
-def get_memory(config: MemoryConfig) -> AgentMemory:
-    return _implementation.get_memory(config)
+get_memory = _implementation.get_memory
