@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from pydantic import BaseModel, Field
@@ -12,3 +13,4 @@ class ConversationPreview(BaseModel):
     sender_identifier: str
     recipient_identifier: str
     broker: str | None
+    created_at: datetime.datetime

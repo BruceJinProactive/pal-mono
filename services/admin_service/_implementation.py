@@ -87,7 +87,7 @@ def get_inbox_conversations(
         # Get most number of messages for each conversation
         message_counts[id] = message_repository.get_message_count_by_conversation(id)
 
-    # filter conversations by recency of last message, and sort descending by created_at
+    # Filter conversations by recency of last message, and sort descending by created_at
     conversation_previews = sorted(
         filter(
             lambda preview: _include_conversation_preview(preview[3], max_age),
@@ -97,18 +97,18 @@ def get_inbox_conversations(
                     user_id,
                     message_counts[id],
                     last_messages[id],
+                    last_messages[id].created_at,
                 )
                 for id, user_id in conversation_user_ids
                 if id in message_counts and id in last_messages
             ],
         ),
-        key=lambda preview: preview[3].created_at,
+        key=lambda preview: preview[4],
         reverse=True,
     )
 
     def _get_last_message_details(message: db.Message):
         """Extracts relevant message details including text, media, channel, sender, recipient, and broker."""
-
         last_message_text = ""
 
         # Extract text if available
@@ -142,6 +142,7 @@ def get_inbox_conversations(
             sender_identifier=sender_identifier,
             recipient_identifier=recipient_identifier,
             broker=broker,
+            created_at=conversation[4],
         )
         for conversation in conversation_previews
         for last_text, channel, sender_identifier, recipient_identifier, broker in [
