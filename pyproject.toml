@@ -1,9 +1,9 @@
 [project]
 name = "pal-mono"
 version = "0.1.0"
-requires-python = ">3.7"
+requires-python = ">=3.11"
 readme = "README.md"
-authors = [{ name = "Team", email = "team@team.com" }]
+authors = [{ name = "Proactive AI Lab", email = "rnd@proactiveailab.com" }]
 
 dependencies = [
   # /api
@@ -35,7 +35,7 @@ dependencies = [
   "llama-index==0.12.12",
   "llama-index-vector-stores-pinecone==0.4.4",
   "llama-index-embeddings-cohere==0.4.0",
-  
+
   # DevOps
   "python-json-logger==2.0.7",
   "pytest==8.3.2",
@@ -45,10 +45,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "black==24.8.0",
-    "isort==5.13.2",
-    "ruff==0.6.2",
-    "pyright==1.1.382",
+  "black==24.8.0",
+  "isort==5.13.2",
+  "ruff==0.6.2",
+  "pyright==1.1.382",
 ]
 
 [build-system]
