@@ -21,8 +21,9 @@ async def get_memory_context(user_id: str) -> str:
     client = AsyncMemoryClient()
 
     # Perform the search with specified fields
-    memories = await client.search(
-        query="pear", version="v2", filters={"user_id": user_id}, fields=["memory"]
+    memories = await client.get_all(
+        user_id=user_id,
+        fields=["memory"],
     )
     memories = [item["memory"] for item in memories]
     memories_string = ", ".join(memories)
