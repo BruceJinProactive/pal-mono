@@ -3,6 +3,7 @@ from typing import Dict, Optional, Type
 from phi.tools.toolkit import Toolkit
 
 from .calculator_tool import CalculatorTool
+from .adora_tool import AdoraTool
 
 
 class ToolRegistry:
@@ -15,6 +16,7 @@ class ToolRegistry:
         self._tools: Dict[str, Type[Toolkit]] = {
             # Register available tools
             "calculator_tool": CalculatorTool,
+            "adora_tool": AdoraTool,
         }
 
     def get_tool(self, name: str) -> Optional[Toolkit]:

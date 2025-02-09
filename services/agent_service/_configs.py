@@ -130,7 +130,7 @@ NEW_PIZZAMYHEART_CONFIG = AgentConfig(
         },
     ),
     tool=ToolConfig(
-        identifiers=["calculator_tool"],
+        identifiers=["adora_tool"],
     ),
     metadata=AgentMetadata(
         account_name="new-pizzamyheart",

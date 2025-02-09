@@ -5,6 +5,9 @@ from openai import OpenAI
 from phi.tools.toolkit import Toolkit
 from phi.utils.log import logger
 
+from utils.secret import get_client_secret_with_fallback
+
+from . import _apis
 from .classes import Order
 
 
@@ -22,13 +25,30 @@ class AdoraTool(Toolkit):
 
     def check_online_ordering_status(self) -> str:
         """
-        Checks if the store is online for ordering.
+        Check the online ordering status of the store.
 
         Returns:
-            str: The online status of the store.
+            str: The online ordering status of the store.
         """
         try:
-            return "STORE IS ONLINE"
+            api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
+            api_secret = get_client_secret_with_fallback(
+                "PIZZAMYHEART_ADORA_API_SECRET"
+            )
+            bearer_token = _apis.get_adora_pos_auth_token(api_key, api_secret)
+            if not bearer_token:
+                return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+
+            status = _apis.get_online_ordering_status(bearer_token, self.store_id)
+
+            if not status:
+                logger.error(
+                    "[AdoraTool.check_online_ordering_status] Failed to get online ordering status."
+                )
+                return "Failed to check the online ordering status, please try again."
+
+            return status
+
         except Exception as e:
             error_msg = "Error in checking online ordering status"
             logger.error(f"{error_msg}: {e}")
@@ -36,7 +56,7 @@ class AdoraTool(Toolkit):
 
     def get_store_info(self, store_id: str, date: str) -> str:
         """
-        Get the store information by given store id and target business date
+        Get the store information by given store id and target business date.
 
         Args:
             store_id (str): The store id

@@ -2,12 +2,11 @@ from phi.tools.toolkit import Toolkit
 from pydantic import BaseModel, Field, create_model
 
 from agent.model import BaseOutputModel
+from tools.booking_tools import BookingTools
+from tools.escalation_tools import EscalationTools
+from tools.ordering_tools import OrderingTools
+from tools.ordering_tools.classes import OrderingFields
 from utils.log import logger
-
-from ..booking_tools import BookingTools
-from ..escalation_tools import EscalationTools
-from ..ordering_tools import OrderingTools
-from ..ordering_tools.classes import OrderingFields
 
 
 def get_tools(agent_raw_config, user_id, session_id):

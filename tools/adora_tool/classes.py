@@ -10,6 +10,31 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class AdoraAccessToken(BaseModel):
+    """
+    This is the response shape from the Adora API when you request an access token.
+    This access token is used to authenticate subsequent API calls.
+    """
+
+    access_token: str
+    expires_in: int
+    token_type: str
+    scope: str
+
+    def get_token_header_value(self) -> str:
+        return f"{self.token_type} {self.access_token}"
+
+
+class AdoraHubResponse(BaseModel):
+    """
+    This is the response shape from the Adora API when you make a request to the OrderHub.
+    """
+
+    status: int
+    reason: str
+    decoded_body: str
+
+
 class CustomerInfo(BaseModel):
     first_name: str = Field(description="Customer's first name")
     last_name: Optional[str] = Field(description="Customer's last name")
