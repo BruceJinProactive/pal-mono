@@ -1,9 +1,9 @@
 import phi.agent.agent
+from phi.model.openai.chat import OpenAIChat
 
 from agent.config import AgentConfig
 from agent.input_output import Input, Output
 from agent.knowledge import get_knowledge
-from agent.model import get_model
 from agent.tool import get_tools
 
 
@@ -18,10 +18,8 @@ class PhiDataAgent:
             agent_id=config.metadata.agent_id,
             user_id=config.metadata.user_id,
             session_id=config.metadata.session_id,
-            # Model
-            provider=get_model(
-                model_name=config.model.identifier, stream=config.model.stream
-            ),
+            # model
+            provider=OpenAIChat(id="gpt-4o"),
             # memory
             # Use mem0 for memory
             # knowledge
