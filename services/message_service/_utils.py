@@ -91,7 +91,10 @@ def get_agent_input_from_message(message: Message) -> Input:
         Input: The Input object created from the Message.
     """
     content = message.text.body if message.text else ""
-    return Input(content=content, context=message.context)
+    return Input(
+        content=content,
+        context=message.context,
+    )
 
 
 def get_messages_from_agent_output(

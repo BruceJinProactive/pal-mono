@@ -1,9 +1,12 @@
+import asyncio
+
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
 
 from agent.config import AgentConfig
 from agent.framework import Framework, PhiDataAgent
 from agent.input_output import Input, Output
+from agent.memory import get_memory_context, update_memory
 
 
 class Agent:
@@ -31,25 +34,13 @@ class Agent:
             raise ValueError(f"Unsupported framework: {framework}")
 
         self._agent = PhiDataAgent(config)
+        self._metadata = config.metadata
 
         # Set up Datadog LLM Observability
         LLMObs.enable(
             ml_app=config.metadata.account_name,
             agentless_enabled=True,
         )
-
-    @agent
-    def run(self, input: Input) -> Output:
-        """
-        Runs the agent synchronously with the given input.
-
-        Args:
-            input (Input): The input data for the agent.
-
-        Returns:
-            Output: The output data from the agent.
-        """
-        return self._agent.run(input)
 
     @agent
     async def arun(self, input: Input) -> Output:
@@ -62,4 +53,17 @@ class Agent:
         Returns:
             Output: The output data from the agent.
         """
-        return await self._agent.arun(input)
+
+        # Update memory with the user's input
+        asyncio.create_task(
+            update_memory(
+                user_id=self._metadata.user_id,
+                content=input.content,
+            )
+        )
+        memories = await get_memory_context(user_id=self._metadata.user_id)
+        input.memories = memories
+
+        output = await self._agent.arun(input)
+
+        return output

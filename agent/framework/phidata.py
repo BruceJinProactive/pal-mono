@@ -3,7 +3,6 @@ import phi.agent.agent
 from agent.config import AgentConfig
 from agent.input_output import Input, Output
 from agent.knowledge import get_knowledge
-from agent.memory import get_memory
 from agent.model import get_model
 from agent.tool import get_tools
 
@@ -24,7 +23,7 @@ class PhiDataAgent:
                 model_name=config.model.identifier, stream=config.model.stream
             ),
             # memory
-            memory=get_memory(config.memory),
+            # Use mem0 for memory
             # knowledge
             knowledge_base=get_knowledge(config.knowledge),
             search_knowledge=config.knowledge.enabled,

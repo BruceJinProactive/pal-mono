@@ -8,4 +8,5 @@ from . import _config, _implementation
 MemoryConfig = _config.MemoryConfig
 MemoryProvider = _config.MemoryProvider
 
-get_memory = _implementation.get_memory
+update_memory = _implementation.update_memory
+get_memory_context = _implementation.get_memory_context

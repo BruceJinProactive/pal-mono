@@ -17,6 +17,7 @@ class Input(BaseModel):
 
     content: str
     context: str = ""
+    memories: str = ""
 
     def get_prompt(self):
         """
@@ -25,9 +26,12 @@ class Input(BaseModel):
         str
             A formatted string containing the content and context.
         """
+
+        # TODO: Update prompts here
         return (
             f"<content>{self.content}</content>\n\n"
             + f"<context>{self.context}</context>\n\n"
+            + f"<memories>{self.memories}</memories>\n\n"
         )
 
 

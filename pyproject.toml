@@ -36,6 +36,7 @@ dependencies = [
   "llama-index-vector-stores-pinecone==0.4.4",
   "llama-index-embeddings-cohere==0.4.0",
   "instructor==1.7.2",
+  "mem0ai==0.1.48",
 
   # DevOps
   "python-json-logger==2.0.7",
