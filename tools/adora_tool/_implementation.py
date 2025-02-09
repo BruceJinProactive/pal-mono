@@ -1,7 +1,11 @@
 from typing import List
 
+import instructor
+from openai import OpenAI
 from phi.tools.toolkit import Toolkit
 from phi.utils.log import logger
+
+from .classes import Order
 
 
 class AdoraTool(Toolkit):
@@ -78,6 +82,39 @@ class AdoraTool(Toolkit):
         Returns:
             str: The validation result.
         """
+
+        # Patch the OpenAI client
+        client = instructor.from_openai(OpenAI())
+
+        # Extract structured data from natural language
+        try:
+            res = client.chat.completions.create(
+                model="o1",
+                response_model=Order,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """
+                        You are a precise data extractor. Your task is to extract order information ONLY from the provided chat history.
+                        IMPORTANT RULES:
+                        - Do NOT make assumptions or fabricate data
+                        - Leave fields as None/null if the information is not explicitly mentioned
+                        - Do not infer values from context
+                        - Only extract information that is directly stated
+                        - Maintain exact values as mentioned (don't modify numbers or text)
+                        - For phone numbers, only extract if a complete number is provided
+                        - For addresses, only extract if all required components are present
+
+                        If unsure about any field, leave it empty rather than guessing.
+                        """,
+                    }
+                    # TODO: Add messages from chat history
+                ],
+            )
+            logger.info(f"Extracted structured data: {res}")
+        except Exception as e:
+            logger.error(f"Error in extracting structured data: {e}")
+
         try:
             return "ORDER IS VALID"
         except Exception as e:
