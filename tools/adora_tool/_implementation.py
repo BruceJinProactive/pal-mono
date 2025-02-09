@@ -12,7 +12,7 @@ from .classes import Order
 
 
 class AdoraTool(Toolkit):
-    def __init__(self):
+    def __init__(self, session_id: str):
         super().__init__(name="adora_tool")
 
         # Register tools
@@ -22,6 +22,7 @@ class AdoraTool(Toolkit):
         self.register(self.validate_order)
 
         self.store_id = "9WHCV"
+        self.session_id = session_id
 
     def check_online_ordering_status(self) -> str:
         """

@@ -8,4 +8,4 @@ from .knowledge import (
 )
 from .memory import MemoryConfig, MemoryProvider
 from .model import ModelConfig, ModelProvider
-from .tool import ToolConfig, ToolProvider
+from .tool import ToolConfig, ToolIdentifier, ToolProvider

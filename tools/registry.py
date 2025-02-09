@@ -2,8 +2,11 @@ from typing import Dict, Optional, Type
 
 from phi.tools.toolkit import Toolkit
 
-from .calculator_tool import CalculatorTool
+# TODO: Absolute import required to resolve circular import. Fix this anti-pattern.
+from agent.tool._config import ToolIdentifier
+
 from .adora_tool import AdoraTool
+from .calculator_tool import CalculatorTool
 
 
 class ToolRegistry:
@@ -19,19 +22,24 @@ class ToolRegistry:
             "adora_tool": AdoraTool,
         }
 
-    def get_tool(self, name: str) -> Optional[Toolkit]:
+    def get_tool(self, tool: ToolIdentifier) -> Optional[Toolkit]:
         """
-        Get a new instance of a toolkit by name.
+        Get a new instance of a toolkit by Tool Identifier object.
 
         Args:
-            name: The name of the toolkit to retrieve
+            tool (ToolIdentifier): The details of the toolkit to retrieve
 
         Returns:
             A new instance of the requested Toolkit, or None if not found
         """
-        toolkit_class = self._tools.get(name)
+        toolkit_class = self._tools.get(tool.tool_name)
+
         if toolkit_class:
+            if tool.args:
+                return toolkit_class(**tool.args)
+
             return toolkit_class()
+
         return None
 
 

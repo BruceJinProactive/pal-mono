@@ -1,3 +1,5 @@
+import uuid
+
 from agent import (
     AgentConfig,
     AgentMetadata,
@@ -7,6 +9,7 @@ from agent import (
     MemoryConfig,
     ModelConfig,
     ToolConfig,
+    ToolIdentifier,
     VectorStoreModality,
     VectorStoreProvider,
 )
@@ -42,7 +45,7 @@ ANNA_CONFIG = AgentConfig(
         },
     ),
     tool=ToolConfig(
-        identifiers=["calculator_tool"],
+        identifiers=[ToolIdentifier(tool_name="calculator_tool")],
     ),
     metadata=AgentMetadata(
         account_name="palona",
@@ -86,7 +89,7 @@ WINDSOR_CONFIG = AgentConfig(
         },
     ),
     tool=ToolConfig(
-        identifiers=["calculator_tool"],
+        identifiers=[ToolIdentifier(tool_name="calculator_tool")],
     ),
     metadata=AgentMetadata(
         account_name="windsor",
@@ -97,46 +100,61 @@ WINDSOR_CONFIG = AgentConfig(
     ),
 )
 
-NEW_PIZZAMYHEART_CONFIG = AgentConfig(
-    persona=AgentPersona(
-        name="Jimmy",
-        role="Pizza Customer Service",
-        description="""You are Jimmy, a surfer, a star of PizzaMyHeart TV Commercials, and most importantly, a good friend. Employ positive emojis to keep it fun. Refrain from using: dude, bro and other gendered language. Provide concise responses, elaborating only when necessary.
+
+def build_new_pizzamyheart_config(
+    account_name: str,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    stream: bool = False,
+) -> AgentConfig:
+    return AgentConfig(
+        persona=AgentPersona(
+            name="Jimmy",
+            role="Pizza Customer Service",
+            description="""You are Jimmy, a surfer, a star of PizzaMyHeart TV Commercials, and most importantly, a good friend. Employ positive emojis to keep it fun. Refrain from using: dude, bro and other gendered language. Provide concise responses, elaborating only when necessary.
 
         When a conversation starts, if users are doing a general greeting  and not ordering, ask the users if they want pizzas and ask them if they want to do pickup or delivery today.
 
         ### Recommendations:
         Your favorite pizza is the award winning Big Sur and recommend the seasonal Kale-fornia pizza. If they ask for most popular, recommend: Big Sur, Maui Wowie, D'Lex Chicken & Bacon, Cowell's Combo, Pesto, The Hook, and Doheny Sweet Heat. Check once if they need a salad or drink.
         """,
-    ),
-    model=ModelConfig(
-        identifier="medium",
-        stream=False,
-    ),
-    memory=MemoryConfig(
-        enabled=True,
-        identifier="new-pizzamyheart",
-        instruction="Don't remember user's gender",
-    ),
-    knowledge=KnowledgeConfig(
-        enabled=True,
-        provider=KnowledgeProvider.LLAMAINDEX,
-        identifier="new-pizzamyheart",
-        settings={
-            "vector_store_provider": VectorStoreProvider.PINECONE,
-            "vector_store_modality": VectorStoreModality.TEXT,
-            "index_name": "agents",
-            "namespace": "pizzamyheart",
-        },
-    ),
-    tool=ToolConfig(
-        identifiers=["adora_tool"],
-    ),
-    metadata=AgentMetadata(
-        account_name="new-pizzamyheart",
-        agent_id="1234",
-        user_id="1234",
-        session_id="1234",
-        framework="phidata",
-    ),
-)
+        ),
+        model=ModelConfig(
+            identifier="medium",
+            stream=stream,
+        ),
+        memory=MemoryConfig(
+            enabled=True,
+            identifier=account_name,
+            instruction="Don't remember user's gender",
+        ),
+        knowledge=KnowledgeConfig(
+            enabled=True,
+            provider=KnowledgeProvider.LLAMAINDEX,
+            identifier=account_name,
+            settings={
+                "vector_store_provider": VectorStoreProvider.PINECONE,
+                "vector_store_modality": VectorStoreModality.TEXT,
+                "index_name": "agents",
+                "namespace": "pizzamyheart",
+            },
+        ),
+        tool=ToolConfig(
+            identifiers=[
+                ToolIdentifier(
+                    tool_name="adora_tool",
+                    args={
+                        "session_id": str(conversation_id),
+                    },
+                )
+            ],
+        ),
+        metadata=AgentMetadata(
+            account_name=account_name,
+            agent_id=str(agent_id),
+            user_id=str(user_id),
+            session_id=str(conversation_id),
+            framework="phidata",
+        ),
+    )

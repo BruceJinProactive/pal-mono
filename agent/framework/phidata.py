@@ -32,6 +32,7 @@ class PhiDataAgent:
             tools=[tool for tool in get_tools(config.tool)],
             # Phidata required
             add_chat_history_to_messages=False,
+            num_history_responses=0,
             output_model=None,
             debug_mode=True,
         )

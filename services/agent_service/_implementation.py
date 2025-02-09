@@ -38,7 +38,9 @@ async def construct_agent_config(
         return _configs.WINDSOR_CONFIG
     elif db_agent.account.name == "new-pizzamyheart":
         logger.debug("Loading New Pizzamyheart config...")
-        return _configs.NEW_PIZZAMYHEART_CONFIG
+        return _configs.build_new_pizzamyheart_config(
+            db_agent.account.name, agent_id, user_id, conversation_id, stream
+        )
     else:
         logger.debug("Loading Anna config...")
         return _configs.ANNA_CONFIG
