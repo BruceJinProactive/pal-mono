@@ -1,6 +1,8 @@
 import phi.agent.agent
 from phi.model.openai.chat import OpenAIChat
+from phi.storage.agent.postgres import PgAgentStorage
 
+import db
 from agent.config import AgentConfig
 from agent.input_output import Input, Output
 from agent.knowledge import get_knowledge
@@ -27,6 +29,11 @@ class PhiDataAgent:
             search_knowledge=config.knowledge.enabled,
             # tools
             tools=[tool for tool in get_tools(config.tool)],
+            # storage
+            storage=PgAgentStorage(
+                table_name=f"{config.metadata.account_name}_storage",
+                db_url=db.db_url,
+            ),
             # Phidata required
             add_chat_history_to_messages=False,
             num_history_responses=0,

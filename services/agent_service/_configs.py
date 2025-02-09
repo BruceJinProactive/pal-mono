@@ -103,6 +103,7 @@ WINDSOR_CONFIG = AgentConfig(
 
 def build_new_pizzamyheart_config(
     account_name: str,
+    account_id: uuid.UUID,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
     conversation_id: uuid.UUID,
@@ -169,7 +170,11 @@ def build_new_pizzamyheart_config(
                 ToolIdentifier(
                     tool_name="adora_tool",
                     args={
-                        "session_id": str(conversation_id),
+                        "account_name": account_name,
+                        "account_id": account_id,  # pass as UUID
+                        "agent_id": agent_id,  # pass as UUID
+                        "user_id": user_id,  # pass as UUID
+                        "session_id": conversation_id,  # pass as UUID
                     },
                 )
             ],

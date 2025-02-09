@@ -1,1 +1,1 @@
-from ._implementation import AdoraTool
+from tools.adora_tool._implementation import AdoraTool

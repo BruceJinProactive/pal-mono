@@ -36,9 +36,9 @@ class AdoraHubResponse(BaseModel):
 
 
 class CustomerInfo(BaseModel):
-    first_name: str = Field(description="Customer's first name")
+    first_name: Optional[str] = Field(description="Customer's first name")
     last_name: Optional[str] = Field(description="Customer's last name")
-    phone: str = Field(
+    phone: Optional[str] = Field(
         description="Customer's phone number",
         pattern=r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$",
     )
@@ -47,18 +47,27 @@ class CustomerInfo(BaseModel):
 
 # US Address Data Model
 class DeliveryAddress(BaseModel):
-    street_no: str = Field(description="Street number")
-    address: str = Field(description="Street address")
-    city: str = Field(description="City name")
-    state: str = Field(description="State abbreviation")
-    zip: str = Field(description="ZIP code")
+    street_no: Optional[str] = Field(description="Street number")
+    address: Optional[str] = Field(description="Street address")
+    city: Optional[str] = Field(description="City name")
+    state: Optional[str] = Field(description="State abbreviation")
+    zip: Optional[str] = Field(description="ZIP code")
+
+
+class Modification(BaseModel):
+    name: str = Field(
+        description="Modification name", examples=["Onions", "Bacon", "Cheese"]
+    )
+    price: float = Field(description="Price of the modification")
+    quantity: int = Field(description="Quantity of the modification")
 
 
 class OrderItem(BaseModel):
-    item_id: str = Field(description="Item ID")
-    item_name: str = Field(description="Item name")
+    id: str = Field(description="Item ID")
+    name: str = Field(description="Item name")
     quantity: int = Field(description="Quantity")
     price: float = Field(description="Price per unit")
+    modifications: List[Modification] = Field(description="List of modifications")
 
 
 class Order(BaseModel):
