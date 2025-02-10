@@ -1,11 +1,11 @@
-from .agent import Agent
-from .config import AgentConfig, AgentMetadata, AgentPersona
-from .knowledge import (
+from agent.agent import Agent
+from agent.config import AgentConfig, AgentMetadata, AgentPersona
+from agent.knowledge import (
     KnowledgeConfig,
     KnowledgeProvider,
     VectorStoreModality,
     VectorStoreProvider,
 )
-from .memory import MemoryConfig, MemoryProvider
-from .model import ModelConfig, ModelProvider
-from .tool import ToolConfig, ToolIdentifier, ToolProvider
+from agent.memory import MemoryConfig, MemoryProvider
+from agent.model import ModelConfig, ModelProvider
+from agent.tool import ToolConfig, ToolIdentifier, ToolProvider

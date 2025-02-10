@@ -2,10 +2,10 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from .knowledge import KnowledgeConfig
-from .memory import MemoryConfig
-from .model import ModelConfig
-from .tool import ToolConfig
+from agent.knowledge import KnowledgeConfig
+from agent.memory import MemoryConfig
+from agent.model import ModelConfig
+from agent.tool import ToolConfig
 
 
 class AgentPersona(BaseModel):

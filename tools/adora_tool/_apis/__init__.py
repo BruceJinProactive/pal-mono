@@ -1,8 +1,17 @@
 import http.client
 import json
 from datetime import date
+from typing import Any, Dict, List, Optional
 
-from tools.adora_tool.classes import AdoraAccessToken
+from tools.adora_tool.classes import (
+    AdoraAccessToken,
+    AdoraDeliveryAddress,
+    AdoraOrderCalculationResult,
+    AdoraOrderItem,
+    AdoraOrderType,
+    AdoraSavedOrderResult,
+    CustomerInfo,
+)
 from utils.log import logger
 
 from . import _utils
@@ -52,5 +61,56 @@ def get_online_ordering_status(
 
     if response.status == 200:
         return f"The store is currently {status}."
+    else:
+        return None
+
+
+def validate_order(bearer_token: AdoraAccessToken, json_payload: str):
+    logger.info(f"[AdoraTool._apis.validate_order] Payload: {json_payload}")
+
+    response = _utils.connect_adora_order_hub(
+        "POST",
+        bearer_token,
+        "validateOrder",
+        query_params=None,
+        extra_headers=None,
+        payload=json_payload,
+    )
+
+    if response.status == 200:
+        return _utils.parse_json(AdoraOrderCalculationResult, response.decoded_body)
+    else:
+        logger.error(
+            f"[AdoraTool._apis.validate_order] Order validation failed with status {response.status}: {response.decoded_body}"
+        )
+        return None
+
+
+def save_validated_order(
+    bearer_token: AdoraAccessToken,
+    order_key: str,
+) -> AdoraSavedOrderResult | None:
+    """
+    Save a customer's validated order in the system using the key from the validate_order response.
+
+    Args:
+        bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
+        order_key (str): The order key from the validate_order response.
+
+    Returns:
+        SavedOrderResult: The result of saving the order to Adora POS.
+    """
+    response = _utils.connect_adora_order_hub(
+        "POST",
+        bearer_token,
+        "save",
+        query_params=None,
+        extra_headers={
+            "orderKey": order_key,
+        },
+    )
+
+    if response.status == 200:
+        return _utils.parse_json(AdoraSavedOrderResult, response.decoded_body)
     else:
         return None

@@ -113,10 +113,10 @@ def get_messages_from_agent_output(
     # NOTE: For now we only support returning image documents
 
     msg_text = f"{output.content}"
-    if output.documents:
-        msg_text += f"\n\nDocuments:\n{output.documents}"
-    if output.images:
-        msg_text += f"\n\nImages:\n{output.images}"
+    # if output.documents:
+    #     msg_text += f"\n\nDocuments:\n{output.documents}"
+    # if output.images:
+    #     msg_text += f"\n\nImages:\n{output.images}"
 
     return [
         Message(

@@ -35,8 +35,8 @@ class PhiDataAgent:
                 db_url=db.db_url,
             ),
             # Phidata required
-            add_chat_history_to_messages=False,
-            num_history_responses=0,
+            add_chat_history_to_messages=True,
+            num_history_responses=5,
             output_model=None,
             debug_mode=True,
         )
