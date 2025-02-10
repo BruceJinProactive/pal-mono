@@ -3,6 +3,7 @@ from os import getenv
 
 from openai import AsyncOpenAI, OpenAI
 from phi.embedder.openai import OpenAIEmbedder
+from phi.model.google.gemini import Gemini
 from phi.model.openai.chat import OpenAIChat
 from phi.model.openai.like import OpenAILike
 from pydantic import BaseModel, Field
@@ -81,6 +82,12 @@ def get_model(model_name: str = ModelName.MEDIUM, stream: bool = False) -> OpenA
             id=model_name, client=get_client(), async_client=get_async_client()
         )
         return model
+
+
+def get_gemini_model():
+    api_key = getenv("GEMINI_API_KEY", "")
+    assert api_key, "GEMINI_API_KEY is not set"
+    return Gemini(id="gemini-2.0-flash", api_key=api_key)
 
 
 def get_embedder():

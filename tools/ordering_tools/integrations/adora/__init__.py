@@ -108,26 +108,47 @@ class AdoraIntegration:
         self, user_id: str, session_id: str, current_user_query: str
     ) -> str:
         logger.debug("[AdoraIntegration.place_order] Placing order...")
+        logger.debug(f"[AdoraIntegration.place_order] user_id: {user_id}")
+        logger.debug(f"[AdoraIntegration.place_order] session_id: {session_id}")
+        logger.debug(
+            f"[AdoraIntegration.place_order] current_user_query: {current_user_query}"
+        )
 
         # chat history will be reversed later
         chat_history = [f"User message: {current_user_query}"]
         latest_cart = []
 
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
+        logger.debug(
+            f"[AdoraIntegration.place_order] Got bearer token: {bool(bearer_token)}"
+        )
         if not bearer_token:
             return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
         storage: AgentStorage = get_storage(self.account_name)
         session: AgentSession | None = storage.read(session_id, user_id)
+        logger.debug(f"[AdoraIntegration.place_order] Got session: {bool(session)}")
         if session and session.memory and "runs" in session.memory:
+            logger.debug(
+                "[AdoraIntegration.place_order] Processing session memory runs"
+            )
             for run in session.memory["runs"][::-1]:
                 run_content = json.loads(run["response"]["content"])
+                logger.debug(
+                    f"[AdoraIntegration.place_order] Run content: {run_content}"
+                )
                 if run_content["placed_order_id"] != "":
+                    logger.debug(
+                        "[AdoraIntegration.place_order] Found previous order, stopping"
+                    )
                     break  # stop at the most recent order placed
 
                 # if there's no cart set yet and we found one, set the cart
                 if not latest_cart and run_content["cart"]:
                     latest_cart = run_content["cart"]
+                    logger.debug(
+                        f"[AdoraIntegration.place_order] Found cart in memory: {latest_cart}"
+                    )
 
                 chat_history.append(
                     f"User message: {run['message']['content']}\n\nAgent message: {run_content['content']}"
@@ -141,10 +162,14 @@ class AdoraIntegration:
 
         # Reverse chat history to restore original order of messages AFTER most recent order placed
         chat_history = chat_history[::-1]
+        logger.debug(
+            f"[AdoraIntegration.place_order] Chat history length: {len(chat_history)}"
+        )
 
         # Load memories
         account_name = self.account_name
         memories = _utils.get_consumer_memory(account_name, user_id)
+        logger.debug(f"[AdoraIntegration.place_order] Got memories: {bool(memories)}")
         memory_list = (
             "## Existing Memories\n"
             + "\n".join(f"- {memory.memory}" for memory in memories)
@@ -154,6 +179,9 @@ class AdoraIntegration:
 
         # Get fulfillment strategy
         fulfillment_strategy_obj = _utils.get_fulfillment_strategy(chat_history)
+        logger.debug(
+            f"[AdoraIntegration.place_order] Fulfillment strategy: {fulfillment_strategy_obj}"
+        )
         if (
             not fulfillment_strategy_obj
             or fulfillment_strategy_obj.strategy == FulfillmentStrategy.NA
@@ -171,12 +199,18 @@ class AdoraIntegration:
         adora_order_type = generic_fulfillment_conversion_to_adoramap[
             fulfillment_strategy
         ]
+        logger.debug(
+            f"[AdoraIntegration.place_order] Adora order type: {adora_order_type}"
+        )
 
         # Get the delivery address if the fulfillment strategy is delivery
         delivery_address = (
             _utils.get_delivery_address(chat_history, memory_list)
             if fulfillment_strategy == FulfillmentStrategy.DELIVERY
             else None
+        )
+        logger.debug(
+            f"[AdoraIntegration.place_order] Delivery address: {delivery_address}"
         )
 
         if (
@@ -227,7 +261,9 @@ class AdoraIntegration:
         )
 
         # Get cart, if empty return the error message
+        logger.debug(f"[AdoraIntegration.place_order] Latest cart: {latest_cart}")
         cart = _utils.convert_to_adora_item(latest_cart)
+        logger.debug(f"[AdoraIntegration.place_order] Generic cart: {cart}")
 
         # If the structured output does not work
         if not cart:
@@ -293,6 +329,9 @@ class AdoraIntegration:
             )
 
         adora_cart = list(cart.values())
+        logger.debug(
+            f"[AdoraIntegration.place_order] Adora cart length: {len(adora_cart)}"
+        )
         # Get bearer token
         bearer_token = _apis.get_adora_pos_auth_token(self.api_key, self.api_secret)
         if not bearer_token:
@@ -347,6 +386,9 @@ class AdoraIntegration:
                 "[AdoraIntegration.place_order] Geolocator payload: " + str(geo_payload)
             )
             geocoded_loc: Any = geolocator.geocode(geo_payload)
+            logger.debug(
+                f"[AdoraIntegration.place_order] Geocoded location: {bool(geocoded_loc)}"
+            )
             if not geocoded_loc:
                 logger.debug(
                     "[AdoraIntegration.place_order] Failed to geocode address."
@@ -394,6 +436,9 @@ class AdoraIntegration:
                 str(geocoded_loc.latitude),
                 str(geocoded_loc.longitude),
             )
+            logger.debug(
+                f"[AdoraIntegration.place_order] Address validation success: {validated_address_success}"
+            )
             if not validated_address_success or isinstance(validated_address, str):
                 if isinstance(validated_address, str):
                     return validated_address  # this is an error string
@@ -415,6 +460,7 @@ class AdoraIntegration:
         wait_time = _apis.get_wait_time_with_strategy(
             bearer_token, self.store_information["store_id"], fulfillment_strategy.value
         )
+        logger.debug(f"[AdoraIntegration.place_order] Wait time: {wait_time}")
 
         # get special instructions
         order_comment = _utils.get_special_instructions(chat_history) or ""
@@ -442,6 +488,7 @@ class AdoraIntegration:
         # save validated order in Adora system, get order ID
         logger.debug("[AdoraIntegration.place_order] Saving validated order...")
         saved_order = _apis.save_validated_order(bearer_token, validated_order.key)
+        logger.debug(f"[AdoraIntegration.place_order] Saved order: {bool(saved_order)}")
 
         if not saved_order or not saved_order.orderID:
             return "Failed to place order. Please try again."

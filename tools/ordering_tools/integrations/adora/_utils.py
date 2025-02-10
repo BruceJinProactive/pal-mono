@@ -1,11 +1,15 @@
 import textwrap
+import time
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Optional, TypeVar, overload
 
+from phi.agent.agent import Agent
 from phi.memory.memory import Memory
+from pydantic import BaseModel
 
 from agent.legacy.memory import delete_memory, get_memory, set_memory_manager
-from agent.model import ModelName, get_client
+from agent.model import ModelName, get_model
 from tools.ordering_tools.classes import (
     Consumer,
     GenericCoupon,
@@ -28,15 +32,60 @@ from tools.ordering_tools.integrations.adora.classes import (
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
+T = TypeVar("T", bound=BaseModel)
+
+
+@overload
+def llm_call(
+    system_prompt: str, prompt: str, response_format: None = None, name: str = "tool"
+) -> Optional[str]: ...
+
+
+@overload
+def llm_call(
+    system_prompt: str, prompt: str, response_format: type[T], name: str = "tool"
+) -> Optional[T]: ...
+
+
+def llm_call(
+    system_prompt: str, prompt: str, response_format: type[T] | None = None, name="tool"
+) -> Optional[str] | Optional[T]:
+    client = get_model(model_name=ModelName.MEDIUM)
+
+    if response_format:
+        system_prompt += """
+        \n
+        Structure your response as a dictionary, do not include "json" in the beginning
+        of the response.
+        """
+    start_time = time.time()
+    agent = Agent(
+        provider=client,
+        agent_id=f"ordering-tools/{name}",
+        session_id="test-session",
+        add_chat_history_to_messages=True,
+        knowledge_base=None,
+        debug_mode=True,
+        output_model=response_format,
+        system_prompt=system_prompt,
+        num_history_responses=0,
+        search_knowledge=False,
+    )
+    logger.info(
+        f"[tools.ordering_tools.integrations.adora._utils.llm_call] Agent setup time: {time.time() - start_time} seconds"
+    )
+
+    response = agent.run(prompt).content
+    if isinstance(response, str):
+        response = response.strip()
+
+    return response
+
 
 @dataclass
 class ConversionResult:
     success: bool
     message: str
-
-
-model_router_client = get_client()
-model_router_model = ModelName.MEDIUM
 
 
 def _add_default_modifiers(
@@ -70,34 +119,16 @@ def convert_address_string(address: str) -> GenericDeliveryAddress | None:
     Returns:
         GenericDeliveryAddress | None: The parsed delivery address.
     """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """You are given an address.
-                        For the state field, if the user provides an abbreviation, output the full state name.
-                        For example, if the user entered "CA", output "California".
-                        If any field is missing, output "N/A" for that field.
-                        If the user did not provide a delivery address, output "N/A" for all fields.
-                        """,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": f"{address}"}],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
-        response_format=GenericDeliveryAddress,
-    )
+    system_prompt = """You are given an address.
+    For the state field, if the user provides an abbreviation, output the full state name.
+    For example, if the user entered "CA", output "California".
+    If any field is missing, output "N/A" for that field.
+    If the user did not provide a delivery address, output "N/A" for all fields.
+    """
 
-    return response.choices[0].message.parsed
+    return llm_call(
+        system_prompt, address, GenericDeliveryAddress, "convert_address_string"
+    )
 
 
 def convert_coupon(
@@ -105,9 +136,7 @@ def convert_coupon(
     target_coupon: str,
     coupon_conversion_examples: dict[str, str],
 ) -> ConversionResult:
-    """
-    Finds the closest coupon name in the list of available coupons and consequent coupon id.
-    """
+    """Finds the closest coupon name in the list of available coupons and consequent coupon id."""
     coupon_name_to_id_map = {c.name: c.id for c in all_coupons}
     coupon_conversion_examples_string = COUPON_EXAMPLES
     if coupon_conversion_examples:
@@ -124,7 +153,6 @@ def convert_coupon(
             )
         )
 
-    # Get GPT to find the most similar item name
     sys_prompt = textwrap.dedent(
         f"""
         # CONTEXT #
@@ -148,31 +176,8 @@ def convert_coupon(
         Only output the most similar coupon name. Output "N/A" if the user's inputted coupon name is nothing like any of the available options.
         """
     )
-    response = model_router_client.chat.completions.create(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": sys_prompt,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": target_coupon},
-                ],
-            },
-        ],
-        temperature=0,
-        max_tokens=256,
-        response_format={"type": "text"},
-    )
 
-    coupon_name = response.choices[0].message.content
+    coupon_name = llm_call(sys_prompt, target_coupon, None, "convert_coupon")
     if not coupon_name:
         return ConversionResult(
             False, "Failed to get a response from LLM. Please try again."
@@ -188,9 +193,7 @@ def get_adora_item_id(
     order_item_name: str,
     item_id_conversion_examples: dict[str, str],
 ) -> ConversionResult:
-    """
-    Finds the closest item name in the menu and consequent item id.
-    """
+    """Finds the closest item name in the menu and consequent item id."""
     item_id_conversion_examples_string = ITEM_ID_EXAMPLES
     if item_id_conversion_examples:
         item_id_conversion_examples_string = textwrap.dedent(
@@ -206,7 +209,6 @@ def get_adora_item_id(
             )
         )
 
-    # Get GPT to find the most similar item name
     sys_prompt = textwrap.dedent(
         f"""
         # CONTEXT #
@@ -229,31 +231,12 @@ def get_adora_item_id(
         Only output the most similar menu item name. Output "N/A" if the user's inputted item name is nothing like any of the available options.
         """
     )
-    response = model_router_client.chat.completions.create(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": sys_prompt,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": order_item_name},
-                ],
-            },
-        ],
-        temperature=0,
-        max_tokens=256,
-        response_format={"type": "text"},
-    )
 
-    item_name = response.choices[0].message.content
+    item_name = llm_call(sys_prompt, order_item_name, None, "get_adora_item_id")
+    logger.debug(f"[AdoraIntegration._utils.get_adora_item_id] Item name: {item_name}")
+    logger.debug(
+        f"[AdoraIntegration._utils.get_adora_item_id] Menu name to id map keys: {menu_name_to_id_map.keys()}"
+    )
     if item_name in menu_name_to_id_map:
         return ConversionResult(True, menu_name_to_id_map[item_name])
 
@@ -389,9 +372,7 @@ def get_adora_size_id(
     order_item_size: str,
     size_id_conversion_examples: dict[str, str],
 ) -> ConversionResult:
-    """
-    Maps the size to size id.
-    """
+    """Maps the size to size id."""
     # Find available size ids for the item
     available_sizes: set = set()
     if adora_item_id in menu_id_to_details_map:
@@ -452,34 +433,12 @@ def get_adora_size_id(
             #########
 
             # RESPONSE FORMAT #
-            Only output the most similar item size. Output "N/A" if the user's inputted item size is nothing like any of the available options.
+            Only output the most similar item size.
+            Output "N/A" if the user's inputted item size is nothing like any of the available options.
             """
         )
-        response = model_router_client.chat.completions.create(
-            model=model_router_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": sys_prompt,
-                        }
-                    ],
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": order_item_size},
-                    ],
-                },
-            ],
-            temperature=0,
-            max_tokens=256,
-            response_format={"type": "text"},
-        )
 
-        item_size = response.choices[0].message.content
+        item_size = llm_call(sys_prompt, order_item_size, None, "get_adora_size_id")
         if not item_size:
             return ConversionResult(
                 False, "Failed to get a response from LLM. Please try again."
@@ -508,39 +467,16 @@ def get_cart_info(
     Returns:
         LLMCartInfo | None: The parsed cart information.
     """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "Your role is to process the chat history between a user and an agent. "
-                            + "You will extract the relevant order information into the desired format. "
-                            + "You will be provided with the chat history to process. "
-                            + "If agent messages exist, prioritize agent messages over user messages because agent messages contain more precise order item information. "
-                            + (
-                                f"\nAdditional Instructions: {cart_conversion_sys_prompt}"
-                                if cart_conversion_sys_prompt
-                                else ""
-                            )
-                        ),
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": f"{chat_history}"}],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
-        response_format=LLMCartInfo,
+    sys_prompt = (
+        "Your role is to process the chat history between a user and an agent. "
+        "You will extract the relevant order information into the desired format. "
+        "You will be provided with the chat history to process. "
+        "If agent messages exist, prioritize agent messages over user messages because agent messages contain more precise order item information. "
     )
+    if cart_conversion_sys_prompt:
+        sys_prompt += f"\nAdditional Instructions: {cart_conversion_sys_prompt}"
 
-    return response.choices[0].message.parsed
+    return llm_call(sys_prompt, "\n".join(chat_history), LLMCartInfo, "get_cart_info")
 
 
 def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | None:
@@ -553,38 +489,29 @@ def get_consumer_info(chat_history: list[str], memory_list: str) -> Consumer | N
     Returns:
         Consumer | None: The parsed consumer information.
     """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Your role is to process the chat history between a user and an agent.
-                        You will extract the relevant customer information into the desired format.
-                        You will be provided with the chat history to process.
-                        The phone number, if provided, MUST be a 10-digit number and can be in any format.
-                        Extract the phone number as a string of exactly 10 digits without any formatting.
-                        If the customer information is not present, output "N/A" for the missing fields.
-                        """,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": f"{chat_history}"},
-                    {"type": "text", "text": f"{memory_list}"},
-                ],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
-        response_format=Consumer,
+    system_prompt = textwrap.dedent(
+        """
+        Your role is to process the chat history between a user and an agent.
+        You will extract the relevant customer information into the desired format.
+        You will be provided with the chat history to process.
+        The phone number, if provided, MUST be a 10-digit number and can be in any format.
+        Extract the phone number as a string of exactly 10 digits without any formatting.
+        If the customer information is not present, output "N/A" for the missing fields.
+    """
     )
 
-    return response.choices[0].message.parsed
+    prompt = """
+    Chat History:
+    {}
+
+    Memory List:
+    {}
+    """.format(
+        "\n".join(chat_history),
+        memory_list,
+    )
+
+    return llm_call(system_prompt, prompt, Consumer, "get_consumer_info")
 
 
 def get_consumer_memory(account_name: str, user_id: str) -> list[Memory] | None:
@@ -657,39 +584,30 @@ def get_delivery_address(
     Returns:
         GenericDeliveryAddress | None: The parsed delivery address. If no delivery address is found, return "N/A".
     """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Your role is to process the chat history between a user and an agent.
-                        You will be provided with the chat history to process.
-                        You will extract the relevant delivery address information.
-                        For the state field, if the user provides an abbreviation, output the full state name.
-                        For example, if the user entered "CA", output "California".
-                        If any field is missing, output "N/A" for that field.
-                        If the user did not provide a delivery address, output "N/A" for all fields.
-                        """,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": f"{chat_history}"},
-                    {"type": "text", "text": f"{memory_list}"},
-                ],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
-        response_format=GenericDeliveryAddress,
+    system_prompt = textwrap.dedent(
+        """Your role is to process the chat history between a user and an agent.
+        You will be provided with the chat history to process.
+        You will extract the relevant delivery address information.
+        For the state field, if the user provides an abbreviation, output the full state name.
+        For example, if the user entered "CA", output "California".
+        If any field is missing, output "N/A" for that field.
+        If the user did not provide a delivery address, output "N/A" for all fields.
+        """
     )
 
-    return response.choices[0].message.parsed
+    prompt = """
+    Chat History:
+    {}
+
+    Memory List:
+    {}
+    """.format(
+        "\n".join(chat_history), memory_list
+    )
+
+    return llm_call(
+        system_prompt, prompt, GenericDeliveryAddress, "get_delivery_address"
+    )
 
 
 def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy | None:
@@ -701,34 +619,25 @@ def get_fulfillment_strategy(chat_history: list[str]) -> LLMFulfillmentStrategy 
     Returns:
         LLMFulfillmentStrategy | None: The parsed fulfillment strategy. If no fulfillment strategy is found, return "N/A".
     """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Your role is to process the chat history between a user and an agent.
-                        You will be provided with the chat history to process.
-                        You will extract the relevant fulfillment strategy.
-                        DO NOT extract the strategy from the infomation under ## Existing Memories.
-                        The possible options are "delivery", "pickup" or "N/A" if no strategy is specified.
-                        """,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": f"{chat_history}"}],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
-        response_format=LLMFulfillmentStrategy,
+    system_prompt = textwrap.dedent(
+        """Your role is to process the chat history between a user and an agent.
+        You will be provided with the chat history to process.
+        You will extract the relevant fulfillment strategy.
+        DO NOT extract the strategy from the infomation under ## Existing Memories.
+        The possible options are "delivery", "pickup" or "N/A" if no strategy is specified.
+        """
     )
 
-    return response.choices[0].message.parsed
+    prompt = """
+    Chat History:
+    {}
+    """.format(
+        "\n".join(chat_history)
+    )
+
+    return llm_call(
+        system_prompt, prompt, LLMFulfillmentStrategy, "get_fulfillment_strategy"
+    )
 
 
 def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
@@ -740,34 +649,23 @@ def get_generic_coupon_info(chat_history: list[str]) -> GenericCoupon | None:
     Returns:
         GenericCoupon | None: The parsed coupon information. If no coupon information is found, return "N/A".
     """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Your role is to process the chat history between a user and an agent.
-                        You will be provided with the chat history to process.
-                        You will extract the relevant coupon information, if the user used a coupon.
-                        A user can only use one coupon per order, so extract the most recent coupon used.
-                        If there is no coupon used, output "N/A" in the coupon field.
-                        """,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": f"{chat_history}"}],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
-        response_format=GenericCoupon,
+    system_prompt = textwrap.dedent(
+        """Your role is to process the chat history between a user and an agent.
+        You will be provided with the chat history to process.
+        You will extract the relevant coupon information, if the user used a coupon.
+        A user can only use one coupon per order, so extract the most recent coupon used.
+        If there is no coupon used, output "N/A" in the coupon field.
+        """
     )
 
-    return response.choices[0].message.parsed
+    prompt = """
+    Chat History:
+    {}
+    """.format(
+        "\n".join(chat_history)
+    )
+
+    return llm_call(system_prompt, prompt, GenericCoupon, "get_generic_coupon_info")
 
 
 def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int]]:
@@ -857,7 +755,7 @@ def get_similar_modifier_using_openai(
 
         # OBJECTIVE #
         Match the user's inputted item modification with the weight to the closest item modification on the menu as if you were a server/waiter.
-        If there is a conflict between the name and the weight , prioritize the name over the weight (e.g., "extra cheese"), otherwise prioritize the weight ("extra sausage").
+        If there is a conflict between the name and the weight, prioritize the name over the weight (e.g., "extra cheese"), otherwise prioritize the weight ("extra sausage").
         If there is no weight provided, default to "Regular."
         Treat words like "extra," "light," or "none" as descriptors for the weight only if they are not part of the actual modifier name.
 
@@ -867,23 +765,15 @@ def get_similar_modifier_using_openai(
 
         #########
 
-
         # RESPONSE FORMAT #
         Only output the most similar item modification. Output "N/A" if the user's inputted item modification is nothing like any of the available options.
         The output should always be in the format: "<Modifier Name>(<Weight>)"
         """
     )
-    response = model_router_client.chat.completions.create(
-        model=model_router_model,
-        messages=[
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": order_item_modification},
-        ],
-        temperature=0,
-        max_tokens=256,
-    )
 
-    return response.choices[0].message.content
+    return llm_call(
+        sys_prompt, order_item_modification, None, "get_similar_modifier_using_openai"
+    )
 
 
 def get_special_instructions(chat_history: list[str]) -> str | None:
@@ -895,33 +785,19 @@ def get_special_instructions(chat_history: list[str]) -> str | None:
     Returns:
         str: The extracted special instructions.
     """
-    response = model_router_client.beta.chat.completions.parse(
-        model=model_router_model,
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Your role is to process the chat history between a user and an agent.
-                        You will be provided with the chat history to process.
-                        You will extract the relevant special instructions.
-                        For example, if the user asks for extra napkins, output "extra napkins".
-                        If there are no special instructions, output "N/A".
-                        """,
-                    }
-                ],
-            },
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": f"{chat_history}"}],
-            },
-        ],
-        temperature=0,
-        max_tokens=2048,
+    sys_prompt = textwrap.dedent(
+        """
+        Your role is to process the chat history between a user and an agent.
+        You will be provided with the chat history to process.
+        You will extract the relevant special instructions.
+        For example, if the user asks for extra napkins, output "extra napkins".
+        If there are no special instructions, output "N/A".
+        """
     )
 
-    return response.choices[0].message.content
+    return llm_call(
+        sys_prompt, "\n".join(chat_history), None, "get_special_instructions"
+    )
 
 
 def get_size_description_map(menu) -> dict[int, str]:
@@ -1178,7 +1054,7 @@ def validate_and_convert_item(
         modifier_conversion_examples,
     )
     if adora_order_item_conversion_res[0]:
-        logger.info(
+        logger.debug(
             f"Adora Order Item Conversion successfully : {adora_order_item_conversion_res[1]}"
         )
 
