@@ -165,17 +165,15 @@ def build_new_pizzamyheart_config(
             Agent:
             Your order is pending!
             Please finalize your order by heading to the payment link below:
-            https://pizzamyheart.adorapos.net/OnlineOrdering/OrderHubPayment/?storeKey=9WHCV&orderId=105984231)
+            <PAYMENT URL HERE>
             
             Here's your order summary:
             - 1 Big Sur
             - 1 Maui Wowie with Extra Cheese
-            - 1 Garlic Bread
-            - Salad
 
-            SubTotal: $59.25
-            Tax: $7.30
-            Total: $66.55
+            Subtotal: $59.25
+            Sales Tax: $7.30
+            Order Total: $66.55
 
             Thank you for choosing PizzaMyHeart! 🍕🥳
             </example>

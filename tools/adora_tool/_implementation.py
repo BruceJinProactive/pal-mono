@@ -69,10 +69,10 @@ class AdoraTool(Toolkit):
             embed_model=Settings.embed_model,
         )
 
-        retriever = index.as_retriever(similarity_top_k=10)
+        retriever = index.as_retriever(similarity_top_k=5)
         postprocessor = SimilarityPostprocessor(
-            similarity_cutoff=0.5
-        )  # set 50% similarity cutoff
+            similarity_cutoff=0.4
+        )  # set 40% similarity cutoff
 
         self.query_engine = RetrieverQueryEngine(
             retriever=retriever,
@@ -240,7 +240,7 @@ class AdoraTool(Toolkit):
         # Extract structured data from natural language
         try:
             order: Order = client.chat.completions.create(
-                model="o1",
+                model="o3-mini",
                 response_model=Order,
                 messages=[
                     {
@@ -332,9 +332,9 @@ class AdoraTool(Toolkit):
             Order Summary:
             {order.items}
 
-            SubTotal: {validated_order.subTotal}
-            Tax: {validated_order.taxAmount}
-            Total: {validated_order.total}
+            Subtotal: {validated_order.subTotal}
+            Sales Tax: {validated_order.taxAmount}
+            Order Total: {validated_order.total}
             """
         except Exception as e:
             logger.error(f"Error in extracting structured data: {e}")

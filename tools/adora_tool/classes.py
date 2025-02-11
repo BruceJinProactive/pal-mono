@@ -204,8 +204,7 @@ class OrderItem(BaseModel):
         serialization_alias="itemId",
     )
     size_id: int = Field(
-        default=1,
-        description="The size as an ID ordered by the customer. If not size is selected, the default size of 1 will be used.",
+        description="The size as an ID ordered by the customer. If no size is selected assume smallest size.",
         serialization_alias="sizeId",
         ge=1,
     )
