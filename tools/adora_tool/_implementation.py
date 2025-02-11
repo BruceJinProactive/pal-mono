@@ -7,13 +7,15 @@ from typing import List
 
 import instructor
 from ddtrace.llmobs.decorators import tool
-from llama_index.core import Settings, VectorStoreIndex
-from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.core import Settings, VectorStoreIndex, QueryBundle
+from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from openai import OpenAI
 from phi.tools.toolkit import Toolkit
 from phi.utils.log import logger
 from pinecone import Pinecone
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.postprocessor import SimilarityPostprocessor
 
 from agent.legacy.storage import get_storage
 from tools.adora_tool.classes import Order
@@ -48,6 +50,34 @@ class AdoraTool(Toolkit):
         self.agent_id = agent_id
         self.user_id = user_id
         self.session_id = session_id
+
+        # TODO: This code is bad >:( Refactor once it works. (ToT)
+        pc = Pinecone(os.getenv("PINECONE_API_KEY"))
+        pinecone_index = pc.Index("agents")
+
+        vector_store = PineconeVectorStore(
+            pinecone_index=pinecone_index, namespace="pizzamyheart-menu-9WHCV"
+        )
+
+        Settings.embed_model = CohereEmbedding(
+            api_key=os.getenv("COHERE_API_KEY"),
+            model_name="embed-english-v3.0",  # current v3 models support multimodal embeddings
+        )
+
+        index = VectorStoreIndex.from_vector_store(
+            vector_store=vector_store,
+            embed_model=Settings.embed_model,
+        )
+
+        retriever = index.as_retriever(similarity_top_k=10)
+        postprocessor = SimilarityPostprocessor(
+            similarity_cutoff=0.5
+        )  # set 50% similarity cutoff
+
+        self.query_engine = RetrieverQueryEngine(
+            retriever=retriever,
+            node_postprocessors=[postprocessor],  # Apply postprocessor
+        )
 
     @tool
     def check_online_ordering_status(self) -> str:
@@ -194,7 +224,15 @@ class AdoraTool(Toolkit):
         """
         chat_history = self._get_chat_history()
 
+        retrieved_chunks = self.query_engine.retrieve(QueryBundle(chat_history))
+        context = ""
+
+        for chunk in retrieved_chunks:
+            chunk_content = chunk.get_content()
+            context += f"{chunk_content}\n\n"
+
         logger.info(f">>> Chat history:\n{chat_history}")
+        logger.info(f">>> Context:\n{context}")
 
         # Patch the OpenAI client
         client = instructor.from_openai(OpenAI())
@@ -220,50 +258,16 @@ class AdoraTool(Toolkit):
 
                         If unsure about any field, leave it empty rather than guessing.
 
-                        ## Chat History:
-                        {chat_history}
+                        ## Context
+                        <context>{context}</context>
+
+                        ## Chat History
+                        <history>{chat_history}</history>
                         """,
                     }
                 ],
             )
             logger.info(f"Extracted structured data: {order}")
-
-            # TODO: This code is bad >:( Refactor once it works. (ToT)
-            pc = Pinecone(os.getenv("PINECONE_API_KEY"))
-            pinecone_index = pc.Index("agents")
-
-            vector_store = PineconeVectorStore(
-                pinecone_index=pinecone_index, namespace="pizzamyheart-v3"
-            )
-
-            Settings.embed_model = OpenAIEmbedding(
-                model="text-embedding-3-large",
-                dimensions=1024,
-            )
-
-            index = VectorStoreIndex.from_vector_store(
-                vector_store=vector_store,
-                embed_model=Settings.embed_model,
-            )
-            query_engine = index.as_query_engine()
-
-            def extract_id(response: str):
-                matches: list[str] = re.findall(r"\d+", response)
-                return int(matches[0]) if matches else -1
-
-            for i, item in enumerate(order.order_items):
-                for j, modifier in enumerate(item.modifiers):
-                    prompt = f"What is the id of `{modifier.modifier_name}`"
-                    response = query_engine.query(prompt)
-                    id = extract_id(response.response)
-                    order.order_items[i].modifiers[j].modifier_id = id
-
-                prompt = f"What is the id of `{item.item_name}`"
-                response = query_engine.query(prompt)
-                id = extract_id(response.response)
-                order.order_items[i].item_id = id
-
-            logger.info(f"New extracted structured data: {order}")
 
             api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
             api_secret = get_client_secret_with_fallback(
@@ -282,7 +286,10 @@ class AdoraTool(Toolkit):
             order.customer.email = "jimmythesurfer@proactiveailab.com"
 
             # Move order_items to the items field which fulfills the Adora API requirements
-            order.items[0]["group"] = order.order_items
+            items = []
+            for order_item in order.order_items:
+                items.append({"group": [order_item]})
+            order.items = items
 
             json_payload = order.model_dump_json(by_alias=True)
             validated_order = _apis.validate_order(
@@ -325,7 +332,9 @@ class AdoraTool(Toolkit):
             Order Summary:
             {order.items}
 
-            Total Price: {validated_order.total}
+            SubTotal: {validated_order.subTotal}
+            Tax: {validated_order.taxAmount}
+            Total: {validated_order.total}
             """
         except Exception as e:
             logger.error(f"Error in extracting structured data: {e}")
