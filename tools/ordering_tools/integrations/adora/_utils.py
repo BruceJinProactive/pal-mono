@@ -682,13 +682,13 @@ def get_menu_maps(menu: dict) -> tuple[dict[int, MenuItemDetails], dict[str, int
     """
     id_to_details_map = {
         item["item_id"]: MenuItemDetails(
-            item["name"],
+            item["name"].strip(),
             item["order_types"] if "order_types" in item else [],
             item["modifier_groups"] if "modifier_groups" in item else [],
         )
         for item in menu["items"]
     }
-    name_to_id_map = {item["name"]: item["item_id"] for item in menu["items"]}
+    name_to_id_map = {item["name"].strip(): item["item_id"] for item in menu["items"]}
     return id_to_details_map, name_to_id_map
 
 
