@@ -160,7 +160,7 @@ class CustomerInfo(BaseModel):
     )
     phone_number: Optional[str] = Field(
         description="Customer's phone number",
-        pattern=r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$",
+        # pattern=r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$",
         serialization_alias="phone",
     )
     email: Optional[str] = Field(description="Customer's email address")
@@ -183,8 +183,7 @@ class Modifier(BaseModel):
         serialization_alias="id",
     )
     modifier_name: str = Field(
-        description="Modifier name",
-        examples=["Green Onion", "Bacon", "Extra Cheese"],
+        description="Modifier name like `Extra Cheese`, `Green Onion`, etc.",
         exclude=True,
     )
     is_default: SkipJsonSchema[bool] = Field(
@@ -204,9 +203,8 @@ class OrderItem(BaseModel):
         serialization_alias="itemId",
     )
     size_id: int = Field(
-        description="The size as an ID ordered by the customer. If no size is selected assume smallest size.",
+        description="The size as an ID ordered by the customer.",
         serialization_alias="sizeId",
-        ge=1,
     )
     item_name: str = Field(description="Item name", exclude=True)
     quantity: int = Field(description="Item quantity ordered by the customer")
@@ -218,14 +216,10 @@ class OrderItem(BaseModel):
 
 
 class Order(BaseModel):
-    store_id: SkipJsonSchema[str] = Field(serialization_alias="storeId")
+    store_id: Optional[str] = Field(serialization_alias="storeId")
     order_type: str = Field(
-        default="TakeOut",
-        description="Order type is either `TakeOut` or `Delivery`",
-        examples=[
-            "TakeOut",
-            "Delivery",
-        ],
+        # default="TakeOut",
+        description="Order type is either `TakeOut` or `Delivery`. By default, use `TakeOut`.",
         serialization_alias="OrderType",
     )
     order_subtype: SkipJsonSchema[str] = Field(
@@ -245,7 +239,6 @@ class Order(BaseModel):
     )
     paid: SkipJsonSchema[bool] = Field(default=False)
     order_comment: str = Field(
-        default="",
         description="Special ordering instructions requested by the customer. Empty if no special requests are made.",
         serialization_alias="orderComment",
     )

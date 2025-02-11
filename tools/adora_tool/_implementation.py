@@ -235,22 +235,22 @@ class AdoraTool(Toolkit):
         logger.info(f">>> Context:\n{context}")
 
         # Patch the OpenAI client
-        client = instructor.from_openai(OpenAI())
+        # client = instructor.from_openai(OpenAI())
 
         # Extract structured data from natural language
         try:
-            order: Order = client.chat.completions.create(
-                model="o3-mini",
-                response_model=Order,
+            client = OpenAI()
+            order = client.beta.chat.completions.parse(
+                model="gpt-4o-2024-11-20",
                 messages=[
                     {
                         "role": "system",
-                        "content": f"""You are a precise data extractor. Your task is to extract order information ONLY from the provided chat history.
+                        "content": f"""You are an expert at structured data extraction. You will be given the chat history and relevant context. You goal is to convert it into the given structure.
 
                         **IMPORTANT RULES:**
                         - Do NOT make assumptions or fabricate data
                         - Leave fields as None/null if the information is not explicitly mentioned
-                        - Do not infer values from context
+                        - Do not infer values or make educated guesses
                         - Only extract information that is directly stated
                         - Maintain exact values as mentioned (don't modify numbers or text)
                         - For phone numbers, only extract if a complete number is provided
@@ -266,7 +266,13 @@ class AdoraTool(Toolkit):
                         """,
                     }
                 ],
+                response_format=Order,
             )
+            order = order.choices[0].message.parsed
+
+            if not order:
+                return "Failed to extract structured data. Please try again."
+
             logger.info(f"Extracted structured data: {order}")
 
             api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
