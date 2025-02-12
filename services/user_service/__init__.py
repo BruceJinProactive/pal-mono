@@ -67,8 +67,26 @@ async def get_user_async(
     return await _implementation.get_user_async(session, project, message)
 
 
+async def create_user_async(
+    session: AsyncSession, project: db.Project, message: Message
+) -> db.User:
+    """
+    Asynchronously create a new user based on the provided project and message.
+
+    Args:
+        session (AsyncSession): The asynchronous database session to use for the query.
+        project (db.Project): The project associated with the user.
+        message (Message): The message containing the channel and sender information.
+
+    Returns:
+        db.User: The newly created user.
+    """
+    return await _implementation.create_user_async(session, project, message)
+
+
 __all__ = [
     "get_user_by_channel_identifier",
     "get_users_by_account_id",
     "get_user_async",
+    "create_user_async",
 ]
