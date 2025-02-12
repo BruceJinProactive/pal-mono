@@ -160,7 +160,7 @@ class CustomerInfo(BaseModel):
     )
     phone_number: Optional[str] = Field(
         description="Customer's phone number",
-        # pattern=r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$",
+        pattern=r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$",
         serialization_alias="phone",
     )
     email: Optional[str] = Field(description="Customer's email address")
@@ -202,8 +202,9 @@ class OrderItem(BaseModel):
         description="Item ID is the valued defined in `item_id` for the corresponding item name",
         serialization_alias="itemId",
     )
+    # TODO: We need to remove default assumption and prompt eng the model to ask. For now this is okay.
     size_id: int = Field(
-        description="The size as an ID ordered by the customer.",
+        description="The size as an ID ordered by the customer. By default, assume 1.",
         serialization_alias="sizeId",
     )
     item_name: str = Field(description="Item name", exclude=True)
@@ -216,21 +217,24 @@ class OrderItem(BaseModel):
 
 
 class Order(BaseModel):
-    store_id: Optional[str] = Field(serialization_alias="storeId")
+    store_id: SkipJsonSchema[Optional[str]] = Field(
+        default=None, serialization_alias="storeId"
+    )
     order_type: str = Field(
-        # default="TakeOut",
+        default="TakeOut",
         description="Order type is either `TakeOut` or `Delivery`. By default, use `TakeOut`.",
         serialization_alias="OrderType",
     )
     order_subtype: SkipJsonSchema[str] = Field(
         default="PhoneOrder", serialization_alias="OrderTypeSubType"
     )
-    customer: CustomerInfo = Field(description="Customer information")
-    # order_items is what the llm will fill out
+    # TODO: optional customer info -> we should prompt them in the future if this is missing
+    customer: Optional[CustomerInfo] = Field(description="Customer information")
+    # `order_items`` is what the llm will fill out
     order_items: List[OrderItem] = Field(
         description="List of order items", exclude=True
     )
-    # items is the format and field that we actually submit to Adora API
+    # `items` is the format and field that we actually submit to Adora API. This is their required format.
     items: SkipJsonSchema[List[Dict[str, List[OrderItem]]]] = Field(
         default=[{"group": []}]
     )
@@ -238,7 +242,7 @@ class Order(BaseModel):
         description="Delivery address", serialization_alias="deliveryAddress"
     )
     paid: SkipJsonSchema[bool] = Field(default=False)
-    order_comment: str = Field(
+    order_comment: Optional[str] = Field(
         description="Special ordering instructions requested by the customer. Empty if no special requests are made.",
         serialization_alias="orderComment",
     )

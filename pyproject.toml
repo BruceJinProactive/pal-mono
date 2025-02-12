@@ -37,6 +37,8 @@ dependencies = [
   "llama-index-embeddings-cohere==0.4.0",
   "instructor==1.7.2",
   "mem0ai==0.1.48",
+  "google-generativeai==0.8.4",
+  "groq==0.15.0",
 
   # DevOps
   "python-json-logger==2.0.7",

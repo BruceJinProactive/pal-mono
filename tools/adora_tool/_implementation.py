@@ -3,26 +3,68 @@ import re
 import time
 import traceback
 import uuid
-from typing import List
+from typing import List, Optional, TypeVar
 
-from ddtrace.llmobs.decorators import tool
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import llm, retrieval, task, tool
 from llama_index.core import QueryBundle, Settings, VectorStoreIndex
 from llama_index.core.postprocessor import SimilarityPostprocessor
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
-from openai import OpenAI
+from phi.agent.agent import Agent
+from phi.model.groq.groq import Groq
 from phi.tools.toolkit import Toolkit
 from phi.utils.log import logger
 from pinecone import Pinecone
+from pydantic import BaseModel
 
 from agent.legacy.storage import get_storage
-from tools.adora_tool.classes import Order
+from tools.adora_tool.classes import AdoraAccessToken, CustomerInfo, Order
 from utils.secret import get_client_secret_with_fallback
 
 from . import _apis
 
 ADORA_PAYMENT_URL = "https://pizzamyheart.adorapos.net/OnlineOrdering/OrderHubPayment/?storeKey={store_id}&orderId={order_id}"
+
+T = TypeVar("T", bound=BaseModel)
+
+
+@llm
+def llm_call(
+    system_prompt: str, prompt: str, response_format: type[T] | None = None, name="tool"
+) -> Optional[T]:
+    # client = get_model(model_name=ModelName.MEDIUM)
+    client = Groq(id="deepseek-r1-distill-qwen-32b")
+
+    if response_format:
+        system_prompt += """
+        \n
+        Structure your response as a dictionary, do not include "json" in the beginning
+        of the response.
+        """
+    agent = Agent(
+        provider=client,
+        agent_id=f"ordering-tools/{name}",
+        session_id="test-session",
+        add_chat_history_to_messages=True,
+        knowledge_base=None,
+        debug_mode=True,
+        output_model=response_format,
+        system_prompt=system_prompt,
+        num_history_responses=0,
+        search_knowledge=False,
+    )
+
+    response = agent.run(prompt).content
+
+    LLMObs.annotate(
+        input_data=prompt,
+        output_data=response,
+        metadata={"system_prompt": system_prompt},
+    )
+
+    return response
 
 
 class AdoraTool(Toolkit):
@@ -136,10 +178,12 @@ class AdoraTool(Toolkit):
             logger.error(f"Error in validating address: {e}")
             return "Error in validating address."
 
+    @task
     def _get_content(self, text: str) -> str:
         match = re.search(r"<content>\s*(.*?)\s*</content>", text)
         return match.group(1) if match else ""
 
+    @retrieval
     def _get_chat_history(self) -> str:
         try:
             # db_session = db.get_db()
@@ -186,7 +230,7 @@ class AdoraTool(Toolkit):
                 for message in messages:
                     role = message["message"]["role"]
                     if role == "user":
-                        user_content = self._get_content(message["message"]["content"])
+                        user_content = self._get_content(message["message"]["content"])  # type: ignore
                         chat_history += f"**[User]**\n{user_content}\n\n"
                         chat_history += (
                             f"**[Assistant]**\n{message['response']['content']}\n\n"
@@ -195,6 +239,8 @@ class AdoraTool(Toolkit):
                         logger.info(
                             f"Skipping appending message to chat history:\n{message}"
                         )
+
+                LLMObs.annotate(output_data=chat_history)
 
                 return chat_history
 
@@ -213,6 +259,74 @@ class AdoraTool(Toolkit):
             logger.error(f"{error_msg}: {e}")
             return error_msg
 
+    @retrieval
+    def _get_relevant_chunks(self, chat_history: str) -> str:
+        retrieved_chunks = self.query_engine.retrieve(QueryBundle(chat_history))
+
+        context = ""
+        output_data = []
+        for chunk in retrieved_chunks:
+            chunk_content = chunk.get_content()
+            context += f"{chunk_content}\n\n"
+
+            output_data.append(
+                {
+                    "node_id": chunk.id_,
+                    "content": chunk_content,
+                    "metadata": chunk.metadata,
+                }
+            )
+
+        LLMObs.annotate(input_data=chat_history, output_data=output_data)
+
+        return context
+
+    @task(name="_fulfill_order [via Adora API]")
+    def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
+        json_payload = order.model_dump_json(by_alias=True)
+        validated_order = _apis.validate_order(
+            bearer_token=bearer_token, json_payload=json_payload
+        )
+
+        logger.info(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
+
+        if not validated_order or not validated_order.key:
+            return "Failed to validate order. Please try again."
+
+        # save validated order in Adora system, get order ID
+        logger.info("[AdoraTool.checkout_order] Saving validated order...")
+
+        saved_order = _apis.save_validated_order(bearer_token, validated_order.key)
+
+        if not saved_order or not saved_order.orderID:
+            return "Failed to place order. Please try again."
+
+        # delay 1 second to allow Adora to synchronize the order
+        time.sleep(1)
+
+        if saved_order:
+            text_payment_url = ADORA_PAYMENT_URL.format(
+                store_id=self.store_id,
+                order_id=saved_order.orderID,
+            )
+        else:
+            logger.debug(
+                f"[AdoraTool.checkout_order] Failed to place order. Saved order ID: {saved_order.orderID if saved_order else 'NO SAVED ORDER'}"
+            )
+            return "The service is busy. Please try again."
+
+        return f"""Your order is pending!
+        Please head to the payment url to finalize your order!
+        {text_payment_url}
+        
+        Order Summary:
+        {order.items}
+
+        Subtotal: {validated_order.subTotal}
+        Sales Tax: {validated_order.taxAmount}
+        Order Total: {validated_order.total}
+        """
+
     @tool
     def checkout_order(self) -> str:
         """
@@ -222,57 +336,61 @@ class AdoraTool(Toolkit):
             str: The checkout order details including the payment URL.
         """
         chat_history = self._get_chat_history()
-
-        retrieved_chunks = self.query_engine.retrieve(QueryBundle(chat_history))
-        context = ""
-
-        for chunk in retrieved_chunks:
-            chunk_content = chunk.get_content()
-            context += f"{chunk_content}\n\n"
-
         logger.info(f">>> Chat history:\n{chat_history}")
-        logger.info(f">>> Context:\n{context}")
 
-        # Patch the OpenAI client
-        # client = instructor.from_openai(OpenAI())
+        context = self._get_relevant_chunks(chat_history)  # type: ignore
+        logger.info(f">>> Context:\n{context}")
 
         # Extract structured data from natural language
         try:
-            client = OpenAI()
-            order = client.beta.chat.completions.parse(
-                model="gpt-4o-2024-11-20",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": f"""You are an expert at structured data extraction. You will be given the chat history and relevant context. You goal is to convert it into the given structure.
+            system_prompt = """You are an expert at structured data extraction. 
+            You will be given the chat history and relevant context.
+            You goal is to convert it into the given structure.
 
-                        **IMPORTANT RULES:**
-                        - Do NOT make assumptions or fabricate data
-                        - Leave fields as None/null if the information is not explicitly mentioned
-                        - Do not infer values or make educated guesses
-                        - Only extract information that is directly stated
-                        - Maintain exact values as mentioned (don't modify numbers or text)
-                        - For phone numbers, only extract if a complete number is provided
-                        - For addresses, only extract if all required components are present
+            **Instructions on how to perform the task:**
+            First, identify the list of items that the user wants to order from the chat history.
+            Then, make sure that the quantities for each order are correct.
+            Then, make sure that the modifiers for every order are identified, if they were mentioned in the chat history.
+            Finally, map the items, names, modifiers, etc., that you just identified from the english language to the structured data format that is required by the Adora API using the provided context.
+            Importantly, some of the provided context might be irrelevant to the order, in which case you should ignore it.
+            
 
-                        If unsure about any field, leave it empty rather than guessing.
+            **IMPORTANT RULES:**
+            - Do NOT make assumptions or fabricate data
+            - Leave fields as None/null if the information is not explicitly mentioned
+            - Do not infer values or make educated guesses
+            - Only extract information that is directly stated
+            - Maintain exact values as mentioned (don't modify numbers or text)
+            - For phone numbers, only extract if a complete number is provided
+            - For addresses, only extract if all required components are present
 
-                        ## Context
-                        <context>{context}</context>
+            If unsure about any field, leave it empty rather than guessing."
+            """
+            user_prompt = f"""
+            Please construct the structured order from the following information:
 
-                        ## Chat History
-                        <history>{chat_history}</history>
-                        """,
-                    }
-                ],
-                response_format=Order,
+            **Menu items with the corresponding modifiers**
+            {context}
+
+            **Chat History**
+            {chat_history}
+            """
+
+            # current version of the datadog llmobs does not support pyright
+            order = llm_call(
+                system_prompt=system_prompt,  # type: ignore
+                prompt=user_prompt,  # type: ignore
+                response_format=Order,  # type: ignore
             )
-            order = order.choices[0].message.parsed
 
-            if not order:
+            if not isinstance(order, Order):
+                logger.error(
+                    "[AdoraTool.checkout_order] Failed to extract structured data. Most likely validation schema was not fulfilled."
+                )
                 return "Failed to extract structured data. Please try again."
 
             logger.info(f"Extracted structured data: {order}")
+            logger.info(f"Extraced structured data type: {type(order)}")
 
             api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
             api_secret = get_client_secret_with_fallback(
@@ -282,13 +400,19 @@ class AdoraTool(Toolkit):
             if not bearer_token:
                 return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
+            # Override store id
             order.store_id = self.store_id
 
             # Manually set customer info for now
-            order.customer.first_name = "Jimmy"
-            order.customer.last_name = "ProactiveAILab (via Jimmy)"
-            order.customer.phone_number = "(555)555-5555"
-            order.customer.email = "jimmythesurfer@proactiveailab.com"
+            order.customer = CustomerInfo(
+                first_name="Jimmy",
+                last_name="ProactiveAILab (via Jimmy)",
+                phone_number="(555)555-5555",
+                email="jimmythesurfer@proactiveailab.com",
+            )
+
+            # If order comment is None, set it to an empty string
+            order.order_comment = "" if not order.order_comment else order.order_comment
 
             # Move order_items to the items field which fulfills the Adora API requirements
             items = []
@@ -296,51 +420,8 @@ class AdoraTool(Toolkit):
                 items.append({"group": [order_item]})
             order.items = items
 
-            json_payload = order.model_dump_json(by_alias=True)
-            validated_order = _apis.validate_order(
-                bearer_token=bearer_token, json_payload=json_payload
-            )
+            return self._fulfill_order(order, bearer_token)  # type: ignore
 
-            logger.info(
-                f"[AdoraTool.checkout_order] Validated order: {validated_order}"
-            )
-
-            if not validated_order or not validated_order.key:
-                return "Failed to validate order. Please try again."
-
-            # save validated order in Adora system, get order ID
-            logger.info("[AdoraTool.checkout_order] Saving validated order...")
-
-            saved_order = _apis.save_validated_order(bearer_token, validated_order.key)
-
-            if not saved_order or not saved_order.orderID:
-                return "Failed to place order. Please try again."
-
-            # delay 1 second to allow Adora to synchronize the order
-            time.sleep(1)
-
-            if saved_order:
-                text_payment_url = ADORA_PAYMENT_URL.format(
-                    store_id=self.store_id,
-                    order_id=saved_order.orderID,
-                )
-            else:
-                logger.debug(
-                    f"[AdoraTool.checkout_order] Failed to place order. Saved order ID: {saved_order.orderID if saved_order else 'NO SAVED ORDER'}"
-                )
-                return "The service is busy. Please try again."
-
-            return f"""Your order is pending!
-            Please head to the payment url to finalize your order!
-            {text_payment_url}
-            
-            Order Summary:
-            {order.items}
-
-            Subtotal: {validated_order.subTotal}
-            Sales Tax: {validated_order.taxAmount}
-            Order Total: {validated_order.total}
-            """
         except Exception as e:
             logger.error(f"Error in extracting structured data: {e}")
             logger.error(traceback.format_exc())

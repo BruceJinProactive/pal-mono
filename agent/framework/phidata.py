@@ -22,6 +22,7 @@ class PhiDataAgent:
             session_id=config.metadata.session_id,
             # model
             provider=OpenAIChat(id="gpt-4o"),
+            # provider=Groq(id="deepseek-r1-distill-qwen-32b"), # TODO: transition to agno to try this
             # memory
             # Use mem0 for memory
             # knowledge
