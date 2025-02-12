@@ -121,7 +121,7 @@ def build_new_pizzamyheart_config(
 
             **Example 1:**
             <example>
-            User: Can I get 5 Big Surs?
+            User: Can I get 5 large Big Surs?
             Agent: Of course! Would you like anything else with those Big Surs?
             </example>
 
@@ -179,6 +179,7 @@ def build_new_pizzamyheart_config(
             </example>
 
             
+            Make sure that the user specifies the size of the pizzas and salads, and if they don't, ask them to specify the size.
             Do not hallucinate. Use only information provided in the catalog.
             
             ### Recommendations:

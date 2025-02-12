@@ -6,13 +6,9 @@ from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from phi.knowledge.agent import AgentKnowledge
-from phi.knowledge.combined import CombinedKnowledgeBase
 from phi.knowledge.llamaindex import LlamaIndexKnowledgeBase
-from phi.vectordb.pgvector.pgvector2 import PgVector2
 
-import db
 from agent.knowledge.integrations.pinecone import PineconeIntegration
-from agent.model import get_embedder
 
 from . import _config
 
@@ -63,20 +59,6 @@ def get_knowledge(config: _config.KnowledgeConfig) -> AgentKnowledge:
         )
 
         knowledge = LlamaIndexKnowledgeBase(retriever=retriever_engine)
-
-    elif config.provider == _config.KnowledgeProvider.DEFAULT:
-        # Use phidata's combined knowledge base
-        knowledge_table_name = f"{config.identifier}_knowledge"
-        knowledge = CombinedKnowledgeBase(
-            sources=[],
-            vector_db=PgVector2(
-                db_url=db.db_url,
-                collection=knowledge_table_name,
-                embedder=get_embedder(),
-            ),
-            # 2 references are added to the prompt
-            num_documents=10,
-        )
     else:
         raise ValueError(f"Unknown provider: {config.provider}")
 
