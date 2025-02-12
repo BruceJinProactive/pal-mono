@@ -3,7 +3,6 @@ import os
 from llama_index.core import Settings, VectorStoreIndex
 from llama_index.core.indices import MultiModalVectorStoreIndex
 from llama_index.embeddings.cohere import CohereEmbedding
-from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from phi.knowledge.agent import AgentKnowledge
 from phi.knowledge.llamaindex import LlamaIndexKnowledgeBase
@@ -28,27 +27,22 @@ def get_knowledge(config: _config.KnowledgeConfig) -> AgentKnowledge:
             pinecone_index=pinecone_index, namespace=settings.namespace
         )
 
+        cohere_api_key = os.getenv("COHERE_API_KEY")
+        if not cohere_api_key:
+            raise ValueError("Cohere API key not found")
+
+        # Set global llama index settings
+        Settings.embed_model = CohereEmbedding(
+            api_key=cohere_api_key, model_name="embed-english-v3.0"
+        )
+
         if settings.vector_store_modality == _config.VectorStoreModality.MULTI_MODAL:
-            cohere_api_key = os.getenv("COHERE_API_KEY")
-            if not cohere_api_key:
-                raise ValueError("Cohere API key not found")
-
-            # Set global llama index settings
-            Settings.embed_model = CohereEmbedding(
-                api_key=cohere_api_key, model_name="embed-english-v3.0"
-            )
-
             index = MultiModalVectorStoreIndex.from_vector_store(
                 vector_store=vector_store,
                 embed_model=Settings.embed_model,
                 image_embed_model=Settings.embed_model,
             )
         else:
-            Settings.embed_model = OpenAIEmbedding(
-                model="text-embedding-3-large",
-                dimensions=1024,
-            )
-
             # Default to text modality
             index = VectorStoreIndex.from_vector_store(
                 vector_store=vector_store, embed_model=Settings.embed_model
