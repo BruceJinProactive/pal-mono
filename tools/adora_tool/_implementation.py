@@ -5,17 +5,16 @@ import traceback
 import uuid
 from typing import List
 
-import instructor
 from ddtrace.llmobs.decorators import tool
-from llama_index.core import Settings, VectorStoreIndex, QueryBundle
+from llama_index.core import QueryBundle, Settings, VectorStoreIndex
+from llama_index.core.postprocessor import SimilarityPostprocessor
+from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from openai import OpenAI
 from phi.tools.toolkit import Toolkit
 from phi.utils.log import logger
 from pinecone import Pinecone
-from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core.postprocessor import SimilarityPostprocessor
 
 from agent.legacy.storage import get_storage
 from tools.adora_tool.classes import Order
