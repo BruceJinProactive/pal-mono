@@ -97,7 +97,7 @@ class AdoraTool(Toolkit):
         pinecone_index = pc.Index("agents")
 
         vector_store = PineconeVectorStore(
-            pinecone_index=pinecone_index, namespace="pizzamyheart-menu-9WHCV"
+            pinecone_index=pinecone_index, namespace="pizzamyheart-menu-9WHCV-docs"
         )
 
         Settings.embed_model = CohereEmbedding(
@@ -110,12 +110,8 @@ class AdoraTool(Toolkit):
             embed_model=Settings.embed_model,
         )
 
-        retriever = index.as_retriever(similarity_top_k=20)
-        postprocessor = SimilarityPostprocessor(similarity_cutoff=0.0)
-
-        self.query_engine = RetrieverQueryEngine(
-            retriever=retriever,
-            node_postprocessors=[postprocessor],  # Apply postprocessor
+        self.query_engine = index.as_query_engine(
+            similarity_top_k=10, similarity_cutoff=0.3
         )
 
     @tool
@@ -258,16 +254,14 @@ class AdoraTool(Toolkit):
             return error_msg
 
     @retrieval
-    def _get_relevant_chunks(self, chat_history: str) -> str:
-        retrieved_chunks = self.query_engine.retrieve(QueryBundle(chat_history))
+    def _get_relevant_docs(self, chat_history: str) -> str:
+        response = self.query_engine.query(chat_history)
 
         context = ""
         output_data = []
-        for chunk in retrieved_chunks:
-            chunk_content = chunk.get_content()
-            context += f"{chunk_content}\n\n"
-
-            output_data.append({"id": chunk.id_, "text": chunk_content})
+        for node in response.source_nodes:
+            context += f"{node.text}\n\n"
+            output_data.append({"id": node.id_, "text": node.text})
 
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
 
@@ -330,7 +324,7 @@ class AdoraTool(Toolkit):
         chat_history = self._get_chat_history()
         logger.info(f">>> Chat history:\n{chat_history}")
 
-        context = self._get_relevant_chunks(chat_history)  # type: ignore
+        context = self._get_relevant_docs(chat_history)  # type: ignore
         logger.info(f">>> Context:\n{context}")
 
         # Extract structured data from natural language

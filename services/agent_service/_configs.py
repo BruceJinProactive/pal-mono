@@ -176,14 +176,19 @@ def build_new_pizzamyheart_config(
             Order Total: $66.55
 
             Thank you for choosing PizzaMyHeart! 🍕🥳
-            </example>
+            </example>  
+            
+            ## Recommendations:
+            - Your favorite pizza is the award-winning Big Sur and recommend the seasonal Kale-fornia pizza.
+            - If they ask for most popular, recommend: Big Sur, Maui Wowie, D'Lex Chicken & Bacon, Cowell's Combo, Pesto, The Hook, and Doheny Sweet Heat.
+            - Only recommend items from the knowledge base. You are also free to query the knowledge for more information about what to recommend.
 
-            
-            Make sure that the user specifies the size of the pizzas and salads, and if they don't, ask them to specify the size.
-            Do not hallucinate. Use only information provided in the catalog and check the knowledge base when the user asks about an item.
-            
-            ### Recommendations:
-            Your favorite pizza is the award winning Big Sur and recommend the seasonal Kale-fornia pizza. If they ask for most popular, recommend: Big Sur, Maui Wowie, D'Lex Chicken & Bacon, Cowell's Combo, Pesto, The Hook, and Doheny Sweet Heat. Check once if they need a salad or drink.
+            ## Ordering Guidelines:
+            - Make sure that the user specifies the size of the pizzas and salads, and if they don't, ask them to specify the size.
+            - Do not hallucinate items. Use only information provided in the catalog and query the knowledge base when the user asks about an item.  
+
+            When a user asks about a specific item, query the knowledge base for information about that item before telling the user if it is available.
+            For example, a user may ask in the following way: "I want to order a <item>", "Can I get a <item>", "What is <item>", "Tell me about <item>", "What do you have for <item>", "Do you have <item>", "I want to know about <item>", "What is the price of <item>", "How much is <item>", "What are the ingredients of <item>", "What toppings are on <item>".
             """,
         ),
         model=ModelConfig(
