@@ -2,17 +2,16 @@ import os
 
 from llama_index.core import Settings, VectorStoreIndex
 from llama_index.core.indices import MultiModalVectorStoreIndex
+from llama_index.core.indices.query.base import BaseQueryEngine
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
-from phi.knowledge.agent import AgentKnowledge
-from phi.knowledge.llamaindex import LlamaIndexKnowledgeBase
 
 from agent.knowledge.integrations.pinecone import PineconeIntegration
 
 from . import _config
 
 
-def get_knowledge(config: _config.KnowledgeConfig) -> AgentKnowledge:
+def get_knowledge(config: _config.KnowledgeConfig) -> BaseQueryEngine:
     if config.provider == _config.KnowledgeProvider.LLAMAINDEX:
         # Ensure that settings follow LlamaIndexSettings schema
         settings = config.settings
@@ -48,11 +47,11 @@ def get_knowledge(config: _config.KnowledgeConfig) -> AgentKnowledge:
                 vector_store=vector_store, embed_model=Settings.embed_model
             )
 
-        retriever_engine = index.as_retriever(
-            similarity_top_k=3, image_similarity_top_k=3
+        knowledge = index.as_query_engine(
+            similarity_top_k=10,  # Increase number of retrieved documents
+            similarity_cutoff=0.3,  # Lower similarity threshold (0-1 range)
         )
 
-        knowledge = LlamaIndexKnowledgeBase(retriever=retriever_engine)
     else:
         raise ValueError(f"Unknown provider: {config.provider}")
 

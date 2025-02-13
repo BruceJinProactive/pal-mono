@@ -1,0 +1,1 @@
+from agent.tool.internal.query_knowledge_tool._implementation import QueryKnowledgeTool

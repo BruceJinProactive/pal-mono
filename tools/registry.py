@@ -7,13 +7,6 @@ from agent.tool._config import ToolIdentifier
 from tools.adora_tool import AdoraTool
 from tools.calculator_tool import CalculatorTool
 
-# TODO: Maybe it would be better to move ToolRegister to agent/tool/ ? (@kelvin)
-# This would resolve a lot of cross import issues between tools/ and agent/tool
-# Also, it makes sense to have the registry be in agent/tool/ since if we think about
-# the agent as a human, a tool exists externally and is only "registered" / made known
-# to the human when it is required to use it.
-# We can do something like "adora_tool" would import the module from tools/adora_tool/
-
 
 class ToolRegistry:
     """
