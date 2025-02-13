@@ -8,6 +8,7 @@ import db as db
 from api.schemas.chat.message import Channel, Message
 
 
+# TODO: get_user_by_channel_identifier in user_service is deprecated, remove it once Streamlit internal_app is replaced with new one
 def get_user_by_channel_identifier(
     session: Session,
     account_id: uuid.UUID,
@@ -103,3 +104,14 @@ async def get_user_async(
         )
 
     return user, False
+
+
+async def create_user_async(
+    session: AsyncSession, project: db.Project, message: Message
+) -> db.User:
+    user_repo = db.UserRepositoryAsync(session)
+    user = await user_repo.create_user(
+        project.account_id,
+        f"{message.channel.value}:{message.sender_identifier}",
+    )
+    return user

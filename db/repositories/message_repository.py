@@ -10,7 +10,8 @@ from db.tables import Conversation, Message, User
 from utils.dttm import current_utc
 from utils.log import logger
 
-CONVERSATION_TIMEOUT_SECONDS = 24 * 3600  # 24 hours
+CONVERSATION_RESET_SECONDS_SINCE_CREATED = 24 * 3600  # 24 hours
+CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE = 2 * 3600  # 2 hours
 
 
 class MessageRepositoryAsync:
@@ -54,9 +55,26 @@ class MessageRepositoryAsync:
             if time_difference.total_seconds() < 0:
                 time_difference = datetime.timedelta(seconds=0)
             if (
-                time_difference.total_seconds() < CONVERSATION_TIMEOUT_SECONDS
+                time_difference.total_seconds()
+                < CONVERSATION_RESET_SECONDS_SINCE_CREATED
             ):  # Less than 24 hours
                 conversation_id = conv_id
+
+            # Ensure latest message is under 2 hours old, if not then create a new conversation
+            messages = await self.session.execute(
+                select(Message.created_at)
+                .filter(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+            latest_message = messages.scalar_one_or_none()
+            if latest_message:
+                message_time_difference = current_time - latest_message
+                if (
+                    message_time_difference.total_seconds()
+                    >= CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE
+                ):
+                    conversation_id = conv_id
 
         # Step 5: Create a new conversation if needed
         if conversation_id is None:

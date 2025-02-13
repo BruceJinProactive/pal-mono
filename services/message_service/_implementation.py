@@ -91,11 +91,7 @@ async def get_chat_response_async(
 
         if user is None:
             # Create new user record
-            user_repo = db.UserRepositoryAsync(session)
-            user = await user_repo.create_user(
-                project.account_id,
-                f"{message.channel.value}:{message.sender_identifier}",
-            )
+            user = await user_service.create_user_async(session, project, message)
 
             # Get opt-in message and append to list of messages if applicable
             if is_new_sms_user:
@@ -279,12 +275,7 @@ async def get_chat_response_stream(
         )
         if user is None:
             # If user not found, just create one (no opt-in here)
-            user_repo = db.UserRepositoryAsync(session)
-
-            user = await user_repo.create_user(
-                project.account_id,
-                f"{message.channel.value}:{message.sender_identifier}",
-            )
+            user = await user_service.create_user_async(session, project, message)
 
         # Save request message to database
         request_message = await message_repo.create_message(
