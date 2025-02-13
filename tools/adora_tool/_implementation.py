@@ -30,7 +30,7 @@ ADORA_PAYMENT_URL = "https://pizzamyheart.adorapos.net/OnlineOrdering/OrderHubPa
 T = TypeVar("T", bound=BaseModel)
 
 
-@llm
+@llm(name="extractor")
 def llm_call(
     system_prompt: str, prompt: str, response_format: type[T] | None = None, name="tool"
 ) -> Optional[T]:
@@ -110,9 +110,9 @@ class AdoraTool(Toolkit):
             embed_model=Settings.embed_model,
         )
 
-        retriever = index.as_retriever(similarity_top_k=5)
+        retriever = index.as_retriever(similarity_top_k=10)
         postprocessor = SimilarityPostprocessor(
-            similarity_cutoff=0.4
+            similarity_cutoff=0.0
         )  # set 40% similarity cutoff
 
         self.query_engine = RetrieverQueryEngine(
@@ -269,13 +269,7 @@ class AdoraTool(Toolkit):
             chunk_content = chunk.get_content()
             context += f"{chunk_content}\n\n"
 
-            output_data.append(
-                {
-                    "node_id": chunk.id_,
-                    "content": chunk_content,
-                    "metadata": chunk.metadata,
-                }
-            )
+            output_data.append({"id": chunk.id_, "text": chunk_content})
 
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
 
