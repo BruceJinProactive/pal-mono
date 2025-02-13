@@ -7,9 +7,7 @@ from typing import List, Optional, TypeVar
 
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm, retrieval, task, tool
-from llama_index.core import QueryBundle, Settings, VectorStoreIndex
-from llama_index.core.postprocessor import SimilarityPostprocessor
-from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core import Settings, VectorStoreIndex
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from phi.agent.agent import Agent

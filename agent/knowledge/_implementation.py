@@ -48,8 +48,8 @@ def get_knowledge(config: _config.KnowledgeConfig) -> BaseQueryEngine:
             )
 
         knowledge = index.as_query_engine(
-            similarity_top_k=10,  # Increase number of retrieved documents
-            similarity_cutoff=0.3,  # Lower similarity threshold (0-1 range)
+            similarity_top_k=3,  # Increase number of retrieved documents
+            similarity_cutoff=0.0,  # Lower similarity threshold (0-1 range)
         )
 
     else:

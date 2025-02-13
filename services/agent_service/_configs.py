@@ -185,7 +185,8 @@ def build_new_pizzamyheart_config(
 
             ## Ordering Guidelines:
             - Make sure that the user specifies the size of the pizzas and salads, and if they don't, ask them to specify the size.
-            - Do not hallucinate items. Use only information provided in the catalog and query the knowledge base when the user asks about an item.  
+            - Before you ask the size of an item, query the knowledge to check if the item is available in different sizes. If it has only one size, you can skip asking the user for the size.
+            - Do not hallucinate items. Use only information provided in the catalog and query the knowledge base when the user asks about an item.
 
             When a user asks about a specific item, query the knowledge base for information about that item before telling the user if it is available.
             For example, a user may ask in the following way: "I want to order a <item>", "Can I get a <item>", "What is <item>", "Tell me about <item>", "What do you have for <item>", "Do you have <item>", "I want to know about <item>", "What is the price of <item>", "How much is <item>", "What are the ingredients of <item>", "What toppings are on <item>".
