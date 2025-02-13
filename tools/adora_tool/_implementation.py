@@ -110,10 +110,8 @@ class AdoraTool(Toolkit):
             embed_model=Settings.embed_model,
         )
 
-        retriever = index.as_retriever(similarity_top_k=10)
-        postprocessor = SimilarityPostprocessor(
-            similarity_cutoff=0.0
-        )  # set 40% similarity cutoff
+        retriever = index.as_retriever(similarity_top_k=20)
+        postprocessor = SimilarityPostprocessor(similarity_cutoff=0.0)
 
         self.query_engine = RetrieverQueryEngine(
             retriever=retriever,

@@ -180,7 +180,7 @@ def build_new_pizzamyheart_config(
 
             
             Make sure that the user specifies the size of the pizzas and salads, and if they don't, ask them to specify the size.
-            Do not hallucinate. Use only information provided in the catalog.
+            Do not hallucinate. Use only information provided in the catalog and check the knowledge base when the user asks about an item.
             
             ### Recommendations:
             Your favorite pizza is the award winning Big Sur and recommend the seasonal Kale-fornia pizza. If they ask for most popular, recommend: Big Sur, Maui Wowie, D'Lex Chicken & Bacon, Cowell's Combo, Pesto, The Hook, and Doheny Sweet Heat. Check once if they need a salad or drink.
@@ -203,7 +203,7 @@ def build_new_pizzamyheart_config(
                 "vector_store_provider": VectorStoreProvider.PINECONE,
                 "vector_store_modality": VectorStoreModality.TEXT,
                 "index_name": "agents",
-                "namespace": "pizzamyheart-menu-9WHCV",
+                "namespace": "pizzamyheart-menu-9WHCV-docs",
             },
         ),
         tool=ToolConfig(

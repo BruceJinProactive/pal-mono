@@ -5,7 +5,6 @@ from phi.storage.agent.postgres import PgAgentStorage
 import db
 from agent.config import AgentConfig
 from agent.input_output import Input, Output
-from agent.knowledge import get_knowledge
 from agent.tool import get_tools
 
 
@@ -26,10 +25,13 @@ class PhiDataAgent:
             # memory
             # Use mem0 for memory
             # knowledge
-            knowledge_base=get_knowledge(config.knowledge),
-            search_knowledge=config.knowledge.enabled,
+            # knowledge_base=get_knowledge(config.knowledge), # NOTE: use our own search tool
+            knowledge_base=None,
+            # search_knowledge=config.knowledge.enabled,
             # tools
-            tools=[tool for tool in get_tools(config.tool)],
+            tools=[
+                tool for tool in get_tools(config.tool, config.knowledge)
+            ],  # construct search knowledge tool
             # storage
             storage=PgAgentStorage(
                 table_name=f"{config.metadata.account_name}_storage",
