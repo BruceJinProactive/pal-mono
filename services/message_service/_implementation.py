@@ -1,8 +1,10 @@
+import os
 import random
 import time
 import uuid
 from typing import AsyncIterator
 
+from mixpanel import Mixpanel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,7 @@ import db
 from agent import Agent
 from agent.input_output import Output
 from agent.model import BaseOutputModel
+from api.schemas.admin.analytics import Event as AnalyticsEvent
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
@@ -74,6 +77,9 @@ async def get_chat_response_async(
     try:
         logger.info(f"Step 1: Initialization - {time.time() - start_time:.4f}s")
 
+        MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
+        mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
+
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
 
@@ -113,6 +119,17 @@ async def get_chat_response_async(
         request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
         )
+        await session.refresh(project, attribute_names=["account"])
+        account_name = project.account.name
+
+        event_properties = {
+            "account_name": account_name,
+            "channel": message.channel.value,
+            "conversation_id": str(request_message.conversation_id),
+        }
+
+        mp.track(str(user.id), AnalyticsEvent.USER_MESSAGE, event_properties)
+
         if not request_message:
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
@@ -226,6 +243,14 @@ async def get_chat_response_async(
                         await message_repo.create_message(
                             user_id=user.id, message_body=response_message.to_dict()
                         )
+                    event_properties = {
+                        "account_name": account_name,
+                        "channel": response_message.channel.value,
+                        "conversation_id": str(conversation_id),
+                    }
+                    mp.track(
+                        str(user.id), AnalyticsEvent.AGENT_MESSAGE, event_properties
+                    )
 
                     response_messages.append(response_message)
 
@@ -266,6 +291,9 @@ async def get_chat_response_stream(
         yield error_message
 
     try:
+        MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
+        mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
+
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
 
@@ -285,6 +313,13 @@ async def get_chat_response_stream(
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
 
+        account_name = project.account.name
+        event_properties = {
+            "account_name": account_name,
+            "channel": message.channel.value,
+            "conversation_id": str(conversation_id),
+        }
+        mp.track(str(user.id), AnalyticsEvent.USER_MESSAGE, event_properties)
         # Get appropriate agent from account name
         agent_id = project.agent_id
         if agent_id is None:
@@ -301,6 +336,13 @@ async def get_chat_response_stream(
         # Get response from agent
         request_content = message.get_content()
         response_stream = await agent.arun(request_content, stream=True)
+        event_properties = {
+            "account_name": account_name,
+            "channel": response_stream.channel.value,
+            "conversation_id": str(conversation_id),
+        }
+        mp.track(str(user.id), AnalyticsEvent.AGENT_MESSAGE, event_properties)
+
         return response_stream
 
     except Exception:

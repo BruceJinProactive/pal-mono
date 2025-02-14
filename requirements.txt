@@ -112,6 +112,7 @@ marshmallow==3.26.0
 matplotlib==3.9.2
 mdurl==0.1.2
 mem0ai==0.1.48
+mixpanel==4.10.1
 monotonic==1.6
 more-itertools==10.4.0
 multidict==6.1.0
