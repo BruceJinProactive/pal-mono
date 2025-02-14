@@ -1,7 +1,7 @@
 import asyncio
 
 from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import agent
+from ddtrace.llmobs.decorators import workflow
 
 from agent.config import AgentConfig
 from agent.framework import Framework, PhiDataAgent
@@ -42,7 +42,7 @@ class Agent:
             agentless_enabled=True,
         )
 
-    @agent
+    @workflow
     async def arun(self, input: Input) -> Output:
         """
         Runs the agent asynchronously with the given input.
@@ -57,13 +57,13 @@ class Agent:
         # Update memory with the user's input
         asyncio.create_task(
             update_memory(
-                user_id=self._metadata.user_id,
-                content=input.content,
-            )
+                user_id=self._metadata.user_id,  # type: ignore
+                content=input.content,  # type: ignore
+            )  # type: ignore
         )
-        memories = await get_memory_context(user_id=self._metadata.user_id)
+        memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
         input.memories = memories
 
-        output = await self._agent.arun(input)
+        output = await self._agent.arun(input)  # type: ignore
 
         return output

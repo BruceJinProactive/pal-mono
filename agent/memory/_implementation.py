@@ -1,6 +1,8 @@
+from ddtrace.llmobs.decorators import task
 from mem0 import AsyncMemoryClient
 
 
+@task
 async def update_memory(
     user_id: str, content: str, role: str = "user", session_id: str | None = None
 ) -> None:
@@ -17,6 +19,7 @@ async def update_memory(
     )
 
 
+@task
 async def get_memory_context(user_id: str) -> str:
     client = AsyncMemoryClient()
 

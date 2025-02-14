@@ -1,4 +1,5 @@
 import phi.agent.agent
+from ddtrace.llmobs.decorators import agent
 from phi.model.openai.chat import OpenAIChat
 from phi.storage.agent.postgres import PgAgentStorage
 
@@ -46,10 +47,7 @@ class PhiDataAgent:
 
         self._agent = agent
 
-    def run(self, input: Input) -> Output:
-        content = self._agent.run(input.get_prompt()).content
-        return Output(content=content) if content is not None else Output(content="")
-
+    @agent
     async def arun(self, input: Input) -> Output:
         result = await self._agent.arun(input.get_prompt())
         content = result.content
