@@ -267,6 +267,8 @@ class AdoraTool(Toolkit):
 
     @task(name="_fulfill_order [via Adora API]")
     def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
+        LLMObs.annotate(input_data=order)
+
         json_payload = order.model_dump_json(by_alias=True)
         validated_order = _apis.validate_order(
             bearer_token=bearer_token, json_payload=json_payload

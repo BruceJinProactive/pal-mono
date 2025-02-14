@@ -202,9 +202,8 @@ class OrderItem(BaseModel):
         description="Item ID is the valued defined in `item_id` for the corresponding item name",
         serialization_alias="itemId",
     )
-    # TODO: We need to remove default assumption and prompt eng the model to ask. For now this is okay.
     size_id: int = Field(
-        description="The size ID of an order item defined as `size_id`. If an item has only 'One Size' the `size_id` should be 0. By default, assume 1.",
+        description="The size ID of an order item defined as `size_id`. If an item has only one size return 0.",
         serialization_alias="sizeId",
     )
     item_name: str = Field(description="Item name", exclude=True)
