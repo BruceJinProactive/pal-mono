@@ -1,3 +1,3 @@
-from .classes import FashionItem, ImageIdentification
+from .classes import FashionItem, GeneralFunctions, ImageIdentification
 from .fashion_image_understanding_tools import FashionImageUnderstandingTools
 from .fashion_text_understanding_tools import FashionTextUnderstandingTools

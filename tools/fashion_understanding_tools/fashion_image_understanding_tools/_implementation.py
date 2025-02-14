@@ -6,22 +6,19 @@ import time
 from typing import Union
 
 import requests
-from classes import FashionItem, ImageIdentification
+from classes import FashionItem, GeneralFunctions, ImageIdentification
 from openai import AsyncOpenAI, OpenAI
 from phi.tools.toolkit import Toolkit
 from PIL import Image
 
 from utils.log import logger
 
-### TODO: Discuss with the ENG team how to store the hierarchy information
-# Load fashion knowledge base hierarchy
-global hierarchy
-hierarchy_file = os.path.join(os.path.dirname(__file__), "labels/labels_v1.json")
-hierarchy = json.load(open(hierarchy_file, "r"))
+# Load the fashion knowledge base hierarchy
+general_functions = GeneralFunctions()
+hierarchy = general_functions.get_hierarchy()
 
 
 class FashionImageUnderstandingTools(Toolkit):
-
     def __init__(self):
         super().__init__(name="fashion_image_understanding_tools")
         self.register(self._image_understanding)
@@ -162,30 +159,6 @@ Output Explanation:
         """
         return {k.lower(): v for k, v in dictionary.items()}
 
-    def _restrict_api_call_params(self, api_call_params: dict, mapping=None) -> dict:
-        """Restrict the API call parameters to the allowed values.
-
-        Args:
-            api_call_params (dict): The API call parameters.
-            mapping (dict): The mapping between the API call parameters and the hierarchy values. Optional.
-
-        Returns:
-            dict: The restricted API call parameters.
-        """
-
-        # Restrict the colors, occasions, and categories to the hierarchy values using the `enum` field
-        for k in api_call_params["properties"]:
-            # Decide whether to use the mapping
-            if mapping is not None and k in mapping:
-                hierarchy_k = mapping[k]
-                if hierarchy_k in hierarchy:
-                    api_call_params["properties"][k]["enum"] = hierarchy[hierarchy_k]
-            else:
-                if k in hierarchy:
-                    api_call_params["properties"][k]["enum"] = hierarchy[k]
-
-        return api_call_params
-
     def _image_understanding(
         self,
         image_url: str,
@@ -283,8 +256,8 @@ Provide the output in the following JSON structure:
                 "type": "json_schema",
                 "json_schema": {
                     "name": "result",
-                    "schema": self._restrict_api_call_params(
-                        FashionItem.model_json_schema()
+                    "schema": general_functions._restrict_api_call_params(
+                        FashionItem.model_json_schema(), hierarchy=hierarchy
                     ),
                 },
             },

@@ -7,7 +7,6 @@ from phi.tools.toolkit import Toolkit
 
 
 class FashionTextUnderstandingTools(Toolkit):
-
     def __init__(self):
         super().__init__(name="fashion_text_understanding_tools")
         self.register(self._text_understanding)
