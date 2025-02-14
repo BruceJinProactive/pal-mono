@@ -117,7 +117,9 @@ async def create_user_async(
         f"{message.channel.value}:{message.sender_identifier}",
     )
     MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
-    mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
+    mp = None
+    if MIXPANEL_PROJECT_TOKEN:
+        mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
 
     user_id = str(user.id)
     await session.refresh(project, attribute_names=["account"])
@@ -127,6 +129,7 @@ async def create_user_async(
         "account_name": account_name,
         "channel": message.channel.value,
     }
-    mp.people_set(user_id, properties)
+    if mp:
+        mp.people_set(user_id, properties)
 
     return user
