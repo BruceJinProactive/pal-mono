@@ -209,7 +209,7 @@ def build_new_pizzamyheart_config(
                 "vector_store_provider": VectorStoreProvider.PINECONE,
                 "vector_store_modality": VectorStoreModality.TEXT,
                 "index_name": "agents",
-                "namespace": "pizzamyheart-menu-9WHCV-docs",
+                "namespace": "pizzamyheart-menu-9WHCV-docs-2025-02-13",
             },
         ),
         tool=ToolConfig(

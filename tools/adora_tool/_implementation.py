@@ -95,7 +95,8 @@ class AdoraTool(Toolkit):
         pinecone_index = pc.Index("agents")
 
         vector_store = PineconeVectorStore(
-            pinecone_index=pinecone_index, namespace="pizzamyheart-menu-9WHCV-docs"
+            pinecone_index=pinecone_index,
+            namespace="pizzamyheart-menu-9WHCV-docs-2025-02-13",
         )
 
         Settings.embed_model = CohereEmbedding(
