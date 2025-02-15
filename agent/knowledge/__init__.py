@@ -1,7 +1,7 @@
 from typing import Any
 
-from phi.document.base import Document
-from phi.knowledge.agent import AgentKnowledge
+from agno.document.base import Document
+from agno.knowledge.agent import AgentKnowledge
 
 from . import _config, _implementation
 

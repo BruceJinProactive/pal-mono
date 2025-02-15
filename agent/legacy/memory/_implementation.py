@@ -1,12 +1,12 @@
 from typing import Any
 
-from phi.memory.agent import AgentMemory
-from phi.memory.classifier import MemoryClassifier
-from phi.memory.db.postgres import PgMemoryDb
-from phi.memory.manager import MemoryManager
-from phi.memory.memory import Memory
-from phi.model.base import Model
-from phi.model.message import Message
+from agno.memory.agent import AgentMemory
+from agno.memory.classifier import MemoryClassifier
+from agno.memory.db.postgres import PgMemoryDb
+from agno.memory.manager import MemoryManager
+from agno.memory.memory import Memory
+from agno.models.base import Model
+from agno.models.message import Message
 
 import db
 from agent.model import ModelName, get_model
@@ -106,7 +106,7 @@ def get_memory(
     Returns:
         AgentMemory: The AgentMemory instance for the specified
     """
-    memory_table_name = f"{account_name}_memory"
+    memory_table_name = f"{account_name}_memory_agno"
     memory = AgentMemory(
         db=PgMemoryDb(
             db_url=db.db_url,
@@ -175,6 +175,4 @@ class CustomMemoryClassifier(MemoryClassifier):
         return Message(
             role="system",
             content="\n".join(system_prompt_lines),
-            tool_call_name=None,
-            tool_call_arguments=None,
         )

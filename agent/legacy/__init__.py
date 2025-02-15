@@ -3,7 +3,7 @@
 
 from typing import Any
 
-from phi.agent.agent import Agent
+from agno.agent.agent import Agent
 
 from . import _implementation
 

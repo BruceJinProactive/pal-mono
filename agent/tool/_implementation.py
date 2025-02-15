@@ -1,4 +1,4 @@
-from phi.tools.toolkit import Toolkit
+from agno.tools.toolkit import Toolkit
 
 from agent.knowledge import KnowledgeConfig
 from agent.tool.internal.query_knowledge_tool import QueryKnowledgeTool

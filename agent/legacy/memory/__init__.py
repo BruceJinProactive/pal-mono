@@ -1,8 +1,8 @@
 from typing import Any
 
-from phi.memory.agent import AgentMemory
-from phi.memory.manager import MemoryManager
-from phi.memory.memory import Memory
+from agno.memory.agent import AgentMemory
+from agno.memory.manager import MemoryManager
+from agno.memory.memory import Memory
 
 from . import _implementation
 

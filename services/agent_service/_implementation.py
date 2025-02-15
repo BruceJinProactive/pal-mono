@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from phi.agent.agent import Agent as PhiAgent
+from agno.agent.agent import Agent as AgnoAgent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -58,7 +58,7 @@ async def get_ai_agent_async(
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
     stream: bool = False,
-) -> PhiAgent:
+) -> AgnoAgent:
     # Retrieve the agent from the database
     agent_repository = db.AgentRepositoryAsync(session)
     agent = await agent_repository.get_agent(agent_id=agent_id)
@@ -92,7 +92,7 @@ def get_ai_agent(
     project_id: uuid.UUID,
     conversation_id: uuid.UUID | None = None,
     new_run: bool = False,
-) -> PhiAgent:
+) -> AgnoAgent:
     # Retrieve the agent from the database
     agent_repository = db.AgentRepository(session)
     agent = agent_repository.get_agent(agent_id=agent_id)

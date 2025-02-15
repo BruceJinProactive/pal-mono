@@ -294,7 +294,7 @@ def get_knowledge_base(session: Session, account_name: str) -> list:
 
     try:
         # Dynamically get the table name
-        table_name = f"{account_name}_knowledge"
+        table_name = f"{account_name}_knowledge_agno"
 
         # Fetch the table dynamically by reflecting the table from the database schema
         knowledge_table = Table(
@@ -355,7 +355,7 @@ def update_knowledge(
         raise ValueError("Account not found.")
 
     try:
-        table_name = f"{account_name}_knowledge"
+        table_name = f"{account_name}_knowledge_agno"
 
         knowledge_table = Table(
             table_name, Base.metadata, autoload_with=session.bind, schema="ai"

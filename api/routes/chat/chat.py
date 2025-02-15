@@ -1,9 +1,9 @@
 import asyncio
 from typing import AsyncIterator
 
+from agno.run.response import RunResponse
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from phi.run.response import RunResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db

@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Type
 
-from phi.tools.toolkit import Toolkit
+from agno.tools.toolkit import Toolkit
 
 # TODO: Absolute import required to resolve circular import. Fix this anti-pattern.
 from agent.tool._config import ToolIdentifier
@@ -10,11 +10,11 @@ from tools.calculator_tool import CalculatorTool
 
 class ToolRegistry:
     """
-    A registry that provides access to explicitly registered Phidata Toolkits.
+    A registry that provides access to explicitly registered Agno Toolkits.
     """
 
     def __init__(self):
-        # TODO: Support non-Phidata tools
+        # TODO: Support non-Agno tools
         self._tools: Dict[str, Type[Toolkit]] = {
             # Register available tools
             "calculator_tool": CalculatorTool,

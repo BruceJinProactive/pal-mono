@@ -1,7 +1,7 @@
 from typing import Any
 
-from phi.memory.agent import AgentMemory
-from phi.memory.memory import Memory
+from agno.memory.agent import AgentMemory
+from agno.memory.memory import Memory
 
 from . import _config, _implementation
 

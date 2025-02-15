@@ -3,9 +3,9 @@ import os
 from typing import Any
 from uuid import uuid4
 
+from agno.agent.agent import Agent
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
-from phi.agent.agent import Agent
 
 from agent.legacy.knowledge import get_knowledge
 from agent.legacy.memory import get_history_responses, get_memory
@@ -73,19 +73,18 @@ def integrate_agent(
 
     return Agent(
         # -*- Agent settings
-        provider=model,
+        model=model,
         agent_id=agent_id,
-        agent_data={"agent_type": "autonomous"},
         # -*- User settings
         user_id=user_id,
         # -*- Session settings
         session_id=session_id,
         # -*- Agent Memory
         memory=memory,
-        add_chat_history_to_messages=True,
+        add_history_to_messages=True,
         num_history_responses=num_history_responses,
         # -*- Agent Knowledge
-        knowledge_base=knowledge,
+        knowledge=knowledge,
         # -*- Agent Storage
         storage=storage,
         # -*- Agent Tools
@@ -95,9 +94,9 @@ def integrate_agent(
         read_chat_history=True,
         search_knowledge=True,
         # -*- System Prompt Settings
-        system_prompt=system_prompt,
+        system_message=system_prompt,
         # -*- Agent Response Settings
-        output_model=None if stream else output_model,
+        response_model=None if stream else output_model,
         parse_response=True,
         structured_outputs=False,  # please set to False for JSON mode
         # -*- Debug settings

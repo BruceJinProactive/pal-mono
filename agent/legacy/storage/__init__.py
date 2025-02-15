@@ -1,4 +1,4 @@
-from phi.storage.agent.base import AgentStorage
+from agno.storage.agent.base import AgentStorage
 
 from . import _implementation
 
@@ -8,7 +8,7 @@ def get_storage(account_name: str) -> AgentStorage:
     Creates and returns an AgentStorage instance for the specified account.
 
     This function sets up a storage system for the given account by creating a
-    PgAgentStorage instance. The storage is configured to use a PostgreSQL
+    PostgresAgentStorage instance. The storage is configured to use a PostgreSQL
     database table for storing and retrieving agent-related data. The storage
     table name is derived from the account name.
 

@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from phi.agent.agent import Agent as PhiAgent
+from agno.agent.agent import Agent as AgnoAgent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -36,9 +36,9 @@ async def get_ai_agent_async(
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
     stream: bool = False,
-) -> PhiAgent:
+) -> AgnoAgent:
     """
-    Retrieve a PhiAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
+    Retrieve a AgnoAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
 
     Args:
         session (AsyncSession): The asynchronous database session to use for the query.
@@ -49,7 +49,7 @@ async def get_ai_agent_async(
         stream (bool, optional): If True, enables streaming mode for the agent. Defaults to False.
 
     Returns:
-        PhiAgent: The retrieved PhiAgent instance.
+        AgnoAgent: The retrieved AgnoAgent instance.
     """
     return await _implementation.get_ai_agent_async(
         session,
@@ -68,9 +68,9 @@ def get_ai_agent(
     project_id: uuid.UUID,
     conversation_id: uuid.UUID | None = None,
     new_run: bool = False,
-) -> PhiAgent:
+) -> AgnoAgent:
     """
-    Retrieve a PhiAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
+    Retrieve a AgnoAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
 
     Args:
         session (Session): The database session to use for the query.
@@ -81,7 +81,7 @@ def get_ai_agent(
         new_run (bool, optional): If True, starts a new run. If False, attempts to continue from the last run. Defaults to False.
 
     Returns:
-        PhiAgent: The retrieved PhiAgent instance.
+        AgnoAgent: The retrieved AgnoAgent instance.
     """
     return _implementation.get_ai_agent(
         session,

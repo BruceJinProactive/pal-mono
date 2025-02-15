@@ -1,7 +1,7 @@
 import inspect
 
+from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
-from phi.tools.toolkit import Toolkit
 
 from tools.booking_tools.integrations.mindzero import MindZeroIntegration
 

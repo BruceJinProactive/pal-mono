@@ -428,10 +428,10 @@ def get_knowledge_table(account_name: str):
 
     # Dynamically create a Knowledge class with a specific table name
     knowledge_table = type(
-        f"{account_name}_Knowledge",
+        f"{account_name}_Knowledge_agno",
         (KnowledgeBase,),
         {
-            "__tablename__": f"{account_name}_knowledge",
+            "__tablename__": f"{account_name}_knowledge_agno",
             "__table_args__": {"extend_existing": True},
         },
     )

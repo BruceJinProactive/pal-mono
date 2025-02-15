@@ -1,8 +1,8 @@
 import inspect
 from uuid import uuid4
 
+from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
-from phi.tools.toolkit import Toolkit
 
 from tools.ordering_tools.classes import OrderItem
 from tools.ordering_tools.integrations.adora import AdoraIntegration

@@ -1,7 +1,7 @@
-import phi.agent.agent
+import agno.agent.agent
+from agno.models.openai.chat import OpenAIChat
+from agno.storage.agent.postgres import PostgresAgentStorage
 from ddtrace.llmobs.decorators import agent
-from phi.model.openai.chat import OpenAIChat
-from phi.storage.agent.postgres import PgAgentStorage
 
 import db
 from agent.config import AgentConfig
@@ -9,9 +9,9 @@ from agent.input_output import Input, Output
 from agent.tool import get_tools
 
 
-class PhiDataAgent:
+class AgnoAgent:
     def __init__(self, config: AgentConfig):
-        agent = phi.agent.agent.Agent(
+        agent = agno.agent.agent.Agent(
             # persona
             name=config.persona.name,
             role=config.persona.role,
@@ -21,27 +21,25 @@ class PhiDataAgent:
             user_id=config.metadata.user_id,
             session_id=config.metadata.session_id,
             # model
-            provider=OpenAIChat(id="gpt-4o"),
-            # provider=Groq(id="deepseek-r1-distill-qwen-32b"), # TODO: transition to agno to try this
+            model=OpenAIChat(id="gpt-4o"),
             # memory
             # Use mem0 for memory
             # knowledge
             # knowledge_base=get_knowledge(config.knowledge), # NOTE: use our own search tool
-            knowledge_base=None,
+            knowledge=None,
             # search_knowledge=config.knowledge.enabled,
             # tools
             tools=[
                 tool for tool in get_tools(config.tool, config.knowledge)
             ],  # construct search knowledge tool
             # storage
-            storage=PgAgentStorage(
-                table_name=f"{config.metadata.account_name}_storage",
+            storage=PostgresAgentStorage(
+                table_name=f"{config.metadata.account_name}_storage_agno",
                 db_url=db.db_url,
             ),
-            # Phidata required
-            add_chat_history_to_messages=True,
+            add_history_to_messages=True,
             num_history_responses=5,
-            output_model=None,
+            response_model=None,
             debug_mode=True,
         )
 
@@ -54,21 +52,6 @@ class PhiDataAgent:
 
         documents = []
         images = []
-
-        extra_data = result.extra_data
-        if extra_data and extra_data.context and extra_data.context[0].docs:
-            res_references = extra_data.context[0].docs
-            for reference in res_references:
-                ref_type = None
-                metadata = reference["meta_data"]
-
-                if "file_type" in metadata:
-                    ref_type = metadata["file_type"]
-
-                if ref_type and ref_type.startswith("image"):
-                    images.append(metadata["file_path"])
-                else:
-                    documents.append(metadata["file_path"])
 
         return (
             Output(content=content, documents=documents, images=images)

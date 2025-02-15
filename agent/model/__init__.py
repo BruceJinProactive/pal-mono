@@ -1,6 +1,6 @@
+from agno.models.openai.chat import OpenAIChat
+from agno.tools.toolkit import Toolkit
 from openai import AsyncOpenAI, OpenAI
-from phi.model.openai.chat import OpenAIChat
-from phi.tools.toolkit import Toolkit
 
 from . import _config, _implementation
 

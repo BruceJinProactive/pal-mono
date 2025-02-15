@@ -1,10 +1,10 @@
 from typing import Any
 
-from phi.document.base import Document
-from phi.document.reader.pdf import PDFReader
-from phi.knowledge.agent import AgentKnowledge
-from phi.knowledge.combined import CombinedKnowledgeBase
-from phi.vectordb.pgvector.pgvector2 import PgVector2
+from agno.document.base import Document
+from agno.document.reader.pdf_reader import PDFReader
+from agno.knowledge.agent import AgentKnowledge
+from agno.knowledge.combined import CombinedKnowledgeBase
+from agno.vectordb.pgvector.pgvector import PgVector
 
 import db
 from agent.model import get_embedder
@@ -13,7 +13,7 @@ from agent.model import get_embedder
 def get_knowledge(
     account_name: str, agent_raw_config: dict[str, Any] | None = None
 ) -> AgentKnowledge:
-    knowledge_table_name = f"{account_name}_knowledge"
+    knowledge_table_name = f"{account_name}_knowledge_agno"
     num_documents = (
         agent_raw_config.get("knowledge", {}).get("num_documents", 10)
         if agent_raw_config
@@ -22,9 +22,9 @@ def get_knowledge(
     num_documents = num_documents if isinstance(num_documents, int) else 10
     knowledge = CombinedKnowledgeBase(
         sources=[],
-        vector_db=PgVector2(
+        vector_db=PgVector(
             db_url=db.db_url,
-            collection=knowledge_table_name,
+            table_name=knowledge_table_name,
             embedder=get_embedder(),
         ),
         # 2 references are added to the prompt

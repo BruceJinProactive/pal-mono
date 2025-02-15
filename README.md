@@ -1,4 +1,5 @@
 # pal-mono
+
 [![Pre commit](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/precommit.yml/badge.svg)](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/precommit.yml)
 [![Create build](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-build.yml/badge.svg)](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-build.yml)
 [![Create release](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-release.yml/badge.svg)](https://github.com/Proactive-AI-Lab/pal-mono/actions/workflows/create-release.yml)
@@ -28,9 +29,10 @@ source ~/.venvs/aienv/bin/activate
 
 ```bash
 pip3 install docker
-pip3 install -U phidata
-phi init
-phi ws setup
+pip3 install agno
+pip3 install agno.docker
+ag init
+ag ws setup
 ```
 
 5. Create a new file named `workspace/secrets/dev_app_secrets.yml` to add environment variables. Please refer to this [doc](https://docs.google.com/document/d/1-P-R0bRgnrss0oVUE6O1vX8Tu3HaMLSGG52T04bkz1s) to get these secrets.
@@ -38,9 +40,9 @@ phi ws setup
 6. Build and run both API and web app locally.
 
 ```bash
-phi ws up
+ag ws up
 
-phi ws up -f (Force rebuild from scratch)
+ag ws up -f (Force rebuild from scratch)
 ```
 
 7. [One-time] Log into the internal app at http://localhost:8501/. Under the 'Onboarding' page, enter account name "proactiveailab" (other fields can be left blank), and click 'Create Account' button.
@@ -48,36 +50,36 @@ phi ws up -f (Force rebuild from scratch)
 8. [One-time] Go to the 'Projects' page, and add this row into the 'Project Update' table:
 
 | Channel      | Identifier             |
-|--------------|------------------------|
+| ------------ | ---------------------- |
 | internal_app | proactiveailab-default |
 
 9. Under the 'Live' page, you should be able to talk to the agent of the "proactiveailab" account.
 
-
 ### Local Environment
-`phi ws up` will automatically spin up new Docker containers that install dependencies in `requirements.txt` that enable `pal-mono` to function. The dependencies are specified in `pyproject.toml` and updates to `requirements.txt` are made with `./scripts/upgrade.sh`.
 
-Since PhiData installs these dependencies in the Docker container environment, our local environment (e.g. VS Code) will not recognize the missing imports. To set up the local environment:
+`ag ws up` will automatically spin up new Docker containers that install dependencies in `requirements.txt` that enable `pal-mono` to function. The dependencies are specified in `pyproject.toml` and updates to `requirements.txt` are made with `./scripts/upgrade.sh`.
+
+Since Agno installs these dependencies in the Docker container environment, our local environment (e.g. VS Code) will not recognize the missing imports. To set up the local environment:
 
 ```bash
 ./scripts/install.sh
 ```
 
 ### Channel Configurations
+
 To open up channels (e.g. the internal app's live page, api) to talk to a local agent, they need to be configured. In the Channel:Identifier table under the projects page, save the following rows for each account.
 
 | Channel      | Identifier     |
-|--------------|----------------|
+| ------------ | -------------- |
 | internal_app | <project_name> |
 | api          | <project_name> |
 
 For example,
 
 | Channel      | Identifier             |
-|--------------|------------------------|
+| ------------ | ---------------------- |
 | internal_app | proactiveailab-default |
 | api          | proactiveailab-default |
-
 
 ## Others
 
@@ -96,7 +98,6 @@ We use several tools to ensure code quality and consistency. These tools are run
 - Lint with `ruff check . --fix`
 - Type check with `pyright .`
 
-
 Run the following command to validate your code locally:
 
 ```bash
@@ -106,13 +107,17 @@ Run the following command to validate your code locally:
 ## CI/CD
 
 ### Testing
-Testing is done with [pytest](https://docs.pytest.org/en/7.1.x/contents.html), which runs all tests named test_* in files named test_*.py or *_test.py. Test files should be placed in the same directory as the source file.
+
+Testing is done with [pytest](https://docs.pytest.org/en/7.1.x/contents.html), which runs all tests named test*\* in files named test*_.py or _\_test.py. Test files should be placed in the same directory as the source file.
 
 To run, first start the containers.
+
 ```
-phi ws up
+ag ws up
 ```
+
 Then run the test script.
+
 ```
 ./scripts/test.sh
 ```
@@ -129,7 +134,7 @@ The CI/CD pipeline consists of 4 environments:
 ### Endpoints
 
 | env | app                                                                | api                                                        | api docs (internal)                                                    |
-|-----|--------------------------------------------------------------------|------------------------------------------------------------|------------------------------------------------------------------------|
+| --- | ------------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
 | dev | http://localhost:8501/                                             | http://localhost:8000/                                     | http://localhost:8000/docs                                             |
 | lat | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat | http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs |
 | stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs |

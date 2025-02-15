@@ -1,8 +1,8 @@
-from phi.docker.app.fastapi import FastApi
-from phi.docker.app.postgres import PgVectorDb
-from phi.docker.app.streamlit import Streamlit
-from phi.docker.resource.image import DockerImage
-from phi.docker.resources import DockerResources
+from agno.docker.app.fastapi import FastApi
+from agno.docker.app.postgres import PgVectorDb
+from agno.docker.app.streamlit import Streamlit
+from agno.docker.resource.image import DockerImage
+from agno.docker.resources import DockerResources
 
 from workspace.settings import ws_settings
 

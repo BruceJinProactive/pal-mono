@@ -1,9 +1,9 @@
 import json
 import os
 
+from agno.tools.toolkit import Toolkit
 from classes import FashionItem
 from openai import AsyncOpenAI, OpenAI
-from phi.tools.toolkit import Toolkit
 
 
 class FashionTextUnderstandingTools(Toolkit):

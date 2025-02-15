@@ -2,9 +2,9 @@ import json
 import time
 from typing import Any, Literal
 
+from agno.storage.agent.base import AgentStorage
+from agno.storage.agent.session import AgentSession
 from geopy.geocoders import Nominatim
-from phi.agent.session import AgentSession
-from phi.storage.agent.base import AgentStorage
 
 from agent.legacy.storage import get_storage
 from tools.ordering_tools.classes import FulfillmentStrategy, OrderItem

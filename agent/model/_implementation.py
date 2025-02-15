@@ -1,11 +1,11 @@
 from enum import Enum
 from os import getenv
 
+from agno.embedder.openai import OpenAIEmbedder
+from agno.models.google.gemini import Gemini
+from agno.models.openai.chat import OpenAIChat
+from agno.models.openai.like import OpenAILike
 from openai import AsyncOpenAI, OpenAI
-from phi.embedder.openai import OpenAIEmbedder
-from phi.model.google.gemini import Gemini
-from phi.model.openai.chat import OpenAIChat
-from phi.model.openai.like import OpenAILike
 from pydantic import BaseModel, Field
 
 # Get the MODEL_ROUTER_BASE_URL environment variable, or use a default value if not set
@@ -97,4 +97,4 @@ def get_embedder():
     Returns:
         OpenAIEmbedder: An instance of OpenAIEmbedder configured with the embedding model from settings.
     """
-    return OpenAIEmbedder(model=EmbedderName.SMALL)
+    return OpenAIEmbedder(id=EmbedderName.SMALL)

@@ -1,8 +1,8 @@
 from enum import StrEnum
 
-from agent.framework.phidata import PhiDataAgent
+from agent.framework.agno import AgnoAgent
 
 
 class Framework(StrEnum):
-    PHIDATA = "phidata"
+    AGNO = "agno"
     CREWAI = "crewai"

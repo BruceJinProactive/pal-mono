@@ -4,7 +4,7 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import workflow
 
 from agent.config import AgentConfig
-from agent.framework import Framework, PhiDataAgent
+from agent.framework import AgnoAgent, Framework
 from agent.input_output import Input, Output
 from agent.memory import get_memory_context, update_memory
 
@@ -28,12 +28,12 @@ class Agent:
         framework = (
             config.metadata.framework
             if isinstance(config.metadata.framework, Framework)
-            else Framework.PHIDATA
+            else Framework.AGNO
         )
-        if framework != Framework.PHIDATA:
+        if framework != Framework.AGNO:
             raise ValueError(f"Unsupported framework: {framework}")
 
-        self._agent = PhiDataAgent(config)
+        self._agent = AgnoAgent(config)
         self._metadata = config.metadata
 
         # Set up Datadog LLM Observability

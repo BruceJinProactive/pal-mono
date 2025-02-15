@@ -44,8 +44,8 @@ class ApiSettings(BaseSettings):
     def set_cors_origin_list(cls, cors_origin_list, info: FieldValidationInfo):
         valid_cors = cors_origin_list or []
 
-        # Add phidata to cors origin list
-        valid_cors.extend(["https://phidata.app", "https://www.phidata.app"])
+        # Add agno to cors origin list
+        valid_cors.extend(["https://agno.app", "https://www.agno.app"])
 
         runtime_env = info.data.get("runtime_env")
         if runtime_env == "dev" or runtime_env == "lat":

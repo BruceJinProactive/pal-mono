@@ -6,9 +6,9 @@ import time
 from typing import Union
 
 import requests
+from agno.tools.toolkit import Toolkit
 from classes import FashionItem, GeneralFunctions, ImageIdentification
 from openai import AsyncOpenAI, OpenAI
-from phi.tools.toolkit import Toolkit
 from PIL import Image
 
 from utils.log import logger

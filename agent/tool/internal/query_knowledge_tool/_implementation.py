@@ -1,10 +1,10 @@
 import json
 from typing import Any
 
+from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
 from llama_index.core.indices.query.base import BaseQueryEngine
-from phi.tools.toolkit import Toolkit
 
 from agent.knowledge import KnowledgeConfig, get_knowledge
 from utils.log import logger

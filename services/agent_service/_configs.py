@@ -52,7 +52,7 @@ ANNA_CONFIG = AgentConfig(
         agent_id="123",
         user_id="123",
         session_id="123",
-        framework="phidata",
+        framework="agno",
     ),
 )
 
@@ -96,7 +96,7 @@ WINDSOR_CONFIG = AgentConfig(
         agent_id="1234",
         user_id="1234",
         session_id="1234",
-        framework="phidata",
+        framework="agno",
     ),
 )
 
@@ -231,6 +231,6 @@ def build_new_pizzamyheart_config(
             agent_id=str(agent_id),
             user_id=str(user_id),
             session_id=str(conversation_id),
-            framework="phidata",
+            framework="agno",
         ),
     )

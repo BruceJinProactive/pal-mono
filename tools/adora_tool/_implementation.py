@@ -5,20 +5,20 @@ import traceback
 import uuid
 from typing import List, Optional, TypeVar
 
+from agno.agent.agent import Agent
+from agno.models.groq.groq import Groq
+from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm, retrieval, task, tool
 from llama_index.core import Settings, VectorStoreIndex
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
-from phi.agent.agent import Agent
-from phi.model.groq.groq import Groq
-from phi.tools.toolkit import Toolkit
-from phi.utils.log import logger
 from pinecone import Pinecone
 from pydantic import BaseModel
 
 from agent.legacy.storage import get_storage
 from tools.adora_tool.classes import AdoraAccessToken, CustomerInfo, Order
+from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
 from . import _apis
@@ -42,14 +42,14 @@ def llm_call(
         of the response.
         """
     agent = Agent(
-        provider=client,
+        model=client,
         agent_id=f"ordering-tools/{name}",
         session_id="test-session",
-        add_chat_history_to_messages=True,
-        knowledge_base=None,
+        add_history_to_messages=True,
+        knowledge=None,
         debug_mode=True,
-        output_model=response_format,
-        system_prompt=system_prompt,
+        response_model=response_format,
+        system_message=system_prompt,
         num_history_responses=0,
         search_knowledge=False,
     )

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional, TypeVar, overload
 
-from phi.agent.agent import Agent
-from phi.memory.memory import Memory
+from agno.agent.agent import Agent
+from agno.memory.memory import Memory
 from pydantic import BaseModel
 
 from agent.legacy.memory import delete_memory, get_memory, set_memory_manager
@@ -60,14 +60,14 @@ def llm_call(
         """
     start_time = time.time()
     agent = Agent(
-        provider=client,
+        model=client,
         agent_id=f"ordering-tools/{name}",
         session_id="test-session",
-        add_chat_history_to_messages=True,
-        knowledge_base=None,
+        add_history_to_messages=False,
+        knowledge=None,
         debug_mode=True,
-        output_model=response_format,
-        system_prompt=system_prompt,
+        response_model=response_format,
+        system_message=system_prompt,
         num_history_responses=0,
         search_knowledge=False,
     )
