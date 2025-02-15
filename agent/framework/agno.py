@@ -16,7 +16,7 @@ class AgnoAgent:
             name=config.persona.name,
             role=config.persona.role,
             description=config.persona.description,
-            # metadata
+            ### Metadata ###
             agent_id=config.metadata.agent_id,
             user_id=config.metadata.user_id,
             session_id=config.metadata.session_id,
@@ -24,11 +24,11 @@ class AgnoAgent:
             model=OpenAIChat(id="gpt-4o"),
             # memory
             # Use mem0 for memory
-            # knowledge
+            ### Knowledge ###
             # knowledge_base=get_knowledge(config.knowledge), # NOTE: use our own search tool
             knowledge=None,
             # search_knowledge=config.knowledge.enabled,
-            # tools
+            ### Tools ###
             tools=[
                 tool for tool in get_tools(config.tool, config.knowledge)
             ],  # construct search knowledge tool

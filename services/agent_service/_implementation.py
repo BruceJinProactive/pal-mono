@@ -10,44 +10,67 @@ from agent import AgentConfig
 from agent.legacy import integrate_agent
 from utils.log import logger
 
-from . import _configs
+from . import _configs, _raw_config
 
 
 async def construct_agent_config(
-    session: AsyncSession,
+    db_session: AsyncSession,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
     stream: bool = False,
 ) -> AgentConfig:
+    """
+    Builds an Agent Config based on the Raw Config.
+
+    Args:
+        db_session (AsyncSession): The database session.
+        agent_id (uuid.UUID): The agent id.
+        user_id (uuid.UUID): The user id.
+        project_id (uuid.UUID): The project id.
+        conversation_id (uuid.UUID): The conversation (session) id of the user-agent interaction.
+        stream (bool, optional): Wether to stream the agent's response. Defaults to False.
+
+    Raises:
+        ValueError: If the agent_id or project_id is invalid.
+
+    Returns:
+        AgentConfig: The agent configuration object.
+    """
+
     # Retrieve the agent from the database
-    agent_repository = db.AgentRepositoryAsync(session)
+    agent_repository = db.AgentRepositoryAsync(db_session)
     db_agent = await agent_repository.get_agent(agent_id=agent_id)
     if db_agent is None:
         raise ValueError("Invalid agent_id")
 
     # Retrieve the project from the database
-    project_repository = db.ProjectRepositoryAsync(session)
+    project_repository = db.ProjectRepositoryAsync(db_session)
     db_project = await project_repository.get_project(project_id)
     if db_project is None:
         raise ValueError("Invalid project_id")
 
+    raw_config = _raw_config.RawConfig(
+        agent_id=agent_id,
+        agent_raw_config=db_agent.raw_config,
+        project_raw_config=db_project.raw_config,
+        account_id=db_agent.account.id,
+        account_name=db_agent.account.name,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        stream=stream,
+    )
+
+    # Convert blueprint to agent config
     if db_agent.account.name == "windsor":
-        logger.debug("Loading Windsor config...")
+        logger.info("Loading Windsor config...")
         return _configs.WINDSOR_CONFIG
     elif db_agent.account.name == "new-pizzamyheart":
-        logger.debug("Loading New Pizzamyheart config...")
-        return _configs.build_new_pizzamyheart_config(
-            db_agent.account.name,
-            db_agent.account.id,
-            agent_id,
-            user_id,
-            conversation_id,
-            stream,
-        )
+        logger.info("Loading New PizzaMyHeart config...")
+        return raw_config.build()
     else:
-        logger.debug("Loading Anna config...")
+        logger.info("Loading Anna config...")
         return _configs.ANNA_CONFIG
 
 

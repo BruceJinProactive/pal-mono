@@ -68,9 +68,9 @@ def llm_call(
 class AdoraTool(Toolkit):
     def __init__(
         self,
-        account_name: str,
-        account_id: uuid.UUID,
         agent_id: uuid.UUID,
+        account_id: uuid.UUID,
+        account_name: str,
         user_id: uuid.UUID,
         session_id: uuid.UUID,
     ):
@@ -84,9 +84,9 @@ class AdoraTool(Toolkit):
 
         self.store_id = "9WHCV"
 
-        self.account_name = account_name
-        self.account_id = account_id
         self.agent_id = agent_id
+        self.account_id = account_id
+        self.account_name = account_name
         self.user_id = user_id
         self.session_id = session_id
 

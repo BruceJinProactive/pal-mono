@@ -1,0 +1,161 @@
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ValidationError
+
+from agent import (
+    AgentConfig,
+    AgentFramework,
+    AgentMetadata,
+    AgentPersona,
+    KnowledgeConfig,
+    KnowledgeProvider,
+    LlamaIndexSettings,
+    MemoryConfig,
+    ModelConfig,
+    ToolConfig,
+    ToolIdentifier,
+)
+
+
+class RawConfig(BaseModel):
+    # Agent
+    agent_id: UUID
+    agent_raw_config: dict[str, Any] | None
+
+    # Project level config (e.g. pizzamyheart-default, pizzamyheart-palo-alto)
+    project_raw_config: dict[str, Any] | None  # TODO: this is not used yet
+
+    # Account
+    account_id: UUID
+    account_name: str
+
+    # Session info
+    user_id: UUID
+    conversation_id: UUID  # Session ID
+
+    # Agent stream
+    stream: bool = False
+
+    def build(self) -> AgentConfig:
+        if self.agent_raw_config is None:
+            raise ValueError("`agent_raw_config` is not provided.")
+
+        try:
+            return AgentConfig(
+                persona=self._get_agent_persona(self.agent_raw_config),
+                model=ModelConfig(
+                    identifier="medium",
+                    stream=self.stream,
+                ),
+                memory=MemoryConfig(
+                    enabled=True,
+                    identifier=self.account_name,
+                    instruction="Don't remember the user's gender.",
+                ),
+                knowledge=self._get_agent_knowledge(self.agent_raw_config),
+                tool=ToolConfig(
+                    identifiers=[
+                        ToolIdentifier(
+                            tool_name="adora_tool",
+                            args={
+                                "agent_id": self.agent_id,  # pass as UUID
+                                "account_id": self.account_id,  # pass as UUID
+                                "account_name": self.account_name,
+                                "user_id": self.user_id,  # pass as UUID
+                                "session_id": self.conversation_id,  # pass as UUID
+                            },
+                        )
+                    ],
+                ),
+                metadata=AgentMetadata(
+                    account_name=self.account_name,
+                    agent_id=str(self.agent_id),
+                    user_id=str(self.user_id),
+                    session_id=str(self.conversation_id),
+                    framework=AgentFramework.AGNO,
+                ),
+            )
+        except ValueError as e:
+            raise ValueError(f"Invalid RawConfig: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to convert to AgentConfig: {e}") from e
+
+    def _get_agent_persona(self, raw_config: dict[str, Any]) -> AgentPersona:
+        # Extract the persona section of the raw config
+        persona = raw_config.get("persona", None)
+        if persona is None:
+            raise ValueError("`persona` is not provided in `agent_raw_config`.")
+
+        # Use the name, role, system_prompt from the persona section
+        name = persona.get("name", None)
+        role = persona.get("role", None)
+        system_prompt = persona.get("system_prompt", None)
+
+        if name is None:
+            raise ValueError("`persona.name` is not provided in `agent_raw_config`.")
+
+        if role is None:
+            raise ValueError("`persona.role` is not provided in `agent_raw_config`.")
+
+        if system_prompt is None:
+            raise ValueError(
+                "`persona.system_prompt` is not provided in `agent_raw_config`."
+            )
+
+        return AgentPersona(
+            name=name,
+            role=role,
+            description=system_prompt,
+        )
+
+    def _get_agent_knowledge(self, raw_config: dict[str, Any]) -> KnowledgeConfig:
+        # Extract the knowledge section of the raw config
+        knowledge = raw_config.get("knowledge", None)
+        if knowledge is None:
+            raise ValueError("`knowledge` is not provided in `agent_raw_config`.")
+
+        # Use the identifier, provider, settings from the knowledge section
+        identifier = knowledge.get("identifier", None)
+        if identifier is None:
+            raise ValueError(
+                "`knowledge.identifier` is not provided in `agent_raw_config`."
+            )
+        provider = knowledge.get("provider", None)
+
+        if provider is None:
+            raise ValueError(
+                "`knowledge.provider` is not provided in `agent_raw_config`."
+            )
+
+        # Check if provider is supported
+        provider = KnowledgeProvider(provider)
+        if provider not in KnowledgeProvider:
+            raise ValueError(
+                "`knowledge.provider` is not valid."
+                f"Supported providers: {KnowledgeProvider}"
+            )
+        elif provider == KnowledgeProvider.LLAMAINDEX:
+            settings = knowledge.get("settings", None)
+            if settings is None:
+                raise ValueError(
+                    "`knowledge.settings` is not provided in `agent_raw_config`."
+                )
+
+            # Validate that the knowledge config settings are valid for llamaindex provider
+            try:
+                LlamaIndexSettings.model_validate(settings)
+            except ValidationError as e:
+                raise ValueError(
+                    "Invalid KnowledgeConfig settings for provider 'LlamaIndex'."
+                ) from e
+        else:
+            # For other providers, settings is not required
+            settings = None
+
+        return KnowledgeConfig(
+            enabled=True,
+            provider=provider,
+            identifier=identifier,
+            settings=settings,
+        )

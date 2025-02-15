@@ -3,8 +3,8 @@ import asyncio
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import workflow
 
-from agent.config import AgentConfig
-from agent.framework import AgnoAgent, Framework
+from agent.config import AgentConfig, AgentFramework
+from agent.framework import AgnoAgent
 from agent.input_output import Input, Output
 from agent.memory import get_memory_context, update_memory
 
@@ -27,10 +27,10 @@ class Agent:
         """
         framework = (
             config.metadata.framework
-            if isinstance(config.metadata.framework, Framework)
-            else Framework.AGNO
+            if isinstance(config.metadata.framework, AgentFramework)
+            else AgentFramework.AGNO
         )
-        if framework != Framework.AGNO:
+        if framework != AgentFramework.AGNO:
             raise ValueError(f"Unsupported framework: {framework}")
 
         self._agent = AgnoAgent(config)

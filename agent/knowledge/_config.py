@@ -5,8 +5,7 @@ from pydantic import BaseModel, ValidationError, model_validator
 
 
 class KnowledgeProvider(StrEnum):
-    LLAMAINDEX = auto()
-    DEFAULT = auto()
+    LLAMAINDEX = auto()  # Default knowledge provider
 
 
 ### Settings for specific knowledge providers ###
@@ -29,7 +28,7 @@ class LlamaIndexSettings(BaseModel):
 ### Knowledge Config ###
 class KnowledgeConfig(BaseModel):
     enabled: bool = True
-    provider: KnowledgeProvider = KnowledgeProvider.DEFAULT
+    provider: KnowledgeProvider = KnowledgeProvider.LLAMAINDEX
     identifier: str
     settings: Optional[Union[dict, LlamaIndexSettings]] = None
 

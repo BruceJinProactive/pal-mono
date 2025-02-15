@@ -15,23 +15,17 @@ def main() -> None:
 
     with st.form("onboarding_form"):
         account_name = st.text_input("Account Name")
-        brand_story = st.text_area("Brand Story")
-        highlights = st.text_area("Highlights")
-        faqs = st.text_area("FAQs")
 
         # create account and save config into agent
         if st.form_submit_button("Create Account"):
             if not account_name:
                 st.error("Account name is required")
                 return
+
             config = {
-                "system_prompt": {
-                    "brand": {
-                        "brand_story": brand_story,
-                        "highlights": highlights,
-                        "faqs": faqs,
-                    }
-                }
+                "name": "",
+                "role": "",
+                "system_prompt": "",
             }
             new_account = create_account_with_defaults(session, account_name)
             replace_agent_config(

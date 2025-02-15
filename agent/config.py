@@ -1,3 +1,4 @@
+from enum import StrEnum, auto
 from typing import Optional
 
 from pydantic import BaseModel
@@ -6,6 +7,11 @@ from agent.knowledge import KnowledgeConfig
 from agent.memory import MemoryConfig
 from agent.model import ModelConfig
 from agent.tool import ToolConfig
+
+
+class AgentFramework(StrEnum):
+    AGNO = auto()
+    CREWAI = auto()
 
 
 class AgentPersona(BaseModel):
@@ -19,7 +25,7 @@ class AgentMetadata(BaseModel):
     agent_id: str
     user_id: str
     session_id: str
-    framework: str
+    framework: AgentFramework
 
 
 class AgentConfig(BaseModel):

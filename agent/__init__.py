@@ -1,8 +1,9 @@
 from agent.agent import Agent
-from agent.config import AgentConfig, AgentMetadata, AgentPersona
+from agent.config import AgentConfig, AgentFramework, AgentMetadata, AgentPersona
 from agent.knowledge import (
     KnowledgeConfig,
     KnowledgeProvider,
+    LlamaIndexSettings,
     VectorStoreModality,
     VectorStoreProvider,
 )
