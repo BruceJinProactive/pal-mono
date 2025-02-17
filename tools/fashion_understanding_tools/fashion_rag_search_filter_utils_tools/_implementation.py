@@ -5,9 +5,9 @@ import time
 from typing import Any, List
 
 import numpy as np
+from agno.tools.toolkit import Toolkit
 from classes import GeneralFunctions
 from openai import AsyncOpenAI, OpenAI
-from phi.tools.toolkit import Toolkit
 from PIL import Image
 from pinecone import Pinecone
 
