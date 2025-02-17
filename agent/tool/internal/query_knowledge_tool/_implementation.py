@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any
 
 from agno.tools.toolkit import Toolkit
@@ -34,18 +35,17 @@ class QueryKnowledgeTool(Toolkit):
         Returns:
             str: A string containing the response from the knowledge base.
         """
+        start_time = time.time()
         response = self.knowledge.query(query)
-        docs_from_knowledge = []
-        output_data = []
-        for node in response.source_nodes:
-            docs_from_knowledge.append(node.text)
-            output_data.append({"text": node.text})
+        retrieved_documents = [node.text for node in response.source_nodes]
+        logger.info(f"Retrieved documents: {retrieved_documents}")
+        logger.info(f"Knowledge retrieval time: {time.time() - start_time} seconds")
 
-        logger.info(docs_from_knowledge)
+        LLMObs.annotate(
+            input_data=query, output_data=[{"text": doc} for doc in retrieved_documents]
+        )
 
-        LLMObs.annotate(input_data=query, output_data=output_data)
-
-        if not docs_from_knowledge:
+        if not retrieved_documents:
             return "No documents found"
 
-        return self._convert_documents_to_string(docs_from_knowledge)
+        return str(response)

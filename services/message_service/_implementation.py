@@ -166,6 +166,7 @@ async def get_chat_response_async(
             )
             logger.info(f"Agent config: {config}")
             agent = Agent(config=config)
+            logger.info(f"Step 5: Retrieved agent - {time.time() - start_time:.4f}s")
 
             # Get Input
             input = _utils.get_agent_input_from_message(message=message)
@@ -173,6 +174,9 @@ async def get_chat_response_async(
 
             # Get Output
             output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+            logger.info(
+                f"Step 6: Agent response received - {time.time() - start_time:.4f}s"
+            )
 
             logger.info(f"Output: {output}")
 

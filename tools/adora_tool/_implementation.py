@@ -12,6 +12,7 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm, retrieval, task, tool
 from llama_index.core import Settings, VectorStoreIndex
 from llama_index.embeddings.cohere import CohereEmbedding
+from llama_index.llms.groq import Groq as GroqLLM
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from pydantic import BaseModel
@@ -103,6 +104,10 @@ class AdoraTool(Toolkit):
             api_key=os.getenv("COHERE_API_KEY"),
             model_name="embed-english-v3.0",  # current v3 models support multimodal embeddings
         )
+
+        # set groq llm
+        llm = GroqLLM(model="llama-3.3-70b-versatile")
+        Settings.llm = llm
 
         index = VectorStoreIndex.from_vector_store(
             vector_store=vector_store,

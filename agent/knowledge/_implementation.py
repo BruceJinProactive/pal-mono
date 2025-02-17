@@ -1,9 +1,11 @@
 import os
 
-from llama_index.core import Settings, VectorStoreIndex
+from llama_index.core import Settings, VectorStoreIndex, get_response_synthesizer
 from llama_index.core.indices import MultiModalVectorStoreIndex
 from llama_index.core.indices.query.base import BaseQueryEngine
+from llama_index.core.response_synthesizers import ResponseMode
 from llama_index.embeddings.cohere import CohereEmbedding
+from llama_index.llms.groq import Groq
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 
 from agent.knowledge.integrations.pinecone import PineconeIntegration
@@ -47,9 +49,16 @@ def get_knowledge(config: _config.KnowledgeConfig) -> BaseQueryEngine:
                 vector_store=vector_store, embed_model=Settings.embed_model
             )
 
+        llm = Groq(model="llama-3.3-70b-versatile")
+        response_synthesizer = get_response_synthesizer(
+            response_mode=ResponseMode.SIMPLE_SUMMARIZE,
+            llm=llm,
+        )
+
         knowledge = index.as_query_engine(
-            similarity_top_k=3,  # Increase number of retrieved documents
-            similarity_cutoff=0.0,  # Lower similarity threshold (0-1 range)
+            response_synthesizer=response_synthesizer,
+            similarity_top_k=10,  # Increase number of retrieved documents
+            similarity_cutoff=0.2,  # Lower similarity threshold (0-1 range)
         )
 
     else:
