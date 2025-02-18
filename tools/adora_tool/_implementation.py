@@ -11,6 +11,7 @@ from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm, retrieval, task, tool
 from llama_index.core import Settings, VectorStoreIndex
+from llama_index.core.vector_stores.types import ExactMatchFilter, MetadataFilters
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.llms.groq import Groq as GroqLLM
 from llama_index.vector_stores.pinecone import PineconeVectorStore
@@ -74,6 +75,7 @@ class AdoraTool(Toolkit):
         account_name: str,
         user_id: uuid.UUID,
         session_id: uuid.UUID,
+        namespace: str,
     ):
         super().__init__(name="adora_tool")
 
@@ -90,14 +92,15 @@ class AdoraTool(Toolkit):
         self.account_name = account_name
         self.user_id = user_id
         self.session_id = session_id
+        self.namespace = namespace
 
         # TODO: This code is bad >:( Refactor once it works. (ToT)
+        # We can fix this with
         pc = Pinecone(os.getenv("PINECONE_API_KEY"))
         pinecone_index = pc.Index("agents")
 
         vector_store = PineconeVectorStore(
-            pinecone_index=pinecone_index,
-            namespace="pizzamyheart-menu-9WHCV-docs-2025-02-13",
+            pinecone_index=pinecone_index, namespace=self.namespace
         )
 
         Settings.embed_model = CohereEmbedding(
@@ -115,7 +118,12 @@ class AdoraTool(Toolkit):
         )
 
         self.query_engine = index.as_query_engine(
-            similarity_top_k=10, similarity_cutoff=0.3
+            similarity_top_k=10,
+            similarity_cutoff=0.3,
+            # Use the menu documents with ids for extraction
+            filters=MetadataFilters(
+                filters=[ExactMatchFilter(key="include_ids", value="True")]
+            ),
         )
 
     @tool

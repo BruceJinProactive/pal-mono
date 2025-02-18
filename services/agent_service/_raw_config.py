@@ -54,20 +54,7 @@ class RawConfig(BaseModel):
                     instruction="Don't remember the user's gender.",
                 ),
                 knowledge=self._get_agent_knowledge(self.agent_raw_config),
-                tool=ToolConfig(
-                    identifiers=[
-                        ToolIdentifier(
-                            tool_name="adora_tool",
-                            args={
-                                "agent_id": self.agent_id,  # pass as UUID
-                                "account_id": self.account_id,  # pass as UUID
-                                "account_name": self.account_name,
-                                "user_id": self.user_id,  # pass as UUID
-                                "session_id": self.conversation_id,  # pass as UUID
-                            },
-                        )
-                    ],
-                ),
+                tool=self._get_agent_tools(self.agent_raw_config),
                 metadata=AgentMetadata(
                     account_name=self.account_name,
                     agent_id=str(self.agent_id),
@@ -158,4 +145,23 @@ class RawConfig(BaseModel):
             provider=provider,
             identifier=identifier,
             settings=settings,
+        )
+
+    def _get_agent_tools(self, raw_config: dict[str, Any]) -> ToolConfig:
+        # TODO: adora_tool should be removed from the generic build and based in via raw_config
+        knowledge = self._get_agent_knowledge(raw_config)
+        return ToolConfig(
+            identifiers=[
+                ToolIdentifier(
+                    tool_name="adora_tool",
+                    args={
+                        "agent_id": self.agent_id,  # pass as UUID
+                        "account_id": self.account_id,  # pass as UUID
+                        "account_name": self.account_name,
+                        "user_id": self.user_id,  # pass as UUID
+                        "session_id": self.conversation_id,  # pass as UUID
+                        "namespace": knowledge.settings.namespace,  # type: ignore
+                    },
+                )
+            ],
         )
