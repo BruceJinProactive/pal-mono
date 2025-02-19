@@ -150,11 +150,22 @@ class RawConfig(BaseModel):
     def _get_agent_tools(self, raw_config: dict[str, Any]) -> ToolConfig:
         # TODO: adora_tool should be removed from the generic build and based in via raw_config
         knowledge = self._get_agent_knowledge(raw_config)
+
+        # Get the client section of the raw config
+        client = raw_config.get("client", None)
+        if knowledge is None:
+            raise ValueError("`client` is not provided in `agent_raw_config`.")
+
+        store_id = client.get("store_id", None)
+        if store_id is None:
+            raise ValueError("`client.store_id` is not provided in `agent_raw_config`.")
+
         return ToolConfig(
             identifiers=[
                 ToolIdentifier(
                     tool_name="adora_tool",
                     args={
+                        "store_id": store_id,
                         "agent_id": self.agent_id,  # pass as UUID
                         "account_id": self.account_id,  # pass as UUID
                         "account_name": self.account_name,

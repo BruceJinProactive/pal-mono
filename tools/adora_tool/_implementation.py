@@ -70,6 +70,7 @@ def llm_call(
 class AdoraTool(Toolkit):
     def __init__(
         self,
+        store_id: str,
         agent_id: uuid.UUID,
         account_id: uuid.UUID,
         account_name: str,
@@ -85,8 +86,7 @@ class AdoraTool(Toolkit):
         self.register(self.validate_address)
         self.register(self.checkout_order)
 
-        self.store_id = "9WHCV"
-
+        self.store_id = store_id
         self.agent_id = agent_id
         self.account_id = account_id
         self.account_name = account_name
