@@ -16,6 +16,7 @@ async def update_memory(
         ],
         user_id=user_id,
         run_id=session_id,
+        model="gpt-4o-mini",
     )
 
 
