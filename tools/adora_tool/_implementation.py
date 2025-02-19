@@ -1,70 +1,37 @@
+import functools
 import os
 import re
 import time
 import traceback
 import uuid
-from typing import List, Optional, TypeVar
 
-from agno.agent.agent import Agent
-from agno.models.groq.groq import Groq
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import llm, retrieval, task, tool
+from ddtrace.llmobs.decorators import retrieval, task, tool
 from llama_index.core import Settings, VectorStoreIndex
+from llama_index.core.response_synthesizers import (
+    ResponseMode,
+    get_response_synthesizer,
+)
 from llama_index.core.vector_stores.types import ExactMatchFilter, MetadataFilters
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.llms.groq import Groq as GroqLLM
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
-from pydantic import BaseModel
 
 from agent.legacy.storage import get_storage
-from tools.adora_tool.classes import AdoraAccessToken, CustomerInfo, Order
+from tools.adora_tool.classes import (
+    AdoraAccessToken,
+    CustomerInfo,
+    DeliveryAddress,
+    Order,
+)
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
-from . import _apis
+from . import _apis, _utils
 
 ADORA_PAYMENT_URL = "https://pizzamyheart.adorapos.net/OnlineOrdering/OrderHubPayment/?storeKey={store_id}&orderId={order_id}"
-
-T = TypeVar("T", bound=BaseModel)
-
-
-@llm(name="extractor")
-def llm_call(
-    system_prompt: str, prompt: str, response_format: type[T] | None = None, name="tool"
-) -> Optional[T]:
-    # client = get_model(model_name=ModelName.MEDIUM)
-    client = Groq(id="deepseek-r1-distill-qwen-32b")
-
-    if response_format:
-        system_prompt += """
-        \n
-        Structure your response as a dictionary, do not include "json" in the beginning
-        of the response.
-        """
-    agent = Agent(
-        model=client,
-        agent_id=f"ordering-tools/{name}",
-        session_id="test-session",
-        add_history_to_messages=True,
-        knowledge=None,
-        debug_mode=True,
-        response_model=response_format,
-        system_message=system_prompt,
-        num_history_responses=0,
-        search_knowledge=False,
-    )
-
-    response = agent.run(prompt).content
-
-    LLMObs.annotate(
-        input_data=prompt,
-        output_data=response,
-        metadata={"system_prompt": system_prompt},
-    )
-
-    return response
 
 
 class AdoraTool(Toolkit):
@@ -83,7 +50,6 @@ class AdoraTool(Toolkit):
         # Register tools
         self.register(self.check_online_ordering_status)
         self.register(self.get_store_info)
-        self.register(self.validate_address)
         self.register(self.checkout_order)
 
         self.store_id = store_id
@@ -116,15 +82,29 @@ class AdoraTool(Toolkit):
             vector_store=vector_store,
             embed_model=Settings.embed_model,
         )
+        response_synthesizer = get_response_synthesizer(
+            response_mode=ResponseMode.NO_TEXT,
+        )
 
         self.query_engine = index.as_query_engine(
             similarity_top_k=10,
             similarity_cutoff=0.3,
+            response_synthesizer=response_synthesizer,
             # Use the menu documents with ids for extraction
             filters=MetadataFilters(
                 filters=[ExactMatchFilter(key="include_ids", value="True")]
             ),
         )
+
+    @functools.cached_property
+    def _adora_bearer_token(self) -> AdoraAccessToken | None:
+        with LLMObs.task(name="get_adora_bearer_token"):
+            api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
+            api_secret = get_client_secret_with_fallback(
+                "PIZZAMYHEART_ADORA_API_SECRET"
+            )
+            bearer_token = _apis.get_adora_pos_auth_token(api_key, api_secret)
+            return bearer_token
 
     @tool
     def check_online_ordering_status(self) -> str:
@@ -139,15 +119,12 @@ class AdoraTool(Toolkit):
             return "The store is open for online ordering."
 
         try:
-            api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
-            api_secret = get_client_secret_with_fallback(
-                "PIZZAMYHEART_ADORA_API_SECRET"
-            )
-            bearer_token = _apis.get_adora_pos_auth_token(api_key, api_secret)
-            if not bearer_token:
+            if not self._adora_bearer_token:
                 return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-            status = _apis.get_online_ordering_status(bearer_token, self.store_id)
+            status = _apis.get_online_ordering_status(
+                self._adora_bearer_token, self.store_id
+            )
 
             if not status:
                 logger.error(
@@ -180,13 +157,34 @@ class AdoraTool(Toolkit):
             logger.error(f"Error getting store info: {e}")
             return "Error getting store info."
 
-    @tool
-    def validate_address(self, args: List[str]) -> str:
-        try:
-            raise NotImplementedError
-        except Exception as e:
-            logger.error(f"Error in validating address: {e}")
-            return "Error in validating address."
+    @task
+    def _validate_address(self, canonical_address: DeliveryAddress) -> tuple[bool, str]:
+        # Use the address to get the latitude and longitude of the address
+        lat_lon_was_added, message = _utils.add_lat_long_to_address(canonical_address)  # type: ignore
+
+        if lat_lon_was_added:
+            assert isinstance(canonical_address, DeliveryAddress)
+            lat, long = canonical_address.lat, canonical_address.lng
+            logger.info(f"Latitude and longitude extracted: {lat}, {long}")
+        else:
+            return False, message
+
+        # Use the latitude and longitude to get Adora API call (old Jimmy)
+        if not self._adora_bearer_token:
+            return (
+                False,
+                "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance.",
+            )
+
+        validated_address_success, validated_address = _apis.validate_address(
+            self._adora_bearer_token, self.store_id, lat, long
+        )
+        logger.info(f"Validated address: {validated_address}")
+
+        if not validated_address_success:
+            return False, "Address is not in the delivery zone."
+        else:
+            return True, "Address is validated and is in the delivery zone."
 
     @task
     def _get_content(self, text: str) -> str:
@@ -196,29 +194,12 @@ class AdoraTool(Toolkit):
     @retrieval
     def _get_chat_history(self) -> str:
         try:
-            # db_session = db.get_db()
-
-            # logger.info(db_session)
-            # if not db_session:
-            #     logger.error(
-            #         "Failed to get database session for\n"
-            #         f"Account Name: {self.account_name}\n"
-            #         f"Account ID: {self.account_id}\n"
-            #         f"Agent ID: {self.agent_id}\n"
-            #         f"User ID: {self.user_id}\n"
-            #         f"Session ID: {self.session_id}"
-            #     )
-            #     return "Failed to get database session."
-
             try:
                 # # TODO: Defer import to avoid circular import
                 # from services.admin_service import (
                 #     get_messages_by_conversation_id,
                 # )
 
-                # messages = get_messages_by_conversation_id(
-                #     db_session, self.user_id, self.session_id
-                # )
                 storage = get_storage(self.account_name)
                 agent_session = storage.read(str(self.session_id), str(self.user_id))
 
@@ -352,12 +333,21 @@ class AdoraTool(Toolkit):
             You goal is to convert it into the given structure.
 
             **Instructions on how to perform the task:**
-            First, identify the list of items that the user wants to order from the chat history.
+            First, identify if the user wants to order for delivery or pickup.
+            If it's delivery, identify the delivery address. If it's pickup, leave the
+            address field empty.
+            Then, identify the list of items that the user wants to order from the chat history.
             Then, make sure that the quantities for each order are correct.
             Then, make sure that the modifiers for every order are identified, if they were mentioned in the chat history.
             Finally, map the items, names, modifiers, etc., that you just identified from the english language to the structured data format that is required by the Adora API using the provided context.
-            Importantly, some of the provided context might be irrelevant to the order, in which case you should ignore it.
+            Importantly, some of the provided context might be irrelevant to the order,
+            in which case you should ignore it.
             
+            **RULES FOR EXTRACTING THE DELIRERY ADDRESS:**
+             - Extract the last delivery address from the context.
+             - For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
+             - If any field is missing, output "N/A" for that field, i.e., if the user did not provide a delivery address, output "N/A" for all fields.
+
 
             **IMPORTANT RULES:**
             - Do NOT make assumptions or fabricate data
@@ -381,7 +371,7 @@ class AdoraTool(Toolkit):
             """
 
             # current version of the datadog llmobs does not support pyright
-            order = llm_call(
+            order = _utils.llm_call(
                 system_prompt=system_prompt,  # type: ignore
                 prompt=user_prompt,  # type: ignore
                 response_format=Order,  # type: ignore
@@ -392,6 +382,20 @@ class AdoraTool(Toolkit):
                     "[AdoraTool.checkout_order] Failed to extract structured data. Most likely validation schema was not fulfilled."
                 )
                 return "Failed to extract structured data. Please try again."
+
+            # Validate the address if the order is for delivery
+            if str(order.order_type) == "Delivery":
+                start_time = time.time()
+                validate_order_success, validate_order_message = self._validate_address(
+                    order.delivery_address  # type: ignore
+                )
+                end_time = time.time()
+                logger.info(
+                    f"Time taken to validate address: {end_time - start_time} seconds"
+                )
+
+                if not validate_order_success:
+                    return validate_order_message
 
             logger.info(f"Extracted structured data: {order}")
             logger.info(f"Extraced structured data type: {type(order)}")

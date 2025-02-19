@@ -1,16 +1,13 @@
 import http.client
 import json
-from datetime import date
-from typing import Any, Dict, List, Optional
+
 
 from tools.adora_tool.classes import (
     AdoraAccessToken,
-    AdoraDeliveryAddress,
     AdoraOrderCalculationResult,
-    AdoraOrderItem,
-    AdoraOrderType,
     AdoraSavedOrderResult,
-    CustomerInfo,
+    AdoraValidatedAddress,
+    AdoraValidatedAddressList,
 )
 from utils.log import logger
 
@@ -114,3 +111,45 @@ def save_validated_order(
         return _utils.parse_json(AdoraSavedOrderResult, response.decoded_body)
     else:
         return None
+
+
+def validate_address(
+    bearer_token: AdoraAccessToken, store_id: str, lat: float, long: float
+) -> tuple[bool, list[AdoraValidatedAddress] | str]:
+    """
+    Validate an address (latitude + longitude) with Adora POS.
+
+    Args:
+        bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
+        store_id (str): The store ID.
+        lat (str): The latitude of the address.
+        long (str): The longitude of the address.
+
+    Returns:
+        bool: True if the address was validated successfully, False otherwise.
+        list[ValidatedAddress] | str: A list of validated addresses if the address was validated successfully,
+            or an error message otherwise.
+    """
+    response = _utils.connect_adora_order_hub(
+        "POST",
+        bearer_token,
+        "validateAddress",
+        query_params=None,
+        extra_headers=None,
+        payload=json.dumps({"storeId": store_id, "lat": lat, "lng": long}),
+    )
+
+    if response.status == 200:
+        parsed_json = _utils.parse_json(
+            AdoraValidatedAddressList,
+            # account for weird Adora API response format of a string of an array
+            json.dumps({"addresses": json.loads(json.loads(response.decoded_body))}),
+        )
+        return (
+            (True, parsed_json.addresses)
+            if parsed_json
+            else (False, "An error occurred.")
+        )
+    else:
+        # return error message, likely "Address was not found in the list of delivery zones!"
+        return False, response.decoded_body

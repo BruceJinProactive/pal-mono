@@ -412,10 +412,7 @@ class AdoraIntegration:
 
             # auto-populate state and zipcode
             if delivery_address.state == "N/A" or delivery_address.zip_code == "N/A":
-                delivery_address = _utils.convert_address_string(geocoded_loc.address)
-                logger.debug(
-                    f"[AdoraIntegration.place_order] Auto-populated address: {delivery_address}"
-                )
+                return "Please provide a valid state and zipcode."
 
             if (
                 not delivery_address

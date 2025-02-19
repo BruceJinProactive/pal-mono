@@ -66,6 +66,25 @@ class AdoraAccessToken(BaseModel):
         return f"{self.token_type} {self.access_token}"
 
 
+class AdoraValidatedAddress(BaseModel):
+    """
+    This is the shape of the response from the Adora API at the validate_address step, part of AdoraValidatedAddressList.
+    """
+
+    charge: Decimal | None = None
+    minimumCharge: Decimal | None = None
+    typeId: int
+    description: str
+
+
+class AdoraValidatedAddressList(BaseModel):
+    """
+    This is the shape of the response from the Adora API at the validate_address step.
+    """
+
+    addresses: list[AdoraValidatedAddress]
+
+
 class AdoraHubResponse(BaseModel):
     """
     This is the response shape from the Adora API when you make a request to the OrderHub.
@@ -166,15 +185,29 @@ class CustomerInfo(BaseModel):
     email: Optional[str] = Field(description="Customer's email address")
 
 
-# US Address Data Model
 class DeliveryAddress(BaseModel):
     address: str = Field(description="Street address")
+    extended_address: str = Field(
+        description="Extended address (if applicable)",
+        default="",
+        serialization_alias="extendedAddress",
+    )
     city: str = Field(description="City name")
     state: str = Field(description="State abbreviation")
     zip: str = Field(description="ZIP code")
-    lat: float = Field(description="Latitude")
-    lng: float = Field(description="Longitude")
+    lat: float = Field(description="Latitude", default=0)
+    lng: float = Field(description="Longitude", default=0)
+    instruction: str = Field(
+        description="Special instructions for the delivery address"
+    )
     type_id: SkipJsonSchema[int] = Field(default=1, serialization_alias="typeId")
+    extra_field_1: SkipJsonSchema[str] = Field(
+        description="Extra field 1", default="", serialization_alias="extraField1"
+    )
+    extra_field_2: SkipJsonSchema[str] = Field(
+        description="Extra field 2", default="", serialization_alias="extraField2"
+    )
+    zone_id: SkipJsonSchema[int] = Field(default=0, serialization_alias="zoneId")
 
 
 class Modifier(BaseModel):
