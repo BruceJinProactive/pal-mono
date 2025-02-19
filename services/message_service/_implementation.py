@@ -117,6 +117,9 @@ async def get_chat_response_async(
             f"Step 3: Retrieved or created user - {time.time() - start_time:.4f}s"
         )
 
+        # Ensure user is fully loaded before accessing attributes
+        await session.refresh(user)
+
         # Save request message to database
         request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
