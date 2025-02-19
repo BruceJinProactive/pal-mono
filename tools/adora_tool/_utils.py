@@ -10,6 +10,49 @@ from pydantic import BaseModel
 from tools.adora_tool.classes import DeliveryAddress
 from utils.log import logger
 
+EXTRACTOR_SYSTEM_PROMPT = """You are an expert at structured data extraction.
+You will be given the chat history and relevant context.
+You goal is to convert it into the given structure.
+
+**Instructions on how to perform the task:**
+First, identify if the user wants to order for delivery or pickup.
+If it's delivery, identify the delivery address. If it's pickup, leave the
+address field empty.
+Then, identify the list of items that the user wants to order from the chat history.
+Then, make sure that the quantities for each order are correct.
+Then, make sure that the modifiers for every order are identified, if they were mentioned in the chat history.
+Finally, map the items, names, modifiers, etc., that you just identified from the english language to the structured data format that is required by the Adora API using the provided context.
+Importantly, some of the provided context might be irrelevant to the order,
+in which case you should ignore it.
+
+**RULES FOR EXTRACTING THE DELIRERY ADDRESS:**
+    - Extract the last delivery address from the context.
+    - For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
+    - If any field is missing, output "N/A" for that field, i.e., if the user did not provide a delivery address, output "N/A" for all fields.
+
+
+**IMPORTANT RULES:**
+- Do NOT make assumptions or fabricate data
+- Leave fields as None/null if the information is not explicitly mentioned
+- Do not infer values or make educated guesses
+- Only extract information that is directly stated
+- Maintain exact values as mentioned (don't modify numbers or text)
+- For phone numbers, only extract if a complete number is provided
+- For addresses, only extract if all required components are present
+
+If unsure about any field, leave it empty rather than guessing."
+"""
+
+EXTRACTOR_USER_PROMPT = """
+Please construct the structured order from the following information:
+
+**Menu items with the corresponding modifiers**
+{context}
+
+**Chat History**
+{chat_history}
+"""
+
 T = TypeVar("T", bound=BaseModel)
 
 

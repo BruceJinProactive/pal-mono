@@ -1,7 +1,6 @@
 import http.client
 import json
 
-
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraOrderCalculationResult,

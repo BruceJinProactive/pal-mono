@@ -192,14 +192,16 @@ class AdoraTool(Toolkit):
         return match.group(1) if match else ""
 
     @retrieval
-    def _get_chat_history(self) -> str:
+    def _get_chat_history(self, latest_user_message: str) -> str:
+        # TODO: Hacky way to get FULL chat history. Latest user message is not in storage.
+
         try:
             try:
                 # # TODO: Defer import to avoid circular import
                 # from services.admin_service import (
                 #     get_messages_by_conversation_id,
                 # )
-
+                chat_history = ""
                 storage = get_storage(self.account_name)
                 agent_session = storage.read(str(self.session_id), str(self.user_id))
 
@@ -212,11 +214,14 @@ class AdoraTool(Toolkit):
                         f"User ID: {self.user_id}\n"
                         f"Session ID: {self.session_id}"
                     )
+
+                    if latest_user_message:
+                        chat_history += f"**[User]**\n{latest_user_message}\n\n"
+                        return chat_history
+
                     return "Agent session not found"
 
                 messages = agent_session.memory["runs"]  # type: ignore
-
-                chat_history = ""
 
                 for message in messages:
                     role = message["message"]["role"]
@@ -230,6 +235,8 @@ class AdoraTool(Toolkit):
                         logger.info(
                             f"Skipping appending message to chat history:\n{message}"
                         )
+
+                chat_history += f"**[User]**\n{latest_user_message}\n\n"
 
                 LLMObs.annotate(output_data=chat_history)
 
@@ -313,68 +320,30 @@ class AdoraTool(Toolkit):
         """
 
     @tool
-    def checkout_order(self) -> str:
+    def checkout_order(self, latest_user_message: str) -> str:
         """
         Validates an order for checkout by extracting structured ordering data from chat history. This function should be invoked when the user asks to checkout, pay, place the order, etc.
+
+        Args:
+            last_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: The checkout order details including the payment URL.
         """
-        chat_history = self._get_chat_history()
-        logger.info(f">>> Chat history:\n{chat_history}")
+
+        chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
 
         context = self._get_relevant_docs(chat_history)  # type: ignore
-        logger.info(f">>> Context:\n{context}")
 
         # Extract structured data from natural language
         try:
-            system_prompt = """You are an expert at structured data extraction. 
-            You will be given the chat history and relevant context.
-            You goal is to convert it into the given structure.
-
-            **Instructions on how to perform the task:**
-            First, identify if the user wants to order for delivery or pickup.
-            If it's delivery, identify the delivery address. If it's pickup, leave the
-            address field empty.
-            Then, identify the list of items that the user wants to order from the chat history.
-            Then, make sure that the quantities for each order are correct.
-            Then, make sure that the modifiers for every order are identified, if they were mentioned in the chat history.
-            Finally, map the items, names, modifiers, etc., that you just identified from the english language to the structured data format that is required by the Adora API using the provided context.
-            Importantly, some of the provided context might be irrelevant to the order,
-            in which case you should ignore it.
-            
-            **RULES FOR EXTRACTING THE DELIRERY ADDRESS:**
-             - Extract the last delivery address from the context.
-             - For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
-             - If any field is missing, output "N/A" for that field, i.e., if the user did not provide a delivery address, output "N/A" for all fields.
-
-
-            **IMPORTANT RULES:**
-            - Do NOT make assumptions or fabricate data
-            - Leave fields as None/null if the information is not explicitly mentioned
-            - Do not infer values or make educated guesses
-            - Only extract information that is directly stated
-            - Maintain exact values as mentioned (don't modify numbers or text)
-            - For phone numbers, only extract if a complete number is provided
-            - For addresses, only extract if all required components are present
-
-            If unsure about any field, leave it empty rather than guessing."
-            """
-            user_prompt = f"""
-            Please construct the structured order from the following information:
-
-            **Menu items with the corresponding modifiers**
-            {context}
-
-            **Chat History**
-            {chat_history}
-            """
-
             # current version of the datadog llmobs does not support pyright
             order = _utils.llm_call(
-                system_prompt=system_prompt,  # type: ignore
-                prompt=user_prompt,  # type: ignore
-                response_format=Order,  # type: ignore
+                system_prompt=_utils.EXTRACTOR_SYSTEM_PROMPT,
+                prompt=_utils.EXTRACTOR_USER_PROMPT.format(
+                    context=context, chat_history=chat_history
+                ),
+                response_format=Order,
             )
 
             if not isinstance(order, Order):
