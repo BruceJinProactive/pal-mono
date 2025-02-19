@@ -98,7 +98,7 @@ def get_agent_input_from_message(message: Message) -> Input:
 
 
 def get_messages_from_agent_output(
-    output: Output, input_message: Message
+    output: Output, input_message: Message, metadata: dict[str, Any] = {}
 ) -> List[Message]:
     """
     Converts an Output object from the Agent into a Message object.
@@ -126,5 +126,6 @@ def get_messages_from_agent_output(
             channel=input_message.channel,
             broker=input_message.broker,
             text=TextObject(body=msg_text),
+            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
         )
     ]

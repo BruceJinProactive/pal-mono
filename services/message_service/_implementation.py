@@ -184,7 +184,7 @@ async def get_chat_response_async(
             logger.info(f"Output: {output}")
 
             return _utils.get_messages_from_agent_output(
-                output=output, input_message=message
+                output=output, input_message=message, metadata=metadata
             )
 
         # ========================== New - End ==========================
