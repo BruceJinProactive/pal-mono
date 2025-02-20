@@ -15,7 +15,8 @@ def get_tools(
     for identifier in tool_config.identifiers:
         tools.append(tool_registry.get_tool(identifier))
 
-    # Add our own custom knowledge base search tool !!!
-    tools.append(QueryKnowledgeTool(knowledge_config))
+    if knowledge_config.enabled:
+        # Add our own custom knowledge base search tool !!!
+        tools.append(QueryKnowledgeTool(knowledge_config))
 
     return tools
