@@ -245,7 +245,9 @@ class OrderItem(BaseModel):
     taxes: SkipJsonSchema[List[Dict[str, int | float]]] = Field(
         default=[{"id": 0, "taxAmount": 0.0}]
     )
-    modifiers: List[Modifier] = Field(description="List of order item modifications")
+    modifiers: List[Modifier] = Field(
+        description="List of order item modifications", default=[]
+    )
 
 
 class Order(BaseModel):

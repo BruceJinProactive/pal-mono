@@ -26,9 +26,15 @@ Importantly, some of the provided context might be irrelevant to the order,
 in which case you should ignore it.
 
 **RULES FOR EXTRACTING THE DELIRERY ADDRESS:**
-    - Extract the last delivery address from the context.
-    - For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
-    - If any field is missing, output "N/A" for that field, i.e., if the user did not provide a delivery address, output "N/A" for all fields.
+- Extract the last delivery address from the context.
+- For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
+- If any field is missing, output "N/A" for that field, i.e., if the user did not
+provide a delivery address, output "N/A" for all fields.
+
+**RULES FOR EXTRACTING THE ORDER ITEMS:**
+- Extract the last order items from the context.
+- The original item ingredients are not considered as modifiers.
+- Only include modifiers that were explicitly mentioned by the user in the chat history.
 
 
 **IMPORTANT RULES:**
@@ -66,7 +72,7 @@ def llm_call(
 ) -> Optional[T]:
     # client = get_model(model_name=ModelName.MEDIUM)
     model_name = (
-        "deepseek-r1-distill-qwen-32b" if reasoning else "llama-3.3-70b-versatile"
+        "deepseek-r1-distill-llama-70b" if reasoning else "llama-3.3-70b-versatile"
     )
     client = Groq(id=model_name)
 

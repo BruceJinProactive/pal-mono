@@ -307,7 +307,7 @@ class AdoraTool(Toolkit):
             )
             return "The service is busy. Please try again."
 
-        return f"""Your order is pending!
+        output = f"""Your order is pending!
         Please head to the payment url to finalize your order!
         {text_payment_url}
         
@@ -316,13 +316,23 @@ class AdoraTool(Toolkit):
 
         Subtotal: {validated_order.subTotal}
         Sales Tax: {validated_order.taxAmount}
+        """
+
+        if str(order.order_type) == "Delivery":
+            output += """
+            Delivery Fee: $5
+            """
+
+        output += f"""
         Order Total: {validated_order.total}
         """
+
+        return output
 
     @tool
     def checkout_order(self, latest_user_message: str) -> str:
         """
-        Validates an order for checkout by extracting structured ordering data from chat history. This function should be invoked when the user asks to checkout, pay, place the order, etc.
+        Validates an order for checkout by extracting structured ordering data from chat history. This function absolutely must be invoked when the user asks to checkout, pay, place the order, etc.
 
         Args:
             last_user_message (str): The latest user message in the chat history.
