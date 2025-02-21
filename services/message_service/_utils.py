@@ -94,6 +94,7 @@ def get_agent_input_from_message(message: Message) -> Input:
     return Input(
         content=content,
         context=message.context,
+        channel=message.channel,
     )
 
 

@@ -32,22 +32,11 @@ from . import _utils
 def get_filler_message(message: Message) -> Message:
     # Collection of filler phrases for voice responses
     FILLER_PHRASES = [
-        "One moment, please.",
-        "Just a moment.",
-        "Be right with you.",
-        "Working now.",
-        "Gathering info.",
+        "Working on it.",
         "Bear with me.",
-        "Processing now.",
-        "Stay on the line.",
-        "Help is coming.",
-        "Please hold.",
-        "Answer soon.",
         "One brief moment.",
         "Brief moment.",
-        "Hold the line.",
-        "Working on it.",
-        "Stay connected.",
+        "Working on your request.",
         "Just a short wait.",
     ]
     # Randomly select a filler phrase

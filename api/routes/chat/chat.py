@@ -79,7 +79,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
             async def generate_and_send():
                 async def send_filler_message():
                     await asyncio.sleep(
-                        2.0
+                        7.0
                     )  # Send filler message if it takes longer than 2 seconds go get the response
                     filler_message = get_filler_message(request.message)
                     send_messages([filler_message])

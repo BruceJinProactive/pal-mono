@@ -18,6 +18,7 @@ class Input(BaseModel):
     content: str
     context: str = ""
     memories: str = ""
+    channel: str = ""
 
     def get_prompt(self):
         """
@@ -32,6 +33,7 @@ class Input(BaseModel):
             f"<content>{self.content}</content>\n\n"
             + f"<context>{self.context}</context>\n\n"
             + f"<memories>{self.memories}</memories>\n\n"
+            + f"<channel>{self.channel}</channel>\n\n"
         )
 
 
