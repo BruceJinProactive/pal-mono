@@ -11,7 +11,7 @@ _app_prefix_map = {
     "windsor": "PALONA_WINDSOR",  # production version of widnsor
     "palona": "PALONA",  # production verison of palona
     "palona_dev": "PALONA_DEV",  # dev verison of palona
-    "palona_single_test": "PALONA_WINDSOR",  # identical to windsor
+    "palona_single_test": "PALONA_SINGLE_TEST",  # identical to windsor
     "palona_single_local": "PALONA_SINGLE_LOCAL",  # for local testing
 }  # app name to Shopify API prefix
 _app_callback_map = {
@@ -93,7 +93,10 @@ async def callback(request: Request, app_name: str):
     try:
         access_token = session.request_token(dict(request.query_params))
     except Exception:
-        return JSONResponse(status_code=400, content={"error": "Invalid Request"})
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid Request: Failed to get Access Token"},
+        )
 
     # set the access token
     project_name: str = _app_project_map.get(app_name, "windsor-default")
