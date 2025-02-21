@@ -1,38 +1,32 @@
 import base64
 import io
 import json
-import os
 import time
 from typing import Union
 
 import requests
-from agno.tools.toolkit import Toolkit
-from classes import FashionItem, GeneralFunctions, ImageIdentification
 from openai import AsyncOpenAI, OpenAI
 from PIL import Image
 
 from utils.log import logger
 
-# Load the fashion knowledge base hierarchy
+from ..classes import FashionItem, GeneralFunctions, ImageIdentification
+
 general_functions = GeneralFunctions()
-hierarchy = general_functions.get_hierarchy()
 
 
-class FashionImageUnderstandingTools(Toolkit):
-    def __init__(self):
-        super().__init__(name="fashion_image_understanding_tools")
-        self.register(self._image_understanding)
+class FashionImageUnderstandingTools:
+    def __init__(self, hierarchy: dict, client: OpenAI, client_async: AsyncOpenAI):
         # Initialize OpenAI
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.client_async = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = client
+        self.client_async = client_async
         ### TODO: Define the session data structure with ENG team
         # Placeholder for session data
         self.session_data = {}
+        self.hierarchy = hierarchy
 
     ### TODO: Complete the implementation of the function
-    def segment_and_replace_background(
-        self, image_bytes: str
-    ) -> Union[tuple[str, Image.Image], tuple[None, None], None]:
+    def segment_and_replace_background(self, image_bytes: str) -> Union[str, None]:
         return None
 
     def _image_url_to_base64(self, image_url: str) -> str:
@@ -50,7 +44,7 @@ class FashionImageUnderstandingTools(Toolkit):
 
     def _image_identifier(
         self,
-        chat_history: list,
+        chat_history: list | str,
         query: str,
         record_time: bool = True,
     ) -> int:
@@ -75,6 +69,7 @@ class FashionImageUnderstandingTools(Toolkit):
         )
 
         ### TODO: is there any function we need to call to process the prompt?
+        ### IMPORTANT: For now, we only handle cases 0 and 3
         prompt = f"""Role: You are a highly skilled and emotionally intelligent fashion stylist. Your task is to analyze the user’s query and chat history to determine whether the user is referencing an image. Carefully assess the context to make an informed decision.
 
 Instructions:
@@ -83,8 +78,6 @@ Instructions:
         *	If the user is referencing a specific image, determine its source.
 	2.	Source Determination Logic:
         *	Uploaded Image (0): If the user refers to an uploaded image.
-        *	Generated Image (1): If the user refers to a previously generated image. Look carefully in the chat history if you see tag _GENERATE_IMAGES_ in the previous round of conversation.
-        *	Recommended Items (2): If the user refers to previously recommended items (e.g., phrases like “Love the first one,” “I like the second one,” or “I prefer the third one” with no specific image reference).
 	    *	No Image (3): If no image is referenced.
         * If the user asks for similar items, identify the source of the image based on the context.
 
@@ -101,13 +94,11 @@ Input:
 Output Format:
 
 {{
-    "image_of_interest": <0, 1, 2, or 3>
+    "image_of_interest": <0 or 3>
 }}
 
 Output Explanation:
 	*	0: Uploaded Image
-	*	1: Generated Image
-	*	2: Recommended Items
 	*	3: No Image
 """
         # Define the json schema for the model
@@ -161,13 +152,13 @@ Output Explanation:
 
     def _image_understanding(
         self,
-        image_url: str,
+        base64_image: str,
         record_time: bool = True,
     ) -> str:
         """This function analyzes the image to provide a detailed description of the fashion item in the image.
 
         Args:
-            image_url (str): The image url to be analyzed. It should be a direct link to the image.
+            base64_image (str): The base64 encoded image as a str.
             record_time (bool): Whether to record the time taken for the function. Defaults to True.
 
         Returns:
@@ -175,8 +166,6 @@ Output Explanation:
         """
         # Record the start time for inference time analysis
         start_time = time.time()
-
-        base64_image = self._image_url_to_base64(image_url)
 
         ### TODO: Replace session_data with the actual session data structure
         # Initialize the image understandings memory
@@ -234,7 +223,7 @@ Output Explanation:
    - Use only the predefined hierarchy for selecting `categories`, `occasions`, `colors`, and `fit_features`. Avoid any values outside the hierarchy.
 
 **Hierarchy**:
-{hierarchy}
+{self.hierarchy}
 
 Provide the output in the following JSON structure:
 {{
@@ -257,7 +246,7 @@ Provide the output in the following JSON structure:
                 "json_schema": {
                     "name": "result",
                     "schema": general_functions._restrict_api_call_params(
-                        FashionItem.model_json_schema(), hierarchy=hierarchy
+                        FashionItem.model_json_schema(), hierarchy=self.hierarchy
                     ),
                 },
             },

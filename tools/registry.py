@@ -6,6 +6,7 @@ from agno.tools.toolkit import Toolkit
 from agent.tool._config import ToolIdentifier
 from tools.adora_tool import AdoraTool
 from tools.calculator_tool import CalculatorTool
+from tools.fashion_understanding_tools import FashionRecommendationLogicPipeline
 
 
 class ToolRegistry:
@@ -19,6 +20,7 @@ class ToolRegistry:
             # Register available tools
             "calculator_tool": CalculatorTool,
             "adora_tool": AdoraTool,
+            "windsor_tool": FashionRecommendationLogicPipeline,
         }
 
     def get_tool(self, tool: ToolIdentifier) -> Optional[Toolkit]:

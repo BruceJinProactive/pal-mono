@@ -1,12 +1,11 @@
 import json
-import os
 import time
 
-from agno.tools.toolkit import Toolkit
-from classes import FashionItem, GeneralFunctions
 from openai import AsyncOpenAI, OpenAI
 
 from utils.log import logger
+
+from ..classes import FashionItem, GeneralFunctions
 
 
 class ConflictResolution(FashionItem):
@@ -30,23 +29,22 @@ class ConflictResolution(FashionItem):
 
 # Load utility functions for fashion understanding
 general_functions = GeneralFunctions()
-hierarchy = general_functions.get_hierarchy()
 
 
-class FashionConflictResolutionTools(Toolkit):
-    def __init__(self):
-        super().__init__(name="fashion_conflict_resolution_tools")
-        self.register(self._resolve_conflicts)
+class FashionConflictResolutionTools:
+    def __init__(self, hierarchy: dict, client: OpenAI, client_async: AsyncOpenAI):
         # Initialize OpenAI
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.client_async = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = client
+        self.client_async = client_async
+
+        self.hierarchy = hierarchy
 
     def _resolve_conflicts(
         self,
         user_query: str,
         image_understanding: dict,
         text_understanding: dict,
-        chat_history: list,
+        chat_history: list | str,
         record_time: bool = True,
     ) -> dict:
         """
@@ -144,7 +142,7 @@ By following these guidelines, provide a well-informed and tailored response in 
                         "name": "result",
                         "schema": general_functions._restrict_api_call_params(
                             ConflictResolution.model_json_schema(),
-                            hierarchy=hierarchy,
+                            hierarchy=self.hierarchy,
                         ),
                     },
                 },

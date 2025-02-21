@@ -1,3 +1,7 @@
-from .classes import FashionItem, GeneralFunctions, ImageIdentification
-from .fashion_image_understanding_tools import FashionImageUnderstandingTools
-from .fashion_text_understanding_tools import FashionTextUnderstandingTools
+from ._implementation import FashionRecommendationLogicPipeline
+from .classes import (
+    AntonymsofNegativeFashion,
+    FashionItem,
+    GeneralFunctions,
+    ImageIdentification,
+)

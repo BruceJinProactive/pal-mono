@@ -1,34 +1,38 @@
 import base64
 import io
+import json
 import os
+import tempfile
 import time
-from typing import Any, List
+from typing import Any, List, Union
 
 import numpy as np
-from agno.tools.toolkit import Toolkit
-from classes import GeneralFunctions
+import vertexai
+from google.oauth2 import service_account
 from openai import AsyncOpenAI, OpenAI
 from PIL import Image
 from pinecone import Pinecone
+from vertexai.vision_models import Image as VertexImage
+from vertexai.vision_models import MultiModalEmbeddingModel
 
 from utils.log import logger
 
+from ..classes import GeneralFunctions
+
 general_functions = GeneralFunctions()
-hierarchy = general_functions.get_hierarchy()
 
 
-class FashionRagSearchFilterUtilsTools(Toolkit):
+class FashionRagSearchFilterUtilsTools:
 
-    def __init__(self):
-        super().__init__(name="fashion_rag_search_tools")
-        ### TODO: De-register this function as we don't want the agent to use it. We want to use it internally.
-        self.register(self._text2img_search)
+    def __init__(self, hierarchy: dict, client: OpenAI, client_async: AsyncOpenAI):
         # Initialize OpenAI
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.client_async = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = client
+        self.client_async = client_async
         ### TODO: Define the session data structure with ENG team
         # Placeholder for session data
         self.session_data = {}
+
+        self.hierarchy = hierarchy
 
         # Initialize Pinecone
         pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
@@ -36,11 +40,40 @@ class FashionRagSearchFilterUtilsTools(Toolkit):
         self.pc_index = pc.Index(index_name)
         self.pinecone_namespace = "cross-modality-embeddings-full"
         self.pinecone_dim = 1408
+        google_creds_str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if google_creds_str is None:
+            raise ValueError("GOOGLE_APPLICATION_CREDENTIALS is not set")
+        google_creds_dict = json.loads(google_creds_str.replace("'", '"'))
 
-    ### TODO: Implement the text embedding retriever
+        """
+        Commands for the Windsor Tools:
+        - _GENERATE_REVIEWS_: Collect feedback from user about the latest purchase item, and generate a positive review for the user.
+        - _GENERATE_IMAGES_: Generate images based on the user's query.
+        """
+
+        # Ensure the private key has the correct format
+        if "private_key" in google_creds_dict:
+            google_creds_dict["private_key"] = google_creds_dict["private_key"].replace(
+                "\\n", "\n"
+            )
+
+        # Initialize Vertex AI
+        credentials = service_account.Credentials.from_service_account_info(
+            google_creds_dict
+        )
+        vertexai.init(
+            project="windsor-demo",
+            location="us-central1",
+            credentials=credentials,
+        )
+        self.emb_model = MultiModalEmbeddingModel.from_pretrained(
+            "multimodalembedding@001"
+        )
+
+    ### TODO: Finalize the text/image embedding retriever
     def _get_text_embedding(
         self, text: str, GOOGLE_VERTEX: bool = False
-    ) -> List[float]:
+    ) -> List[float] | None:
         """
         Get the text embedding from OpenAI
 
@@ -50,15 +83,31 @@ class FashionRagSearchFilterUtilsTools(Toolkit):
         Returns:
         List: a list of floats representing the text embedding
         """
-        return [0.0] * 512
+        return self.emb_model.get_embeddings(
+            contextual_text=text, dimension=self.pinecone_dim
+        ).text_embedding
 
-    ### TODO: Implement the image embedding retriever
     def _get_image_embedding(
         self, image_data: Image.Image, GOOGLE_VERTEX=False
-    ) -> List[float]:
+    ) -> Union[List[float], None]:
         """Get embedding for the image."""
 
-        return [0.0] * 512
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+                try:
+                    image_data.save(tmp_file.name)
+                    image_embedding = self.emb_model.get_embeddings(
+                        image=VertexImage.load_from_file(tmp_file.name),
+                        dimension=self.pinecone_dim,
+                    ).image_embedding
+                    return image_embedding
+                finally:
+                    # Ensure the temporary file is removed
+                    if os.path.exists(tmp_file.name):
+                        os.unlink(tmp_file.name)
+        except Exception as e:
+            logger.error(f"Failed to get image embedding: {e}")
+            return None
 
     def decode_image(self, base64_image: str) -> Image.Image:
         """Decode the base64 image."""
@@ -94,7 +143,9 @@ class FashionRagSearchFilterUtilsTools(Toolkit):
                 self._get_text_embedding(text, GOOGLE_VERTEX=True)
                 for text in query_text
             ]
-            query_embedding = np.average(query_embedding, axis=0).tolist()
+            query_embedding = np.average(
+                [qe for qe in query_embedding if qe is not None], axis=0
+            ).tolist()
         else:
             query_embedding = self._get_text_embedding(query_text, GOOGLE_VERTEX=True)
 
@@ -273,7 +324,7 @@ class FashionRagSearchFilterUtilsTools(Toolkit):
             for occasion in occasions:
                 occasion = occasion.lower()
                 if (
-                    occasion not in hierarchy["occasions"]
+                    occasion not in self.hierarchy["occasions"]
                     or occasion == "similar to the image"
                 ):
                     logger.error(f"Invalid occasion: {occasion}")
@@ -291,7 +342,7 @@ class FashionRagSearchFilterUtilsTools(Toolkit):
             for category in categories:
                 category = category.lower()
                 if (
-                    category not in hierarchy["categories"]
+                    category not in self.hierarchy["categories"]
                     or category == "similar to the image"
                 ):
                     logger.error(f"Invalid category: {category}")
@@ -315,7 +366,10 @@ class FashionRagSearchFilterUtilsTools(Toolkit):
         ):
             for color in colors:
                 color = color.lower()
-                if color not in hierarchy["colors"] or color == "similar to the image":
+                if (
+                    color not in self.hierarchy["colors"]
+                    or color == "similar to the image"
+                ):
                     logger.error(f"Invalid color: {color}")
                     continue
                 if color != "none":

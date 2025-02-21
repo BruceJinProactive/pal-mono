@@ -1,48 +1,34 @@
 import json
-import os
-from typing import List, Union
+from typing import List
 
-from agno.tools.toolkit import Toolkit
-from classes import GeneralFunctions
 from openai import AsyncOpenAI, OpenAI
-from pydantic import BaseModel
 
 from utils.log import logger
 
+from ..classes import GeneralFunctions, NegativeFashion
+
 general_functions = GeneralFunctions()
-hierarchy = general_functions.get_hierarchy()
 
 
-class NegativeFashion(BaseModel):
-    occasion: Union[List[str], None]
-    category: Union[List[str], None]
-    color: Union[List[str], None]
-    material: Union[List[str], None]
-    patterns: Union[List[str], None]
-    disliked_fit_style: Union[List[str], None]
-    aesthetics: Union[List[str], None]
+class FashionNegativeIntentTools:
 
-
-class FashionNegativeIntentTools(Toolkit):
-
-    def __init__(self):
-        super().__init__(name="fashion_negative_intent_tools")
-        ### TODO: De-register this function as we don't want the agent to use it. We want to use it internally.
-        self.register(self._detect_negative_intents)
+    def __init__(self, hierarchy: dict, client: OpenAI, client_async: AsyncOpenAI):
         # Initialize OpenAI
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.client_async = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = client
+        self.client_async = client_async
         ### TODO: Define the session data structure with ENG team
         # Placeholder for session data
         self.session_data = {}
 
-    def _detect_negative_intents(self, query: str, chat_history: str) -> dict:
+        self.hierarchy = hierarchy
+
+    def _detect_negative_intents(self, query: str, chat_history: List | str) -> dict:
         """
         Detects negative intents in the user query and chat history, returning a dictionary of attributes to exclude.
 
         Args:
             query (str): The exact query entered by the user.
-            chat_history (str): The chat history containing past user preferences and dislikes.
+            chat_history (List): The chat history containing past user preferences and dislikes.
 
         Returns:
             dict: A dictionary where keys are categories (e.g., "color") and values are lists of items (e.g., ["blue"]) to exclude.
@@ -95,7 +81,7 @@ class FashionNegativeIntentTools(Toolkit):
         user_prompt = (
             "Analyze the query with respect to chat history to identify any dislikes explicitly or implicitly mentioned by the user, "
             "Extract negative preferences only, ensuring accuracy and adherence to the guidelines."
-            f"Fashion hierarchy: '{hierarchy}'. "
+            f"Fashion hierarchy: '{self.hierarchy}'. "
             f"Chat history: '{chat_history}'. "
             f"Current query: '{query}'. "
         )

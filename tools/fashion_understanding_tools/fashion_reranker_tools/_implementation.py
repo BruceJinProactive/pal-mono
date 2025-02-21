@@ -1,26 +1,18 @@
-import os
 import time
 from typing import List
 
 import numpy as np
-from agno.tools.toolkit import Toolkit
 from openai import AsyncOpenAI, OpenAI
 
 from utils.log import logger
 
 
-class FashionRerankerTools(Toolkit):
+class FashionRerankerTools:
 
-    def __init__(self):
-        super().__init__(name="fashion_reranker_tools")
-        ### TODO: De-register this function as we don't want the agent to use it. We want to use it internally.
-        self.register(self._reranking)
+    def __init__(self, client: OpenAI, client_async: AsyncOpenAI):
         # Initialize OpenAI
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.client_async = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        ### TODO: Define the session data structure with ENG team
-        # Placeholder for session data
-        self.session_data = {}
+        self.client = client
+        self.client_async = client_async
 
     def _softmax(self, logits):
         exps = np.exp(

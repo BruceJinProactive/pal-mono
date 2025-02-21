@@ -5,6 +5,7 @@ from typing import List, Union
 from pydantic import BaseModel
 
 
+##### classes for function calling #####
 class FashionItem(BaseModel):
     item_name: str
     colors: Union[str, List[str]]
@@ -17,6 +18,25 @@ class ImageIdentification(BaseModel):
     image_of_interest: str
 
 
+class AntonymsofNegativeFashion(BaseModel):
+    translated_fit_style: Union[List[str], None]
+
+
+class PastImageIdentifier(BaseModel):
+    index_of_item: int
+
+
+class NegativeFashion(BaseModel):
+    occasion: Union[List[str], None]
+    category: Union[List[str], None]
+    color: Union[List[str], None]
+    material: Union[List[str], None]
+    patterns: Union[List[str], None]
+    disliked_fit_style: Union[List[str], None]
+    aesthetics: Union[List[str], None]
+
+
+#######################################
 class GeneralFunctions(BaseModel):
     ### TODO: Discuss with the ENG team how to store the hierarchy information
     def get_hierarchy(self) -> dict:
@@ -30,7 +50,24 @@ class GeneralFunctions(BaseModel):
         )
         hierarchy = json.load(open(hierarchy_file, "r"))
 
-        return hierarchy
+        # Convert all values to lowercase
+        processed_hierarchy = {}
+
+        for key, value in hierarchy.items():
+            processed_hierarchy[key] = [v.lower() for v in value]
+
+        return processed_hierarchy
+
+    def _lowercase_keys(self, dictionary: dict) -> dict:
+        """This function converts all keys in a dictionary to lowercase.
+
+        Args:
+            dictionary (dict): The dictionary to convert.
+
+        Returns:
+            A new dictionary with all keys converted to lowercase.
+        """
+        return {k.lower(): v for k, v in dictionary.items()}
 
     def _restrict_api_call_params(
         self, api_call_params: dict, hierarchy: dict, mapping=None

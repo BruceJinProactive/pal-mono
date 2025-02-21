@@ -139,7 +139,14 @@ class RawConfig(BaseModel):
         else:
             # For other providers, settings is not required
             settings = None
-
+        # Disable knowledge for Windsor agent
+        if self.account_name == "windsor":
+            return KnowledgeConfig(
+                enabled=False,
+                provider=provider,
+                identifier=identifier,
+                settings=settings,
+            )
         return KnowledgeConfig(
             enabled=True,
             provider=provider,
@@ -159,11 +166,14 @@ class RawConfig(BaseModel):
         store_id = client.get("store_id", None)
         if store_id is None:
             raise ValueError("`client.store_id` is not provided in `agent_raw_config`.")
-
+        tool_map = {
+            "new-pizzamyheart": "adora_tool",
+            "windsor": "windsor_tool",
+        }
         return ToolConfig(
             identifiers=[
                 ToolIdentifier(
-                    tool_name="adora_tool",
+                    tool_name=tool_map[self.account_name],
                     args={
                         "store_id": store_id,
                         "agent_id": self.agent_id,  # pass as UUID

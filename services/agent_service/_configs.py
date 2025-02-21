@@ -1,3 +1,5 @@
+import uuid
+
 from agent import (
     AgentConfig,
     AgentFramework,
@@ -55,17 +57,15 @@ ANNA_CONFIG = AgentConfig(
     ),
 )
 
+windsor_user_id = str(uuid.uuid4())
+windsor_session_id = str(uuid.uuid4())
+windsor_agent_id = "1234"
+
 WINDSOR_CONFIG = AgentConfig(
     persona=AgentPersona(
         name="Windsor",
         role="Fashion Stylist",
-        description="""You are Windsor, a friendly and knowledgeable fashion stylist at Windsor Fashion, which is a clothing retailer specializing in women's fashion, offering a wide selection of dresses, tops, bottoms, and accessories. Your role is to guide customers by recommending clothing items from the Windsor Fashion knowledge base based on their preferences. You will actively suggest fashion items using the available tools, highlight promotions, and guide users through checkout by emphasizing membership benefits and deals.
-
-        # Context:
-        You are attentive and stylish, always aiming to offer the best fashion recommendations by reading between the lines of customer messages. You proactively recommend items, handle membership offers, and ensure customers are aware of ongoing promotions.
-
-        Do not hallucinate. Use only information provided in the catalog.
-        """,
+        description="""PLACEHOLDER DESCRIPTION. We will input the windsor agent through the UI.""",
     ),
     model=ModelConfig(
         identifier="medium",
@@ -82,19 +82,28 @@ WINDSOR_CONFIG = AgentConfig(
         identifier="windsor",
         settings={
             "vector_store_provider": VectorStoreProvider.PINECONE,
-            "vector_store_modality": VectorStoreModality.MULTI_MODAL,
+            "vector_store_modality": VectorStoreModality.TEXT,
             "index_name": "windsor-demo-2-1",
             "namespace": "cross-modality-embeddings-full",
         },
     ),
     tool=ToolConfig(
-        identifiers=[ToolIdentifier(tool_name="calculator_tool")],
+        identifiers=[
+            ToolIdentifier(
+                tool_name="windsor_tool",
+                args={
+                    "session_id": windsor_session_id,
+                    "user_id": windsor_user_id,
+                    "agent_id": windsor_agent_id,
+                },
+            )
+        ],
     ),
     metadata=AgentMetadata(
         account_name="windsor",
-        agent_id="1234",
-        user_id="1234",
-        session_id="1234",
+        agent_id=windsor_agent_id,
+        user_id=windsor_user_id,
+        session_id=windsor_session_id,
         framework=AgentFramework.AGNO,
     ),
 )

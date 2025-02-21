@@ -63,11 +63,11 @@ async def construct_agent_config(
     )
 
     # Convert blueprint to agent config
-    if db_agent.account.name == "windsor":
-        logger.info("Loading Windsor config...")
-        return _configs.WINDSOR_CONFIG
-    elif db_agent.account.name == "new-pizzamyheart":
-        logger.info("Loading New PizzaMyHeart config...")
+    if (
+        db_agent.account.name == "new-pizzamyheart"
+        or db_agent.account.name == "windsor"
+    ):
+        logger.info("Loading New PizzaMyHeart & windsor config...")
         return raw_config.build()
     else:
         logger.info("Loading Anna config...")

@@ -1,0 +1,776 @@
+import copy
+import json
+import os
+import time
+import uuid
+from typing import Any, Dict, List
+
+from agno.storage.agent.session import AgentSession
+from agno.tools.toolkit import Toolkit
+from openai import AsyncOpenAI, OpenAI
+
+from agent.legacy.storage import get_storage
+from utils.log import logger
+
+from .classes import AntonymsofNegativeFashion, GeneralFunctions, PastImageIdentifier
+from .fashion_conflict_resolution_tools import FashionConflictResolutionTools
+from .fashion_image_understanding_tools import FashionImageUnderstandingTools
+from .fashion_negative_intent_detection_tools import FashionNegativeIntentTools
+from .fashion_rag_search_filter_utils_tools import FashionRagSearchFilterUtilsTools
+from .fashion_reranker_tools import FashionRerankerTools
+from .fashion_text_understanding_tools import FashionTextUnderstandingTools
+
+
+def generate_ids_uuid():
+    # Generate a random UUID for user ID
+    user_id = str(uuid.uuid4())
+
+    # Generate another random UUID for session ID
+    session_id = str(uuid.uuid4())
+
+    return user_id, session_id
+
+
+def load_json_from_file(file_path) -> dict[Any, Any] | Any:
+    # Check if file is empty
+    if not os.path.exists(file_path) or os.stat(file_path).st_size == 0:
+        # Return an empty dict or some default
+        return {}
+
+    with open(file_path, "r") as f:
+        return json.load(f)
+
+
+class FashionRecommendationLogicPipeline(Toolkit):
+    def __init__(
+        self,
+        store_id: str,
+        agent_id: uuid.UUID,
+        account_id: uuid.UUID,
+        account_name: str,
+        user_id: uuid.UUID,
+        session_id: uuid.UUID,
+        namespace: str,
+    ):
+        super().__init__(name="fashion_recommendation_logic_pipeline")
+        self.register(self._recommendation_logic)
+
+        self.account_name = account_name
+        self.user_id = user_id
+        self.session_id = session_id
+        self.agent_id = agent_id
+        self.account_id = account_id
+        self.namespace = namespace
+
+        # Initialize OpenAI
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client_async = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        ### TODO: Define the session data structure with ENG team
+        self.ENABLE_SESSION_DATA = True
+
+        # Initialize fashion hierarchy
+        self.general_functions = GeneralFunctions()
+        self.hierarchy = self.general_functions.get_hierarchy()
+
+        # Initialize tools classes
+        self.fashion_negative_intent_tools = FashionNegativeIntentTools(
+            hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
+        )
+        self.fashion_image_understanding_tools = FashionImageUnderstandingTools(
+            hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
+        )
+        self.fashion_text_understanding_tools = FashionTextUnderstandingTools(
+            hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
+        )
+        self.fashion_conflict_resolution_tools = FashionConflictResolutionTools(
+            hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
+        )
+        self.rag_search_filter_utils_tools = FashionRagSearchFilterUtilsTools(
+            hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
+        )
+        self.fashion_reranker_tools = FashionRerankerTools(
+            client=self.client, client_async=self.client_async
+        )
+
+    def _get_session_data(self) -> Dict[str, Any]:
+        storage = get_storage(self.account_name)
+        session_data = storage.read(str(self.session_id), str(self.user_id))
+        if not session_data:
+            logger.error(
+                "Session data not found for\n"
+                f"Account Name: {self.account_name}\n"
+                f"Account ID: {self.account_id}\n"
+                f"Agent ID: {self.agent_id}\n"
+                f"User ID: {self.user_id}\n"
+                f"Session ID: {self.session_id}"
+            )
+            return {}
+        logger.info(f"Retrieving session data: {session_data.session_data}")
+        session_data = session_data.session_data
+        if not session_data:
+            return {}
+        return session_data
+
+    def _write_session_data(self, session_data: Dict[str, Any]) -> None:
+        storage = get_storage(self.account_name)
+        session = storage.read(str(self.session_id), str(self.user_id))
+        if not session:
+            logger.error(
+                "Session data not found for\n"
+                f"Account Name: {self.account_name}\n"
+                f"Account ID: {self.account_id}\n"
+                f"Agent ID: {self.agent_id}\n"
+                f"User ID: {self.user_id}\n"
+                f"Session ID: {self.session_id}"
+            )
+        session = AgentSession(
+            session_id=str(self.session_id),
+            agent_id=str(self.agent_id),
+            user_id=str(self.user_id),
+        )
+        logger.info(f"Writing session data: {session_data}")
+        session.session_data = session_data
+        storage.upsert(session)
+
+    def _get_chat_history(self) -> str:
+        try:
+            # db_session = db.get_db()
+
+            # logger.info(db_session)
+            # if not db_session:
+            #     logger.error(
+            #         "Failed to get database session for\n"
+            #         f"Account Name: {self.account_name}\n"
+            #         f"Account ID: {self.account_id}\n"
+            #         f"Agent ID: {self.agent_id}\n"
+            #         f"User ID: {self.user_id}\n"
+            #         f"Session ID: {self.session_id}"
+            #     )
+            #     return "Failed to get database session."
+
+            try:
+                # # TODO: Defer import to avoid circular import
+                # from services.admin_service import (
+                #     get_messages_by_conversation_id,
+                # )
+
+                # messages = get_messages_by_conversation_id(
+                #     db_session, self.user_id, self.session_id
+                # )
+                storage = get_storage(self.account_name)
+                agent_session = storage.read(str(self.session_id), str(self.user_id))
+
+                if not agent_session:
+                    logger.error(
+                        "Agent session not found for\n"
+                        f"Account Name: {self.account_name}\n"
+                        f"Account ID: {self.account_id}\n"
+                        f"Agent ID: {self.agent_id}\n"
+                        f"User ID: {self.user_id}\n"
+                        f"Session ID: {self.session_id}"
+                    )
+                    return "Agent session not found"
+
+                messages = agent_session.memory["runs"]  # type: ignore
+
+                chat_history = ""
+
+                for message in messages:
+                    role = message["message"]["role"]
+                    if role == "user":
+                        user_content = self._get_content(message["message"]["content"])  # type: ignore
+                        chat_history += f"**[User]**\n{user_content}\n\n"
+                        chat_history += (
+                            f"**[Assistant]**\n{message['response']['content']}\n\n"
+                        )
+                    else:
+                        logger.info(
+                            f"Skipping appending message to chat history:\n{message}"
+                        )
+
+                return chat_history
+
+            except ValueError:
+                logger.error(
+                    "Conversation history not found for\n"
+                    f"Account ID: {self.account_id}\n"
+                    f"Agent ID: {self.agent_id}\n"
+                    f"User ID: {self.user_id}\n"
+                    f"Session ID: {self.session_id}"
+                )
+                return "Conversation history not found."
+
+        except Exception as e:
+            error_msg = "Error in getting chat history"
+            logger.error(f"{error_msg}: {e}")
+            return error_msg
+
+    # Rewrite the values for the RAG query
+    def rewrite_colors(self, colors: List) -> str:
+        return "Color(s): " + ", ".join(colors) if colors else ""
+
+    def rewrite_fit_features(self, fit_features: List) -> str:
+        return "Fit Feature(s): " + ", ".join(fit_features) if fit_features else ""
+
+    def rewrite_occasions(self, occasions: List) -> str:
+        return "Occasion(s): " + ", ".join(occasions) if occasions else ""
+
+    def _retrieve_antonym_of_disliked_fit_styles(
+        self, disliked_fit_styles: list
+    ) -> List:
+        """
+        Translates disliked fit styles into their preferred counterparts using GPT with few-shot examples.
+
+        Args:
+            disliked_fit_styles (list): A list of disliked fit styles (e.g., ["crop tops", "tight fit"]).
+
+        Returns:
+            dict: A dictionary with the original disliked fit styles as keys and their preferred counterparts as values.
+        """
+        if not disliked_fit_styles:
+            return []
+
+        # Define the prompt with few-shot examples
+        system_prompt = (
+            "You are a fashion expert specializing in translating disliked fit styles into their preferred counterparts. "
+            "For each provided disliked fit style, identify the most likely contrasting fit style that a user might prefer. "
+            "Be specific and contextually accurate. Only provide alternatives that are realistic and meaningful in fashion."
+            "Ensure a broad coverage of the opposite fit styles of the disliked fit styles to provide as many alternatives as possible."
+        )
+
+        few_shot_examples = """ "tight fit" can be translated to"loose fit, relaxed fit, oversized fit, etc."},
+           "crop tops" can be translated to"longline tops, tunic tops, peplum tops, etc."},
+           "long dress" can be translated to"short dress, mini dress, etc."},
+           "short dress" can be translated to"long dress, maxi dress, etc."},
+           "high slit" can be translated to"short slit, no slit, etc."},
+           "short slit" can be translated to"high slit, long slit, etc."},
+           "deep V neckline" can be translated to"shallow V neckline, high neckline, turtleneck, etc."},
+           "baggy pants" can be translated to"slim-fit pants, tailored pants, etc."},
+           "oversized jackets" can be translated to"tailored jackets, fitted jackets, etc."},
+           "plunging neckline" can be translated to"high neckline, crew neckline, etc."},
+           "wide-leg trousers" can be translated to"straight-leg trousers, slim-fit trousers, etc."},
+        """
+
+        user_prompt = (
+            f"Disliked fit styles: {disliked_fit_styles}. Below are examples of translations for context:\n\n"
+            f"{json.dumps(few_shot_examples, indent=2)}\n\n"
+            f"Stricly provide the preferred counterparts for the given disliked fit styles in a dictionary that has the disliked fit styles as the only 1 key in the dictionary and their preferred counterparts as values which are in a list format. If there are no preferred fit styles for a disliked fit style, return None as the value. For example:\n\n"
+            f"{{'translated_fit_style': [**list of preferred fit styles**]}}"
+        )
+
+        # Call GPT to process the antonyms
+        chat_completion = self.client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            model="gpt-4o-2024-08-06",
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "fit_styles_translation",
+                    "schema": AntonymsofNegativeFashion.model_json_schema(),
+                },
+            },
+        )
+
+        answer = chat_completion.choices[0].message.content
+        if answer is None:
+            logger.error("Failed to retrieve GPT response for preferred styles.")
+            raise ValueError("Failed to retrieve GPT response for preferred styles.")
+        try:
+            # Process the response
+            logger.info(
+                f"Raw Antonyms of disliked fit styles: {chat_completion.choices[0].message.content}"
+            )
+            preferred_styles = json.loads(answer)
+            # Normalize the output to ensure key conformation
+            # lowercase the keys
+            if "properties" in preferred_styles:
+                preferred_styles = preferred_styles["properties"]
+            preferred_styles = self.general_functions._lowercase_keys(preferred_styles)
+            for key in preferred_styles:
+                if preferred_styles[key] is not None:
+                    if isinstance(preferred_styles[key], list):
+                        preferred_styles[key] = [
+                            i.lower() for i in preferred_styles[key]
+                        ]
+                    else:
+                        try:
+                            preferred_styles[key] = preferred_styles[key].lower()
+                        except Exception as e:
+                            logger.error(
+                                f"Error converting {key} to lower case. Error: {e}"
+                            )
+                            logger.error(preferred_styles[key])
+                            preferred_styles[key] = []
+
+            # if the list is empty, replace it with None
+            for key in preferred_styles:
+                if (
+                    isinstance(preferred_styles[key], list)
+                    and len(preferred_styles[key]) == 0
+                ):
+                    preferred_styles[key] = None
+            logger.info(
+                f"Processed Antonyms of disliked fit styles: {preferred_styles}"
+            )
+
+            return preferred_styles["translated_fit_style"]
+        except json.JSONDecodeError:
+            logger.error("Failed to parse GPT response for preferred styles.")
+            return []
+
+    def past_image_identifier(self, query: str, chat_history: List | str) -> int:
+
+        prompt = f"""Based on the chat history query, and the image understandings of the past recommended items, identify the image that the user is referencing. Return the index of the image (starting from 0).
+        
+        For example, if the user says "I like the second item", return 1.
+        
+        If the user did not explicitly specify which item they are referencing, return the index of the item which is most likely to be the user's preference.
+        
+        Here is the chat history: "{chat_history}". 
+        
+        Here is the user's query: "{query}".
+        """
+
+        chat_completion = self.client.chat.completions.create(
+            messages=[
+                {"role": "user", "content": prompt},
+            ],
+            model="gpt-4o-2024-08-06",
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "result",
+                    "schema": PastImageIdentifier.model_json_schema(),
+                },
+            },
+        )
+
+        answer = chat_completion.choices[0].message.content
+        if answer is None:
+            logger.error("Failed to retrieve GPT response for past image identifier.")
+            raise ValueError(
+                "Failed to retrieve GPT response for past image identifier."
+            )
+
+        answer = json.loads(answer)
+
+        if "index_of_item" in answer:
+            return int(answer["index_of_item"])
+        else:
+            return int(answer["properties"]["index_of_item"])
+
+    def _recommendation_logic(
+        self,
+        top_k: int = 3,
+        num_redundant: int = 7,
+        base64_generative_image: str | None = None,
+        query: str | None = None,
+        chat_history: List | str | None = None,
+    ) -> str:
+        f"""This function retrieves clothings, accesories, costumes information from the knowledge base based on the user's query and/or the image uploaded by the user. This function can access user query, chat history and the image uploaded by the user and use it to retrieve similar fashion items from the knowledge base.
+
+            Args:
+                top_k (int): The number of fashion items to return. Defaults to {top_k}. If the user does not specify the number of items to return, the function must return the top {top_k} fashion items.
+            Returns:
+                retrieved fashion items from the knowledge base.
+
+            **Trigger Conditions:**
+            - When the user asks for:
+                1. any clothing items/costumes.
+                2. specific type of outfit or dress for events.
+                3. ambiguos fashion advice but the chat history provides a context.
+                4. items based on the user's query and the image uploaded by the user.
+                5. items/clothings/costumes based on a specific occasion, specific occasion, category, or color.
+            - If the user's query does not specify the amount of fashion items to return, you must return the top {top_k} fashion items (i.e. top_k={top_k}).
+            """
+        start_time = time.time()
+        self.session_data = self._get_session_data()
+        chat_history = self._get_chat_history()
+        ### TODO: Define the way to collect user query, chat history, and image uploaded by the user.
+        chat_history = chat_history if chat_history else []
+        query = query if query else ""
+        base64_generative_image = (
+            base64_generative_image if base64_generative_image else ""
+        )
+
+        ##### Identify negative intents #####
+        negative_intents = self.fashion_negative_intent_tools._detect_negative_intents(
+            query=query, chat_history=chat_history
+        )
+        antonyms_of_disliked_features = None
+        input_to_dislikes_conversion = []
+        if (
+            "disliked_fit_style" in negative_intents
+            and negative_intents["disliked_fit_style"]
+        ):
+            input_to_dislikes_conversion.extend(negative_intents["disliked_fit_style"])
+        if "aesthetics" in negative_intents and negative_intents["aesthetics"]:
+            input_to_dislikes_conversion.extend(negative_intents["aesthetics"])
+        logger.info(f"Disliked features: {input_to_dislikes_conversion}")
+        if input_to_dislikes_conversion != []:
+            antonyms_of_disliked_features = (
+                self._retrieve_antonym_of_disliked_fit_styles(
+                    disliked_fit_styles=input_to_dislikes_conversion
+                )
+            )
+            logger.info(
+                f"Anotnyms of disliked fit styles: {antonyms_of_disliked_features}"
+            )
+
+        ##### Ensure previously recommended items are not repeated #####
+        ### TODO (session_data): Ensure prev_user_preferences and past_recommendations are stored in the session data
+        filtered_items = []
+        if (
+            "recommended_items" in self.session_data
+            and "all" in self.session_data["recommended_items"]
+        ):
+            for item in self.session_data["recommended_items"]["all"]:
+                if "item_name" in item:
+                    filtered_items.append(item["item_name"])
+
+        prev_user_preferences = self.session_data.get("prev_user_preferences", None)
+        past_recommendations = self.session_data.get("recommended_items", None)
+
+        ##### Rewrite user query #####
+
+        ### Image Understanding ###
+
+        # Placeholder for image understanding
+        image_understanding = None
+        base64_image_input = None
+
+        """
+        0 means the image is from the uploaded image, 1 means the image is from
+         the generated image, 2 means the image is from the recommended items. 3
+         means no image.
+        """
+        image_to_analyze = self.fashion_image_understanding_tools._image_identifier(
+            query=query, chat_history=chat_history
+        )
+        # BUG PREVENTION: See if the agent thinks the user is referencing an image from the past but there is no image from the past
+        if image_to_analyze == 2 and "recommended_items" not in self.session_data:
+            # User is not referencing an image from the past
+            image_to_analyze = 3
+
+        ### TODO: Enable the agent to handle the cases where the user is referencing an uploaded image and a generated image
+
+        # If the user is referencing an image from the past
+        if image_to_analyze == 2:
+            past_image_index = self.past_image_identifier(
+                query=query, chat_history=chat_history
+            )
+            logger.info(f"Past image to analyze: {past_image_index}")
+
+            try:
+                image_url = self.session_data["recommended_items"]["recent_image_urls"][
+                    image_to_analyze
+                ]
+            except IndexError:
+                logger.error(f"Index {image_to_analyze} is out of range.")
+                image_url = self.session_data["recommended_items"]["recent_image_urls"][
+                    0
+                ]
+
+            base64_image_input = (
+                self.fashion_image_understanding_tools._image_url_to_base64(image_url)
+            )
+            try:
+                ### TODO: Adjust the code once segment_and_replace_background is implemented
+                segmented_base_64 = self.fashion_image_understanding_tools.segment_and_replace_background(
+                    base64_image_input
+                )
+                base64_image_input = (
+                    segmented_base_64
+                    if segmented_base_64 is not None
+                    else base64_image_input
+                )
+            except Exception as e:
+                logger.error(f"Error segmenting and replacing background: {e}")
+
+            image_understanding = json.loads(
+                (
+                    self.fashion_image_understanding_tools._image_understanding(
+                        base64_image_input
+                    )
+                )
+            )
+            logger.info(
+                f"Image understanding from past recommended items: \n{image_understanding}"
+            )
+
+        ### Text Understanding ###
+
+        text_understanding = self.fashion_text_understanding_tools._text_understanding(
+            chat_history=chat_history,
+            query=query,
+            past_recommendations=(
+                past_recommendations["recent"]
+                if past_recommendations is not None and "recent" in past_recommendations
+                else []
+            ),
+            prev_user_preferences=prev_user_preferences,
+            negative_intents=negative_intents,
+            image_to_analyze=image_to_analyze,
+        )
+        text_understanding = self.general_functions._lowercase_keys(text_understanding)
+        item_name = text_understanding["item_name"]
+        fit_features = text_understanding["fit_features"]
+        if antonyms_of_disliked_features is not None:
+            fit_features = fit_features + antonyms_of_disliked_features
+            text_understanding["fit_features"] = fit_features
+
+        # check if fit features if a list, make it a list if not
+        if not isinstance(fit_features, List) and not fit_features:
+            fit_features = fit_features.split()
+
+        occasions = text_understanding["occasions"]
+        if isinstance(occasions, dict) and "enum" in occasions:
+            occasions = occasions["enum"]
+        if not isinstance(occasions, List):
+            occasions = [occasions]
+
+        categories = text_understanding["categories"]
+        if not isinstance(categories, List):
+            categories = [categories]
+
+        colors = text_understanding["colors"]
+        if not isinstance(colors, List):
+            colors = [colors]
+
+        rag_query = (
+            "\n".join(
+                [
+                    item_name,
+                    self.rewrite_occasions(occasions),
+                    self.rewrite_colors(colors),
+                    self.rewrite_fit_features(fit_features),
+                ]
+            )
+            if colors is not None and colors != "none" and "none" not in colors
+            else ", ".join([item_name, self.rewrite_fit_features(fit_features)])
+        )
+
+        ##### Conflict resolution #####
+        conflicts = []
+        if image_to_analyze == 2 and image_understanding is not None:
+            rephrase_query_answer = (
+                self.fashion_conflict_resolution_tools._resolve_conflicts(
+                    query,
+                    image_understanding,
+                    text_understanding,
+                    chat_history,
+                )
+            )
+            # Extract the resolved values
+            item_name = rephrase_query_answer["item_name"]
+            fit_features = rephrase_query_answer["fit_features"]
+            occasions = rephrase_query_answer["occasions"]
+            colors = (
+                rephrase_query_answer["colors"]
+                if "none" not in rephrase_query_answer["colors"]
+                else []
+            )
+
+            # Check if colors is a list, if not, make it a list
+            if isinstance(colors, str):
+                colors = [colors]
+
+            # Compose rag queries
+            rag_query = "\n ".join(
+                [
+                    item_name,
+                    self.rewrite_occasions(occasions),
+                    self.rewrite_colors(colors),
+                    self.rewrite_fit_features(fit_features),
+                ]
+            )
+            conflicts = [rephrase_query_answer["conflicting_features"]]
+
+            occasions = rephrase_query_answer["occasions"]
+            categories = rephrase_query_answer["categories"]
+
+        ### Store the user's preference in the session data for future reference ###
+        full_description = f"occasion:{occasions}. category:{categories}. color:{colors}. item_name:{item_name}. fit_features:{fit_features}"
+        if self.ENABLE_SESSION_DATA:
+            self.session_data["prev_user_preferences"] = full_description
+
+        ##### Retrieve fashion items from the knowledge base #####
+        # Ensure occasions is a list of strings
+        if isinstance(occasions, list):
+            occasions = [str(occasion) for occasion in occasions]
+        else:
+            occasions = [str(occasions)]
+
+        filtered_result = self.rag_search_filter_utils_tools._get_filters(
+            occasions,
+            categories,
+            colors,
+            filtered_items,
+            negative_intents=negative_intents,
+        )
+        filter = filtered_result["filter"]
+
+        if filter is None:
+            filter = dict()
+
+        filter["image_urls"] = {"$exists": True}
+
+        results, scores = self.rag_search_filter_utils_tools._text2img_search(
+            query_text=rag_query,
+            rag_query_for_image_search="Name: "
+            + item_name
+            + "\n"
+            + self.rewrite_fit_features(fit_features),
+            top_k=top_k + num_redundant,
+            filter=filter,
+            base64_image=base64_image_input,
+            conflicts=conflicts,
+        )
+
+        # Filter out results with no image URLs
+        results = [result for result in results if len(result["image_urls"]) > 0]
+
+        ##### Relax filter #####
+        if len(results) < top_k:
+            results = self.rag_search_filter_utils_tools._relax_filters(
+                query_text=rag_query,
+                top_k=top_k + num_redundant,
+                occasions=occasions,
+                categories=categories,
+                colors=colors,
+                filtered_items=filtered_items,
+                negative_intents=negative_intents,
+            )
+
+        ###### Reranking #####
+        preference_used_for_reranking = f"item_name:{item_name}. category:{categories}. color:{colors}. occasion:{occasions}. fit_features:{fit_features}"
+
+        if len(results) > top_k:
+            logger.info(
+                f"Results before reranking: {[result['title'] for result in results]}"
+            )
+            results = self.fashion_reranker_tools._reranking(
+                items=results,
+                positive_preference=preference_used_for_reranking,
+                negative_intents=str(negative_intents),
+                current_query=query,
+            )
+            logger.info(
+                f"Results after reranking: {[result['title'] for result in results]}"
+            )
+
+        ##### Process and organize the results #####
+        # Check if there is any duplicates
+        names = set()
+        results = [
+            i
+            for i in results
+            if i["title"] + ",".join(i["colors"]) not in names
+            and not names.add(i["title"] + ",".join(i["colors"]))
+        ]
+
+        # Items with the same name and color are considered one item, and we want to return top_k items
+        names = set()
+        final_results = []
+        for result in results:
+            # Check if we have enough results
+            if len(names) == top_k:
+                break
+            # Check if the item is already in the set
+            if result["title"] not in names:
+                names.add(result["title"])
+            # Add the item and its variants to the final results
+            final_results.append(result)
+
+        # Store the image links and item names in the session data so that we can access the images from demo_template.py and display them
+        images = []
+        item_names = []
+        combined_labels = []
+        product_urls = []
+        names = set()
+        try:
+            for i in final_results:
+                checker = 0
+                temp = {
+                    "item_name": i["title"],
+                    "colors": i["colors"][0],
+                    "product_type": i["product_type"],
+                }
+                temp["fit_features"] = (
+                    i["fit_features"] if "fit_features" in i else None
+                )
+                combined_labels.append(temp)
+                for url in i["image_urls"]:
+                    if i["title"] not in names:
+                        names.add(i["title"])
+
+                        images.append(url)
+                        item_names.append(i["title"])
+                        product_urls.append(i["product_url"])
+                        checker += 1
+                        if checker == 1:
+                            break
+            images = {
+                "images": images,
+                "item_names": item_names,
+                "product_urls": product_urls,
+            }
+        except Exception as e:
+            logger.error(f"Error storing image links and item names: {e}")
+            images = {"images": [], "item_names": [], "product_urls": []}
+
+        item_names = [i["title"] for i in copy.deepcopy(final_results)]
+
+        # self.session_data = {"recent_recommended_items": copy.deepcopy(final_results)}
+        if self.ENABLE_SESSION_DATA:
+            if "recommended_items" not in self.session_data:
+                self.session_data["recommended_items"] = {
+                    "recent": copy.deepcopy(final_results),
+                    "all": combined_labels,
+                }
+            else:
+                self.session_data["recommended_items"]["recent"] = copy.deepcopy(
+                    final_results
+                )
+                # add the item_names to the front of the list
+                logger.info(f"Combined Names Labels: {combined_labels}")
+                self.session_data["recommended_items"]["all"] = (
+                    combined_labels + self.session_data["recommended_items"]["all"]
+                )
+
+        logger.info(f"Images: {images}")
+
+        if self.ENABLE_SESSION_DATA:
+            self.session_data["displayed_images"] = images
+
+        if len(final_results) == 0:
+            return """Unfortunately, there are no fashion items that match the user's query. Please try again with a different query."""
+        return_results = []
+        return_fields = ["title", "colors", "fit_features", "sizes", "product_url"]
+
+        # remove image_url from the dictionary to prevent our agent from displaying the image urls
+        for i in final_results:
+            if "image_urls" in i:
+                i.pop("image_urls")
+            return_results.append(({k: v for k, v in i.items() if k in return_fields}))
+
+        logger.info(f"Return Results: {return_results}")
+        logger.info(
+            "Final time taken to recommend items: " + str(time.time() - start_time)
+        )
+
+        if self.ENABLE_SESSION_DATA:
+            if "recommended_items" not in self.session_data:
+                self.session_data["recommended_items"] = {}
+
+            self.session_data["recommended_items"]["recent_image_urls"] = images.get(
+                "images", []
+            )
+
+            self._write_session_data(self.session_data)
+        logger.info(f"results: {return_results}")
+        return f"Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user."
