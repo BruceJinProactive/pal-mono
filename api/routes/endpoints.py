@@ -8,6 +8,7 @@ class ApiEndpoints:
     HEALTH: str = "/health"
     PING: str = "/ping"
     ASSETS: str = "/assets"
+    INTEGRATIONS: str = "/integrations"
 
 
 endpoints = ApiEndpoints()

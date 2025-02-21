@@ -150,3 +150,68 @@ def remove_client_secret(secret_key: str) -> dict:
     )
 
     return put_secret_response
+
+
+def upsert_client_secret(secret_key: str, secret_value: str) -> dict:
+    """
+    Update/add a key-value pair to the AWS Secrets Manager secret
+    """
+
+    # Create a Secrets Manager client
+    session = Session()
+    client = session.client(service_name="secretsmanager", region_name=AWS_REGION)
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=AWS_CLIENT_SECRET_NAME
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    # Decrypts secret using the associated KMS key.
+    if "SecretString" in get_secret_value_response:
+        secret = get_secret_value_response["SecretString"]
+    else:
+        secret = get_secret_value_response["SecretBinary"]
+
+    # Parse the secret string as JSON
+    secret_dict = json.loads(secret)
+    secret_dict[secret_key] = secret_value
+    # Update the secret with the modified data
+    put_secret_response = client.put_secret_value(
+        SecretId=AWS_CLIENT_SECRET_NAME, SecretString=json.dumps(secret_dict)
+    )
+
+    return put_secret_response
+
+
+def _get_client_secrets():
+    """
+    Retrieve all key-value pairs from the AWS Secrets Manager secret
+    """
+
+    # Create a Secrets Manager client
+    session = Session()
+    client = session.client(service_name="secretsmanager", region_name=AWS_REGION)
+
+    try:
+        get_secret_value_response = client.get_secret_value(
+            SecretId=AWS_CLIENT_SECRET_NAME
+        )
+    except ClientError as e:
+        # For a list of exceptions thrown, see
+        # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+        raise e
+
+    # Decrypts secret using the associated KMS key.
+    if "SecretString" in get_secret_value_response:
+        secret = get_secret_value_response["SecretString"]
+    else:
+        secret = get_secret_value_response["SecretBinary"]
+
+    # Parse the secret string as JSON
+    secret_dict = json.loads(secret)
+
+    return secret_dict
