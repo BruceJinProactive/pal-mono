@@ -21,7 +21,7 @@ class AgnoAgent:
             user_id=config.metadata.user_id,
             session_id=config.metadata.session_id,
             # model
-            model=OpenAIChat(id="gpt-4o-mini"),
+            model=OpenAIChat(id="gpt-4o"),
             # memory
             # Use mem0 for memory
             ### Knowledge ###
