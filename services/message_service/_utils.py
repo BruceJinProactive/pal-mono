@@ -2,7 +2,7 @@ import re
 from typing import Any, List
 
 from agent.input_output import Input, Output
-from api.schemas.chat.message import AuthorType, Message, TextObject
+from api.schemas.chat.message import AuthorType, Channel, Message, TextObject
 from utils.log import logger
 
 
@@ -119,7 +119,7 @@ def get_messages_from_agent_output(
     # if output.images:
     #     msg_text += f"\n\nImages:\n{output.images}"
 
-    return [
+    response_messages = [
         Message(
             author_type=AuthorType.AGENT,
             sender_identifier=input_message.recipient_identifier,
@@ -130,3 +130,16 @@ def get_messages_from_agent_output(
             metadata=metadata,  # TODO: to be replaced by input_message.channel_info
         )
     ]
+    if "http" in output.content and input_message.channel == Channel.VOICE:
+        response_message_sms = Message(
+            author_type=AuthorType.AGENT,
+            sender_identifier=input_message.recipient_identifier,
+            recipient_identifier=input_message.sender_identifier,
+            channel=Channel.SMS,
+            broker=input_message.broker,
+            text=TextObject(body=msg_text),
+            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+        )
+        response_messages.append(response_message_sms)
+
+    return response_messages

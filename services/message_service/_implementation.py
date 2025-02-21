@@ -172,6 +172,7 @@ async def get_chat_response_async(
 
             logger.info(f"Output: {output}")
 
+            # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
             return _utils.get_messages_from_agent_output(
                 output=output, input_message=message, metadata=metadata
             )
