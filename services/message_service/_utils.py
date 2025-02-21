@@ -130,7 +130,12 @@ def get_messages_from_agent_output(
             metadata=metadata,  # TODO: to be replaced by input_message.channel_info
         )
     ]
-    if "http" in output.content and input_message.channel == Channel.VOICE:
+
+    # Check if output.content contains http or .net and create additional SMS response if input_message.channel is VOICE
+    if (
+        re.search(r"http[s]?://|\.net", output.content)
+        and input_message.channel == Channel.VOICE
+    ):
         response_message_sms = Message(
             author_type=AuthorType.AGENT,
             sender_identifier=input_message.recipient_identifier,
