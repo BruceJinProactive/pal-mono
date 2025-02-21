@@ -38,9 +38,13 @@ def _valid_request(request: Request, app_name: str, is_callback=False):
     if is_callback:
         state = request.query_params.get("state")
         if state not in _oauth_state:
-            raise HTTPException(status_code=400, detail="Invalid Request")
+            raise HTTPException(
+                status_code=400, detail="Invalid Request: Missing State"
+            )
         if _oauth_state[state] != shop_url:
-            raise HTTPException(status_code=400, detail="Invalid Request")
+            raise HTTPException(
+                status_code=400, detail="Invalid Request: Invalid State"
+            )
         del _oauth_state[state]
 
     app_prefix = _app_prefix_map[app_name]
@@ -49,7 +53,9 @@ def _valid_request(request: Request, app_name: str, is_callback=False):
     # validate the oauth request
     try:
         if not session.validate_params(dict(request.query_params)):
-            raise HTTPException(status_code=400, detail="Invalid Request")
+            raise HTTPException(
+                status_code=400, detail="Invalid Request: Invalid Params"
+            )
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid API Key")
     return shop_url, session, app_prefix
@@ -80,7 +86,7 @@ async def install(request: Request, app_name: str):
 async def callback(request: Request, app_name: str):
 
     # validate the request
-    shop_url, session, app_prefix = _valid_request(request, app_name, is_callback=True)
+    shop_url, session, app_prefix = _valid_request(request, app_name, is_callback=False)
     store_name = shop_url.split(".myshopify.com")[0]  # windsor-us
 
     # get the access token
