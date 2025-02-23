@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
@@ -9,13 +10,31 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime
+from sqlalchemy.types import DateTime, Enum
 
 from .base import Base
 
 if TYPE_CHECKING:
     from .messages import Message
     from .users import User
+
+
+class ConversationStatus(enum.Enum):
+    """Defines the possible states of a conversation.
+
+    States:
+        ACTIVE:    Default state for ongoing conversations
+        INACTIVE:  Set when no activity detected for >2 hours
+        EXPIRED:   Set when conversation exceeds 24-hour limit
+        CLOSING:   Set when bot indicates conversation should end
+        CLOSED:    Set by message service
+    """
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    EXPIRED = "expired"
+    CLOSING = "closing"
+    CLOSED = "closed"
 
 
 class Conversation(Base):
@@ -35,6 +54,11 @@ class Conversation(Base):
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
+    )
+
+    # Status
+    status: Mapped[ConversationStatus] = mapped_column(
+        Enum(ConversationStatus), default=ConversationStatus.ACTIVE, nullable=False
     )
 
     # Relationships
