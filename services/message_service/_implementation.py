@@ -169,8 +169,16 @@ async def get_chat_response_async(
             logger.info(
                 f"Step 6: Agent response received - {time.time() - start_time:.4f}s"
             )
-
             logger.info(f"Output: {output}")
+
+            # Check if output.closing_conversation is True and mark the conversation as closing
+            if output.closing_conversation:
+                conversation = await db.ConversationRepositoryAsync(
+                    session
+                ).get_conversation_by_id(conversation_id=conversation_id)
+                if conversation:
+                    conversation.status = db.ConversationStatus.CLOSING
+                    await session.flush()
 
             # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
             return _utils.get_messages_from_agent_output(

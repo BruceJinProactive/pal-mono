@@ -58,3 +58,7 @@ class Output(BaseModel):
     content: str
     documents: list[Any] = []
     images: list[Any] = []
+
+    # Extras
+    escalated: bool = False
+    closing_conversation: bool = False

@@ -2,7 +2,7 @@ import re
 from typing import Any, List
 
 from agent.input_output import Input, Output
-from api.schemas.chat.message import AuthorType, Channel, Message, TextObject
+from api.schemas.chat.message import AuthorType, Channel, Extras, Message, TextObject
 from utils.log import logger
 
 
@@ -128,6 +128,10 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             text=TextObject(body=msg_text),
             metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+            extras=Extras(
+                escalated=output.escalated,
+                closing_conversation=output.closing_conversation,
+            ),
         )
     ]
 

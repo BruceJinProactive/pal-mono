@@ -2,10 +2,28 @@ import uuid
 from typing import List
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
 from db.tables import Conversation
 from utils.log import logger
+
+
+class ConversationRepositoryAsync:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_conversation_by_id(self, conversation_id: uuid.UUID):
+        result = await self.session.execute(
+            select(Conversation).filter(Conversation.id == conversation_id)
+        )
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            raise ValueError(f"No conversation found with id {conversation_id}")
+
+        return conversation
 
 
 class ConversationRepository:

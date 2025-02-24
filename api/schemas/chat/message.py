@@ -43,6 +43,7 @@ class Type(str, Enum):
 
 class Extras(BaseModel):
     escalated: bool = Field(default=False)
+    closing_conversation: bool = Field(default=False)
 
 
 class Message(BaseModel):
@@ -58,7 +59,7 @@ class Message(BaseModel):
     text: Optional[TextObject] = None
     media: Optional[MediaObject] = None
     context: str = Field(default="", max_length=4096)
-    # Extra information
+    # Extras
     extras: Optional[Extras] = None
     # Metadata
     metadata: Dict[str, Any] = Field(default_factory=dict)
