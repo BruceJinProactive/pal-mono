@@ -365,15 +365,16 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
     def _recommendation_logic(
         self,
+        query: str,
         top_k: int = 3,
         num_redundant: int = 7,
         base64_generative_image: str | None = None,
-        query: str | None = None,
-        chat_history: List | str | None = None,
-    ) -> str:
+        return_json: bool = False,
+    ) -> str | List:
         f"""This function retrieves clothings, accesories, costumes information from the knowledge base based on the user's query and/or the image uploaded by the user. This function can access user query, chat history and the image uploaded by the user and use it to retrieve similar fashion items from the knowledge base.
 
             Args:
+                query (str): The user input query.
                 top_k (int): The number of fashion items to return. Defaults to {top_k}. If the user does not specify the number of items to return, the function must return the top {top_k} fashion items.
             Returns:
                 retrieved fashion items from the knowledge base.
@@ -750,12 +751,17 @@ class FashionRecommendationLogicPipeline(Toolkit):
         if len(final_results) == 0:
             return """Unfortunately, there are no fashion items that match the user's query. Please try again with a different query."""
         return_results = []
-        return_fields = ["title", "colors", "fit_features", "sizes", "product_url"]
+        return_fields = [
+            "title",
+            "colors",
+            "fit_features",
+            "sizes",
+            "product_url",
+            "image_urls",
+        ]
 
         # remove image_url from the dictionary to prevent our agent from displaying the image urls
         for i in final_results:
-            if "image_urls" in i:
-                i.pop("image_urls")
             return_results.append(({k: v for k, v in i.items() if k in return_fields}))
 
         logger.info(f"Return Results: {return_results}")
@@ -773,4 +779,15 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
             self._write_session_data(self.session_data)
         logger.info(f"results: {return_results}")
-        return f"Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user."
+
+        final_instructions = f"""Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user."""
+        if return_json:
+            return f"""Extract the fashion items and return them to the user in the exact JSON format as {return_results}. DO NOT modify, rephrase, or paraphrase any content within the JSON structure. Maintain the original formatting precisely.
+
+Additionally, append an extra JSON object:
+"agent_response": YOUR_RESPONSE_HERE
+
+where YOUR_RESPONSE_HERE should be your response to the user, strictly adhering to the given instructions: {final_instructions}.
+
+Ensure the final output remains a valid JSON array that includes both the list of items and the additional "agent_response" object. Do not alter the JSON keys or structure in any way."""
+        return final_instructions
