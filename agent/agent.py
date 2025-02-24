@@ -41,6 +41,12 @@ class Agent:
             ml_app=config.metadata.account_name,
             agentless_enabled=True,
         )
+        LLMObs.annotate(
+            tags={
+                "user_id": config.metadata.user_id,
+                "session_id": config.metadata.session_id,
+            }
+        )
 
     @workflow
     async def arun(self, input: Input) -> Output:
