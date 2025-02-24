@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
-from db.tables import Conversation, Message, User
+from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dttm import current_utc
 from utils.log import logger
 
@@ -29,27 +29,34 @@ class MessageRepositoryAsync:
 
         # Step 3: Get only the necessary fields from the latest conversation
         result = await self.session.execute(
-            select(Conversation.id, Conversation.created_at, Conversation.updated_at)
+            select(Conversation)
             .filter(Conversation.user_id == user.id)
             .order_by(Conversation.created_at.desc())
             .limit(1)
         )
-        latest_conversation = result.first()
+        latest_conversation = result.scalar_one_or_none()
 
         # Step 4: Initialize conversation_id and determine if we need a new conversation
         current_time = current_utc()
         conversation_id = None
 
-        if latest_conversation:
-            conv_id, created_at, _ = latest_conversation
+        if (
+            latest_conversation
+            and latest_conversation.status == ConversationStatus.ACTIVE
+        ):
+            latest_conversation_created_at = latest_conversation.created_at
 
             # Ensure created_at is UTC
-            if created_at.tzinfo is None:
-                created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+            if latest_conversation.created_at.tzinfo is None:
+                latest_conversation_created_at = latest_conversation_created_at.replace(
+                    tzinfo=datetime.timezone.utc
+                )
             else:
-                created_at = created_at.astimezone(datetime.timezone.utc)
+                latest_conversation_created_at = (
+                    latest_conversation_created_at.astimezone(datetime.timezone.utc)
+                )
 
-            time_difference = current_time - created_at
+            time_difference = current_time - latest_conversation_created_at
 
             # If created_at is in the future due to clock discrepancies, the time difference calculation could yield negative values, and conversations less than 24 hours old might be overlooked. Consider adding a check to handle this scenario.
             if time_difference.total_seconds() < 0:
@@ -58,7 +65,10 @@ class MessageRepositoryAsync:
                 time_difference.total_seconds()
                 < CONVERSATION_RESET_SECONDS_SINCE_CREATED
             ):  # Less than 24 hours
-                conversation_id = conv_id
+                conversation_id = latest_conversation.id
+            else:
+                latest_conversation.status = ConversationStatus.EXPIRED
+                await self.session.flush()
 
             # Ensure latest message is under 2 hours old, if not then create a new conversation
             messages = await self.session.execute(
@@ -72,12 +82,26 @@ class MessageRepositoryAsync:
                 message_time_difference = current_time - latest_message
                 if (
                     message_time_difference.total_seconds()
-                    >= CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE
-                ):
-                    conversation_id = conv_id
+                    < CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE
+                ):  # Less than 2 hours
+                    conversation_id = latest_conversation.id
+                else:
+                    latest_conversation.status = ConversationStatus.INACTIVE
+                    await self.session.flush()
+
+        # If the latest conversation is closing, set it to closed
+        elif (
+            latest_conversation
+            and latest_conversation.status is ConversationStatus.CLOSING
+        ):
+            latest_conversation.status = ConversationStatus.CLOSED
+            await self.session.flush()
 
         # Step 5: Create a new conversation if needed
-        if conversation_id is None:
+        if (
+            latest_conversation is None
+            or latest_conversation.status != ConversationStatus.ACTIVE
+        ):
             new_conversation = Conversation(user_id=user.id)
             self.session.add(new_conversation)
             await self.session.flush()
