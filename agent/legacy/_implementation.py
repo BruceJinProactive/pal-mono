@@ -66,7 +66,7 @@ def integrate_agent(
 
     # Set up Datadog LLM Observability
     LLMObs.enable(
-        ml_app=account_name,
+        ml_app="pal",
         agentless_enabled=True,
     )
     LLMObs.annotate(tags={"user_id": user_id, "session_id": conversation_id})

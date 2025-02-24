@@ -38,7 +38,7 @@ class Agent:
 
         # Set up Datadog LLM Observability
         LLMObs.enable(
-            ml_app=config.metadata.account_name,
+            ml_app="pal",
             agentless_enabled=True,
         )
         LLMObs.annotate(
@@ -59,6 +59,14 @@ class Agent:
         Returns:
             Output: The output data from the agent.
         """
+        LLMObs.annotate(
+            tags={
+                "account_name": self._metadata.account_name,
+                "user_id": self._metadata.user_id,
+                "session_id": self._metadata.session_id,
+                "agent_id": self._metadata.agent_id,
+            }
+        )
 
         # Update memory with the user's input
         asyncio.create_task(
