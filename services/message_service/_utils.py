@@ -119,8 +119,41 @@ def get_messages_from_agent_output(
     # if output.images:
     #     msg_text += f"\n\nImages:\n{output.images}"
 
-    response_messages = [
-        Message(
+    response_messages = []
+
+    # Check if output.content contains http or .net and create additional SMS response if input_message.channel is VOICE
+    if (
+        re.search(r"http[s]?://|\.net", output.content)
+        and input_message.channel == Channel.VOICE
+    ):
+        voice_msg_text = "Please head over to the payment link sent to your SMS messages to finalize your order. Thank you for choosing Pizza My Heart!"
+        response_message_voice = Message(
+            author_type=AuthorType.AGENT,
+            sender_identifier=input_message.recipient_identifier,
+            recipient_identifier=input_message.sender_identifier,
+            channel=input_message.channel,
+            broker=input_message.broker,
+            text=TextObject(body=voice_msg_text),
+            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+            extras=Extras(
+                escalated=output.escalated,
+                closing_conversation=output.closing_conversation,
+            ),
+        )
+        response_messages.append(response_message_voice)
+
+        response_message_sms = Message(
+            author_type=AuthorType.AGENT,
+            sender_identifier=input_message.recipient_identifier,
+            recipient_identifier=input_message.sender_identifier,
+            channel=Channel.SMS,
+            broker=input_message.broker,
+            text=TextObject(body=msg_text),
+            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+        )
+        response_messages.append(response_message_sms)
+    else:
+        response_message = Message(
             author_type=AuthorType.AGENT,
             sender_identifier=input_message.recipient_identifier,
             recipient_identifier=input_message.sender_identifier,
@@ -133,22 +166,6 @@ def get_messages_from_agent_output(
                 closing_conversation=output.closing_conversation,
             ),
         )
-    ]
-
-    # Check if output.content contains http or .net and create additional SMS response if input_message.channel is VOICE
-    if (
-        re.search(r"http[s]?://|\.net", output.content)
-        and input_message.channel == Channel.VOICE
-    ):
-        response_message_sms = Message(
-            author_type=AuthorType.AGENT,
-            sender_identifier=input_message.recipient_identifier,
-            recipient_identifier=input_message.sender_identifier,
-            channel=Channel.SMS,
-            broker=input_message.broker,
-            text=TextObject(body=msg_text),
-            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
-        )
-        response_messages.append(response_message_sms)
+        response_messages.append(response_message)
 
     return response_messages
