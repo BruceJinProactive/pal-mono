@@ -1,5 +1,5 @@
+import asyncio
 import functools
-import os
 import re
 import time
 import traceback
@@ -8,16 +8,6 @@ import uuid
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, task, tool
-from llama_index.core import Settings, VectorStoreIndex
-from llama_index.core.response_synthesizers import (
-    ResponseMode,
-    get_response_synthesizer,
-)
-from llama_index.core.vector_stores.types import ExactMatchFilter, MetadataFilters
-from llama_index.embeddings.cohere import CohereEmbedding
-from llama_index.llms.groq import Groq as GroqLLM
-from llama_index.vector_stores.pinecone import PineconeVectorStore
-from pinecone import Pinecone
 
 from agent.legacy.storage import get_storage
 from tools.adora_tool.classes import (
@@ -25,11 +15,12 @@ from tools.adora_tool.classes import (
     CustomerInfo,
     DeliveryAddress,
     Order,
+    SubQueries,
 )
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
-from . import _apis, _utils
+from . import _apis, _llm, _query_engine, _utils
 
 ADORA_PAYMENT_URL = "https://pizzamyheart.adorapos.net/OnlineOrdering/OrderHubPayment/?storeKey={store_id}&orderId={order_id}"
 
@@ -47,6 +38,9 @@ class AdoraTool(Toolkit):
     ):
         super().__init__(name="adora_tool")
 
+        # Evaluate and cache the value of the bearer token
+        _ = asyncio.to_thread(lambda: self._adora_bearer_token)
+
         # Register tools
         self.register(self.check_online_ordering_status)
         self.register(self.get_store_info)
@@ -60,41 +54,7 @@ class AdoraTool(Toolkit):
         self.session_id = session_id
         self.namespace = namespace
 
-        # TODO: This code is bad >:( Refactor once it works. (ToT)
-        # We can fix this with
-        pc = Pinecone(os.getenv("PINECONE_API_KEY"))
-        pinecone_index = pc.Index("agents")
-
-        vector_store = PineconeVectorStore(
-            pinecone_index=pinecone_index, namespace=self.namespace
-        )
-
-        Settings.embed_model = CohereEmbedding(
-            api_key=os.getenv("COHERE_API_KEY"),
-            model_name="embed-english-v3.0",  # current v3 models support multimodal embeddings
-        )
-
-        # set groq llm
-        llm = GroqLLM(model="llama-3.3-70b-versatile")
-        Settings.llm = llm
-
-        index = VectorStoreIndex.from_vector_store(
-            vector_store=vector_store,
-            embed_model=Settings.embed_model,
-        )
-        response_synthesizer = get_response_synthesizer(
-            response_mode=ResponseMode.NO_TEXT,
-        )
-
-        self.query_engine = index.as_query_engine(
-            similarity_top_k=10,
-            similarity_cutoff=0.3,
-            response_synthesizer=response_synthesizer,
-            # Use the menu documents with ids for extraction
-            filters=MetadataFilters(
-                filters=[ExactMatchFilter(key="include_ids", value="True")]
-            ),
-        )
+        self.query_engine = _query_engine.create_query_engine(self.namespace)
 
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
@@ -186,7 +146,6 @@ class AdoraTool(Toolkit):
         else:
             return True, "Address is validated and is in the delivery zone."
 
-    @task
     def _get_content(self, text: str) -> str:
         match = re.search(r"<content>\s*(.*?)\s*</content>", text)
         return match.group(1) if match else ""
@@ -236,7 +195,7 @@ class AdoraTool(Toolkit):
                             f"Skipping appending message to chat history:\n{message}"
                         )
 
-                chat_history += f"**[User]**\n{latest_user_message}\n\n"
+                chat_history += f"**[User]**\n{latest_user_message}"
 
                 LLMObs.annotate(output_data=chat_history)
 
@@ -258,17 +217,44 @@ class AdoraTool(Toolkit):
             return error_msg
 
     @retrieval
-    def _get_relevant_docs(self, chat_history: str) -> str:
-        response = self.query_engine.query(chat_history)
+    async def _get_relevant_docs(self, chat_history: str) -> str:
+        # Decompose chat history into multiple sub-queries
+        sub_queries = _llm.llm_call(
+            system_prompt="Identify all the order items of the user's final cart in the chat history.",
+            prompt=chat_history,
+            response_format=SubQueries,
+            reasoning=False,
+        )
+
+        if not isinstance(sub_queries, SubQueries):
+            return "Failed to identify the items the user ordered in the conversation."
+
+        logger.info(f"Sub-queries identified: {sub_queries.queries}")
+
+        # Perform knowledege retrieval on all sub-queries asynchronously
+        tasks = [
+            asyncio.create_task(self.query_engine.aquery(q))
+            for q in sub_queries.queries
+        ]
+        results = await asyncio.gather(*tasks)
 
         context = ""
         output_data = []
-        for node in response.source_nodes:
-            context += f"{node.text}\n\n"
-            output_data.append({"id": node.id_, "text": node.text})
+        doc_id = 0
+        for res in results:
+            for node in res.source_nodes:
+                if node.metadata:
+                    context += (
+                        f"<document index='{doc_id}'>\n"
+                        "\t<document_content>\n"
+                        f"\t\t{node.text}\n"
+                        "\t</document_content>\n"
+                        "</document>\n\n"
+                    )
+                    output_data.append({"id": node.id_, "text": node.text})
+                    doc_id += 1
 
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
-
         return context
 
     @task(name="_fulfill_order [via Adora API]")
@@ -312,7 +298,7 @@ class AdoraTool(Toolkit):
         {text_payment_url}
         
         Order Summary:
-        {order.items}
+        {order}
 
         Subtotal: {validated_order.subTotal}
         Sales Tax: {validated_order.taxAmount}
@@ -326,7 +312,6 @@ class AdoraTool(Toolkit):
         output += f"""
         Order Total: {validated_order.total}
         """
-
         return output
 
     @tool
@@ -340,27 +325,22 @@ class AdoraTool(Toolkit):
         Returns:
             str: The checkout order details including the payment URL.
         """
-
-        chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
-
-        context = self._get_relevant_docs(chat_history)  # type: ignore
-
-        # Extract structured data from natural language
         try:
-            # current version of the datadog llmobs does not support pyright
-            order = _utils.llm_call(
-                system_prompt=_utils.EXTRACTOR_SYSTEM_PROMPT,
-                prompt=_utils.EXTRACTOR_USER_PROMPT.format(
+            chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
+
+            context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
+
+            order = _llm.llm_call(
+                system_prompt=_llm.EXTRACTOR_SYSTEM_PROMPT,
+                prompt=_llm.EXTRACTOR_USER_PROMPT.format(
                     context=context, chat_history=chat_history
                 ),
                 response_format=Order,
+                reasoning=False,
             )
 
             if not isinstance(order, Order):
-                logger.error(
-                    "[AdoraTool.checkout_order] Failed to extract structured data. Most likely validation schema was not fulfilled."
-                )
-                return "Failed to extract structured data. Please try again."
+                raise ValueError("Failed to extract structured data. Please try again.")
 
             # Validate the address if the order is for delivery
             if str(order.order_type) == "Delivery":
@@ -379,12 +359,7 @@ class AdoraTool(Toolkit):
             logger.info(f"Extracted structured data: {order}")
             logger.info(f"Extraced structured data type: {type(order)}")
 
-            api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
-            api_secret = get_client_secret_with_fallback(
-                "PIZZAMYHEART_ADORA_API_SECRET"
-            )
-            bearer_token = _apis.get_adora_pos_auth_token(api_key, api_secret)
-            if not bearer_token:
+            if not self._adora_bearer_token:
                 return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
             # Override store id
@@ -401,13 +376,7 @@ class AdoraTool(Toolkit):
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment
 
-            # Move order_items to the items field which fulfills the Adora API requirements
-            items = []
-            for order_item in order.order_items:
-                items.append({"group": [order_item]})
-            order.items = items
-
-            return self._fulfill_order(order, bearer_token)  # type: ignore
+            return self._fulfill_order(order, self._adora_bearer_token)  # type: ignore
 
         except Exception as e:
             logger.error(f"Error in extracting structured data: {e}")

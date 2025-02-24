@@ -1,0 +1,124 @@
+from typing import TypeVar, overload
+
+from agno.agent.agent import Agent
+from agno.models.groq.groq import Groq
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import llm
+from pydantic import BaseModel
+
+EXTRACTOR_SYSTEM_PROMPT = """You are an expert at structured data extraction.
+You will be given the chat history and relevant context. You goal is to convert it into the given structure.
+
+# INSTRUCTIONS FOR THE TASK:
+1. Identify if the user wants to order for delivery or pickup. If it's delivery, identify the delivery address. If it's pickup, leave the address field empty.
+2. Identify the list of order items that the user wants to order from the chat history.
+3. Make sure that the quantities for each order are correct.
+4. Make sure that the modifiers for every order are identified, if they were mentioned in the chat history. Modifiers are additional details about the order, such as "extra cheese" or "no onions". They are not the already included ingredients of an item.
+5. Map the items, names, modifiers, etc., that you identified from the english language to the structured data format that is required by the Adora API using the provided context.
+
+# RULES FOR EXTRACTING THE DELIRERY ADDRESS:
+- Extract the last delivery address from the context.
+- For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
+- If any field is missing, output "N/A" for that field, i.e., if the user did not
+provide a delivery address, output "N/A" for all fields.
+
+# RULES FOR EXTRACTING THE ORDER ITEM'S MODIFIERS:
+- An order item's included ingredients are not considered modifiers.
+- Only include modifiers that were explicitly mentioned by the user in the Chat History.
+
+# IMPORTANT RULES:
+- Do NOT make assumptions or fabricate data
+- Leave fields as None/null if the information is not explicitly mentioned
+- Do not infer values or make educated guesses
+- Only extract information that is directly stated
+- Maintain exact values as mentioned (don't modify numbers or text)
+- For phone numbers, only extract if a complete number is provided
+- For addresses, only extract if all required components are present
+
+If unsure about any field, leave it empty rather than guessing.
+"""
+
+EXTRACTOR_USER_PROMPT = """
+# Menu Items With Corresponding Modifiers:
+<documents>
+{context}
+</documents>
+
+# Chat History:
+<history>
+{chat_history}
+</history>
+
+Please construct the structured order from the above Chat History and Menu Items.
+"""
+
+T = TypeVar("T", bound=BaseModel)
+
+
+@overload
+def llm_call(
+    system_prompt: str,
+    prompt: str,
+    response_format: type[T],
+    name: str = "tool",
+    reasoning: bool = True,
+) -> T | None: ...
+
+
+@overload
+def llm_call(
+    system_prompt: str,
+    prompt: str,
+    response_format: None = None,
+    name: str = "tool",
+    reasoning: bool = True,
+) -> str | None: ...
+
+
+@llm(name="get_structured_outputs")
+def llm_call(
+    system_prompt: str,
+    prompt: str,
+    response_format: type[T] | None = None,
+    name: str = "tool",
+    reasoning: bool = True,
+) -> T | str | None:
+    model_name = (
+        "deepseek-r1-distill-qwen-32b" if reasoning else "llama-3.3-70b-versatile"
+    )
+    client = Groq(id=model_name)
+
+    if response_format:
+        system_prompt += """
+        \n
+        Structure your response as a dictionary, do not include "json" in the beginning
+        of the response.
+        """
+
+    # Deepseek models works better if everything is passed in the user prompt
+    if "deepseek" in model_name:
+        prompt = "\n\n".join([system_prompt, prompt])
+        system_prompt = ""
+
+    agent = Agent(
+        model=client,
+        agent_id=f"ordering-tools/{name}",
+        session_id="test-session",
+        add_history_to_messages=True,
+        knowledge=None,
+        debug_mode=True,
+        response_model=response_format,
+        system_message=system_prompt,
+        num_history_responses=0,
+        search_knowledge=False,
+    )
+
+    response = agent.run(prompt).content
+
+    LLMObs.annotate(
+        input_data=prompt,
+        output_data=response,
+        metadata={"system_prompt": system_prompt},
+    )
+
+    return response

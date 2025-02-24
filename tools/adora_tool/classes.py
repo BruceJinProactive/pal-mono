@@ -2,7 +2,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from pydantic.json_schema import SkipJsonSchema
 
 
@@ -222,12 +222,6 @@ class Modifier(BaseModel):
     is_default: SkipJsonSchema[bool] = Field(
         default=True, serialization_alias="isDefault"
     )
-    price: SkipJsonSchema[float] = Field(default=0.0)
-    quantity: int = Field(
-        description="Quantity of modifier requested by the customer", exclude=True
-    )
-    weight_id: SkipJsonSchema[int] = Field(default=0, serialization_alias="weightId")
-    group_id: SkipJsonSchema[int] = Field(default=0, serialization_alias="groupId")
 
 
 class OrderItem(BaseModel):
@@ -241,7 +235,6 @@ class OrderItem(BaseModel):
     )
     item_name: str = Field(description="Item name", exclude=True)
     quantity: int = Field(description="Item quantity ordered by the customer")
-    price: SkipJsonSchema[float] = Field(default=0.0, description="Price per unit")
     taxes: SkipJsonSchema[List[Dict[str, int | float]]] = Field(
         default=[{"id": 0, "taxAmount": 0.0}]
     )
@@ -268,15 +261,26 @@ class Order(BaseModel):
     order_items: List[OrderItem] = Field(
         description="List of order items", exclude=True
     )
-    # `items` is the format and field that we actually submit to Adora API. This is their required format.
-    items: SkipJsonSchema[List[Dict[str, List[OrderItem]]]] = Field(
-        default=[{"group": []}]
-    )
     delivery_address: Optional[DeliveryAddress] = Field(
         description="Delivery address", serialization_alias="deliveryAddress"
     )
     paid: SkipJsonSchema[bool] = Field(default=False)
     order_comment: Optional[str] = Field(
-        description="Special ordering instructions requested by the customer. Empty if no special requests are made.",
+        description="Special ordering instructions requested by the customer. Empty if no special requests are made. These can be something like 'no cheese', 'extra sauce', etc.",
         serialization_alias="orderComment",
+    )
+
+    @computed_field
+    def items(self) -> List[Dict[str, List[OrderItem]]]:
+        return [{"group": [item]} for item in self.order_items]
+
+
+class SubQueries(BaseModel):
+    queries: list[str] = Field(
+        description=(
+            "Decompose the chat history into individual order items. For example,"
+            "If the chat history is 'I would like to order a pizza with extra cheese, "
+            "burger, and salad.' The return would be ['pizza with extra cheese', "
+            "'burger', 'salad']"
+        ),
     )
