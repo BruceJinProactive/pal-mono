@@ -9,7 +9,7 @@ from . import _config, _implementation
 KnowledgeConfig = _config.KnowledgeConfig
 KnowledgeProvider = _config.KnowledgeProvider
 
-### Provider specific configs ###
+# Provider specific configs
 LlamaIndexSettings = _config.LlamaIndexSettings
 
 # Vector store configs

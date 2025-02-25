@@ -66,6 +66,14 @@ class AdoraTool(Toolkit):
             bearer_token = _apis.get_adora_pos_auth_token(api_key, api_secret)
             return bearer_token
 
+    def _is_valid_date(self, date: str) -> bool:
+        pattern = r"^\d{4}-\d{2}-\d{2}$"
+        return bool(re.match(pattern, date))
+
+    def _get_content(self, text: str) -> str:
+        match = re.search(r"<content>\s*(.*?)\s*</content>", text)
+        return match.group(1) if match else ""
+
     @tool
     def check_online_ordering_status(self) -> str:
         """
@@ -87,35 +95,46 @@ class AdoraTool(Toolkit):
             )
 
             if not status:
-                logger.error(
-                    "[AdoraTool.check_online_ordering_status] Failed to get online ordering status."
-                )
-                return "Failed to check the online ordering status, please try again."
+                raise ValueError(f"Returned invalid online store status: {status}")
 
             return status
 
         except Exception as e:
-            logger.error(f"Error in checking online ordering status: {e}")
-            return "Error in checking online ordering status."
+            logger.error(
+                f"[AdoraTool.check_online_ordering_status] Error in checking online ordering status: {e}"
+            )
+            return "Failed to check the online ordering status, please try again."
 
     @tool
-    def get_store_info(self, store_id: str, date: str) -> str:
+    def get_store_info(self, date: str) -> str:
         """
-        Get the store information by given store id and target business date.
+        Get the store information for a given business date.
+        This tool can be used to help identify the wait time for a given date.
 
         Args:
-            store_id (str): The store id
-            date (str): The target business date
+            date (str): The target business date in yyyy-MM-dd format.
 
         Returns:
-            str: The store information of if store is open
+            str: Details about the store, including its ID, name, address, and phone number. It includes estimated wait times for delivery, dine-in, and takeout, along with the store's operating hours for delivery and pickup.
         """
         try:
-            store_id = self.store_id
-            return f"STORE ID {store_id} IS OPEN on {date}"
+            if not self._is_valid_date(date):
+                return f"The date {date} is invalid."
+
+            if not self._adora_bearer_token:
+                return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+
+            store_info = _apis.get_store_info(
+                self._adora_bearer_token, self.store_id, date
+            )
+
+            if not store_info:
+                raise ValueError(f"Returned invalid store info: {store_info}")
+
+            return store_info
         except Exception as e:
-            logger.error(f"Error getting store info: {e}")
-            return "Error getting store info."
+            logger.error(f"[AdoraTool.store_info] Error getting store info: {e}")
+            return "Failed to get the store info, please try again."
 
     @task
     def _validate_address(self, canonical_address: DeliveryAddress) -> tuple[bool, str]:
@@ -145,10 +164,6 @@ class AdoraTool(Toolkit):
             return False, "Address is not in the delivery zone."
         else:
             return True, "Address is validated and is in the delivery zone."
-
-    def _get_content(self, text: str) -> str:
-        match = re.search(r"<content>\s*(.*?)\s*</content>", text)
-        return match.group(1) if match else ""
 
     @retrieval
     def _get_chat_history(self, latest_user_message: str) -> str:

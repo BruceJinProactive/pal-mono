@@ -1,5 +1,6 @@
 import http.client
 import json
+from datetime import datetime
 
 from tools.adora_tool.classes import (
     AdoraAccessToken,
@@ -41,8 +42,7 @@ def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
 
 
 def get_online_ordering_status(
-    bearer_token: AdoraAccessToken,
-    store_id: str,
+    bearer_token: AdoraAccessToken, store_id: str
 ) -> str | None:
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -57,6 +57,27 @@ def get_online_ordering_status(
 
     if response.status == 200:
         return f"The store is currently {status}."
+    else:
+        return None
+
+
+def get_store_info(
+    bearer_token: AdoraAccessToken, store_id: str, date: str
+) -> str | None:
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "store/info",
+        query_params={
+            "sid": store_id,
+            "date": date,
+        },
+        extra_headers=None,
+        payload=None,
+    )
+
+    if response.status == 200:
+        return response.decoded_body
     else:
         return None
 
