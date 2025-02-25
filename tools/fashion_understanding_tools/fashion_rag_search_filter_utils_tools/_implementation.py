@@ -4,8 +4,10 @@ import json
 import os
 import tempfile
 import time
+import traceback
 from typing import Any, List, Union
 
+import cohere
 import numpy as np
 import vertexai
 from google.oauth2 import service_account
@@ -18,6 +20,9 @@ from vertexai.vision_models import MultiModalEmbeddingModel
 from utils.log import logger
 
 from ..classes import GeneralFunctions
+
+# Set to True to use Google Vertex AI for embeddings. Set to False to use Cohere.
+USE_GOOGLE_VERTEX = False
 
 general_functions = GeneralFunctions()
 
@@ -36,7 +41,8 @@ class FashionRagSearchFilterUtilsTools:
 
         # Initialize Pinecone
         pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
-        index_name = "windsor-demo-2-1"
+        self.co = cohere.ClientV2(api_key=os.environ.get("COHERE_API_KEY"))  # type: ignore
+        index_name = "windsor-cohere-1"
         self.pc_index = pc.Index(index_name)
         self.pinecone_namespace = "cross-modality-embeddings-full"
         self.pinecone_dim = 1408
@@ -78,36 +84,72 @@ class FashionRagSearchFilterUtilsTools:
         Get the text embedding from OpenAI
 
         text: str
-        GOOGLE_VERTEX: bool
 
         Returns:
         List: a list of floats representing the text embedding
         """
-        return self.emb_model.get_embeddings(
-            contextual_text=text, dimension=self.pinecone_dim
-        ).text_embedding
+        # Embed the query
+        try:
+            if GOOGLE_VERTEX:
+                query_emb = self.emb_model.get_embeddings(
+                    contextual_text=text, dimension=self.pinecone_dim
+                ).text_embedding
+            else:
+                # Cohere multimodal embedding
+                query_emb = self.co.embed(
+                    texts=[text],
+                    model="embed-english-v3.0",
+                    input_type="search_query",
+                    embedding_types=["float"],
+                ).embeddings.float[  # type: ignore
+                    0
+                ]
+        except Exception as e:
+            logger.error(f"Failed to get text embedding: {e}")
+            traceback.print_exc()
+            return
+
+        return query_emb
+
+    def _image_to_base64_data_url(self, image_path: str):
+        _, file_extension = os.path.splitext(image_path)
+        file_type = file_extension[1:]
+        with open(image_path, "rb") as f:
+            enc_img = base64.b64encode(f.read()).decode("utf-8")
+            enc_img = f"data:image/{file_type};base64,{enc_img}"
+        return enc_img
 
     def _get_image_embedding(
         self, image_data: Image.Image, GOOGLE_VERTEX=False
     ) -> Union[List[float], None]:
         """Get embedding for the image."""
-
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
-                try:
-                    image_data.save(tmp_file.name)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+            try:
+                image_data.save(tmp_file.name)
+                if GOOGLE_VERTEX:
                     image_embedding = self.emb_model.get_embeddings(
                         image=VertexImage.load_from_file(tmp_file.name),
                         dimension=self.pinecone_dim,
                     ).image_embedding
-                    return image_embedding
-                finally:
-                    # Ensure the temporary file is removed
-                    if os.path.exists(tmp_file.name):
-                        os.unlink(tmp_file.name)
-        except Exception as e:
-            logger.error(f"Failed to get image embedding: {e}")
-            return None
+                else:
+                    # Cohere multimodal embedding
+                    image_embedding = self.co.embed(
+                        model="embed-english-v3.0",
+                        images=[self._image_to_base64_data_url(tmp_file.name)],
+                        input_type="image",
+                        embedding_types=["float"],
+                    ).embeddings.float[  # type: ignore
+                        0
+                    ]
+
+                return image_embedding
+            except Exception as e:
+                logger.error(f"Failed to get image embedding: {e}")
+                return None
+            finally:
+                # Ensure the temporary file is removed
+                if os.path.exists(tmp_file.name):
+                    os.unlink(tmp_file.name)
 
     def decode_image(self, base64_image: str) -> Image.Image:
         """Decode the base64 image."""
@@ -140,14 +182,16 @@ class FashionRagSearchFilterUtilsTools:
         logger.info(f"Query Text: {query_text}")
         if isinstance(query_text, list):
             query_embedding = [
-                self._get_text_embedding(text, GOOGLE_VERTEX=True)
+                self._get_text_embedding(text, GOOGLE_VERTEX=USE_GOOGLE_VERTEX)
                 for text in query_text
             ]
             query_embedding = np.average(
                 [qe for qe in query_embedding if qe is not None], axis=0
             ).tolist()
         else:
-            query_embedding = self._get_text_embedding(query_text, GOOGLE_VERTEX=True)
+            query_embedding = self._get_text_embedding(
+                query_text, GOOGLE_VERTEX=USE_GOOGLE_VERTEX
+            )
 
         def get_positive_negative_embeddings(conflicts):
             negative_embeddings, positive_embeddings = [], []
@@ -172,12 +216,12 @@ class FashionRagSearchFilterUtilsTools:
                 # concatenate the image's colors
                 negative_embeddings.append(
                     self._get_text_embedding(
-                        ", ".join(conflict["image"]), GOOGLE_VERTEX=True
+                        ", ".join(conflict["image"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
                     )
                 )
                 positive_embeddings.append(
                     self._get_text_embedding(
-                        ", ".join(conflict["user"]), GOOGLE_VERTEX=True
+                        ", ".join(conflict["user"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
                     )
                 )
 
@@ -218,7 +262,10 @@ class FashionRagSearchFilterUtilsTools:
                     if rag_query_for_image_search is not None:
                         query_embedding = (
                             np.array(
-                                self._get_text_embedding(rag_query_for_image_search)
+                                self._get_text_embedding(
+                                    rag_query_for_image_search,
+                                    GOOGLE_VERTEX=USE_GOOGLE_VERTEX,
+                                )
                             )
                             + np.array(image_embedding)
                         ) / 2
@@ -229,7 +276,10 @@ class FashionRagSearchFilterUtilsTools:
                     if rag_query_for_image_search is not None:
                         query_embedding = (
                             np.array(
-                                self._get_text_embedding(rag_query_for_image_search)
+                                self._get_text_embedding(
+                                    rag_query_for_image_search,
+                                    GOOGLE_VERTEX=USE_GOOGLE_VERTEX,
+                                )
                             )
                             + np.array(image_embedding)
                             + np.array(positive_embeddings)

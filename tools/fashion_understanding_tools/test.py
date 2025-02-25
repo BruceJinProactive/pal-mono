@@ -56,6 +56,7 @@ def get_textual_response(prompt, endpoint: str = "local"):
 
 
 if __name__ == "__main__":
+    # Usage: python3 -m tools.fashion_understanding_tools.test -e <local|lat|stg>
     # Parse arguments
     parser = argparse.ArgumentParser(description="Test Fashion Recommendation Logic")
     parser.add_argument(
@@ -64,6 +65,13 @@ if __name__ == "__main__":
         type=str,
         default="local",
         help="API endpoint to test. Options: local, lat, stg",
+    )
+    parser.add_argument(
+        "-S",
+        "--structured_output",
+        action="store_true",
+        default=False,
+        help="Whether to return structured output",
     )
     args = parser.parse_args()
 
@@ -80,8 +88,10 @@ Call `_recommendation_logic` with the exact parameters as below:
 query = {query}
 return_json = True
 ```
+
+Returned output should contain no new line characters.
 """
-    if endpoint != "local":
+    if not args.structured_output:
         prompt = query
     get_textual_response(prompt=prompt, endpoint=endpoint)
 

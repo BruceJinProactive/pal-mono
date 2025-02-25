@@ -551,7 +551,10 @@ class FashionRecommendationLogicPipeline(Toolkit):
                     self.rewrite_fit_features(fit_features),
                 ]
             )
-            if colors is not None and colors != "none" and "none" not in colors
+            if colors is not None
+            and colors != "none"
+            and "none" not in colors
+            and colors != "not specified"
             else ", ".join([item_name, self.rewrite_fit_features(fit_features)])
         )
 
