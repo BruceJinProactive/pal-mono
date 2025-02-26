@@ -10,7 +10,12 @@ from PIL import Image
 
 from utils.log import logger
 
-from ..classes import FashionItem, GeneralFunctions, ImageIdentification
+from ..classes import (
+    FashionItem,
+    GeneralFunctions,
+    ImageIdentification,
+    ImageIdentificationOutput,
+)
 
 general_functions = GeneralFunctions()
 
@@ -47,7 +52,7 @@ class FashionImageUnderstandingTools:
         chat_history: list | str,
         query: str,
         record_time: bool = True,
-    ) -> int:
+    ) -> ImageIdentificationOutput:
         """This function identifies which image should be used for image understanding task
 
         Args:
@@ -56,16 +61,12 @@ class FashionImageUnderstandingTools:
             record_time (bool): Whether to record the time taken for the function. Defaults to True.
 
         Returns:
-            int: 0 means the image is from the uploaded image, 1 means the image is from the generated image, 2 means the image is from the recommended items.
+            int: 0 means the image is from the uploaded image, 1 means the image is from the recommended items. 2 means no image.
         """
         ### TODO: Replace session_data with the actual session data structure
         uploaded_image_exists = (
             "base64_image" in self.session_data
             and self.session_data["base64_image"] is not None
-        )
-        generated_image_exists = (
-            "base64_generative_image" in self.session_data
-            and self.session_data["base64_generative_image"] is not None
         )
 
         ### TODO: is there any function we need to call to process the prompt?
@@ -78,14 +79,14 @@ Instructions:
         *	If the user is referencing a specific image, determine its source.
 	2.	Source Determination Logic:
         *	Uploaded Image (0): If the user refers to an uploaded image.
-	    *	No Image (3): If no image is referenced.
+        *   Recommended Items (1): If the user refers to recommended items.
+	    *	No Image (2): If no image is referenced.
         * If the user asks for similar items, identify the source of the image based on the context.
 
 
 
 Extra Information:
 	*	The user {'has' if uploaded_image_exists else 'does not have'} uploaded an image.
-	*	The system {'has' if generated_image_exists else 'does not have'} generated an image.
 
 Input:
 	*	Chat History: {chat_history}
@@ -94,17 +95,18 @@ Input:
 Output Format:
 
 {{
-    "image_of_interest": <0 or 3>
+    "image_of_interest": <0|1|2>
 }}
 
 Output Explanation:
 	*	0: Uploaded Image
-	*	3: No Image
+    *	1: Recommended Items
+	*	2: No Image
 """
         # Define the json schema for the model
         json_format = ImageIdentification.model_json_schema()
         # Restrict the json schema to the required values
-        json_format["properties"]["image_of_interest"]["enum"] = [0, 1, 2, 3]
+        json_format["properties"]["image_of_interest"]["enum"] = [0, 1, 2]
 
         start_time = time.time()
 
@@ -135,9 +137,11 @@ Output Explanation:
             logger.info(f"Time taken to identify the image: {time_taken}")
 
         if "image_of_interest" in image_of_interest:
-            return int(image_of_interest["image_of_interest"])
+            return ImageIdentificationOutput(
+                int(image_of_interest["image_of_interest"])
+            )
         else:
-            return image_of_interest.values()
+            return ImageIdentificationOutput(image_of_interest.values())
 
     def _lowercase_keys(self, dictionary: dict) -> dict:
         """This function converts all keys in a dictionary to lowercase.

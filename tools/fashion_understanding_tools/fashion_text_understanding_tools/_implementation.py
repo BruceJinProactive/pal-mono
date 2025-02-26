@@ -26,18 +26,18 @@ class FashionTextUnderstandingTools:
         prev_user_preferences: str | None = None,
         negative_intents: dict | None = None,
         record_time: bool = True,
-        image_to_analyze: int = 3,
+        image_to_analyze: int = 2,
     ) -> dict:
         # Record the start time for inference time analysis
         start_time = time.time()
 
+        # This is kept as a dictionary to improve readability
         choose_which_image_mapping = {
             0: "The user is referring to the uploaded image. Follow the instructions to generate the description based on the uploaded image.",
-            1: "The user is referring to the AI-generated image. Follow the instructions to generate the description based on the AI-generated image.",
-            2: "The user is referring to an image from the chat history. Follow the instructions to generate the description based on the image from the chat history.",
-            3: "The user is describing the item without referring to any image. Follow the instructions to generate the description.",
+            1: "The user is referring to an image from the chat history. Follow the instructions to generate the description based on the image from the chat history.",
+            2: "The user is describing the item without referring to any image. Follow the instructions to generate the description.",
         }
-
+        logger.info(f"Context: {choose_which_image_mapping[image_to_analyze]}")
         # Define prompt
         formatted_prompt = f"""Based on the user's chat history, query, disliked features, and hierarchy, generate a detailed description of the fashion item the user is looking for. Provide the required details in a structured format as outlined below. 
         
@@ -50,7 +50,7 @@ class FashionTextUnderstandingTools:
      - **Prioritize only that feature** as "similar to the image."
      - Keep all other features (e.g., fit, category, occasion) aligned with the user’s textual preferences or default values.
 
-2. **General Reference to the uploaded or AI-generated image:**
+2. **General Reference to the uploaded image:**
    - If the user requests a general similarity to the image:
      - Set all fields (`item_name`, `colors`, `occasions`, `categories`, `fit_features`) to **"similar to the image."**
      - Ex.: "Looks great, find something similar."

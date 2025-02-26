@@ -1,11 +1,16 @@
 import json
 import os
+from enum import IntEnum
 from typing import List, Union
 
 from pydantic import BaseModel
 
 
 ##### classes for function calling #####
+class CloseUpItem(BaseModel):
+    index_of_item: int
+
+
 class FashionItem(BaseModel):
     item_name: str
     colors: Union[str, List[str]]
@@ -37,6 +42,14 @@ class NegativeFashion(BaseModel):
 
 
 #######################################
+class ImageIdentificationOutput(IntEnum):
+    """Enum class for image identification."""
+
+    UPLOADED_IMAGE = 0
+    RECOMMENDED_ITEMS = 1
+    NO_IMAGE = 2
+
+
 class GeneralFunctions(BaseModel):
     ### TODO: Discuss with the ENG team how to store the hierarchy information
     def get_hierarchy(self) -> dict:
