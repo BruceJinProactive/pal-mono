@@ -60,7 +60,7 @@ def get_customer_info(
 
     # Customer does not exist
     if isinstance(customer_info, str):
-        return "Bobby Jones"
+        return ""
 
     name = f"Customer name: {customer_info['name']} {customer_info['lastname']}\n\n"
 
