@@ -9,6 +9,7 @@ from api.schemas.chat.message import (
     MediaObject,
     Message,
     TextObject,
+    Type,
 )
 from utils.log import logger
 
@@ -40,6 +41,37 @@ def strip_markdown_content(agent_message: Any) -> Any | str:
 
     # Remove leading exclamation mark from URLs (left over from image markdown)
     agent_message = re.sub(r"!\s*(https?://[^\s]+)", r"\1", agent_message)
+
+    return agent_message
+
+
+def remove_image_links(agent_message: Any) -> Any | str:
+    """
+    Remove image links (Markdown-style image links) from a given message.
+
+    This function processes the input string to:
+    1. Remove image markdown format ![alt text](URL).
+    2. Remove any standalone URLs pointing to image files (e.g., .jpg, .png, .gif).
+
+    Args:
+        agent_message (Any): The message content to be stripped of image links.
+                             If the input is not a string, it will be returned as is.
+
+    Returns:
+        Any | str: The message content without image links if the input was a string,
+                   otherwise the original input.
+    """
+    # Only process if agent_message is a string
+    if not isinstance(agent_message, str):
+        return agent_message
+
+    # Remove markdown-style image links ![alt text](URL)
+    agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "", agent_message)
+
+    # Remove standalone image URLs (jpg, png, gif, etc.)
+    agent_message = re.sub(
+        r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.gif|\.bmp|\.svg)", "", agent_message
+    )
 
     return agent_message
 
@@ -174,6 +206,7 @@ def get_messages_from_agent_output(
         for msg_type, msg_content in response_parts:
             if msg_type == "text":
                 msg_content = strip_markdown_content(msg_content)
+                msg_content = remove_image_links(msg_content)
                 response_message_text = Message(
                     author_type=AuthorType.AGENT,
                     sender_identifier=input_message.recipient_identifier,
@@ -195,6 +228,7 @@ def get_messages_from_agent_output(
                     recipient_identifier=input_message.sender_identifier,
                     channel=input_message.channel,
                     broker=input_message.broker,
+                    type=Type.MEDIA,
                     text=TextObject(body=msg_content),
                     media=MediaObject(
                         url=msg_content, media_type="image", caption=msg_content
