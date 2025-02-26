@@ -66,6 +66,9 @@ class ApiSettings(BaseSettings):
             [
                 "https://proactiveailab.com",
                 "https://www.proactiveailab.com",
+                "https://api.proactiveailab.com",
+                "https://lat-api.proactiveailab.com",
+                "https://stg-api.proactiveailab.com",
                 "https://console.proactiveailab.com",
                 "https://staging-pal-website.vercel.app",
                 "https://pal-manage-app.vercel.app",
