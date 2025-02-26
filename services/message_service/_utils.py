@@ -52,6 +52,7 @@ def remove_image_links(agent_message: Any) -> Any | str:
     This function processes the input string to:
     1. Remove all occurrences of image markdown format ![alt text](URL).
     2. Remove all standalone URLs pointing to image files (e.g., .jpg, .png, .gif, etc.).
+    3. Insert a blank line after each removed image link to maintain readability.
 
     Args:
         agent_message (Any): The message content to be stripped of image links.
@@ -65,16 +66,21 @@ def remove_image_links(agent_message: Any) -> Any | str:
     if not isinstance(agent_message, str):
         return agent_message
 
-    # Remove all markdown-style image links ![alt text](URL)
-    agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "", agent_message)
+    # Remove all markdown-style image links ![alt text](URL) and add a blank line after removal
+    agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "\n\n", agent_message)
 
-    # Remove all standalone image URLs (jpg, png, gif, bmp, svg, etc.), ensuring all instances are removed
+    # Remove all standalone image URLs (jpg, png, gif, bmp, svg, etc.) and add a blank line after removal
     agent_message = re.sub(
-        r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.gif|\.bmp|\.svg)", "", agent_message
+        r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.gif|\.bmp|\.svg)",
+        "\n\n",
+        agent_message,
     )
 
     # Remove any extra spaces left after removals
     agent_message = re.sub(r"\s{2,}", " ", agent_message).strip()
+
+    # Normalize multiple consecutive newlines (avoid excessive blank lines)
+    agent_message = re.sub(r"\n{3,}", "\n\n", agent_message).strip()
 
     return agent_message
 
