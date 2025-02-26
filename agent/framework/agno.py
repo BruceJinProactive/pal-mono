@@ -2,11 +2,26 @@ import agno.agent.agent
 from agno.models.openai.chat import OpenAIChat
 from agno.storage.agent.postgres import PostgresAgentStorage
 from ddtrace.llmobs.decorators import agent
+from pydantic import BaseModel, Field
 
 import db
 from agent.config import AgentConfig
 from agent.input_output import Input, Output
 from agent.tool import get_tools
+from utils.log import logger
+
+
+class ResponseModel(BaseModel):
+    """Used as structured output response by agent."""
+
+    content: str
+    escalated: bool = Field(
+        description="Whether the current message should be escalated to a human user.",
+        default=False,
+    )
+    closing_conversation: bool = Field(
+        description="Whether or not a conversation should be closed.", default=False
+    )
 
 
 class AgnoAgent:
@@ -39,7 +54,7 @@ class AgnoAgent:
             ),
             add_history_to_messages=True,
             num_history_responses=5,
-            response_model=None,
+            response_model=ResponseModel,
             add_datetime_to_instructions=True,
             debug_mode=True,
         )
@@ -49,13 +64,32 @@ class AgnoAgent:
     @agent
     async def arun(self, input: Input) -> Output:
         result = await self._agent.arun(input.get_prompt())
-        content = result.content
+
+        response_format = result.content
+
+        if not isinstance(response_format, ResponseModel):
+            logger.error(
+                f"Error with getting proper response format: {response_format}"
+            )
+            return Output(content="")
+
+        content = response_format.content
+        escalated = response_format.escalated
+        closing_conversation = response_format.closing_conversation
+
+        logger.info(f"Current Session ID: {self._agent.session_id}")
 
         documents = []
         images = []
 
         return (
-            Output(content=content, documents=documents, images=images)
+            Output(
+                content=content,
+                documents=documents,
+                images=images,
+                escalated=escalated,
+                closing_conversation=closing_conversation,
+            )
             if content is not None
             else Output(content="", documents=documents, images=images)
         )
