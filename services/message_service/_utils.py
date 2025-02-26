@@ -169,7 +169,7 @@ def get_messages_from_agent_output(
         re.search(r"http[s]?://", output.content)
         and input_message.channel == Channel.API
     ):
-        response_parts = extract_image_links(output.content)
+        response_parts = extract_image_links(msg_text)
 
         for msg_type, msg_content in response_parts:
             if msg_type == "text":
@@ -195,6 +195,7 @@ def get_messages_from_agent_output(
                     recipient_identifier=input_message.sender_identifier,
                     channel=input_message.channel,
                     broker=input_message.broker,
+                    text=TextObject(body=msg_content),
                     media=MediaObject(
                         url=msg_content, media_type="image", caption=msg_content
                     ),
