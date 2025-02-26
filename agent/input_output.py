@@ -19,6 +19,7 @@ class Input(BaseModel):
     context: str = ""
     memories: str = ""
     channel: str = ""
+    sender_identifier: str = ""
 
     def get_prompt(self):
         """
@@ -34,6 +35,7 @@ class Input(BaseModel):
             + f"<context>{self.context}</context>\n\n"
             + f"<memories>{self.memories}</memories>\n\n"
             + f"<channel>{self.channel}</channel>\n\n"
+            + f"<sender_identifier>{self.sender_identifier}</sender_identifier>\n\n"
         )
 
 

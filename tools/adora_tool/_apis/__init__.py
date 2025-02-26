@@ -41,6 +41,47 @@ def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
     return _utils.parse_json(AdoraAccessToken, bearer_token_json)
 
 
+def get_customer_info(
+    bearer_token: AdoraAccessToken, store_id: str, phone_number: str
+) -> str | None:
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "customer",
+        query_params={
+            "phone": phone_number,
+            "sid": store_id,
+        },
+        extra_headers=None,
+        payload=None,
+    )
+
+    customer_info = json.loads(response.decoded_body)
+
+    # Customer does not exist
+    if isinstance(customer_info, str):
+        return "Bobby Jones"
+
+    name = f"Customer name: {customer_info['name']} {customer_info['lastname']}\n\n"
+
+    if len(customer_info["addresses"]) > 0:
+        addresses = "Addresses:\n\n"
+
+        for addr in customer_info["addresses"]:
+            addresses += (
+                f"{addr['streetNo']} {addr['address']}, "
+                f"{addr['city']}, {addr['state']}, "
+                f"{addr['zip']}\n\n"
+            )
+    else:
+        addresses = ""
+
+    if response.status == 200:
+        return name + addresses
+    else:
+        return None
+
+
 def get_online_ordering_status(
     bearer_token: AdoraAccessToken, store_id: str
 ) -> str | None:

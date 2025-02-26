@@ -1,6 +1,5 @@
 import asyncio
 import functools
-import re
 import time
 import traceback
 import uuid
@@ -10,6 +9,7 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, task, tool
 
 from agent.legacy.storage import get_storage
+from agent.memory import update_memory
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     CustomerInfo,
@@ -39,9 +39,11 @@ class AdoraTool(Toolkit):
         super().__init__(name="adora_tool")
 
         # Evaluate and cache the value of the bearer token
-        _ = asyncio.to_thread(lambda: self._adora_bearer_token)
+        loop = asyncio.get_running_loop()
+        loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
 
         # Register tools
+        self.register(self.greeting)
         self.register(self.check_online_ordering_status)
         self.register(self.get_store_info)
         self.register(self.checkout_order)
@@ -66,13 +68,49 @@ class AdoraTool(Toolkit):
             bearer_token = _apis.get_adora_pos_auth_token(api_key, api_secret)
             return bearer_token
 
-    def _is_valid_date(self, date: str) -> bool:
-        pattern = r"^\d{4}-\d{2}-\d{2}$"
-        return bool(re.match(pattern, date))
+    @tool
+    def greeting(self, phone_number: str) -> str:
+        """
+        Greet the customer and check if their info exists in the Adora database.
+        If so, retrieve their info and use that to greet them.
 
-    def _get_content(self, text: str) -> str:
-        match = re.search(r"<content>\s*(.*?)\s*</content>", text)
-        return match.group(1) if match else ""
+        Args:
+            phone_number (str): The phone number.
+
+        Returns:
+            str: Greeting to the customer.
+        """
+        try:
+            phone_number = _utils.format_phone_number(phone_number)
+            if not phone_number:
+                raise ValueError("Invalid phone number format.")
+
+            if not self._adora_bearer_token:
+                return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+
+            customer_info = _apis.get_customer_info(
+                self._adora_bearer_token, self.store_id, phone_number
+            )
+
+            # If customer does not exist or something else happened
+            if customer_info is None:
+                raise ValueError(f"Returned invalid customer info: {customer_info}")
+
+            # If the customer info exists in PMH
+            if customer_info:
+                # TODO: Maybe not the best way to update memory?
+                asyncio.run(
+                    update_memory(
+                        user_id=str(self.user_id),  # type: ignore
+                        content=customer_info,  # type: ignore
+                    )  # type: ignore
+                )
+
+            return customer_info
+
+        except Exception as e:
+            logger.error(f"[AdoraTool.greeting] Error in greeting customer: {e}")
+            return ""
 
     @tool
     def check_online_ordering_status(self) -> str:
@@ -118,7 +156,7 @@ class AdoraTool(Toolkit):
             str: Details about the store, including its ID, name, address, and phone number. It includes estimated wait times for delivery, dine-in, and takeout, along with the store's operating hours for delivery and pickup.
         """
         try:
-            if not self._is_valid_date(date):
+            if not _utils.is_valid_date(date):
                 return f"The date {date} is invalid."
 
             if not self._adora_bearer_token:
@@ -200,7 +238,7 @@ class AdoraTool(Toolkit):
                 for message in messages:
                     role = message["message"]["role"]
                     if role == "user":
-                        user_content = self._get_content(message["message"]["content"])  # type: ignore
+                        user_content = _utils.get_content(message["message"]["content"])
                         chat_history += f"**[User]**\n{user_content}\n\n"
                         chat_history += (
                             f"**[Assistant]**\n{message['response']['content']}\n\n"

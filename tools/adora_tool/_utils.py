@@ -1,3 +1,4 @@
+import re
 from typing import Any, Tuple
 
 from ddtrace.llmobs.decorators import task
@@ -5,6 +6,31 @@ from geopy.geocoders import Nominatim
 
 from tools.adora_tool.classes import DeliveryAddress
 from utils.log import logger
+
+
+def format_phone_number(phone_number: str) -> str:
+    # Remove non-digit characters
+    digits = re.sub(r"\D", "", phone_number)
+
+    # Ensure it has 10 digits (remove US country code if present)
+    if digits.startswith("1") and len(digits) == 11:
+        digits = digits[1:]
+
+    # Validate the number has exactly 10 digits
+    if len(digits) != 10:
+        return ""
+
+    return digits
+
+
+def is_valid_date(date: str) -> bool:
+    pattern = r"^\d{4}-\d{2}-\d{2}$"
+    return bool(re.match(pattern, date))
+
+
+def get_content(text: str) -> str:
+    match = re.search(r"<content>\s*(.*?)\s*</content>", text)
+    return match.group(1) if match else ""
 
 
 @task
