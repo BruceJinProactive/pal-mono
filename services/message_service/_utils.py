@@ -47,11 +47,11 @@ def strip_markdown_content(agent_message: Any) -> Any | str:
 
 def remove_image_links(agent_message: Any) -> Any | str:
     """
-    Remove image links (Markdown-style image links) from a given message.
+    Remove all instances of image links (Markdown-style image links and standalone image URLs) from a given message.
 
     This function processes the input string to:
-    1. Remove image markdown format ![alt text](URL).
-    2. Remove any standalone URLs pointing to image files (e.g., .jpg, .png, .gif).
+    1. Remove all occurrences of image markdown format ![alt text](URL).
+    2. Remove all standalone URLs pointing to image files (e.g., .jpg, .png, .gif, etc.).
 
     Args:
         agent_message (Any): The message content to be stripped of image links.
@@ -65,13 +65,16 @@ def remove_image_links(agent_message: Any) -> Any | str:
     if not isinstance(agent_message, str):
         return agent_message
 
-    # Remove markdown-style image links ![alt text](URL)
+    # Remove all markdown-style image links ![alt text](URL)
     agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "", agent_message)
 
-    # Remove standalone image URLs (jpg, png, gif, etc.)
+    # Remove all standalone image URLs (jpg, png, gif, bmp, svg, etc.), ensuring all instances are removed
     agent_message = re.sub(
         r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.gif|\.bmp|\.svg)", "", agent_message
     )
+
+    # Remove any extra spaces left after removals
+    agent_message = re.sub(r"\s{2,}", " ", agent_message).strip()
 
     return agent_message
 
@@ -206,8 +209,8 @@ def get_messages_from_agent_output(
 
         for msg_type, msg_content in response_parts:
             if msg_type == "text":
-                msg_content = strip_markdown_content(msg_content)
                 msg_content = remove_image_links(msg_content)
+                msg_content = strip_markdown_content(msg_content)
                 response_message_text = Message(
                     author_type=AuthorType.AGENT,
                     sender_identifier=input_message.recipient_identifier,
