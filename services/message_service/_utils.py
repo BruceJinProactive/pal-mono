@@ -2,7 +2,14 @@ import re
 from typing import Any, List
 
 from agent.input_output import Input, Output
-from api.schemas.chat.message import AuthorType, Channel, Extras, Message, TextObject
+from api.schemas.chat.message import (
+    AuthorType,
+    Channel,
+    Extras,
+    MediaObject,
+    Message,
+    TextObject,
+)
 from utils.log import logger
 
 
@@ -150,8 +157,55 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             text=TextObject(body=msg_text),
             metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+            extras=Extras(
+                escalated=output.escalated,
+                closing_conversation=output.closing_conversation,
+            ),
         )
         response_messages.append(response_message_sms)
+
+    # Check if input_message.channel is API and output.content contains a link
+    elif (
+        re.search(r"http[s]?://", output.content)
+        and input_message.channel == Channel.API
+    ):
+        response_parts = extract_image_links(output.content)
+
+        for msg_type, msg_content in response_parts:
+            if msg_type == "text":
+                msg_content = strip_markdown_content(msg_content)
+                response_message_text = Message(
+                    author_type=AuthorType.AGENT,
+                    sender_identifier=input_message.recipient_identifier,
+                    recipient_identifier=input_message.sender_identifier,
+                    channel=input_message.channel,
+                    broker=input_message.broker,
+                    text=TextObject(body=msg_content),
+                    metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+                    extras=Extras(
+                        escalated=output.escalated,
+                        closing_conversation=output.closing_conversation,
+                    ),
+                )
+                response_messages.append(response_message_text)
+            elif msg_type == "image":
+                response_message_image = Message(
+                    author_type=AuthorType.AGENT,
+                    sender_identifier=input_message.recipient_identifier,  # Swap sender and recipient
+                    recipient_identifier=input_message.sender_identifier,
+                    channel=input_message.channel,
+                    broker=input_message.broker,
+                    media=MediaObject(
+                        url=msg_content, media_type="image", caption=msg_content
+                    ),
+                    metadata=metadata,
+                    extras=Extras(
+                        escalated=output.escalated,
+                        closing_conversation=output.closing_conversation,
+                    ),
+                )
+                response_messages.append(response_message_image)
+
     else:
         response_message = Message(
             author_type=AuthorType.AGENT,
