@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import os
 import time
 import traceback
 import uuid
@@ -7,9 +8,11 @@ import uuid
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, task, tool
+from mixpanel import Mixpanel
 
 from agent.legacy.storage import get_storage
 from agent.memory import update_memory
+from api.schemas.admin.analytics import Event as AnalyticsEvent
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     CustomerInfo,
@@ -57,6 +60,12 @@ class AdoraTool(Toolkit):
         self.namespace = namespace
 
         self.query_engine = _query_engine.create_query_engine(self.namespace)
+
+        # Initialize Mixpanel
+        MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
+        self.mp = None
+        if MIXPANEL_PROJECT_TOKEN:
+            self.mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
 
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
@@ -345,6 +354,21 @@ class AdoraTool(Toolkit):
                 f"[AdoraTool.checkout_order] Failed to place order. Saved order ID: {saved_order.orderID if saved_order else 'NO SAVED ORDER'}"
             )
             return "The service is busy. Please try again."
+        if self.mp:
+            event_properties = {
+                "action_name": AdoraTool.checkout_order.__name__,
+                "account_name": self.account_name,
+                "conversation_id": str(self.session_id),
+                "order_id": str(saved_order.orderID),
+                "order_total": (
+                    float(validated_order.total)
+                    if validated_order.total is not None
+                    else 0.0
+                ),
+            }
+            self.mp.track(
+                str(self.user_id), AnalyticsEvent.CRITICAL_ACTION, event_properties
+            )
 
         output = f"""Your order is pending!
         Please head to the payment url to finalize your order!
