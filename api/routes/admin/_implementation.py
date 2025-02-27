@@ -73,9 +73,13 @@ def get_document(
     return JSONResponse(content=jsonable_encoder(document))
 
 
-def get_inbox(request: Request, session: Session = Depends(db.get_db)):
+def get_inbox(
+    request: Request, page: int, page_size: int, session: Session = Depends(db.get_db)
+):
     account = _auth.get_account_from_id_token(request, session)
-    inbox = get_inbox_conversations(session, account_id=account.id)
+    inbox = get_inbox_conversations(
+        session, account_id=account.id, page=page, page_size=page_size
+    )
     return JSONResponse(content=jsonable_encoder(inbox))
 
 

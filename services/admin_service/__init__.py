@@ -10,7 +10,11 @@ from . import _implementation
 
 
 def get_inbox_conversations(
-    session: Session, account_id: uuid.UUID, max_age: int = 0
+    session: Session,
+    account_id: uuid.UUID,
+    page: int,
+    page_size: int,
+    max_age: int = 0,
 ) -> List[ConversationPreview]:
     """
     Retrieves a list of conversation previews for all conversations associated with the given account.
@@ -23,12 +27,21 @@ def get_inbox_conversations(
     Args:
         session (Session): The database session used to perform queries.
         account_id (uuid.UUID): The unique identifier of the account for which Conversations are being retrieved.
+        page (int): The current page number (starting from 1).
+        page_size (int): The number of items per page.
+        max_age (int, optional): Maximum age of conversations to retrieve in days. Defaults to 0 (no limit).
 
     Returns:
-        List[ConversationPreview]: A list of `ConversationPreview` objects representing the Conversations,
+        List[ConversationPreview]: A paginated list of `ConversationPreview` objects representing the Conversations,
         each containing the Conversation ID, User ID, number of Messages, and the text of the last Message.
     """
-    return _implementation.get_inbox_conversations(session, account_id, max_age)
+    return _implementation.get_inbox_conversations(
+        session,
+        account_id,
+        max_age,
+        page,
+        page_size,
+    )
 
 
 def get_conversation_messages(
