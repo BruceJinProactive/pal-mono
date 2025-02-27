@@ -6,3 +6,4 @@ class Event(str, Enum):
 
     AGENT_MESSAGE = "Agent Message"
     USER_MESSAGE = "User Message"
+    CRITICAL_ACTION = "Critical Action"
