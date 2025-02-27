@@ -45,7 +45,7 @@ class AdoraTool(Toolkit):
         # Register tools
         self.register(self.greeting)
         self.register(self.check_online_ordering_status)
-        self.register(self.get_store_info)
+        self.register(self.get_wait_time)
         self.register(self.checkout_order)
 
         self.store_id = store_id
@@ -103,7 +103,7 @@ class AdoraTool(Toolkit):
                     update_memory(
                         user_id=str(self.user_id),  # type: ignore
                         content=customer_info,  # type: ignore
-                    )  # type: ignore
+                    )
                 )
 
             return customer_info
@@ -144,16 +144,15 @@ class AdoraTool(Toolkit):
             return "Failed to check the online ordering status, please try again."
 
     @tool
-    def get_store_info(self, date: str) -> str:
+    def get_wait_time(self, date: str) -> str:
         """
-        Get the store information for a given business date.
         This tool can be used to help identify the wait time for a given date.
 
         Args:
             date (str): The target business date in yyyy-MM-dd format.
 
         Returns:
-            str: Details about the store, including its ID, name, address, and phone number. It includes estimated wait times for delivery, dine-in, and takeout, along with the store's operating hours for delivery and pickup.
+            str: Get details about estimated wait times for delivery, dine-in, and takeout.
         """
         try:
             if not _utils.is_valid_date(date):
@@ -162,17 +161,17 @@ class AdoraTool(Toolkit):
             if not self._adora_bearer_token:
                 return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
-            store_info = _apis.get_store_info(
+            store_info = _apis.get_wait_time(
                 self._adora_bearer_token, self.store_id, date
             )
 
             if not store_info:
-                raise ValueError(f"Returned invalid store info: {store_info}")
+                raise ValueError(f"Returned invalid wait time: {store_info}")
 
             return store_info
         except Exception as e:
             logger.error(f"[AdoraTool.store_info] Error getting store info: {e}")
-            return "Failed to get the store info, please try again."
+            return "Failed to get the wait time, please try again."
 
     @task
     def _validate_address(self, canonical_address: DeliveryAddress) -> tuple[bool, str]:

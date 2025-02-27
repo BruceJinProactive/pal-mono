@@ -102,7 +102,7 @@ def get_online_ordering_status(
         return None
 
 
-def get_store_info(
+def get_wait_time(
     bearer_token: AdoraAccessToken, store_id: str, date: str
 ) -> str | None:
     response = _utils.connect_adora_order_hub(
@@ -117,8 +117,10 @@ def get_store_info(
         payload=None,
     )
 
+    store_info = json.loads(response.decoded_body)
+
     if response.status == 200:
-        return response.decoded_body
+        return f'Pickup wait time: {str(store_info["takeOutWaitTime"])}, Delivery wait time: {str(store_info["deliveryWaitTime"])}'
     else:
         return None
 
