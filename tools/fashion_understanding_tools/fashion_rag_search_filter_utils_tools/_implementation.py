@@ -442,6 +442,8 @@ class FashionRagSearchFilterUtilsTools:
         if filtered_items:
             and_conditions.append({"title": {"$nin": filtered_items}})
 
+        and_conditions.append({"image_urls": {"$exists": True}})
+
         logger.info(f"and_conditions: {and_conditions}")
 
         filter = {"$and": []}

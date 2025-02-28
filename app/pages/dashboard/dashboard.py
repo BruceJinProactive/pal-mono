@@ -34,9 +34,13 @@ def main() -> None:
                 "Account": acc.name,
                 "Status": "Active",
                 "Active users": len(
-                    get_inbox_conversations(session, acc.id, max_age=5)
+                    get_inbox_conversations(
+                        session, acc.id, max_age=5, page=1, page_size=100
+                    )
                 ),
-                "Total users": len(get_inbox_conversations(session, acc.id)),
+                "Total users": len(
+                    get_inbox_conversations(session, acc.id, page=1, page_size=100)
+                ),
             }
             for acc in accounts
         ]

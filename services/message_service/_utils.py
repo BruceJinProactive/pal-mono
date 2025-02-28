@@ -47,12 +47,13 @@ def strip_markdown_content(agent_message: Any) -> Any | str:
 
 def remove_image_links(agent_message: Any) -> Any | str:
     """
-    Remove all instances of image links (Markdown-style image links and standalone image URLs) from a given message.
+    Remove all instances of image links (Markdown-style image links, standalone image URLs, and <image_urls> tags) from a given message.
 
     This function processes the input string to:
     1. Remove all occurrences of image markdown format ![alt text](URL).
     2. Remove all standalone URLs pointing to image files (e.g., .jpg, .png, .gif, etc.).
-    3. Insert a blank line after each removed image link to maintain readability.
+    3. Remove everything between the <image_urls> tags and the tags themselves.
+    4. Insert a blank line after each removed image link to maintain readability.
 
     Args:
         agent_message (Any): The message content to be stripped of image links.
@@ -67,17 +68,19 @@ def remove_image_links(agent_message: Any) -> Any | str:
         return agent_message
 
     # Remove all markdown-style image links ![alt text](URL) and add a blank line after removal
-    agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "\n\n", agent_message)
+    # agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "\\n\\n", agent_message)
 
-    # Remove all standalone image URLs (jpg, png, gif, bmp, svg, etc.) and add a blank line after removal
+    # Remove all standalone image URLs (jpg, jpeg, png, apng, gif, webp, svg, bmp, tiff, ico, heic, heif, avif, jfif, pjpeg, pjp) and add a blank line after removal
     agent_message = re.sub(
-        r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.gif|\.bmp|\.svg)",
+        r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.apng|\.gif|\.webp|\.svg|\.bmp|\.tiff?|\.ico|\.heic|\.heif|\.avif|\.jfif|\.pjpeg|\.pjp)",
         "\n\n",
         agent_message,
     )
 
-    # Remove any extra spaces left after removals
-    agent_message = re.sub(r"\s{2,}", " ", agent_message).strip()
+    # Remove everything between the <image_urls> tags and the tags themselves
+    agent_message = re.sub(
+        r"<image_urls>.*?</image_urls>", "", agent_message, flags=re.DOTALL
+    )
 
     # Normalize multiple consecutive newlines (avoid excessive blank lines)
     agent_message = re.sub(r"\n{3,}", "\n\n", agent_message).strip()
@@ -218,7 +221,7 @@ def get_messages_from_agent_output(
         for msg_type, msg_content in response_parts:
             if msg_type == "text":
                 msg_content = remove_image_links(msg_content)
-                msg_content = strip_markdown_content(msg_content)
+                # msg_content = strip_markdown_content(msg_content)
                 response_message_text = Message(
                     author_type=AuthorType.AGENT,
                     sender_identifier=input_message.recipient_identifier,
