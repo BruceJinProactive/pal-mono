@@ -8,7 +8,6 @@ import requests
 
 
 def get_textual_response(prompt, endpoint: str = "local"):
-
     hash = random.getrandbits(128)  # create new user
 
     def query(prompt: str, endpoint: str):
@@ -25,7 +24,6 @@ def get_textual_response(prompt, endpoint: str = "local"):
             return
         endpoint = endpoints[endpoint]
 
-        # NOTE: options are "pizzamyheart-default", "new-pizzamyheart-default"
         payload = {
             "message": {
                 "author_type": "user",

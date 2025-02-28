@@ -4,15 +4,12 @@ from pydantic import BaseModel, Field, create_model
 from agent.model import BaseOutputModel
 from tools.booking_tools import BookingTools
 from tools.escalation_tools import EscalationTools
-from tools.ordering_tools import OrderingTools
-from tools.ordering_tools.classes import OrderingFields
 from utils.log import logger
 
 
 def get_tools(agent_raw_config, user_id, session_id):
     tools = []
     toolkit_map = {
-        "OrderingTools": OrderingTools,
         "BookingTools": BookingTools,
         "EscalationTools": EscalationTools,
     }
@@ -42,7 +39,7 @@ def generate_output_model(tools: list[Toolkit]):
     class Empty(BaseModel):
         pass
 
-    toolkit_field_map = {"ordering_tools": OrderingFields}
+    toolkit_field_map = {}
 
     OutputModel = create_model(
         "OutputModel",

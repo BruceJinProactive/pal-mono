@@ -14,68 +14,12 @@ from services.account_service import get_account, get_accounts
 from services.agent_service import get_agent
 from services.user_service import get_user_by_channel_identifier
 from tools.booking_tools import BookingTools
-from tools.ordering_tools import OrderingTools
-from utils.secret import get_client_secret
 
 st.title("Tools")
 
 session = get_app_db()
 
 (ordering_tools_tab, booking_tools_tab) = st.tabs(["Ordering Tools", "Booking Tools"])
-
-
-def ordering_tools_tab_content(user_id):
-    st.write("# Ordering Tools")
-    toolkit = OrderingTools(
-        {
-            "type": "adora",
-            "settings": {
-                "api_key": get_client_secret("PIZZAMYHEART_ADORA_API_KEY"),
-                "api_secret": get_client_secret("PIZZAMYHEART_ADORA_API_SECRET"),
-                "store_id": "9WHCV",  # obsolete
-                "menu_name": "Pizza_My_Heart_Adora_Menu",  # obsolete
-                "account_name": "pizzamyheart",
-                "store_information": {
-                    "phone": "650-327-9400",
-                    "address": "220 University Ave, Palo Alto, CA 94301",
-                    "store_id": "9WHCV",
-                },
-            },
-        },
-        user_id=user_id,
-        session_id=str(uuid4()),
-    )
-
-    st.write("### Add to Order")
-    item_name = st.text_input("Item Name", value="Big Sur")
-    size = st.text_input("Size", value='18"')
-    quantity = st.number_input("Quantity", value=1)
-    modifications = st.text_input(
-        "Modifications", value="Extra Garlic, Light Mushrooms", help="Separate by comma"
-    )
-    if st.button("Add to Order"):
-        try:
-            retval = toolkit.add_to_order(
-                item_name,
-                size,
-                int(quantity),
-                str(modifications).split(","),
-            )
-            st.write(retval)
-        except Exception as e:
-            st.error(f"Failed to add to order: {e}")
-
-    st.write("### Place Order")
-    if st.button("Place Order"):
-        try:
-            retval = toolkit.place_order(
-                current_user_query="my name is John Doe. My email is 123@abc.com and my phone number is 123-456-7890. "
-                + f"add {quantity} {size} {item_name} with {modifications} to cart. "
-                + "when I place order, do pickup."
-            )
-            st.write(retval)
-        except Exception as e:
-            st.error(f"Failed to place order: {e}")
 
 
 def booking_tools_tab_content(user_id):
@@ -111,8 +55,6 @@ def _construct_demo_dict():
 
 
 def main(user_id) -> None:
-    with ordering_tools_tab:
-        ordering_tools_tab_content(user_id)
     with booking_tools_tab:
         booking_tools_tab_content(user_id)
 
