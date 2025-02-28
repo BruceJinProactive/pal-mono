@@ -69,15 +69,12 @@ def remove_image_links(agent_message: Any) -> Any | str:
     # Remove all markdown-style image links ![alt text](URL) and add a blank line after removal
     agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "\\n\\n", agent_message)
 
-    # Remove all standalone image URLs (jpg, png, gif, bmp, svg, etc.) and add a blank line after removal
+    # Remove all standalone image URLs (jpg, jpeg, png, apng, gif, webp, svg, bmp, tiff, ico, heic, heif, avif, jfif, pjpeg, pjp) and add a blank line after removal
     agent_message = re.sub(
-        r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.gif|\.bmp|\.svg)",
-        "\\n\\n",
+        r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.apng|\.gif|\.webp|\.svg|\.bmp|\.tiff?|\.ico|\.heic|\.heif|\.avif|\.jfif|\.pjpeg|\.pjp)",
+        "\n\n",
         agent_message,
     )
-
-    # Remove any extra spaces left after removals
-    # agent_message = re.sub(r"\s{2,}", " ", agent_message).strip()
 
     # Normalize multiple consecutive newlines (avoid excessive blank lines)
     agent_message = re.sub(r"\n{3,}", "\n\n", agent_message).strip()
@@ -169,8 +166,6 @@ def get_messages_from_agent_output(
     #     msg_text += f"\n\nImages:\n{output.images}"
 
     response_messages = []
-    new_metadata = metadata.copy()
-    new_metadata["parent_message_id"] = input_message.id
 
     # Check if output.content contains http or .net and create additional SMS response if input_message.channel is VOICE
     if (
@@ -185,7 +180,7 @@ def get_messages_from_agent_output(
             channel=input_message.channel,
             broker=input_message.broker,
             text=TextObject(body=voice_msg_text),
-            metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
+            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -200,7 +195,7 @@ def get_messages_from_agent_output(
             channel=Channel.SMS,
             broker=input_message.broker,
             text=TextObject(body=msg_text),
-            metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
+            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -226,7 +221,7 @@ def get_messages_from_agent_output(
                     channel=input_message.channel,
                     broker=input_message.broker,
                     text=TextObject(body=msg_content),
-                    metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
+                    metadata=metadata,  # TODO: to be replaced by input_message.channel_info
                     extras=Extras(
                         escalated=output.escalated,
                         closing_conversation=output.closing_conversation,
@@ -245,7 +240,7 @@ def get_messages_from_agent_output(
                     media=MediaObject(
                         url=msg_content, media_type="image", caption=msg_content
                     ),
-                    metadata=new_metadata,
+                    metadata=metadata,
                     extras=Extras(
                         escalated=output.escalated,
                         closing_conversation=output.closing_conversation,
