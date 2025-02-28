@@ -75,33 +75,28 @@ class ConversationRepository:
             return None
 
     def get_conversations_by_users(
-        self, user_ids: List[uuid.UUID], page: int, page_size: int
+        self, user_ids: List[uuid.UUID]
     ) -> List[Conversation]:
         """
-        Retrieve conversations for a list of user IDs with pagination support.
+        Retrieve conversations for a list of user IDs.
 
         Args:
             user_ids (List[uuid.UUID]): A list of user IDs to filter conversations by.
-            page (int): The current page number (default is 1).
-            page_size (int): The number of items per page (default is 10).
 
         Returns:
-            List[Conversation]: A paginated list of Conversation objects.
+            List[Conversation]: A list of Conversation objects that match the provided user IDs.
+                                Returns an empty list if no matches are found or if an error occurs.
         """
         if not user_ids:
+            # If no user ids are passed, return an empty list
             return []
 
         try:
-            query = (
+            return (
                 self.session.query(Conversation)
                 .filter(Conversation.user_id.in_(user_ids))
-                .order_by(
-                    Conversation.created_at.desc()
-                )  # Optional: add ordering if needed
+                .all()
             )
-            # Apply pagination: calculate offset and limit the results
-            query = query.limit(page_size).offset((page - 1) * page_size)
-            return query.all()
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving conversations by users: {e}")

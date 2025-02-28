@@ -113,7 +113,7 @@ def get_conversations_by_user(
 
 
 def get_conversations_by_users(
-    session: Session, page: int, page_size: int, user_ids: List[uuid.UUID]
+    session: Session, user_ids: List[uuid.UUID]
 ) -> List[db.Conversation]:
     """
     Retrieves conversations associated with a list of user IDs.
@@ -125,9 +125,7 @@ def get_conversations_by_users(
     Returns:
         List[db.Conversation]: A list of conversations associated with the specified user IDs.
     """
-    return _implementation.get_conversations_by_users(
-        session, page, page_size, user_ids
-    )
+    return _implementation.get_conversations_by_users(session, user_ids)
 
 
 def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:

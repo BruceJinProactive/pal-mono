@@ -790,6 +790,8 @@ class FashionRecommendationLogicPipeline(Toolkit):
         if filter is None:
             filter = dict()
 
+        filter["image_urls"] = {"$exists": True}
+
         results, scores = self.rag_search_filter_utils_tools._text2img_search(
             query_text=rag_query,
             rag_query_for_image_search="Name: "

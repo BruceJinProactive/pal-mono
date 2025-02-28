@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -181,12 +181,7 @@ async def change_feedback_by_id(
 
 
 @admin_router.get("/inbox")
-def get_inbox(
-    request: Request,
-    page: int = Query(..., description="Current page number"),
-    page_size: int = Query(..., description="Number of items per page"),
-    session: Session = Depends(db.get_db),
-):
+def get_inbox(request: Request, session: Session = Depends(db.get_db)):
     """
     Retrieve the inbox conversations for the account associated with the request.
 
@@ -197,7 +192,7 @@ def get_inbox(
     Returns:
         JSONResponse: The inbox conversations.
     """
-    return _implementation.get_inbox(request, page, page_size, session)
+    return _implementation.get_inbox(request, session)
 
 
 @admin_router.get("/inbox/{conversation_id}")

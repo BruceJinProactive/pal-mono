@@ -88,7 +88,7 @@ class FashionNegativeIntentTools:
 
         if self.session_data.get("prev_negative_intents") is not None:
             system_prompt += (
-                "You will also be provided with the previous disliked features. Use the following guidelines to manage disliked features: "
+                " You will also be provided with the previous disliked features. Use the following guidelines to manage disliked features: "
                 "determine whether each previous disliked feature remains relevant based on the current query and chat history; "
                 "retain relevant disliked features in the response; exclude irrelevant intents or those that the user has explicitly or implicitly re-included in their preferences. "
                 "Ensure the response accurately reflects the user's current dislikes while removing outdated or irrelevant features."
