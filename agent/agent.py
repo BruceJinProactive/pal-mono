@@ -75,8 +75,13 @@ class Agent:
                 content=input.content,  # type: ignore
             )  # type: ignore
         )
-        memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
-        input.memories = memories
+        if (
+            self._metadata.account_name == "pizzamyheart"
+            or self._metadata.account_name == "proactiveailab-pizza"
+        ):
+            # TODO: migrate to memory tools once implemeted
+            memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
+            input.memories = memories
 
         output = await self._agent.arun(input)  # type: ignore
 
