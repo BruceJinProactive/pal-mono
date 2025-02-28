@@ -68,7 +68,7 @@ def remove_image_links(agent_message: Any) -> Any | str:
         return agent_message
 
     # Remove all markdown-style image links ![alt text](URL) and add a blank line after removal
-    agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "\\n\\n", agent_message)
+    # agent_message = re.sub(r"!\[.*?\]\((https?://[^\s]+)\)", "\\n\\n", agent_message)
 
     # Remove all standalone image URLs (jpg, jpeg, png, apng, gif, webp, svg, bmp, tiff, ico, heic, heif, avif, jfif, pjpeg, pjp) and add a blank line after removal
     agent_message = re.sub(
@@ -221,7 +221,7 @@ def get_messages_from_agent_output(
         for msg_type, msg_content in response_parts:
             if msg_type == "text":
                 msg_content = remove_image_links(msg_content)
-                msg_content = strip_markdown_content(msg_content)
+                # msg_content = strip_markdown_content(msg_content)
                 response_message_text = Message(
                     author_type=AuthorType.AGENT,
                     sender_identifier=input_message.recipient_identifier,
