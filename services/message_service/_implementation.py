@@ -1,10 +1,8 @@
-import os
 import random
 import time
 import uuid
 from typing import AsyncIterator
 
-from mixpanel import Mixpanel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -23,7 +21,7 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from api.schemas.chat.message import Type as MessageType
-from services import agent_service, project_service, user_service
+from services import agent_service, analytics_service, project_service, user_service
 from utils.log import logger
 
 from . import _utils
@@ -65,11 +63,6 @@ async def get_chat_response_async(
     start_time = time.time()  # Start time for profiling latency
     try:
         logger.info(f"Step 1: Initialization - {time.time() - start_time:.4f}s")
-
-        MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
-        mp = None
-        if MIXPANEL_PROJECT_TOKEN:
-            mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
 
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
@@ -122,8 +115,11 @@ async def get_chat_response_async(
             "conversation_id": str(request_message.conversation_id),
         }
 
-        if mp:
-            mp.track(str(user.id), AnalyticsEvent.USER_MESSAGE, event_properties)
+        analytics_service.track_event(
+            user_id=str(user.id),
+            event_name=AnalyticsEvent.USER_MESSAGE,
+            event_properties=event_properties,
+        )
 
         if not request_message:
             raise ValueError("Failed to create request message")
@@ -181,9 +177,24 @@ async def get_chat_response_async(
                     await session.flush()
 
             # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
-            return _utils.get_messages_from_agent_output(
+            new_flow_response_messages = _utils.get_messages_from_agent_output(
                 output=output, input_message=message, metadata=metadata
             )
+
+            # Track only one event (for example, using the first message):
+            if new_flow_response_messages:
+                first_msg = new_flow_response_messages[0]
+                analytics_service.track_event(
+                    user_id=str(user.id),
+                    event_name=AnalyticsEvent.AGENT_MESSAGE,
+                    event_properties={
+                        "account_name": account_name,
+                        "channel": first_msg.channel.value,
+                        "conversation_id": str(conversation_id),
+                    },
+                )
+
+            return new_flow_response_messages
 
         # ========================== New - End ==========================
 
@@ -251,15 +262,17 @@ async def get_chat_response_async(
                         await message_repo.create_message(
                             user_id=user.id, message_body=response_message.to_dict()
                         )
+
                     event_properties = {
                         "account_name": account_name,
                         "channel": response_message.channel.value,
                         "conversation_id": str(conversation_id),
                     }
-                    if mp:
-                        mp.track(
-                            str(user.id), AnalyticsEvent.AGENT_MESSAGE, event_properties
-                        )
+                    analytics_service.track_event(
+                        user_id=str(user.id),
+                        event_name=AnalyticsEvent.AGENT_MESSAGE,
+                        event_properties=event_properties,
+                    )
 
                     response_messages.append(response_message)
 
@@ -300,11 +313,6 @@ async def get_chat_response_stream(
         yield error_message
 
     try:
-        MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
-        mp = None
-        if MIXPANEL_PROJECT_TOKEN:
-            mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
-
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
 
@@ -330,8 +338,11 @@ async def get_chat_response_stream(
             "channel": message.channel.value,
             "conversation_id": str(conversation_id),
         }
-        if mp:
-            mp.track(str(user.id), AnalyticsEvent.USER_MESSAGE, event_properties)
+        analytics_service.track_event(
+            user_id=str(user.id),
+            event_name=AnalyticsEvent.USER_MESSAGE,
+            event_properties=event_properties,
+        )
         # Get appropriate agent from account name
         agent_id = project.agent_id
         if agent_id is None:
@@ -353,8 +364,11 @@ async def get_chat_response_stream(
             "channel": response_stream.channel.value,
             "conversation_id": str(conversation_id),
         }
-        if mp:
-            mp.track(str(user.id), AnalyticsEvent.AGENT_MESSAGE, event_properties)
+        analytics_service.track_event(
+            user_id=str(user.id),
+            event_name=AnalyticsEvent.AGENT_MESSAGE,
+            event_properties=event_properties,
+        )
 
         return response_stream
 
