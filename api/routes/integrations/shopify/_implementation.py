@@ -15,8 +15,8 @@ _app_prefix_map = {
     "palona_single_local": "PALONA_SINGLE_LOCAL",  # for local testing
 }  # app name to Shopify API prefix
 _app_callback_map = {
-    "windsor": "http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/v1/integrations/shopify/windsor/callback",
-    "palona_single_test": "http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/v1/integrations/shopify/palona_single_test/callback",
+    "windsor": "https://stg-api.proactiveailab.com/v1/integrations/shopify/windsor/callback",
+    "palona_single_test": "https://lat-api.proactiveailab.com/v1/integrations/shopify/palona_single_test/callback",
     "palona_single_local": "http://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com:8000/v1/integrations/shopify/palona_single_local/callback",
 }  # app name to callback url
 _app_project_map = {
