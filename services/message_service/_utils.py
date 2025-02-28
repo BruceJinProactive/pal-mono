@@ -47,12 +47,13 @@ def strip_markdown_content(agent_message: Any) -> Any | str:
 
 def remove_image_links(agent_message: Any) -> Any | str:
     """
-    Remove all instances of image links (Markdown-style image links and standalone image URLs) from a given message.
+    Remove all instances of image links (Markdown-style image links, standalone image URLs, and <image_urls> tags) from a given message.
 
     This function processes the input string to:
     1. Remove all occurrences of image markdown format ![alt text](URL).
     2. Remove all standalone URLs pointing to image files (e.g., .jpg, .png, .gif, etc.).
-    3. Insert a blank line after each removed image link to maintain readability.
+    3. Remove everything between the <image_urls> tags and the tags themselves.
+    4. Insert a blank line after each removed image link to maintain readability.
 
     Args:
         agent_message (Any): The message content to be stripped of image links.
@@ -74,6 +75,11 @@ def remove_image_links(agent_message: Any) -> Any | str:
         r"https?://[^\s]+(?:\.jpg|\.jpeg|\.png|\.apng|\.gif|\.webp|\.svg|\.bmp|\.tiff?|\.ico|\.heic|\.heif|\.avif|\.jfif|\.pjpeg|\.pjp)",
         "\n\n",
         agent_message,
+    )
+
+    # Remove everything between the <image_urls> tags and the tags themselves
+    agent_message = re.sub(
+        r"<image_urls>.*?</image_urls>", "", agent_message, flags=re.DOTALL
     )
 
     # Normalize multiple consecutive newlines (avoid excessive blank lines)
