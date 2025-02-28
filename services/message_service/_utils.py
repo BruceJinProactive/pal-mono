@@ -166,6 +166,8 @@ def get_messages_from_agent_output(
     #     msg_text += f"\n\nImages:\n{output.images}"
 
     response_messages = []
+    new_metadata = metadata.copy()
+    new_metadata["parent_message_id"] = input_message.id
 
     # Check if output.content contains http or .net and create additional SMS response if input_message.channel is VOICE
     if (
@@ -180,7 +182,7 @@ def get_messages_from_agent_output(
             channel=input_message.channel,
             broker=input_message.broker,
             text=TextObject(body=voice_msg_text),
-            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+            metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -195,7 +197,7 @@ def get_messages_from_agent_output(
             channel=Channel.SMS,
             broker=input_message.broker,
             text=TextObject(body=msg_text),
-            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+            metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -221,7 +223,7 @@ def get_messages_from_agent_output(
                     channel=input_message.channel,
                     broker=input_message.broker,
                     text=TextObject(body=msg_content),
-                    metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+                    metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
                     extras=Extras(
                         escalated=output.escalated,
                         closing_conversation=output.closing_conversation,
@@ -240,7 +242,7 @@ def get_messages_from_agent_output(
                     media=MediaObject(
                         url=msg_content, media_type="image", caption=msg_content
                     ),
-                    metadata=metadata,
+                    metadata=new_metadata,
                     extras=Extras(
                         escalated=output.escalated,
                         closing_conversation=output.closing_conversation,
