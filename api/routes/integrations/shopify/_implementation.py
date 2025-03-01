@@ -86,7 +86,7 @@ async def install(request: Request, app_name: str):
 async def callback(request: Request, app_name: str):
 
     # validate the request
-    shop_url, session, app_prefix = _valid_request(request, app_name, is_callback=False)
+    shop_url, session, app_prefix = _valid_request(request, app_name, is_callback=True)
     store_name = shop_url.split(".myshopify.com")[0]  # windsor-us
 
     # get the access token

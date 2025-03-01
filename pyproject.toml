@@ -31,7 +31,7 @@ dependencies = [
   "pypdf==5.1.0",
   "geopy==2.4.1",
   "pinecone==5.3.1",
-  "ShopifyAPI==12.6.0",
+  "ShopifyAPI==12.7.0",
   "ddtrace==2.18.1",
   "llama-index==0.12.12",
   "llama-index-vector-stores-pinecone==0.4.4",
