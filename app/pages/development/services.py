@@ -115,7 +115,7 @@ def main() -> None:
             if selected_account:
                 account_id = selected_account.split()[0]
                 st.session_state.conversations = get_inbox_conversations(
-                    session, uuid.UUID(account_id)
+                    session, uuid.UUID(account_id), page=1, page_size=100
                 )
                 st.session_state.loaded_conversations = (
                     True  # Set flag to True after loading
