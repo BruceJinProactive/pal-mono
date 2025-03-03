@@ -57,7 +57,7 @@ class FashionRerankerTools:
 
             # Query GPT-4o with logits enabled
             completion = self.client.chat.completions.create(
-                model="gpt-4o-2024-08-06",  # Ensure you're using a model that supports logits
+                model="gpt-4o-mini",  # Ensure you're using a model that supports logits
                 messages=[
                     {
                         "role": "system",

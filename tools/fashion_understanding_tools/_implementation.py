@@ -2,6 +2,7 @@ import copy
 import json
 import os
 import random
+import re
 import time
 import uuid
 from typing import Any, Dict, List
@@ -26,6 +27,9 @@ from .fashion_negative_intent_detection_tools import FashionNegativeIntentTools
 from .fashion_rag_search_filter_utils_tools import FashionRagSearchFilterUtilsTools
 from .fashion_reranker_tools import FashionRerankerTools
 from .fashion_text_understanding_tools import FashionTextUnderstandingTools
+
+# Set to True to record and see the time taken for each function in docker logs
+RECORD_TIME = False
 
 
 def generate_ids_uuid():
@@ -367,7 +371,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         return "Occasion(s): " + ", ".join(occasions) if occasions else ""
 
     def _retrieve_antonym_of_disliked_fit_styles(
-        self, disliked_fit_styles: list
+        self, disliked_fit_styles: list, record_time: bool = True
     ) -> List:
         """
         Translates disliked fit styles into their preferred counterparts using GPT with few-shot examples.
@@ -378,7 +382,15 @@ class FashionRecommendationLogicPipeline(Toolkit):
         Returns:
             dict: A dictionary with the original disliked fit styles as keys and their preferred counterparts as values.
         """
+
+        start_time = time.time()
+
         if not disliked_fit_styles:
+            if record_time:
+                logger.info(
+                    "Time taken to retrieve antonyms of disliked fit styles: "
+                    + str(time.time() - start_time)
+                )
             return []
 
         # Define the prompt with few-shot examples
@@ -466,14 +478,20 @@ class FashionRecommendationLogicPipeline(Toolkit):
             logger.info(
                 f"Processed Antonyms of disliked fit styles: {preferred_styles}"
             )
-
+            if record_time:
+                logger.info(
+                    "Time taken to retrieve antonyms of disliked fit styles: "
+                    + str(time.time() - start_time)
+                )
             return preferred_styles["translated_fit_style"]
         except json.JSONDecodeError:
             logger.error("Failed to parse GPT response for preferred styles.")
             return []
 
-    def past_image_identifier(self, query: str, chat_history: List | str) -> int:
-
+    def past_image_identifier(
+        self, query: str, chat_history: List | str, record_time: bool = True
+    ) -> int:
+        start_time = time.time()
         prompt = f"""Based on the chat history query, and the image understandings of the past recommended items, identify the image that the user is referencing. Return the index of the image (starting from 0).
         
         For example, if the user says "I like the second item", return 1.
@@ -507,7 +525,10 @@ class FashionRecommendationLogicPipeline(Toolkit):
             )
 
         answer = json.loads(answer)
-
+        if record_time:
+            logger.info(
+                f"Time taken to identify the past image: {time.time() - start_time} seconds"
+            )
         if "index_of_item" in answer:
             return int(answer["index_of_item"])
         else:
@@ -550,7 +571,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
         ##### Identify negative intents #####
         negative_intents = self.fashion_negative_intent_tools._detect_negative_intents(
-            query=query, chat_history=chat_history
+            query=query, chat_history=chat_history, record_time=RECORD_TIME
         )
         antonyms_of_disliked_features = None
         input_to_dislikes_conversion = []
@@ -565,7 +586,8 @@ class FashionRecommendationLogicPipeline(Toolkit):
         if input_to_dislikes_conversion != []:
             antonyms_of_disliked_features = (
                 self._retrieve_antonym_of_disliked_fit_styles(
-                    disliked_fit_styles=input_to_dislikes_conversion
+                    disliked_fit_styles=input_to_dislikes_conversion,
+                    record_time=RECORD_TIME,
                 )
             )
             logger.info(
@@ -598,7 +620,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         0 means the image is from the uploaded image, 1 means the image is from the recommended items. 2 means no image.
         """
         image_to_analyze = self.fashion_image_understanding_tools._image_identifier(
-            query=query, chat_history=chat_history
+            query=query, chat_history=chat_history, record_time=RECORD_TIME
         )
         # See if the agent thinks the user is referencing an image from the past but there is no image from the past
         if (
@@ -613,7 +635,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         # If the user is referencing an image from the past
         if image_to_analyze == ImageIdentificationOutput.RECOMMENDED_ITEMS:
             past_image_index = self.past_image_identifier(
-                query=query, chat_history=chat_history
+                query=query, chat_history=chat_history, record_time=RECORD_TIME
             )
             logger.info(f"Past image to analyze: {past_image_index}")
 
@@ -646,7 +668,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             image_understanding = json.loads(
                 (
                     self.fashion_image_understanding_tools._image_understanding(
-                        base64_image_input
+                        base64_image_input, record_time=RECORD_TIME
                     )
                 )
             )
@@ -661,7 +683,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             image_understanding = json.loads(
                 (
                     self.fashion_image_understanding_tools._image_understanding(
-                        base64_image_input
+                        base64_image_input, record_time=RECORD_TIME
                     )
                 )
             )
@@ -682,6 +704,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             prev_user_preferences=prev_user_preferences,
             negative_intents=negative_intents,
             image_to_analyze=image_to_analyze,
+            record_time=RECORD_TIME,
         )
         text_understanding = self.general_functions._lowercase_keys(text_understanding)
         item_name = text_understanding["item_name"]
@@ -736,6 +759,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                     image_understanding,
                     text_understanding,
                     chat_history,
+                    record_time=RECORD_TIME,
                 )
             )
             # Extract the resolved values
@@ -802,6 +826,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             filter=filter,
             base64_image=base64_image_input,
             conflicts=conflicts,
+            record_time=RECORD_TIME,
         )
 
         # Filter out results with no image URLs
@@ -817,6 +842,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                 colors=colors,
                 filtered_items=filtered_items,
                 negative_intents=negative_intents,
+                record_time=RECORD_TIME,
             )
 
         ###### Reranking #####
@@ -831,6 +857,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                 positive_preference=preference_used_for_reranking,
                 negative_intents=str(negative_intents),
                 current_query=query,
+                record_time=RECORD_TIME,
             )
             logger.info(
                 f"Results after reranking: {[result['title'] for result in results]}"
@@ -931,10 +958,20 @@ class FashionRecommendationLogicPipeline(Toolkit):
             "product_url",
             "image_urls",
         ]
-
-        # remove image_url from the dictionary to prevent our agent from displaying the image urls
+        image_urls = []
         for i in final_results:
-            return_results.append(({k: v for k, v in i.items() if k in return_fields}))
+            for k, v in i.items():
+                if k in return_fields:
+                    # Remove all the ?v=xxxx from the image urls and keep it as a separate variable
+                    if k == "image_urls":
+
+                        v = [re.sub(r"\?v=\d+", "", url) for url in v]
+                        image_urls.append(v[0])
+
+                    # Keep all the other fields
+                    else:
+
+                        return_results.append({k: v})
 
         logger.info(f"Return Results: {return_results}")
         logger.info(
@@ -952,7 +989,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             self._write_session_data(self.session_data)
         logger.info(f"results: {return_results}")
 
-        final_instructions = f"""Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user."""
+        final_instructions = f"""Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user. \n\nPlace the image urls exactly as they are in the following structure: <image_urls>{image_urls}</image_urls>. Do **not** modify, rephrase, or simplify any of the image urls in any way."""
         if return_json:
             return f"""Extract the fashion items and return them to the user in the exact JSON format as {return_results}. DO NOT modify, rephrase, or paraphrase any content within the JSON structure. Maintain the original formatting precisely.
 

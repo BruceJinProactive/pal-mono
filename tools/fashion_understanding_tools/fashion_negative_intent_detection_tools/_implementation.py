@@ -1,4 +1,5 @@
 import json
+import time
 from typing import List
 
 from openai import AsyncOpenAI, OpenAI
@@ -22,7 +23,9 @@ class FashionNegativeIntentTools:
 
         self.hierarchy = hierarchy
 
-    def _detect_negative_intents(self, query: str, chat_history: List | str) -> dict:
+    def _detect_negative_intents(
+        self, query: str, chat_history: List | str, record_time: bool = True
+    ) -> dict:
         """
         Detects negative intents in the user query and chat history, returning a dictionary of attributes to exclude.
 
@@ -33,6 +36,9 @@ class FashionNegativeIntentTools:
         Returns:
             dict: A dictionary where keys are categories (e.g., "color") and values are lists of items (e.g., ["blue"]) to exclude.
         """
+
+        start_time = time.time()
+
         # Call OpenAI to identify negative intents based on both query and chat history
         system_prompt = """Identify any negative preferences in the user's query and chat history. Analyze the input to extract dislikes across specific attributes, including colors, occasions, categories, materials, patterns, fit or style preferences, aesthetics, and other features. Only extract dislikes when they are explicitly or implicitly mentioned in the user's input.
 
@@ -138,6 +144,12 @@ class FashionNegativeIntentTools:
                         logger.error(f"Error converting {key} to lower case")
                         logger.error(answer[key])
                         answer[key] = []
+
+        # Record the time taken for the operation
+        if record_time:
+            logger.info(
+                f"Time taken to detect negative intents: {time.time() - start_time} seconds"
+            )
 
         self.session_data["prev_negative_intents"] = answer
 

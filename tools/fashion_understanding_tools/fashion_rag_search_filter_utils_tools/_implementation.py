@@ -158,6 +158,47 @@ class FashionRagSearchFilterUtilsTools:
 
         return image
 
+    def get_positive_negative_embeddings(self, conflicts):
+        negative_embeddings, positive_embeddings = [], []
+        for conflict in conflicts:
+            # Remove all none occurrences
+            conflict["user"] = [
+                i
+                for i in conflict.get("user", [])
+                if i is not None and i.lower() != "none"
+            ]
+            conflict["image"] = [
+                i
+                for i in conflict.get("image", [])
+                if i is not None and i.lower() != "none"
+            ]
+
+            logger.info(f"Resolving conflict through embeddings: {conflict}")
+            # Check if the conflict is empty
+            if len(conflict["user"]) == 0 or len(conflict["image"]) == 0:
+                continue
+
+            # concatenate the image's colors
+            negative_embeddings.append(
+                self._get_text_embedding(
+                    ", ".join(conflict["image"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
+                )
+            )
+            positive_embeddings.append(
+                self._get_text_embedding(
+                    ", ".join(conflict["user"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
+                )
+            )
+
+        if len(negative_embeddings) == 0 or len(positive_embeddings) == 0:
+            return None, None
+        else:
+            # Average the embeddings
+            negative_embeddings = np.average(negative_embeddings, axis=0)
+            positive_embeddings = np.average(positive_embeddings, axis=0)
+
+            return positive_embeddings, negative_embeddings
+
     def _text2img_search(
         self,
         query_text,
@@ -166,6 +207,7 @@ class FashionRagSearchFilterUtilsTools:
         base64_image: str | None = None,
         rag_query_for_image_search: str | None = None,
         conflicts: List[dict] | List = [],
+        record_time: bool = True,
     ) -> tuple[List[dict], List[Any]]:
         """
         Based on the user's query, search for the most relevant items in the pinecone database.
@@ -193,47 +235,6 @@ class FashionRagSearchFilterUtilsTools:
                 query_text, GOOGLE_VERTEX=USE_GOOGLE_VERTEX
             )
 
-        def get_positive_negative_embeddings(conflicts):
-            negative_embeddings, positive_embeddings = [], []
-            for conflict in conflicts:
-                # Remove all none occurrences
-                conflict["user"] = [
-                    i
-                    for i in conflict.get("user", [])
-                    if i is not None and i.lower() != "none"
-                ]
-                conflict["image"] = [
-                    i
-                    for i in conflict.get("image", [])
-                    if i is not None and i.lower() != "none"
-                ]
-
-                logger.info(f"Resolving conflict through embeddings: {conflict}")
-                # Check if the conflict is empty
-                if len(conflict["user"]) == 0 or len(conflict["image"]) == 0:
-                    continue
-
-                # concatenate the image's colors
-                negative_embeddings.append(
-                    self._get_text_embedding(
-                        ", ".join(conflict["image"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
-                    )
-                )
-                positive_embeddings.append(
-                    self._get_text_embedding(
-                        ", ".join(conflict["user"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
-                    )
-                )
-
-            if len(negative_embeddings) == 0 or len(positive_embeddings) == 0:
-                return None, None
-            else:
-                # Average the embeddings
-                negative_embeddings = np.average(negative_embeddings, axis=0)
-                positive_embeddings = np.average(positive_embeddings, axis=0)
-
-                return positive_embeddings, negative_embeddings
-
         if base64_image is not None:
             # Check if the image embeddings are already in the session data
             if (
@@ -255,7 +256,7 @@ class FashionRagSearchFilterUtilsTools:
 
             if len(conflicts) > 0:
                 positive_embeddings, negative_embeddings = (
-                    get_positive_negative_embeddings(conflicts)
+                    self.get_positive_negative_embeddings(conflicts)
                 )
 
                 if negative_embeddings is None or positive_embeddings is None:
@@ -296,8 +297,8 @@ class FashionRagSearchFilterUtilsTools:
 
         elif len(conflicts) > 0:
             # turn the conflict in to a string with new line characters separating the keys
-            positive_embeddings, negative_embeddings = get_positive_negative_embeddings(
-                conflicts
+            positive_embeddings, negative_embeddings = (
+                self.get_positive_negative_embeddings(conflicts)
             )
             query_embedding = (
                 np.array(query_embedding)
@@ -319,7 +320,11 @@ class FashionRagSearchFilterUtilsTools:
         results = [i["metadata"] for i in res]
         scores = [i["score"] for i in res]
         logger.info(f"Scores: {scores}")
-        logger.info(f"Time taken to query Pinecone: {time.time() - start_time}")
+
+        if record_time:
+            logger.info(
+                f"Time taken to prepare pinecone query and receive Pinecone response: {time.time() - start_time}"
+            )
         return results, scores
 
     def _get_filters(
@@ -462,6 +467,7 @@ class FashionRagSearchFilterUtilsTools:
         colors: List[str],
         filtered_items: List[str],
         negative_intents: dict | None = None,
+        record_time: bool = True,
     ) -> List:
         """
         Gradually release filter criteria in the order: occasion -> category -> color,
@@ -479,6 +485,7 @@ class FashionRagSearchFilterUtilsTools:
         Returns:
             List: A List of retrieved items that match the relaxed filters.
         """
+        start_time = time.time()
         logger.info(
             f"Relaxing filters to retrieve more results, required results: {top_k}, current results: {len(filtered_items)}"
         )
@@ -514,7 +521,15 @@ class FashionRagSearchFilterUtilsTools:
 
             # Check if we have enough results after this relaxation step
             if len(accumulated_results) >= top_k:
+                if record_time:
+                    logger.info(
+                        f"Time taken to relax filters and accumulate results: {time.time() - start_time}"
+                    )
                 return accumulated_results
 
         # If we exit the loop without meeting the required results, return all accumulated results
+        if record_time:
+            logger.info(
+                f"Time taken to relax filters and accumulate results: {time.time() - start_time}"
+            )
         return accumulated_results

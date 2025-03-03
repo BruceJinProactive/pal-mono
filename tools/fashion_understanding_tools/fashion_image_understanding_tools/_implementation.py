@@ -63,6 +63,9 @@ class FashionImageUnderstandingTools:
         Returns:
             int: 0 means the image is from the uploaded image, 1 means the image is from the recommended items. 2 means no image.
         """
+
+        start_time = time.time()
+
         ### TODO: Replace session_data with the actual session data structure
         uploaded_image_exists = (
             "base64_image" in self.session_data
@@ -107,8 +110,6 @@ Output Explanation:
         json_format = ImageIdentification.model_json_schema()
         # Restrict the json schema to the required values
         json_format["properties"]["image_of_interest"]["enum"] = [0, 1, 2]
-
-        start_time = time.time()
 
         ### TODO: Confirm what is the method to call for openai completion
         chat_completion = self.client.chat.completions.create(
