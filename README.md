@@ -133,9 +133,12 @@ The CI/CD pipeline consists of 4 environments:
 
 ### Endpoints
 
-| env | app                                                                | api                                                        | api docs (internal)                                                    |
-| --- | ------------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
-| dev | http://localhost:8501/                                             | http://localhost:8000/                                     | http://localhost:8000/docs                                             |
-| lat | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat | http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/docs |
-| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg | http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/docs |
-| prd | http://prd-pal-mono-app-lb-1794342643.us-east-1.elb.amazonaws.com/ | https://33x9nc53yf.execute-api.us-east-1.amazonaws.com/prd | http://prd-pal-mono-api-lb-1684526284.us-east-1.elb.amazonaws.com/docs |
+- Endpoints labeled as (legacy) belong to our old AWS account, `proactiveailab`, and are being phased out.
+- The new endpoints are hosted in dedicated AWS accounts: `lat`, `stg`, and `prd`.
+
+| env | app(old)                                                           | app(new)                                                           | api(old)                                                   | api(new)                            |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------- | ----------------------------------- |
+| dev |                                                                    | http://localhost:8501/                                             |                                                            | http://localhost:8000/              |
+| lat | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | http://lat-pal-mono-app-lb-944853732.us-east-1.elb.amazonaws.com   | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat | https://lat-api.proactiveailab.com/ |
+| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://stg-pal-mono-app-lb-1494675788.us-east-1.elb.amazonaws.com  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg | https://stg-api.proactiveailab.com/ |
+| prd |                                                                    | http://prd-pal-mono-app-lb-1794342643.us-east-1.elb.amazonaws.com/ |                                                            | https://api.proactiveailab.com/     |
