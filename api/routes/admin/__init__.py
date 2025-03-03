@@ -1,14 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
 from api.routes.endpoints import endpoints
+from api.schemas.admin.analytics import GetReportRequest, GetReportResponse
 from api.schemas.admin.conversation import InboxResponse
 
-from . import _feedback, _implementation, _projects
+from . import _analytics, _feedback, _implementation, _projects
 
 """
 ######################################################
@@ -369,3 +370,27 @@ async def get_project_instagram_username(
         dict: The username of the connected Instagram account.
     """
     return _projects.get_project_instagram_username(project_id, request, session)
+
+
+@admin_router.get("/reports", status_code=200)
+def get_report(
+    request: Request,
+    report_request: GetReportRequest = Body(...),
+    session: Session = Depends(db.get_db),
+) -> GetReportResponse:
+    """
+    Retrieve report data for the specified report name.
+
+    Args:
+        request (Request): The request object containing headers.
+        session (Session): The database session.
+        report_request (GetReportRequest): The request object containing the report name.
+
+    Returns:
+        GetReportResponse: The response object containing the report data.
+    """
+    report_data = (
+        _analytics.get_report(request, report_request.report_name, session) or {}
+    )
+
+    return GetReportResponse(report_data=report_data)

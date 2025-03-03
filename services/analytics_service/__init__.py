@@ -16,3 +16,16 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
         None
     """
     return _implementation.track_event(user_id, event_name, event_properties)
+
+
+def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None:
+    """Fetches insights data from Mixpanel for a given report name and account name.
+
+    Args:
+        report_name (str): The name of the report, used to fetch the corresponding bookmark ID.
+        account_name (str): The name of the account to filter the report data.
+
+    Returns:
+        dict | None: The report data from Mixpanel.
+    """
+    return _implementation.get_report_from_mixpanel(report_name, account_name)
