@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
+from api.schemas.admin.conversation import InboxResponse
 from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
@@ -75,12 +76,12 @@ def get_document(
 
 def get_inbox(
     request: Request, page: int, page_size: int, session: Session = Depends(db.get_db)
-):
+) -> InboxResponse:
     account = _auth.get_account_from_id_token(request, session)
-    inbox = get_inbox_conversations(
+    total_pages, inbox = get_inbox_conversations(
         session, account_id=account.id, page=page, page_size=page_size
     )
-    return JSONResponse(content=jsonable_encoder(inbox))
+    return InboxResponse(total_pages=total_pages, inbox=inbox)
 
 
 def get_knowledge(request: Request, session: Session = Depends(db.get_db)):

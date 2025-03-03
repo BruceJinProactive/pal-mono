@@ -549,14 +549,17 @@ def get_conversations_by_user(
 
 
 def get_conversations_by_users(
-    session: Session, page, page_size, user_ids: list[uuid.UUID]
-) -> list[db.Conversation]:
+    session: Session, page: int, page_size: int, user_ids: list[uuid.UUID]
+) -> tuple[int, list[db.Conversation]]:
     conversation_repository = db.ConversationRepository(session)
-    return conversation_repository.get_conversations_by_users(
-        page=page,
-        page_size=page_size,
-        user_ids=user_ids,
+    conversations, total_conversations = (
+        conversation_repository.get_conversations_by_users(
+            page=page,
+            page_size=page_size,
+            user_ids=user_ids,
+        )
     )
+    return total_conversations, conversations
 
 
 def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:

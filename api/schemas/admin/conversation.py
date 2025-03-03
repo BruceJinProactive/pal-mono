@@ -14,3 +14,8 @@ class ConversationPreview(BaseModel):
     recipient_identifier: str
     broker: str | None
     created_at: datetime.datetime
+
+
+class InboxResponse(BaseModel):
+    total_pages: int
+    inbox: list[ConversationPreview]

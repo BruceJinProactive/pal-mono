@@ -43,14 +43,15 @@ def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
 
 def get_inbox_conversations(
     session: Session, account_id: uuid.UUID, max_age: int, page: int, page_size: int
-) -> list[ConversationPreview]:
+) -> tuple[int, list[ConversationPreview]]:
     # Get users associated with the account
     users = get_users_by_account_id(session, account_id=account_id)
 
     # Get all conversations involving a user with the account id
-    conversations = get_conversations_by_users(
+    total_conversations, conversations = get_conversations_by_users(
         session, page, page_size, user_ids=list(map(lambda user: user.id, users))
     )
+    total_pages = (total_conversations + page_size - 1) // page_size
     conversation_user_ids = list(
         map(lambda conv: (conv.id, conv.user_id), conversations)
     )
@@ -150,7 +151,7 @@ def get_inbox_conversations(
         ]
     ]
 
-    return inbox
+    return total_pages, inbox
 
 
 def get_conversation_messages(

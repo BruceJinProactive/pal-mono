@@ -1,5 +1,4 @@
 import uuid
-from typing import List
 
 from sqlalchemy.orm import Session
 
@@ -15,7 +14,7 @@ def get_inbox_conversations(
     page: int,
     page_size: int,
     max_age: int = 0,
-) -> List[ConversationPreview]:
+) -> tuple[int, list[ConversationPreview]]:
     """
     Retrieves a list of conversation previews for all conversations associated with the given account.
 
@@ -32,8 +31,10 @@ def get_inbox_conversations(
         max_age (int, optional): Maximum age of conversations to retrieve in days. Defaults to 0 (no limit).
 
     Returns:
-        List[ConversationPreview]: A paginated list of `ConversationPreview` objects representing the Conversations,
-        each containing the Conversation ID, User ID, number of Messages, and the text of the last Message.
+        tuple[int, list[ConversationPreview]]: A tuple containing:
+            - Total number of pages available based on the page_size
+            - A paginated list of `ConversationPreview` objects representing the Conversations,
+              each containing the Conversation ID, User ID, number of Messages, and the text of the last Message.
     """
     return _implementation.get_inbox_conversations(
         session,
@@ -46,7 +47,7 @@ def get_inbox_conversations(
 
 def get_conversation_messages(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[db.Message]:
+) -> list[db.Message]:
     """
     Verifies that the requester has access to the conversation, then returns all messages
     in the conversation.
@@ -57,7 +58,7 @@ def get_conversation_messages(
         conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
 
     Returns:
-        List[Message]: A List of Messages from the Conversation.
+        list[Message]: A list of Messages from the Conversation.
 
     Raises:
         ValueError: If the Admin does not have access to the Conversation.
@@ -90,7 +91,7 @@ def get_conversation_ids_by_message_ids(
 
 def get_messages_by_conversation_id(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> List[db.Message]:
+) -> list[db.Message]:
     """
     Verifies that the requester has access to the conversation, then returns all messages
     in the conversation alongside feedback for each.
@@ -101,7 +102,7 @@ def get_messages_by_conversation_id(
         conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
 
     Returns:
-        List[Message]: A list of Message objects including associated feedback
+        list[Message]: A list of Message objects including associated feedback
     """
     return _implementation.get_messages_by_conversation_id(
         session, account_id, conversation_id

@@ -1,5 +1,4 @@
 import uuid
-from typing import List
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,7 +38,7 @@ class ConversationRepository:
             limit (int, optional): Maximum number of records to return. Defaults to 100.
 
         Returns:
-            List[Conversation] | None: A list of conversation objects, or None if an error occurs.
+            list[Conversation] | None: A list of conversation objects, or None if an error occurs.
         """
         try:
             return self.session.query(Conversation).offset(skip).limit(limit).all()
@@ -56,7 +55,7 @@ class ConversationRepository:
             user_id (uuid.UUID): The ID of the user whose conversations are being retrieved.
 
         Returns:
-            List[Conversation] | None: A list of conversation objects for the specified user, or None if an error occurs.
+            list[Conversation] | None: A list of conversation objects for the specified user, or None if an error occurs.
 
         Raises:
             ValueError: If 'user_id' is not provided.
@@ -75,8 +74,8 @@ class ConversationRepository:
             return None
 
     def get_conversations_by_users(
-        self, user_ids: List[uuid.UUID], page: int, page_size: int
-    ) -> List[Conversation]:
+        self, user_ids: list[uuid.UUID], page: int, page_size: int
+    ) -> tuple[list[Conversation], int]:
         """
         Retrieve conversations for a list of user IDs with pagination support.
 
@@ -86,25 +85,31 @@ class ConversationRepository:
             page_size (int): The number of items per page (default is 10).
 
         Returns:
-            List[Conversation]: A paginated list of Conversation objects.
+            tuple[List[Conversation], int]: A tuple containing the list of conversations and the total count.
         """
         if not user_ids:
             # If no user ids are passed, return an empty list
-            return []
+            return [], 0
 
         try:
-            query = (
-                self.session.query(Conversation)
-                .filter(Conversation.user_id.in_(user_ids))
-                .order_by(Conversation.created_at.desc())
+            # Base query without pagination for counting
+            base_query = self.session.query(Conversation).filter(
+                Conversation.user_id.in_(user_ids)
             )
-            # Apply pagination: calculate offset and limit the results
-            query = query.limit(page_size).offset((page - 1) * page_size)
-            return query.all()
+            total_count = base_query.count()
+
+            # Apply ordering and pagination
+            conversations = (
+                base_query.order_by(Conversation.created_at.desc())
+                .limit(page_size)
+                .offset((page - 1) * page_size)
+                .all()
+            )
+            return conversations, total_count
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving conversations by users: {e}")
-            return []
+            return [], 0
 
     def get_conversation_by_id(self, conversation_id: uuid.UUID):
         try:

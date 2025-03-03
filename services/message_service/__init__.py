@@ -1,5 +1,5 @@
 import uuid
-from typing import AsyncIterator, List, Optional
+from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -78,7 +78,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
 
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
-) -> List[db.Message]:
+) -> list[db.Message]:
     """
     Retrieves all messages for a given conversation.
 
@@ -94,7 +94,7 @@ def get_messages_by_conversation(
 
 def get_conversations_by_user(
     session: Session, user_id: uuid.UUID, create_new_conversation: bool = False
-) -> List[db.Conversation]:
+) -> list[db.Conversation]:
     """
     Retrieves all conversations associated with a given user ID. Optionally creates a new conversation
     if no existing conversations are found and the 'create_new_conversation' flag is set to True.
@@ -113,8 +113,8 @@ def get_conversations_by_user(
 
 
 def get_conversations_by_users(
-    session: Session, page: int, page_size: int, user_ids: List[uuid.UUID]
-) -> List[db.Conversation]:
+    session: Session, page: int, page_size: int, user_ids: list[uuid.UUID]
+) -> tuple[int, list[db.Conversation]]:
     """
     Retrieves conversations associated with a list of user IDs.
 
@@ -123,7 +123,7 @@ def get_conversations_by_users(
         user_ids (List[uuid.UUID]): List of user IDs to retrieve conversations for.
 
     Returns:
-        List[db.Conversation]: A list of conversations associated with the specified user IDs.
+        tuple[int, List[db.Conversation]]: A tuple containing the total number of conversations and a list of Conversation objects.
     """
     return _implementation.get_conversations_by_users(
         session, page, page_size, user_ids

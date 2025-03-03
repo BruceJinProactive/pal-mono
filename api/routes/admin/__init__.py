@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.endpoints import endpoints
+from api.schemas.admin.conversation import InboxResponse
 
 from . import _feedback, _implementation, _projects
 
@@ -186,7 +187,7 @@ def get_inbox(
     page: int = Query(..., description="Current page number"),
     page_size: int = Query(..., description="Number of items per page"),
     session: Session = Depends(db.get_db),
-):
+) -> InboxResponse:
     """
     Retrieve the inbox conversations for the account associated with the request.
 
@@ -197,7 +198,7 @@ def get_inbox(
         session: The database session.
 
     Returns:
-        JSONResponse: The inbox conversations.
+        InboxResponse: The total number of pages and the paginated list of conversations.
     """
     return _implementation.get_inbox(request, page, page_size, session)
 
