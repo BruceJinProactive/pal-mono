@@ -264,6 +264,7 @@ class Order(BaseModel):
     delivery_address: Optional[DeliveryAddress] = Field(
         description="Delivery address", serialization_alias="deliveryAddress"
     )
+    coupons: SkipJsonSchema[List[Dict[str, int]]] = Field(default=[])
     paid: SkipJsonSchema[bool] = Field(default=False)
     order_comment: Optional[str] = Field(
         description="Special ordering instructions requested by the customer. Empty if no special requests are made. These can be something like 'no cheese', 'extra sauce', etc.",

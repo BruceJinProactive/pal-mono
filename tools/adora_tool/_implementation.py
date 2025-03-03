@@ -369,25 +369,23 @@ class AdoraTool(Toolkit):
                 str(self.user_id), AnalyticsEvent.CRITICAL_ACTION, event_properties
             )
 
-        output = f"""Your order is pending!
-        Please head to the payment url to finalize your order!
-        {text_payment_url}
-        
-        Order Summary:
-        {order}
-
-        Subtotal: {validated_order.subTotal}
-        Sales Tax: {validated_order.taxAmount}
-        """
+        output = (
+            f"Your order is pending!\n"
+            "Please head to the payment url to finalize your order!\n"
+            f"{text_payment_url}\n\n"
+            "Order Summary:\n"
+            f"{order.order_items}\n\n"
+            f"Subtotal: {validated_order.subTotal}\n"
+            f"Sales Tax: {validated_order.taxAmount}\n"
+        )
 
         if str(order.order_type) == "Delivery":
-            output += """
-            Delivery Fee: $5
-            """
+            output += "Delivery Fee: $5\n"
 
-        output += f"""
-        Order Total: {validated_order.total}
-        """
+        if validated_order.discount and validated_order.discount > 0.0:
+            output += f"Discount: {validated_order.discount}\n"
+
+        output += f"Order Total: {validated_order.total}\n"
         return output
 
     @tool
@@ -448,6 +446,9 @@ class AdoraTool(Toolkit):
                 phone_number="(555)555-5555",
                 email="jimmythesurfer@proactiveailab.com",
             )
+
+            # TODO: Hardcode discount
+            order.coupons = [{"coupon_id": 134}]
 
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment
