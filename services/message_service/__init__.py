@@ -76,6 +76,20 @@ def get_chat_response(session: Session, message: Message) -> Message:
     return _implementation.get_chat_response(session, message)
 
 
+def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | None:
+    """
+    Retrieves a message by its unique identifier.
+
+    Args:
+        session (Session): The database session.
+        message_id (uuid.UUID): The unique identifier of the message.
+
+    Returns:
+        db.Message | None: The message object associated with the unique identifier.
+    """
+    return _implementation.get_message_by_id(session, message_id)
+
+
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
 ) -> list[db.Message]:
@@ -148,6 +162,7 @@ __all__ = [
     "get_chat_response",
     "get_chat_response_async",
     "get_chat_response_stream",
+    "get_message_by_id",
     "get_messages_by_conversation",
     "get_conversations_by_user",
     "get_conversations_by_users",

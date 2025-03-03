@@ -20,6 +20,7 @@ from services.feedback_service import (
     get_feedbacks,
     update_feedback_by_id,
 )
+from services.message_service import get_message_by_id
 
 from . import _auth
 
@@ -101,6 +102,11 @@ def get_messages_with_feedback_by_conversation_id(
                 Feedback(
                     id=str(f.id),
                     message_id=str(f.message_id),
+                    message_content=getattr(
+                        get_message_by_id(session, f.message_id), "body", {}
+                    )
+                    .get("text", {})
+                    .get("body"),
                     author_identifier=f.author_identifier,
                     reaction=f.reaction,
                     tags=f.tags,
@@ -137,6 +143,11 @@ def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_d
                 "feedback": Feedback(
                     id=str(feedback.id),
                     message_id=str(feedback.message_id),
+                    message_content=getattr(
+                        get_message_by_id(session, feedback.message_id), "body", {}
+                    )
+                    .get("text", {})
+                    .get("body"),
                     author_identifier=feedback.author_identifier,
                     reaction=feedback.reaction,
                     tags=feedback.tags,
@@ -188,6 +199,11 @@ def retrieve_feedback_by_id(
     feedback_response = Feedback(
         id=str(persisted_feedback.id),
         message_id=str(persisted_feedback.message_id),
+        message_content=getattr(
+            get_message_by_id(session, persisted_feedback.message_id), "body", {}
+        )
+        .get("text", {})
+        .get("body"),
         author_identifier=persisted_feedback.author_identifier,
         reaction=persisted_feedback.reaction,
         tags=persisted_feedback.tags,

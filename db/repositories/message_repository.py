@@ -153,6 +153,26 @@ class MessageRepository:
 
         return message
 
+    def get_message_by_id(self, message_id: uuid.UUID):
+        """
+        Retrieves a message by its unique identifier.
+
+        Args:
+            message_id (uuid.UUID): The unique identifier for the message.
+
+        Returns:
+            Message | None: The message, or None if an error occurs.
+        """
+        try:
+            message = (
+                self.session.query(Message).filter(Message.id == message_id).first()
+            )
+            return message
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving message: {e}")
+            return None
+
     def get_messages_by_conversation(self, conversation_id: uuid.UUID):
         """
         Retrieves all messages associated with a specific conversation id.

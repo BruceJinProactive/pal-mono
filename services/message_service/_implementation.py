@@ -509,6 +509,23 @@ def _add_message_info_to_metadata(message: Message, metadata: dict) -> None:
         metadata["CallSid"] = message.metadata["CallSid"]
 
 
+def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | None:
+    """
+    Retrieves a Message by its unique identifier.
+
+    This function queries the database to fetch the Message associated with the specified Message ID.
+
+    Args:
+        session (Session): The database connection.
+        message_id (uuid.UUID): The unique identifier of the Message being retrieved.
+
+    Returns:
+        db.Message | None: The Message object associated with the unique identifier, or None if not found.
+    """
+    message = db.MessageRepository(session).get_message_by_id(message_id=message_id)
+    return message
+
+
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
 ) -> list[db.Message]:

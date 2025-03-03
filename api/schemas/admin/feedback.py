@@ -42,6 +42,7 @@ class Feedback(BaseModel):
     id: str
     timestamp: str
     message_id: str
+    message_content: str
 
     author_identifier: str | None = None
     reaction: str | None = None
