@@ -21,7 +21,9 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
     """
     mixpanel_api_secret = os.getenv("MIXPANEL_API_SECRET")
     report_name = report_name.upper()
-    bookmark_id = os.getenv(f"MIXPANEL_{report_name}_BOOKMARK_ID")
+    # Mapping of report names to bookmark IDs, will store them in db in the future
+    BOOKMARK_ID_MAPPING = {"MAU": "73277452", "MESSAGE": "73277513"}
+    bookmark_id = BOOKMARK_ID_MAPPING.get(report_name)
 
     if not mixpanel_api_secret:
         raise ValueError("Environment variable MIXPANEL_API_SECRET is not set.")
