@@ -63,4 +63,6 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
         mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
 
     if mp:
+        runtime_env = os.getenv("RUNTIME_ENV", "dev")
+        event_properties["runtime_env"] = runtime_env
         mp.track(user_id, event_name, event_properties)
