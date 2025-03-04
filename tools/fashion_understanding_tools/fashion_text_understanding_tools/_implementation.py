@@ -39,7 +39,7 @@ class FashionTextUnderstandingTools:
         }
         logger.info(f"Context: {choose_which_image_mapping[image_to_analyze]}")
         # Define prompt
-        formatted_prompt = f"""Based on the user's chat history, query, disliked features, and hierarchy, generate a detailed description of the fashion item the user is looking for. Provide the required details in a structured format as outlined below. 
+        formatted_prompt = f"""Based on the user's chat history, query, and hierarchy, generate a detailed description of the fashion item the user is looking for. Provide the required details in a structured format as outlined below. 
         
 ### Context:
 {choose_which_image_mapping[image_to_analyze]}
@@ -70,7 +70,7 @@ class FashionTextUnderstandingTools:
 5. **No Image Reference:**
    - If the user does not refer to the image:
      - Use the textual query, chat history, and default hierarchy to describe the item's features.
-     - Avoid including any disliked features.
+     - Avoid including any disliked features you could infer from the chat history and query. Note that the user may ask in the current for an item with features they disliked.
      - Do not return "similar to the image" in any field.
 
 6. **Reference to image from the chat history:**
@@ -95,7 +95,7 @@ Ensure all fields are provided and non-optional. Carefully read through the chat
    - Identify the preferred color(s) of the item. If the user specifies a preference, include it. Otherwise, use relevant colors strictly from the hierarchy.
    - If no color preference is specified, return **"none"**.
    - If the user requests to exclude certain colors, list alternative color suggestions strictly from the hierarchy.
-   - Avoid any colors explicitly disliked by the user.
+   - Avoid any colors explicitly disliked by the user unless the user asks for an item with those colors in the current query.
    - Choose the most relevant color(s) based on the hierarchy.
    - set to 'none' if the user provides the exact name of the item.
 
@@ -171,7 +171,7 @@ Ensure all fields are provided and non-optional. Carefully read through the chat
             formatted_prompt += f"""
 **Strict Guidelines**:
 - Fields `colors`, `occasions`, and `categories`must be strictly selected from the hierarchy. If a user's input suggests an invalid value, use the closest valid value from the hierarchy or return **"none"**, unless the user refers to an uploaded image.
-- Exclude any disliked attributes mentioned in the chat history and the provided disliked features.
+- Exclude any disliked attributes mentioned in the chat history unless the user asks for an item with such attributes in the current query.
 - The description is used for database searches; ensure it's precise and concise.
 - Multiple values for `colors`, `occasions`, and `categories` can be provided as a list.
 - Use only the values present in the hierarchy for `colors`, `occasions`, and `categories`.
@@ -183,8 +183,6 @@ Ensure all fields are provided and non-optional. Carefully read through the chat
 ###User Query: "{query}"
 
 ###Past Recommendations: "{past_recommendations}"
-
-###Disliked features: "{negative_intents}"
 
 ###Hierarchy:
 {json.dumps(self.hierarchy)}
@@ -202,7 +200,7 @@ Format the response in the following JSON structure:
             formatted_prompt += f"""
 **Strict Guidelines**:
 - Fields `colors`, `occasions`, and `categories` must be strictly selected from the hierarchy. If a user's input suggests an invalid value, use the closest valid value from the hierarchy or return **"none"**.
-- Exclude any disliked attributes mentioned in the chat history.
+- Exclude any disliked attributes mentioned in the chat history unless the user asks for an item with such attributes in the current query.
 - The description is used for database searches; ensure it's precise and concise.
 - Multiple values for `colors`, `occasions`, and `categories` can be provided as a list.
 - Use only the values present in the hierarchy for `colors`, `occasions`, and `categories`.

@@ -1,8 +1,6 @@
 import argparse
 import datetime
 import random
-import uuid
-from typing import List
 
 import requests
 
@@ -45,9 +43,15 @@ def get_textual_response(prompt, endpoint: str = "local"):
         json_res = response.json()
 
         print(f"Total execution time: {execution_time.total_seconds()} seconds")
+        image_urls = []
+        for message in json_res["messages"]:
+            if message.get("media", None) is not None:
+                image_urls.append(message["media"]["url"])
+
         final_response = json_res["messages"][0]["text"]["body"]
 
         print(final_response)
+        print(f"Image URLs: {image_urls}")
         return final_response
 
     query(prompt, endpoint)
@@ -94,70 +98,34 @@ Returned output should contain no new line characters.
     get_textual_response(prompt=prompt, endpoint=endpoint)
 
 
-########### OBSOLETE ################
-def unit_test(chat_history: List[dict], query: str):
-    import os
+############################    OLD TEST CASE    ############################
+# chat_history = [
+#     {
+#         "role": "user",
+#         "content": "Hi! I'm looking for a new outfit for a party. Any recommendations?",
+#     },
+#     {
+#         "role": "assistant",
+#         "content": "Hello! Sure, I'd love to help. Could you tell me more about the party? Is it formal, semi-formal, or casual?",
+#     },
+#     {
+#         "role": "user",
+#         "content": "It's a semi-formal event, and I really want to make a good impression. It's indoors and in the evening.",
+#     },
+#     {
+#         "role": "assistant",
+#         "content": "Got it. For a semi-formal indoor event, you could wear a tailored blazer with a crisp button-down shirt and slim-fit pants. Do you have any color preferences or style inspirations you want to incorporate?",
+#     },
+#     {
+#         "role": "user",
+#         "content": "I usually prefer neutral colors like black, gray, or navy. I’d like something that’s both comfortable and chic.",
+#     },
+#     {
+#         "role": "assistant",
+#         "content": "In that case, a navy blazer paired with black or charcoal pants would look polished. You could add a subtle pop of color with a pocket square or a statement accessory. Would you like some shoe suggestions as well?",
+#     },
+# ]
 
-    import yaml
+# query = "Sounds great! I'd like to see some shoes that would complement the outfit."
 
-    from ._implementation import FashionRecommendationLogicPipeline
-
-    # Change to parent directory
-    working_dir = os.path.abspath(os.path.join(os.getcwd()))
-    print(f"Working directory: {working_dir}")
-    # os.chdir(working_dir)
-
-    # Load environment variables from workspace/secretes/dev_app_secrets.yaml
-    with open("workspace/secrets/dev_app_secrets.yml", "r") as stream:
-        try:
-            secrets = yaml.safe_load(stream)
-            for key, value in secrets.items():
-                print(f"Setting {key}")
-                if not isinstance(value, str):
-                    value = str(value)
-                os.environ[key] = value
-        except yaml.YAMLError as exc:
-            print(exc)
-
-    fashion_logic_pipeline = FashionRecommendationLogicPipeline(
-        store_id="windsor-default",
-        account_id=uuid.uuid4(),
-        account_name="windsor",
-        session_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        agent_id=uuid.uuid4(),
-        namespace="windsor",
-    )
-    ############################    OLD TEST CASE    ############################
-    # chat_history = [
-    #     {
-    #         "role": "user",
-    #         "content": "Hi! I'm looking for a new outfit for a party. Any recommendations?",
-    #     },
-    #     {
-    #         "role": "assistant",
-    #         "content": "Hello! Sure, I'd love to help. Could you tell me more about the party? Is it formal, semi-formal, or casual?",
-    #     },
-    #     {
-    #         "role": "user",
-    #         "content": "It's a semi-formal event, and I really want to make a good impression. It's indoors and in the evening.",
-    #     },
-    #     {
-    #         "role": "assistant",
-    #         "content": "Got it. For a semi-formal indoor event, you could wear a tailored blazer with a crisp button-down shirt and slim-fit pants. Do you have any color preferences or style inspirations you want to incorporate?",
-    #     },
-    #     {
-    #         "role": "user",
-    #         "content": "I usually prefer neutral colors like black, gray, or navy. I’d like something that’s both comfortable and chic.",
-    #     },
-    #     {
-    #         "role": "assistant",
-    #         "content": "In that case, a navy blazer paired with black or charcoal pants would look polished. You could add a subtle pop of color with a pocket square or a statement accessory. Would you like some shoe suggestions as well?",
-    #     },
-    # ]
-
-    # query = "Sounds great! I'd like to see some shoes that would complement the outfit."
-
-    ##############################################################################
-
-    fashion_logic_pipeline._recommendation_logic(query=query, return_json=True)
+##############################################################################

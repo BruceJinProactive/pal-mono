@@ -5,6 +5,7 @@ import random
 import re
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List
 
 from agno.storage.agent.session import AgentSession
@@ -147,29 +148,8 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
     def _get_chat_history(self) -> str:
         try:
-            # db_session = db.get_db()
-
-            # logger.info(db_session)
-            # if not db_session:
-            #     logger.error(
-            #         "Failed to get database session for\n"
-            #         f"Account Name: {self.account_name}\n"
-            #         f"Account ID: {self.account_id}\n"
-            #         f"Agent ID: {self.agent_id}\n"
-            #         f"User ID: {self.user_id}\n"
-            #         f"Session ID: {self.session_id}"
-            #     )
-            #     return "Failed to get database session."
-
             try:
-                # # TODO: Defer import to avoid circular import
-                # from services.admin_service import (
-                #     get_messages_by_conversation_id,
-                # )
-
-                # messages = get_messages_by_conversation_id(
-                #     db_session, self.user_id, self.session_id
-                # )
+                # TODO: Defer import to avoid circular import
                 storage = get_storage(self.account_name)
                 agent_session = storage.read(str(self.session_id), str(self.user_id))
 
@@ -534,6 +514,44 @@ class FashionRecommendationLogicPipeline(Toolkit):
         else:
             return int(answer["properties"]["index_of_item"])
 
+    def _process_positive_negative_preferences_concurrently(
+        self,
+        query: str,
+        chat_history: list | str,
+        past_recommendations: dict,
+        prev_user_preferences: str | None,
+        image_to_analyze: int,
+        record_time: bool = True,
+    ) -> tuple[dict, dict]:
+        # Run the two core tasks in parallel
+        with ThreadPoolExecutor() as executor:
+            negative_intents_future = executor.submit(
+                self.fashion_negative_intent_tools._detect_negative_intents,
+                query=query,
+                chat_history=chat_history,
+                record_time=RECORD_TIME,
+            )
+            text_understanding_future = executor.submit(
+                self.fashion_text_understanding_tools._text_understanding,
+                chat_history=chat_history,
+                query=query,
+                past_recommendations=(
+                    past_recommendations["recent"]
+                    if past_recommendations is not None
+                    and "recent" in past_recommendations
+                    else []
+                ),
+                prev_user_preferences=prev_user_preferences,
+                image_to_analyze=image_to_analyze,
+                record_time=RECORD_TIME,
+            )
+
+            # Retrieve the results from both futures
+            text_understanding = text_understanding_future.result()
+            negative_intents = negative_intents_future.result()
+
+            return text_understanding, negative_intents
+
     def _recommendation_logic(
         self,
         query: str,
@@ -568,31 +586,6 @@ class FashionRecommendationLogicPipeline(Toolkit):
         base64_generative_image = (
             base64_generative_image if base64_generative_image else ""
         )
-
-        ##### Identify negative intents #####
-        negative_intents = self.fashion_negative_intent_tools._detect_negative_intents(
-            query=query, chat_history=chat_history, record_time=RECORD_TIME
-        )
-        antonyms_of_disliked_features = None
-        input_to_dislikes_conversion = []
-        if (
-            "disliked_fit_style" in negative_intents
-            and negative_intents["disliked_fit_style"]
-        ):
-            input_to_dislikes_conversion.extend(negative_intents["disliked_fit_style"])
-        if "aesthetics" in negative_intents and negative_intents["aesthetics"]:
-            input_to_dislikes_conversion.extend(negative_intents["aesthetics"])
-        logger.info(f"Disliked features: {input_to_dislikes_conversion}")
-        if input_to_dislikes_conversion != []:
-            antonyms_of_disliked_features = (
-                self._retrieve_antonym_of_disliked_fit_styles(
-                    disliked_fit_styles=input_to_dislikes_conversion,
-                    record_time=RECORD_TIME,
-                )
-            )
-            logger.info(
-                f"Anotnyms of disliked fit styles: {antonyms_of_disliked_features}"
-            )
 
         ##### Ensure previously recommended items are not repeated #####
         ### TODO (session_data): Ensure prev_user_preferences and past_recommendations are stored in the session data
@@ -692,20 +685,44 @@ class FashionRecommendationLogicPipeline(Toolkit):
             )
 
         ### Text Understanding ###
-
-        text_understanding = self.fashion_text_understanding_tools._text_understanding(
-            chat_history=chat_history,
-            query=query,
-            past_recommendations=(
-                past_recommendations["recent"]
-                if past_recommendations is not None and "recent" in past_recommendations
-                else []
-            ),
-            prev_user_preferences=prev_user_preferences,
-            negative_intents=negative_intents,
-            image_to_analyze=image_to_analyze,
-            record_time=RECORD_TIME,
+        text_understanding_start_time = time.time()
+        text_understanding, negative_intents = (
+            self._process_positive_negative_preferences_concurrently(
+                query=query,
+                chat_history=chat_history,
+                past_recommendations=past_recommendations,
+                prev_user_preferences=prev_user_preferences,
+                image_to_analyze=image_to_analyze,
+                record_time=RECORD_TIME,
+            )
         )
+        if RECORD_TIME:
+            logger.info(
+                f"Time taken to process positive and negative preferences: {time.time() - text_understanding_start_time} seconds"
+            )
+        ##### Identify negative intents #####
+        antonyms_of_disliked_features = None
+        input_to_dislikes_conversion = []
+        if (
+            "disliked_fit_style" in negative_intents
+            and negative_intents["disliked_fit_style"]
+        ):
+            input_to_dislikes_conversion.extend(negative_intents["disliked_fit_style"])
+        if "aesthetics" in negative_intents and negative_intents["aesthetics"]:
+            input_to_dislikes_conversion.extend(negative_intents["aesthetics"])
+        logger.info(f"Disliked features: {input_to_dislikes_conversion}")
+        if input_to_dislikes_conversion != []:
+            antonyms_of_disliked_features = (
+                self._retrieve_antonym_of_disliked_fit_styles(
+                    disliked_fit_styles=input_to_dislikes_conversion,
+                    record_time=RECORD_TIME,
+                )
+            )
+            logger.info(
+                f"Anotnyms of disliked fit styles: {antonyms_of_disliked_features}"
+            )
+
+        ##### Identify positive intents #####
         text_understanding = self.general_functions._lowercase_keys(text_understanding)
         item_name = text_understanding["item_name"]
         fit_features = text_understanding["fit_features"]
@@ -974,9 +991,10 @@ class FashionRecommendationLogicPipeline(Toolkit):
                         return_results.append({k: v})
 
         logger.info(f"Return Results: {return_results}")
-        logger.info(
-            "Final time taken to recommend items: " + str(time.time() - start_time)
-        )
+        if RECORD_TIME:
+            logger.info(
+                "Final time taken to recommend items: " + str(time.time() - start_time)
+            )
 
         if self.ENABLE_SESSION_DATA:
             if "recommended_items" not in self.session_data:
