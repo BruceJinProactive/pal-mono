@@ -247,7 +247,7 @@ class AdoraTool(Toolkit):
                     role = message["message"]["role"]
                     if role == "user":
                         chat_history += (
-                            f"**[User]**\n{message["message"]["content"]}\n\n"
+                            f"**[User]**\n{message['message']['content']}\n\n"
                         )
                         chat_history += (
                             f"**[Assistant]**\n{message['response']['content']}\n\n"
