@@ -23,6 +23,11 @@ def format_phone_number(phone_number: str) -> str:
     return digits
 
 
+def is_valid_email(email):
+    pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+    return re.match(pattern, email) is not None
+
+
 def is_valid_date(date: str) -> bool:
     pattern = r"^\d{4}-\d{2}-\d{2}$"
     return bool(re.match(pattern, date))

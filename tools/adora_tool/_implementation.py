@@ -16,7 +16,6 @@ from api.schemas.admin.analytics import Event as AnalyticsEvent
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraOrderType,
-    CustomerInfo,
     DeliveryAddress,
     Order,
     SubQueries,
@@ -448,13 +447,26 @@ class AdoraTool(Toolkit):
             # Override store id
             order.store_id = self.store_id
 
-            # Manually set customer info for now
-            order.customer = CustomerInfo(
-                first_name="Jimmy",
-                last_name="ProactiveAILab (via Jimmy)",
-                phone_number="(555)555-5555",
-                email="jimmythesurfer@proactiveailab.com",
+            if not order.customer:
+                logger.error("Customer info is missing.")
+                return "Customer info is missing."
+            elif not order.customer.first_name:
+                logger.error("Customer first name is missing.")
+                return "Customer first name is missing."
+            elif not order.customer.phone_number:
+                logger.error("Customer phone number is missing.")
+                return "Customer phone number is missing."
+
+            order.customer.last_name = (
+                "(via Jimmy)"
+                if not order.customer.last_name
+                else f"{order.customer.last_name} (via Jimmy)"
             )
+
+            # Set email to default if empty or if it is not valid
+            email = order.customer.email
+            if not email or not _utils.is_valid_email(email):
+                order.customer.email = "jimmythesurfer@proactiveailab.com"
 
             # TODO: Hardcode discount
             order.coupons = [{"coupon_id": 134}]
