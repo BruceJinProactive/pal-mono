@@ -379,8 +379,8 @@ class AdoraTool(Toolkit):
             f"Sales Tax: {validated_order.taxAmount}\n"
         )
 
-        if str(order.order_type) == "Delivery":
-            output += "Delivery Fee: $5\n"
+        if str(order.order_type) == "Delivery" and validated_order.deliveryCharge:
+            output += f"Delivery Fee: {validated_order.deliveryCharge}\n"
 
         if validated_order.discount and validated_order.discount > 0.0:
             output += f"Discount: {validated_order.discount}\n"
