@@ -62,13 +62,13 @@ async def construct_agent_config(
         stream=stream,
     )
 
-    # Convert blueprint to agent config
-    if db_agent.account.name == "pizzamyheart" or db_agent.account.name == "windsor":
-        logger.info("Loading New PizzaMyHeart & windsor config...")
-        return raw_config.build()
-    else:
+    if db_agent.account.name == "palona":
         logger.info("Loading Anna config...")
         return _configs.ANNA_CONFIG
+    else:
+        # Convert blueprint to agent config
+        logger.info("Loading agent config...")
+        return raw_config.build()
 
 
 async def get_ai_agent_async(

@@ -170,10 +170,13 @@ class RawConfig(BaseModel):
         store_id = client.get("store_id", None)
         if store_id is None:
             raise ValueError("`client.store_id` is not provided in `agent_raw_config`.")
+
         tool_map = {
             "pizzamyheart": "adora_tool",
+            "palona-pizza": "adora_tool",
             "windsor": "windsor_tool",
         }
+
         return ToolConfig(
             identifiers=[
                 ToolIdentifier(
