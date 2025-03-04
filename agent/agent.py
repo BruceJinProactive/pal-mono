@@ -75,10 +75,8 @@ class Agent:
                 content=input.content,  # type: ignore
             )  # type: ignore
         )
-        if (
-            self._metadata.account_name == "pizzamyheart"
-            or self._metadata.account_name == "proactiveailab-pizza"
-        ):
+        testing_accounts = ["proactiveailab", "palona"]
+        if self._metadata.account_name not in testing_accounts:
             # TODO: migrate to memory tools once implemeted
             memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
             input.memories = memories
