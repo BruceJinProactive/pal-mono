@@ -4,7 +4,7 @@ from typing import Any, Tuple
 from ddtrace.llmobs.decorators import task
 from geopy.geocoders import Nominatim
 
-from tools.adora_tool.classes import DeliveryAddress
+from tools.adora_tool.classes import AdoraOrderType, DeliveryAddress
 from utils.log import logger
 
 
@@ -31,6 +31,13 @@ def is_valid_date(date: str) -> bool:
 def get_content(text: str) -> str:
     match = re.search(r"<content>\s*(.*?)\s*</content>", text)
     return match.group(1) if match else ""
+
+
+def validate_order_type(order_type: str) -> str:
+    for member in AdoraOrderType:
+        if order_type.lower() == member.lower():
+            return member.value
+    raise ValueError(f"Invalid order type: {order_type}")
 
 
 @task

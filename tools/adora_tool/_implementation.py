@@ -15,6 +15,7 @@ from agent.memory import update_memory
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from tools.adora_tool.classes import (
     AdoraAccessToken,
+    AdoraOrderType,
     CustomerInfo,
     DeliveryAddress,
     Order,
@@ -379,7 +380,10 @@ class AdoraTool(Toolkit):
             f"Sales Tax: {validated_order.taxAmount}\n"
         )
 
-        if str(order.order_type) == "Delivery" and validated_order.deliveryCharge:
+        if (
+            order.order_type == AdoraOrderType.DELIVERY
+            and validated_order.deliveryCharge
+        ):
             output += f"Delivery Fee: {validated_order.deliveryCharge}\n"
 
         if validated_order.discount and validated_order.discount > 0.0:
@@ -415,16 +419,21 @@ class AdoraTool(Toolkit):
 
             if not isinstance(order, Order):
                 raise ValueError("Failed to extract structured data. Please try again.")
+            if not order.order_type:
+                logger.error("No order type specified.")
+                return "Please specify the order type Takeout or Delivery."
+
+            try:
+                # Adora requires a string 'Delivery' or 'TakeOut' as the order type
+                order.order_type = _utils.validate_order_type(order.order_type)
+            except Exception as e:
+                logger.error(f"Could not value order type: {e}")
+                return "Please specify the order type as 'Takeout' or 'Delivery'."
 
             # Validate the address if the order is for delivery
-            if str(order.order_type) == "Delivery":
-                start_time = time.time()
+            if order.order_type == AdoraOrderType.DELIVERY:
                 validate_order_success, validate_order_message = self._validate_address(
                     order.delivery_address  # type: ignore
-                )
-                end_time = time.time()
-                logger.info(
-                    f"Time taken to validate address: {end_time - start_time} seconds"
                 )
 
                 if not validate_order_success:

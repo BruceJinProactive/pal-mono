@@ -139,8 +139,8 @@ class AdoraOrderItem(BaseModel):
 
 
 class AdoraOrderType(StrEnum):
-    Delivery = "Delivery"
-    TakeOut = "TakeOut"
+    DELIVERY = "Delivery"
+    TAKEOUT = "TakeOut"
 
 
 class AdoraOrderCalculationResult(BaseModel):
@@ -247,9 +247,8 @@ class Order(BaseModel):
     store_id: SkipJsonSchema[Optional[str]] = Field(
         default=None, serialization_alias="storeId"
     )
-    order_type: str = Field(
-        default="TakeOut",
-        description="Order type is either `TakeOut` or `Delivery`. By default, use `TakeOut`.",
+    order_type: Optional[str] = Field(
+        description="Order type is either `TakeOut` or `Delivery`. By default, it should be empty.",
         serialization_alias="OrderType",
     )
     order_subtype: SkipJsonSchema[str] = Field(
