@@ -136,11 +136,12 @@ async def get_chat_response_async(
             f"User channel identifier: {message.channel.value}:{message.sender_identifier}"
         )
 
-        # ========================== New - Start ==========================
         # Explicitly load the project.account attribute
         await session.refresh(project, attribute_names=["account"])
-        new_agents = ["palona", "windsor", "pizzamyheart"]
-        if project.account.name in new_agents:
+        old_agents = ["proactiveailab", "wyze", "mindzero"]
+
+        # ========================== New - Start ==========================
+        if project.account.name not in old_agents:
             logger.info("Test new agent building flow.")
 
             # Construct config
