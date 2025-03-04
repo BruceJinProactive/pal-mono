@@ -46,7 +46,7 @@ class AdoraTool(Toolkit):
         loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
 
         # Register tools
-        self.register(self.greeting)
+        # self.register(self.greeting) # TODO: let's unregister this
         self.register(self.check_online_ordering_status)
         self.register(self.get_wait_time)
         self.register(self.checkout_order)
