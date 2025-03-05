@@ -149,6 +149,7 @@ Output Explanation:
                 output_data=ImageIdentificationOutput(
                     int(image_of_interest["image_of_interest"])
                 ),
+                tags={"windsor": "test"},
             )
             return ImageIdentificationOutput(
                 int(image_of_interest["image_of_interest"])
@@ -160,6 +161,7 @@ Output Explanation:
                     "query": query,
                 },
                 output_data=ImageIdentificationOutput(int(image_of_interest.values())),
+                tags={"windsor": "test"},
             )
 
             return ImageIdentificationOutput(int(image_of_interest.values()))
@@ -175,7 +177,7 @@ Output Explanation:
         """
         return {k.lower(): v for k, v in dictionary.items()}
 
-    @task(name="image_understanding")
+    @task(name="Image Understanding")
     def _image_understanding(
         self,
         base64_image: str,
@@ -302,6 +304,9 @@ Provide the output in the following JSON structure:
             "image_understanding"
         ] = image_understanding
 
-        LLMObs.annotate(output_data=str(image_understanding))
+        LLMObs.annotate(
+            output_data=str(image_understanding),
+            tags={"windsor": "test"},
+        )
 
         return str(image_understanding)

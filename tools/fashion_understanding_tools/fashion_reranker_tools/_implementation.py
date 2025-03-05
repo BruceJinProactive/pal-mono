@@ -85,7 +85,7 @@ class FashionRerankerTools:
         probabilities = self._softmax(np.array([true_logprob, false_logprob]))
         return probabilities[0]  # Probability that the item is "True"
 
-    @task(name="reranking")
+    @task(name="Reranking")
     def _reranking(
         self,
         items: List[dict],
@@ -150,5 +150,6 @@ class FashionRerankerTools:
                 "current_query": current_query,
             },
             output_data={"reranked_items": reranked_items},
+            tags={"windsor": "test"},
         )
         return reranked_items

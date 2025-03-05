@@ -4,61 +4,74 @@ import random
 
 import requests
 
+#####################
+# Usage: python3 -m tools.fashion_understanding_tools.test -e <local|lat|stg> -I
+# Set -I if you want to communicate with the agent multiple times in one conversation
+# Example: python3 -m tools.fashion_understanding_tools.test -e local -I
+#####################
+
+
+def query(prompt: str, endpoint: str, hash: int = random.getrandbits(128)):
+
+    endpoints = {
+        "local": "http://localhost:8000/v1/chat/",
+        "lat": "http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/v1/chat/",
+        "stg": "http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/v1/chat/",
+    }
+
+    if endpoint not in endpoints:
+        print("Invalid endpoint")
+        return
+    endpoint = endpoints[endpoint]
+
+    payload = {
+        "message": {
+            "author_type": "user",
+            "sender_identifier": f"demo-user-{hash}",
+            "recipient_identifier": "windsor-default",
+            "channel": "api",
+            "broker": None,
+            "type": "text",
+            "text": {"body": prompt},
+            "context": "",
+        }
+    }
+    start = datetime.datetime.now()
+    response = requests.post(endpoint, json=payload)
+    end = datetime.datetime.now()
+    execution_time = end - start
+
+    json_res = response.json()
+
+    print(f"Total execution time: {execution_time.total_seconds()} seconds")
+    image_urls = []
+    for message in json_res["messages"]:
+        if message.get("media", None) is not None:
+            image_urls.append(message["media"]["url"])
+
+    final_response = json_res["messages"][0]["text"]["body"]
+
+    print(final_response)
+    print(f"Image URLs: {image_urls}")
+    return final_response
+
 
 def get_textual_response(prompt, endpoint: str = "local"):
     hash = random.getrandbits(128)  # create new user
+    query(prompt, endpoint, hash)
 
-    def query(prompt: str, endpoint: str):
-        # endpoint = "http://localhost:8000/v1/chat/"
 
-        endpoints = {
-            "local": "http://localhost:8000/v1/chat/",
-            "lat": "http://pal-mono-lat-api-lb-1443082111.us-west-1.elb.amazonaws.com/v1/chat/",
-            "stg": "http://pal-mono-stg-api-lb-1164693723.us-west-1.elb.amazonaws.com/v1/chat/",
-        }
+def get_textual_response_interactive(endpoint: str = "local"):
+    hash = random.getrandbits(128)  # create new user
+    user_query = input("Enter your query. Type q/quit to exit: ")
 
-        if endpoint not in endpoints:
-            print("Invalid endpoint")
-            return
-        endpoint = endpoints[endpoint]
-
-        payload = {
-            "message": {
-                "author_type": "user",
-                "sender_identifier": f"demo-user-{hash}",
-                "recipient_identifier": "windsor-default",
-                "channel": "api",
-                "broker": None,
-                "type": "text",
-                "text": {"body": prompt},
-                "context": "",
-            }
-        }
-        start = datetime.datetime.now()
-        response = requests.post(endpoint, json=payload)
-        end = datetime.datetime.now()
-        execution_time = end - start
-        print("Response:")
-        print(response.json())
-        json_res = response.json()
-
-        print(f"Total execution time: {execution_time.total_seconds()} seconds")
-        image_urls = []
-        for message in json_res["messages"]:
-            if message.get("media", None) is not None:
-                image_urls.append(message["media"]["url"])
-
-        final_response = json_res["messages"][0]["text"]["body"]
-
-        print(final_response)
-        print(f"Image URLs: {image_urls}")
-        return final_response
-
-    query(prompt, endpoint)
+    while user_query.lower() not in ["q", "quit"]:
+        query(user_query, endpoint, hash)
+        user_query = input("Enter your query. Type q/quit to exit: ")
 
 
 if __name__ == "__main__":
-    # Usage: python3 -m tools.fashion_understanding_tools.test -e <local|lat|stg>
+
     # Parse arguments
     parser = argparse.ArgumentParser(description="Test Fashion Recommendation Logic")
     parser.add_argument(
@@ -69,33 +82,26 @@ if __name__ == "__main__":
         help="API endpoint to test. Options: local, lat, stg",
     )
     parser.add_argument(
-        "-S",
-        "--structured_output",
+        "-I",
+        "--interactive",
         action="store_true",
         default=False,
-        help="Whether to return structured output",
+        help="Whether to run in interactive mode",
     )
     args = parser.parse_args()
 
+    # Set endpoint
     endpoint = args.endpoint
+
+    # If run in interactive mode, allow user to input multiple queries
+    if args.interactive:
+        get_textual_response_interactive(endpoint=endpoint)
+        exit()
 
     # Obtain agent response and recommendation
     chat_history = []
-    query = """Hi! I'm looking for a new maxi dress for a cocktail party. Chic. No specific preference for color. Select a color for me. Any recommendations?"""
-
-    # Instruction prompt for evaluation
-    prompt = f"""
-Call `_recommendation_logic` with the exact parameters as below:
-```
-query = {query}
-return_json = True
-```
-
-Returned output should contain no new line characters.
-"""
-    if not args.structured_output:
-        prompt = query
-    get_textual_response(prompt=prompt, endpoint=endpoint)
+    user_query = """Hi! I'm looking for a new maxi dress for a cocktail party. Chic. No specific preference for color. Select a color for me. Any recommendations?"""
+    get_textual_response(prompt=user_query, endpoint=endpoint)
 
 
 ############################    OLD TEST CASE    ############################

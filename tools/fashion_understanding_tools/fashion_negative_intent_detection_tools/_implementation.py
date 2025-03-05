@@ -158,5 +158,6 @@ class FashionNegativeIntentTools:
         LLMObs.annotate(
             input_data={"query": query, "chat_history": chat_history},
             output_data=answer,
+            tags={"windsor": "test"},
         )
         return answer

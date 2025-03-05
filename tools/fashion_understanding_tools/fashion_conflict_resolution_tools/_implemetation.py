@@ -167,5 +167,6 @@ By following these guidelines, provide a well-informed and tailored response in 
                 "text_understanding": text_understanding,
             },
             output_data=answer,
+            tags={"windsor": "test"},
         )
         return answer

@@ -267,5 +267,6 @@ Format the response in the following JSON structure:
                 "chat_history": chat_history,
             },
             output_data=response_dict,
+            tags={"windsor": "test"},
         )
         return response_dict

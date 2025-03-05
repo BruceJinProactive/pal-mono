@@ -126,7 +126,10 @@ class FashionRecommendationLogicPipeline(Toolkit):
         session_data = session_data.session_data
         if not session_data:
             return {}
-        LLMObs.annotate(output_data=session_data)
+        LLMObs.annotate(
+            output_data=session_data,
+            tags={"windsor": "test"},
+        )
 
         return session_data
 
@@ -151,6 +154,18 @@ class FashionRecommendationLogicPipeline(Toolkit):
         session.session_data = session_data
         storage.upsert(session)
 
+    def _get_user_content(self, text: str) -> str:
+        match = re.search(r"<content>\s*(.*?)\s*</content>", text)
+        return match.group(1) if match else ""
+
+    def _get_assistant_content(self, text: str) -> str:
+        try:
+            response = json.loads(text)["content"]
+            return response
+        except (json.JSONDecodeError, KeyError):
+            logger.error(f"Error in getting assistant content: {text}")
+            return ""
+
     @retrieval
     def _get_chat_history(self) -> str:
         try:
@@ -161,7 +176,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
                 if not agent_session:
                     logger.error(
-                        "Agent session not found for\n"
+                        "Agent chat history not found for\n"
                         f"Account Name: {self.account_name}\n"
                         f"Account ID: {self.account_id}\n"
                         f"Agent ID: {self.agent_id}\n"
@@ -177,17 +192,24 @@ class FashionRecommendationLogicPipeline(Toolkit):
                 for message in messages:
                     role = message["message"]["role"]
                     if role == "user":
-                        user_content = self._get_content(message["message"]["content"])  # type: ignore
-                        chat_history += f"**[User]**\n{user_content}\n\n"
-                        chat_history += (
-                            f"**[Assistant]**\n{message['response']['content']}\n\n"
+                        user_content = (
+                            self._get_user_content(message["message"]["content"])
+                            or message["message"]["content"]
                         )
+                        chat_history += f"**[User]**\n{user_content}\n\n"
+                        assistant_content = (
+                            self._get_assistant_content(message["response"]["content"])
+                            or message["response"]["content"]
+                        )
+                        chat_history += f"**[Assistant]**\n{assistant_content}\n\n"
                     else:
                         logger.info(
                             f"Skipping appending message to chat history:\n{message}"
                         )
+                logger.info(f"Chat history: {chat_history}")
                 LLMObs.annotate(
                     output_data=chat_history,
+                    tags={"windsor": "test"},
                 )
                 return chat_history
 
@@ -575,7 +597,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         f"""This function retrieves clothings, accesories, costumes information from the knowledge base based on the user's query and/or the image uploaded by the user. This function can access user query, chat history and the image uploaded by the user and use it to retrieve similar fashion items from the knowledge base.
 
             Args:
-                query (str): The user input query.
+                query (str): The exact query input by the user. Do not paraphrase the query.
                 top_k (int): The number of fashion items to return. Defaults to {top_k}. If the user does not specify the number of items to return, the function must return the top {top_k} fashion items.
             Returns:
                 retrieved fashion items from the knowledge base.
@@ -1025,6 +1047,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         LLMObs.annotate(
             input_data={"chat_history": chat_history, "query": query},
             output_data={"fashion_items": return_results, "image_urls": image_urls},
+            tags={"windsor": "test"},
         )
         final_instructions = f"""Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user. \n\nPlace the image urls exactly as they are in the following structure: <image_urls>{image_urls}</image_urls>. Do **not** modify, rephrase, or simplify any of the image urls in any way."""
         if return_json:

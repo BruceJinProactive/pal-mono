@@ -460,7 +460,10 @@ class FashionRagSearchFilterUtilsTools:
 
         result = {}
         result["filter"] = filter if filter else None
-        LLMObs.annotate(output_data=result)
+        LLMObs.annotate(
+            output_data=result,
+            tags={"windsor": "test"},
+        )
         return result
 
     @task(name="Relax Filters")
