@@ -10,6 +10,8 @@ from typing import Any, Dict, List
 
 from agno.storage.agent.session import AgentSession
 from agno.tools.toolkit import Toolkit
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import retrieval, task, tool
 from openai import AsyncOpenAI, OpenAI
 
 from agent.legacy.storage import get_storage
@@ -106,6 +108,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             client=self.client, client_async=self.client_async
         )
 
+    @retrieval
     def _get_session_data(self) -> Dict[str, Any]:
         storage = get_storage(self.account_name)
         session_data = storage.read(str(self.session_id), str(self.user_id))
@@ -123,6 +126,8 @@ class FashionRecommendationLogicPipeline(Toolkit):
         session_data = session_data.session_data
         if not session_data:
             return {}
+        LLMObs.annotate(output_data=session_data)
+
         return session_data
 
     def _write_session_data(self, session_data: Dict[str, Any]) -> None:
@@ -146,6 +151,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         session.session_data = session_data
         storage.upsert(session)
 
+    @retrieval
     def _get_chat_history(self) -> str:
         try:
             try:
@@ -180,7 +186,9 @@ class FashionRecommendationLogicPipeline(Toolkit):
                         logger.info(
                             f"Skipping appending message to chat history:\n{message}"
                         )
-
+                LLMObs.annotate(
+                    output_data=chat_history,
+                )
                 return chat_history
 
             except ValueError:
@@ -209,6 +217,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         str_final = f"In addition, create a sense of urgency by telling the user that, if the user purchases the product in {str_countdown_mins} minutes, the user will get an extra {str_percentage} percent off on this product. And this offer is exclusive to the user only."
         return str_final
 
+    @task(name="Get Close Up Images")
     def get_close_up_images(self, query: str) -> str:
         """This function provides a close-up view of the previously recommended fashion items based on the user's query.
 
@@ -226,17 +235,21 @@ class FashionRecommendationLogicPipeline(Toolkit):
         - When the user selects any item from the previously recommended fashion options.
         - When the user requests a close-up view again after reviewing the first or second set of images.
         """
-        # Load the session data and chat history
-        self.session_data = self._get_session_data()
+        # Load the session data
+        session_data = self._get_session_data()
+        # Convert the session data to a dictionary if it is not already
+        if not isinstance(session_data, dict):
+            session_data = json.loads(session_data)  # type: ignore
+        # Load chat history
         chat_history = self._get_chat_history()
         logger.info("Triggered get_close_up_images")
         logger.info(
-            f"Previous user preferences: {self.session_data['prev_user_preferences']}"
+            f"Previous user preferences: {session_data['prev_user_preferences']}"
         )
         logger.info(
-            f'Initial Recommended Items: {self.session_data["recommended_items"]["recent"]}'
+            f'Initial Recommended Items: {session_data["recommended_items"]["recent"]}'
         )
-        if self.session_data == []:
+        if session_data == []:
             return """Unfortunately, there are no fashion items that match the user's query. Please specify your preferences and try again."""
 
         # Ask GPT to identify the item that the user wants to see a close-up view of
@@ -248,7 +261,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                 },
                 {
                     "role": "user",
-                    "content": f"""Here is the chat history: "{chat_history}". Here is the user's query: "{query}". Here is the previously recommended fashion items: "{self.session_data["recommended_items"]["recent"]}". Select the item that the user wants to see a close-up view of and return the index of the item (starting from 0).""",
+                    "content": f"""Here is the chat history: "{chat_history}". Here is the user's query: "{query}". Here is the previously recommended fashion items: "{session_data["recommended_items"]["recent"]}". Select the item that the user wants to see a close-up view of and return the index of the item (starting from 0).""",
                 },
             ],
             model="gpt-4o-2024-08-06",
@@ -269,45 +282,41 @@ class FashionRecommendationLogicPipeline(Toolkit):
         index = json.loads(answer)["index_of_item"]
         logger.info(f"Item Index: {index}")
         logger.info(
-            f'Close up Image Results: {self.session_data["recommended_items"]["recent"][index]}'
+            f'Close up Image Results: {session_data["recommended_items"]["recent"][index]}'
         )
 
         # get the first three images
         result = {
             "item_names": [
                 copy.deepcopy(
-                    self.session_data["recommended_items"]["recent"][index]["title"]
+                    session_data["recommended_items"]["recent"][index]["title"]
                 )
                 * len(
-                    self.session_data["recommended_items"]["recent"][index][
-                        "image_urls"
-                    ][:4]
+                    session_data["recommended_items"]["recent"][index]["image_urls"][:4]
                 )
             ],
             "images": copy.deepcopy(
-                self.session_data["recommended_items"]["recent"][index]["image_urls"][
-                    :4
-                ]
+                session_data["recommended_items"]["recent"][index]["image_urls"][:4]
             ),
         }
-        if "spotlight" not in self.session_data:
-            self.session_data["spotlight"] = []
+        if "spotlight" not in session_data:
+            session_data["spotlight"] = []
 
-        self.session_data["spotlight"] = [
-            copy.deepcopy(self.session_data["recommended_items"]["recent"][index])
+        session_data["spotlight"] = [
+            copy.deepcopy(session_data["recommended_items"]["recent"][index])
         ]
-        self.session_data["spotlight"][0].pop("image_urls")
+        session_data["spotlight"][0].pop("image_urls")
         logger.info(f"Close up Image Results: {result}")
 
-        self.session_data["displayed_images"] = result
+        session_data["displayed_images"] = result
 
         # Update previous user preferences in the agent's session data
-        target_item = self.session_data["recommended_items"]["recent"][index]
-        self.session_data["prev_user_preferences"] = (
+        target_item = session_data["recommended_items"]["recent"][index]
+        session_data["prev_user_preferences"] = (
             f"color: {target_item['colors']}, item_name: {target_item['title']}, fit_features: {target_item['fit_features']}"
         )
 
-        return f"""Return the following retrieved fashion item that the user selected: {self.session_data['spotlight']} exactly as it is. 
+        return f"""Return the following retrieved fashion item that the user selected: {session_data['spotlight']} exactly as it is. 
         In addition, persuade the user to purchase the item by highlighting its unique features with sales language.
         ### Examples of sales language:
         1. Affirmativeness: 
@@ -350,6 +359,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
     def rewrite_occasions(self, occasions: List) -> str:
         return "Occasion(s): " + ", ".join(occasions) if occasions else ""
 
+    @task(name="Retrieve Antonym of Disliked Fit Styles")
     def _retrieve_antonym_of_disliked_fit_styles(
         self, disliked_fit_styles: list, record_time: bool = True
     ) -> List:
@@ -468,6 +478,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             logger.error("Failed to parse GPT response for preferred styles.")
             return []
 
+    @task(name="Past Image Identifier")
     def past_image_identifier(
         self, query: str, chat_history: List | str, record_time: bool = True
     ) -> int:
@@ -552,6 +563,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
             return text_understanding, negative_intents
 
+    @tool
     def _recommendation_logic(
         self,
         query: str,
@@ -578,7 +590,13 @@ class FashionRecommendationLogicPipeline(Toolkit):
             - If the user's query does not specify the amount of fashion items to return, you must return the top {top_k} fashion items (i.e. top_k={top_k}).
             """
         start_time = time.time()
-        self.session_data = self._get_session_data()
+        # Load the session data
+        session_data = self._get_session_data()
+        # Convert session_data to a dictionary if it is not already
+        if not isinstance(session_data, dict):
+            session_data = json.loads(session_data)  # type: ignore
+
+        # Get the chat history
         chat_history = self._get_chat_history()
         ### TODO: Define the way to collect user query, chat history, and image uploaded by the user.
         chat_history = chat_history if chat_history else []
@@ -591,15 +609,15 @@ class FashionRecommendationLogicPipeline(Toolkit):
         ### TODO (session_data): Ensure prev_user_preferences and past_recommendations are stored in the session data
         filtered_items = []
         if (
-            "recommended_items" in self.session_data
-            and "all" in self.session_data["recommended_items"]
+            "recommended_items" in session_data
+            and "all" in session_data["recommended_items"]
         ):
-            for item in self.session_data["recommended_items"]["all"]:
+            for item in session_data["recommended_items"]["all"]:
                 if "item_name" in item:
                     filtered_items.append(item["item_name"])
 
-        prev_user_preferences = self.session_data.get("prev_user_preferences", None)
-        past_recommendations = self.session_data.get("recommended_items", None)
+        prev_user_preferences = session_data.get("prev_user_preferences", None)
+        past_recommendations = session_data.get("recommended_items", None)
 
         ##### Rewrite user query #####
 
@@ -613,12 +631,12 @@ class FashionRecommendationLogicPipeline(Toolkit):
         0 means the image is from the uploaded image, 1 means the image is from the recommended items. 2 means no image.
         """
         image_to_analyze = self.fashion_image_understanding_tools._image_identifier(
-            query=query, chat_history=chat_history, record_time=RECORD_TIME
+            query=query, chat_history=chat_history, record_time=RECORD_TIME  # type: ignore
         )
         # See if the agent thinks the user is referencing an image from the past but there is no image from the past
         if (
             image_to_analyze == ImageIdentificationOutput.RECOMMENDED_ITEMS
-            and "recommended_items" not in self.session_data
+            and "recommended_items" not in session_data
         ):
             # User is not referencing an image from the past
             image_to_analyze = ImageIdentificationOutput.NO_IMAGE
@@ -628,19 +646,17 @@ class FashionRecommendationLogicPipeline(Toolkit):
         # If the user is referencing an image from the past
         if image_to_analyze == ImageIdentificationOutput.RECOMMENDED_ITEMS:
             past_image_index = self.past_image_identifier(
-                query=query, chat_history=chat_history, record_time=RECORD_TIME
+                query=query, chat_history=chat_history, record_time=RECORD_TIME  # type: ignore
             )
             logger.info(f"Past image to analyze: {past_image_index}")
 
             try:
-                image_url = self.session_data["recommended_items"]["recent_image_urls"][
+                image_url = session_data["recommended_items"]["recent_image_urls"][
                     image_to_analyze
                 ]
             except IndexError:
                 logger.error(f"Index {image_to_analyze} is out of range.")
-                image_url = self.session_data["recommended_items"]["recent_image_urls"][
-                    0
-                ]
+                image_url = session_data["recommended_items"]["recent_image_urls"][0]
 
             base64_image_input = (
                 self.fashion_image_understanding_tools._image_url_to_base64(image_url)
@@ -672,7 +688,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         # If the user is referencing an uploaded image
         elif image_to_analyze == ImageIdentificationOutput.UPLOADED_IMAGE:
             # TODO: Discuss with the ENG team on how to store the uploaded image
-            base64_image_input = self.session_data["base64_image"]
+            base64_image_input = session_data["base64_image"]
             image_understanding = json.loads(
                 (
                     self.fashion_image_understanding_tools._image_understanding(
@@ -689,10 +705,10 @@ class FashionRecommendationLogicPipeline(Toolkit):
         text_understanding, negative_intents = (
             self._process_positive_negative_preferences_concurrently(
                 query=query,
-                chat_history=chat_history,
+                chat_history=chat_history,  # type: ignore
                 past_recommendations=past_recommendations,
                 prev_user_preferences=prev_user_preferences,
-                image_to_analyze=image_to_analyze,
+                image_to_analyze=image_to_analyze,  # type: ignore
                 record_time=RECORD_TIME,
             )
         )
@@ -775,7 +791,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                     query,
                     image_understanding,
                     text_understanding,
-                    chat_history,
+                    chat_history,  # type: ignore
                     record_time=RECORD_TIME,
                 )
             )
@@ -810,7 +826,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         ### Store the user's preference in the session data for future reference ###
         full_description = f"occasion:{occasions}. category:{categories}. color:{colors}. item_name:{item_name}. fit_features:{fit_features}"
         if self.ENABLE_SESSION_DATA:
-            self.session_data["prev_user_preferences"] = full_description
+            session_data["prev_user_preferences"] = full_description
 
         ##### Retrieve fashion items from the knowledge base #####
         # Ensure occasions is a list of strings
@@ -942,27 +958,27 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
         item_names = [i["title"] for i in copy.deepcopy(final_results)]
 
-        # self.session_data = {"recent_recommended_items": copy.deepcopy(final_results)}
+        # session_data = {"recent_recommended_items": copy.deepcopy(final_results)}
         if self.ENABLE_SESSION_DATA:
-            if "recommended_items" not in self.session_data:
-                self.session_data["recommended_items"] = {
+            if "recommended_items" not in session_data:
+                session_data["recommended_items"] = {
                     "recent": copy.deepcopy(final_results),
                     "all": combined_labels,
                 }
             else:
-                self.session_data["recommended_items"]["recent"] = copy.deepcopy(
+                session_data["recommended_items"]["recent"] = copy.deepcopy(
                     final_results
                 )
                 # add the item_names to the front of the list
                 logger.info(f"Combined Names Labels: {combined_labels}")
-                self.session_data["recommended_items"]["all"] = (
-                    combined_labels + self.session_data["recommended_items"]["all"]
+                session_data["recommended_items"]["all"] = (
+                    combined_labels + session_data["recommended_items"]["all"]
                 )
 
         logger.info(f"Images: {images}")
 
         if self.ENABLE_SESSION_DATA:
-            self.session_data["displayed_images"] = images
+            session_data["displayed_images"] = images
 
         if len(final_results) == 0:
             return """Unfortunately, there are no fashion items that match the user's query. Please try again with a different query."""
@@ -997,16 +1013,19 @@ class FashionRecommendationLogicPipeline(Toolkit):
             )
 
         if self.ENABLE_SESSION_DATA:
-            if "recommended_items" not in self.session_data:
-                self.session_data["recommended_items"] = {}
+            if "recommended_items" not in session_data:
+                session_data["recommended_items"] = {}
 
-            self.session_data["recommended_items"]["recent_image_urls"] = images.get(
+            session_data["recommended_items"]["recent_image_urls"] = images.get(
                 "images", []
             )
 
-            self._write_session_data(self.session_data)
+            self._write_session_data(session_data)
         logger.info(f"results: {return_results}")
-
+        LLMObs.annotate(
+            input_data={"chat_history": chat_history, "query": query},
+            output_data={"fashion_items": return_results, "image_urls": image_urls},
+        )
         final_instructions = f"""Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user. \n\nPlace the image urls exactly as they are in the following structure: <image_urls>{image_urls}</image_urls>. Do **not** modify, rephrase, or simplify any of the image urls in any way."""
         if return_json:
             return f"""Extract the fashion items and return them to the user in the exact JSON format as {return_results}. DO NOT modify, rephrase, or paraphrase any content within the JSON structure. Maintain the original formatting precisely.

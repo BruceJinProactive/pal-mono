@@ -5,6 +5,8 @@ import time
 from typing import Union
 
 import requests
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI, OpenAI
 from PIL import Image
 
@@ -47,6 +49,7 @@ class FashionImageUnderstandingTools:
             print(f"Error converting image URL to base64: {e}")
             return ""
 
+    @task(name="Image Identifier")
     def _image_identifier(
         self,
         chat_history: list | str,
@@ -138,11 +141,28 @@ Output Explanation:
             logger.info(f"Time taken to identify the image: {time_taken}")
 
         if "image_of_interest" in image_of_interest:
+            LLMObs.annotate(
+                input_data={
+                    "chat_history": chat_history,
+                    "query": query,
+                },
+                output_data=ImageIdentificationOutput(
+                    int(image_of_interest["image_of_interest"])
+                ),
+            )
             return ImageIdentificationOutput(
                 int(image_of_interest["image_of_interest"])
             )
         else:
-            return ImageIdentificationOutput(image_of_interest.values())
+            LLMObs.annotate(
+                input_data={
+                    "chat_history": chat_history,
+                    "query": query,
+                },
+                output_data=ImageIdentificationOutput(int(image_of_interest.values())),
+            )
+
+            return ImageIdentificationOutput(int(image_of_interest.values()))
 
     def _lowercase_keys(self, dictionary: dict) -> dict:
         """This function converts all keys in a dictionary to lowercase.
@@ -155,6 +175,7 @@ Output Explanation:
         """
         return {k.lower(): v for k, v in dictionary.items()}
 
+    @task(name="image_understanding")
     def _image_understanding(
         self,
         base64_image: str,
@@ -280,4 +301,7 @@ Provide the output in the following JSON structure:
         self.session_data["image_understandings_memory"][base64_image][
             "image_understanding"
         ] = image_understanding
+
+        LLMObs.annotate(output_data=str(image_understanding))
+
         return str(image_understanding)

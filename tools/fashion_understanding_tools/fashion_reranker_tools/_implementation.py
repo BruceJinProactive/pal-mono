@@ -3,6 +3,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 
 import numpy as np
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI, OpenAI
 
 from utils.log import logger
@@ -83,6 +85,7 @@ class FashionRerankerTools:
         probabilities = self._softmax(np.array([true_logprob, false_logprob]))
         return probabilities[0]  # Probability that the item is "True"
 
+    @task(name="reranking")
     def _reranking(
         self,
         items: List[dict],
@@ -139,4 +142,13 @@ class FashionRerankerTools:
         reranked_items = [
             item for _, item in sorted(zip(ranked_scores, items), key=lambda x: x[0])
         ]
+        LLMObs.annotate(
+            input_data={
+                "items": items,
+                "positive_preference": positive_preference,
+                "negative_intents": negative_intents,
+                "current_query": current_query,
+            },
+            output_data={"reranked_items": reranked_items},
+        )
         return reranked_items

@@ -2,6 +2,8 @@ import json
 import time
 from typing import List
 
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI, OpenAI
 
 from utils.log import logger
@@ -23,6 +25,7 @@ class FashionNegativeIntentTools:
 
         self.hierarchy = hierarchy
 
+    @task(name="Detect Negative Intents")
     def _detect_negative_intents(
         self, query: str, chat_history: List | str, record_time: bool = True
     ) -> dict:
@@ -152,5 +155,8 @@ class FashionNegativeIntentTools:
             )
 
         self.session_data["prev_negative_intents"] = answer
-
+        LLMObs.annotate(
+            input_data={"query": query, "chat_history": chat_history},
+            output_data=answer,
+        )
         return answer

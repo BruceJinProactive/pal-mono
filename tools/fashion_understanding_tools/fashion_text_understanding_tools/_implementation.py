@@ -2,6 +2,8 @@ import json
 import time
 from typing import List
 
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI, OpenAI
 
 from utils.log import logger
@@ -18,6 +20,7 @@ class FashionTextUnderstandingTools:
         self.client = client
         self.client_async = client_async
 
+    @task(name="Text Understanding")
     def _text_understanding(
         self,
         chat_history: List | str,
@@ -258,5 +261,11 @@ Format the response in the following JSON structure:
 
         if "properties" in response_dict:
             response_dict = response_dict["properties"]
-
+        LLMObs.annotate(
+            input_data={
+                "query": query,
+                "chat_history": chat_history,
+            },
+            output_data=response_dict,
+        )
         return response_dict

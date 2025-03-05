@@ -1,6 +1,8 @@
 import json
 import time
 
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncOpenAI, OpenAI
 
 from utils.log import logger
@@ -39,6 +41,7 @@ class FashionConflictResolutionTools:
 
         self.hierarchy = hierarchy
 
+    @task(name="Resolve Conflicts")
     def _resolve_conflicts(
         self,
         user_query: str,
@@ -156,4 +159,13 @@ By following these guidelines, provide a well-informed and tailored response in 
             )
 
         logger.info("Resolved Conflicts: " + json.dumps(answer, indent=4))
+        LLMObs.annotate(
+            input_data={
+                "chat_history": chat_history,
+                "query": user_query,
+                "image_understanding": image_understanding,
+                "text_understanding": text_understanding,
+            },
+            output_data=answer,
+        )
         return answer

@@ -10,6 +10,8 @@ from typing import Any, List, Union
 import cohere
 import numpy as np
 import vertexai
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from google.oauth2 import service_account
 from openai import AsyncOpenAI, OpenAI
 from PIL import Image
@@ -77,6 +79,7 @@ class FashionRagSearchFilterUtilsTools:
         )
 
     ### TODO: Finalize the text/image embedding retriever
+    @task(name="Get Text Embedding")
     def _get_text_embedding(
         self, text: str, GOOGLE_VERTEX: bool = False
     ) -> List[float] | None:
@@ -181,12 +184,12 @@ class FashionRagSearchFilterUtilsTools:
             # concatenate the image's colors
             negative_embeddings.append(
                 self._get_text_embedding(
-                    ", ".join(conflict["image"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
+                    text=", ".join(conflict["image"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX  # type: ignore
                 )
             )
             positive_embeddings.append(
                 self._get_text_embedding(
-                    ", ".join(conflict["user"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX
+                    text=", ".join(conflict["user"]), GOOGLE_VERTEX=USE_GOOGLE_VERTEX  # type: ignore
                 )
             )
 
@@ -199,6 +202,7 @@ class FashionRagSearchFilterUtilsTools:
 
             return positive_embeddings, negative_embeddings
 
+    @task(name="Searching Pinecone")
     def _text2img_search(
         self,
         query_text,
@@ -224,15 +228,15 @@ class FashionRagSearchFilterUtilsTools:
         logger.info(f"Query Text: {query_text}")
         if isinstance(query_text, list):
             query_embedding = [
-                self._get_text_embedding(text, GOOGLE_VERTEX=USE_GOOGLE_VERTEX)
+                self._get_text_embedding(text=text, GOOGLE_VERTEX=USE_GOOGLE_VERTEX)  # type: ignore
                 for text in query_text
             ]
             query_embedding = np.average(
-                [qe for qe in query_embedding if qe is not None], axis=0
+                [qe for qe in query_embedding if qe is not None], axis=0  # type: ignore
             ).tolist()
         else:
             query_embedding = self._get_text_embedding(
-                query_text, GOOGLE_VERTEX=USE_GOOGLE_VERTEX
+                text=query_text, GOOGLE_VERTEX=USE_GOOGLE_VERTEX  # type: ignore
             )
 
         if base64_image is not None:
@@ -264,8 +268,8 @@ class FashionRagSearchFilterUtilsTools:
                         query_embedding = (
                             np.array(
                                 self._get_text_embedding(
-                                    rag_query_for_image_search,
-                                    GOOGLE_VERTEX=USE_GOOGLE_VERTEX,
+                                    text=rag_query_for_image_search,  # type: ignore
+                                    GOOGLE_VERTEX=USE_GOOGLE_VERTEX,  # type: ignore
                                 )
                             )
                             + np.array(image_embedding)
@@ -278,8 +282,8 @@ class FashionRagSearchFilterUtilsTools:
                         query_embedding = (
                             np.array(
                                 self._get_text_embedding(
-                                    rag_query_for_image_search,
-                                    GOOGLE_VERTEX=USE_GOOGLE_VERTEX,
+                                    text=rag_query_for_image_search,  # type: ignore
+                                    GOOGLE_VERTEX=USE_GOOGLE_VERTEX,  # type: ignore
                                 )
                             )
                             + np.array(image_embedding)
@@ -310,7 +314,7 @@ class FashionRagSearchFilterUtilsTools:
         # Query Pinecone
         query_response = self.pc_index.query(
             namespace=self.pinecone_namespace,
-            vector=query_embedding,
+            vector=query_embedding,  # type: ignore
             top_k=top_k,
             include_values=False,
             include_metadata=True,
@@ -327,6 +331,7 @@ class FashionRagSearchFilterUtilsTools:
             )
         return results, scores
 
+    @task(name="Organize Filters")
     def _get_filters(
         self,
         occasions: List[str],
@@ -455,9 +460,10 @@ class FashionRagSearchFilterUtilsTools:
 
         result = {}
         result["filter"] = filter if filter else None
-
+        LLMObs.annotate(output_data=result)
         return result
 
+    @task(name="Relax Filters")
     def _relax_filters(
         self,
         query_text: str,
@@ -498,8 +504,8 @@ class FashionRagSearchFilterUtilsTools:
 
         for i in range(len(release_order) + 1):
             release_criteria = release_order[:i]
-            filter_criteria = self._get_filters(
-                occasions,
+            filter_criteria = self._get_filters(  # type: ignore
+                occasions,  # type: ignore
                 categories,
                 colors,
                 filtered_items,
@@ -507,8 +513,8 @@ class FashionRagSearchFilterUtilsTools:
                 negative_intents=negative_intents,
             )["filter"]
 
-            results, scores = self._text2img_search(
-                query_text=query_text, top_k=top_k, filter=filter_criteria
+            results, scores = self._text2img_search(  # type: ignore
+                query_text=query_text, top_k=top_k, filter=filter_criteria  # type: ignore
             )
 
             # Accumulate unique results to avoid duplicates
