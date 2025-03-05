@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import os
-import time
 import traceback
 import uuid
 
@@ -246,12 +245,11 @@ class AdoraTool(Toolkit):
                 for message in messages:
                     role = message["message"]["role"]
                     if role == "user":
-                        chat_history += (
-                            f"**[User]**\n{message['message']['content']}\n\n"
-                        )
-                        chat_history += (
-                            f"**[Assistant]**\n{message['response']['content']}\n\n"
-                        )
+                        user_content = message["message"]["content"]
+                        chat_history += f"**[User]**\n{user_content}\n\n"
+
+                        assistant_content = message["response"]["content"]
+                        chat_history += f"**[Assistant]**\n{assistant_content}\n\n"
                     else:
                         logger.info(
                             f"Skipping appending message to chat history:\n{message}"
@@ -333,33 +331,15 @@ class AdoraTool(Toolkit):
         if not validated_order or not validated_order.key:
             return "Failed to validate order. Please try again."
 
-        # save validated order in Adora system, get order ID
-        logger.info("[AdoraTool.checkout_order] Saving validated order...")
+        text_payment_url = validated_order.paymentUrl
 
-        saved_order = _apis.save_validated_order(bearer_token, validated_order.key)
-
-        if not saved_order or not saved_order.orderID:
-            return "Failed to place order. Please try again."
-
-        # delay 1 second to allow Adora to synchronize the order
-        time.sleep(1)
-
-        if saved_order:
-            text_payment_url = ADORA_PAYMENT_URL.format(
-                store_id=self.store_id,
-                order_id=saved_order.orderID,
-            )
-        else:
-            logger.debug(
-                f"[AdoraTool.checkout_order] Failed to place order. Saved order ID: {saved_order.orderID if saved_order else 'NO SAVED ORDER'}"
-            )
-            return "The service is busy. Please try again."
         if self.mp:
             event_properties = {
                 "action_name": AdoraTool.checkout_order.__name__,
                 "account_name": self.account_name,
                 "conversation_id": str(self.session_id),
-                "order_id": str(saved_order.orderID),
+                "order_key": validated_order.key,
+                "order_payment_url": text_payment_url,
                 "order_total": (
                     float(validated_order.total)
                     if validated_order.total is not None
@@ -419,16 +399,17 @@ class AdoraTool(Toolkit):
 
             if not isinstance(order, Order):
                 raise ValueError("Failed to extract structured data. Please try again.")
+
             if not order.order_type:
                 logger.error("No order type specified.")
-                return "Please specify the order type Takeout or Delivery."
+                return "Sorry, do you want that for Takeout or Delivery?"
 
             try:
                 # Adora requires a string 'Delivery' or 'TakeOut' as the order type
                 order.order_type = _utils.validate_order_type(order.order_type)
             except Exception as e:
                 logger.error(f"Could not value order type: {e}")
-                return "Please specify the order type as 'Takeout' or 'Delivery'."
+                return "Sorry, do you want that for Takeout or Delivery?"
 
             # Validate the address if the order is for delivery
             if order.order_type == AdoraOrderType.DELIVERY:
@@ -450,13 +431,13 @@ class AdoraTool(Toolkit):
 
             if not order.customer:
                 logger.error("Customer info is missing.")
-                return "Customer info is missing."
+                return "We'll need your first name and phone number to place the order."
             elif not order.customer.first_name:
                 logger.error("Customer first name is missing.")
-                return "Customer first name is missing."
+                return "We'll need your first name."
             elif not order.customer.phone_number:
                 logger.error("Customer phone number is missing.")
-                return "Customer phone number is missing."
+                return "We'll need your phone number."
 
             order.customer.last_name = (
                 "(via Jimmy)"
@@ -480,4 +461,4 @@ class AdoraTool(Toolkit):
         except Exception as e:
             logger.error(f"Error in extracting structured data: {e}")
             logger.error(traceback.format_exc())
-            return "Error in extracting structured data."
+            return "Please try again."

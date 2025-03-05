@@ -10,7 +10,10 @@ from utils.log import logger
 
 
 def parse_json(model_class, json_str: str):
-    """Try to parse the JSON string into the model class. If it fails, print the error and return None."""
+    """
+    Try to parse the JSON string into the model class.
+    If it fails, print the error and return None.
+    """
 
     try:
         data_model = model_class.model_validate_json(json_str)

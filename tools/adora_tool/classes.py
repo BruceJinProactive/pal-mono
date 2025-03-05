@@ -157,6 +157,7 @@ class AdoraOrderCalculationResult(BaseModel):
     taxAmount: Decimal | None = None
     serviceCharge: Decimal | None = None
     deliveryCharge: Decimal | None = None
+    paymentUrl: str | None = None
 
     class Config:
         # Allow extra fields in case API response includes additional data
