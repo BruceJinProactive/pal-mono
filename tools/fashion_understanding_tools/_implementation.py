@@ -183,7 +183,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                         f"User ID: {self.user_id}\n"
                         f"Session ID: {self.session_id}"
                     )
-                    return "Agent session not found"
+                    return ""
 
                 messages = agent_session.memory["runs"]  # type: ignore
 
@@ -547,6 +547,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         else:
             return int(answer["properties"]["index_of_item"])
 
+    @task(name="Process Positive and Negative Preferences Concurrently")
     def _process_positive_negative_preferences_concurrently(
         self,
         query: str,
@@ -582,7 +583,9 @@ class FashionRecommendationLogicPipeline(Toolkit):
             # Retrieve the results from both futures
             text_understanding = text_understanding_future.result()
             negative_intents = negative_intents_future.result()
-
+            LLMObs.annotate(
+                input_data="Analyzing user preferences ...", tags={"windsor": "test"}
+            )
             return text_understanding, negative_intents
 
     @tool
