@@ -200,7 +200,7 @@ async def get_chat_response_async(
         # ========================== New - End ==========================
 
         else:
-            agent = await agent_service.get_ai_agent_async(
+            agent = await agent_service.legacy.get_ai_agent_async(
                 session=session,
                 agent_id=agent_id,
                 user_id=user.id,
@@ -348,7 +348,7 @@ async def get_chat_response_stream(
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
-        agent = await agent_service.get_ai_agent_async(
+        agent = await agent_service.legacy.get_ai_agent_async(
             session=session,
             agent_id=agent_id,
             user_id=user.id,
@@ -447,7 +447,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         if agent_id is None:
             raise ValueError("Agent ID not found")
 
-        agent = agent_service.get_ai_agent(
+        agent = agent_service.legacy.get_ai_agent(
             session=session,
             agent_id=agent_id,
             user_id=user.id,

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 import db
 from agent import AgentConfig
 
-from . import _implementation
+from . import _implementation, legacy
 
 
 async def construct_agent_config(
@@ -26,70 +26,6 @@ async def construct_agent_config(
         project_id,
         conversation_id,
         stream=stream,
-    )
-
-
-async def get_ai_agent_async(
-    session: AsyncSession,
-    agent_id: uuid.UUID,
-    user_id: uuid.UUID,
-    project_id: uuid.UUID,
-    conversation_id: uuid.UUID,
-    stream: bool = False,
-) -> AgnoAgent:
-    """
-    Retrieve a AgnoAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
-
-    Args:
-        session (AsyncSession): The asynchronous database session to use for the query.
-        agent_id (uuid.UUID): The unique identifier of the agent.
-        user_id (uuid.UUID): The unique identifier of the user.
-        project_id (uuid.UUID): The unique identifier of the project.
-        conversation_id (uuid.UUID): The unique identifier of the conversation.
-        stream (bool, optional): If True, enables streaming mode for the agent. Defaults to False.
-
-    Returns:
-        AgnoAgent: The retrieved AgnoAgent instance.
-    """
-    return await _implementation.get_ai_agent_async(
-        session,
-        agent_id,
-        user_id,
-        project_id,
-        conversation_id=conversation_id,
-        stream=stream,
-    )
-
-
-def get_ai_agent(
-    session: Session,
-    agent_id: uuid.UUID,
-    user_id: uuid.UUID,
-    project_id: uuid.UUID,
-    conversation_id: uuid.UUID | None = None,
-    new_run: bool = False,
-) -> AgnoAgent:
-    """
-    Retrieve a AgnoAgent instance based on the provided agent ID, user ID, conversation ID, and project ID.
-
-    Args:
-        session (Session): The database session to use for the query.
-        agent_id (uuid.UUID): The unique identifier of the agent.
-        user_id (uuid.UUID): The unique identifier of the user.
-        project_id (uuid.UUID): The unique identifier of the project.
-        conversation_id (uuid.UUID | None, optional): The unique identifier of the conversation. Defaults to None.
-        new_run (bool, optional): If True, starts a new run. If False, attempts to continue from the last run. Defaults to False.
-
-    Returns:
-        AgnoAgent: The retrieved AgnoAgent instance.
-    """
-    return _implementation.get_ai_agent(
-        session,
-        agent_id,
-        user_id,
-        project_id,
-        conversation_id,
-        new_run=new_run,
     )
 
 
@@ -158,7 +94,6 @@ def replace_agent_config(
 
 
 __all__ = [
-    "get_ai_agent",
     "get_agent",
     "get_agents_by_account",
     "update_agent_config",
