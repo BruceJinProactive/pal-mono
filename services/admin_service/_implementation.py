@@ -185,8 +185,6 @@ def get_conversation_messages(
 
     # Requesting Account matches Account associated with Conversation, so get messages and return
     messages = get_messages_by_conversation(session, conversation_id=conversation_id)
-    for message in messages:
-        logger.info(f"Conversation messages 222: {message}")
 
     # Sort messages by timestamp
     messages.sort(

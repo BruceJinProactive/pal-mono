@@ -5,7 +5,6 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-import logging
 import db
 from api.schemas.admin.conversation import InboxResponse
 from services.admin_service import get_brand as get_brand_from_db
@@ -52,9 +51,6 @@ def get_conversation(
     account = _auth.get_account_from_id_token(request, session)
     try:
         messages = get_conversation_messages(session, account.id, conversation_id)
-        for message in messages:
-            logging.info(f"Conversation messages 123: {message}")
-
     except ValueError:
         """
         Only say "Conversation not found" because if the Admin does not
