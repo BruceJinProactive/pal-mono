@@ -2,7 +2,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_serializer
 from pydantic.json_schema import SkipJsonSchema
 
 
@@ -180,10 +180,27 @@ class CustomerInfo(BaseModel):
     )
     phone_number: Optional[str] = Field(
         description="Customer's phone number",
-        pattern=r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$",
         serialization_alias="phone",
     )
     email: Optional[str] = Field(description="Customer's email address")
+
+    @field_serializer("phone_number")
+    def format_phone_number(self, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return value
+
+        # Remove non-digit characters.
+        digits = "".join(filter(str.isdigit, value))
+
+        # Ensure it has 10 digits (remove US country code if present)
+        if digits.startswith("1") and len(digits) == 11:
+            digits = digits[1:]
+
+        # Validate the number has exactly 10 digits
+        if len(digits) != 10:
+            return ""
+
+        return digits
 
 
 class DeliveryAddress(BaseModel):
@@ -249,7 +266,7 @@ class Order(BaseModel):
         default=None, serialization_alias="storeId"
     )
     order_type: Optional[str] = Field(
-        description="Order type is either `TakeOut` or `Delivery`. By default, it should be empty.",
+        description="The user's desired order type which can be found in the conversation as either `TakeOut` or `Delivery`. By default, it should be empty.",
         serialization_alias="OrderType",
     )
     order_subtype: SkipJsonSchema[str] = Field(

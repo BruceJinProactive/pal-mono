@@ -41,10 +41,6 @@ class RawConfig(BaseModel):
         if self.agent_raw_config is None:
             raise ValueError("`agent_raw_config` is not provided.")
 
-        from utils.log import logger
-
-        logger.info(f">>>> AGENT RAW CONFIG: {self.agent_raw_config}")
-
         try:
             return AgentConfig(
                 persona=self._get_agent_persona(self.agent_raw_config),

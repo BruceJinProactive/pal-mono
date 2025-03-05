@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import json
 import os
 import traceback
 import uuid
@@ -248,7 +249,8 @@ class AdoraTool(Toolkit):
                         user_content = message["message"]["content"]
                         chat_history += f"**[User]**\n{user_content}\n\n"
 
-                        assistant_content = message["response"]["content"]
+                        assistant_response = json.loads(message["response"]["content"])
+                        assistant_content = assistant_response["content"]
                         chat_history += f"**[Assistant]**\n{assistant_content}\n\n"
                     else:
                         logger.info(
@@ -370,6 +372,11 @@ class AdoraTool(Toolkit):
             output += f"Discount: {validated_order.discount}\n"
 
         output += f"Order Total: {validated_order.total}\n"
+
+        output += (
+            "\n\nYou MUST include the EXACT payment url in your response:\n"
+            f"{text_payment_url}"
+        )
         return output
 
     @tool
@@ -398,7 +405,14 @@ class AdoraTool(Toolkit):
             )
 
             if not isinstance(order, Order):
-                raise ValueError("Failed to extract structured data. Please try again.")
+                logger.error(
+                    f"`order` object in type {type(order)} but expected type Order.\n"
+                    f"`order` object: {order}"
+                )
+                if isinstance(order, str):
+                    order = Order.model_validate(json.loads(order))
+                else:
+                    return "Failed to extract structured data. Please try again."
 
             if not order.order_type:
                 logger.error("No order type specified.")

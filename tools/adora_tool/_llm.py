@@ -15,6 +15,7 @@ You will be given the chat history and relevant context. You goal is to convert 
 3. Make sure that the quantities for each order are correct.
 4. Make sure that the modifiers for every order are identified, if they were mentioned in the chat history. Modifiers are additional details about the order, such as "extra cheese" or "no onions". They are not the already included ingredients of an item.
 5. Map the items, names, modifiers, etc., that you identified from the english language to the structured data format that is required by the Adora API using the provided context.
+6. Make sure that the order type is correctly identified as "TakeOut" or "Delivery". If not specified it should be empty.
 
 # RULES FOR EXTRACTING THE DELIRERY ADDRESS:
 - Extract the last delivery address from the context.
