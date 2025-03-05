@@ -182,6 +182,12 @@ async def get_chat_response_async(
                 output=output, input_message=message, metadata=metadata
             )
 
+            for message in new_flow_response_messages:
+                # Save response message to database
+                await message_repo.create_message(
+                    user_id=user.id, message_body=message.to_dict()
+                )
+
             # Track only one event (for example, using the first message):
             if new_flow_response_messages:
                 first_msg = new_flow_response_messages[0]
