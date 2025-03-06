@@ -850,8 +850,6 @@ class FashionRecommendationLogicPipeline(Toolkit):
 
         ### Store the user's preference in the session data for future reference ###
         full_description = f"occasion:{occasions}. category:{categories}. color:{colors}. item_name:{item_name}. fit_features:{fit_features}"
-        if self.ENABLE_SESSION_DATA:
-            session_data["prev_user_preferences"] = full_description
 
         ##### Retrieve fashion items from the knowledge base #####
         # Ensure occasions is a list of strings
@@ -860,19 +858,16 @@ class FashionRecommendationLogicPipeline(Toolkit):
         else:
             occasions = [str(occasions)]
 
-        filtered_result = self.rag_search_filter_utils_tools._get_filters(
+        filter = self.rag_search_filter_utils_tools._get_filters(
             occasions,
             categories,
             colors,
             filtered_items,
             negative_intents=negative_intents,
         )
-        filter = filtered_result["filter"]
 
         if filter is None:
             filter = dict()
-
-        filter["image_urls"] = {"$exists": True}
 
         results, scores = self.rag_search_filter_utils_tools._text2img_search(
             query_text=rag_query,
@@ -922,77 +917,70 @@ class FashionRecommendationLogicPipeline(Toolkit):
             )
 
         ##### Process and organize the results #####
-        # Check if there is any duplicates
-        names = set()
-        results = [
-            i
-            for i in results
-            if i["title"] + ",".join(i["colors"]) not in names
-            and not names.add(i["title"] + ",".join(i["colors"]))
-        ]
 
-        # Items with the same name and color are considered one item, and we want to return top_k items
-        names = set()
-        final_results = []
-        for result in results:
-            # Check if we have enough results
-            if len(names) == top_k:
-                break
-            # Check if the item is already in the set
-            if result["title"] not in names:
-                names.add(result["title"])
-            # Add the item and its variants to the final results
-            final_results.append(result)
-
-        # Store the image links and item names in the session data so that we can access the images from demo_template.py and display them
-        images = []
+        names = set()  # Tracks how many distinct items we've seen
+        image_urls = []
         item_names = []
-        combined_labels = []
         product_urls = []
-        names = set()
-        try:
-            for i in final_results:
-                checker = 0
-                temp = {
-                    "item_name": i["title"],
-                    "colors": i["colors"][0],
-                    "product_type": i["product_type"],
-                }
-                temp["fit_features"] = (
-                    i["fit_features"] if "fit_features" in i else None
-                )
-                combined_labels.append(temp)
-                for url in i["image_urls"]:
-                    if i["title"] not in names:
-                        names.add(i["title"])
+        combined_labels = []
 
-                        images.append(url)
-                        item_names.append(i["title"])
-                        product_urls.append(i["product_url"])
-                        checker += 1
-                        if checker == 1:
-                            break
+        # Fields we want to return in return_results
+        return_fields = ["title", "colors", "fit_features", "sizes", "product_url"]
+
+        try:
+            for result in results:
+                # --------- 1) Store information of current retrieved items for future reference (all returns up to top_k) --------- #
+                # Once we've gathered 'top_k' distinct items, stop entirely
+                if len(names) == top_k:
+                    break
+
+                # If this is a brand new item name, it contributes to our top_k count
+                is_new_item = result["title"] not in names
+                if is_new_item:
+                    names.add(result["title"])
+                else:
+                    continue
+
+                # --------- 2) Collect fields of interest for return_results --------- #
+                combined_labels.append(
+                    {
+                        key: result[key]
+                        for key in result
+                        if key in return_fields and result[key] is not None
+                    }
+                )
+                # Store information related to the image
+                image_urls.append(result["image_urls"][0])
+                item_names.append(result["title"])
+                product_urls.append(result["product_url"])
+
+            # Wrap images in a dict, matching your original structure
             images = {
-                "images": images,
+                "images": image_urls,
                 "item_names": item_names,
                 "product_urls": product_urls,
             }
+
         except Exception as e:
             logger.error(f"Error storing image links and item names: {e}")
+            # If anything fails, revert to empty placeholders
             images = {"images": [], "item_names": [], "product_urls": []}
 
-        item_names = [i["title"] for i in copy.deepcopy(final_results)]
+            combined_labels = []
 
-        # session_data = {"recent_recommended_items": copy.deepcopy(final_results)}
+        logger.info(f"Images: {images}")
+
+        # Store the user's preferences and the recommended items in the session data
         if self.ENABLE_SESSION_DATA:
+            session_data["prev_user_preferences"] = full_description
             if "recommended_items" not in session_data:
                 session_data["recommended_items"] = {
-                    "recent": copy.deepcopy(final_results),
+                    "recent": copy.deepcopy(combined_labels),
                     "all": combined_labels,
                 }
             else:
                 session_data["recommended_items"]["recent"] = copy.deepcopy(
-                    final_results
+                    combined_labels
                 )
                 # add the item_names to the front of the list
                 logger.info(f"Combined Names Labels: {combined_labels}")
@@ -1000,44 +988,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                     combined_labels + session_data["recommended_items"]["all"]
                 )
 
-        logger.info(f"Images: {images}")
-
-        if self.ENABLE_SESSION_DATA:
             session_data["displayed_images"] = images
-
-        if len(final_results) == 0:
-            return """Unfortunately, there are no fashion items that match the user's query. Please try again with a different query."""
-        return_results = []
-        return_fields = [
-            "title",
-            "colors",
-            "fit_features",
-            "sizes",
-            "product_url",
-            "image_urls",
-        ]
-        image_urls = []
-        for i in final_results:
-            for k, v in i.items():
-                if k in return_fields:
-                    # Remove all the ?v=xxxx from the image urls and keep it as a separate variable
-                    if k == "image_urls":
-
-                        v = [re.sub(r"\?v=\d+", "", url) for url in v]
-                        image_urls.append(v[0])
-
-                    # Keep all the other fields
-                    else:
-
-                        return_results.append({k: v})
-
-        logger.info(f"Return Results: {return_results}")
-        if RECORD_TIME:
-            logger.info(
-                "Final time taken to recommend items: " + str(time.time() - start_time)
-            )
-
-        if self.ENABLE_SESSION_DATA:
             if "recommended_items" not in session_data:
                 session_data["recommended_items"] = {}
 
@@ -1046,15 +997,24 @@ class FashionRecommendationLogicPipeline(Toolkit):
             )
 
             self._write_session_data(session_data)
-        logger.info(f"results: {return_results}")
+
+        if RECORD_TIME:
+            logger.info(
+                "Final time taken to recommend items: " + str(time.time() - start_time)
+            )
+        if len(combined_labels) == 0:
+            return """Unfortunately, there are no fashion items that match the user's query. Please try again with a different query."""
+
+        logger.info(f"Return Results: {combined_labels}")
+
         LLMObs.annotate(
             input_data={"chat_history": chat_history, "query": query},
-            output_data={"fashion_items": return_results, "image_urls": image_urls},
+            output_data={"fashion_items": combined_labels, "image_urls": image_urls},
             tags={"windsor": "test"},
         )
-        final_instructions = f"""Recommend all the following retrieved fashion items to the user : {return_results}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user. \n\nPlace the image urls exactly as they are in the following structure: <image_urls>{image_urls}</image_urls>. Do **not** modify, rephrase, or simplify any of the image urls in any way."""
+        final_instructions = f"""Recommend all the following retrieved fashion items to the user : {combined_labels}. Present these items with an engaging and persuasive tone that highlights their unique appeal with respect to the conversation with the user. \n\nPlace the image urls exactly as they are in the following structure: <image_urls>{image_urls}</image_urls>. Do **not** modify, rephrase, or simplify any of the image urls in any way."""
         if return_json:
-            return f"""Extract the fashion items and return them to the user in the exact JSON format as {return_results}. DO NOT modify, rephrase, or paraphrase any content within the JSON structure. Maintain the original formatting precisely.
+            return f"""Extract the fashion items and return them to the user in the exact JSON format as {combined_labels}. DO NOT modify, rephrase, or paraphrase any content within the JSON structure. Maintain the original formatting precisely.
 
 Additionally, append an extra JSON object:
 "agent_response": YOUR_RESPONSE_HERE

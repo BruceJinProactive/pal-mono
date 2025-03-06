@@ -111,7 +111,10 @@ class FashionRagSearchFilterUtilsTools:
             logger.error(f"Failed to get text embedding: {e}")
             traceback.print_exc()
             return
-
+        LLMObs.annotate(
+            input_data={"text": text},
+            tags={"windsor": "test"},
+        )
         return query_emb
 
     def _image_to_base64_data_url(self, image_path: str):
@@ -151,6 +154,10 @@ class FashionRagSearchFilterUtilsTools:
                 return None
             finally:
                 # Ensure the temporary file is removed
+                LLMObs.annotate(
+                    input_data="Creating image embedding",
+                    tags={"windsor": "test"},
+                )
                 if os.path.exists(tmp_file.name):
                     os.unlink(tmp_file.name)
 
@@ -340,7 +347,7 @@ class FashionRagSearchFilterUtilsTools:
         filtered_items: List[str],
         release_criteria: List[str] | None = None,
         negative_intents: dict | None = None,
-    ) -> dict:
+    ) -> dict | None:
         """This function extracts the filters from a user's query based on the best occasion, specific occasion, and category of outfit for the user, while also applying any negative intents.
 
         Args:
@@ -452,19 +459,20 @@ class FashionRagSearchFilterUtilsTools:
         if filtered_items:
             and_conditions.append({"title": {"$nin": filtered_items}})
 
+        and_conditions.append({"image_urls": {"$exists": True}})
+
         logger.info(f"and_conditions: {and_conditions}")
 
         filter = {"$and": []}
         if and_conditions:
             filter["$and"] = and_conditions
 
-        result = {}
-        result["filter"] = filter if filter else None
         LLMObs.annotate(
-            output_data=result,
+            output_data=filter,
             tags={"windsor": "test"},
         )
-        return result
+
+        return filter if filter else None
 
     @task(name="Relax Filters")
     def _relax_filters(
@@ -514,7 +522,7 @@ class FashionRagSearchFilterUtilsTools:
                 filtered_items,
                 release_criteria=release_criteria,
                 negative_intents=negative_intents,
-            )["filter"]
+            )
 
             results, scores = self._text2img_search(  # type: ignore
                 query_text=query_text, top_k=top_k, filter=filter_criteria  # type: ignore
