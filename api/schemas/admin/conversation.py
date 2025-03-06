@@ -18,4 +18,5 @@ class ConversationPreview(BaseModel):
 
 class InboxResponse(BaseModel):
     total_pages: int
+    total_conversations: int
     inbox: list[ConversationPreview]

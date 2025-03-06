@@ -78,10 +78,13 @@ def get_inbox(
     request: Request, page: int, page_size: int, session: Session = Depends(db.get_db)
 ) -> InboxResponse:
     account = _auth.get_account_from_id_token(request, session)
-    total_pages, inbox = get_inbox_conversations(
+    total_conversations, inbox = get_inbox_conversations(
         session, account_id=account.id, page=page, page_size=page_size
     )
-    return InboxResponse(total_pages=total_pages, inbox=inbox)
+    total_pages = (total_conversations + page_size - 1) // page_size
+    return InboxResponse(
+        total_conversations=total_conversations, total_pages=total_pages, inbox=inbox
+    )
 
 
 def get_knowledge(request: Request, session: Session = Depends(db.get_db)):

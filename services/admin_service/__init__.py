@@ -32,7 +32,7 @@ def get_inbox_conversations(
 
     Returns:
         tuple[int, list[ConversationPreview]]: A tuple containing:
-            - Total number of pages available based on the page_size
+            - Total number of conversations.
             - A paginated list of `ConversationPreview` objects representing the Conversations,
               each containing the Conversation ID, User ID, number of Messages, and the text of the last Message.
     """
