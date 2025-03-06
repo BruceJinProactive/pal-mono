@@ -14,13 +14,16 @@ from utils.log import logger
 from . import _utils
 
 
-def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
+def get_adora_pos_auth_token(
+    key: str, secret: str, qa_store: bool = False
+) -> AdoraAccessToken | None:
     """
     Retrieve an Adora POS authentication token using the provided key and secret.
 
     Args:
         key (str): The Adora API Key.
         secret (str): The Adora API Secret.
+        qa_store (bool): True if the QA environment should be used. Defaults to False.
 
     Returns:
         AdoraAccessToken: A bearer token that expires in 1 hour.
@@ -32,7 +35,11 @@ def get_adora_pos_auth_token(key: str, secret: str) -> AdoraAccessToken | None:
     )
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-    conn = http.client.HTTPSConnection("identity.adorapos.net")
+    if qa_store:
+        conn = http.client.HTTPSConnection("identityqa.adorapos.com")
+    else:
+        conn = http.client.HTTPSConnection("identity.adorapos.net")
+
     conn.request("POST", "/connect/token", payload, headers)
     res = conn.getresponse()
     data = res.read()

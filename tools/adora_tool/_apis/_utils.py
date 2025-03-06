@@ -32,6 +32,7 @@ def connect_adora_order_hub(
     extra_headers: dict | None = None,
     payload: str | None = "",
     logging: bool = True,
+    qa_store: bool = False,
 ) -> AdoraHubResponse:
     """Utility function to connect to Adora Order Hub API"""
 
@@ -49,7 +50,11 @@ def connect_adora_order_hub(
             f"[AdoraTool._apis._utils.connect_adora_order_hub] Payload: {payload}"
         )
 
-    conn = http.client.HTTPSConnection("public.api.adorapos.net")
+    if qa_store:
+        conn = http.client.HTTPSConnection("adora-qa-api-public.azurewebsites.net")
+    else:
+        conn = http.client.HTTPSConnection("public.api.adorapos.net")
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": auth_token.get_token_header_value(),
