@@ -54,6 +54,7 @@ class Message(BaseModel):
     recipient_identifier: str
     channel: Channel = Channel.API
     broker: Optional[Broker] = None
+    channel_info: Dict[str, Any] = Field(default_factory=dict)
     # Content
     type: Type = Type.TEXT
     text: Optional[TextObject] = None
@@ -83,6 +84,7 @@ class Message(BaseModel):
             "recipient_identifier": self.recipient_identifier,
             "channel": self.channel.value,
             "broker": self.broker.value if self.broker is not None else None,
+            "channel_info": self.channel_info,
             "type": self.type.value,
             "text": self.text.dict() if self.text is not None else None,
             "media": self.media.dict() if self.media is not None else None,

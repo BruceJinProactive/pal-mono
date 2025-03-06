@@ -151,7 +151,9 @@ def get_agent_input_from_message(message: Message) -> Input:
 
 
 def get_messages_from_agent_output(
-    output: Output, input_message: Message, metadata: dict[str, Any] = {}
+    output: Output,
+    input_message: Message,
+    metadata: dict[str, Any] = {},
 ) -> List[Message]:
     """
     Converts an Output object from the Agent into a Message object.
@@ -187,6 +189,7 @@ def get_messages_from_agent_output(
             recipient_identifier=input_message.sender_identifier,
             channel=input_message.channel,
             broker=input_message.broker,
+            channel_info=input_message.channel_info,
             text=TextObject(body=voice_msg_text),
             metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
             extras=Extras(
@@ -202,6 +205,7 @@ def get_messages_from_agent_output(
             recipient_identifier=input_message.sender_identifier,
             channel=Channel.SMS,
             broker=input_message.broker,
+            channel_info=input_message.channel_info,
             text=TextObject(body=msg_text),
             metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
             extras=Extras(
@@ -228,6 +232,7 @@ def get_messages_from_agent_output(
                     recipient_identifier=input_message.sender_identifier,
                     channel=input_message.channel,
                     broker=input_message.broker,
+                    channel_info=input_message.channel_info,
                     text=TextObject(body=msg_content),
                     metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
                     extras=Extras(
@@ -243,6 +248,7 @@ def get_messages_from_agent_output(
                     recipient_identifier=input_message.sender_identifier,
                     channel=input_message.channel,
                     broker=input_message.broker,
+                    channel_info=input_message.channel_info,
                     type=Type.MEDIA,
                     text=TextObject(body=msg_content),
                     media=MediaObject(
@@ -263,6 +269,7 @@ def get_messages_from_agent_output(
             recipient_identifier=input_message.sender_identifier,
             channel=input_message.channel,
             broker=input_message.broker,
+            channel_info=input_message.channel_info,
             text=TextObject(body=msg_text),
             metadata=metadata,  # TODO: to be replaced by input_message.channel_info
             extras=Extras(

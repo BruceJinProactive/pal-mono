@@ -47,7 +47,9 @@ def get_filler_message(message: Message) -> Message:
         broker=message.broker,
         text=TextObject(body=filler_content),
     )
+
     _add_message_info_to_metadata(message=message, metadata=filler_message.metadata)
+
     return filler_message
 
 
@@ -244,6 +246,7 @@ async def get_chat_response_async(
                         recipient_identifier=message.sender_identifier,
                         channel=message.channel,
                         broker=message.broker,
+                        channel_info=message.channel_info,
                         text=TextObject(body=msg_content),
                         metadata=metadata,
                         extras=Extras(**extras),
@@ -255,6 +258,7 @@ async def get_chat_response_async(
                         recipient_identifier=message.sender_identifier,
                         channel=message.channel,
                         broker=message.broker,
+                        channel_info=message.channel_info,
                         type=MessageType.MEDIA,
                         media=MediaObject(
                             url=msg_content, media_type="image", caption=msg_content
@@ -313,6 +317,7 @@ async def get_chat_response_stream(
             recipient_identifier=message.sender_identifier,
             channel=message.channel,
             broker=message.broker,
+            channel_info=message.channel_info,
             text=TextObject(body="Something went wrong. Please try again."),
             metadata={"instance": "BaseModel"},
             extras=Extras(),
@@ -488,6 +493,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         recipient_identifier=message.sender_identifier,
         channel=message.channel,
         broker=message.broker,
+        channel_info=message.channel_info,
         text=TextObject(body=response),
         metadata=metadata,
         extras=Extras(**extras),
@@ -605,6 +611,7 @@ def build_opt_in_message(
             recipient_identifier=message.sender_identifier,
             channel=message.channel,
             broker=message.broker,
+            channel_info=message.channel_info,
             text=TextObject(body=opt_in_text),
             metadata=metadata,
             extras=Extras(**extras),
