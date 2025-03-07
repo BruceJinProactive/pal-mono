@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from ._util import get_shopify_session, set_access_token
 
-_DEFAULT_SCOPES = ["read_products", "write_products", "read_orders", "write_orders"]
+_DEFAULT_SCOPES = ["read_products", "read_orders", "read_customers"]
 _app_prefix_map = {
     "windsor": "PALONA_WINDSOR",  # production version of widnsor
     "palona": "PALONA",  # production verison of palona
