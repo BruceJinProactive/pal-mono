@@ -5,7 +5,14 @@ import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
 
 import db
-from api.schemas.chat.message import AuthorType, Channel, Extras, Message, TextObject
+from api.schemas.chat.message import (
+    AuthorType,
+    Channel,
+    Extras,
+    Message,
+    Metadata,
+    TextObject,
+)
 from app.auth import user
 from app.shared import clear_memory_ui, get_app_db, memory_ui, universal_picker_ui
 from services.account_service import get_account
@@ -141,6 +148,7 @@ def main() -> str | None:
                         channel=Channel.INTERNAL_APP,
                         text=TextObject(body=prompt),
                         extras=Extras(),
+                        metadata=Metadata(),
                     ).dict()
 
                     # Get agent response

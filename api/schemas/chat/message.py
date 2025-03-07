@@ -46,6 +46,16 @@ class Extras(BaseModel):
     closing_conversation: bool = Field(default=False)
 
 
+class Metadata(BaseModel):
+    account_name: str = Field(default="")
+    project_name: str = Field(default="")
+    agent_id: str = Field(default="")
+    user_id: str = Field(default="")
+    session_id: str = Field(default="")
+    parent_message_id: str = Field(default="")
+    testing: bool = Field(default=False)
+
+
 class Message(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     author_type: AuthorType
@@ -63,7 +73,7 @@ class Message(BaseModel):
     # Extras
     extras: Optional[Extras] = None
     # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Metadata
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
@@ -90,7 +100,7 @@ class Message(BaseModel):
             "media": self.media.dict() if self.media is not None else None,
             "context": self.context,
             "timestamp": self.timestamp.isoformat(),
-            "metadata": self.metadata,
+            "metadata": self.metadata.dict(),
             "extras": self.extras.dict() if self.extras is not None else None,
         }
 
@@ -137,5 +147,9 @@ class Message(BaseModel):
         # Convert extras dict to Extras
         if isinstance(data.get("extras"), dict):
             data["extras"] = Extras(**data["extras"])
+
+        # Convert metadata dict to Metadata
+        if isinstance(data.get("metadata"), dict):
+            data["metadata"] = Metadata(**data["metadata"])
 
         return cls(**data)

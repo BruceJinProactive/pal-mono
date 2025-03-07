@@ -11,6 +11,7 @@ from api.schemas.chat.message import (
     Channel,
     Extras,
     Message,
+    Metadata,
     TextObject,
 )
 from app.auth import user
@@ -67,6 +68,7 @@ def main() -> None:
                 channel=channel,
                 broker=broker,
                 extras=extras,
+                metadata=Metadata(),
             )
             output_message = get_chat_response(session, input_message)
             st.write(output_message.to_dict())
@@ -195,6 +197,7 @@ def main() -> None:
                 text=TextObject(body=text),
                 channel=Channel.SMS,
                 broker=Broker.SENDBLUE,
+                metadata=Metadata(),
             )
             status = send_message(message_to_send, delivery_time)
             st.json(status)

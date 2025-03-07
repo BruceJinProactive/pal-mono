@@ -18,6 +18,7 @@ from api.schemas.chat.message import (
     Extras,
     MediaObject,
     Message,
+    Metadata,
     TextObject,
 )
 from api.schemas.chat.message import Type as MessageType
@@ -46,9 +47,8 @@ def get_filler_message(message: Message) -> Message:
         channel=message.channel,
         broker=message.broker,
         text=TextObject(body=filler_content),
+        metadata=message.metadata,
     )
-
-    _add_message_info_to_metadata(message=message, metadata=filler_message.metadata)
 
     return filler_message
 
@@ -59,7 +59,7 @@ async def get_chat_response_async(
     logger.info(f"get_chat_response_async received message: {message}")
     user = None
     extras = {}
-    metadata = {"instance": "BaseModel"}
+    metadata = {}
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
     start_time = time.time()  # Start time for profiling latency
@@ -72,9 +72,6 @@ async def get_chat_response_async(
         logger.info(f"Step 2: Retrieved project - {time.time() - start_time:.4f}s")
 
         metadata["project_name"] = project.name
-
-        # Add MessageSid or CallSid to the metadata based on the channel
-        _add_message_info_to_metadata(message, metadata)
 
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
@@ -181,7 +178,7 @@ async def get_chat_response_async(
 
             # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
             new_flow_response_messages = _utils.get_messages_from_agent_output(
-                output=output, input_message=message, metadata=metadata
+                output=output, input_message=message
             )
 
             for message in new_flow_response_messages:
@@ -248,7 +245,7 @@ async def get_chat_response_async(
                         broker=message.broker,
                         channel_info=message.channel_info,
                         text=TextObject(body=msg_content),
-                        metadata=metadata,
+                        metadata=Metadata(**metadata),
                         extras=Extras(**extras),
                     )
                 elif msg_type == "image":
@@ -263,7 +260,7 @@ async def get_chat_response_async(
                         media=MediaObject(
                             url=msg_content, media_type="image", caption=msg_content
                         ),
-                        metadata=metadata,
+                        metadata=Metadata(**metadata),
                         extras=Extras(**extras),
                     )
 
@@ -319,7 +316,7 @@ async def get_chat_response_stream(
             broker=message.broker,
             channel_info=message.channel_info,
             text=TextObject(body="Something went wrong. Please try again."),
-            metadata={"instance": "BaseModel"},
+            metadata=message.metadata,
             extras=Extras(),
         )
         yield error_message
@@ -394,7 +391,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
     logger.info(message)
 
     user = None
-    metadata = {"instance": "BaseModel"}
+    metadata = {}
     extras = {}
 
     try:
@@ -407,9 +404,6 @@ def get_chat_response(session: Session, message: Message) -> Message:
             )
 
         metadata["project_name"] = project.name
-
-        # Add MessageSid or CallSid to the metadata based on the channel
-        _add_message_info_to_metadata(message=message, metadata=metadata)
 
         # Get user_id by sender channel/number with user_service
         user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
@@ -495,7 +489,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         broker=message.broker,
         channel_info=message.channel_info,
         text=TextObject(body=response),
-        metadata=metadata,
+        metadata=Metadata(**metadata),
         extras=Extras(**extras),
     )
 
@@ -506,20 +500,6 @@ def get_chat_response(session: Session, message: Message) -> Message:
         )
 
     return response_message
-
-
-def _add_message_info_to_metadata(message: Message, metadata: dict) -> None:
-    """
-    Add MessageSid or CallSid to the metadata based on the channel type.
-
-    Args:
-        message (Message): The message containing channel and metadata information
-        metadata (dict): The metadata dictionary to update
-    """
-    if message.channel == Channel.SMS and "MessageSid" in message.metadata:
-        metadata["MessageSid"] = message.metadata["MessageSid"]
-    elif message.channel == Channel.VOICE and "CallSid" in message.metadata:
-        metadata["CallSid"] = message.metadata["CallSid"]
 
 
 def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | None:
@@ -613,7 +593,7 @@ def build_opt_in_message(
             broker=message.broker,
             channel_info=message.channel_info,
             text=TextObject(body=opt_in_text),
-            metadata=metadata,
+            metadata=Metadata(**metadata),
             extras=Extras(**extras),
         )
 

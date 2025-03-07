@@ -153,7 +153,6 @@ def get_agent_input_from_message(message: Message) -> Input:
 def get_messages_from_agent_output(
     output: Output,
     input_message: Message,
-    metadata: dict[str, Any] = {},
 ) -> List[Message]:
     """
     Converts an Output object from the Agent into a Message object.
@@ -174,8 +173,8 @@ def get_messages_from_agent_output(
     #     msg_text += f"\n\nImages:\n{output.images}"
 
     response_messages = []
-    new_metadata = metadata.copy()
-    new_metadata["parent_message_id"] = input_message.id
+    new_metadata = input_message.metadata.copy()
+    new_metadata.parent_message_id = input_message.id
 
     # Check if output.content contains http or .net and create additional SMS response if input_message.channel is VOICE
     if (
@@ -191,7 +190,7 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             channel_info=input_message.channel_info,
             text=TextObject(body=voice_msg_text),
-            metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
+            metadata=new_metadata,
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -207,7 +206,7 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             channel_info=input_message.channel_info,
             text=TextObject(body=msg_text),
-            metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
+            metadata=new_metadata,
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -234,7 +233,7 @@ def get_messages_from_agent_output(
                     broker=input_message.broker,
                     channel_info=input_message.channel_info,
                     text=TextObject(body=msg_content),
-                    metadata=new_metadata,  # TODO: to be replaced by input_message.channel_info
+                    metadata=new_metadata,
                     extras=Extras(
                         escalated=output.escalated,
                         closing_conversation=output.closing_conversation,
@@ -271,7 +270,7 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             channel_info=input_message.channel_info,
             text=TextObject(body=msg_text),
-            metadata=metadata,  # TODO: to be replaced by input_message.channel_info
+            metadata=new_metadata,
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
