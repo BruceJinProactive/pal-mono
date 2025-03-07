@@ -2,7 +2,7 @@ import os
 
 import jwt
 import requests
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 import db
@@ -185,7 +185,7 @@ def decrypt_id_token(request: Request) -> dict:
         )
     except ValueError as e:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
@@ -216,7 +216,7 @@ def get_account_from_id_token(request: Request, session: Session) -> db.Account:
         )
     except ValueError as e:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
@@ -228,7 +228,7 @@ def get_account_from_id_token(request: Request, session: Session) -> db.Account:
 
     if account is None:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Account not found.",
             headers={"Content-Type": "application/json"},
         )

@@ -1,4 +1,4 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy.engine import Engine, create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
@@ -68,7 +68,10 @@ async def get_db_async():
         except SQLAlchemyError as e:
             await db.rollback()  # Rollback on database errors
             logger.error(f"Database error occurred: {str(e)}")
-            raise HTTPException(status_code=500, detail="Database error occurred")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database error occurred",
+            )
         except Exception as e:
             await db.rollback()
             logger.error(f"Unexpected error occurred: {str(e)}")

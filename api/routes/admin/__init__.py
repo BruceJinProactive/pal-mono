@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -116,7 +116,7 @@ def get_messages_with_feedback_by_conversation_id(
     )
 
 
-@admin_router.get("/feedback", status_code=200)
+@admin_router.get("/feedback", status_code=status.HTTP_200_OK)
 def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_db)):
     """
     Retrieve all feedback from the database.
@@ -131,7 +131,7 @@ def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_d
     return _feedback.retrieve_all_feedbacks(request, session)
 
 
-@admin_router.post("/feedback", status_code=200)
+@admin_router.post("/feedback", status_code=status.HTTP_200_OK)
 async def submit_feedback(request: Request, session: Session = Depends(db.get_db)):
     """
     Create feedback in the database.
@@ -146,7 +146,7 @@ async def submit_feedback(request: Request, session: Session = Depends(db.get_db
     return await _feedback.submit_feedback(request, session)
 
 
-@admin_router.get("/feedback/{feedback_id}", status_code=200)
+@admin_router.get("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
 def retrieve_feedback_by_id(
     feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -164,7 +164,7 @@ def retrieve_feedback_by_id(
     return _feedback.retrieve_feedback_by_id(feedback_id, request, session)
 
 
-@admin_router.post("/feedback/{feedback_id}", status_code=200)
+@admin_router.post("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
 async def change_feedback_by_id(
     feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -225,7 +225,9 @@ def get_conversation(
     return _implementation.get_conversation(request, conversation_id, session)
 
 
-@admin_router.delete("/instagram/deauthorize/{ig_user_id}", status_code=200)
+@admin_router.delete(
+    "/instagram/deauthorize/{ig_user_id}", status_code=status.HTTP_200_OK
+)
 async def handle_instagram_deauthorization(
     ig_user_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -285,7 +287,7 @@ async def update_document(
     return await _implementation.update_document(request, document_id, session)
 
 
-@admin_router.get("/projects", status_code=200)
+@admin_router.get("/projects", status_code=status.HTTP_200_OK)
 async def read_projects(request: Request, session: Session = Depends(db.get_db)):
     """
     Read projects associated with the account.
@@ -300,7 +302,9 @@ async def read_projects(request: Request, session: Session = Depends(db.get_db))
     return await _projects.read_projects(request, session)
 
 
-@admin_router.post("/projects/{project_id}/instagram/connect", status_code=200)
+@admin_router.post(
+    "/projects/{project_id}/instagram/connect", status_code=status.HTTP_200_OK
+)
 async def connect_instagram(
     project_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -318,7 +322,9 @@ async def connect_instagram(
     return await _projects.connect_instagram(project_id, request, session)
 
 
-@admin_router.delete("/projects/{project_id}/instagram/connect", status_code=200)
+@admin_router.delete(
+    "/projects/{project_id}/instagram/connect", status_code=status.HTTP_200_OK
+)
 async def disconnect_instagram(
     project_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -336,7 +342,9 @@ async def disconnect_instagram(
     return await _projects.disconnect_instagram(project_id, request, session)
 
 
-@admin_router.get("/projects/{project_id}/instagram/status", status_code=200)
+@admin_router.get(
+    "/projects/{project_id}/instagram/status", status_code=status.HTTP_200_OK
+)
 async def get_project_instagram_connected(
     project_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -354,7 +362,9 @@ async def get_project_instagram_connected(
     return await _projects.get_project_instagram_connected(project_id, request, session)
 
 
-@admin_router.get("/projects/{project_id}/instagram/username", status_code=200)
+@admin_router.get(
+    "/projects/{project_id}/instagram/username", status_code=status.HTTP_200_OK
+)
 async def get_project_instagram_username(
     project_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -372,7 +382,7 @@ async def get_project_instagram_username(
     return _projects.get_project_instagram_username(project_id, request, session)
 
 
-@admin_router.get("/reports", status_code=200)
+@admin_router.get("/reports", status_code=status.HTTP_200_OK)
 def get_report(
     request: Request,
     report_request: GetReportRequest = Body(...),

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -24,7 +24,7 @@ async def connect_instagram(
         _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
     except ValueError as e:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
@@ -35,7 +35,7 @@ async def connect_instagram(
 
     if not all([ig_access_token, ig_user_id, ig_username]):
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing required header(s): Access-Token, Username and/or User-Id",
             headers={"Content-Type": "application/json"},
         )
@@ -44,7 +44,7 @@ async def connect_instagram(
         project_uuid = uuid.UUID(project_id)
     except ValueError:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid project UUID",
             headers={"Content-Type": "application/json"},
         )
@@ -55,13 +55,13 @@ async def connect_instagram(
         )
     except ValueError as e:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
     except RuntimeError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
@@ -76,7 +76,7 @@ async def disconnect_instagram(
         _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
     except ValueError as e:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
@@ -85,7 +85,7 @@ async def disconnect_instagram(
         project_uuid = uuid.UUID(project_id)
     except ValueError:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid project UUID",
             headers={"Content-Type": "application/json"},
         )
@@ -94,13 +94,13 @@ async def disconnect_instagram(
         remove_instagram_access_token(session, project_uuid)
     except ValueError as e:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
     except RuntimeError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
@@ -115,7 +115,7 @@ async def get_project_instagram_connected(
         _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
     except ValueError as e:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
@@ -124,7 +124,7 @@ async def get_project_instagram_connected(
         project_uuid = uuid.UUID(project_id)
     except ValueError:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid project UUID",
             headers={"Content-Type": "application/json"},
         )
@@ -133,13 +133,13 @@ async def get_project_instagram_connected(
         connected = get_instagram_connected(session, project_uuid)
     except ValueError:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
             headers={"Content-Type": "application/json"},
         )
     except RuntimeError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
@@ -154,7 +154,7 @@ async def get_project_instagram_username(
         _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
     except ValueError as e:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
@@ -163,7 +163,7 @@ async def get_project_instagram_username(
         project_uuid = uuid.UUID(project_id)
     except ValueError:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid project UUID",
             headers={"Content-Type": "application/json"},
         )
@@ -173,19 +173,19 @@ async def get_project_instagram_username(
         connected = get_instagram_connected(session, project_uuid)
         if not connected:
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not connected to Instagram",
                 headers={"Content-Type": "application/json"},
             )
     except ValueError:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
             headers={"Content-Type": "application/json"},
         )
     except RuntimeError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
@@ -194,13 +194,13 @@ async def get_project_instagram_username(
         username = get_instagram_username(session, project_uuid)
     except ValueError:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not connected to Instagram",
             headers={"Content-Type": "application/json"},
         )
     except RuntimeError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
@@ -217,7 +217,7 @@ async def handle_instagram_deauthorization(
     # Check for missing headers
     if not all([encoded_signature, encoded_payload]):
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing required headers: Encoded-Signature and/or Encoded-Payload",
             headers={"Content-Type": "application/json"},
         )
@@ -229,7 +229,7 @@ async def handle_instagram_deauthorization(
         )
     except ValueError as e:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
@@ -238,13 +238,13 @@ async def handle_instagram_deauthorization(
         deauthorize_instagram_access_token(session, ig_user_id)
     except ValueError as e:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
     except RuntimeError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )

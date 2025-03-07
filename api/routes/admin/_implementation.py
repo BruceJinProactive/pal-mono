@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -58,7 +58,7 @@ def get_conversation(
         the conversation exists in the first place.
         """
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found.",
             headers={"Content-Type": "application/json"},
         )
@@ -116,7 +116,7 @@ async def update_document(
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         ) from e
@@ -141,7 +141,7 @@ async def upsert_brand(request: Request, session: Session = Depends(db.get_db)):
         )
     except ValueError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while updating the brand. Please try again.",
             headers={"Content-Type": "application/json"},
         )

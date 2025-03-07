@@ -1,6 +1,6 @@
 import os
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, UploadFile, status
 
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
 from api.schemas.error.error import ErrorResponse
@@ -31,7 +31,7 @@ async def upload_asset(asset: UploadFile, path: str, metadata: dict) -> AssetRes
         # Log and handle validation errors
         logger.error(f"Error validating asset: {ve}")
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
                 error_code="VALIDATION_ERROR", error_message=str(ve)
             ).model_dump(),
@@ -40,7 +40,7 @@ async def upload_asset(asset: UploadFile, path: str, metadata: dict) -> AssetRes
         # Log the error
         logger.error(f"Error processing asset: {str(e)}")
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
                 error_code="INTERNAL_SERVER_ERROR",
                 error_message="An unexpected error occurred while processing the message",
@@ -62,7 +62,7 @@ async def get_asset_by_name(name: str) -> AssetResponse:
         # Log and handle validation errors
         logger.error(f"Error validating asset: {ve}")
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
                 error_code="VALIDATION_ERROR", error_message=str(ve)
             ).model_dump(),
@@ -71,7 +71,7 @@ async def get_asset_by_name(name: str) -> AssetResponse:
         # Log the error
         logger.error(f"Error processing asset: {str(e)}")
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
                 error_code="INTERNAL_SERVER_ERROR",
                 error_message="An unexpected error occurred while processing the message",

@@ -2,7 +2,7 @@ import asyncio
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -124,7 +124,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
         # Log and handle validation errors
         logger.error(f"Error validating message: {ve}")
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=ErrorResponse(
                 error_code="VALIDATION_ERROR", error_message=str(ve)
             ).dict(),
@@ -133,7 +133,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
         # Log the error
         print(f"Error processing message: {str(e)}")
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
                 error_code="INTERNAL_SERVER_ERROR",
                 error_message="An unexpected error occurred while processing the message",

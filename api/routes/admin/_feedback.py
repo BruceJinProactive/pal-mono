@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 import db
@@ -37,7 +37,7 @@ async def change_feedback_by_id(
         feedback_uuid = uuid.UUID(feedback_id)
     except ValueError as e:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid feedback data: {str(e)}",
             headers={"Content-Type": "application/json"},
         )
@@ -59,7 +59,7 @@ async def change_feedback_by_id(
         persisted_feedback = update_feedback_by_id(session, feedback_uuid, feedback)
     except Exception:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
@@ -86,7 +86,7 @@ def get_messages_with_feedback_by_conversation_id(
         the conversation exists in the first place.
         """
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found.",
             headers={"Content-Type": "application/json"},
         )
@@ -130,7 +130,7 @@ def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_d
         feedbacks = get_feedbacks(session)
     except Exception:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
@@ -174,7 +174,7 @@ def retrieve_feedback_by_id(
         feedback_uuid = uuid.UUID(feedback_id)
     except ValueError as e:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid feedback UUID: {str(e)}",
             headers={"Content-Type": "application/json"},
         )
@@ -184,14 +184,14 @@ def retrieve_feedback_by_id(
         persisted_feedback = get_feedback_by_id(session, feedback_uuid)
     except Exception:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
 
     if not persisted_feedback:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Feedback not found.",
             headers={"Content-Type": "application/json"},
         )
@@ -223,7 +223,7 @@ async def submit_feedback(request: Request, session: Session = Depends(db.get_db
         feedback_request = CreateFeedbackRequest(**request_json)
     except ValueError as e:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid feedback data: {str(e)}",
             headers={"Content-Type": "application/json"},
         )
@@ -245,7 +245,7 @@ async def submit_feedback(request: Request, session: Session = Depends(db.get_db
         persisted_feedback = create_feedback(session, feedback)
     except Exception:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )

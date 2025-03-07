@@ -1,7 +1,7 @@
 import binascii
 import os
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from ._util import get_shopify_session, set_access_token
@@ -28,22 +28,28 @@ _oauth_state = {}
 def _valid_request(request: Request, app_name: str, is_callback=False):
     # valid the app name
     if app_name not in _app_prefix_map:
-        raise HTTPException(status_code=404, detail="App not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="App not found."
+        )
     shop_url = request.query_params.get("shop")
 
     # check the shop url
     if not shop_url:
-        raise HTTPException(status_code=400, detail="Missing 'shop' parameter")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Missing 'shop' parameter"
+        )
 
     if is_callback:
         state = request.query_params.get("state")
         if state not in _oauth_state:
             raise HTTPException(
-                status_code=400, detail="Invalid Request: Missing State"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Request: Missing State",
             )
         if _oauth_state[state] != shop_url:
             raise HTTPException(
-                status_code=400, detail="Invalid Request: Invalid State"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Request: Invalid State",
             )
         del _oauth_state[state]
 
@@ -54,10 +60,13 @@ def _valid_request(request: Request, app_name: str, is_callback=False):
     try:
         if not session.validate_params(dict(request.query_params)):
             raise HTTPException(
-                status_code=400, detail="Invalid Request: Invalid Params"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Request: Invalid Params",
             )
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid API Key")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid API Key"
+        )
     return shop_url, session, app_prefix
 
 
@@ -67,7 +76,9 @@ async def install(request: Request, app_name: str):
     # check the embedded param, if 1 then return the successful template
     embedded = request.query_params.get("embedded", "0")
     if embedded != "0":
-        return JSONResponse(status_code=200, content={"Success": "Welcome to Palona!"})
+        return JSONResponse(
+            status_code=status.HTTP_200_OK, content={"Success": "Welcome to Palona!"}
+        )
 
     # save the state to prevent CSRF attack
     state = binascii.b2a_hex(os.urandom(15)).decode("utf-8")
@@ -77,14 +88,15 @@ async def install(request: Request, app_name: str):
     try:
         redirect_uri = _app_callback_map[app_name]
     except KeyError:
-        raise HTTPException(status_code=404, detail="Missing Callback URL")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Missing Callback URL"
+        )
     scopes = _DEFAULT_SCOPES  # os.getenv(f"SHOPIFY_{app_prefix}_SCOPES", _DEFAULT_SCOPES).split(",")
     auth_url = session.create_permission_url(scopes, redirect_uri, state)
     return RedirectResponse(auth_url)
 
 
 async def callback(request: Request, app_name: str):
-
     # validate the request
     shop_url, session, app_prefix = _valid_request(request, app_name, is_callback=False)
     store_name = shop_url.split(".myshopify.com")[0]  # windsor-us
@@ -94,7 +106,7 @@ async def callback(request: Request, app_name: str):
         access_token = session.request_token(dict(request.query_params))
     except Exception:
         return JSONResponse(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": "Invalid Request: Failed to get Access Token"},
         )
 
@@ -103,7 +115,10 @@ async def callback(request: Request, app_name: str):
     try:
         set_access_token(None, None, project_name, access_token)
     except Exception:
-        return JSONResponse(status_code=500, content={"error": "Internal Error"})
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": "Internal Error"},
+        )
 
     # redirect to https://admin.shopify.com/store/windsor-us/apps/palona_windsor after successfull installed
     return RedirectResponse(

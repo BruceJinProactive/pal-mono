@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, status
 
 from utils import secret
 
@@ -28,19 +28,19 @@ async def retrieve_body_brand(request: Request) -> tuple[str, str]:
         brand_value = body["brandValue"]
         if not isinstance(brand_key, str) or not isinstance(brand_value, str):
             raise HTTPException(
-                status_code=422,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Validation error: 'brandKey' and 'brandValue' must be strings. Received types: {type(brand_key)}, {type(brand_value)}",
             )
         return (brand_key, brand_value)
     except KeyError:
         raise HTTPException(
-            status_code=422,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Validation error: missing 'brandKey' or 'brandValue'\n\n"
             f"Invalid request body: {body}",
         )
     except (ValueError, TypeError) as e:
         raise HTTPException(
-            status_code=422,  # Unprocessable Entity
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,  # Unprocessable Entity
             detail=f"Validation error: {e}\n\nInvalid request body: {body}",
         )
 
@@ -64,18 +64,18 @@ async def retrieve_body_message(request: Request) -> str:
         body_message = body["message"]
         if not isinstance(body_message, str):
             raise HTTPException(
-                status_code=422,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Validation error: 'message' must be a string",
             )
         return body_message
     except KeyError:
         raise HTTPException(
-            status_code=422,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Validation error: 'message' field is required\n\nInvalid request body: {body}",
         )
     except (ValueError, TypeError) as e:
         raise HTTPException(
-            status_code=422,  # Unprocessable Entity
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,  # Unprocessable Entity
             detail=f"Validation error: {e}\n\nInvalid request body: {body}",
         )
 
