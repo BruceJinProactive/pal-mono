@@ -168,7 +168,11 @@ class AdoraTool(Toolkit):
                 return f"The date {date} is invalid."
 
             if not self._adora_bearer_token:
-                return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+                return (
+                    "Failed to authenticate ordering tool. "
+                    "Please reach out to our support team at help@proactiveailab.com "
+                    "for assistance."
+                )
 
             store_info = _apis.get_wait_time(
                 self._adora_bearer_token, self.store_id, date
@@ -198,7 +202,11 @@ class AdoraTool(Toolkit):
         if not self._adora_bearer_token:
             return (
                 False,
-                "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance.",
+                (
+                    "Failed to authenticate ordering tool. "
+                    "Please reach out to our support team at help@proactiveailab.com "
+                    "for assistance."
+                ),
             )
 
         validated_address_success, validated_address = _apis.validate_address(
@@ -321,9 +329,10 @@ class AdoraTool(Toolkit):
 
     @task(name="_fulfill_order [via Adora API]")
     def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
-        LLMObs.annotate(input_data=order)
-
         json_payload = order.model_dump_json(by_alias=True)
+
+        LLMObs.annotate(input_data=order, metadata={"payload": json_payload})
+
         validated_order = _apis.validate_order(
             bearer_token=bearer_token, json_payload=json_payload
         )
@@ -382,7 +391,9 @@ class AdoraTool(Toolkit):
     @tool
     def checkout_order(self, latest_user_message: str) -> str:
         """
-        Validates an order for checkout by extracting structured ordering data from chat history. This function absolutely must be invoked when the user asks to checkout, pay, place the order, etc.
+        Validates an order for checkout by extracting structured ordering data from chat
+        history. This function absolutely must be invoked when the user asks to checkout,
+        pay, place the order, etc.
 
         Args:
             last_user_message (str): The latest user message in the chat history.
@@ -438,7 +449,11 @@ class AdoraTool(Toolkit):
             logger.info(f"Extraced structured data type: {type(order)}")
 
             if not self._adora_bearer_token:
-                return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+                return (
+                    "Failed to authenticate ordering tool. "
+                    "Please reach out to our support team at help@proactiveailab.com "
+                    "for assistance."
+                )
 
             # Override store id
             order.store_id = self.store_id
@@ -452,6 +467,12 @@ class AdoraTool(Toolkit):
             elif not order.customer.phone_number:
                 logger.error("Customer phone number is missing.")
                 return "We'll need your phone number."
+
+            if not _utils.is_valid_phone_number(order.customer.phone_number):
+                return (
+                    f"{order.customer.phone_number} is not a valid phone number. "
+                    "Please provide a valid phone number."
+                )
 
             order.customer.last_name = (
                 "(via Jimmy)"

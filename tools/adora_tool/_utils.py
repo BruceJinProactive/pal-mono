@@ -23,7 +23,12 @@ def format_phone_number(phone_number: str) -> str:
     return digits
 
 
-def is_valid_email(email):
+def is_valid_phone_number(phone_number: str) -> bool:
+    pattern = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
+    return re.match(pattern, phone_number) is not None
+
+
+def is_valid_email(email: str) -> bool:
     pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
     return re.match(pattern, email) is not None
 
