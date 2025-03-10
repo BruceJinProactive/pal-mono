@@ -6,7 +6,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
+from api.schemas.admin.account import Account, ListAccountsResponse
 from api.schemas.admin.conversation import InboxResponse
+from api.schemas.admin.user import User
+from services import account_service
 from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
@@ -18,6 +21,7 @@ from services.admin_service import (
 from services.agent_service import update_agent_config
 
 from . import _auth, _utils
+from ._utils import UserContext
 
 """
 ######################################################
@@ -100,6 +104,24 @@ def read_account(request: Request):
     return JSONResponse(content=json_compatible_item_data)
 
 
+# TODO(frankie.liu): populate display_name and icon_url after they are available in the db
+def list_accounts(
+    request: Request, context: UserContext, session: Session
+) -> ListAccountsResponse:
+    response = ListAccountsResponse(accounts=[])
+    account = account_service.get_account(session, account_name=context.account_name)
+    if account:
+        response.accounts.append(
+            Account(
+                id=str(account.id),
+                name=account.name,
+                display_name=account.name,  # placeholder for now
+                icon_url="",  # will populate once it's available
+            )
+        )
+    return response
+
+
 async def update_document(
     request: Request, document_id: str, session: Session = Depends(db.get_db)
 ):
@@ -147,3 +169,11 @@ async def upsert_brand(request: Request, session: Session = Depends(db.get_db)):
         )
 
     return agent_raw_config
+
+
+def get_user_info(context: UserContext) -> User:
+    return User(
+        id=context.username,
+        email=context.email,
+        display_name=context.display_name,
+    )

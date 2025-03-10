@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import jwt
 import requests
@@ -6,6 +7,7 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.admin._utils import UserContext
 from services.account_service import get_account
 
 """
@@ -68,7 +70,7 @@ def get_public_key(jwks, kid):
     raise ValueError("Public key not found.")
 
 
-def decode_verify_jwt(token, jwks, app_client_id):
+def decode_verify_jwt(token, jwks, app_client_id) -> dict[str, Any]:
     """
     Decodes and verifies a JSON Web Token (JWT) using the provided JSON Web Key Set (JWKS) and application client ID.
 
@@ -100,7 +102,7 @@ def decode_verify_jwt(token, jwks, app_client_id):
     return claims
 
 
-def parse_admin_console_id_token(id_token):
+def parse_admin_console_id_token(id_token) -> dict[str, Any]:
     """
     Parses and verifies an ID token issued by AWS Cognito for the admin console.
 
@@ -163,7 +165,7 @@ def get_account_name(id_token):
         return None
 
 
-def decrypt_id_token(request: Request) -> dict:
+def decrypt_id_token(request: Request) -> dict[str, Any]:
     """
     Decrypts the ID token from the request headers.
 
@@ -234,3 +236,34 @@ def get_account_from_id_token(request: Request, session: Session) -> db.Account:
         )
 
     return account
+
+
+def authenticate_user(request: Request) -> UserContext:
+    """
+    Authenticates the user from the request. Returns a user context object
+    that contains useful information about the user if they are authenticated.
+    Otherwise, a 401 HTTPException is raised.
+
+    Args:
+        request: incoming HTTP request
+
+    Returns:
+        UserContext: An object that contains various useful information about the user.
+    Raises:
+        HTTPException: If the auth token is invalid or missing.
+    """
+    token = decrypt_id_token(request)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,  # 500 because this is never expected
+            detail=str("token is empty!"),
+            headers={"Content-Type": "application/json"},
+        )
+    return UserContext(
+        username=token.get("cognito:username", ""),
+        email=token.get("email", ""),
+        groups=token.get("cognito:groups", []),
+        display_name=token.get("name", ""),
+        account_name=token.get("custom:account_name", ""),
+        account_display_name=token.get("custom:account_display_name", ""),
+    )

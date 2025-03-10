@@ -5,10 +5,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.admin._auth import authenticate_user
+from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
+from api.schemas.admin.account import ListAccountsResponse
 from api.schemas.admin.analytics import GetReportRequest, GetReportResponse
 from api.schemas.admin.conversation import InboxResponse
-
 from . import _analytics, _feedback, _implementation, _projects
 
 """
@@ -28,6 +30,20 @@ otherwise specified.
 admin_router = APIRouter(prefix=endpoints.ADMIN, tags=["Admin"])
 
 
+@admin_router.get("/me")
+def get_user(request: Request, context: UserContext = Depends(authenticate_user)):
+    """
+    Retrieves information about the currently logged-in user.
+    Args:
+        request: The incoming HTTP request
+        context: The authenticated user's context
+
+    Returns:
+        User: Information for the user in the current session.
+    """
+    return _implementation.get_user_info(context)
+
+
 @admin_router.get("/account")
 def read_account(request: Request):
     """
@@ -40,6 +56,26 @@ def read_account(request: Request):
         JSONResponse: The account information.
     """
     return _implementation.read_account(request)
+
+
+@admin_router.get("/accounts")
+def get_accounts(
+    request: Request,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListAccountsResponse:
+    """
+    Retrieves a list of accounts that are associated with the current user.
+
+    Args:
+        request: The incoming HTTP request.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        ListAccountsResponse: The list of accounts.
+    """
+    return _implementation.list_accounts(request, context, session)
 
 
 @admin_router.get("/agent_config")

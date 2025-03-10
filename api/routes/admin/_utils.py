@@ -2,10 +2,22 @@ import base64
 import hashlib
 import hmac
 import json
+from dataclasses import dataclass
+from typing import List
 
 from fastapi import HTTPException, Request, status
 
 from utils import secret
+
+
+@dataclass
+class UserContext:
+    username: str
+    email: str
+    groups: List[str]
+    display_name: str
+    account_name: str
+    account_display_name: str
 
 
 async def retrieve_body_brand(request: Request) -> tuple[str, str]:
