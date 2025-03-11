@@ -78,7 +78,7 @@ def main() -> None:
     with admin_service_tab:
         st.write("### get_inbox_conversations")
 
-        account_names = ["proactiveailab", "mindzero", "pizzamyheart"]
+        account_names = ["mindzero", "pizzamyheart"]
         accounts = []
 
         for name in account_names:
@@ -170,7 +170,6 @@ def main() -> None:
         sender_identifier = st.selectbox(
             "Sender Number",
             [
-                "+14244859440 (proactiveailab)",
                 "+14244705958 (mindzero)",
                 "+14244680365 (pizzamyheart)",
             ],

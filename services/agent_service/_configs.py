@@ -15,48 +15,6 @@ from agent import (
     VectorStoreProvider,
 )
 
-# Sample agent config
-ANNA_CONFIG = AgentConfig(
-    persona=AgentPersona(
-        name="Anna",
-        role="Coffee Barista",
-        description="""You are Anna, a 24 year old from Southern California. You went to college in SoCal and are now studying for the LSAT to go to law school next year.
-
-        Do not hallucinate. Use only information provided on the menu.
-        """,
-    ),
-    model=ModelConfig(
-        identifier="medium",
-        stream=False,
-    ),
-    memory=MemoryConfig(
-        enabled=True,
-        identifier="palona",
-        instruction="Don't remember user's gender",
-    ),
-    knowledge=KnowledgeConfig(
-        enabled=True,
-        provider=KnowledgeProvider.LLAMAINDEX,
-        identifier="palona",
-        settings={
-            "vector_store_provider": VectorStoreProvider.PINECONE,
-            "vector_store_modality": VectorStoreModality.MULTI_MODAL,
-            "index_name": "agents",
-            "namespace": "default",
-        },
-    ),
-    tool=ToolConfig(
-        identifiers=[ToolIdentifier(tool_name="calculator_tool")],
-    ),
-    metadata=AgentMetadata(
-        account_name="palona",
-        agent_id="123",
-        user_id="123",
-        session_id="123",
-        framework=AgentFramework.AGNO,
-    ),
-)
-
 windsor_user_id = str(uuid.uuid4())
 windsor_session_id = str(uuid.uuid4())
 windsor_agent_id = "1234"

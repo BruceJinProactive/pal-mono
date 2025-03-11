@@ -167,6 +167,11 @@ class RawConfig(BaseModel):
         if store_id is None:
             raise ValueError("`client.store_id` is not provided in `agent_raw_config`.")
 
+        if self.account_name == "palona":
+            return ToolConfig(
+                identifiers=[ToolIdentifier(tool_name="calculator_tool")],
+            )
+
         tool_map = {
             "pizzamyheart": "adora_tool",
             "palona-pizza": "adora_tool",

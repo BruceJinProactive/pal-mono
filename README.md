@@ -45,15 +45,15 @@ ag ws up
 ag ws up -f (Force rebuild from scratch)
 ```
 
-7. [One-time] Log into the internal app at http://localhost:8501/. Under the 'Onboarding' page, enter account name "proactiveailab" (other fields can be left blank), and click 'Create Account' button.
+7. [One-time] Log into the internal app at http://localhost:8501/. Under the 'Onboarding' page, enter account name "palona" (other fields can be left blank), and click 'Create Account' button.
 
 8. [One-time] Go to the 'Projects' page, and add this row into the 'Project Update' table:
 
 | Channel      | Identifier             |
 | ------------ | ---------------------- |
-| internal_app | proactiveailab-default |
+| internal_app | palona-default         |
 
-9. Under the 'Live' page, you should be able to talk to the agent of the "proactiveailab" account.
+9. Under the 'Live' page, you should be able to talk to the agent of the "palona" account.
 
 ### Local Environment
 
@@ -78,8 +78,8 @@ For example,
 
 | Channel      | Identifier             |
 | ------------ | ---------------------- |
-| internal_app | proactiveailab-default |
-| api          | proactiveailab-default |
+| internal_app | palona-default         |
+| api          | palona-default         |
 
 ## Others
 

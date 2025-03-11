@@ -8,7 +8,7 @@ import db
 from agent import AgentConfig
 from utils.log import logger
 
-from . import _configs, _raw_config
+from . import _raw_config
 
 
 async def construct_agent_config(
@@ -60,13 +60,9 @@ async def construct_agent_config(
         stream=stream,
     )
 
-    if db_agent.account.name == "palona":
-        logger.info("Loading Anna config...")
-        return _configs.ANNA_CONFIG
-    else:
-        # Convert blueprint to agent config
-        logger.info("Loading agent config...")
-        return raw_config.build()
+    # Convert blueprint to agent config
+    logger.info("Loading agent config...")
+    return raw_config.build()
 
 
 def get_agent(session: Session, agent_id: uuid.UUID) -> Optional[db.Agent]:
