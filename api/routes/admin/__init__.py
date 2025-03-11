@@ -218,6 +218,24 @@ async def change_feedback_by_id(
     return await _feedback.change_feedback_by_id(feedback_id, request, session)
 
 
+@admin_router.delete("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
+async def delete_feedback_by_id(
+    feedback_id: str, request: Request, session: Session = Depends(db.get_db)
+):
+    """
+    Delete feedback by ID from the database
+
+    Args:
+        feedback_id (str): The ID of the feedback.
+        request (Request): The HTTP request object.
+        session (Session): The database session.
+
+    Returns:
+        CreateFeedbackResponse: The response containing the feedback ID and update timestamp.
+    """
+    return _feedback.remove_feedback_by_id(feedback_id, request, session)
+
+
 @admin_router.get("/inbox")
 def get_inbox(
     request: Request,

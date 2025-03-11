@@ -32,6 +32,25 @@ class FeedbackRepository:
 
         return db_feedback
 
+    def delete_feedback_by_id(self, feedback_id: UUID) -> Feedback | None:
+        try:
+            db_feedback = self.get_feedback_by_id(feedback_id)
+            if db_feedback is None:
+                return None
+            self.session.delete(db_feedback)
+            self.session.commit()
+            return db_feedback
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error deleting feedback: {e}")
+            raise
+        except Exception as e:
+            self.session.rollback()
+            logger.exception(
+                f"Unexpected error while deleting feedback {feedback_id}: {e}"
+            )
+            raise
+
     def get_feedbacks(self) -> list[Feedback] | None:
         try:
             return self.session.query(Feedback).all()

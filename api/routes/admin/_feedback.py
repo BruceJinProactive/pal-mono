@@ -16,6 +16,7 @@ from services.admin_service import (
 )
 from services.feedback_service import (
     create_feedback,
+    delete_feedback_by_id,
     get_feedback_by_id,
     get_feedbacks,
     update_feedback_by_id,
@@ -120,6 +121,46 @@ def get_messages_with_feedback_by_conversation_id(
     ]
 
     return messages_response
+
+
+def remove_feedback_by_id(
+    feedback_id: str, request: Request, session: Session = Depends(db.get_db)
+):
+    _auth.get_account_from_id_token(request, session)
+
+    # Validate feedback_id
+    try:
+        feedback_uuid = uuid.UUID(feedback_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid feedback UUID: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Get Feedback object from service layer
+    try:
+        persisted_feedback = delete_feedback_by_id(session, feedback_uuid)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error, please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if not persisted_feedback:
+        raise HTTPException(
+            status_code=404,
+            detail="Feedback not found.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    response = CreateFeedbackResponse(
+        feedback_id=str(persisted_feedback.id),
+        submitted_at=persisted_feedback.created_at.isoformat(),
+    )
+
+    return response
 
 
 def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_db)):

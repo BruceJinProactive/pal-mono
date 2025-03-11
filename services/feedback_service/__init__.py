@@ -21,6 +21,20 @@ def create_feedback(session: Session, feedback: db.Feedback) -> db.Feedback:
     return _implementation.create_feedback(session, feedback)
 
 
+def delete_feedback_by_id(session: Session, feedback_id: UUID) -> db.Feedback | None:
+    """
+    Deletes feedback by id from the database.
+
+    Args:
+        session (Session): The database session.
+        feedback_id (UUID): The feedback to delete.
+
+    Returns:
+        Feedback | None: The DB Feedback object associated with the id if it exists else None
+    """
+    return _implementation.delete_feedback_by_id(session, feedback_id)
+
+
 def get_feedbacks(session: Session) -> list[db.Feedback] | None:
     """
     Retrieves all feedbacks from the database.
@@ -67,6 +81,7 @@ def update_feedback_by_id(
 
 __all__ = [
     "create_feedback",
+    "delete_feedback_by_id",
     "get_feedback_by_id",
     "get_feedbacks",
     "update_feedback_by_id",
