@@ -9,7 +9,8 @@ import db
 from api.schemas.admin.account import Account, ListAccountsResponse
 from api.schemas.admin.conversation import InboxResponse
 from api.schemas.admin.user import User
-from services import account_service
+from api.schemas.asset.asset import ReadAssetRequest
+from services import account_service, asset_service
 from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
@@ -104,10 +105,7 @@ def read_account(request: Request):
     return JSONResponse(content=json_compatible_item_data)
 
 
-# TODO(frankie.liu): populate display_name and icon_url after they are available in the db
-def list_accounts(
-    request: Request, context: UserContext, session: Session
-) -> ListAccountsResponse:
+def list_accounts(context: UserContext, session: Session) -> ListAccountsResponse:
     response = ListAccountsResponse(accounts=[])
     account = account_service.get_account(session, account_name=context.account_name)
     if account:
@@ -115,8 +113,8 @@ def list_accounts(
             Account(
                 id=str(account.id),
                 name=account.name,
-                display_name=account.name,  # placeholder for now
-                icon_url="",  # will populate once it's available
+                display_name=account.display_name,
+                icon_url=_map_uri_to_s3_url(account.icon_uri),
             )
         )
     return response
@@ -177,3 +175,11 @@ def get_user_info(context: UserContext) -> User:
         email=context.email,
         display_name=context.display_name,
     )
+
+
+def _map_uri_to_s3_url(uri: str) -> str:
+    if uri:
+        s3_files = asset_service.read_assets(request=ReadAssetRequest(name=uri))
+        if s3_files:
+            return s3_files[0].url
+    return ""

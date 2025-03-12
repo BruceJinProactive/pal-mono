@@ -29,6 +29,8 @@ class Account(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String, nullable=True)
+    icon_uri: Mapped[str] = mapped_column(String, nullable=True)
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(

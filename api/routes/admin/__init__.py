@@ -11,6 +11,7 @@ from api.routes.endpoints import endpoints
 from api.schemas.admin.account import ListAccountsResponse
 from api.schemas.admin.analytics import GetReportRequest, GetReportResponse
 from api.schemas.admin.conversation import InboxResponse
+
 from . import _analytics, _feedback, _implementation, _projects
 
 """
@@ -75,7 +76,7 @@ def get_accounts(
     Returns:
         ListAccountsResponse: The list of accounts.
     """
-    return _implementation.list_accounts(request, context, session)
+    return _implementation.list_accounts(context, session)
 
 
 @admin_router.get("/agent_config")
