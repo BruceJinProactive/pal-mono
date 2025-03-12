@@ -43,15 +43,10 @@ class FashionRagSearchFilterUtilsTools:
 
         # Initialize Pinecone
         pc = Pinecone(api_key=os.environ.get("PINECONE_API_KEY"))
-        self.co = cohere.ClientV2(api_key=os.environ.get("COHERE_API_KEY"))  # type: ignore
         index_name = "windsor-cohere-1"
         self.pc_index = pc.Index(index_name)
         self.pinecone_namespace = "cross-modality-embeddings-full"
         self.pinecone_dim = 1408
-        google_creds_str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if google_creds_str is None:
-            raise ValueError("GOOGLE_APPLICATION_CREDENTIALS is not set")
-        google_creds_dict = json.loads(google_creds_str.replace("'", '"'))
 
         """
         Commands for the Windsor Tools:
@@ -59,24 +54,30 @@ class FashionRagSearchFilterUtilsTools:
         - _GENERATE_IMAGES_: Generate images based on the user's query.
         """
 
-        # Ensure the private key has the correct format
-        if "private_key" in google_creds_dict:
-            google_creds_dict["private_key"] = google_creds_dict["private_key"].replace(
-                "\\n", "\n"
-            )
-
         # Initialize Vertex AI
-        credentials = service_account.Credentials.from_service_account_info(
-            google_creds_dict
-        )
-        vertexai.init(
-            project="windsor-demo",
-            location="us-central1",
-            credentials=credentials,
-        )
-        self.emb_model = MultiModalEmbeddingModel.from_pretrained(
-            "multimodalembedding@001"
-        )
+        if USE_GOOGLE_VERTEX:
+            google_creds_str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            if google_creds_str is None:
+                raise ValueError("GOOGLE_APPLICATION_CREDENTIALS is not set")
+            google_creds_dict = json.loads(google_creds_str.replace("'", '"'))
+            # Ensure the private key has the correct format
+            if "private_key" in google_creds_dict:
+                google_creds_dict["private_key"] = google_creds_dict[
+                    "private_key"
+                ].replace("\\n", "\n")
+            credentials = service_account.Credentials.from_service_account_info(
+                google_creds_dict
+            )
+            vertexai.init(
+                project="windsor-demo",
+                location="us-central1",
+                credentials=credentials,
+            )
+            self.emb_model = MultiModalEmbeddingModel.from_pretrained(
+                "multimodalembedding@001"
+            )
+        else:
+            self.co = cohere.ClientV2(api_key=os.environ.get("COHERE_API_KEY"))  # type: ignore
 
     ### TODO: Finalize the text/image embedding retriever
     @task(name="Get Text Embedding")

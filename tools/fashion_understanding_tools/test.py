@@ -33,6 +33,7 @@ def query(prompt: str, endpoint: str, hash: int = random.getrandbits(128)):
             "broker": None,
             "type": "text",
             "text": {"body": prompt},
+            "metadata": {},
             "context": "",
         }
     }
@@ -42,7 +43,7 @@ def query(prompt: str, endpoint: str, hash: int = random.getrandbits(128)):
     execution_time = end - start
 
     json_res = response.json()
-
+    print(json_res)
     print(f"Total execution time: {execution_time.total_seconds()} seconds")
     image_urls = []
     for message in json_res["messages"]:

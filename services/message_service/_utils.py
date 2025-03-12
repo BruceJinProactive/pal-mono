@@ -1,3 +1,4 @@
+import json
 import re
 from typing import Any, List
 
@@ -90,7 +91,7 @@ def remove_image_links(agent_message: Any) -> Any | str:
 
 def extract_image_links(response: str) -> list[tuple[str, str]]:
     """
-    Process response text to extract image URLs
+    Process response text to extract image URLs. Extract everything between <image_urls> tags.
     Returns the original text and any image URLs found.
 
     Args:
@@ -106,27 +107,47 @@ def extract_image_links(response: str) -> list[tuple[str, str]]:
     if response.strip():
         processed_parts.append(("text", response))
 
-    # 2. Extract image URLs
-    pattern = r"""
-        (https?:\/\/                # http:// or https://
-        [^\s)]+\.                  # URL path until extension (no spaces or closing parens)
-        (?i:                       # Case insensitive match for extensions
-            jpg|jpeg|png|apng|     # Common image formats
-            gif|webp|svg|bmp|      # More image formats
-            tiff?|ico|             # Even more formats
-            heic|heif|avif|        # Modern formats
-            jfif|pjpeg|pjp         # JPEG variants
-        )
-        (?:\/[^\s)]*)?            # Optional additional path segments
-        (?:[?#][^\s)]*)?          # Optional query params or hash fragments
-        )
-    """
-    try:
-        image_urls = re.findall(pattern, response, re.VERBOSE)
-        for url in image_urls:
-            processed_parts.append(("image", url))
-    except re.error as e:
-        logger.error(f"Error extracting image URLs: {e}")
+    if "<image_urls>" not in response:
+        # 2. Extract image URLs from the response text
+        pattern = r"""
+            (https?:\/\/                # http:// or https://
+            [^\s)]+\.                  # URL path until extension (no spaces or closing parens)
+            (?i:                       # Case insensitive match for extensions
+                jpg|jpeg|png|apng|     # Common image formats
+                gif|webp|svg|bmp|      # More image formats
+                tiff?|ico|             # Even more formats
+                heic|heif|avif|        # Modern formats
+                jfif|pjpeg|pjp         # JPEG variants
+            )
+            (?:\/[^\s)]*)?            # Optional additional path segments
+            (?:[?#][^\s)]*)?          # Optional query params or hash fragments
+            )
+        """
+        try:
+            image_urls = re.findall(pattern, response, re.VERBOSE)
+            for url in image_urls:
+                processed_parts.append(("image", url))
+        except re.error as e:
+            logger.error(f"Error extracting image URLs: {e}")
+
+    else:
+        # 2 Extract the string of list of image URLs between <image_urls> tags
+        pattern = r"<image_urls>(.*?)</image_urls>"
+
+        try:
+            image_urls = re.search(pattern, response)
+            if image_urls:
+                # Convert the string of list of image URLs to a list
+                image_urls = json.loads(image_urls.group(1).replace("'", '"'))
+                logger.info(f"Image URLs found: {image_urls}")
+
+                for url in image_urls:
+                    processed_parts.append(("image", url))
+            else:
+                logger.error("No image URLs found")
+
+        except Exception as e:
+            logger.error(f"Error extracting image URLs: {e}")
 
     return processed_parts
 
