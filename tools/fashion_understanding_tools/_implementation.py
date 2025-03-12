@@ -221,12 +221,12 @@ class FashionRecommendationLogicPipeline(Toolkit):
                     f"User ID: {self.user_id}\n"
                     f"Session ID: {self.session_id}"
                 )
-                return "Conversation history not found."
+                return ""
 
         except Exception as e:
             error_msg = "Error in getting chat history"
             logger.error(f"{error_msg}: {e}")
-            return error_msg
+            return ""
 
     def _generate_countdown_deal(self) -> str:
         """Generate a random countdown deal to create the sense of urgency"""
