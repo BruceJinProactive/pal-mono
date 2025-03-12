@@ -14,6 +14,7 @@ class ConversationPreview(BaseModel):
     recipient_identifier: str
     broker: str | None
     created_at: datetime.datetime
+    is_escalated: bool
 
 
 class InboxResponse(BaseModel):

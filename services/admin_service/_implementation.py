@@ -57,6 +57,7 @@ def get_inbox_conversations(
 
     message_counts: dict[uuid.UUID, int] = {}
     last_messages: dict[uuid.UUID, db.Message] = {}
+    escalated_conversations: dict[uuid.UUID, bool] = {}
 
     message_repository = db.MessageRepository(session)
     for id, _ in conversation_user_ids:
@@ -87,6 +88,11 @@ def get_inbox_conversations(
         # Get most number of messages for each conversation
         message_counts[id] = message_repository.get_message_count_by_conversation(id)
 
+        # Check if the conversation is escalated
+        is_escalated = message_repository.is_conversation_escalated(id)
+
+        escalated_conversations[id] = is_escalated
+
     # Filter conversations by recency of last message, and sort descending by created_at
     conversation_previews = sorted(
         filter(
@@ -98,6 +104,7 @@ def get_inbox_conversations(
                     message_counts[id],
                     last_messages[id],
                     last_messages[id].created_at,
+                    escalated_conversations[id],
                 )
                 for id, user_id in conversation_user_ids
                 if id in message_counts and id in last_messages
@@ -143,6 +150,7 @@ def get_inbox_conversations(
             recipient_identifier=recipient_identifier,
             broker=broker,
             created_at=conversation[4],
+            is_escalated=conversation[5],
         )
         for conversation in conversation_previews
         for last_text, channel, sender_identifier, recipient_identifier, broker in [
