@@ -11,12 +11,6 @@ class Event(str, Enum):
     CRITICAL_ACTION = "Critical Action"
 
 
-class GetReportRequest(BaseModel):
-    """Get Report Request"""
-
-    report_name: str
-
-
 class GetReportResponse(BaseModel):
     """Get Report Response"""
 

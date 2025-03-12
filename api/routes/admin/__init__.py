@@ -9,7 +9,7 @@ from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.account import ListAccountsResponse
-from api.schemas.admin.analytics import GetReportRequest, GetReportResponse
+from api.schemas.admin.analytics import GetReportResponse
 from api.schemas.admin.conversation import InboxResponse
 
 from . import _analytics, _feedback, _implementation, _projects
@@ -440,7 +440,7 @@ async def get_project_instagram_username(
 @admin_router.get("/reports", status_code=status.HTTP_200_OK)
 def get_report(
     request: Request,
-    report_request: GetReportRequest = Body(...),
+    report_name: str = Query(..., description="Report Name"),
     session: Session = Depends(db.get_db),
 ) -> GetReportResponse:
     """
@@ -449,13 +449,10 @@ def get_report(
     Args:
         request (Request): The request object containing headers.
         session (Session): The database session.
-        report_request (GetReportRequest): The request object containing the report name.
 
     Returns:
         GetReportResponse: The response object containing the report data.
     """
-    report_data = (
-        _analytics.get_report(request, report_request.report_name, session) or {}
-    )
+    report_data = _analytics.get_report(request, report_name, session) or {}
 
     return GetReportResponse(report_data=report_data)
