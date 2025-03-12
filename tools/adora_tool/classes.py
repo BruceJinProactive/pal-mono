@@ -187,7 +187,7 @@ class CustomerInfo(BaseModel):
     @field_serializer("phone_number")
     def format_phone_number(self, value: Optional[str]) -> Optional[str]:
         if not value:
-            return value
+            return None
 
         # Remove non-digit characters.
         digits = "".join(filter(str.isdigit, value))
@@ -198,7 +198,7 @@ class CustomerInfo(BaseModel):
 
         # Validate the number has exactly 10 digits
         if len(digits) != 10:
-            return ""
+            return None
 
         return digits
 
@@ -297,8 +297,9 @@ class SubQueries(BaseModel):
     queries: list[str] = Field(
         description=(
             "Decompose the chat history into individual order items. For example,"
-            "If the chat history is 'I would like to order a pizza with extra cheese, "
-            "burger, and salad.' The return would be ['pizza with extra cheese', "
-            "'burger', 'salad']"
+            "If the chat history is 'I would like to order a pizza with extra cheese "
+            "and pickles, burger, and salad.' The return would be ['pizza', "
+            "'burger', 'salad']\n\n"
+            "DO NOT include modifications (e.g. extra cheese, pickles)."
         ),
     )

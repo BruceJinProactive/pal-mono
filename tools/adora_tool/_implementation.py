@@ -458,6 +458,7 @@ class AdoraTool(Toolkit):
             # Override store id
             order.store_id = self.store_id
 
+            ### Validate and check fields ###
             if not order.customer:
                 logger.error("Customer info is missing.")
                 return "We'll need your first name and phone number to place the order."

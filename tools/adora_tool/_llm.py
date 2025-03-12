@@ -17,6 +17,11 @@ You will be given the chat history and relevant context. You goal is to convert 
 5. Map the items, names, modifiers, etc., that you identified from the english language to the structured data format that is required by the Adora API using the provided context.
 6. Make sure that the order type is correctly identified as "TakeOut" or "Delivery". If not specified it should be empty.
 
+## ORDER TYPE INSTRUCTIONS:
+- You must recognize user's implicit intent of takeout the order herself, and help the user place a takeout order. Here are a few examples how the user expresses their intention of taking out the order: "see you soon in the restaurant", "I will visit the restaurant", "see you at your place", "be there/around/ at the restaurant soon", "I will swing/pass/come/stop by"
+- You must recognize user's implicit intent of having the order delivered, and help the user place a delivery order. Here are a few examples how the user expresses their intention of getting the order delivered: send it over; Can not wait for it to get here; I'll be waiting for it; I'll be here to receive it; send it my way/to my place; Let me know when it's out for delivery; waiting for the drop-off"
+- If the user has not already specified their intent for takeout or delivery do not ASSUME ANYTHING.
+
 # RULES FOR EXTRACTING THE DELIRERY ADDRESS:
 - Extract the last delivery address from the context.
 - For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
