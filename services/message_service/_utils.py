@@ -194,6 +194,12 @@ def get_messages_from_agent_output(
     #     msg_text += f"\n\nImages:\n{output.images}"
 
     response_messages = []
+
+    # Check if metadata exists in the input message, if not log an error
+    if not input_message.metadata:
+        logger.error("Metadata is missing in the input message")
+        return response_messages
+
     new_metadata = input_message.metadata.copy()
     new_metadata.parent_message_id = input_message.id
 

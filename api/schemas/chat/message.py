@@ -73,7 +73,7 @@ class Message(BaseModel):
     # Extras
     extras: Optional[Extras] = None
     # Metadata
-    metadata: Metadata
+    metadata: Optional[Metadata] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
@@ -100,7 +100,7 @@ class Message(BaseModel):
             "media": self.media.dict() if self.media is not None else None,
             "context": self.context,
             "timestamp": self.timestamp.isoformat(),
-            "metadata": self.metadata.dict(),
+            "metadata": self.metadata.dict() if self.metadata is not None else None,
             "extras": self.extras.dict() if self.extras is not None else None,
         }
 
