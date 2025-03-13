@@ -269,7 +269,7 @@ def authenticate_user(request: Request) -> UserContext:
     )
 
 
-def authorize_user(context: UserContext, account_name: str):
+def authorize_user_account(context: UserContext, account_name: str):
     """
     Authorize a user's access to a specific account. This function checks if the
     provided account name matches the account name in the user's context. If the

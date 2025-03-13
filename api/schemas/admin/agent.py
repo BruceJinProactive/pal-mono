@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import BaseModel
 
 
@@ -15,9 +13,3 @@ class Agent(BaseModel):
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
     projects: list[str]
-
-
-class ListAgentsResponse(BaseModel):
-    """List Agents Response"""
-
-    agents: List[Agent]

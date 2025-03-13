@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Body, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -9,9 +9,10 @@ from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.account import ListAccountsResponse
-from api.schemas.admin.agent import ListAgentsResponse
+from api.schemas.admin.agent import Agent
 from api.schemas.admin.analytics import GetReportResponse
 from api.schemas.admin.conversation import InboxResponse
+from api.schemas.admin.project import Project
 
 from . import _analytics, _feedback, _implementation, _projects
 
@@ -80,25 +81,48 @@ def get_accounts(
     return _implementation.list_accounts(context, session)
 
 
-@admin_router.get("/accounts/{account_name}/agents")
-def get_account_agents(
+@admin_router.get("/agents/{agent_id}")
+def get_agent(
     request: Request,
-    account_name: str,
+    agent_id: uuid.UUID,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> ListAgentsResponse:
+) -> Agent:
     """
-    Retrieves the agent configuration for the account.
+    Retrieves the agent configuration for the agent_id.
 
     Args:
-        account_name: The name of the account
-        context: The user context of this request
+        request: The incoming HTTP request.
+        agent_id: UUID of the agent.
+        context: The user context of this request.
         session: The database session.
 
     Returns:
-        ListAgentsResponse: The list of agent configurations.
+        Agent: The agent configuration.
     """
-    return _implementation.get_account_agents(account_name, context, session)
+    return _implementation.get_agent(agent_id, context, session)
+
+
+@admin_router.get("/projects/{project_id}")
+def get_project(
+    request: Request,
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Project:
+    """
+    Fetch detailed information about a specific project by its uuid.
+
+    Args:
+        request: The incoming HTTP request.
+        project_id: UUID of the project.
+        context: The user context of this request.
+        session: The database session.
+
+    Returns:
+        Project: The project configuration.
+    """
+    return _implementation.get_project(project_id, context, session)
 
 
 @admin_router.get("/agent_config")

@@ -1,6 +1,7 @@
 import db
 from api.schemas.admin.account import Account
 from api.schemas.admin.agent import Agent
+from api.schemas.admin.project import Project
 from api.schemas.asset.asset import ReadAssetRequest
 from services import asset_service
 from utils.log import logger
@@ -33,6 +34,16 @@ def build_agent(agent: db.Agent) -> Agent:
         created_at=int(agent.created_at.timestamp()),
         updated_at=int(agent.updated_at.timestamp() if agent.updated_at else 0),
         projects=[str(project.id) for project in agent.projects],
+    )
+
+
+def build_project(project: db.Project) -> Project:
+    return Project(
+        id=str(project.id),
+        name=project.name,
+        raw_config=project.raw_config,
+        channel_identifiers=project.channel_identifiers or [],
+        agent_id=str(project.agent_id),
     )
 
 

@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 import db
 from api.schemas.admin.account import ListAccountsResponse
-from api.schemas.admin.agent import ListAgentsResponse
+from api.schemas.admin.agent import Agent
 from api.schemas.admin.conversation import InboxResponse
+from api.schemas.admin.project import Project
 from api.schemas.admin.user import User
-from services import account_service, agent_service
+from services import account_service, agent_service, project_service
 from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
@@ -19,10 +20,9 @@ from services.admin_service import (
     get_knowledge_base_by_document_id,
     update_knowledge_by_id,
 )
-from utils.log import logger
 
 from . import _auth, _utils
-from ._builder import build_account, build_agent
+from ._builder import build_account, build_agent, build_project
 from ._utils import UserContext
 
 """
@@ -44,17 +44,28 @@ def get_agent_config(
     return JSONResponse(account.agents[0].raw_config)
 
 
-def get_account_agents(
-    account_name: str, context: UserContext, session: Session
-) -> ListAgentsResponse:
-    _auth.authorize_user(context, account_name)
-    response = ListAgentsResponse(agents=[])
-    agents = agent_service.get_agents_by_account(session, account_name)
-    if agents:
-        response.agents = [build_agent(agent) for agent in agents]
-    else:
-        logger.warn(f"No agents found for account: {account_name}")
-    return response
+def get_agent(agent_id: uuid.UUID, context: UserContext, session: Session) -> Agent:
+    agent = agent_service.get_agent(session, agent_id)
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+    _auth.authorize_user_account(context, agent.account.name)
+    return build_agent(agent)
+
+
+def get_project(
+    project_id: uuid.UUID, context: UserContext, session: Session
+) -> Project:
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+    _auth.authorize_user_account(context, project.account.name)
+    return build_project(project)
 
 
 def get_brand(request: Request, session: Session = Depends(db.get_db)):
