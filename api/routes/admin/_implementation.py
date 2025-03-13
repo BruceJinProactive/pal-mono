@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session
 
 import db
 from api.schemas.admin.account import Account, ListAccountsResponse
+from api.schemas.admin.agent import ListAgentsResponse
 from api.schemas.admin.conversation import InboxResponse
 from api.schemas.admin.user import User
 from api.schemas.asset.asset import ReadAssetRequest
-from services import account_service, asset_service
+from services import account_service, agent_service, asset_service
 from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
@@ -19,9 +20,10 @@ from services.admin_service import (
     get_knowledge_base_by_document_id,
     update_knowledge_by_id,
 )
-from services.agent_service import update_agent_config
+from utils.log import logger
 
 from . import _auth, _utils
+from ._builder import build_agent
 from ._utils import UserContext
 
 """
@@ -41,6 +43,19 @@ def get_agent_config(
 ) -> JSONResponse:
     account = _auth.get_account_from_id_token(request, session)
     return JSONResponse(account.agents[0].raw_config)
+
+
+def get_account_agents(
+    account_name: str, context: UserContext, session: Session
+) -> ListAgentsResponse:
+    _auth.authorize_user(context, account_name)
+    response = ListAgentsResponse(agents=[])
+    agents = agent_service.get_agents_by_account(session, account_name)
+    if agents:
+        response.agents = [build_agent(agent) for agent in agents]
+    else:
+        logger.warn(f"No agents found for account: {account_name}")
+    return response
 
 
 def get_brand(request: Request, session: Session = Depends(db.get_db)):
@@ -154,7 +169,7 @@ async def upsert_brand(request: Request, session: Session = Depends(db.get_db)):
     agent_raw_config["brand"][request_brand_key_value[0]] = request_brand_key_value[1]
 
     try:
-        update_agent_config(
+        agent_service.update_agent_config(
             session,
             agent_id=account.agents[0].id,
             config=agent_raw_config,
@@ -179,7 +194,10 @@ def get_user_info(context: UserContext) -> User:
 
 def _map_uri_to_s3_url(uri: str) -> str:
     if uri:
-        s3_files = asset_service.read_assets(request=ReadAssetRequest(name=uri))
-        if s3_files:
-            return s3_files[0].url
+        try:
+            s3_files = asset_service.read_assets(request=ReadAssetRequest(name=uri))
+            if s3_files:
+                return s3_files[0].url
+        except Exception as e:
+            logger.error(f"Error reading assets for URI {uri}: {e}")
     return ""

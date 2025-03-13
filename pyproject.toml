@@ -80,12 +80,12 @@ line_length = 88
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
-exclude = ["aienv*", ".venv*"]
+exclude = ["aienv*", ".venv*", ".git"]
 [tool.ruff.lint.per-file-ignores]
 # Ignore `F401` (import violations) in all `__init__.py` files
 "__init__.py" = ["F401", "F403"]
 "*.ipynb" = ["E402"]
 
 [tool.pyright]
-exclude = ["aienv*", ".venv*", "**/__pycache__", "workspace/"]
+exclude = ["aienv*", ".venv*", "**/__pycache__", "workspace/", ".git"]
 typeCheckingMode = "standard"

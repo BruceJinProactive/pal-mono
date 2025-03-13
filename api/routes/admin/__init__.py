@@ -9,6 +9,7 @@ from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.account import ListAccountsResponse
+from api.schemas.admin.agent import ListAgentsResponse
 from api.schemas.admin.analytics import GetReportResponse
 from api.schemas.admin.conversation import InboxResponse
 
@@ -77,6 +78,27 @@ def get_accounts(
         ListAccountsResponse: The list of accounts.
     """
     return _implementation.list_accounts(context, session)
+
+
+@admin_router.get("/accounts/{account_name}/agents")
+def get_account_agents(
+    request: Request,
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListAgentsResponse:
+    """
+    Retrieves the agent configuration for the account.
+
+    Args:
+        account_name: The name of the account
+        context: The user context of this request
+        session: The database session.
+
+    Returns:
+        ListAgentsResponse: The list of agent configurations.
+    """
+    return _implementation.get_account_agents(account_name, context, session)
 
 
 @admin_router.get("/agent_config")

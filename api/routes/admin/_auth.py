@@ -7,7 +7,7 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin._utils import UserContext
+from api.routes.admin._utils import UserContext, UserRole
 from services.account_service import get_account
 
 """
@@ -265,5 +265,34 @@ def authenticate_user(request: Request) -> UserContext:
         groups=token.get("cognito:groups", []),
         display_name=token.get("name", ""),
         account_name=token.get("custom:account_name", ""),
-        account_display_name=token.get("custom:account_display_name", ""),
+        role=UserRole.AccountManager,
+    )
+
+
+def authorize_user(context: UserContext, account_name: str):
+    """
+    Authorize a user's access to a specific account. This function checks if the
+    provided account name matches the account name in the user's context. If the
+    account names match or the user's role is Admin, the function allows access.
+    Otherwise, an HTTPException is raised with a 403 Forbidden status, indicating
+    insufficient permissions.
+
+    Args:
+        context: A UserContext object containing the user's account name and role.
+        account_name: The name of the account that the user is attempting to access.
+
+    Returns:
+        None if the user is authorized to access the account.
+    Raises:
+        HTTPException: If the user does not have the required permissions to access
+        the provided account name.
+    """
+    if account_name == context.account_name:
+        return
+    if context.role == UserRole.Admin:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="User does not have permission for the requested account",
+        headers={"Content-Type": "application/json"},
     )

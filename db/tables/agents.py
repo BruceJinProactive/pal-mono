@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime
+from sqlalchemy.types import DateTime, String
 
 from .base import Base
 
@@ -29,6 +29,14 @@ class Agent(Base):
         nullable=False,
         index=True,
     )
+    name: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="assistant"
+    )
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    communication_style: Mapped[str | None] = mapped_column(String, nullable=True)
+    interaction_guidelines: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # deprecated, use the explicit fields instead
     raw_config: Mapped[Dict] = mapped_column(
         MutableDict.as_mutable(JSONB()),
         nullable=False,

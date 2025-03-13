@@ -3,11 +3,17 @@ import hashlib
 import hmac
 import json
 from dataclasses import dataclass
+from enum import Enum
 from typing import List
 
 from fastapi import HTTPException, Request, status
 
 from utils import secret
+
+
+class UserRole(str, Enum):
+    AccountManager = "AccountManager"
+    Admin = "Admin"
 
 
 @dataclass
@@ -17,7 +23,7 @@ class UserContext:
     groups: List[str]
     display_name: str
     account_name: str
-    account_display_name: str
+    role: UserRole
 
 
 async def retrieve_body_brand(request: Request) -> tuple[str, str]:
