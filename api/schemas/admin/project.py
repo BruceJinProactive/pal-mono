@@ -6,6 +6,7 @@ class Project(BaseModel):
 
     id: str
     name: str
+    display_name: str | None
     raw_config: dict
     channel_identifiers: list[str]
     agent_id: str

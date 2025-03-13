@@ -41,6 +41,7 @@ def build_project(project: db.Project) -> Project:
     return Project(
         id=str(project.id),
         name=project.name,
+        display_name=project.display_name,
         raw_config=project.raw_config,
         channel_identifiers=project.channel_identifiers or [],
         agent_id=str(project.agent_id),

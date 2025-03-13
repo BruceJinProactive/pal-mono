@@ -30,6 +30,7 @@ class Project(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    display_name: Mapped[str] = mapped_column(String, nullable=True)
     raw_config: Mapped[Dict] = mapped_column(
         MutableDict.as_mutable(JSONB()),
         nullable=False,
