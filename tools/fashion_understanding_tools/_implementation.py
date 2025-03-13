@@ -29,6 +29,7 @@ from .fashion_image_understanding_tools import FashionImageUnderstandingTools
 from .fashion_negative_intent_detection_tools import FashionNegativeIntentTools
 from .fashion_rag_search_filter_utils_tools import FashionRagSearchFilterUtilsTools
 from .fashion_reranker_tools import FashionRerankerTools
+from .fashion_session_data_tools import FashionSessionDataTools
 from .fashion_text_understanding_tools import FashionTextUnderstandingTools
 
 # Set to True to record and see the time taken for each function in docker logs
@@ -105,6 +106,9 @@ class FashionRecommendationLogicPipeline(Toolkit):
             hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
         )
         self.fashion_reranker_tools = FashionRerankerTools(
+            client=self.client, client_async=self.client_async
+        )
+        self.fashion_session_data_tools = FashionSessionDataTools(
             client=self.client, client_async=self.client_async
         )
 
@@ -626,21 +630,19 @@ class FashionRecommendationLogicPipeline(Toolkit):
         ### TODO: Define the way to collect user query, chat history, and image uploaded by the user.
         chat_history = chat_history if chat_history else []
         query = query if query else ""
+
+        ##### Ensure previously recommended items are not repeated #####
+        filtered_items = []
+        if len(chat_history) > 0:  # type: ignore
+            filtered_items = self.fashion_session_data_tools._fetch_recommended_items(
+                query=query, chat_history=chat_history, record_time=RECORD_TIME  # type: ignore
+            )
+
         base64_generative_image = (
             base64_generative_image if base64_generative_image else ""
         )
 
-        ##### Ensure previously recommended items are not repeated #####
-        ### TODO (session_data): Ensure prev_user_preferences and past_recommendations are stored in the session data
-        filtered_items = []
-        if (
-            "recommended_items" in session_data
-            and "all" in session_data["recommended_items"]
-        ):
-            for item in session_data["recommended_items"]["all"]:
-                if "item_name" in item:
-                    filtered_items.append(item["item_name"])
-
+        ##### Load previous user preferences and past recommendations #####
         prev_user_preferences = session_data.get("prev_user_preferences", None)
         past_recommendations = session_data.get("recommended_items", None)
 
@@ -862,7 +864,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
             occasions,
             categories,
             colors,
-            filtered_items,
+            filtered_items,  # type: ignore
             negative_intents=negative_intents,
         )
 
@@ -893,7 +895,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                 occasions=occasions,
                 categories=categories,
                 colors=colors,
-                filtered_items=filtered_items,
+                filtered_items=filtered_items,  # type: ignore
                 negative_intents=negative_intents,
                 record_time=RECORD_TIME,
             )
@@ -919,6 +921,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         ##### Process and organize the results #####
 
         names = set()  # Tracks how many distinct items we've seen
+        # TODO: Discuss with eng team how to send back the image urls
         image_urls = []
         item_names = []
         product_urls = []
@@ -996,7 +999,8 @@ class FashionRecommendationLogicPipeline(Toolkit):
                 "images", []
             )
 
-            self._write_session_data(session_data)
+            # TODO: discuss with eng team whether we want to store session data
+            # self._write_session_data(session_data)
 
         if RECORD_TIME:
             logger.info(

@@ -345,7 +345,7 @@ class FashionRagSearchFilterUtilsTools:
         occasions: List[str],
         categories: List[str],
         colors: List[str],
-        filtered_items: List[str],
+        filtered_items: List[str] | None,
         release_criteria: List[str] | None = None,
         negative_intents: dict | None = None,
     ) -> dict | None:
@@ -483,7 +483,7 @@ class FashionRagSearchFilterUtilsTools:
         occasions: List[str],
         categories: List[str],
         colors: List[str],
-        filtered_items: List[str],
+        filtered_items: List[str] | None,
         negative_intents: dict | None = None,
         record_time: bool = True,
     ) -> List:
@@ -505,7 +505,7 @@ class FashionRagSearchFilterUtilsTools:
         """
         start_time = time.time()
         logger.info(
-            f"Relaxing filters to retrieve more results, required results: {top_k}, current results: {len(filtered_items)}"
+            f"Relaxing filters to retrieve more results, required results: {top_k}."
         )
 
         release_order = ["occasion", "category", "color"]
