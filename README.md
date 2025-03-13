@@ -49,9 +49,9 @@ ag ws up -f (Force rebuild from scratch)
 
 8. [One-time] Go to the 'Projects' page, and add this row into the 'Project Update' table:
 
-| Channel      | Identifier             |
-| ------------ | ---------------------- |
-| internal_app | palona-default         |
+| Channel      | Identifier     |
+|--------------|----------------|
+| internal_app | palona-default |
 
 9. Under the 'Live' page, you should be able to talk to the agent of the "palona" account.
 
@@ -70,16 +70,16 @@ Since Agno installs these dependencies in the Docker container environment, our 
 To open up channels (e.g. the internal app's live page, api) to talk to a local agent, they need to be configured. In the Channel:Identifier table under the projects page, save the following rows for each account.
 
 | Channel      | Identifier     |
-| ------------ | -------------- |
+|--------------|----------------|
 | internal_app | <project_name> |
 | api          | <project_name> |
 
 For example,
 
-| Channel      | Identifier             |
-| ------------ | ---------------------- |
-| internal_app | palona-default         |
-| api          | palona-default         |
+| Channel      | Identifier     |
+|--------------|----------------|
+| internal_app | palona-default |
+| api          | palona-default |
 
 ## Others
 
@@ -133,12 +133,11 @@ The CI/CD pipeline consists of 4 environments:
 
 ### Endpoints
 
-- Endpoints labeled as (legacy) belong to our old AWS account, `proactiveailab`, and are being phased out.
-- The new endpoints are hosted in dedicated AWS accounts: `lat`, `stg`, and `prd`.
+Endpoints are hosted in dedicated AWS accounts: `lat`, `stg`, and `prd`.
 
-| env | app(old)                                                           | app(new)                                                           | api(old)                                                   | api(new)                            |
-| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------- | ----------------------------------- |
-| dev |                                                                    | http://localhost:8501/                                             |                                                            | http://localhost:8000/              |
-| lat | http://pal-mono-lat-app-lb-1258791823.us-west-1.elb.amazonaws.com/ | http://lat-pal-mono-app-lb-944853732.us-east-1.elb.amazonaws.com   | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/lat | https://lat-api.proactiveailab.com/ |
-| stg | http://pal-mono-stg-app-lb-1654020856.us-west-1.elb.amazonaws.com/ | http://stg-pal-mono-app-lb-1494675788.us-east-1.elb.amazonaws.com  | https://b1rdkt5cpa.execute-api.us-west-1.amazonaws.com/stg | https://stg-api.proactiveailab.com/ |
-| prd |                                                                    | http://prd-pal-mono-app-lb-1794342643.us-east-1.elb.amazonaws.com/ |                                                            | https://api.proactiveailab.com/     |
+| env | app                            | api                        |
+|-----|--------------------------------|----------------------------|
+| dev | http://localhost:8501/         | http://localhost:8000/     |
+| lat | https://lat-console.palona.ai/ | https://lat-api.palona.ai/ |
+| stg | https://stg-console.palona.ai/ | https://stg-api.palona.ai/ |
+| prd | https://console.palona.ai/     | https://api.palona.ai/     |
