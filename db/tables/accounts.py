@@ -29,8 +29,15 @@ class Account(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    display_name: Mapped[str] = mapped_column(String, nullable=True)
-    icon_uri: Mapped[str] = mapped_column(String, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    icon_uri: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Attributes that provide basic context for the business account
+    business_description: Mapped[str | None] = mapped_column(String, nullable=True)
+    business_faq: Mapped[str | None] = mapped_column(String, nullable=True)
+    business_promotions: Mapped[str | None] = mapped_column(String, nullable=True)
+    business_catalog: Mapped[str | None] = mapped_column(String, nullable=True)
+    business_others: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(

@@ -6,12 +6,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
-from api.schemas.admin.account import Account, ListAccountsResponse
+from api.schemas.admin.account import ListAccountsResponse
 from api.schemas.admin.agent import ListAgentsResponse
 from api.schemas.admin.conversation import InboxResponse
 from api.schemas.admin.user import User
-from api.schemas.asset.asset import ReadAssetRequest
-from services import account_service, agent_service, asset_service
+from services import account_service, agent_service
 from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
@@ -23,7 +22,7 @@ from services.admin_service import (
 from utils.log import logger
 
 from . import _auth, _utils
-from ._builder import build_agent
+from ._builder import build_account, build_agent
 from ._utils import UserContext
 
 """
@@ -124,14 +123,7 @@ def list_accounts(context: UserContext, session: Session) -> ListAccountsRespons
     response = ListAccountsResponse(accounts=[])
     account = account_service.get_account(session, account_name=context.account_name)
     if account:
-        response.accounts.append(
-            Account(
-                id=str(account.id),
-                name=account.name,
-                display_name=account.display_name,
-                icon_url=_map_uri_to_s3_url(account.icon_uri),
-            )
-        )
+        response.accounts.append(build_account(account))
     return response
 
 
@@ -190,14 +182,3 @@ def get_user_info(context: UserContext) -> User:
         email=context.email,
         display_name=context.display_name,
     )
-
-
-def _map_uri_to_s3_url(uri: str) -> str:
-    if uri:
-        try:
-            s3_files = asset_service.read_assets(request=ReadAssetRequest(name=uri))
-            if s3_files:
-                return s3_files[0].url
-        except Exception as e:
-            logger.error(f"Error reading assets for URI {uri}: {e}")
-    return ""

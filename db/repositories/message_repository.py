@@ -2,10 +2,10 @@ import datetime
 import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.sql import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import text
 
 from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dttm import current_utc
