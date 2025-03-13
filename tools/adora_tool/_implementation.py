@@ -50,6 +50,7 @@ class AdoraTool(Toolkit):
         self.register(self.check_online_ordering_status)
         self.register(self.get_wait_time)
         self.register(self.checkout_order)
+        self.register(self.check_address)
 
         self.store_id = store_id
         self.agent_id = agent_id
@@ -185,6 +186,40 @@ class AdoraTool(Toolkit):
         except Exception as e:
             logger.error(f"[AdoraTool.store_info] Error getting store info: {e}")
             return "Failed to get the wait time, please try again."
+
+    @tool
+    def check_address(self, address: str) -> str:
+        """
+        This tool can be used to validate whether or not an address is within a
+        delivery zone. Call this tool whenever you need to confirm if a certain
+        delivery address can be delivered to.
+
+        Args:
+            address (str): The delivery address to check.
+
+        Returns:
+            str: If the address is valid and within the delivery zone.
+        """
+        delivery_address = _llm.llm_call(
+            system_prompt="Extract the address into the given output format.",
+            prompt=address,
+            response_format=DeliveryAddress,
+            reasoning=False,
+        )
+
+        if not isinstance(delivery_address, DeliveryAddress):
+            return "Failed to identify address. Please try again by providing the full address"
+
+        validate_order_success, validate_order_message = self._validate_address(
+            delivery_address  # type: ignore
+        )
+
+        logger.info(
+            f"Validated order: {validate_order_success}\n"
+            f"Validate order message: {validate_order_message}"
+        )
+
+        return validate_order_message
 
     @task
     def _validate_address(self, canonical_address: DeliveryAddress) -> tuple[bool, str]:
