@@ -30,6 +30,7 @@ class CreateAccountRequest(BaseModel):
 
     name: str = Field(...)
     display_name: str | None = None
+    icon_uri: str | None = None
     business_description: str | None = None
     business_faq: str | None = None
     business_promotions: str | None = None
@@ -41,6 +42,7 @@ class UpdateAccountRequest(BaseModel):
     """Update Account Request"""
 
     display_name: str | None = None
+    icon_uri: str | None = None
     business_description: str | None = None
     business_faq: str | None = None
     business_promotions: str | None = None

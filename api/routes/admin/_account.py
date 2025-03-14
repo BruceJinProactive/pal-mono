@@ -26,6 +26,7 @@ async def create_account(request: Request, session: Session) -> Account:
     create_request = CreateAccountRequest(**account_data)
     account_params = account_service.AccountParams(
         display_name=create_request.display_name,
+        icon_uri=create_request.icon_uri,
         business_description=create_request.business_description,
         business_faq=create_request.business_faq,
         business_promotions=create_request.business_promotions,
@@ -52,6 +53,7 @@ async def update_account(
     update_request = UpdateAccountRequest(**account_data)
     account_params = account_service.AccountParams(
         display_name=update_request.display_name,
+        icon_uri=update_request.icon_uri,
         business_description=update_request.business_description,
         business_faq=update_request.business_faq,
         business_promotions=update_request.business_promotions,
