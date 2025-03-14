@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,7 @@ from agent import AgentConfig
 from utils.log import logger
 
 from . import _raw_config
+from .schema import AgentParams
 
 
 async def construct_agent_config(
@@ -99,3 +101,23 @@ def replace_agent_config(
 ) -> None:
     agent_repository = db.AgentRepository(session)
     agent_repository.replace_agent_config(agent_id=agent_id, config=config)
+
+
+def create_agent(
+    session: Session, account_id: uuid.UUID, params: AgentParams
+) -> db.Agent:
+    # Create an agent for the given account
+    agent_repository = db.AgentRepository(session)
+    agent = agent_repository.create_agent(account_id, **asdict(params))
+    return agent
+
+
+def update_agent(
+    session: Session, agent_id: uuid.UUID, params: AgentParams
+) -> db.Agent:
+    # Update the specified agent with the provided params
+    agent_repository = db.AgentRepository(session)
+    agent = agent_repository.update_agent(agent_id, **asdict(params))
+    if agent is None:
+        raise ValueError(f"Agent with id {agent_id} not found")
+    return agent

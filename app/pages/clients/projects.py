@@ -8,6 +8,7 @@ from app.auth import user
 from app.shared import get_app_db, json_decode, universal_picker_ui
 from services.account_service import get_account
 from services.project_service import (
+    ProjectParams,
     create_project,
     delete_project,
     get_project,
@@ -47,7 +48,9 @@ def main() -> None:
         if st.button("Create Project", key="create_project"):
             if agent_id:
                 new_project = create_project(
-                    session, new_project_name, account.id, agent_id
+                    session,
+                    account.id,
+                    ProjectParams(name=new_project_name, agent_id=agent_id),
                 )
                 if new_project:
                     st.success("Successfully created a new project")

@@ -1,8 +1,10 @@
+from dataclasses import asdict
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 import db
+from services.account_service.schema import AccountParams
 
 
 def get_accounts(session: Session) -> List[db.Account]:
@@ -27,8 +29,41 @@ def create_account_with_defaults(session: Session, account_name: str) -> db.Acco
     account = account_repository.create_account(account_name)
     agent = agent_repository.create_agent(account_id=account.id)
     project_repository.create_project(
-        project_name=f"{account_name}-default",
-        account_id=account.id,
+        account.id,
+        name=f"{account_name}-default",
         agent_id=agent.id,
     )
     return account
+
+
+def create_account(
+    session: Session, account_name: str, params: AccountParams
+) -> db.Account:
+    """
+    Create an account with the supplied params but without creating default project or agent.
+    """
+    account_repository = db.AccountRepository(session)
+
+    # Check if the account exists
+    found_account = get_account(session, account_name)
+    if found_account:
+        raise ValueError(f"Account {account_name} already exists.")
+
+    # Only create an account if the account name does not exist
+    account = account_repository.create_account(account_name, **asdict(params))
+    return account
+
+
+def update_account(
+    session: Session, account_name: str, params: AccountParams
+) -> db.Account:
+    """
+    Update an account with the supplied params.
+    """
+    account_repository = db.AccountRepository(session)
+
+    # Check if the account exists
+    updated_account = account_repository.update_account(account_name, **asdict(params))
+    if updated_account is None:
+        raise ValueError(f"Account {account_name} does not exist.")
+    return updated_account

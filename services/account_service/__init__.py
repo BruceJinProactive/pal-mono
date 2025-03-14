@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 import db
 
 from . import _implementation
+from .schema import AccountParams
 
 
 def get_accounts(session: Session) -> List[db.Account]:
@@ -48,8 +49,51 @@ def create_account_with_defaults(session: Session, account_name: str) -> db.Acco
     return _implementation.create_account_with_defaults(session, account_name)
 
 
+def create_account(
+    session: Session, account_name: str, params: AccountParams
+) -> db.Account:
+    """
+    Create an account in the database based on the provided account name and
+    parameters. Account will not be created if the account_name already exists.
+
+    Args:
+        session (Session): The database session used to interact with the database.
+        account_name (str): The name of the account to be created.
+        params (AccountParams): The parameters containing details for the account
+        to be created.
+
+    Returns:
+        Account: The newly created account object from the database.
+    Raises:
+        ValueError: If the account name already exists in the database.
+    """
+    return _implementation.create_account(session, account_name, params)
+
+
+def update_account(
+    session: Session, account_name: str, params: AccountParams
+) -> db.Account:
+    """
+    Updates the account details with the provided parameters.
+
+    Args:
+        session (Session): The database session used to interact with the database.
+        account_name (str): The name of the account to be updated.
+        params (AccountParams): The parameters containing details for the account
+        to be updated.
+
+    Returns:
+        Account: The updated account object from the database.
+    Raises:
+        ValueError: If the account name does not exist in the database.
+    """
+    return _implementation.update_account(session, account_name, params)
+
+
 __all__ = [
     "get_accounts",
     "get_account",
     "create_account_with_defaults",
+    "create_account",
+    "update_account",
 ]

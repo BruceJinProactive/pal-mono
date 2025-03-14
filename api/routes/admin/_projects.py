@@ -6,6 +6,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
+from api.schemas.admin.project import (
+    CreateProjectRequest,
+    Project,
+    UpdateProjectRequest,
+)
+from services import project_service
 from services.admin_service import (
     deauthorize_instagram_access_token,
     get_instagram_connected,
@@ -14,7 +20,8 @@ from services.admin_service import (
     set_instagram_access_token,
 )
 
-from . import _auth, _utils
+from . import UserContext, _auth, _utils
+from ._builder import build_project
 
 
 async def connect_instagram(
@@ -255,3 +262,62 @@ async def handle_instagram_deauthorization(
 async def read_projects(request: Request, session: Session = Depends(db.get_db)):
     account = _auth.get_account_from_id_token(request, session)
     return JSONResponse(jsonable_encoder(account.projects))
+
+
+def get_project(
+    project_id: uuid.UUID, context: UserContext, session: Session
+) -> Project:
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+    _auth.authorize_user_account(context, project.account.name)
+    return build_project(project)
+
+
+async def create_project(request: Request, session: Session) -> Project:
+    project_data = await request.json()
+    create_request = CreateProjectRequest(**project_data)
+    project_params = project_service.ProjectParams(
+        name=create_request.name,
+        display_name=create_request.display_name,
+        agent_id=create_request.agent_id,
+        raw_config=create_request.raw_config,
+        channel_identifiers=create_request.channel_identifiers,
+    )
+    try:
+        db_project = project_service.create_project(
+            session, create_request.account_id, project_params
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+    return build_project(db_project)
+
+
+async def update_project(
+    request: Request, project_id: uuid.UUID, session: Session
+) -> Project:
+    project_data = await request.json()
+    update_request = UpdateProjectRequest(**project_data)
+    project_params = project_service.ProjectParams(
+        name=update_request.name,
+        display_name=update_request.display_name,
+        agent_id=update_request.agent_id,
+        raw_config=update_request.raw_config,
+        channel_identifiers=update_request.channel_identifiers,
+    )
+    try:
+        db_project = project_service.update_project(session, project_id, project_params)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+    return build_project(db_project)

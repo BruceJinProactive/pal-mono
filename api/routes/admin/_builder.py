@@ -25,7 +25,7 @@ def build_account(account: db.Account) -> Account:
 
 def build_agent(agent: db.Agent) -> Agent:
     return Agent(
-        id=str(agent.id),
+        id=agent.id,
         name=agent.name,
         description=agent.description,
         communication_style=agent.communication_style,
@@ -34,17 +34,19 @@ def build_agent(agent: db.Agent) -> Agent:
         created_at=int(agent.created_at.timestamp()),
         updated_at=int(agent.updated_at.timestamp() if agent.updated_at else 0),
         projects=[str(project.id) for project in agent.projects],
+        account_id=agent.account_id,
     )
 
 
 def build_project(project: db.Project) -> Project:
     return Project(
-        id=str(project.id),
+        id=project.id,
         name=project.name,
         display_name=project.display_name,
         raw_config=project.raw_config,
         channel_identifiers=project.channel_identifiers or [],
-        agent_id=str(project.agent_id),
+        agent_id=project.agent_id,
+        account_id=project.account_id,
     )
 
 

@@ -6,12 +6,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
-from api.schemas.admin.account import ListAccountsResponse
-from api.schemas.admin.agent import Agent
 from api.schemas.admin.conversation import InboxResponse
-from api.schemas.admin.project import Project
 from api.schemas.admin.user import User
-from services import account_service, agent_service, project_service
+from services import agent_service
 from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
@@ -22,7 +19,6 @@ from services.admin_service import (
 )
 
 from . import _auth, _utils
-from ._builder import build_account, build_agent, build_project
 from ._utils import UserContext
 
 """
@@ -42,30 +38,6 @@ def get_agent_config(
 ) -> JSONResponse:
     account = _auth.get_account_from_id_token(request, session)
     return JSONResponse(account.agents[0].raw_config)
-
-
-def get_agent(agent_id: uuid.UUID, context: UserContext, session: Session) -> Agent:
-    agent = agent_service.get_agent(session, agent_id)
-    if not agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Agent not found",
-        )
-    _auth.authorize_user_account(context, agent.account.name)
-    return build_agent(agent)
-
-
-def get_project(
-    project_id: uuid.UUID, context: UserContext, session: Session
-) -> Project:
-    project = project_service.get_project(session, project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-    _auth.authorize_user_account(context, project.account.name)
-    return build_project(project)
 
 
 def get_brand(request: Request, session: Session = Depends(db.get_db)):
@@ -128,14 +100,6 @@ def read_account(request: Request):
     decrypted_id_token = _auth.decrypt_id_token(request)
     json_compatible_item_data = jsonable_encoder(decrypted_id_token)
     return JSONResponse(content=json_compatible_item_data)
-
-
-def list_accounts(context: UserContext, session: Session) -> ListAccountsResponse:
-    response = ListAccountsResponse(accounts=[])
-    account = account_service.get_account(session, account_name=context.account_name)
-    if account:
-        response.accounts.append(build_account(account))
-    return response
 
 
 async def update_document(

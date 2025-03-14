@@ -8,25 +8,41 @@ import db
 from api.schemas.chat.message import Message
 
 from . import _implementation
+from .schema import ProjectParams
 
 
 def create_project(
-    session: Session, project_name: str, account_id: uuid.UUID, agent_id: uuid.UUID
-):
+    session: Session, account_id: uuid.UUID, params: ProjectParams
+) -> db.Project:
     """
-    Creates a new project with the given name, account, and agent.
+    Create a new project for a specific account using provided parameters.
 
     Args:
         session (Session): The database connection.
-        project_name (str): The name of the project.
-        account_id (uuid.UUID): The unique identifier of the account to which the project belongs.
-        agent_id (uuid.UUID): The unique identifier of the agent associated with the project.
+        account_id (uuid.UUID): The uuid of the account to which the project belongs.
+        params (ProjectParams): The detailed configs of the project to be created.
 
     Returns:
-        The newly created Project.
+        Project: The newly created project.
     """
+    return _implementation.create_project(session, account_id, params)
 
-    return _implementation.create_project(session, project_name, account_id, agent_id)
+
+def update_project(
+    session: Session, project_id: uuid.UUID, params: ProjectParams
+) -> db.Project:
+    """
+    Update the specified project with the provided params.
+
+    Args:
+        session (Session): The database connection.
+        project_id (uuid.UUID): The uuid of the project to update.
+        params (ProjectParams): The detailed configs of the project to be updated.
+
+    Returns:
+        Project: The updated project.
+    """
+    return _implementation.update_project(session, project_id, params)
 
 
 def get_project(session: Session, project_id: uuid.UUID):
@@ -144,6 +160,7 @@ def get_project_sync(session: Session, message: Message) -> db.Project:
 
 __all__ = [
     "create_project",
+    "update_project",
     "get_project",
     "replace_project_channel_identifiers",
     "update_project_config",
@@ -151,4 +168,5 @@ __all__ = [
     "delete_project",
     "get_project_async",
     "get_project_sync",
+    "ProjectParams",
 ]

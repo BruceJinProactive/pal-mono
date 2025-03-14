@@ -51,15 +51,38 @@ class ProjectRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def create_project(
-        self, project_name: str, account_id: uuid.UUID, agent_id: uuid.UUID
-    ) -> Project:
-        db_project = Project(
-            name=project_name, account_id=account_id, agent_id=agent_id
-        )
-        self.session.add(db_project)
-        self.session.commit()
-        return db_project
+    def create_project(self, account_id: uuid.UUID, **kwargs) -> Project:
+        try:
+            db_project = Project(account_id=account_id)
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_project, key):
+                    setattr(db_project, key, value)
+            self.session.add(db_project)
+            self.session.commit()
+            self.session.refresh(db_project)
+            return db_project
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error creating project: {e}")
+            raise
+
+    def update_project(self, project_id: uuid.UUID, **kwargs) -> Project | None:
+        try:
+            db_project = (
+                self.session.query(Project).filter(Project.id == project_id).first()
+            )
+            if not db_project:
+                return None
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_project, key):
+                    setattr(db_project, key, value)
+            self.session.commit()
+            self.session.refresh(db_project)
+            return db_project
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating project: {e}")
+            raise
 
     def get_project(self, project_id: uuid.UUID) -> Project | None:
         return self.session.query(Project).filter(Project.id == project_id).first()

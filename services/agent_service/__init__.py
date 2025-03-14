@@ -1,7 +1,6 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from agno.agent.agent import Agent as AgnoAgent
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -9,6 +8,7 @@ import db
 from agent import AgentConfig
 
 from . import _implementation, legacy
+from .schema import AgentParams
 
 
 async def construct_agent_config(
@@ -93,9 +93,46 @@ def replace_agent_config(
     return _implementation.replace_agent_config(session, agent_id, config)
 
 
+def create_agent(
+    session: Session, account_id: uuid.UUID, params: AgentParams
+) -> db.Agent:
+    """
+    Creates a new agent for the specified account using provided parameters and saves
+    it in the database.
+
+    Args
+        session (Session): A database session used for executing the transaction.
+        account_id (uuid.UUID): UUID of the account to which the agent belongs.
+        params (AgentParams): Agent parameters to be used for creating the agent.
+
+    Returns:
+        Agent: The database model object representing the created agent.
+    """
+    return _implementation.create_agent(session, account_id, params)
+
+
+def update_agent(
+    session: Session, agent_id: uuid.UUID, params: AgentParams
+) -> db.Agent:
+    """
+    Update the specified agent with the parameters provided
+
+    Args
+        session (Session): A database session used for executing the transaction.
+        agent_id (uuid.UUID): UUID of the agent to update
+        params (AgentParams): Agent parameters that need to be updated.
+
+    Returns:
+        Agent: The database model object representing the updated agent.
+    """
+    return _implementation.update_agent(session, agent_id, params)
+
+
 __all__ = [
     "get_agent",
     "get_agents_by_account",
     "update_agent_config",
     "replace_agent_config",
+    "create_agent",
+    "update_agent",
 ]

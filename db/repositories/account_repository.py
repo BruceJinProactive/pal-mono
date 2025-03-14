@@ -32,6 +32,25 @@ class AccountRepository:
             logger.error(f"Error retrieving account: {e}")
             return None
 
+    def update_account(self, account_name: str, **kwargs) -> Account | None:
+        """Update account details based on the account ID and provided fields."""
+        try:
+            db_account = (
+                self.session.query(Account).filter(Account.name == account_name).first()
+            )
+            if not db_account:
+                return None
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_account, key):
+                    setattr(db_account, key, value)
+            self.session.commit()
+            self.session.refresh(db_account)
+            return db_account
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating account: {e}")
+            raise
+
     def delete_account(self, account_name: str) -> Optional[Account]:
         """Delete an account by its name."""
         try:
@@ -47,13 +66,16 @@ class AccountRepository:
             logger.error(f"Error deleting account: {e}")
             return None
 
-    def create_account(self, account_name: str) -> Account:
+    def create_account(self, account_name: str, **kwargs) -> Account:
         """Create a new account with a unique UUID."""
         try:
             existing_account = self.get_account(account_name)
             if existing_account:
                 return existing_account
             db_account = Account(id=uuid.uuid4(), name=account_name)
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_account, key):
+                    setattr(db_account, key, value)
             self.session.add(db_account)
             self.session.commit()
             self.session.refresh(db_account)

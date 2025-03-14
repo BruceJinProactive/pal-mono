@@ -56,10 +56,13 @@ class AgentRepository:
             logger.error(f"Error retrieving agent: {e}")
             return None
 
-    def create_agent(self, account_id: uuid.UUID) -> Agent:
+    def create_agent(self, account_id: uuid.UUID, **kwargs) -> Agent:
         """Create a new agent with a unique UUID."""
         try:
             db_agent = Agent(id=uuid.uuid4(), account_id=account_id)
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_agent, key):
+                    setattr(db_agent, key, value)
             self.session.add(db_agent)
             self.session.commit()
             self.session.refresh(db_agent)
@@ -67,6 +70,23 @@ class AgentRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error creating agent: {e}")
+            raise
+
+    def update_agent(self, agent_id: uuid.UUID, **kwargs) -> Agent | None:
+        """Update an agent's details based on the agent ID and provided fields."""
+        try:
+            db_agent = self.session.query(Agent).filter(Agent.id == agent_id).first()
+            if not db_agent:
+                return None
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_agent, key):
+                    setattr(db_agent, key, value)
+            self.session.commit()
+            self.session.refresh(db_agent)
+            return db_agent
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating agent: {e}")
             raise
 
     def update_agent_config(self, agent_id: uuid.UUID, config: Dict[str, Any]) -> None:

@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import asdict
 from typing import Any, Dict, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,12 +8,23 @@ from sqlalchemy.orm import Session
 import db
 from api.schemas.chat.message import Message
 
+from .schema import ProjectParams
+
 
 def create_project(
-    session: Session, project_name: str, account_id: uuid.UUID, agent_id: uuid.UUID
-):
+    session: Session, account_id: uuid.UUID, params: ProjectParams
+) -> db.Project:
     project_repository = db.ProjectRepository(session)
-    return project_repository.create_project(project_name, account_id, agent_id)
+    project = project_repository.create_project(account_id, **asdict(params))
+    return project
+
+
+def update_project(
+    session: Session, project_id: uuid.UUID, params: ProjectParams
+) -> db.Project:
+    project_repository = db.ProjectRepository(session)
+    project = project_repository.update_project(project_id, **asdict(params))
+    return project
 
 
 def get_project(session: Session, project_id: uuid.UUID):

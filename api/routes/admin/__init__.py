@@ -8,13 +8,13 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
-from api.schemas.admin.account import ListAccountsResponse
+from api.schemas.admin.account import Account, ListAccountsResponse
 from api.schemas.admin.agent import Agent
 from api.schemas.admin.analytics import GetReportResponse
 from api.schemas.admin.conversation import InboxResponse
 from api.schemas.admin.project import Project
 
-from . import _analytics, _feedback, _implementation, _projects
+from . import _account, _agent, _analytics, _feedback, _implementation, _projects
 
 """
 ######################################################
@@ -78,7 +78,7 @@ def get_accounts(
     Returns:
         ListAccountsResponse: The list of accounts.
     """
-    return _implementation.list_accounts(context, session)
+    return _account.list_accounts(context, session)
 
 
 @admin_router.get("/agents/{agent_id}")
@@ -100,7 +100,7 @@ def get_agent(
     Returns:
         Agent: The agent configuration.
     """
-    return _implementation.get_agent(agent_id, context, session)
+    return _agent.get_agent(agent_id, context, session)
 
 
 @admin_router.get("/projects/{project_id}")
@@ -122,7 +122,136 @@ def get_project(
     Returns:
         Project: The project configuration.
     """
-    return _implementation.get_project(project_id, context, session)
+    return _projects.get_project(project_id, context, session)
+
+
+@admin_router.post("/accounts", status_code=status.HTTP_201_CREATED)
+async def create_account(
+    request: Request,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Account:
+    """
+    Create a new account based on the provided request data.
+
+    Args:
+        request: The incoming HTTP request that contains the account data.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Account: The created account information.
+    """
+    return await _account.create_account(request, session)
+
+
+@admin_router.patch("/accounts/{account_name}")
+async def update_account(
+    request: Request,
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Account:
+    """
+    Update the account based on the provided request data.
+
+    Args:
+        request: The incoming HTTP request that contains the account data.
+        account_name: The name of the account to update.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Account: The updated account information.
+    """
+    return await _account.update_account(request, account_name, session)
+
+
+@admin_router.post("/agents", status_code=status.HTTP_201_CREATED)
+async def create_agent(
+    request: Request,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Agent:
+    """
+    Creates a new agent based on the provided request data. An agent must
+    have a name and a valid account associated with it.
+
+    Args:
+        request: The incoming HTTP request that contains the agent data.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Agent: The created agent information.
+    """
+    return await _agent.create_agent(request, session)
+
+
+@admin_router.patch("/agents/{agent_id}")
+async def update_agent(
+    request: Request,
+    agent_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Agent:
+    """
+    Updates the agent config for the given agent_id. Note that the account
+    associated with the agent cannot be modified once created.
+
+    Args:
+        request: The incoming HTTP request that contains the agent data.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Agent: The updated agent information.
+    """
+    return await _agent.update_agent(request, agent_id, session)
+
+
+@admin_router.post("/projects", status_code=status.HTTP_201_CREATED)
+async def create_project(
+    request: Request,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Project:
+    """
+    Create a new project based on the provided request data. A project must
+    have a name and a valid account associated with it.
+
+    Args:
+        request: The incoming HTTP request that contains the project data.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Project: The created project information.
+    """
+    return await _projects.create_project(request, session)
+
+
+@admin_router.patch("/projects/{project_id}")
+async def update_project(
+    request: Request,
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Project:
+    """
+    Update a project based on the provided request data. Project's account can
+    not be updated once created.
+
+    Args:
+        request: The incoming HTTP request that contains the project data.
+        project_id: UUID of the project to update.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Project: The updated project information.
+    """
+    return await _projects.update_project(request, project_id, session)
 
 
 @admin_router.get("/agent_config")
