@@ -35,6 +35,8 @@ from .fashion_text_understanding_tools import FashionTextUnderstandingTools
 # Set to True to record and see the time taken for each function in docker logs
 RECORD_TIME = False
 
+MAX_COLOR_AMBIGUITY = 3
+
 
 def generate_ids_uuid():
     # Generate a random UUID for user ID
@@ -790,6 +792,10 @@ class FashionRecommendationLogicPipeline(Toolkit):
         colors = text_understanding["colors"]
         if not isinstance(colors, List):
             colors = [colors]
+
+        if len(colors) > MAX_COLOR_AMBIGUITY:
+            clarification = f"""Politely tell the user that in order to provide fashion recommendation, I need to clarify which one is his or her favourite colors: {colors}."""
+            return clarification
 
         rag_query = (
             "\n".join(
