@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, computed_field, field_serializer
 from pydantic.json_schema import SkipJsonSchema
 
+import re
+
 
 class AdoraSavedOrderResult(BaseModel):
     """
@@ -166,7 +168,7 @@ class AdoraOrderCalculationResult(BaseModel):
 
 ################## LLM DATA MODEL TEMPLATES ##################
 # Used for order item extraction from chat history
-# `SkipJsonSchema` is used to skip fields for generation by Instructor-ai
+# `SkipJsonSchema` is used to skip fields for generation
 
 
 # For now, we will set manual customer information
@@ -185,22 +187,28 @@ class CustomerInfo(BaseModel):
     email: Optional[str] = Field(description="Customer's email address")
 
     @field_serializer("phone_number")
-    def format_phone_number(self, value: Optional[str]) -> Optional[str]:
-        if not value:
+    def format_phone_number(self, phone_number: Optional[str]) -> Optional[str]:
+        if not phone_number:
             return None
 
-        # Remove non-digit characters.
-        digits = "".join(filter(str.isdigit, value))
+        # Remove a leading country code (+1) if present
+        phone = re.sub(r"^\+1", "", phone_number)
 
-        # Ensure it has 10 digits (remove US country code if present)
-        if digits.startswith("1") and len(digits) == 11:
-            digits = digits[1:]
+        # Remove all non-digit characters so we have only digits
+        digits = re.sub(r"\D", "", phone)
 
-        # Validate the number has exactly 10 digits
         if len(digits) != 10:
             return None
 
-        return digits
+        # Now use the provided regex pattern to match and capture the groups
+        pattern = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
+        match = re.fullmatch(pattern, digits)
+
+        if not match:
+            return None
+
+        # Return the concatenation of the three groups
+        return "".join(match.groups())
 
 
 class DeliveryAddress(BaseModel):

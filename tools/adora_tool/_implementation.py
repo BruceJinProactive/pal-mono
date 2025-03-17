@@ -363,12 +363,21 @@ class AdoraTool(Toolkit):
 
     @task(name="_fulfill_order [via Adora API]")
     def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
-        json_payload = order.model_dump_json(by_alias=True)
+        payload = order.model_dump_json(by_alias=True)
 
-        LLMObs.annotate(input_data=order, metadata={"payload": json_payload})
+        LLMObs.annotate(input_data=order, metadata={"payload": payload})
+
+        # Guaranteed phone number since we validated it in the order
+        json_payload = json.loads(payload)
+        phone_number = json_payload["customer"]["phone"]
+        if not _utils.is_valid_phone_number(phone_number):
+            return (
+                f"{phone_number} is not a valid phone number. "
+                "Please provide a valid phone number."
+            )
 
         validated_order = _apis.validate_order(
-            bearer_token=bearer_token, json_payload=json_payload
+            bearer_token=bearer_token, payload=payload
         )
 
         logger.info(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
@@ -502,12 +511,6 @@ class AdoraTool(Toolkit):
             elif not order.customer.phone_number:
                 logger.error("Customer phone number is missing.")
                 return "We'll need your phone number."
-
-            if not _utils.is_valid_phone_number(order.customer.phone_number):
-                return (
-                    f"{order.customer.phone_number} is not a valid phone number. "
-                    "Please provide a valid phone number."
-                )
 
             order.customer.last_name = (
                 "(via Jimmy)"

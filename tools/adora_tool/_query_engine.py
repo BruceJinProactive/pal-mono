@@ -36,7 +36,7 @@ def create_query_engine(namespace) -> BaseQueryEngine:
 
     # Create our basic query engine
     query_engine = index.as_query_engine(
-        similarity_top_k=2,
+        similarity_top_k=3,
         response_synthesizer=response_synthesizer,
         # Use the menu documents with ids for extraction
         filters=MetadataFilters(

@@ -132,8 +132,8 @@ def get_wait_time(
         return None
 
 
-def validate_order(bearer_token: AdoraAccessToken, json_payload: str):
-    logger.info(f"[AdoraTool._apis.validate_order] Payload: {json_payload}")
+def validate_order(bearer_token: AdoraAccessToken, payload: str):
+    logger.info(f"[AdoraTool._apis.validate_order] Payload: {payload}")
 
     response = _utils.connect_adora_order_hub(
         "POST",
@@ -141,7 +141,7 @@ def validate_order(bearer_token: AdoraAccessToken, json_payload: str):
         "validateOrder",
         query_params=None,
         extra_headers=None,
-        payload=json_payload,
+        payload=payload,
     )
 
     if response.status == 200:
