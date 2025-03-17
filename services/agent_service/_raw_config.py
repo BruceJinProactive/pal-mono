@@ -16,6 +16,7 @@ from agent import (
     ToolConfig,
     ToolIdentifier,
 )
+from utils.log import logger
 
 
 class RawConfig(BaseModel):
@@ -99,8 +100,10 @@ class RawConfig(BaseModel):
     def _get_agent_knowledge(self, raw_config: dict[str, Any]) -> KnowledgeConfig:
         # Extract the knowledge section of the raw config
         knowledge = raw_config.get("knowledge", None)
+
         if knowledge is None:
-            raise ValueError("`knowledge` is not provided in `agent_raw_config`.")
+            logger.info("`knowledge` is not provided in `agent_raw_config`.")
+            return KnowledgeConfig(enabled=False)
 
         # Use the identifier, provider, settings from the knowledge section
         identifier = knowledge.get("identifier", None)
@@ -170,6 +173,17 @@ class RawConfig(BaseModel):
         if self.account_name == "palona":
             return ToolConfig(
                 identifiers=[ToolIdentifier(tool_name="calculator_tool")],
+            )
+
+        if self.account_name == "mindzero":
+            # TODO: use store_id for now (instead of location_id) but we should move these
+            # agent specific / client specific details to the raw_config of tools
+            return ToolConfig(
+                identifiers=[
+                    ToolIdentifier(
+                        tool_name="booking_tool", args={"location_id": store_id}
+                    )
+                ],
             )
 
         tool_map = {

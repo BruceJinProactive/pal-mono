@@ -25,8 +25,6 @@ from utils.secret import get_client_secret_with_fallback
 
 from . import _apis, _llm, _query_engine, _utils
 
-ADORA_PAYMENT_URL = "https://pizzamyheart.adorapos.net/OnlineOrdering/OrderHubPayment/?storeKey={store_id}&orderId={order_id}"
-
 
 class AdoraTool(Toolkit):
     def __init__(
@@ -52,6 +50,7 @@ class AdoraTool(Toolkit):
         self.register(self.checkout_order)
         self.register(self.check_address)
 
+        # Configs
         self.store_id = store_id
         self.agent_id = agent_id
         self.account_id = account_id

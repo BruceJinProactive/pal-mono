@@ -3,7 +3,7 @@ import inspect
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
-from tools.booking_tools.integrations.mindzero import MindZeroIntegration
+from tools.legacy.booking_tools.integrations.mindzero import MindZeroIntegration
 
 
 class BookingTools(Toolkit):

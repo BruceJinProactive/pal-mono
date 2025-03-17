@@ -13,7 +13,7 @@ from app.shared import get_app_db
 from services.account_service import get_account, get_accounts
 from services.agent_service import get_agent
 from services.user_service import get_user_by_channel_identifier
-from tools.booking_tools import BookingTools
+from tools.legacy.booking_tools import BookingTools
 
 st.title("Tools")
 

@@ -29,7 +29,7 @@ class LlamaIndexSettings(BaseModel):
 class KnowledgeConfig(BaseModel):
     enabled: bool = True
     provider: KnowledgeProvider = KnowledgeProvider.LLAMAINDEX
-    identifier: str
+    identifier: Optional[str] = None
     settings: Optional[Union[dict, LlamaIndexSettings]] = None
 
     @model_validator(mode="before")

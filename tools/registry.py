@@ -5,6 +5,7 @@ from agno.tools.toolkit import Toolkit
 # TODO: Absolute import required to resolve circular import. Fix this anti-pattern.
 from agent.tool._config import ToolIdentifier
 from tools.adora_tool import AdoraTool
+from tools.booking_tool import BookingTool
 from tools.calculator_tool import CalculatorTool
 from tools.fashion_understanding_tools import FashionRecommendationLogicPipeline
 
@@ -21,6 +22,7 @@ class ToolRegistry:
             "calculator_tool": CalculatorTool,
             "adora_tool": AdoraTool,
             "windsor_tool": FashionRecommendationLogicPipeline,
+            "booking_tool": BookingTool,
         }
 
     def get_tool(self, tool: ToolIdentifier) -> Optional[Toolkit]:

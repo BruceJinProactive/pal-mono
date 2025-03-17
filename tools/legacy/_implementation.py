@@ -2,8 +2,8 @@ from agno.tools.toolkit import Toolkit
 from pydantic import BaseModel, Field, create_model
 
 from agent.model import BaseOutputModel
-from tools.booking_tools import BookingTools
 from tools.escalation_tools import EscalationTools
+from tools.legacy.booking_tools import BookingTools
 from utils.log import logger
 
 
