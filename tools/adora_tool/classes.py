@@ -256,7 +256,7 @@ class OrderItem(BaseModel):
         serialization_alias="itemId",
     )
     size_id: int = Field(
-        description="The size ID of an order item defined as `size_id`. If an item has only one size return 0.",
+        description="The size ID of an order item defined as `size_id`.",
         serialization_alias="sizeId",
     )
     item_name: str = Field(description="Item name", exclude=True)

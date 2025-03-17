@@ -476,7 +476,7 @@ class AdoraTool(Toolkit):
                 # Adora requires a string 'Delivery' or 'TakeOut' as the order type
                 order.order_type = _utils.validate_order_type(order.order_type)
             except Exception as e:
-                logger.error(f"Could not value order type: {e}")
+                logger.error(f"Could not validate order type: {e}")
                 return "Sorry, do you want that for Takeout or Delivery?"
 
             # Validate the address if the order is for delivery
