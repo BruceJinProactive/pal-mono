@@ -137,7 +137,7 @@ async def get_chat_response_async(
 
         # Explicitly load the project.account attribute
         await session.refresh(project, attribute_names=["account"])
-        old_agents = ["proactiveailab", "wyze"]
+        old_agents = ["proactiveailab"]
 
         # ========================== New - Start ==========================
         if project.account.name not in old_agents:
