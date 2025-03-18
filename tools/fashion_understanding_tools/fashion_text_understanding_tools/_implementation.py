@@ -226,7 +226,6 @@ Format the response in the following JSON structure:
     "fit_features": ["string", ...]
 }}
 """
-
         chat_completion = self.client.chat.completions.create(
             messages=[{"role": "user", "content": formatted_prompt}],
             model="gpt-4o-2024-08-06",
@@ -248,6 +247,8 @@ Format the response in the following JSON structure:
             raise ValueError("GPT failed to generate a response")
 
         response_dict = json.loads(response_content)
+        if "item_name" not in response_dict:
+            raise ValueError("GPT failed to generate a valid response")
 
         # Log the time taken for text understanding
         if record_time:

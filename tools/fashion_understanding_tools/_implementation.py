@@ -919,6 +919,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
                 negative_intents=str(negative_intents),
                 current_query=query,
                 record_time=RECORD_TIME,
+                fields_to_eval=["title", "colors", "fit_features", "sizes"],
             )
             logger.info(
                 f"Results after reranking: {[result['title'] for result in results]}"

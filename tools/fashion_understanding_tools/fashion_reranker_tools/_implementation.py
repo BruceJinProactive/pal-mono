@@ -29,52 +29,56 @@ class FashionRerankerTools:
         positive_preference: str,
         negative_intents: str,
         current_query: str,
+        fields_to_eval: list[str],
+        record_time: bool = True,
     ) -> float:
         """
         Helper method that does the actual GPT-based relevance check for a single item.
         Returns a float representing the probability that the item is relevant.
         """
-        temp = {
-            "title": item["title"],
-            "colors": item["colors"],
-            "product_type": item["product_type"],
-            "fit_features": item["fit_features"],
-        }
+        start_time = time.time()
 
+        temp = {str(field): item.get(field, "") for field in fields_to_eval}
         # Build the prompt
-        reranking_prompt = f"""Your task is to determine if the following fashion item is relevant based on the user preference and the latest query, return True or False only.
-        The given item contains title, color, description of features, and other information.
-        You're given the user preference descriptions of what the user prefers and what the user dislikes.
-        You're also given the user's latest query.
-        You must pay special attention to the user query and user preference, and determine if the item is relevant based on the title, color, and description of features to see if they align with the user's preference or contain the user's dislikes.
-        Here is the user's latest query: {current_query}. Here is the description of the features user prefers: {positive_preference}. The items that fit the user's query and contain (or resemble) the user's prefered features in their titles, colors, and descriptions of features are more relevant \n### Note: ignore the value "similar to the image" in the user preference, do not rank items based on this value.
-        Here is the description of what user dislikes, the items that contain the follwoing features may not be as relevant: {negative_intents}
-        Here is the item to be determined: {temp}."""
+        reranking_prompt = f"""Your task is to determine whether a given fashion item is relevant based on the user's preferences and latest query.
+
+Return 'True' if the item is relevant and 'False' if it is not. Return True or False only.
+
+The given fashion item includes details such as its title, color, description of features, and other information.
+
+You're provided with the user preferences (what they like and dislike) and their latest query.
+You must pay special attention to the user query and user preference, and determine relevance by checking if the title, color, and description align with the user's likes and avoid their dislikes.
+
+User's Latest Query: {current_query}
+
+User's Preferred Features: {positive_preference}
+
+Items that match the user's query and include (or closely resemble) the user's preferred features in their title, color, and feature descriptions are considered more relevant.
+
+Note: 
+Ignore the value "similar to the image" in the user preference—do not evaluate items based on this criterion.
+
+Items containing the following disliked features are considered less relevant: {negative_intents}.
+
+Here is the item to be determined: {temp}.
+"""
 
         # Synchronous GPT query
         completion = self.client.chat.completions.create(
             model="gpt-4o-2024-08-06",  # Ensure the model supports logprobs
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a fashion expert specializing in determining the relevance of "
-                        "fashion items based on user preferences and queries. For each item, "
-                        "decide if it is relevant based on the user's preferences and the latest "
-                        "query. Return 'True' if the item is relevant and 'False' if it is not. "
-                        "Ensure your decision aligns with the user's preferences and dislikes."
-                    ),
-                },
                 {"role": "user", "content": reranking_prompt},
             ],
             logprobs=True,
-            max_tokens=1,
+            max_completion_tokens=1,
             temperature=0,
             top_logprobs=2,
         )
 
         answer = completion.choices[0].logprobs
+        end_time = time.time()
         if answer is None or answer.content is None:
+            logger.error("GPT failed to generate a response for reranker.")
             raise ValueError("GPT failed to generate a response.")
 
         token_logprobs = answer.content[0].top_logprobs
@@ -83,6 +87,14 @@ class FashionRerankerTools:
         false_logprob = logits_dict.get("False", -np.inf)
 
         probabilities = self._softmax(np.array([true_logprob, false_logprob]))
+        logger.info(
+            f"Item {item['title']}. Probabilities: {probabilities[0]}. True Logprob: {true_logprob}. False Logprob: {false_logprob}"
+        )
+        if record_time:
+            logger.info(
+                f"Time taken to fetch relevance for item {item['title']}: {end_time - start_time}. "
+            )
+
         return probabilities[0]  # Probability that the item is "True"
 
     @task(name="Reranking")
@@ -92,8 +104,9 @@ class FashionRerankerTools:
         positive_preference: str,
         negative_intents: str,
         current_query: str,
+        fields_to_eval: list[str],
         record_time: bool = True,
-        max_workers: int = 5,
+        max_workers: int | None = None,
     ) -> List[dict]:
         """
         Synchronous method that uses a ThreadPoolExecutor internally to process
@@ -118,6 +131,8 @@ class FashionRerankerTools:
                     positive_preference,
                     negative_intents,
                     current_query,
+                    fields_to_eval,
+                    record_time,
                 )
                 futures_map[future] = idx
 
@@ -130,18 +145,15 @@ class FashionRerankerTools:
                 except Exception as e:
                     logger.error(f"Error processing item indexed {idx}: {e}")
 
-        # Now we have relevance_scores in the same order as `items`
-        sorted_scores = sorted(relevance_scores, reverse=True)
-        rank_dict = {score: rank + 1 for rank, score in enumerate(sorted_scores)}
-        ranked_scores = [rank_dict[score] for score in relevance_scores]
+        # Use argsort to get the indices of the sorted scores
+        sorted_indices = np.argsort(relevance_scores)[::-1]
+
+        # Reconstruct items in order of rank
+        reranked_items = [items[i] for i in sorted_indices]
 
         if record_time:
             logger.info("Time taken to rerank items: " + str(time.time() - start_time))
 
-        # Reconstruct items in order of rank
-        reranked_items = [
-            item for _, item in sorted(zip(ranked_scores, items), key=lambda x: x[0])
-        ]
         LLMObs.annotate(
             input_data={
                 "items": items,
