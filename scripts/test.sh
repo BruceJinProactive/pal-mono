@@ -8,7 +8,8 @@
 ############################################################################
 
 CURR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source ${CURR_DIR}/_utils.sh
+
+source "${CURR_DIR}/_utils.sh"
 
 main() {
   print_heading "Running pytest..."
