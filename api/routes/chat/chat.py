@@ -24,6 +24,9 @@ from utils.log import logger
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 
+DEFAULT_ACCOUNT_ICON = "images/accounts/palona_icon.png"
+DEFAULT_USER_ICON = "images/agents/default_user_icon.png"
+
 
 @chat_router.post(
     "/",
@@ -161,11 +164,13 @@ def get_project_info(
             headers={"Content-Type": "application/json"},
         )
     account_icon = project.account.icon_uri
-    user_icon = project.agent.raw_config.get("default_user_icon_url")
+    user_icon = project.agent.raw_config.get("default_user_icon_uri")
     return ChatInfo(
         project_name=project.name,
         project_display_name=project.display_name,
         account_display_name=project.account.display_name,
-        account_icon_url=map_uri_to_s3_url(account_icon),
-        default_user_icon_url=map_uri_to_s3_url(user_icon),
+        account_icon_url=map_uri_to_s3_url(account_icon)
+        or map_uri_to_s3_url(DEFAULT_ACCOUNT_ICON),
+        default_user_icon_url=map_uri_to_s3_url(user_icon)
+        or map_uri_to_s3_url(DEFAULT_USER_ICON),
     )
