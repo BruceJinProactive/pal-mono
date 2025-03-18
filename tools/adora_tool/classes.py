@@ -1,11 +1,10 @@
+import re
 from decimal import Decimal
 from enum import StrEnum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, computed_field, field_serializer
 from pydantic.json_schema import SkipJsonSchema
-
-import re
 
 
 class AdoraSavedOrderResult(BaseModel):

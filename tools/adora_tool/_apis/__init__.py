@@ -15,7 +15,7 @@ from . import _utils
 
 
 def get_adora_pos_auth_token(
-    key: str, secret: str, qa_store: bool = False
+    key: str, secret: str, qa_store: bool
 ) -> AdoraAccessToken | None:
     """
     Retrieve an Adora POS authentication token using the provided key and secret.
@@ -23,7 +23,7 @@ def get_adora_pos_auth_token(
     Args:
         key (str): The Adora API Key.
         secret (str): The Adora API Secret.
-        qa_store (bool): True if the QA environment should be used. Defaults to False.
+        qa_store (bool): True if the QA environment should be used.
 
     Returns:
         AdoraAccessToken: A bearer token that expires in 1 hour.
@@ -49,7 +49,7 @@ def get_adora_pos_auth_token(
 
 
 def get_customer_info(
-    bearer_token: AdoraAccessToken, store_id: str, phone_number: str
+    bearer_token: AdoraAccessToken, store_id: str, phone_number: str, qa_store: bool
 ) -> str | None:
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -61,6 +61,7 @@ def get_customer_info(
         },
         extra_headers=None,
         payload=None,
+        qa_store=qa_store,
     )
 
     customer_info = json.loads(response.decoded_body)
@@ -90,7 +91,7 @@ def get_customer_info(
 
 
 def get_online_ordering_status(
-    bearer_token: AdoraAccessToken, store_id: str
+    bearer_token: AdoraAccessToken, store_id: str, qa_store: bool
 ) -> str | None:
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -99,6 +100,7 @@ def get_online_ordering_status(
         query_params={"sid": store_id},
         extra_headers=None,
         payload=None,
+        qa_store=qa_store,
     )
     status_info = json.loads(response.decoded_body)
     status = "active" if status_info["Online"] else "inactive"
@@ -110,7 +112,7 @@ def get_online_ordering_status(
 
 
 def get_wait_time(
-    bearer_token: AdoraAccessToken, store_id: str, date: str
+    bearer_token: AdoraAccessToken, store_id: str, date: str, qa_store: bool
 ) -> str | None:
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -122,6 +124,7 @@ def get_wait_time(
         },
         extra_headers=None,
         payload=None,
+        qa_store=qa_store,
     )
 
     store_info = json.loads(response.decoded_body)
@@ -132,7 +135,9 @@ def get_wait_time(
         return None
 
 
-def validate_order(bearer_token: AdoraAccessToken, payload: str):
+def validate_order(
+    bearer_token: AdoraAccessToken, payload: str, qa_store: bool
+) -> AdoraOrderCalculationResult | None:
     logger.info(f"[AdoraTool._apis.validate_order] Payload: {payload}")
 
     response = _utils.connect_adora_order_hub(
@@ -142,6 +147,7 @@ def validate_order(bearer_token: AdoraAccessToken, payload: str):
         query_params=None,
         extra_headers=None,
         payload=payload,
+        qa_store=qa_store,
     )
 
     if response.status == 200:
@@ -156,6 +162,7 @@ def validate_order(bearer_token: AdoraAccessToken, payload: str):
 def save_validated_order(
     bearer_token: AdoraAccessToken,
     order_key: str,
+    qa_store: bool,
 ) -> AdoraSavedOrderResult | None:
     """
     Save a customer's validated order in the system using the key from the validate_order response.
@@ -163,6 +170,7 @@ def save_validated_order(
     Args:
         bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
         order_key (str): The order key from the validate_order response.
+        qa_store (bool): True if the QA environment should be used.
 
     Returns:
         SavedOrderResult: The result of saving the order to Adora POS.
@@ -175,6 +183,7 @@ def save_validated_order(
         extra_headers={
             "orderKey": order_key,
         },
+        qa_store=qa_store,
     )
 
     if response.status == 200:
@@ -184,7 +193,11 @@ def save_validated_order(
 
 
 def validate_address(
-    bearer_token: AdoraAccessToken, store_id: str, lat: float, long: float
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+    lat: float,
+    long: float,
+    qa_store: bool,
 ) -> tuple[bool, list[AdoraValidatedAddress] | str]:
     """
     Validate an address (latitude + longitude) with Adora POS.
@@ -194,6 +207,7 @@ def validate_address(
         store_id (str): The store ID.
         lat (str): The latitude of the address.
         long (str): The longitude of the address.
+        qa_store (bool): True if the QA environment should be used.
 
     Returns:
         bool: True if the address was validated successfully, False otherwise.
@@ -207,6 +221,7 @@ def validate_address(
         query_params=None,
         extra_headers=None,
         payload=json.dumps({"storeId": store_id, "lat": lat, "lng": long}),
+        qa_store=qa_store,
     )
 
     if response.status == 200:

@@ -25,6 +25,8 @@ from utils.secret import get_client_secret_with_fallback
 
 from . import _apis, _llm, _query_engine, _utils
 
+ADORA_QA_STORE = "UQ5ZT"
+
 
 class AdoraTool(Toolkit):
     def __init__(
@@ -39,6 +41,20 @@ class AdoraTool(Toolkit):
     ):
         super().__init__(name="adora_tool")
 
+        # Configs
+        self.store_id = store_id
+        self.agent_id = agent_id
+        self.account_id = account_id
+        self.account_name = account_name
+        self.user_id = user_id
+        self.session_id = session_id
+        self.namespace = namespace
+
+        if self.store_id == ADORA_QA_STORE:  # QA store
+            self.qa_store = True
+        else:
+            self.qa_store = False
+
         # Evaluate and cache the value of the bearer token
         loop = asyncio.get_running_loop()
         loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
@@ -49,15 +65,6 @@ class AdoraTool(Toolkit):
         self.register(self.get_wait_time)
         self.register(self.checkout_order)
         self.register(self.check_address)
-
-        # Configs
-        self.store_id = store_id
-        self.agent_id = agent_id
-        self.account_id = account_id
-        self.account_name = account_name
-        self.user_id = user_id
-        self.session_id = session_id
-        self.namespace = namespace
 
         self.query_engine = _query_engine.create_query_engine(self.namespace)
 
@@ -70,11 +77,17 @@ class AdoraTool(Toolkit):
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
         with LLMObs.task(name="get_adora_bearer_token"):
-            api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
-            api_secret = get_client_secret_with_fallback(
-                "PIZZAMYHEART_ADORA_API_SECRET"
+            if self.qa_store:
+                api_key = get_client_secret_with_fallback("ADORA_API_KEY")
+                api_secret = get_client_secret_with_fallback("ADORA_API_SECRET")
+            else:
+                api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
+                api_secret = get_client_secret_with_fallback(
+                    "PIZZAMYHEART_ADORA_API_SECRET"
+                )
+            bearer_token = _apis.get_adora_pos_auth_token(
+                api_key, api_secret, qa_store=self.qa_store
             )
-            bearer_token = _apis.get_adora_pos_auth_token(api_key, api_secret)
             return bearer_token
 
     @tool
@@ -98,7 +111,10 @@ class AdoraTool(Toolkit):
                 return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
             customer_info = _apis.get_customer_info(
-                self._adora_bearer_token, self.store_id, phone_number
+                self._adora_bearer_token,
+                self.store_id,
+                phone_number,
+                qa_store=self.qa_store,
             )
 
             # If customer does not exist or something else happened
@@ -138,7 +154,7 @@ class AdoraTool(Toolkit):
                 return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
 
             status = _apis.get_online_ordering_status(
-                self._adora_bearer_token, self.store_id
+                self._adora_bearer_token, self.store_id, qa_store=self.qa_store
             )
 
             if not status:
@@ -175,7 +191,7 @@ class AdoraTool(Toolkit):
                 )
 
             store_info = _apis.get_wait_time(
-                self._adora_bearer_token, self.store_id, date
+                self._adora_bearer_token, self.store_id, date, qa_store=self.qa_store
             )
 
             if not store_info:
@@ -244,7 +260,7 @@ class AdoraTool(Toolkit):
             )
 
         validated_address_success, validated_address = _apis.validate_address(
-            self._adora_bearer_token, self.store_id, lat, long
+            self._adora_bearer_token, self.store_id, lat, long, qa_store=self.qa_store
         )
         logger.info(f"Validated address: {validated_address}")
 
@@ -377,7 +393,7 @@ class AdoraTool(Toolkit):
             )
 
         validated_order = _apis.validate_order(
-            bearer_token=bearer_token, payload=payload
+            bearer_token=bearer_token, payload=payload, qa_store=self.qa_store
         )
 
         logger.info(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
@@ -524,7 +540,8 @@ class AdoraTool(Toolkit):
                 order.customer.email = "jimmythesurfer@proactiveailab.com"
 
             # TODO: Hardcode discount
-            order.coupons = [{"coupon_id": 134}]
+            if not self.qa_store:  # Do not apply discount for QA store
+                order.coupons = [{"coupon_id": 134}]
 
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment
