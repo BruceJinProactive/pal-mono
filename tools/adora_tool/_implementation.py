@@ -24,6 +24,7 @@ from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
 from . import _apis, _llm, _query_engine, _utils
+from datetime import datetime
 
 ADORA_QA_STORE = "UQ5ZT"
 
@@ -171,17 +172,25 @@ class AdoraTool(Toolkit):
     @tool
     def get_wait_time(self, date: str) -> str:
         """
-        This tool can be used to help identify the wait time for a given date.
+        This tool can ONLY be used to help identify the wait time for the current date.
 
         Args:
-            date (str): The target business date in yyyy-MM-dd format.
+            date (str): The current date in yyyy-MM-dd format.
 
         Returns:
-            str: Get details about estimated wait times for delivery, dine-in, and takeout.
+            str: Get details about estimated wait times for delivery, dine-in, and
+                takeout for the current date.
         """
         try:
             if not _utils.is_valid_date(date):
                 return f"The date {date} is invalid."
+
+            # Enforce that only current date is allowed
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            if date != current_date:
+                return (
+                    f"This tool can only be used for the current date ({current_date})."
+                )
 
             if not self._adora_bearer_token:
                 return (
