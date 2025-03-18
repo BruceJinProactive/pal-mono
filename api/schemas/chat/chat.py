@@ -21,3 +21,4 @@ class ChatInfo(BaseModel):
     project_display_name: str | None = None
     account_display_name: str | None = None
     account_icon_url: str | None = None
+    default_user_icon_url: str | None = None

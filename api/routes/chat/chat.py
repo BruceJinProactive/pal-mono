@@ -160,9 +160,12 @@ def get_project_info(
             detail="Project name does not exist",
             headers={"Content-Type": "application/json"},
         )
+    account_icon = project.account.icon_uri
+    user_icon = project.agent.raw_config.get("default_user_icon_url")
     return ChatInfo(
         project_name=project.name,
         project_display_name=project.display_name,
         account_display_name=project.account.display_name,
-        account_icon_url=map_uri_to_s3_url(project.account.icon_uri),
+        account_icon_url=map_uri_to_s3_url(account_icon),
+        default_user_icon_url=map_uri_to_s3_url(user_icon),
     )
