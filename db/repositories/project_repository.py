@@ -87,6 +87,9 @@ class ProjectRepository:
     def get_project(self, project_id: uuid.UUID) -> Project | None:
         return self.session.query(Project).filter(Project.id == project_id).first()
 
+    def get_project_by_name(self, project_name: str) -> Project | None:
+        return self.session.query(Project).filter(Project.name == project_name).first()
+
     def get_project_by_channel(self, channel_platform: str, channel_identifier: str):
         """
         Retrieve a project by the channel platform and identifiers.

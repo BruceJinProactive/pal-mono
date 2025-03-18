@@ -60,6 +60,21 @@ def get_project(session: Session, project_id: uuid.UUID):
     return _implementation.get_project(session, project_id)
 
 
+def get_project_by_name(session: Session, project_name: str) -> db.Project | None:
+    """
+    Gets a specific project by name.
+
+    Args:
+        session (Session): The database connection.
+        project_name (str): The name of the project.
+
+    Returns:
+        The Project that matches the given unique name, or None if no such Project exists.
+    """
+
+    return _implementation.get_project_by_name(session, project_name)
+
+
 def replace_project_channel_identifiers(
     session: Session, project_id: uuid.UUID, channel_identifiers: List[str]
 ) -> None:
@@ -162,6 +177,7 @@ __all__ = [
     "create_project",
     "update_project",
     "get_project",
+    "get_project_by_name",
     "replace_project_channel_identifiers",
     "update_project_config",
     "replace_project_config",

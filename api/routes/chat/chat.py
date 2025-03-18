@@ -2,15 +2,18 @@ import asyncio
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 import db
 from api.routes.endpoints import endpoints
-from api.schemas.chat.chat import ChatRequest, ChatResponse
+from api.routes.utils import map_uri_to_s3_url
+from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.chat.message import Channel
 from api.schemas.error.error import ErrorResponse
+from services import project_service
 from services.message_service import (
     get_chat_response_async,
     get_chat_response_stream,
@@ -139,3 +142,27 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                 error_message="An unexpected error occurred while processing the message",
             ).dict(),
         )
+
+
+@chat_router.get("/info/{project_name}")
+def get_project_info(
+    request: Request,
+    project_name: str,
+    session: Session = Depends(db.get_db),
+) -> ChatInfo:
+    """
+    Returns public info for a specific project.
+    """
+    project = project_service.get_project_by_name(session, project_name)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project name does not exist",
+            headers={"Content-Type": "application/json"},
+        )
+    return ChatInfo(
+        project_name=project.name,
+        project_display_name=project.display_name,
+        account_display_name=project.account.display_name,
+        account_icon_url=map_uri_to_s3_url(project.account.icon_uri),
+    )

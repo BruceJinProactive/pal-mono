@@ -14,3 +14,10 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     messages: Optional[list[Message]] = None
     status: str = Field(default="success")
+
+
+class ChatInfo(BaseModel):
+    project_name: str
+    project_display_name: str | None = None
+    account_display_name: str | None = None
+    account_icon_url: str | None = None

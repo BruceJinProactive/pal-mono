@@ -32,6 +32,11 @@ def get_project(session: Session, project_id: uuid.UUID):
     return project_repository.get_project(project_id)
 
 
+def get_project_by_name(session: Session, project_name: str):
+    project_repository = db.ProjectRepository(session)
+    return project_repository.get_project_by_name(project_name)
+
+
 def update_project_config(
     session: Session, project_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
