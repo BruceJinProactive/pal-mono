@@ -135,9 +135,9 @@ The CI/CD pipeline consists of 4 environments:
 
 Endpoints are hosted in dedicated AWS accounts: `lat`, `stg`, and `prd`.
 
-| env | app                            | api                        |
-|-----|--------------------------------|----------------------------|
-| dev | http://localhost:8501/         | http://localhost:8000/     |
-| lat | https://lat-console.palona.ai/ | https://lat-api.palona.ai/ |
-| stg | https://stg-console.palona.ai/ | https://stg-api.palona.ai/ |
-| prd | https://console.palona.ai/     | https://api.palona.ai/     |
+| env | streamlit app                                                      | admin console                  | api                        |
+|-----|--------------------------------------------------------------------|--------------------------------|----------------------------|
+| dev | http://localhost:8501/                                             | http://localhost:8501/         | http://localhost:8000/     |
+| lat | http://lat-pal-mono-app-lb-944853732.us-east-1.elb.amazonaws.com/  | https://lat-console.palona.ai/ | https://lat-api.palona.ai/ |
+| stg | http://stg-pal-mono-app-lb-1494675788.us-east-1.elb.amazonaws.com/ | https://stg-console.palona.ai/ | https://stg-api.palona.ai/ |
+| prd | http://prd-pal-mono-app-lb-1794342643.us-east-1.elb.amazonaws.com/ | https://console.palona.ai/     | https://api.palona.ai/     |
