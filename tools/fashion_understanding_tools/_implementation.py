@@ -605,20 +605,20 @@ class FashionRecommendationLogicPipeline(Toolkit):
     ) -> str | List:
         f"""This function retrieves clothings, accesories, costumes information from the knowledge base based on the user's query and/or the image uploaded by the user. This function can access user query, chat history and the image uploaded by the user and use it to retrieve similar fashion items from the knowledge base.
 
-            Args:
-                query (str): The exact query input by the user. Do not paraphrase the query.
-                top_k (int): The number of fashion items to return. Defaults to {top_k}. If the user does not specify the number of items to return, the function must return the top {top_k} fashion items.
-            Returns:
-                retrieved fashion items from the knowledge base.
+Args:
+    query (str): The exact query input by the user. Do not paraphrase the query.
+    top_k (int): The number of fashion items to return. Defaults to {top_k}. If the user does not specify the number of items to return, the function must return the top {top_k} fashion items.
+Returns:
+    retrieved fashion items from the knowledge base.
 
-            **Trigger Conditions:**
-            - When the user asks for:
-                1. any clothing items/costumes.
-                2. specific type of outfit or dress for events.
-                3. ambiguos fashion advice but the chat history provides a context.
-                4. items based on the user's query and the image uploaded by the user.
-                5. items/clothings/costumes based on a specific occasion, specific occasion, category, or color.
-            - If the user's query does not specify the amount of fashion items to return, you must return the top {top_k} fashion items (i.e. top_k={top_k}).
+**Trigger Conditions:**
+- When the user asks for:
+    1. any clothing items/costumes.
+    2. specific type of outfit or dress for events.
+    3. ambiguos fashion advice but the chat history provides a context.
+    4. items based on the user's query and the image uploaded by the user.
+    5. items/clothings/costumes based on a specific occasion, specific occasion, category, or color.
+- If the user's query does not specify the amount of fashion items to return, you must return the top {top_k} fashion items (i.e. set top_k={top_k}).
             """
         start_time = time.time()
         # Load the session data
