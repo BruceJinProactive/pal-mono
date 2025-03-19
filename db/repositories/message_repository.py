@@ -5,7 +5,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import text
 
 from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dttm import current_utc
@@ -166,16 +165,15 @@ class MessageRepository:
             True if any message in the conversation is escalated, False otherwise.
         """
         # Use a raw SQL query that extracts the 'escalated' value from the JSON field.
-        query = """
-                SELECT 1
-                FROM messages
-                WHERE conversation_id = :conversation_id
-                AND body->'extras'->>'escalated' = 'true'
-                LIMIT 1
-            """
-        result = self.session.execute(text(query), {"conversation_id": conversation_id})
-        # If we get any result, it means there's at least one urgent message.
-        return result.fetchone() is not None
+        message = (
+            self.session.query(Message)
+            .filter(
+                Message.conversation_id == conversation_id,
+                Message.body["extras"]["escalated"].astext == "true",
+            )
+            .first()
+        )
+        return message is not None
 
     def get_message_by_id(self, message_id: uuid.UUID):
         """
