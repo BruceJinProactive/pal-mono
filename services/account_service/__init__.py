@@ -35,6 +35,20 @@ def get_account(session: Session, account_name: str) -> Optional[db.Account]:
     return _implementation.get_account(session, account_name)
 
 
+def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account]:
+    """
+    Retrieve multiple Accounts by names.
+
+    Args:
+        session (Session): The database session.
+        account_names (List[str]): The names of the Accounts to retrieve.
+
+    Returns:
+        List[db.Account]: The Accounts that match the given names, or empty list if none matches.
+    """
+    return _implementation.mget_accounts(session, account_names)
+
+
 def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
     """
     Creates a new account with default settings.
@@ -93,6 +107,7 @@ def update_account(
 __all__ = [
     "get_accounts",
     "get_account",
+    "mget_accounts",
     "create_account_with_defaults",
     "create_account",
     "update_account",

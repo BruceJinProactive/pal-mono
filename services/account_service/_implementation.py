@@ -19,6 +19,12 @@ def get_account(session: Session, account_name: str) -> Optional[db.Account]:
     return account
 
 
+def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account]:
+    account_repository = db.AccountRepository(session)
+    accounts = account_repository.get_accounts_by_names(account_names)
+    return accounts
+
+
 def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
     # Instantiate the repositories
     account_repository = db.AccountRepository(session)

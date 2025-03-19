@@ -14,10 +14,12 @@ from ._utils import UserContext
 
 
 def list_accounts(context: UserContext, session: Session) -> ListAccountsResponse:
-    response = ListAccountsResponse(accounts=[])
-    account = account_service.get_account(session, account_name=context.account_name)
-    if account:
-        response.accounts.append(build_account(account))
+    accounts = account_service.mget_accounts(
+        session, account_names=context.account_names
+    )
+    response = ListAccountsResponse(
+        accounts=[build_account(account) for account in accounts]
+    )
     return response
 
 

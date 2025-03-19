@@ -21,16 +21,25 @@ class AccountRepository:
             logger.error(f"Error retrieving accounts: {e}")
             return []
 
-    def get_account(self, account_name: str) -> Optional[Account]:
-        """Retrieve a single account by its name."""
+    def get_account(self, account_name: str) -> Account | None:
+        accounts = self.get_accounts_by_names([account_name])
+        if accounts:
+            return accounts[0]
+        else:
+            return None
+
+    def get_accounts_by_names(self, account_names: List[str]) -> List[Account]:
+        """Retrieve multiple accounts by their names."""
         try:
             return (
-                self.session.query(Account).filter(Account.name == account_name).first()
+                self.session.query(Account)
+                .filter(Account.name.in_(account_names))
+                .all()
             )
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving account: {e}")
-            return None
+            return []
 
     def update_account(self, account_name: str, **kwargs) -> Account | None:
         """Update account details based on the account ID and provided fields."""

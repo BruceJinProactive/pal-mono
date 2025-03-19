@@ -259,12 +259,13 @@ def authenticate_user(request: Request) -> UserContext:
             detail=str("token is empty!"),
             headers={"Content-Type": "application/json"},
         )
+    account_name = token.get("custom:account_name", "")
     return UserContext(
         username=token.get("cognito:username", ""),
         email=token.get("email", ""),
         groups=token.get("cognito:groups", []),
         display_name=token.get("name", ""),
-        account_name=token.get("custom:account_name", ""),
+        account_names=account_name.split(",") if account_name else [],
         role=UserRole.AccountManager,
     )
 
@@ -287,7 +288,7 @@ def authorize_user_account(context: UserContext, account_name: str):
         HTTPException: If the user does not have the required permissions to access
         the provided account name.
     """
-    if account_name == context.account_name:
+    if account_name in context.account_names:
         return
     if context.role == UserRole.Admin:
         return

@@ -22,7 +22,7 @@ class UserContext:
     email: str
     groups: List[str]
     display_name: str
-    account_name: str
+    account_names: List[str]
     role: UserRole
 
 
