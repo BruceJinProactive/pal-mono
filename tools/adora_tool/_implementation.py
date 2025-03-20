@@ -4,6 +4,7 @@ import json
 import os
 import traceback
 import uuid
+import threading
 from datetime import datetime
 
 from agno.tools.toolkit import Toolkit
@@ -56,14 +57,10 @@ class AdoraTool(Toolkit):
         else:
             self.qa_store = False
 
-        # Evaluate and cache the value of the bearer token
-        loop = asyncio.get_running_loop()
-        loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
-
         # Register tools
         # self.register(self.greeting) # TODO: let's unregister this
         self.register(self.check_online_ordering_status)
-        self.register(self.get_wait_time)
+        self.register(self.get_store_info)
         self.register(self.checkout_order)
         self.register(self.check_address)
 
@@ -74,6 +71,21 @@ class AdoraTool(Toolkit):
         self.mp = None
         if MIXPANEL_PROJECT_TOKEN:
             self.mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
+
+        ### Cache adora token and store info ###
+        self.cached_store_info: str | None = None
+        self.token_ready = threading.Event()
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(asyncio.to_thread(self._init_adora))
+
+    def _init_adora(self):
+        _ = self._adora_bearer_token
+
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        self.get_store_info(current_date)  # type: ignore
+
+        logger.info(f"cached store info: {self.cached_store_info}")
 
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
@@ -170,16 +182,20 @@ class AdoraTool(Toolkit):
             return "Failed to check the online ordering status, please try again."
 
     @tool
-    def get_wait_time(self, date: str) -> str:
+    def get_store_info(self, date: str) -> str:
         """
-        This tool can ONLY be used to help identify the wait time for the current date.
+        Retrieves store details for the current date, including estimated wait times,
+        business hours, and accepted payment methods.
 
         Args:
             date (str): The current date in yyyy-MM-dd format.
 
         Returns:
-            str: Get details about estimated wait times for delivery, dine-in, and
-                takeout for the current date.
+            str: Store details including:
+                - Store name, address, and phone number.
+                - Estimated wait times for delivery, dine-in, and takeout.
+                - Business hours for delivery and pickup.
+                - Accepted payment methods for dine-in, takeout, and delivery.
         """
         try:
             if not _utils.is_valid_date(date):
@@ -192,6 +208,10 @@ class AdoraTool(Toolkit):
                     f"This tool can only be used for the current date ({current_date})."
                 )
 
+            # If store info is already cached return it
+            if self.cached_store_info:
+                return self.cached_store_info
+
             if not self._adora_bearer_token:
                 return (
                     "Failed to authenticate ordering tool. "
@@ -199,14 +219,17 @@ class AdoraTool(Toolkit):
                     "for assistance."
                 )
 
-            store_info = _apis.get_wait_time(
+            store_info = _apis.get_store_info(
                 self._adora_bearer_token, self.store_id, date, qa_store=self.qa_store
             )
 
             if not store_info:
                 raise ValueError(f"Returned invalid wait time: {store_info}")
 
+            # Cache store info
+            self.cached_store_info = store_info
             return store_info
+
         except Exception as e:
             logger.error(f"[AdoraTool.store_info] Error getting store info: {e}")
             return "Failed to get the wait time, please try again."
