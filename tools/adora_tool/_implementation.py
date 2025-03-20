@@ -4,7 +4,6 @@ import json
 import os
 import traceback
 import uuid
-import threading
 from datetime import datetime
 
 from agno.tools.toolkit import Toolkit
@@ -74,18 +73,9 @@ class AdoraTool(Toolkit):
 
         ### Cache adora token and store info ###
         self.cached_store_info: str | None = None
-        self.token_ready = threading.Event()
 
         loop = asyncio.get_running_loop()
-        loop.create_task(asyncio.to_thread(self._init_adora))
-
-    def _init_adora(self):
-        _ = self._adora_bearer_token
-
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        self.get_store_info(current_date)  # type: ignore
-
-        logger.info(f"cached store info: {self.cached_store_info}")
+        loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
 
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
