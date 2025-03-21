@@ -145,7 +145,7 @@ async def create_account(
     return await _account.create_account(request, session)
 
 
-@admin_router.patch("/accounts/{account_name}")
+@admin_router.post("/accounts/{account_name}")
 async def update_account(
     request: Request,
     account_name: str,
@@ -188,7 +188,7 @@ async def create_agent(
     return await _agent.create_agent(request, session)
 
 
-@admin_router.patch("/agents/{agent_id}")
+@admin_router.post("/agents/{agent_id}")
 async def update_agent(
     request: Request,
     agent_id: uuid.UUID,
@@ -231,7 +231,7 @@ async def create_project(
     return await _projects.create_project(request, session)
 
 
-@admin_router.patch("/projects/{project_id}")
+@admin_router.post("/projects/{project_id}")
 async def update_project(
     request: Request,
     project_id: uuid.UUID,
