@@ -408,10 +408,10 @@ class AdoraTool(Toolkit):
         # Guaranteed phone number since we validated it in the order
         json_payload = json.loads(payload)
         phone_number = json_payload["customer"]["phone"]
-        if not _utils.is_valid_phone_number(phone_number):
+        if not phone_number or not _utils.is_valid_phone_number(phone_number):
             return (
                 f"{phone_number} is not a valid phone number. "
-                "Please provide a valid phone number."
+                "Please provide a valid phone number in the format XXX-XXX-XXXX."
             )
 
         validated_order = _apis.validate_order(
