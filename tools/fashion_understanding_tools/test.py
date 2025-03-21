@@ -68,6 +68,7 @@ def get_textual_response_interactive(endpoint: str = "local"):
 
     while user_query.lower() not in ["q", "quit"]:
         query(user_query, endpoint, hash)
+        print("=" * 20)
         user_query = input("Enter your query. Type q/quit to exit: ")
 
 
@@ -101,7 +102,7 @@ if __name__ == "__main__":
 
     # Obtain agent response and recommendation
     chat_history = []
-    user_query = """Hi! I'm looking for a new maxi dress for a cocktail party. Chic. No specific preference for color. Select a color for me. Any recommendations?"""
+    user_query = """Hi! I'm looking for a new chic dress for prom. No specific preference for color. Select a color for me. Any recommendations?"""
     get_textual_response(prompt=user_query, endpoint=endpoint)
 
 

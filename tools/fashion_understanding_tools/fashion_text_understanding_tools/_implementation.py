@@ -42,7 +42,7 @@ class FashionTextUnderstandingTools:
         }
         logger.info(f"Context: {choose_which_image_mapping[image_to_analyze]}")
         # Define prompt
-        formatted_prompt = f"""Based on the user's chat history, query, and hierarchy, infer a detailed description of the fashion item the user is looking for.
+        formatted_prompt = f"""Based on the user's chat history, latest query, and hierarchy, infer a detailed description of the fashion item the user is looking for.
         
 ### Context:
 {choose_which_image_mapping[image_to_analyze]}
@@ -70,11 +70,10 @@ class FashionTextUnderstandingTools:
     - When user requests similar 'fit', you must only write down the `fit_features` as ["similar to the image."]
     - When user requests similar 'color', you must only write down the `colors` as "similar to the image."
 
-**No Image Reference:**
-   - If the user does not refer to the image:
-     - Use the textual query, chat history, and default hierarchy to describe the user's most recent preferences.
-     - Avoid including any disliked features you could infer from the chat history and query. Note that the user may ask in the current for an item with features they disliked.
-     - Do not return "similar to the image" in any field.
+**User does not reference any image:**
+    - Use the latest user query, chat history, and default hierarchy to describe and infer the user's most recent preferences.
+    - Avoid including any disliked features you could infer from the chat history and query. Note that the user may ask in the current for an item with features they disliked.
+    - Do not return "similar to the image" in any field.
 
 **Reference to image from the chat history:**
     - Use "similar to the image" in appropraite fields.
@@ -86,43 +85,7 @@ class FashionTextUnderstandingTools:
         - For example, if user asks for `Aida Glitter Shine Pleated A-Line Dress`, you must write down the `item_name` as "Aida Glitter Shine Pleated A-Line Dress."
     - If the user mentions a specific item name in the query, use the exact item name as the value for the `item_name` field and set all other fields to 'none'.
      
-Ensure all fields are provided and non-optional. Carefully read through the chat history and query to determine the most relevant and most recent description by the user:
-
-### Format for Item Description:
-**Item Name**: 
-   - The type of item the user is looking for (e.g., "dress," "shoes"). Be specific and exclude colors.
-   - You must use the exact item name if the user provides it. You must not alter the item name.
-   - If the user does not provide an item name, use the most relevant item name based on the context.
-
-**Colors**:
-   - Strictly select from the hierarchy the colors the user might be interested in. If the user specifies a preference, include it.
-   - If no color preference is specified, return the color(s), use the most recent color preference(s) indicated by the user. If no color preference is found from the chat history, return **"none"**.
-   - If the user requests to exclude certain colors, list alternative color suggestions strictly from the hierarchy.
-   - Avoid any colors explicitly disliked by the user unless the user asks for an item with those colors in the current query.
-   - Set to 'none' if the user provides the exact name of the item.
-
-**Occasions**:
-   - Strictly select from the hierarchy the primary occasion type(s) (e.g., "formal," "casual").
-   - If no occasion is specified, return **"none"**.
-   - Otherwise, return a list of the most relevant occasion(s) strictly based on the hierarchy.
-   - Set to 'none' if the user provides the exact name of the item.
-
-**Categories**:
-   - Determine the exact clothing or accessory category requested by the user strictly from the hierarchy.
-   - If the user specifies a specific category (e.g., "long dresses") or asks for a specific style (e.g., "long ..."), only include that specific subcategory strictly from the hierarchy.
-   - If the user asks for a general category (e.g., "dresses"), you must return the general category (e.g., "dresses") strictly from the hierarchy. You could also include the most relevant subcategories based on the context.
-   - If no outfit category is mentioned, return **"none"**.
-   - Set to 'none' if the user provides the exact name of the item.
-
-**Fit Features**:
-   - Analyze the user query and chat history to infer outfit styles of interest. Use simple and concise language. Do not include fancy adjectives.
-   - Pay attention to what user does not like and do not include those features in the output.
-   - In addition to collecting key words from user query, describe the material, patterns, aesthetics that would match with user's preferences if needed. Be detailed, for example, if user asks for a more "casual" style, think about what materials, patterns, and aesthetics would match that style.
-   - Set to 'none' if the user provides the exact name of the item.
-   
-**Product Type**:
-    - Determine the type of product the user is looking for. Be specific and exclude colors.
-    - Set to 'none' if the user provides the exact name of the item.
+Ensure all fields are provided and non-optional. Carefully read through the chat history and query to determine the most relevant and most recent description by the user.
 
 """
         # Define instructions for handling previous user preferences
@@ -171,24 +134,56 @@ Ensure all fields are provided and non-optional. Carefully read through the chat
 """
             formatted_prompt += prev_user_preferences_instructions
 
+        # TODO: Previous recommendations are not used in the current implementation, but can be used in the future
         formatted_prompt += f"""
 ### **Strict Guidelines**:
 - Fields `colors`, `occasions`, and `categories` must be strictly selected from the hierarchy. If a user's input suggests an invalid value, use the closest valid value from the hierarchy or return **"none"**.
 - Exclude any disliked attributes mentioned in the chat history unless the user asks for an item with such attributes in the current query.
-- The description is used for database searches; ensure it's precise and concise.
+- The description is used for database searches; ensure it's precise, relevant, and concise.
 - Multiple values for `colors`, `occasions`, and `categories` can be returned as a list.
 - Use only the values present in the hierarchy for `colors`, `occasions`, and `categories`.
 
 Chat History: 
 {chat_history}
 
-User Query: 
+Latest User Query: 
 {query}
-
-Past Recommendations: "{past_recommendations}"
 
 Hierarchy:
 {json.dumps(self.hierarchy)}
+
+### Desired Output:
+**Item Name**: 
+   - The type of item the user is looking for (e.g., "dress," "shoes"). Be specific and exclude colors.
+   - You must use the exact item name if the user provides it. You must not alter the item name.
+   - If the user does not provide an item name, use the most relevant item name based on the context.
+
+**Colors**:
+   - Strictly select from the hierarchy the colors the user might be interested in. 
+   - If the latesest user query specifies a preference, include it.
+   - If the latest user query does not specify a color preference, search the provided chat history for any recent or past colors the user asked for, and include them. Only if the user did not show interest in any colors in the chat history, return **"none"**.
+   - If the user requests to exclude certain colors, list alternative color suggestions strictly from the hierarchy.
+   - Avoid any colors explicitly disliked by the user unless the user asks for an item with those colors in the current query.
+   - Set to 'none' if the user provides the exact name of the item.
+
+**Occasions**:
+   - Strictly select from the hierarchy the primary occasion type(s) (e.g., "formal," "casual").
+   - If no occasion is specified, return **"none"**.
+   - Otherwise, return a list of the most relevant occasion(s) strictly based on the hierarchy.
+   - Set to 'none' if the user provides the exact name of the item.
+
+**Categories**:
+   - Determine the exact clothing or accessory category requested by the user strictly from the hierarchy.
+   - If the user specifies a specific category (e.g., "long dresses") or asks for a specific style (e.g., "long ..."), only include that specific subcategory strictly from the hierarchy.
+   - If the user asks for a general category (e.g., "dresses"), you must return the general category (e.g., "dresses") strictly from the hierarchy. You could also include the most relevant subcategories based on the context.
+   - If no outfit category is mentioned, return **"none"**.
+   - Set to 'none' if the user provides the exact name of the item.
+
+**Fit Features**:
+   - Analyze the user query and chat history to infer outfit styles of interest. Use simple and concise language. Do not include fancy adjectives.
+   - Pay attention to what user does not like and do not include those features in the output.
+   - In addition to collecting key words from user query, describe the material, patterns, aesthetics that would match with user's preferences if needed. Be detailed, for example, if user asks for a more "casual" style, think about what materials, patterns, and aesthetics would match that style.
+   - Set to 'none' if the user provides the exact name of the item.
 
 Format the response in the following JSON structure:
 ```json

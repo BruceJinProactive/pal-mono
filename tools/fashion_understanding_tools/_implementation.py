@@ -173,7 +173,9 @@ class FashionRecommendationLogicPipeline(Toolkit):
             return ""
 
     @retrieval
-    def _get_chat_history(self) -> str:
+    def _get_chat_history(
+        self, remove_image_links: bool = True, remove_all_links: bool = True
+    ) -> str:
         try:
             try:
                 # TODO: Defer import to avoid circular import
@@ -207,6 +209,22 @@ class FashionRecommendationLogicPipeline(Toolkit):
                             self._get_assistant_content(message["response"]["content"])
                             or message["response"]["content"]
                         )
+
+                        # Remove everything in between and including <image_urls> tags
+                        if remove_image_links:
+                            assistant_content = re.sub(
+                                r"<image_urls>.*?</image_urls>",
+                                "",
+                                assistant_content,
+                                flags=re.DOTALL,
+                            )
+
+                        # Remove the remaining https:// links
+                        if remove_all_links:
+                            assistant_content = re.sub(
+                                r"https?://\S+", "", assistant_content
+                            ).strip()
+
                         chat_history += f"**[Assistant]**\n{assistant_content}\n\n"
                     else:
                         logger.info(
@@ -269,7 +287,7 @@ class FashionRecommendationLogicPipeline(Toolkit):
         if not isinstance(session_data, dict):
             session_data = json.loads(session_data)  # type: ignore
         # Load chat history
-        chat_history = self._get_chat_history()
+        chat_history = self._get_chat_history(remove_all_links=False)  # type: ignore
         logger.info("Triggered get_close_up_images")
         logger.info(
             f"Previous user preferences: {session_data['prev_user_preferences']}"
@@ -597,27 +615,26 @@ class FashionRecommendationLogicPipeline(Toolkit):
     @tool
     def _recommendation_logic(
         self,
-        query: str,
+        last_user_message: str,
         top_k: int = 3,
         num_redundant: int = 7,
         base64_generative_image: str | None = None,
         return_json: bool = False,
     ) -> str | List:
-        f"""This function retrieves clothings, accesories, costumes information from the knowledge base based on the user's query and/or the image uploaded by the user. This function can access chat history and the image uploaded by the user and use it to retrieve similar fashion items from the knowledge base. 
-Args:
-    query (str): The exact content entered by the user. 
-    top_k (int): The number of fashion items to return. Defaults to {top_k}. If the user does not specify the number of items to return, the function must return the top {top_k} fashion items.
-Returns:
-    retrieved fashion items from the knowledge base.
-
-**Trigger Conditions:**
+        f"""This function retrieves relevant fashion items from the knowledge base based on the user's message and/or uploaded image. It can access chat history and the uploaded image to find similar fashion items. 
+Trigger Conditions:
 - When the user asks for:
     1. any clothing items/costumes.
     2. specific type of outfit or dress for events.
     3. ambiguos fashion advice but the chat history provides a context.
     4. items based on the user's query and the image uploaded by the user.
     5. items/clothings/costumes based on a specific occasion, specific occasion, category, or color.
-- If the user's query does not specify the amount of fashion items to return, you must return the top {top_k} fashion items (i.e. set top_k={top_k}).
+
+Args:
+    last_user_message (str): The exact latest user message in the chat history.
+    top_k (int): The number of fashion items to return. Defaults to {top_k}. If the user does not specify the number of items to return, the function must return the top {top_k} fashion items.
+Returns:
+    retrieved fashion items from the knowledge base.
 """
         start_time = time.time()
         # Load the session data
@@ -627,10 +644,10 @@ Returns:
             session_data = json.loads(session_data)  # type: ignore
 
         # Get the chat history
-        chat_history = self._get_chat_history()
+        chat_history = self._get_chat_history(remove_all_links=True)  # type: ignore
         ### TODO: Define the way to collect user query, chat history, and image uploaded by the user.
         chat_history = chat_history if chat_history else []
-        query = query if query else ""
+        query = last_user_message if last_user_message else ""
 
         ##### Ensure previously recommended items are not repeated #####
         filtered_items = []
