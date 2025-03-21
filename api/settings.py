@@ -77,6 +77,20 @@ class ApiSettings(BaseSettings):
             ]
         )
 
+        # Palona AI
+        valid_cors.extend(
+            [
+                "https://palona.ai",
+                "https://www.palona.ai",
+                "https://api.palona.ai",
+                "https://lat-api.palona.ai",
+                "https://stg-api.palona.ai",
+                "https://console.palona.ai",
+                "https://lat-console.palona.ai",
+                "https://stg-console.palona.ai",
+            ]
+        )
+
         # Velotric Bike
         valid_cors.extend(
             [
