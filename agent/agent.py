@@ -5,6 +5,7 @@ from ddtrace.llmobs.decorators import workflow
 
 from agent.config import AgentConfig, AgentFramework
 from agent.framework import AgnoAgent
+from agent.guardrails import check_input
 from agent.input_output import Input, Output
 from agent.memory import get_memory_context, update_memory
 
@@ -80,6 +81,12 @@ class Agent:
             # TODO: migrate to memory tools once implemeted
             memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
             input.memories = memories
+
+        safe = check_input(input.content)
+        if not safe:
+            return Output(
+                content="We detected a potential security risk in your input. Please try again with a different input."
+            )
 
         output = await self._agent.arun(input)  # type: ignore
 
