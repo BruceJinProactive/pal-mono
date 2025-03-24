@@ -38,10 +38,14 @@ class ToolRegistry:
         toolkit_class = self._tools.get(tool.tool_name)
 
         if toolkit_class:
+            args = {}
             if tool.args:
-                return toolkit_class(**tool.args)
+                args = {**tool.args}
 
-            return toolkit_class()
+            if tool.access_metadata and tool.metadata:
+                args = {**args, **tool.metadata.model_dump()}
+
+            return toolkit_class(**args)
 
         return None
 

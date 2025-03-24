@@ -9,4 +9,4 @@ from agent.knowledge import (
 )
 from agent.memory import MemoryConfig, MemoryProvider
 from agent.model import ModelConfig, ModelProvider
-from agent.tool import ToolConfig, ToolIdentifier, ToolProvider
+from agent.tool import ToolConfig, ToolIdentifier, ToolMetadata, ToolProvider

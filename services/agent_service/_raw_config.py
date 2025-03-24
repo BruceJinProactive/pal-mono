@@ -15,6 +15,7 @@ from agent import (
     ModelConfig,
     ToolConfig,
     ToolIdentifier,
+    ToolMetadata,
 )
 from utils.log import logger
 
@@ -40,7 +41,7 @@ class RawConfig(BaseModel):
 
     def build(self) -> AgentConfig:
         if self.agent_raw_config is None:
-            raise ValueError("`agent_raw_config` is not provided.")
+            raise ValueError("'agent_raw_config' is not provided.")
 
         try:
             return AgentConfig(
@@ -71,25 +72,14 @@ class RawConfig(BaseModel):
 
     def _get_agent_persona(self, raw_config: dict[str, Any]) -> AgentPersona:
         # Extract the persona section of the raw config
-        persona = raw_config.get("persona", None)
-        if persona is None:
-            raise ValueError("`persona` is not provided in `agent_raw_config`.")
+        raw_persona = raw_config.get("persona")
+        if not raw_persona:
+            raise ValueError("'persona' is not provided in 'agent_raw_config'.")
 
         # Use the name, role, system_prompt from the persona section
-        name = persona.get("name", None)
-        role = persona.get("role", None)
-        system_prompt = persona.get("system_prompt", None)
-
-        if name is None:
-            raise ValueError("`persona.name` is not provided in `agent_raw_config`.")
-
-        if role is None:
-            raise ValueError("`persona.role` is not provided in `agent_raw_config`.")
-
-        if system_prompt is None:
-            raise ValueError(
-                "`persona.system_prompt` is not provided in `agent_raw_config`."
-            )
+        name = raw_persona.get("name")
+        role = raw_persona.get("role")
+        system_prompt = raw_persona.get("system_prompt")
 
         return AgentPersona(
             name=name,
@@ -99,37 +89,37 @@ class RawConfig(BaseModel):
 
     def _get_agent_knowledge(self, raw_config: dict[str, Any]) -> KnowledgeConfig:
         # Extract the knowledge section of the raw config
-        knowledge = raw_config.get("knowledge", None)
+        raw_knowledge = raw_config.get("knowledge")
 
-        if knowledge is None:
-            logger.info("`knowledge` is not provided in `agent_raw_config`.")
+        if not raw_knowledge:
+            logger.info("'knowledge' is not provided in 'agent_raw_config'.")
             return KnowledgeConfig(enabled=False)
 
         # Use the identifier, provider, settings from the knowledge section
-        identifier = knowledge.get("identifier", None)
+        identifier = raw_knowledge.get("identifier")
         if identifier is None:
             raise ValueError(
-                "`knowledge.identifier` is not provided in `agent_raw_config`."
+                "'knowledge.identifier' is not provided in 'agent_raw_config'."
             )
-        provider = knowledge.get("provider", None)
+        raw_provider = raw_knowledge.get("provider")
 
-        if provider is None:
+        if not raw_provider:
             raise ValueError(
-                "`knowledge.provider` is not provided in `agent_raw_config`."
+                "'knowledge.provider' is not provided in 'agent_raw_config'."
             )
 
         # Check if provider is supported
-        provider = KnowledgeProvider(provider)
+        provider = KnowledgeProvider(raw_provider)
         if provider not in KnowledgeProvider:
             raise ValueError(
-                "`knowledge.provider` is not valid."
+                "'knowledge.provider' is not valid."
                 f"Supported providers: {KnowledgeProvider}"
             )
         elif provider == KnowledgeProvider.LLAMAINDEX:
-            settings = knowledge.get("settings", None)
+            settings = raw_knowledge.get("settings")
             if settings is None:
                 raise ValueError(
-                    "`knowledge.settings` is not provided in `agent_raw_config`."
+                    "'knowledge.settings' is not provided in 'agent_raw_config'."
                 )
 
             # Validate that the knowledge config settings are valid for llamaindex provider
@@ -142,70 +132,58 @@ class RawConfig(BaseModel):
         else:
             # For other providers, settings is not required
             settings = None
-        # Disable knowledge for Windsor agent
-        if self.account_name == "windsor":
-            return KnowledgeConfig(
-                enabled=False,
-                provider=provider,
-                identifier=identifier,
-                settings=settings,
-            )
+
+        # Enable by default
+        enable_knowledge = raw_knowledge.get("enabled", True)
+        logger.info(f"Knowledge enabled: {enable_knowledge}")
+
         return KnowledgeConfig(
-            enabled=True,
+            enabled=enable_knowledge,
             provider=provider,
             identifier=identifier,
             settings=settings,
         )
 
     def _get_agent_tools(self, raw_config: dict[str, Any]) -> ToolConfig:
-        # TODO: adora_tool should be removed from the generic build and based in via raw_config
-        knowledge = self._get_agent_knowledge(raw_config)
+        # Extract the knowledge section of the raw config
+        raw_tools = raw_config.get("tools")
 
-        # Get the client section of the raw config
-        client = raw_config.get("client", None)
-        if knowledge is None:
-            raise ValueError("`client` is not provided in `agent_raw_config`.")
+        if not raw_tools:
+            logger.info("'tools' is not provided in 'agent_raw_config'.")
+            return ToolConfig()
 
-        store_id = client.get("store_id", None)
-        if store_id is None:
-            raise ValueError("`client.store_id` is not provided in `agent_raw_config`.")
+        # TODO: Tool provider configuration not implemented yet (not necessary for now)
 
-        # TODO: We need to create a placeholder for agent that doesn't need a tool
-        if self.account_name in ["palona", "wyze", "samsung_uk"]:
-            return ToolConfig(
-                identifiers=[ToolIdentifier(tool_name="calculator_tool")],
-            )
+        raw_identifiers = raw_tools.get("identifiers", [])
 
-        if self.account_name == "mindzero":
-            # TODO: use store_id for now (instead of location_id) but we should move these
-            # agent specific / client specific details to the raw_config of tools
-            return ToolConfig(
-                identifiers=[
-                    ToolIdentifier(
-                        tool_name="booking_tool", args={"location_id": store_id}
-                    )
-                ],
-            )
+        if not isinstance(raw_identifiers, list):
+            raise ValueError("'identifiers' should be a list.")
 
-        tool_map = {
-            "pizzamyheart": "adora_tool",
-            "palona-pizza": "adora_tool",
-            "windsor": "windsor_tool",
-        }
+        identifiers: list[ToolIdentifier] = []
+        for raw_tool in raw_identifiers:
+            if not isinstance(raw_tool, dict):
+                raise ValueError("'identifiers' should be a list of dict.")
 
-        return ToolConfig(
-            identifiers=[
-                ToolIdentifier(
-                    tool_name=tool_map[self.account_name],
-                    args={
-                        "store_id": store_id,
-                        "agent_id": self.agent_id,  # pass as UUID
-                        "account_id": self.account_id,  # pass as UUID
-                        "account_name": self.account_name,
-                        "user_id": self.user_id,  # pass as UUID
-                        "session_id": self.conversation_id,  # pass as UUID
-                        "namespace": knowledge.settings.namespace,  # type: ignore
-                    },
+            tool_name = raw_tool.get("tool_name", "")
+            tool_args = raw_tool.get("tool_args", {})
+            access_metadata = raw_tool.get("access_metadata", False)
+
+            metadata: ToolMetadata | None = None
+            if access_metadata:
+                metadata = ToolMetadata(
+                    agent_id=self.agent_id,
+                    account_id=self.account_id,
+                    account_name=self.account_name,
+                    user_id=self.user_id,
+                    session_id=self.conversation_id,
                 )
-            ],
-        )
+
+            tool = ToolIdentifier(
+                tool_name=tool_name,
+                args=tool_args,
+                access_metadata=access_metadata,
+                metadata=metadata,
+            )
+            identifiers.append(tool)
+
+        return ToolConfig(identifiers=identifiers)
