@@ -260,14 +260,23 @@ def authenticate_user(request: Request) -> UserContext:
             headers={"Content-Type": "application/json"},
         )
     account_name = token.get("custom:account_name", "")
+    user_role = get_user_role(token)
     return UserContext(
         username=token.get("cognito:username", ""),
         email=token.get("email", ""),
         groups=token.get("cognito:groups", []),
         display_name=token.get("name", ""),
         account_names=account_name.split(",") if account_name else [],
-        role=UserRole.AccountManager,
+        role=user_role,
     )
+
+
+def get_user_role(token: dict[str, Any]) -> UserRole:
+    email = token.get("email", "").lower()
+    if email.endswith("@proactiveailab.com") or email.endswith("@palona.ai"):
+        return UserRole.Admin
+    else:
+        return UserRole.AccountManager
 
 
 def authorize_user_account(context: UserContext, account_name: str):
