@@ -61,13 +61,13 @@ def load_json_from_file(file_path) -> dict[Any, Any] | Any:
 class FashionRecommendationLogicPipeline(Toolkit):
     def __init__(
         self,
-        store_id: str,
         agent_id: uuid.UUID,
         account_id: uuid.UUID,
         account_name: str,
         user_id: uuid.UUID,
         session_id: uuid.UUID,
-        namespace: str,
+        pinecone_index_name: str,
+        pinecone_namespace: str,
     ):
         super().__init__(name="fashion_recommendation_logic_pipeline")
         self.register(self._recommendation_logic)
@@ -78,7 +78,6 @@ class FashionRecommendationLogicPipeline(Toolkit):
         self.session_id = session_id
         self.agent_id = agent_id
         self.account_id = account_id
-        self.namespace = namespace
 
         # Initialize OpenAI
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -105,7 +104,11 @@ class FashionRecommendationLogicPipeline(Toolkit):
             hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
         )
         self.rag_search_filter_utils_tools = FashionRagSearchFilterUtilsTools(
-            hierarchy=self.hierarchy, client=self.client, client_async=self.client_async
+            hierarchy=self.hierarchy,
+            client=self.client,
+            client_async=self.client_async,
+            pinecone_index_name=pinecone_index_name,
+            pinecone_namespace=pinecone_namespace,
         )
         self.fashion_reranker_tools = FashionRerankerTools(
             client=self.client, client_async=self.client_async
