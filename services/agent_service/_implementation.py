@@ -9,6 +9,7 @@ import db
 from agent import AgentConfig
 from utils.log import logger
 
+from .. import account_service
 from . import _raw_config
 from .schema import AgentParams
 
@@ -103,12 +104,13 @@ def replace_agent_config(
     agent_repository.replace_agent_config(agent_id=agent_id, config=config)
 
 
-def create_agent(
-    session: Session, account_id: uuid.UUID, params: AgentParams
-) -> db.Agent:
+def create_agent(session: Session, account_name: str, params: AgentParams) -> db.Agent:
     # Create an agent for the given account
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
     agent_repository = db.AgentRepository(session)
-    agent = agent_repository.create_agent(account_id, **asdict(params))
+    agent = agent_repository.create_agent(account.id, **asdict(params))
     return agent
 
 

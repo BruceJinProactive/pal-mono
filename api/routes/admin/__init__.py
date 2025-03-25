@@ -125,7 +125,7 @@ def get_project(
     return _projects.get_project(project_id, context, session)
 
 
-@admin_router.post("/accounts", status_code=status.HTTP_201_CREATED)
+@admin_router.put("/accounts", status_code=status.HTTP_201_CREATED)
 async def create_account(
     request: Request,
     context: UserContext = Depends(authenticate_user),
@@ -145,7 +145,7 @@ async def create_account(
     return await _account.create_account(request, session)
 
 
-@admin_router.post("/accounts/{account_name}")
+@admin_router.patch("/accounts/{account_name}")
 async def update_account(
     request: Request,
     account_name: str,
@@ -167,7 +167,7 @@ async def update_account(
     return await _account.update_account(request, account_name, session)
 
 
-@admin_router.post("/agents", status_code=status.HTTP_201_CREATED)
+@admin_router.put("/agents", status_code=status.HTTP_201_CREATED)
 async def create_agent(
     request: Request,
     context: UserContext = Depends(authenticate_user),
@@ -188,7 +188,7 @@ async def create_agent(
     return await _agent.create_agent(request, session)
 
 
-@admin_router.post("/agents/{agent_id}")
+@admin_router.patch("/agents/{agent_id}")
 async def update_agent(
     request: Request,
     agent_id: uuid.UUID,
@@ -210,7 +210,7 @@ async def update_agent(
     return await _agent.update_agent(request, agent_id, session)
 
 
-@admin_router.post("/projects", status_code=status.HTTP_201_CREATED)
+@admin_router.put("/projects", status_code=status.HTTP_201_CREATED)
 async def create_project(
     request: Request,
     context: UserContext = Depends(authenticate_user),
@@ -231,7 +231,7 @@ async def create_project(
     return await _projects.create_project(request, session)
 
 
-@admin_router.post("/projects/{project_id}")
+@admin_router.patch("/projects/{project_id}")
 async def update_project(
     request: Request,
     project_id: uuid.UUID,

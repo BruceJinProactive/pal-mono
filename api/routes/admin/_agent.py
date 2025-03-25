@@ -34,7 +34,7 @@ async def create_agent(request: Request, session: Session) -> Agent:
     )
     try:
         db_agent = agent_service.create_agent(
-            session, create_request.account_id, agent_params
+            session, create_request.account_name, agent_params
         )
     except ValueError as err:
         raise HTTPException(

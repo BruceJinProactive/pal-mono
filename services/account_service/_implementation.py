@@ -36,7 +36,7 @@ def create_account_with_defaults(session: Session, account_name: str) -> db.Acco
     agent = agent_repository.create_agent(account_id=account.id)
     project_repository.create_project(
         account.id,
-        name=f"{account_name}-default",
+        f"{account_name}-default",
         agent_id=agent.id,
     )
     return account

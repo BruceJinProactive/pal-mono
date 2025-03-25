@@ -12,20 +12,21 @@ from .schema import ProjectParams
 
 
 def create_project(
-    session: Session, account_id: uuid.UUID, params: ProjectParams
+    session: Session, account_name: str, project_name: str, params: ProjectParams
 ) -> db.Project:
     """
     Create a new project for a specific account using provided parameters.
 
     Args:
         session (Session): The database connection.
-        account_id (uuid.UUID): The uuid of the account to which the project belongs.
+        account_name (str): The name of the account to which the project belongs.
+        project_name (str): The unique name of the project to be created
         params (ProjectParams): The detailed configs of the project to be created.
 
     Returns:
         Project: The newly created project.
     """
-    return _implementation.create_project(session, account_id, params)
+    return _implementation.create_project(session, account_name, project_name, params)
 
 
 def update_project(

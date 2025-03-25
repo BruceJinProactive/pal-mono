@@ -22,7 +22,7 @@ class CreateAgentRequest(BaseModel):
     """Create Agent Request"""
 
     name: str = Field(...)
-    account_id: uuid.UUID = Field(...)
+    account_name: str = Field(...)
     description: str | None = None
     communication_style: str | None = None
     interaction_guidelines: str | None = None

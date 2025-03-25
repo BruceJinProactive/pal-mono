@@ -49,8 +49,9 @@ def main() -> None:
             if agent_id:
                 new_project = create_project(
                     session,
-                    account.id,
-                    ProjectParams(name=new_project_name, agent_id=agent_id),
+                    account.name,
+                    new_project_name,
+                    ProjectParams(agent_id=agent_id),
                 )
                 if new_project:
                     st.success("Successfully created a new project")

@@ -18,7 +18,7 @@ class Project(BaseModel):
 class CreateProjectRequest(BaseModel):
     """Create Project Request"""
 
-    account_id: uuid.UUID = Field(...)
+    account_name: str = Field(...)
     agent_id: uuid.UUID = Field(...)
     name: str = Field(...)
     display_name: str | None = None

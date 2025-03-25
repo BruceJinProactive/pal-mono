@@ -51,9 +51,11 @@ class ProjectRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def create_project(self, account_id: uuid.UUID, **kwargs) -> Project:
+    def create_project(
+        self, account_id: uuid.UUID, project_name: str, **kwargs
+    ) -> Project:
         try:
-            db_project = Project(account_id=account_id)
+            db_project = Project(account_id=account_id, name=project_name)
             for key, value in kwargs.items():
                 if value is not None and hasattr(db_project, key):
                     setattr(db_project, key, value)

@@ -281,7 +281,6 @@ async def create_project(request: Request, session: Session) -> Project:
     project_data = await request.json()
     create_request = CreateProjectRequest(**project_data)
     project_params = project_service.ProjectParams(
-        name=create_request.name,
         display_name=create_request.display_name,
         agent_id=create_request.agent_id,
         raw_config=create_request.raw_config,
@@ -289,7 +288,7 @@ async def create_project(request: Request, session: Session) -> Project:
     )
     try:
         db_project = project_service.create_project(
-            session, create_request.account_id, project_params
+            session, create_request.account_name, create_request.name, project_params
         )
     except ValueError as err:
         raise HTTPException(
@@ -306,7 +305,6 @@ async def update_project(
     project_data = await request.json()
     update_request = UpdateProjectRequest(**project_data)
     project_params = project_service.ProjectParams(
-        name=update_request.name,
         display_name=update_request.display_name,
         agent_id=update_request.agent_id,
         raw_config=update_request.raw_config,
