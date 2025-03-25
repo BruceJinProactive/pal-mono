@@ -31,7 +31,7 @@ class ToolIdentifier(BaseModel):
         if not self.tool_name:
             raise ValueError("tool_name cannot be empty.")
 
-        if not self.metadata and self.access_metadata is not None:
+        if not self.access_metadata and self.metadata is not None:
             raise ValueError(
                 "metadata should not be provided when access_metadata is False."
             )
