@@ -156,4 +156,5 @@ def get_user_info(context: UserContext) -> User:
         id=context.username,
         email=context.email,
         display_name=context.display_name,
+        account_name=context.account_names[0] if context.account_names else "",
     )

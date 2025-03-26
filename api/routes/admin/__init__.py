@@ -47,22 +47,8 @@ def get_user(request: Request, context: UserContext = Depends(authenticate_user)
     return _implementation.get_user_info(context)
 
 
-@admin_router.get("/account")
-def read_account(request: Request):
-    """
-    Retrieve the account information from the decrypted ID token.
-
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        JSONResponse: The account information.
-    """
-    return _implementation.read_account(request)
-
-
 @admin_router.get("/accounts")
-def get_accounts(
+def list_accounts(
     request: Request,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
@@ -79,6 +65,73 @@ def get_accounts(
         ListAccountsResponse: The list of accounts.
     """
     return _account.list_accounts(context, session)
+
+
+@admin_router.get("/accounts/{account_name}")
+def get_account(
+    request: Request,
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Account:
+    """
+    Retrieve account details by account name.
+
+    Args:
+        request (Request): The incoming HTTP request object.
+        account_name (str): The unique name of the account to retrieve.
+        context (UserContext): The authenticated user context.
+        session (Session): The database session.
+
+    Returns:
+        Account: The account details if found.
+
+    Raises:
+        HTTPException: If the account does not exist or if the user lacks necessary permissions.
+    """
+    return _account.get_account(account_name, context, session)
+
+
+@admin_router.put("/accounts", status_code=status.HTTP_201_CREATED)
+async def create_account(
+    request: Request,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Account:
+    """
+    Create a new account based on the provided request data.
+
+    Args:
+        request: The incoming HTTP request that contains the account data.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Account: The created account information.
+    """
+    return await _account.create_account(request, context, session)
+
+
+@admin_router.patch("/accounts/{account_name}")
+async def update_account(
+    request: Request,
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Account:
+    """
+    Update the account based on the provided request data.
+
+    Args:
+        request: The incoming HTTP request that contains the account data.
+        account_name: The name of the account to update.
+        context: The authenticated user's context.
+        session: The database session.
+
+    Returns:
+        Account: The updated account information.
+    """
+    return await _account.update_account(request, account_name, context, session)
 
 
 @admin_router.get("/agents/{agent_id}")
@@ -101,70 +154,6 @@ def get_agent(
         Agent: The agent configuration.
     """
     return _agent.get_agent(agent_id, context, session)
-
-
-@admin_router.get("/projects/{project_id}")
-def get_project(
-    request: Request,
-    project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> Project:
-    """
-    Fetch detailed information about a specific project by its uuid.
-
-    Args:
-        request: The incoming HTTP request.
-        project_id: UUID of the project.
-        context: The user context of this request.
-        session: The database session.
-
-    Returns:
-        Project: The project configuration.
-    """
-    return _projects.get_project(project_id, context, session)
-
-
-@admin_router.put("/accounts", status_code=status.HTTP_201_CREATED)
-async def create_account(
-    request: Request,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> Account:
-    """
-    Create a new account based on the provided request data.
-
-    Args:
-        request: The incoming HTTP request that contains the account data.
-        context: The authenticated user's context.
-        session: The database session.
-
-    Returns:
-        Account: The created account information.
-    """
-    return await _account.create_account(request, session)
-
-
-@admin_router.patch("/accounts/{account_name}")
-async def update_account(
-    request: Request,
-    account_name: str,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> Account:
-    """
-    Update the account based on the provided request data.
-
-    Args:
-        request: The incoming HTTP request that contains the account data.
-        account_name: The name of the account to update.
-        context: The authenticated user's context.
-        session: The database session.
-
-    Returns:
-        Account: The updated account information.
-    """
-    return await _account.update_account(request, account_name, session)
 
 
 @admin_router.put("/agents", status_code=status.HTTP_201_CREATED)
@@ -208,6 +197,28 @@ async def update_agent(
         Agent: The updated agent information.
     """
     return await _agent.update_agent(request, agent_id, session)
+
+
+@admin_router.get("/projects/{project_id}")
+def get_project(
+    request: Request,
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Project:
+    """
+    Fetch detailed information about a specific project by its uuid.
+
+    Args:
+        request: The incoming HTTP request.
+        project_id: UUID of the project.
+        context: The user context of this request.
+        session: The database session.
+
+    Returns:
+        Project: The project configuration.
+    """
+    return _projects.get_project(project_id, context, session)
 
 
 @admin_router.put("/projects", status_code=status.HTTP_201_CREATED)

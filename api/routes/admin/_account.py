@@ -9,23 +9,45 @@ from api.schemas.admin.account import (
 )
 from services import account_service
 
+from ._auth import authorize_user_account
 from ._builder import build_account
-from ._utils import UserContext
+from ._utils import UserContext, UserRole
 
 
 def list_accounts(context: UserContext, session: Session) -> ListAccountsResponse:
-    accounts = account_service.mget_accounts(
-        session, account_names=context.account_names
-    )
+    if context.account_names:
+        accounts = account_service.mget_accounts(
+            session, account_names=context.account_names
+        )
+    elif context.role == UserRole.Admin:
+        accounts = account_service.get_accounts(session)
+    else:
+        accounts = []
+
     response = ListAccountsResponse(
         accounts=[build_account(account) for account in accounts]
     )
     return response
 
 
-async def create_account(request: Request, session: Session) -> Account:
+def get_account(account_name: str, context: UserContext, session: Session) -> Account:
+    authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+    return build_account(account)
+
+
+async def create_account(
+    request: Request, context: UserContext, session: Session
+) -> Account:
     account_data = await request.json()
     create_request = CreateAccountRequest(**account_data)
+    authorize_user_account(context, create_request.name)
     account_params = account_service.AccountParams(
         display_name=create_request.display_name,
         icon_uri=create_request.icon_uri,
@@ -49,8 +71,9 @@ async def create_account(request: Request, session: Session) -> Account:
 
 
 async def update_account(
-    request: Request, account_name: str, session: Session
+    request: Request, account_name: str, context: UserContext, session: Session
 ) -> Account:
+    authorize_user_account(context, account_name)
     account_data = await request.json()
     update_request = UpdateAccountRequest(**account_data)
     account_params = account_service.AccountParams(
