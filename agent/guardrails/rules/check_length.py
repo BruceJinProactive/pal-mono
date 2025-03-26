@@ -1,7 +1,5 @@
+from agent.guardrails.rules._constants import MAX_PROMPT_LENGTH
 from utils.log import logger
-
-# Define prompt length constraints (word count)
-MAX_PROMPT_LENGTH = 100
 
 
 def check_length(prompt: str) -> bool:
