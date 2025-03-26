@@ -1,17 +1,15 @@
 import json
 import os
-import uuid
-from typing import Optional
 
 import shopify
-from sqlalchemy.orm import Session
 
-from services.project_service import get_project
 from utils import secret
 from utils.log import logger
 
+# from ._util_debug import _get_envs as _get_envs_from_secret_manager
 
-def _get_envs_from_secret_manager(merchant: str) -> dict:
+
+def _get_envs_from_secret_manager(app_name: str) -> dict:
     """
     Get the environment variables for a given merchant.
     Args:
@@ -19,16 +17,30 @@ def _get_envs_from_secret_manager(merchant: str) -> dict:
     Returns:
         dict: The environment variables for the given merchant
     """
-    merchant = merchant.upper()
     app_secrets = secret._get_client_secrets()
     return {
-        "SHOPIFY_API_KEY": app_secrets.get(f"SHOPIFY_{merchant}_API_KEY"),
-        "SHOPIFY_API_SECRET": app_secrets.get(f"SHOPIFY_{merchant}_API_SECRET"),
-        "SHOPIFY_API_VER": os.getenv(f"SHOPIFY_{merchant}_API_VER", "2025-01"),
+        "SHOPIFY_API_KEY": app_secrets.get(f"SHOPIFY_{app_name.upper()}_API_KEY"),
+        "SHOPIFY_API_SECRET": app_secrets.get(f"SHOPIFY_{app_name.upper()}_API_SECRET"),
+        "SHOPIFY_API_VER": os.getenv(f"SHOPIFY_{app_name.upper()}_API_VER", "2025-01"),
     }
 
 
-def get_shopify_session(shop_url: str, merchant: str) -> shopify.Session:
+class ShopifyStore:
+    # shop_url, session, app_name, store_name, get_identifier_name(store_name)
+    def __init__(self, shop_url, session, app_name, store_name, recipient_identifier):
+        self.shop_url = shop_url
+        self.session = session
+        self.app_name = app_name
+        self.store_name = store_name
+        self.recipient_identifier = recipient_identifier
+
+
+def get_identifier_name(store_name: str) -> str:
+    identifier_name: str = "shopify-" + store_name
+    return identifier_name
+
+
+def get_shopify_session(shop_url: str, app_name: str) -> shopify.Session:
     """Get a Shopify session for a given merchant.
     Args:
         shop_url (str): The URL of the Shopify store.
@@ -36,37 +48,20 @@ def get_shopify_session(shop_url: str, merchant: str) -> shopify.Session:
     Returns:
         shopify.Session: The Shopify session for the given merchant.
     """
-    store_envs = _get_envs_from_secret_manager(merchant)
-    session = shopify.Session(shop_url, store_envs["SHOPIFY_API_VER"])
+    app_envs = _get_envs_from_secret_manager(app_name)
+    session = shopify.Session(shop_url, app_envs["SHOPIFY_API_VER"])
     session.setup(
-        api_key=store_envs["SHOPIFY_API_KEY"], secret=store_envs["SHOPIFY_API_SECRET"]
+        api_key=app_envs["SHOPIFY_API_KEY"], secret=app_envs["SHOPIFY_API_SECRET"]
     )
     return session
 
 
 def set_access_token(
-    session: Optional[Session],
-    project_id: Optional[uuid.UUID],
-    project_name: str,
+    token_prefix: str,
     access_token: str,
 ) -> None:
-    """
-    Add shopify access token to the secret store.
-    Args:
-        session (Session): The database connection.
-        project_id (uuid.UUID): The unique identifier of the project.
-        access_token (str): The access token to be stored.
-    """
-    if project_name is None and project_id is None:
-        raise ValueError("Either project_name or project_id must be provided.")
-    if project_id is not None and session is not None:
-        project = get_project(
-            session, project_id
-        )  # TODO: how to manage proj? windsor-default
-        if not project:
-            raise ValueError("Project not found.")
-        project_name = project.name
-    project_secret_key = _project_name_to_shopify_access_token_key(project_name)
+
+    project_secret_key = _project_name_to_shopify_access_token_key(token_prefix)
     project_secret_value = json.dumps({"access_token": access_token})
 
     # Add secrets, and rollback if necessary
@@ -74,11 +69,11 @@ def set_access_token(
         # Attempt to add both secrets one by one
         secret.upsert_client_secret(project_secret_key, project_secret_value)
     except Exception as e:
-        logger.error(f"Unable to set {project_name} access token: {e}")
-        raise RuntimeError(f"Unable to set {project_name} access token: {e}")
+        logger.error(f"Unable to set {token_prefix} access token: {e}")
+        raise RuntimeError(f"Unable to set {token_prefix} access token: {e}")
 
 
-def _project_name_to_shopify_access_token_key(project_name: str) -> str:
+def _project_name_to_shopify_access_token_key(token_prefix: str) -> str:
     """
     Convert a project name to the key used to store the Shopify access token in the secret store.
     Args:
@@ -86,4 +81,4 @@ def _project_name_to_shopify_access_token_key(project_name: str) -> str:
     Returns:
         str: The key used to store the Shopify access token in the secret store.
     """
-    return f"{project_name.upper()}_SHOPIFY_ACCESS_TOKEN"
+    return f"{token_prefix.upper()}_SHOPIFY_ACCESS_TOKEN"
