@@ -1,7 +1,8 @@
 import re
 
-from agent.guardrails.rules._constants import REPEATED_WORD_PATTERN
 from utils.log import logger
+
+from . import _constants
 
 
 def separate_concatenated_repeated(token: str) -> str:
@@ -38,7 +39,7 @@ def check_repeated(prompt: str) -> bool:
     Returns a boolean indicating whether the input is safe (True) or contains repeated words (False).
     """
     prompt = separate_concatenated_words_in_prompt(prompt)
-    if re.compile(REPEATED_WORD_PATTERN, re.IGNORECASE).search(prompt):
+    if re.compile(_constants.REPEATED_WORD_PATTERN, re.IGNORECASE).search(prompt):
         logger.info("Repeated words found in prompt")
         return False
     return True

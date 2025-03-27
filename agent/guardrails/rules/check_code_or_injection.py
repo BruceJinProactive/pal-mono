@@ -1,7 +1,8 @@
 import re
 
-from agent.guardrails.rules._constants import CODE_PATTERNS
 from utils.log import logger
+
+from . import _constants
 
 
 def check_code_or_injection(prompt: str) -> bool:
@@ -12,7 +13,7 @@ def check_code_or_injection(prompt: str) -> bool:
     patterns (False).
     """
 
-    for pattern in CODE_PATTERNS:
+    for pattern in _constants.CODE_PATTERNS:
         if re.search(pattern, prompt, re.IGNORECASE | re.DOTALL):
             logger.info(f"Code or injection pattern detected: {pattern}")
             return False

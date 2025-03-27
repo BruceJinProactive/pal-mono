@@ -1,3 +1,5 @@
+import string
+
 BLACKLIST = [
     # Jailbreak & Bypass Terms
     "jailbreak",
@@ -111,3 +113,22 @@ CODE_PATTERNS = [
     r"UPDATE\s+\w+\s+SET\s+",  # SQL Injection
     r"DELETE\s+FROM\s+\w+",  # SQL Injection
 ]
+ALLOWED_CHARACTERS = set(
+    string.ascii_letters + string.digits + string.punctuation + " "
+)
+DELIM = r"[\s,;:\-\.]+"
+BASE64 = (
+    r"^(?:[A-Za-z0-9+/]{4})*"  # groups of 4 valid Base64 characters
+    r"(?:[A-Za-z0-9+/]{2}==|"  # or 2 characters followed by '=='
+    r"[A-Za-z0-9+/]{3}=)?$"
+)
+BINARY = rf"^(?:[01]+(?:{DELIM}[01]+)*)$"
+DECIMAL = rf"(?:[+-]?\d+(?:{DELIM}\d+)*)"
+HEX = rf"^(?:0x(?:{DELIM})*)?(?:[0-9A-Fa-f]{{20,}}|[0-9A-Fa-f]{{2}}(?:{DELIM}[0-9A-Fa-f]{{2}}){{9,}})$|(?:0[xX](?:{DELIM})*[0-9A-Fa-f]+(?:{DELIM}[0-9A-Fa-f]+)*)"
+OCTAL = rf"^(?:[0-7]{{10,}}|[0-7](?:{DELIM}[0-7]){{9,}})$|(?:0[oO](?:{DELIM})*[0-7]+(?:{DELIM}[0-7]+)*)"
+ASCII = (
+    r"^(?:"  # start non-capturing group for the entire sequence
+    r"(?:12[0-7]|1[01]\d|\d{1,2})"  # matches a number between 0 and 127:
+    r"(?:[\s,;:\-\.]+|$)"  # each number is followed by a delimiter (or end-of-string)
+    r")+$"
+)

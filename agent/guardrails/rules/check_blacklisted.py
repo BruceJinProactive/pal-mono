@@ -1,7 +1,8 @@
 import re
 
-from agent.guardrails.rules._constants import BLACKLIST
 from utils.log import logger
+
+from . import _constants
 
 
 def check_blacklisted(prompt: str) -> bool:
@@ -17,7 +18,7 @@ def check_blacklisted(prompt: str) -> bool:
         logger.info("Blacklisted styled DAN pattern found in prompt")
         return False
     words = set(prompt_lower.split())
-    blacklist_set = set(BLACKLIST)
+    blacklist_set = set(_constants.BLACKLIST)
 
     if words.intersection(blacklist_set):
         logger.info("Blacklisted word found in prompt")

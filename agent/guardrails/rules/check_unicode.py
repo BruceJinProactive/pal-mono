@@ -1,11 +1,8 @@
 import unicodedata
 
-from agent.guardrails.rules._constants import (
-    ALLOWED_PUNCTUATION,
-    ALLOWED_WHITE_SPACE,
-    BANNED_CATEGORIES,
-)
 from utils.log import logger
+
+from . import _constants
 
 
 def is_emoji(char: str) -> bool:
@@ -31,8 +28,8 @@ def check_unicode(prompt: str) -> bool:
         if (
             char_ord > 127
             and not is_emoji(char)
-            and char not in ALLOWED_WHITE_SPACE
-            and char not in ALLOWED_PUNCTUATION
+            and char not in _constants.ALLOWED_WHITE_SPACE
+            and char not in _constants.ALLOWED_PUNCTUATION
         ):
             message = f"Non-ASCII character found: {char} (ord: {char_ord})"
             logger.info(message)
@@ -40,8 +37,8 @@ def check_unicode(prompt: str) -> bool:
 
         # Check for characters in banned Unicode categories.
         if (
-            unicodedata.category(char) in BANNED_CATEGORIES
-            and char not in ALLOWED_WHITE_SPACE
+            unicodedata.category(char) in _constants.BANNED_CATEGORIES
+            and char not in _constants.ALLOWED_WHITE_SPACE
         ):
             message = f"Banned Unicode category '{unicodedata.category(char)}' found for character: {char}"
             logger.info(message)
