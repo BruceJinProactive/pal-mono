@@ -14,10 +14,13 @@ WORKDIR ${APP_DIR}
 
 # Update pip
 RUN pip install --upgrade pip
+
+# Install uv
+RUN pip install uv==0.1.3
 # Copy pinned requirements
 COPY requirements.txt .
 # Install pinned requirements
-RUN pip install -r requirements.txt
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Copy project files
 COPY . .

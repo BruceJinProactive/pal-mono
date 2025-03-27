@@ -38,8 +38,9 @@ jobs:
       - name: Install dependencies in virtual environment
         run: |
           .venv/bin/python -m pip install --upgrade pip setuptools wheel
-          .venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
-          .venv/bin/pip install -r requirements.txt
+          .venv/bin/python -m pip install uv==0.1.3
+          .venv/bin/uv pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
+          .venv/bin/uv pip install --no-cache -r requirements.txt
 
       - name: Format check with black
         run: |
@@ -103,7 +104,8 @@ jobs:
       - name: Install dependencies in virtual environment
         run: |
           .venv/bin/python -m pip install --upgrade pip setuptools wheel
-          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install uv
+          .venv/bin/uv pip install -r requirements.txt
       
       - name: Run main pytest report
         id: get_main_coverage
@@ -141,8 +143,9 @@ jobs:
       - name: Install dependencies in virtual environment
         run: |
           .venv/bin/python -m pip install --upgrade pip setuptools wheel
-          .venv/bin/pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
-          .venv/bin/pip install -r requirements.txt
+          .venv/bin/python -m pip install uv
+          .venv/bin/uv pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
+          .venv/bin/uv pip install --no-cache -r requirements.txt
       
       - name: Run new pytest report
         id: get_new_coverage
