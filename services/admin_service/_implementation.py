@@ -10,8 +10,6 @@ from sqlalchemy.orm import Session, declarative_base
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
-from services.account_service import get_account
-from services.agent_service import get_agents_by_account
 from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
@@ -273,25 +271,6 @@ def get_messages_by_conversation_id(
         message.feedback = message_id_to_feedback[message.id]
 
     return messages
-
-
-def get_brand(session: Session, account_name: str) -> list[dict]:
-    account = get_account(session, account_name)
-    if not account:
-        return []
-    account_name = account.name
-    agents = get_agents_by_account(session, account_name)
-    if not agents:
-        return []
-    # # find the agent's raw config
-    # parse the raw config with the branding key
-    # error check, if it doesn't have the branding key, send back an empty json
-    brand = []
-    for agent in agents:
-        if "brand" in agent.raw_config:
-            brand_item = agent.raw_config.get("brand", {})
-            brand.append(brand_item)
-    return brand
 
 
 def get_knowledge_base(session: Session, account_name: str) -> list:

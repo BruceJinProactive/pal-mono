@@ -109,17 +109,6 @@ def get_messages_by_conversation_id(
     )
 
 
-def get_brand(session: Session, account_name: str) -> list[dict]:
-    """
-    Retrieves the brand content, formatted as a list of key value pairs.
-
-    Returns:
-        list[dict]: A list of key value pairs containing structured information about the company's profile, branding,
-        and foundational story for AI application.
-    """
-    return _implementation.get_brand(session, account_name)
-
-
 def get_knowledge_base(session: Session, account_name: str) -> list[dict]:
     """
     Retrieves the knowledge base content, formatted as a list of key value pairs.
@@ -288,7 +277,6 @@ __all__ = [
     "get_inbox_conversations",
     "get_conversation_messages",
     "get_conversation_ids_by_message_ids",
-    "get_brand",
     "get_knowledge_base",
     "get_knowledge_base_by_document_id",
     "update_knowledge_by_id",

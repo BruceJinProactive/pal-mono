@@ -111,7 +111,7 @@ class ConversationRepository:
             logger.error(f"Error retrieving conversations by users: {e}")
             return [], 0
 
-    def get_conversation_by_id(self, conversation_id: uuid.UUID):
+    def get_conversation_by_id(self, conversation_id: uuid.UUID) -> Conversation | None:
         try:
             return (
                 self.session.query(Conversation)

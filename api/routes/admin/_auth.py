@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin._utils import UserContext, UserRole
+from api.schemas.admin.user import User
 from services.account_service import get_account
 
 """
@@ -305,4 +306,13 @@ def authorize_user_account(context: UserContext, account_name: str):
         status_code=status.HTTP_403_FORBIDDEN,
         detail="User does not have permission for the requested account",
         headers={"Content-Type": "application/json"},
+    )
+
+
+def get_user_info(context: UserContext) -> User:
+    return User(
+        id=context.username,
+        email=context.email,
+        display_name=context.display_name,
+        account_name=context.account_names[0] if context.account_names else "",
     )

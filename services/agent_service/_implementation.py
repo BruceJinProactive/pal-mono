@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -73,28 +73,6 @@ def get_agent(session: Session, agent_id: uuid.UUID) -> Optional[db.Agent]:
     agent_repository = db.AgentRepository(session)
     agent = agent_repository.get_agent(agent_id=agent_id)
     return agent
-
-
-def get_agents_by_account(
-    session: Session, account_name: str
-) -> Optional[List[db.Agent]]:
-    # Retrieve the agent from the database
-    account_repository = db.AccountRepository(session)
-    account = account_repository.get_account(account_name)
-    agents = []
-    if account:
-        account_id = account.id
-        agents = db.AgentRepository(session).get_agents_by_account(
-            account_id=account_id
-        )
-    return agents
-
-
-def update_agent_config(
-    session: Session, agent_id: uuid.UUID, config: Dict[str, Any]
-) -> None:
-    agent_repository = db.AgentRepository(session)
-    agent_repository.update_agent_config(agent_id=agent_id, config=config)
 
 
 def replace_agent_config(

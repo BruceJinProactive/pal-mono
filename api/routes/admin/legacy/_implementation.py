@@ -6,10 +6,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.admin import _auth
 from api.schemas.admin.conversation import InboxResponse
-from api.schemas.admin.user import User
-from services import agent_service
-from services.admin_service import get_brand as get_brand_from_db
 from services.admin_service import (
     get_conversation_messages,
     get_inbox_conversations,
@@ -17,34 +15,6 @@ from services.admin_service import (
     get_knowledge_base_by_document_id,
     update_knowledge_by_id,
 )
-
-from . import _auth, _utils
-from ._utils import UserContext
-
-"""
-######################################################
-# Guide for Admin API implementation
-######################################################
-
-- Keep all functions in alphabetical order.
-- Use `Depends` to inject the database session.
-- Use type hints for all arguments and the return value.
-- Feel free to decouple specific namespaces to separate modules (i.e. `_projects`).
-"""
-
-
-def get_agent_config(
-    request: Request, session: Session = Depends(db.get_db)
-) -> JSONResponse:
-    account = _auth.get_account_from_id_token(request, session)
-    return JSONResponse(account.agents[0].raw_config)
-
-
-def get_brand(request: Request, session: Session = Depends(db.get_db)):
-    account = _auth.get_account_from_id_token(request, session)
-    account_name = account.name
-    branding_jsons = get_brand_from_db(session, account_name)
-    return branding_jsons
 
 
 def get_conversation(
@@ -124,37 +94,3 @@ async def update_document(
         ) from e
 
     return {"document_id": document_id}
-
-
-async def upsert_brand(request: Request, session: Session = Depends(db.get_db)):
-    account = _auth.get_account_from_id_token(request, session)
-    agent_raw_config = account.agents[0].raw_config
-    request_brand_key_value = await _utils.retrieve_body_brand(request)
-
-    if "brand" not in agent_raw_config:
-        agent_raw_config["brand"] = {}
-    agent_raw_config["brand"][request_brand_key_value[0]] = request_brand_key_value[1]
-
-    try:
-        agent_service.update_agent_config(
-            session,
-            agent_id=account.agents[0].id,
-            config=agent_raw_config,
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while updating the brand. Please try again.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    return agent_raw_config
-
-
-def get_user_info(context: UserContext) -> User:
-    return User(
-        id=context.username,
-        email=context.email,
-        display_name=context.display_name,
-        account_name=context.account_names[0] if context.account_names else "",
-    )

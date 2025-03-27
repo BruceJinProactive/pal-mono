@@ -1,30 +1,37 @@
 import uuid
 
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentRequest
 from services import agent_service
 
-from . import _auth
+from ._auth import authorize_user_account
 from ._builder import build_agent
 from ._utils import UserContext
 
 
-def get_agent(agent_id: uuid.UUID, context: UserContext, session: Session) -> Agent:
+def get_agent(
+    agent_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> Agent:
     agent = agent_service.get_agent(session, agent_id)
     if not agent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Agent not found",
         )
-    _auth.authorize_user_account(context, agent.account.name)
+    authorize_user_account(context, agent.account.name)
     return build_agent(agent)
 
 
-async def create_agent(request: Request, session: Session) -> Agent:
-    agent_data = await request.json()
-    create_request = CreateAgentRequest(**agent_data)
+async def create_agent(
+    create_request: CreateAgentRequest,
+    context: UserContext,
+    session: Session,
+) -> Agent:
+    authorize_user_account(context, create_request.account_name)
     agent_params = agent_service.AgentParams(
         name=create_request.name,
         description=create_request.description,
@@ -46,10 +53,19 @@ async def create_agent(request: Request, session: Session) -> Agent:
 
 
 async def update_agent(
-    request: Request, agent_id: uuid.UUID, session: Session
+    agent_id: uuid.UUID,
+    update_request: UpdateAgentRequest,
+    context: UserContext,
+    session: Session,
 ) -> Agent:
-    agent_data = await request.json()
-    update_request = UpdateAgentRequest(**agent_data)
+    agent = agent_service.get_agent(session, agent_id)
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+    authorize_user_account(context, agent.account.name)
     agent_params = agent_service.AgentParams(
         name=update_request.name,
         description=update_request.description,

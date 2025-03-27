@@ -1,4 +1,4 @@
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import (
@@ -14,7 +14,10 @@ from ._builder import build_account
 from ._utils import UserContext, UserRole
 
 
-def list_accounts(context: UserContext, session: Session) -> ListAccountsResponse:
+def list_accounts(
+    context: UserContext,
+    session: Session,
+) -> ListAccountsResponse:
     if context.account_names:
         accounts = account_service.mget_accounts(
             session, account_names=context.account_names
@@ -30,7 +33,11 @@ def list_accounts(context: UserContext, session: Session) -> ListAccountsRespons
     return response
 
 
-def get_account(account_name: str, context: UserContext, session: Session) -> Account:
+def get_account(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+) -> Account:
     authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
     if not account:
@@ -43,10 +50,10 @@ def get_account(account_name: str, context: UserContext, session: Session) -> Ac
 
 
 async def create_account(
-    request: Request, context: UserContext, session: Session
+    create_request: CreateAccountRequest,
+    context: UserContext,
+    session: Session,
 ) -> Account:
-    account_data = await request.json()
-    create_request = CreateAccountRequest(**account_data)
     authorize_user_account(context, create_request.name)
     account_params = account_service.AccountParams(
         display_name=create_request.display_name,
@@ -71,11 +78,12 @@ async def create_account(
 
 
 async def update_account(
-    request: Request, account_name: str, context: UserContext, session: Session
+    account_name: str,
+    update_request: UpdateAccountRequest,
+    context: UserContext,
+    session: Session,
 ) -> Account:
     authorize_user_account(context, account_name)
-    account_data = await request.json()
-    update_request = UpdateAccountRequest(**account_data)
     account_params = account_service.AccountParams(
         display_name=update_request.display_name,
         icon_uri=update_request.icon_uri,

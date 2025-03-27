@@ -1,17 +1,16 @@
 import uuid
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-import db
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
     UpdateProjectRequest,
 )
-from services import project_service
+from services import account_service, project_service
 from services.admin_service import (
     deauthorize_instagram_access_token,
     get_instagram_connected,
@@ -21,21 +20,15 @@ from services.admin_service import (
 )
 
 from . import UserContext, _auth, _utils
+from ._auth import authorize_user_account
 from ._builder import build_project
 
 
 async def connect_instagram(
-    project_id: str, request: Request, session: Session = Depends(db.get_db)
+    project_id: str,
+    request: Request,
+    session: Session,
 ):
-    try:
-        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
     ig_access_token = request.headers.get("Access-Token", "")
     ig_user_id = request.headers.get("User-Id", "")
     ig_username = request.headers.get("Username", "")
@@ -77,28 +70,11 @@ async def connect_instagram(
 
 
 async def disconnect_instagram(
-    project_id: str, request: Request, session: Session = Depends(db.get_db)
+    project_id: uuid.UUID,
+    session: Session,
 ):
     try:
-        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    try:
-        project_uuid = uuid.UUID(project_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid project UUID",
-            headers={"Content-Type": "application/json"},
-        )
-
-    try:
-        remove_instagram_access_token(session, project_uuid)
+        remove_instagram_access_token(session, project_id)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -116,28 +92,11 @@ async def disconnect_instagram(
 
 
 async def get_project_instagram_connected(
-    project_id: str, request: Request, session: Session = Depends(db.get_db)
+    project_id: uuid.UUID,
+    session: Session,
 ):
     try:
-        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    try:
-        project_uuid = uuid.UUID(project_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid project UUID",
-            headers={"Content-Type": "application/json"},
-        )
-
-    try:
-        connected = get_instagram_connected(session, project_uuid)
+        connected = get_instagram_connected(session, project_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -155,29 +114,12 @@ async def get_project_instagram_connected(
 
 
 async def get_project_instagram_username(
-    project_id: str, request: Request, session: Session = Depends(db.get_db)
+    project_id: uuid.UUID,
+    session: Session,
 ):
-    try:
-        _auth.parse_admin_console_id_token(request.headers.get("Authorization"))
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    try:
-        project_uuid = uuid.UUID(project_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid project UUID",
-            headers={"Content-Type": "application/json"},
-        )
-
     # Verify the project is connected to instagram
     try:
-        connected = get_instagram_connected(session, project_uuid)
+        connected = get_instagram_connected(session, project_id)
         if not connected:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -198,7 +140,7 @@ async def get_project_instagram_username(
         )
 
     try:
-        username = get_instagram_username(session, project_uuid)
+        username = get_instagram_username(session, project_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -216,7 +158,7 @@ async def get_project_instagram_username(
 
 
 async def handle_instagram_deauthorization(
-    ig_user_id: str, request: Request, session: Session = Depends(db.get_db)
+    ig_user_id: str, request: Request, session: Session
 ):
     encoded_signature = request.headers.get("Encoded-Signature", "")
     encoded_payload = request.headers.get("Encoded-Payload", "")
@@ -259,13 +201,21 @@ async def handle_instagram_deauthorization(
     return {"message": "Instagram account deauthorized"}
 
 
-async def read_projects(request: Request, session: Session = Depends(db.get_db)):
-    account = _auth.get_account_from_id_token(request, session)
-    return JSONResponse(jsonable_encoder(account.projects))
+async def list_projects(
+    context: UserContext,
+    session: Session,
+):
+    if context.account_names:
+        account = account_service.get_account(session, context.account_names[0])
+        if account:
+            return JSONResponse(jsonable_encoder(account.projects))
+    return JSONResponse(jsonable_encoder([]))
 
 
 def get_project(
-    project_id: uuid.UUID, context: UserContext, session: Session
+    project_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
 ) -> Project:
     project = project_service.get_project(session, project_id)
     if not project:
@@ -277,9 +227,12 @@ def get_project(
     return build_project(project)
 
 
-async def create_project(request: Request, session: Session) -> Project:
-    project_data = await request.json()
-    create_request = CreateProjectRequest(**project_data)
+async def create_project(
+    create_request: CreateProjectRequest,
+    context: UserContext,
+    session: Session,
+) -> Project:
+    authorize_user_account(context, create_request.account_name)
     project_params = project_service.ProjectParams(
         display_name=create_request.display_name,
         agent_id=create_request.agent_id,
@@ -300,10 +253,19 @@ async def create_project(request: Request, session: Session) -> Project:
 
 
 async def update_project(
-    request: Request, project_id: uuid.UUID, session: Session
+    project_id: uuid.UUID,
+    update_request: UpdateProjectRequest,
+    context: UserContext,
+    session: Session,
 ) -> Project:
-    project_data = await request.json()
-    update_request = UpdateProjectRequest(**project_data)
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+    authorize_user_account(context, project.account.name)
     project_params = project_service.ProjectParams(
         display_name=update_request.display_name,
         agent_id=update_request.agent_id,

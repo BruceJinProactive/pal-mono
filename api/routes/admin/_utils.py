@@ -26,43 +26,6 @@ class UserContext:
     role: UserRole
 
 
-async def retrieve_body_brand(request: Request) -> tuple[str, str]:
-    """
-    Retrieves the 'brandKey' and 'brandValue' fields from the request body.
-
-    Args:
-        request (Request): The FastAPI request object containing the JSON body to validate.
-
-    Returns:
-        tuple[str, str]: A tuple containing the validated 'brandKey' and 'brandValue' fields from the request body.
-
-    Raises:
-        HTTPException: If the 'brandKey' or 'brandValue' field is missing or not a string, or if there is
-                       an error in processing the request body.
-    """
-    body = await request.json()
-    try:
-        brand_key = body["brandKey"]
-        brand_value = body["brandValue"]
-        if not isinstance(brand_key, str) or not isinstance(brand_value, str):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Validation error: 'brandKey' and 'brandValue' must be strings. Received types: {type(brand_key)}, {type(brand_value)}",
-            )
-        return (brand_key, brand_value)
-    except KeyError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Validation error: missing 'brandKey' or 'brandValue'\n\n"
-            f"Invalid request body: {body}",
-        )
-    except (ValueError, TypeError) as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,  # Unprocessable Entity
-            detail=f"Validation error: {e}\n\nInvalid request body: {body}",
-        )
-
-
 async def retrieve_body_message(request: Request) -> str:
     """
     Retrieves the 'message' field to be injected into a Message object.

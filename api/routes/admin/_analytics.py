@@ -1,7 +1,6 @@
-from fastapi import Depends, Request
+from fastapi import Request
 from sqlalchemy.orm import Session
 
-import db
 from services.analytics_service import get_report_from_mixpanel
 
 from . import _auth
@@ -10,7 +9,7 @@ from . import _auth
 def get_report(
     request: Request,
     report_name: str,
-    session: Session = Depends(db.get_db),
+    session: Session,
 ) -> dict | None:
     """
     Fetches insights data from Mixpanel for a given report name and account.

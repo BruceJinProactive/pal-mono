@@ -45,17 +45,6 @@ class AgentRepository:
             logger.error(f"Error retrieving agent: {e}")
             return None
 
-    def get_agents_by_account(self, account_id: uuid.UUID) -> List[Agent] | None:
-        """Retrieve a list of agents by its account name."""
-        try:
-            return (
-                self.session.query(Agent).filter(Agent.account_id == account_id).all()
-            )
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error retrieving agent: {e}")
-            return None
-
     def create_agent(self, account_id: uuid.UUID, **kwargs) -> Agent:
         """Create a new agent with a unique UUID."""
         try:
@@ -87,31 +76,6 @@ class AgentRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error updating agent: {e}")
-            raise
-
-    def update_agent_config(self, agent_id: uuid.UUID, config: Dict[str, Any]) -> None:
-        """Update an agent's config in the database.
-
-        This function is best used to update specific fields in the configuration object.
-
-        Args:
-            agent_id (uuid.UUID): The unique identifier of the agent.
-            config (Dict[str, Any]): The configuration dictionary to update the agent's config with.
-
-        Raises:
-            ValueError: If the agent with the given ID is not found.
-            SQLAlchemyError: If there is an error committing the transaction to the database.
-        """
-        try:
-            agent = self.get_agent(agent_id)
-            if agent is None:
-                raise ValueError(f"Agent {agent_id} not found")
-
-            agent.raw_config.update(config)
-            self.session.commit()
-        except (SQLAlchemyError, ValueError) as e:
-            self.session.rollback()
-            logger.error(f"Error updating agent config: {e}")
             raise
 
     def replace_agent_config(self, agent_id: uuid.UUID, config: Dict[str, Any]) -> None:
