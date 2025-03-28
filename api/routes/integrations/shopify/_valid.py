@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import html
 
 from fastapi import HTTPException, Request, status
@@ -15,6 +17,16 @@ _app_name_whitelist = {
 }  # app name to Shopify API prefix
 
 _oauth_state = {}
+
+
+def valid_proxy_request(valid_dict, secret, signature):
+    sorted_params = "".join(f"{k}={valid_dict[k]}" for k in sorted(valid_dict))
+    calculated_signature = hmac.new(
+        secret.encode("utf-8"),
+        sorted_params.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(signature, calculated_signature)
 
 
 def valid_request(request: Request, app_name: str, is_callback=False) -> ShopifyStore:
@@ -61,14 +73,20 @@ def valid_request(request: Request, app_name: str, is_callback=False) -> Shopify
 
     # this is for the shopify app proxy: https://shopify.dev/docs/apps/build/online-store/display-dynamic-data
     if "signature" in valid_dict and "hmac" not in valid_dict:
-        hmac = valid_dict.pop("signature")
-        valid_dict["hmac"] = hmac
-    if not session.validate_params(valid_dict):
-        logger.error(f"Invalid Oauth Request: {request.query_params}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid Request: Invalid Params",
-        )
+        signature = valid_dict.pop("signature")
+        if not valid_proxy_request(valid_dict, session.secret, signature):
+            logger.error(f"Invalid OAuth Request: {request.query_params}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Request: Invalid Proxy Signature",
+            )
+    else:
+        if not session.validate_params(valid_dict):
+            logger.error(f"Invalid Oauth Request: {request.query_params}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid Request: Invalid Params",
+            )
     shopifyStore = ShopifyStore(
         shop_url,
         session,
