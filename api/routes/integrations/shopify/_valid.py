@@ -4,7 +4,7 @@ from fastapi import HTTPException, Request, status
 
 from utils.log import logger
 
-from ._util import ShopifyStore, get_identifier_name, get_shopify_session
+from ._util import ShopifyStore, get_recipient_identifier, get_shopify_session
 
 # app names in Shopify: https://partners.shopify.com/4092807/apps
 _app_name_whitelist = {
@@ -56,25 +56,25 @@ def valid_request(request: Request, app_name: str, is_callback=False) -> Shopify
 
     # validate the oauth request
 
-    try:
-        valid_dict = dict(request.query_params)
-        logged_in_customer_id = valid_dict.get(
-            "logged_in_customer_id", ""
-        )  # this is for shopify app proxy
-        if len(logged_in_customer_id) < 1 and logged_in_customer_id in valid_dict:
-            valid_dict.pop("logged_in_customer_id")
-        if not session.validate_params(valid_dict):
-            logger.error(f"Invalid Oauth Request: {request.query_params}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid Request: Invalid Params",
-            )
-    except Exception:
+    valid_dict = dict(request.query_params)
+    logged_in_customer_id = valid_dict.get("logged_in_customer_id", None)
+
+    # this is for the shopify app proxy: https://shopify.dev/docs/apps/build/online-store/display-dynamic-data
+    if "signature" in valid_dict and "hmac" not in valid_dict:
+        hmac = valid_dict.pop("signature")
+        valid_dict["hmac"] = hmac
+    if not session.validate_params(valid_dict):
         logger.error(f"Invalid Oauth Request: {request.query_params}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid API Key"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Request: Invalid Params",
         )
     shopifyStore = ShopifyStore(
-        shop_url, session, app_name, store_name, get_identifier_name(store_name)
+        shop_url,
+        session,
+        app_name,
+        store_name,
+        get_recipient_identifier(store_name),
+        logged_in_customer_id,
     )
     return shopifyStore

@@ -27,15 +27,24 @@ def _get_envs_from_secret_manager(app_name: str) -> dict:
 
 class ShopifyStore:
     # shop_url, session, app_name, store_name, get_identifier_name(store_name)
-    def __init__(self, shop_url, session, app_name, store_name, recipient_identifier):
+    def __init__(
+        self,
+        shop_url,
+        session,
+        app_name,
+        store_name,
+        recipient_identifier,
+        logged_in_customer_id=None,
+    ):
         self.shop_url = shop_url
         self.session = session
         self.app_name = app_name
         self.store_name = store_name
         self.recipient_identifier = recipient_identifier
+        self.logged_in_customer_id = logged_in_customer_id
 
 
-def get_identifier_name(store_name: str) -> str:
+def get_recipient_identifier(store_name: str) -> str:
     identifier_name: str = "shopify-" + store_name
     return identifier_name
 
