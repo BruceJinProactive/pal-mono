@@ -1,299 +1,93 @@
-import uuid
+from collections import defaultdict
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-import db
-from api.schemas.admin.feedback import (
-    CreateFeedbackRequest,
-    CreateFeedbackResponse,
-    Feedback,
+from api.schemas.admin.feedback import FeedbackDetails, ListFeedbacksResponse
+from services import (
+    account_service,
+    feedback_service,
+    message_service,
+    user_service,
 )
-from api.schemas.admin.message import GetMessageResponse
-from services.admin_service import (
-    get_conversation_ids_by_message_ids,
-    get_messages_by_conversation_id,
-)
-from services.feedback_service import (
-    create_feedback,
-    delete_feedback_by_id,
-    get_feedback_by_id,
-    get_feedbacks,
-    update_feedback_by_id,
-)
-from services.message_service import get_message_by_id
+from utils.log import logger
 
-from . import _auth
+from . import UserContext, _builder
+from ._auth import authorize_user_account
 
 
-async def change_feedback_by_id(
-    feedback_id: str, request: Request, session: Session = Depends(db.get_db)
-):
-    _auth.get_account_from_id_token(request, session)
+async def list_account_feedbacks(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+) -> ListFeedbacksResponse:
+    """
+    To get the feedbacks for the given account, it's a long journey.
+    TODO (frankie.liu): add an account foreign key relation in feedback
+    to make it simpler.
+    """
+    authorize_user_account(context, account_name)
 
-    # Try to create Feedback object
-    try:
-        request_json = await request.json()
-        feedback_request = CreateFeedbackRequest(**request_json)
-        feedback_uuid = uuid.UUID(feedback_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid feedback data: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
-
-    feedback = db.Feedback(
-        message_id=feedback_request.message_id,
-        author_identifier=feedback_request.author_identifier,
-        reaction=feedback_request.reaction.value if feedback_request.reaction else None,
-        tags=(
-            [tag.value for tag in feedback_request.tags]
-            if feedback_request.tags
-            else None
-        ),
-        note=feedback_request.note,
-    )
-
-    # Pass Feedback object into service layer
-    try:
-        persisted_feedback = update_feedback_by_id(session, feedback_uuid, feedback)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    response = CreateFeedbackResponse(
-        feedback_id=str(persisted_feedback.id),
-        submitted_at=persisted_feedback.updated_at.isoformat(),
-    )
-
-    return response
-
-
-def get_messages_with_feedback_by_conversation_id(
-    request: Request, conversation_id: uuid.UUID, session: Session = Depends(db.get_db)
-):
-    account = _auth.get_account_from_id_token(request, session)
-
-    try:
-        messages = get_messages_by_conversation_id(session, account.id, conversation_id)
-    except ValueError:
-        """
-        Only say "Conversation not found" because if the Admin does not
-        have access to the conversation, they should not know that
-        the conversation exists in the first place.
-        """
+    default_page = 1
+    max_conversations_to_search = 1000
+    # Validate account first
+    account = account_service.get_account(session, account_name)
+    if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation not found.",
+            detail=f"Account {account_name} not found.",
             headers={"Content-Type": "application/json"},
         )
 
-    # Cast to API response schema
-    messages_response: list[GetMessageResponse] = [
-        GetMessageResponse(
-            id=str(message.id),
-            timestamp=message.created_at.isoformat(),
-            conversation_id=str(message.conversation_id),
-            body=message.body,
-            feedback=[
-                Feedback(
-                    id=str(f.id),
-                    message_id=str(f.message_id),
-                    message_content=getattr(
-                        get_message_by_id(session, f.message_id), "body", {}
-                    )
-                    .get("text", {})
-                    .get("body"),
-                    author_identifier=f.author_identifier,
-                    reaction=f.reaction,
-                    tags=f.tags,
-                    note=f.note,
-                    timestamp=f.updated_at.isoformat(),
-                )
-                for f in message.feedback
-            ],
-        )
-        for message in messages
-    ]
-
-    return messages_response
-
-
-def remove_feedback_by_id(
-    feedback_id: str, request: Request, session: Session = Depends(db.get_db)
-):
-    _auth.get_account_from_id_token(request, session)
-
-    # Validate feedback_id
-    try:
-        feedback_uuid = uuid.UUID(feedback_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid feedback UUID: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Get Feedback object from service layer
-    try:
-        persisted_feedback = delete_feedback_by_id(session, feedback_uuid)
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    if not persisted_feedback:
-        raise HTTPException(
-            status_code=404,
-            detail="Feedback not found.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    response = CreateFeedbackResponse(
-        feedback_id=str(persisted_feedback.id),
-        submitted_at=persisted_feedback.created_at.isoformat(),
+    # Get all conversations in this account
+    account_users = user_service.get_users_by_account_id(session, account.id)
+    account_users_ids = [user.id for user in account_users]
+    _, account_conversations = message_service.get_conversations_by_users(
+        session, default_page, max_conversations_to_search, account_users_ids
     )
+    conversation_ids = set([conversation.id for conversation in account_conversations])
 
-    return response
+    # Get all conversations that have feedbacks regardless of account
+    feedbacks = feedback_service.get_feedbacks(session)
+    if not feedbacks:
+        logger.info("No feedbacks found!")
+        return ListFeedbacksResponse(feedbacks=[])
+    msg_id_to_feedbacks = defaultdict(list)
+    for feedback in feedbacks:
+        msg_id_to_feedbacks[feedback.message_id].append(feedback)
+    message_ids = list(msg_id_to_feedbacks)
+    feedback_messages = message_service.get_messages_by_ids(session, message_ids)
+    feedback_messages_dict = {msg.id: msg for msg in feedback_messages}
 
+    # Pick feedbacks where the message belongs to one of the conversations in
+    # this account
+    account_feedbacks = []
+    for message in feedback_messages:
+        if message.conversation_id in conversation_ids:
+            account_feedbacks.extend(msg_id_to_feedbacks[message.id])
 
-def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_db)):
-    _auth.get_account_from_id_token(request, session)
-
-    # Get Feedback objects from service layer
-    try:
-        feedbacks = get_feedbacks(session)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
-        )
-    if feedbacks:
-        message_ids = [feedback.message_id for feedback in feedbacks]
-        conversation_ids = get_conversation_ids_by_message_ids(session, message_ids)
-
-        feedbacks_response = [
-            {
-                "feedback": Feedback(
-                    id=str(feedback.id),
-                    message_id=str(feedback.message_id),
-                    message_content=getattr(
-                        get_message_by_id(session, feedback.message_id), "body", {}
-                    )
-                    .get("text", {})
-                    .get("body"),
-                    author_identifier=feedback.author_identifier,
-                    reaction=feedback.reaction,
-                    tags=feedback.tags,
-                    note=feedback.note,
-                    timestamp=feedback.updated_at.isoformat(),
-                ),
-                "conversation_id": conversation_ids.get(feedback.message_id),
-            }
-            for feedback in feedbacks
-        ]
-    else:
-        feedbacks_response = []
-
-    return feedbacks_response
-
-
-def retrieve_feedback_by_id(
-    feedback_id: str, request: Request, session: Session = Depends(db.get_db)
-):
-    _auth.get_account_from_id_token(request, session)
-
-    # Validate feedback_id
-    try:
-        feedback_uuid = uuid.UUID(feedback_id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid feedback UUID: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Get Feedback object from service layer
-    try:
-        persisted_feedback = get_feedback_by_id(session, feedback_uuid)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    if not persisted_feedback:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Feedback not found.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    feedback_response = Feedback(
-        id=str(persisted_feedback.id),
-        message_id=str(persisted_feedback.message_id),
-        message_content=getattr(
-            get_message_by_id(session, persisted_feedback.message_id), "body", {}
-        )
-        .get("text", {})
-        .get("body"),
-        author_identifier=persisted_feedback.author_identifier,
-        reaction=persisted_feedback.reaction,
-        tags=persisted_feedback.tags,
-        note=persisted_feedback.note,
-        timestamp=persisted_feedback.updated_at.isoformat(),
+    logger.info(
+        f"Found {len(account_feedbacks)} feedbacks for account {account_name}",
+        extra={
+            "users_in_account": len(account_users_ids),
+            "conversations_in_account": len(conversation_ids),
+            "total_feedbacks": len(feedbacks),
+            "total_messages_w_feedback": len(feedback_messages_dict),
+        },
     )
-
-    return feedback_response
-
-
-async def submit_feedback(request: Request, session: Session = Depends(db.get_db)):
-    _auth.get_account_from_id_token(request, session)
-
-    # Try to create Feedback object
-    try:
-        request_json = await request.json()
-        feedback_request = CreateFeedbackRequest(**request_json)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid feedback data: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        )
-
-    feedback = db.Feedback(
-        message_id=feedback_request.message_id,
-        author_identifier=feedback_request.author_identifier,
-        reaction=feedback_request.reaction.value if feedback_request.reaction else None,
-        tags=(
-            [tag.value for tag in feedback_request.tags]
-            if feedback_request.tags
-            else None
-        ),
-        note=feedback_request.note,
+    # Finally sort the feedbacks in reverse-chronological order based on the
+    # creation time.
+    sorted_feedbacks = sorted(
+        account_feedbacks, key=lambda f: f.created_at, reverse=True
     )
-
-    # Pass Feedback object into service layer
-    try:
-        persisted_feedback = create_feedback(session, feedback)
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error, please try again later.",
-            headers={"Content-Type": "application/json"},
+    # Build the feedback detail list
+    detailed_feedbacks = []
+    for feedback in sorted_feedbacks:
+        message = feedback_messages_dict[feedback.message_id]
+        detailed_feedbacks.append(
+            FeedbackDetails(
+                feedback=_builder.build_feedback(feedback, message),
+                conversation_id=message.conversation_id,
+            )
         )
-
-    response = CreateFeedbackResponse(
-        feedback_id=str(persisted_feedback.id),
-        submitted_at=persisted_feedback.created_at.isoformat(),
-    )
-
-    return response
+    return ListFeedbacksResponse(feedbacks=detailed_feedbacks)

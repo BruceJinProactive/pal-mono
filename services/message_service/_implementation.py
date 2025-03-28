@@ -519,6 +519,15 @@ def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | N
     return message
 
 
+def get_messages_by_ids(
+    session: Session, message_ids: list[uuid.UUID]
+) -> list[db.Message]:
+    messages = db.MessageRepository(session).get_messages_by_ids(
+        message_ids=message_ids
+    )
+    return messages
+
+
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
 ) -> list[db.Message]:

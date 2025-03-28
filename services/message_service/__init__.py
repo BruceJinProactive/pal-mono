@@ -90,6 +90,22 @@ def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | N
     return _implementation.get_message_by_id(session, message_id)
 
 
+def get_messages_by_ids(
+    session: Session, message_ids: list[uuid.UUID]
+) -> list[db.Message]:
+    """
+    Retrieves multiple messages by UUIDs.
+
+    Args:
+        session (Session): The database session.
+        message_ids (list[uuid.UUID]): The unique identifiers of the messages.
+
+    Returns:
+        list[db.Message]: The messages retrieved
+    """
+    return _implementation.get_messages_by_ids(session, message_ids)
+
+
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
 ) -> list[db.Message]:
@@ -163,6 +179,7 @@ __all__ = [
     "get_chat_response_async",
     "get_chat_response_stream",
     "get_message_by_id",
+    "get_messages_by_ids",
     "get_messages_by_conversation",
     "get_conversations_by_user",
     "get_conversations_by_users",

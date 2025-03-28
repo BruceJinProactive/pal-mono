@@ -2,6 +2,8 @@ import db
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account
 from api.schemas.admin.agent import Agent
+from api.schemas.admin.conversation import Message
+from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.project import Project
 
 
@@ -45,4 +47,32 @@ def build_project(project: db.Project) -> Project:
         channel_identifiers=project.channel_identifiers or [],
         agent_id=project.agent_id,
         account_id=project.account_id,
+    )
+
+
+def build_message(message: db.Message) -> Message:
+    return Message(
+        id=message.id,
+        body=message.body,
+        conversation_id=message.conversation_id,
+        created_at=message.created_at,
+        updated_at=message.updated_at,
+    )
+
+
+def build_feedback(
+    feedback: db.Feedback, message: db.Message | None = None
+) -> Feedback:
+    if not message:
+        # fallback to retrieving the message from the db
+        message = feedback.message
+    return Feedback(
+        id=str(feedback.id),
+        message_id=str(feedback.message_id),
+        message_content=message.body.get("text", {}).get("body"),
+        author_identifier=feedback.author_identifier,
+        reaction=feedback.reaction,
+        tags=feedback.tags,
+        note=feedback.note,
+        timestamp=feedback.updated_at.isoformat(),
     )

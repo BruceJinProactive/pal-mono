@@ -14,14 +14,20 @@ from api.schemas.admin.account import (
 )
 from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentRequest
 from api.schemas.admin.analytics import GetReportResponse
+from api.schemas.admin.conversation import (
+    ListConversationMessagesResponse,
+    ListConversationsResponse,
+)
+from api.schemas.admin.feedback import ListFeedbacksResponse
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
     UpdateProjectRequest,
 )
 
-from . import _account, _agent, _analytics, _feedback, _projects
+from . import _account, _agent, _analytics, _conversation, _feedback, _projects
 from ._auth import authenticate_user, get_user_info
+from .legacy import legacy_router
 
 """
 ######################################################
@@ -41,6 +47,7 @@ if they are self explanatory.
 """
 
 admin_router = APIRouter(prefix=endpoints.ADMIN, tags=["Admin"])
+admin_router.include_router(legacy_router)
 
 
 @admin_router.get("/me")
@@ -148,6 +155,65 @@ async def update_agent(
     associated with the agent cannot be modified once created.
     """
     return await _agent.update_agent(agent_id, agent, context, session)
+
+
+"""
+---------- Conversations & Feedbacks ----------
+-----------------------------------------------
+"""
+
+
+@admin_router.get("/accounts/{account_name}/conversations")
+async def list_account_conversations(
+    account_name: str,
+    page: int = Query(..., description="Current page, first page starts at 1", gt=0),
+    page_size: int = Query(
+        ..., description="Size of each page, cannot be less than 1", gt=0
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListConversationsResponse:
+    """
+    Retrieve the list of conversations for a given account. Returned conversations
+    are sorted by the timestamp of the last message in reverse chronological order.
+    """
+    return await _conversation.list_account_conversations(
+        account_name, page, page_size, context, session
+    )
+
+
+@admin_router.get("/accounts/{account_name}/conversations/{conversation_id}/messages")
+async def list_conversation_messages(
+    account_name: str,
+    conversation_id: uuid.UUID,
+    page: int = Query(..., description="Current page, first page starts at 1", gt=0),
+    page_size: int = Query(
+        ..., description="Size of each page, cannot be less than 1", gt=0
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListConversationMessagesResponse:
+    """
+    Returns the detailed conversation messages for the given id. Messages are sorted
+    in chronological order.
+    """
+    return await _conversation.list_conversation_messages(
+        account_name, conversation_id, page, page_size, context, session
+    )
+
+
+@admin_router.get("/accounts/{account_name}/feedbacks")
+async def list_account_feedbacks(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListFeedbacksResponse:
+    """
+    Retrieve the list of feedbacks for a given account. Returned feedbacks are
+    sorted by the timestamp of the associated message in reverse chronological
+    order.
+    """
+    return await _feedback.list_account_feedbacks(account_name, context, session)
 
 
 """

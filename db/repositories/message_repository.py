@@ -334,3 +334,11 @@ class MessageRepository:
             self.session.rollback()
             logger.error(f"Error retrieving conversation id: {e}")
             return None
+
+    def get_messages_by_ids(self, message_ids: list[uuid.UUID]) -> list[Message]:
+        try:
+            return self.session.query(Message).filter(Message.id.in_(message_ids)).all()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving messages: {e}")
+            return []

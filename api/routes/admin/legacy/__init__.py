@@ -1,17 +1,18 @@
 import uuid
 
-from fastapi import Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import _feedback, admin_router
 from api.schemas.admin.conversation import InboxResponse
 
 from . import _implementation
 
+legacy_router = APIRouter(prefix="")
 
-@admin_router.get("/conversations/{conversation_id}/messages")
+
+@legacy_router.get("/conversations/{conversation_id}/messages")
 def get_messages_with_feedback_by_conversation_id(
     request: Request, conversation_id: uuid.UUID, session: Session = Depends(db.get_db)
 ):
@@ -26,27 +27,12 @@ def get_messages_with_feedback_by_conversation_id(
     Returns:
         list[GetMessageResponse]: A list of messages with their associated feedback.
     """
-    return _feedback.get_messages_with_feedback_by_conversation_id(
+    return _implementation.get_messages_with_feedback_by_conversation_id(
         request, conversation_id, session
     )
 
 
-@admin_router.get("/feedback", status_code=status.HTTP_200_OK)
-def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_db)):
-    """
-    Retrieve all feedback from the database.
-
-    Args:
-        request (Request): The HTTP request object.
-        session (Session): The database session.
-
-    Returns:
-        list[Feedback]: A list of feedback objects.
-    """
-    return _feedback.retrieve_all_feedbacks(request, session)
-
-
-@admin_router.post("/feedback", status_code=status.HTTP_200_OK)
+@legacy_router.post("/feedback", status_code=status.HTTP_200_OK)
 async def submit_feedback(request: Request, session: Session = Depends(db.get_db)):
     """
     Create feedback in the database.
@@ -58,10 +44,25 @@ async def submit_feedback(request: Request, session: Session = Depends(db.get_db
     Returns:
         CreateFeedbackResponse: The response containing the feedback ID and submission timestamp.
     """
-    return await _feedback.submit_feedback(request, session)
+    return await _implementation.submit_feedback(request, session)
 
 
-@admin_router.get("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
+@legacy_router.get("/feedback", status_code=status.HTTP_200_OK)
+def retrieve_all_feedbacks(request: Request, session: Session = Depends(db.get_db)):
+    """
+    Retrieve all feedback from the database.
+
+    Args:
+        request (Request): The HTTP request object.
+        session (Session): The database session.
+
+    Returns:
+        list[Feedback]: A list of feedback objects.
+    """
+    return _implementation.retrieve_all_feedbacks(request, session)
+
+
+@legacy_router.get("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
 def retrieve_feedback_by_id(
     feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -76,10 +77,10 @@ def retrieve_feedback_by_id(
     Returns:
         Feedback: The feedback object.
     """
-    return _feedback.retrieve_feedback_by_id(feedback_id, request, session)
+    return _implementation.retrieve_feedback_by_id(feedback_id, request, session)
 
 
-@admin_router.post("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
+@legacy_router.post("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
 async def change_feedback_by_id(
     feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -94,10 +95,10 @@ async def change_feedback_by_id(
     Returns:
         CreateFeedbackResponse: The response containing the feedback ID and update timestamp.
     """
-    return await _feedback.change_feedback_by_id(feedback_id, request, session)
+    return await _implementation.change_feedback_by_id(feedback_id, request, session)
 
 
-@admin_router.delete("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
+@legacy_router.delete("/feedback/{feedback_id}", status_code=status.HTTP_200_OK)
 async def delete_feedback_by_id(
     feedback_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -112,10 +113,10 @@ async def delete_feedback_by_id(
     Returns:
         CreateFeedbackResponse: The response containing the feedback ID and update timestamp.
     """
-    return _feedback.remove_feedback_by_id(feedback_id, request, session)
+    return _implementation.remove_feedback_by_id(feedback_id, request, session)
 
 
-@admin_router.get("/inbox")
+@legacy_router.get("/inbox")
 def get_inbox(
     request: Request,
     page: int = Query(..., description="Current page number"),
@@ -137,7 +138,7 @@ def get_inbox(
     return _implementation.get_inbox(request, page, page_size, session)
 
 
-@admin_router.get("/inbox/{conversation_id}")
+@legacy_router.get("/inbox/{conversation_id}")
 def get_conversation(
     request: Request, conversation_id: uuid.UUID, session: Session = Depends(db.get_db)
 ):
@@ -158,7 +159,7 @@ def get_conversation(
     return _implementation.get_conversation(request, conversation_id, session)
 
 
-@admin_router.get("/knowledge")
+@legacy_router.get("/knowledge")
 def get_knowledge(request: Request, session: Session = Depends(db.get_db)):
     """
     Retrieve the knowledge base for the account associated with the request.
@@ -173,7 +174,7 @@ def get_knowledge(request: Request, session: Session = Depends(db.get_db)):
     return _implementation.get_knowledge(request, session)
 
 
-@admin_router.get("/knowledge/{document_id}")
+@legacy_router.get("/knowledge/{document_id}")
 def get_document(
     document_id: str, request: Request, session: Session = Depends(db.get_db)
 ):
@@ -191,7 +192,7 @@ def get_document(
     return _implementation.get_document(request, document_id, session)
 
 
-@admin_router.post("/knowledge/{document_id}")
+@legacy_router.post("/knowledge/{document_id}")
 async def update_document(
     document_id: str, request: Request, session: Session = Depends(db.get_db)
 ):

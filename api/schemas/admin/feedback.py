@@ -1,3 +1,4 @@
+import uuid
 from enum import Enum
 from uuid import UUID
 
@@ -48,3 +49,12 @@ class Feedback(BaseModel):
     reaction: str | None = None
     tags: list[str] | None = None
     note: str | None = None
+
+
+class FeedbackDetails(BaseModel):
+    feedback: Feedback
+    conversation_id: uuid.UUID
+
+
+class ListFeedbacksResponse(BaseModel):
+    feedbacks: list[FeedbackDetails]
