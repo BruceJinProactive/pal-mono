@@ -16,7 +16,7 @@ WORKDIR ${APP_DIR}
 RUN pip install --upgrade pip
 
 # Install uv
-RUN pip install uv==0.1.3
+RUN pip install uv==0.6.10
 # Copy pinned requirements
 COPY requirements.txt .
 # Install pinned requirements
