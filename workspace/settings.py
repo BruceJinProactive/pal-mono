@@ -16,8 +16,6 @@ ws_settings = WorkspaceSettings(
     dev_app_enabled=True,
     dev_api_enabled=True,
     dev_db_enabled=True,
-    # Region for AWS resources
-    aws_region="us-west-1",
     # Image Settings
     image_name="pal-mono",
     image_repo="pal-mono",
