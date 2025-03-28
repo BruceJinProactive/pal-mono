@@ -1,6 +1,11 @@
 import os
 
-from llama_index.core import Settings, VectorStoreIndex, get_response_synthesizer
+from llama_index.core import (
+    PromptTemplate,
+    Settings,
+    VectorStoreIndex,
+    get_response_synthesizer,
+)
 from llama_index.core.indices import MultiModalVectorStoreIndex
 from llama_index.core.indices.query.base import BaseQueryEngine
 from llama_index.core.response_synthesizers import ResponseMode
@@ -11,7 +16,7 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 
 from agent.knowledge.integrations.pinecone import PineconeIntegration
 
-from . import _config
+from . import _config, _constants
 
 
 def get_knowledge(config: _config.KnowledgeConfig) -> BaseQueryEngine:
@@ -50,10 +55,12 @@ def get_knowledge(config: _config.KnowledgeConfig) -> BaseQueryEngine:
                 vector_store=vector_store, embed_model=Settings.embed_model
             )
 
+        summary_tmpl = PromptTemplate(_constants.RESPONSE_SYNTH_SUMMARY_PROMPT)
         llm = Groq(model="llama-3.3-70b-versatile")
         response_synthesizer = get_response_synthesizer(
             response_mode=ResponseMode.SIMPLE_SUMMARIZE,
             llm=llm,
+            text_qa_template=summary_tmpl,
         )
 
         knowledge = index.as_query_engine(

@@ -1,0 +1,18 @@
+RESPONSE_SYNTH_SUMMARY_PROMPT = (
+    "Context information is below.\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "ALWAYS keep information details like the pricing or sizing of the product.\n"
+    "NEVER give a range of prices but instead give the exact values for every "
+    "single size or variant of the item.\n"
+    "For example:\n"
+    "Instead of saying 'It is available in 12-inch, 14-inch, and 18-inch sizes, "
+    "as well as a gluten-free 12-inch option, with prices ranging from $1.00 to "
+    "$4.00.' say 'It is available in 12-inch, 14-inch, and 18-inch sizes, as "
+    "well as a gluten-free 12-inch option. The 12-inch size costs $1.00, the "
+    "14-inch size costs $2.00, the 18-inch size costs $3.00, and the gluten-free "
+    "12-inch option costs $4.00.'\n\n"
+    "Query: {query_str}\n"
+    "Answer: "
+)
