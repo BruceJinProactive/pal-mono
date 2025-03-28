@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import workflow
@@ -82,11 +83,13 @@ class Agent:
             memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
             input.memories = memories
 
-        safe = check_input(input.content)
-        if not safe:
-            return Output(
-                content="We detected a potential security risk in your input. Please try again with a different input."
-            )
+        # Enable guardrails solely for LAT environment
+        if os.getenv("RUNTIME_ENV", "NA") == "lat":
+            safe = check_input(input.content)
+            if not safe:
+                return Output(
+                    content="We cannot process your input. Please try again with a different input."
+                )
 
         output = await self._agent.arun(input)  # type: ignore
 

@@ -14,6 +14,7 @@ BLACKLIST = [
     "admin mode",
     # Known AI Jailbreak Attempts
     "do anything now",
+    "do anythin' now",
     "dan",
     "chatgpt jailbreak",
     "ignore safety protocols",
@@ -75,7 +76,7 @@ BLACKLIST = [
     "octal",
     "binary",
     "ROT13",
-    "Caesar cipher",
+    "caesar cipher",
     # Social Engineering & Deception
     "impersonate",
     "social engineering",
@@ -102,23 +103,57 @@ ALLOWED_PUNCTUATION = [
 ]
 # Refined programming patterns to avoid false positives
 CODE_PATTERNS = [
+    # --- Python ---
     r"\b(def\s+\w+\s*\(|class\s+\w+\s*\:)",  # Python function or class definitions
+    # --- JavaScript ---
     r"\b(function\s+\w+\s*\(|var\s+\w+\s*=|let\s+\w+\s*=|const\s+\w+\s*=)",  # JavaScript functions/variables
-    r"\b(public|private|protected|static|void)\s+\w+\s*\(",  # Java/C# method declaration
-    r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>",  # Malicious script tags
-    r"<\s*img[^>]+\bon\w+\s*=",  # Malicious image tags with event handlers
-    r"\b(eval\s*\(|exec\s*\(|document\.write\s*\(|innerHTML\s*=|onerror\s*=|onload\s*=)",  # JavaScript risky functions
-    r"SELECT\s+\*?\s+FROM\s+\w+",  # SQL Injection
-    r"INSERT\s+INTO\s+\w+\s+VALUES\s*\(",  # SQL Injection
-    r"UPDATE\s+\w+\s+SET\s+",  # SQL Injection
-    r"DELETE\s+FROM\s+\w+",  # SQL Injection
+    r"\b(eval\s*\(|exec\s*\(|document\.write\s*\(|innerHTML\s*=|onerror\s*=|onload\s*=)",
+    # --- Java / C# ---
+    r"\b(public|private|protected|static|void)\s+\w+\s*\(",  # Java/C# method declarations
+    # --- C / C++ ---
+    r"\b(int|void|char|float|double)\s+\w+\s*\([^)]*\)\s*\{",  # C/C++ function definitions (rough heuristic)
+    r"\bprintf\s*\(",  # C/C++ printing function
+    r"\bscanf\s*\(",  # C/C++ scanning function
+    r"^\s*#\s*(include|define|if|endif)",  # Preprocessor directives
+    # --- Ruby ---
+    r"\b(def\s+\w+\b)",  # Ruby method definitions (simple heuristic)
+    # --- PHP ---
+    r"<\?php",  # PHP opening tag
+    # --- SQL Injection ---
+    r"SELECT\s+\*?\s+FROM\s+\w+",  # Basic SELECT
+    r"INSERT\s+INTO\s+\w+\s+VALUES\s*\(",  # INSERT
+    r"UPDATE\s+\w+\s+SET\s+",  # UPDATE
+    r"DELETE\s+FROM\s+\w+",  # DELETE
+    # --- HTML / JavaScript Injection ---
+    r"<\s*script\b[^>]*>.*?<\s*/\s*script\s*>",  # <script> tags
+    r"<\s*img[^>]+\bon\w+\s*=",  # <img> tags with event handlers
+    # --- Generic code patterns ---
+    r"\b(main\s*\()",  # Main function (common in C/C++/Java)
+    r";\s*$",  # Line ending with a semicolon (could be code; use with caution)
 ]
 ALLOWED_CHARACTERS = set(
     string.ascii_letters + string.digits + string.punctuation + " "
 )
+PHONE_PATTERN = (
+    r"(?<!\S)(?:\+?1[-.\s]*)?(?:\(\s*\d{3}\s*\)|\d{3})[-.\s]*\d{3}[-.\s]*\d{4}(?!\S)"
+)
+UNIT_LIST = (
+    "inches|inch|in|meters|meter|m|cm|kilograms|kg|lbs|pounds|"
+    "liters|litre|l|ounces|oz|gallons|gal|gallon|pints|pt|"
+    "quarts|qt|milliliters|millilitre|ml|grams|gram|g|"
+    "kilometers|kilometre|km|miles|mile|mi|yards|yard|yd|centimeters|cm|"
+    "millimeters|millimetre|mm|millimetres|millimeter|"
+    "feet|foot|ft|acres|acre|hectares|hectare|ha|"
+)
+# Remove anchors so that they match within a longer string:
+UNITS_PATTERN = rf"\d+(?:\.\d+)?[-\s]*({UNIT_LIST})"
+
+# Combine USA and Canadian postal codes without anchors:
+POSTAL_CODE_PATTERN = r"(?:\d{5}(?:-\d{4})?|[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][-\s]?\d[ABCEGHJ-NPRSTV-Z]\d)"
+DAN_PATTERN = r"\bd(?:[\W_]+)?a(?:[\W_]+)?n\b"
 DELIM = r"[\s,;:\-\.]+"
 BASE64 = (
-    r"^(?:[A-Za-z0-9+/]{4})*"  # groups of 4 valid Base64 characters
+    r"^(?=.{1,})(?:[A-Za-z0-9+/]{4})*"  # groups of 4 valid Base64 characters
     r"(?:[A-Za-z0-9+/]{2}==|"  # or 2 characters followed by '=='
     r"[A-Za-z0-9+/]{3}=)?$"
 )
