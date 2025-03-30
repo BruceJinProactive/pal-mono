@@ -13,6 +13,7 @@ def build_account(account: db.Account) -> Account:
         name=account.name,
         display_name=account.display_name or account.name,
         icon_url=map_uri_to_s3_url(account.icon_uri),
+        industry=account.industry,
         business_description=account.business_description,
         business_faq=account.business_faq,
         business_promotions=account.business_promotions,

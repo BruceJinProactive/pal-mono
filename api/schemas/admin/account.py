@@ -10,6 +10,7 @@ class Account(BaseModel):
     name: str
     display_name: str
     icon_url: str
+    industry: str | None
     business_description: str | None
     business_faq: str | None
     business_promotions: str | None
@@ -25,26 +26,20 @@ class ListAccountsResponse(BaseModel):
     accounts: List[Account]
 
 
-class CreateAccountRequest(BaseModel):
-    """Create Account Request"""
-
-    name: str = Field(...)
-    display_name: str | None = None
-    icon_uri: str | None = None
-    business_description: str | None = None
-    business_faq: str | None = None
-    business_promotions: str | None = None
-    business_catalog: str | None = None
-    business_others: str | None = None
-
-
 class UpdateAccountRequest(BaseModel):
     """Update Account Request"""
 
     display_name: str | None = None
     icon_uri: str | None = None
+    industry: str | None = None
     business_description: str | None = None
     business_faq: str | None = None
     business_promotions: str | None = None
     business_catalog: str | None = None
     business_others: str | None = None
+
+
+class CreateAccountRequest(UpdateAccountRequest):
+    """Create Account Request"""
+
+    name: str = Field(...)

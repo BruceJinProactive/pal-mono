@@ -7,7 +7,9 @@ from api.schemas.admin.account import (
     ListAccountsResponse,
     UpdateAccountRequest,
 )
+from db.tables.accounts import BusinessIndustry
 from services import account_service
+from services.account_service import AccountParams
 
 from ._auth import authorize_user_account
 from ._builder import build_account
@@ -55,15 +57,7 @@ async def create_account(
     session: Session,
 ) -> Account:
     authorize_user_account(context, create_request.name)
-    account_params = account_service.AccountParams(
-        display_name=create_request.display_name,
-        icon_uri=create_request.icon_uri,
-        business_description=create_request.business_description,
-        business_faq=create_request.business_faq,
-        business_promotions=create_request.business_promotions,
-        business_catalog=create_request.business_catalog,
-        business_others=create_request.business_others,
-    )
+    account_params = _validate_and_parse_request(create_request)
     try:
         db_account = account_service.create_account(
             session, create_request.name, account_params
@@ -84,15 +78,7 @@ async def update_account(
     session: Session,
 ) -> Account:
     authorize_user_account(context, account_name)
-    account_params = account_service.AccountParams(
-        display_name=update_request.display_name,
-        icon_uri=update_request.icon_uri,
-        business_description=update_request.business_description,
-        business_faq=update_request.business_faq,
-        business_promotions=update_request.business_promotions,
-        business_catalog=update_request.business_catalog,
-        business_others=update_request.business_others,
-    )
+    account_params = _validate_and_parse_request(update_request)
     try:
         db_account = account_service.update_account(
             session, account_name, account_params
@@ -104,3 +90,26 @@ async def update_account(
             headers={"Content-Type": "application/json"},
         )
     return build_account(db_account)
+
+
+def _validate_and_parse_request(update: UpdateAccountRequest) -> AccountParams:
+    business_industry = None
+    if update.industry:
+        try:
+            business_industry = BusinessIndustry(update.industry)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid industry value: {update.industry}",
+                headers={"Content-Type": "application/json"},
+            )
+    return account_service.AccountParams(
+        display_name=update.display_name,
+        icon_uri=update.icon_uri,
+        industry=business_industry,
+        business_description=update.business_description,
+        business_faq=update.business_faq,
+        business_promotions=update.business_promotions,
+        business_catalog=update.business_catalog,
+        business_others=update.business_others,
+    )

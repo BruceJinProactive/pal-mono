@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
@@ -18,6 +19,12 @@ if TYPE_CHECKING:
     from .users import User
 
 
+class BusinessIndustry(str, enum.Enum):
+    FOOD_BEVERAGE = "food_beverage"
+    LIFESTYLE = "lifestyle"
+    E_COMMERCE = "e_commerce"
+
+
 class Account(Base):
     __tablename__ = "accounts"
 
@@ -33,6 +40,7 @@ class Account(Base):
     icon_uri: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Attributes that provide basic context for the business account
+    industry: Mapped[BusinessIndustry | None] = mapped_column(String, nullable=True)
     business_description: Mapped[str | None] = mapped_column(String, nullable=True)
     business_faq: Mapped[str | None] = mapped_column(String, nullable=True)
     business_promotions: Mapped[str | None] = mapped_column(String, nullable=True)
