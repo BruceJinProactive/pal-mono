@@ -22,6 +22,11 @@ on:
         required: true
         type: string
 
+  # Add scheduled trigger for daily staging release
+  schedule:
+    # Run at 17:00 UTC (9:00 AM PST) Monday through Sunday
+    - cron: '0 17 * * 0-6'
+
 permissions:
   contents: write
 
@@ -44,6 +49,11 @@ jobs:
             BUILD_TAG=$(git describe --tags --match "build-*" --abbrev=0)
             echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_OUTPUT
             echo "STAGE=lat" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            # Get the latest build tag
+            BUILD_TAG=$(git describe --tags --match "build-*" --abbrev=0)
+            echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_OUTPUT
+            echo "STAGE=stg" >> $GITHUB_OUTPUT
           else
             echo "BUILD_TAG=${{ github.event.inputs.build_tag }}" >> $GITHUB_OUTPUT
             echo "STAGE=${{ github.event.inputs.stage }}" >> $GITHUB_OUTPUT
