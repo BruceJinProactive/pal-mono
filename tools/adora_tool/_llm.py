@@ -6,6 +6,10 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm
 from pydantic import BaseModel
 
+RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = (
+    "Identify all the order items of the user's final cart in the chat history."
+)
+
 EXTRACTOR_SYSTEM_PROMPT = """You are an expert at structured data extraction.
 You will be given the chat history and relevant context. You goal is to convert it into the given structure.
 
@@ -124,7 +128,7 @@ def llm_call(
 
     LLMObs.annotate(
         input_data=prompt,
-        output_data=response,
+        output_data=str(response),
         metadata={"system_prompt": system_prompt},
     )
 

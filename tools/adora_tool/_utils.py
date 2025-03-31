@@ -38,11 +38,6 @@ def is_valid_date(date: str) -> bool:
     return bool(re.match(pattern, date))
 
 
-def get_content(text: str) -> str:
-    match = re.search(r"<content>\s*(.*?)\s*</content>", text)
-    return match.group(1) if match else ""
-
-
 def validate_order_type(order_type: str) -> str:
     for member in AdoraOrderType:
         if order_type.lower() == member.lower():
@@ -94,7 +89,7 @@ def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, st
         logger.debug("[AdoraTool.add_lat_long_to_address] Failed to geocode address.")
         return (
             False,
-            "The address that the user provided is invalid. Please provide a valid address. "
+            "The address provided is invalid. Please provide a valid address. "
             + (
                 "Try providing a state and zipcode."
                 if delivery_address.state == "N/A" or delivery_address.zip == "N/A"
@@ -124,7 +119,8 @@ def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, st
         or delivery_address.zip == "N/A"
     ):
         logger.debug(
-            f"[AdoraTool.add_lat_long_to_address] Failed to convert address. Delivery address object: {delivery_address}"
+            "[AdoraTool.add_lat_long_to_address] Failed to convert address. "
+            f"Delivery address object: {delivery_address}"
         )
         return (
             False,

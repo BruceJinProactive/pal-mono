@@ -111,7 +111,10 @@ class AdoraTool(Toolkit):
                 raise ValueError("Invalid phone number format.")
 
             if not self._adora_bearer_token:
-                return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+                return (
+                    "Failed to authenticate ordering tool. Please reach out to our "
+                    "support team at help@palona.ai for assistance."
+                )
 
             customer_info = _apis.get_customer_info(
                 self._adora_bearer_token,
@@ -154,7 +157,10 @@ class AdoraTool(Toolkit):
 
         try:
             if not self._adora_bearer_token:
-                return "Failed to authenticate ordering tool. Please reach out to our support team at help@proactiveailab.com for assistance."
+                return (
+                    "Failed to authenticate ordering tool. Please reach out to our "
+                    "support team at help@palona.ai for assistance."
+                )
 
             status = _apis.get_online_ordering_status(
                 self._adora_bearer_token, self.store_id, qa_store=self.qa_store
@@ -167,7 +173,8 @@ class AdoraTool(Toolkit):
 
         except Exception as e:
             logger.error(
-                f"[AdoraTool.check_online_ordering_status] Error in checking online ordering status: {e}"
+                "[AdoraTool.check_online_ordering_status] "
+                f"Error in checking online ordering status: {e}"
             )
             return "Failed to check the online ordering status, please try again."
 
@@ -205,7 +212,7 @@ class AdoraTool(Toolkit):
             if not self._adora_bearer_token:
                 return (
                     "Failed to authenticate ordering tool. "
-                    "Please reach out to our support team at help@proactiveailab.com "
+                    "Please reach out to our support team at help@palona.ai "
                     "for assistance."
                 )
 
@@ -245,7 +252,10 @@ class AdoraTool(Toolkit):
         )
 
         if not isinstance(delivery_address, DeliveryAddress):
-            return "Failed to identify address. Please try again by providing the full address"
+            return (
+                "Failed to identify address. "
+                "Please try again by providing the full address"
+            )
 
         validate_order_success, validate_order_message = self._validate_address(
             delivery_address  # type: ignore
@@ -276,7 +286,7 @@ class AdoraTool(Toolkit):
                 False,
                 (
                     "Failed to authenticate ordering tool. "
-                    "Please reach out to our support team at help@proactiveailab.com "
+                    "Please reach out to our support team at help@palona.ai "
                     "for assistance."
                 ),
             )
@@ -293,14 +303,11 @@ class AdoraTool(Toolkit):
 
     @retrieval
     def _get_chat_history(self, latest_user_message: str) -> str:
-        # TODO: Hacky way to get FULL chat history. Latest user message is not in storage.
+        # NOTE: Hacky way to get FULL chat history.
+        # Latest user message is not in storage.
 
         try:
             try:
-                # # TODO: Defer import to avoid circular import
-                # from services.admin_service import (
-                #     get_messages_by_conversation_id,
-                # )
                 chat_history = ""
                 storage = get_storage(self.account_name)
                 agent_session = storage.read(str(self.session_id), str(self.user_id))
@@ -362,7 +369,7 @@ class AdoraTool(Toolkit):
     async def _get_relevant_docs(self, chat_history: str) -> str:
         # Decompose chat history into multiple sub-queries
         sub_queries = _llm.llm_call(
-            system_prompt="Identify all the order items of the user's final cart in the chat history.",
+            system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
             prompt=chat_history,
             response_format=SubQueries,
             reasoning=False,
@@ -467,6 +474,9 @@ class AdoraTool(Toolkit):
             "\n\nYou MUST include the EXACT payment url in your response:\n"
             f"{text_payment_url}"
         )
+
+        LLMObs.annotate(output_data=output)
+
         return output
 
     @tool
@@ -477,7 +487,7 @@ class AdoraTool(Toolkit):
         pay, place the order, etc.
 
         Args:
-            last_user_message (str): The latest user message in the chat history.
+            latest_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: The checkout order details including the payment URL.
@@ -526,13 +536,12 @@ class AdoraTool(Toolkit):
                 if not validate_order_success:
                     return validate_order_message
 
-            logger.info(f"Extracted structured data: {order}")
-            logger.info(f"Extraced structured data type: {type(order)}")
-
+            logger.debug(f"Extracted structured data: {order}")
+            logger.debug(f"Extracted structured data type: {type(order)}")
             if not self._adora_bearer_token:
                 return (
                     "Failed to authenticate ordering tool. "
-                    "Please reach out to our support team at help@proactiveailab.com "
+                    "Please reach out to our support team at help@palona.ai "
                     "for assistance."
                 )
 
@@ -559,7 +568,7 @@ class AdoraTool(Toolkit):
             # Set email to default if empty or if it is not valid
             email = order.customer.email
             if not email or not _utils.is_valid_email(email):
-                order.customer.email = "jimmythesurfer@proactiveailab.com"
+                order.customer.email = "jimmythesurfer@palona.ai"
 
             # TODO: Hardcode discount
             if not self.qa_store:  # Do not apply discount for QA store
