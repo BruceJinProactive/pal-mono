@@ -19,15 +19,19 @@ class FeedbackTag(str, Enum):
     INSTRUCTION_ERROR = "instruction_error"
 
 
-class CreateFeedbackRequest(BaseModel):
-    """Create Feedback Request Model"""
-
-    message_id: UUID
+class UpdateFeedbackRequest(BaseModel):
+    """Update Feedback Request Model"""
 
     author_identifier: str | None = None
     reaction: FeedbackReaction | None = None
     tags: list[FeedbackTag] | None = None
     note: str | None = None
+
+
+class CreateFeedbackRequest(UpdateFeedbackRequest):
+    """Create Feedback Request Model"""
+
+    message_id: UUID
 
 
 class CreateFeedbackResponse(BaseModel):
@@ -51,10 +55,10 @@ class Feedback(BaseModel):
     note: str | None = None
 
 
-class FeedbackDetails(BaseModel):
+class FeedbackDetail(BaseModel):
     feedback: Feedback
     conversation_id: uuid.UUID
 
 
 class ListFeedbacksResponse(BaseModel):
-    feedbacks: list[FeedbackDetails]
+    feedbacks: list[FeedbackDetail]

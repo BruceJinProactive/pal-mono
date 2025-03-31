@@ -45,6 +45,23 @@ def get_inbox_conversations(
     )
 
 
+def get_conversation_by_id(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> db.Conversation | None:
+    """
+    Find the conversation that matches the given unique ID.
+
+    Args:
+        session (Session): The database session used to perform queries.
+        conversation_id (uuid.UUID): The unique identifier of the conversation to find.
+
+    Returns:
+        db.Conversation | None: The matching conversation or none if id does not exist.
+    """
+    return _implementation.get_conversation_by_id(session, conversation_id)
+
+
 def get_conversation_messages(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> list[db.Message]:
@@ -275,6 +292,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
 
 __all__ = [
     "get_inbox_conversations",
+    "get_conversation_by_id",
     "get_conversation_messages",
     "get_conversation_ids_by_message_ids",
     "get_knowledge_base",

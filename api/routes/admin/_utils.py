@@ -61,6 +61,14 @@ async def retrieve_body_message(request: Request) -> str:
         )
 
 
+def not_found_error(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=message,
+        headers={"Content-Type": "application/json"},
+    )
+
+
 def verify_instagram_deauthorize_signature(
     encoded_payload: str, encoded_signature: str
 ):

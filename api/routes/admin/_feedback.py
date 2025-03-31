@@ -1,9 +1,17 @@
+import uuid
 from collections import defaultdict
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.schemas.admin.feedback import FeedbackDetails, ListFeedbacksResponse
+import db
+from api.schemas.admin.feedback import (
+    CreateFeedbackRequest,
+    Feedback,
+    FeedbackDetail,
+    ListFeedbacksResponse,
+    UpdateFeedbackRequest,
+)
 from services import (
     account_service,
     feedback_service,
@@ -14,6 +22,7 @@ from utils.log import logger
 
 from . import UserContext, _builder
 from ._auth import authorize_user_account
+from ._utils import not_found_error
 
 
 async def list_account_feedbacks(
@@ -85,9 +94,93 @@ async def list_account_feedbacks(
     for feedback in sorted_feedbacks:
         message = feedback_messages_dict[feedback.message_id]
         detailed_feedbacks.append(
-            FeedbackDetails(
+            FeedbackDetail(
                 feedback=_builder.build_feedback(feedback, message),
                 conversation_id=message.conversation_id,
             )
         )
     return ListFeedbacksResponse(feedbacks=detailed_feedbacks)
+
+
+async def retrieve_feedback_by_id(
+    feedback_id: uuid.UUID, context: UserContext, session: Session
+) -> FeedbackDetail:
+    feedback = feedback_service.get_feedback_by_id(session, feedback_id)
+    if not feedback:
+        raise not_found_error(f"Feedback not found for id: {feedback_id}")
+    # TODO (frankie.liu): update here once account fk is added to feedback
+    conversation = feedback.message.conversation
+    account = conversation.user.account
+    authorize_user_account(context, account.name)
+
+    return FeedbackDetail(
+        feedback=_builder.build_feedback(feedback),
+        conversation_id=conversation.id,
+    )
+
+
+async def create_feedback(
+    feedback_create: CreateFeedbackRequest,
+    context: UserContext,
+    session: Session,
+) -> Feedback:
+    # Validate & authorize feedback create request
+    message = message_service.get_message_by_id(session, feedback_create.message_id)
+    if not message:
+        raise not_found_error(f"Message {feedback_create.message_id} does not exist.")
+    account = message.conversation.user.account
+    authorize_user_account(context, account.name)
+
+    # Process create
+    feedback = _to_db_feedback(feedback_create)
+    feedback.message_id = feedback_create.message_id
+    persisted_feedback = feedback_service.create_feedback(session, feedback)
+    return _builder.build_feedback(persisted_feedback)
+
+
+async def update_feedback(
+    feedback_id: uuid.UUID,
+    feedback_update: UpdateFeedbackRequest,
+    context: UserContext,
+    session: Session,
+):
+    # Validate & authorize feedback update request
+    curr_feedback = feedback_service.get_feedback_by_id(session, feedback_id)
+    if not curr_feedback:
+        raise not_found_error(f"Feedback {feedback_id} not found.")
+    account = curr_feedback.message.conversation.user.account
+    authorize_user_account(context, account.name)
+
+    # Process update
+    new_feedback = _to_db_feedback(feedback_update)
+    updated_feedback = feedback_service.update_feedback_by_id(
+        session, feedback_id, new_feedback
+    )
+    return _builder.build_feedback(updated_feedback)
+
+
+async def delete_feedback(
+    feedback_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+):
+    # Validate & authorize feedback delete request
+    curr_feedback = feedback_service.get_feedback_by_id(session, feedback_id)
+    if not curr_feedback:
+        # If feedback doesn't exist, this is a no-op, and it shouldn't
+        # fail the request.
+        return
+    account = curr_feedback.message.conversation.user.account
+    authorize_user_account(context, account.name)
+
+    # Process delete
+    feedback_service.delete_feedback_by_id(session, feedback_id)
+
+
+def _to_db_feedback(feedback: UpdateFeedbackRequest) -> db.Feedback:
+    return db.Feedback(
+        author_identifier=feedback.author_identifier,
+        reaction=feedback.reaction.value if feedback.reaction else None,
+        tags=([tag.value for tag in feedback.tags] if feedback.tags else None),
+        note=feedback.note,
+    )

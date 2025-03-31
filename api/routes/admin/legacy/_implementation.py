@@ -315,7 +315,6 @@ def retrieve_feedback_by_id(
             detail="Internal server error, please try again later.",
             headers={"Content-Type": "application/json"},
         )
-
     if not persisted_feedback:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

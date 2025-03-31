@@ -18,7 +18,13 @@ from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListConversationsResponse,
 )
-from api.schemas.admin.feedback import ListFeedbacksResponse
+from api.schemas.admin.feedback import (
+    CreateFeedbackRequest,
+    Feedback,
+    FeedbackDetail,
+    ListFeedbacksResponse,
+    UpdateFeedbackRequest,
+)
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
@@ -158,8 +164,8 @@ async def update_agent(
 
 
 """
----------- Conversations & Feedbacks ----------
------------------------------------------------
+---------- Conversation Endpoints ----------
+--------------------------------------------
 """
 
 
@@ -182,9 +188,8 @@ async def list_account_conversations(
     )
 
 
-@admin_router.get("/accounts/{account_name}/conversations/{conversation_id}/messages")
+@admin_router.get("/conversations/{conversation_id}/messages")
 async def list_conversation_messages(
-    account_name: str,
     conversation_id: uuid.UUID,
     page: int = Query(..., description="Current page, first page starts at 1", gt=0),
     page_size: int = Query(
@@ -198,8 +203,14 @@ async def list_conversation_messages(
     in chronological order.
     """
     return await _conversation.list_conversation_messages(
-        account_name, conversation_id, page, page_size, context, session
+        conversation_id, page, page_size, context, session
     )
+
+
+"""
+---------- Feedback Endpoints ----------
+----------------------------------------
+"""
 
 
 @admin_router.get("/accounts/{account_name}/feedbacks")
@@ -216,13 +227,64 @@ async def list_account_feedbacks(
     return await _feedback.list_account_feedbacks(account_name, context, session)
 
 
+@admin_router.put("/feedbacks", status_code=status.HTTP_201_CREATED)
+async def create_feedback(
+    feedback: CreateFeedbackRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Feedback:
+    """
+    Create a feedback for a message.
+    """
+    return await _feedback.create_feedback(feedback, context, session)
+
+
+@admin_router.get("/feedbacks/{feedback_id}")
+async def get_feedback(
+    feedback_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> FeedbackDetail:
+    """
+    Get feedback by feedback id.
+    """
+    return await _feedback.retrieve_feedback_by_id(feedback_id, context, session)
+
+
+@admin_router.patch("/feedbacks/{feedback_id}")
+async def update_feedback(
+    feedback_id: uuid.UUID,
+    feedback: UpdateFeedbackRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Feedback:
+    """
+    Update the referenced feedback, only fields populated in the request
+    will be updated.
+    """
+    return await _feedback.update_feedback(feedback_id, feedback, context, session)
+
+
+@admin_router.delete("/feedbacks/{feedback_id}")
+async def delete_feedback(
+    feedback_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete the referenced feedback, return 200 OK if the feedback is successfully
+    deleted or if it doesn't exist. No response content is returned.
+    """
+    await _feedback.delete_feedback(feedback_id, context, session)
+
+
 """
 ---------- Projects Endpoints ----------
 ----------------------------------------
 """
 
 
-@admin_router.get("/projects", status_code=status.HTTP_200_OK)
+@admin_router.get("/projects")
 async def list_projects(
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),

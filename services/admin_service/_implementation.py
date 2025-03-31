@@ -39,6 +39,15 @@ def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
     return True
 
 
+def get_conversation_by_id(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> db.Conversation | None:
+    conversation_repository = db.ConversationRepository(session)
+    conversation = conversation_repository.get_conversation_by_id(conversation_id)
+    return conversation
+
+
 def get_inbox_conversations(
     session: Session, account_id: uuid.UUID, max_age: int, page: int, page_size: int
 ) -> tuple[int, list[ConversationPreview]]:
