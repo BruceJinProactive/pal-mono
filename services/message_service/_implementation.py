@@ -157,15 +157,6 @@ async def get_chat_response_async(
         )
         logger.info(f"Output: {output}")
 
-        # Check if output.closing_conversation is True and mark the conversation as closing
-        if output.closing_conversation:
-            conversation = await db.ConversationRepositoryAsync(
-                session
-            ).get_conversation_by_id(conversation_id=conversation_id)
-            if conversation:
-                conversation.status = db.ConversationStatus.CLOSING
-                await session.flush()
-
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
         new_flow_response_messages = _utils.get_messages_from_agent_output(
             output=output, input_message=message, project_name=project.name
@@ -189,6 +180,16 @@ async def get_chat_response_async(
                     "conversation_id": str(conversation_id),
                 },
             )
+
+        # Make sure to handle the case after the response messages are created
+        # Check if output.closing_conversation is True and mark the conversation as closing
+        if output.closing_conversation:
+            conversation = await db.ConversationRepositoryAsync(
+                session
+            ).get_conversation_by_id(conversation_id=conversation_id)
+            if conversation:
+                conversation.status = db.ConversationStatus.CLOSING
+                await session.flush()
 
         return new_flow_response_messages
 
