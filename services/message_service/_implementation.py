@@ -16,12 +16,10 @@ from api.schemas.chat.message import (
     Broker,
     Channel,
     Extras,
-    MediaObject,
     Message,
     Metadata,
     TextObject,
 )
-from api.schemas.chat.message import Type as MessageType
 from services import agent_service, analytics_service, project_service, user_service
 from utils.log import logger
 
@@ -135,167 +133,68 @@ async def get_chat_response_async(
             f"User channel identifier: {message.channel.value}:{message.sender_identifier}"
         )
 
-        # Explicitly load the project.account attribute
-        await session.refresh(project, attribute_names=["account"])
-        old_agents = ["proactiveailab"]
-
-        # ========================== New - Start ==========================
-        if project.account.name not in old_agents:
-            logger.info("Test new agent building flow.")
-
-            # Construct config
-            config = await agent_service.construct_agent_config(
-                session=session,
-                agent_id=agent_id,
-                user_id=user.id,
-                project_id=project.id,
-                conversation_id=conversation_id,
-                stream=False,
-            )
-            logger.info(f"Agent config: {config}")
-            agent = Agent(config=config)
-            logger.info(f"Step 5: Retrieved agent - {time.time() - start_time:.4f}s")
-
-            # Get Input
-            input = _utils.get_agent_input_from_message(message=message)
-            logger.info(f"Input: {input}")
-
-            # Get Output
-            output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
-            logger.info(
-                f"Step 6: Agent response received - {time.time() - start_time:.4f}s"
-            )
-            logger.info(f"Output: {output}")
-
-            # Check if output.closing_conversation is True and mark the conversation as closing
-            if output.closing_conversation:
-                conversation = await db.ConversationRepositoryAsync(
-                    session
-                ).get_conversation_by_id(conversation_id=conversation_id)
-                if conversation:
-                    conversation.status = db.ConversationStatus.CLOSING
-                    await session.flush()
-
-            # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
-            new_flow_response_messages = _utils.get_messages_from_agent_output(
-                output=output, input_message=message, project_name=project.name
-            )
-
-            for message in new_flow_response_messages:
-                # Save response message to database
-                await message_repo.create_message(
-                    user_id=user.id, message_body=message.to_dict()
-                )
-
-            # Track only one event (for example, using the first message):
-            if new_flow_response_messages:
-                first_msg = new_flow_response_messages[0]
-                analytics_service.track_event(
-                    user_id=str(user.id),
-                    event_name=AnalyticsEvent.AGENT_MESSAGE,
-                    event_properties={
-                        "account_name": account_name,
-                        "channel": first_msg.channel.value,
-                        "conversation_id": str(conversation_id),
-                    },
-                )
-
-            return new_flow_response_messages
-
-        # ========================== New - End ==========================
-
-        else:
-            agent = await agent_service.legacy.get_ai_agent_async(
-                session=session,
-                agent_id=agent_id,
-                user_id=user.id,
-                project_id=project.id,
-                conversation_id=conversation_id,
-            )
-
+        # Construct config
+        config = await agent_service.construct_agent_config(
+            session=session,
+            agent_id=agent_id,
+            user_id=user.id,
+            project_id=project.id,
+            conversation_id=conversation_id,
+            stream=False,
+        )
+        logger.info(f"Agent config: {config}")
+        agent = Agent(config=config)
         logger.info(f"Step 5: Retrieved agent - {time.time() - start_time:.4f}s")
 
-        # Get response from agent
-        request_content = message.get_content()
-        response_object = await agent.arun(request_content, stream=False)
-        response_content = response_object.content
+        # Get Input
+        input = _utils.get_agent_input_from_message(message=message)
+        logger.info(f"Input: {input}")
 
+        # Get Output
+        output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
         logger.info(
             f"Step 6: Agent response received - {time.time() - start_time:.4f}s"
         )
+        logger.info(f"Output: {output}")
 
-        if isinstance(response_content, str):
-            response = response_content
-        elif isinstance(response_content, BaseOutputModel):
-            response = response_content.content
-            extras = {"escalated": response_content.escalated}
-            response_parts = _utils.extract_image_links(response)
+        # Check if output.closing_conversation is True and mark the conversation as closing
+        if output.closing_conversation:
+            conversation = await db.ConversationRepositoryAsync(
+                session
+            ).get_conversation_by_id(conversation_id=conversation_id)
+            if conversation:
+                conversation.status = db.ConversationStatus.CLOSING
+                await session.flush()
 
-            # process each part of the response after regex processing
-            response_message = None
-            for msg_type, msg_content in response_parts:
-                if msg_type == "text":
-                    # Strip markdown content from response
-                    msg_content = _utils.strip_markdown_content(msg_content)
-                    response_message = Message(
-                        author_type=AuthorType.AGENT,
-                        sender_identifier=message.recipient_identifier,  # Swap sender and recipient
-                        recipient_identifier=message.sender_identifier,
-                        channel=message.channel,
-                        broker=message.broker,
-                        channel_info=message.channel_info,
-                        text=TextObject(body=msg_content),
-                        metadata=Metadata(**metadata),
-                        extras=Extras(**extras),
-                    )
-                elif msg_type == "image":
-                    response_message = Message(
-                        author_type=AuthorType.AGENT,
-                        sender_identifier=message.recipient_identifier,  # Swap sender and recipient
-                        recipient_identifier=message.sender_identifier,
-                        channel=message.channel,
-                        broker=message.broker,
-                        channel_info=message.channel_info,
-                        type=MessageType.MEDIA,
-                        media=MediaObject(
-                            url=msg_content, media_type="image", caption=msg_content
-                        ),
-                        metadata=Metadata(**metadata),
-                        extras=Extras(**extras),
-                    )
+        # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
+        new_flow_response_messages = _utils.get_messages_from_agent_output(
+            output=output, input_message=message, project_name=project.name
+        )
 
-                if response_message:
-                    if user:
-                        # Save response message to database
-                        await message_repo.create_message(
-                            user_id=user.id, message_body=response_message.to_dict()
-                        )
-
-                    event_properties = {
-                        "account_name": account_name,
-                        "channel": response_message.channel.value,
-                        "conversation_id": str(conversation_id),
-                    }
-                    analytics_service.track_event(
-                        user_id=str(user.id),
-                        event_name=AnalyticsEvent.AGENT_MESSAGE,
-                        event_properties=event_properties,
-                    )
-
-                    response_messages.append(response_message)
-
-                logger.info(
-                    f"Step 8: Response processing completed - {time.time() - start_time:.4f}s"
-                )
-        else:
-            raise ValueError(
-                f"Can't handle response content type {type(response_content)} for userid {user.id} with request content {request_content}."
+        for message in new_flow_response_messages:
+            # Save response message to database
+            await message_repo.create_message(
+                user_id=user.id, message_body=message.to_dict()
             )
+
+        # Track only one event (for example, using the first message):
+        if new_flow_response_messages:
+            first_msg = new_flow_response_messages[0]
+            analytics_service.track_event(
+                user_id=str(user.id),
+                event_name=AnalyticsEvent.AGENT_MESSAGE,
+                event_properties={
+                    "account_name": account_name,
+                    "channel": first_msg.channel.value,
+                    "conversation_id": str(conversation_id),
+                },
+            )
+
+        return new_flow_response_messages
 
     except Exception:
         # Log any error and set default error response
         logger.exception("Error in get_chat_response_async")
-        response = "Something went wrong. Please try again."
 
     logger.info(f"Total execution time: {time.time() - start_time:.4f}s")
     return response_messages
