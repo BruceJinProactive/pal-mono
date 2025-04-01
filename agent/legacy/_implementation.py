@@ -11,8 +11,7 @@ from agent.legacy.knowledge import get_knowledge
 from agent.legacy.memory import get_history_responses, get_memory
 from agent.legacy.prompts import get_system_prompt
 from agent.legacy.storage import get_storage
-from agent.model import get_model
-from tools.legacy import generate_output_model, get_tools
+from agent.model import BaseOutputModel, get_model
 
 
 @agent
@@ -55,12 +54,6 @@ def integrate_agent(
         )
         session_id = session_ids[0] if session_ids else str(uuid4())
 
-    # -*- Agent Tools
-    tools = get_tools(raw_config, user_id, session_id)
-
-    # -*- Structured Output Model
-    output_model = generate_output_model(tools)
-
     # -*- Debug settings
     DEBUG_MODE = os.getenv("DEBUG_MODE", "False") == "True"
 
@@ -87,8 +80,6 @@ def integrate_agent(
         knowledge=knowledge,
         # -*- Agent Storage
         storage=storage,
-        # -*- Agent Tools
-        tools=tools,
         show_tool_calls=False,
         # -*- Default tools
         read_chat_history=True,
@@ -96,7 +87,7 @@ def integrate_agent(
         # -*- System Prompt Settings
         system_message=system_prompt,
         # -*- Agent Response Settings
-        response_model=None if stream else output_model,
+        response_model=None if stream else BaseOutputModel,
         parse_response=True,
         structured_outputs=False,  # please set to False for JSON mode
         # -*- Debug settings

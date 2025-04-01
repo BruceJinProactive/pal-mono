@@ -2,7 +2,6 @@
 # pyright: reportCallIssue=false, reportReturnType=false, reportArgumentType=false
 
 import json
-from uuid import uuid4
 
 import streamlit as st
 from streamlit_extras.switch_page_button import switch_page
@@ -13,7 +12,7 @@ from app.shared import get_app_db
 from services.account_service import get_account, get_accounts
 from services.agent_service import get_agent
 from services.user_service import get_user_by_channel_identifier
-from tools.legacy.booking_tools import BookingTools
+from tools.booking_tool import BookingTool
 
 st.title("Tools")
 
@@ -24,9 +23,7 @@ session = get_app_db()
 
 def booking_tools_tab_content(user_id):
     st.write("# Booking Tools")
-    toolkit = BookingTools(
-        {"type": "mindzero", "settings": {}}, user_id=user_id, session_id=uuid4()
-    )
+    toolkit = BookingTool("")
 
     st.write("### Get Class Sessions")
     num_days = st.number_input("Number of Days", value=7)
