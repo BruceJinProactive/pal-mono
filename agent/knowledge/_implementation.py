@@ -9,7 +9,6 @@ from llama_index.core import (
 from llama_index.core.indices import MultiModalVectorStoreIndex
 from llama_index.core.indices.query.base import BaseQueryEngine
 from llama_index.core.response_synthesizers import ResponseMode
-from llama_index.core.vector_stores.types import ExactMatchFilter, MetadataFilters
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.llms.groq import Groq
 from llama_index.vector_stores.pinecone import PineconeVectorStore
@@ -67,10 +66,6 @@ def get_knowledge(config: _config.KnowledgeConfig) -> BaseQueryEngine:
             response_synthesizer=response_synthesizer,
             similarity_top_k=10,  # Increase number of retrieved documents
             similarity_cutoff=0.2,  # Lower similarity threshold (0-1 range)
-            # Use menu documents with no ids for reduced context size
-            filters=MetadataFilters(
-                filters=[ExactMatchFilter(key="include_ids", value="False")]
-            ),
         )
 
     else:
