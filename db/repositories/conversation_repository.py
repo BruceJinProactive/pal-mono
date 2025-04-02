@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
-from db.tables import Conversation
+from db.tables import Conversation, ConversationStatus
 from utils.log import logger
 
 
@@ -111,6 +111,18 @@ class ConversationRepository:
             logger.error(f"Error retrieving conversations by users: {e}")
             return [], 0
 
+    def get_conversation_ids_by_user_ids(
+        self, user_ids: list[uuid.UUID]
+    ) -> list[uuid.UUID]:
+        try:
+            stmt = select(Conversation.id).filter(Conversation.user_id.in_(user_ids))
+            conversation_ids = self.session.execute(stmt).scalars().all()
+            return list(conversation_ids)
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving conversation ids: {e}")
+            return []
+
     def get_conversation_by_id(self, conversation_id: uuid.UUID) -> Conversation | None:
         try:
             return (
@@ -142,3 +154,22 @@ class ConversationRepository:
             self.session.rollback()
             logger.error(f"Error creating conversation: {e}")
             return None
+
+    def get_session_count_by_user_and_status(
+        self, user_ids: list[uuid.UUID], status: ConversationStatus | None
+    ) -> int:
+        """
+        Returns all sessions that belong to the given list of user ids as well as having the
+        specified status.
+        """
+        try:
+            query = self.session.query(Conversation).filter(
+                Conversation.user_id.in_(user_ids)
+            )
+            if status:
+                query = query.filter(Conversation.status == status)
+            return query.count()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving session count: {e}")
+            return 0

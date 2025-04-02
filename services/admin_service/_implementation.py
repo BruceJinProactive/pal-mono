@@ -719,3 +719,30 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
     except Exception as e:
         logger.error(f"Unable to remove Instagram access token: {e}")
         raise RuntimeError("Unable to remove Instagram access token.") from e
+
+
+def get_session_count_by_user_and_status(
+    session: Session,
+    user_ids: list[uuid.UUID],
+    status: db.ConversationStatus | None = None,
+) -> int:
+    conversation_repository = db.ConversationRepository(session)
+    return conversation_repository.get_session_count_by_user_and_status(
+        user_ids, status
+    )
+
+
+def get_escalated_session_count_by_users(
+    session: Session,
+    user_ids: list[uuid.UUID],
+) -> int:
+    conversation_repository = db.ConversationRepository(session)
+    message_repository = db.MessageRepository(session)
+
+    conversation_ids = conversation_repository.get_conversation_ids_by_user_ids(
+        user_ids
+    )
+    escalated_conversation_count = message_repository.get_escalated_conversation_count(
+        conversation_ids
+    )
+    return escalated_conversation_count

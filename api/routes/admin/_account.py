@@ -3,17 +3,19 @@ from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import (
     Account,
+    AccountStatisticsResponse,
     CreateAccountRequest,
     ListAccountsResponse,
     UpdateAccountRequest,
 )
+from db import ConversationStatus
 from db.tables.accounts import BusinessIndustry
-from services import account_service
+from services import account_service, admin_service, user_service
 from services.account_service import AccountParams
 
 from ._auth import authorize_user_account
 from ._builder import build_account
-from ._utils import UserContext, UserRole
+from ._utils import UserContext, UserRole, not_found_error
 
 
 def list_accounts(
@@ -90,6 +92,35 @@ async def update_account(
             headers={"Content-Type": "application/json"},
         )
     return build_account(db_account)
+
+
+async def get_account_statistics(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+):
+    authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found.")
+
+    users = user_service.get_users_by_account_id(session, account.id)
+    user_ids = [user.id for user in users]
+    escalated_sessions = admin_service.get_escalated_session_count_by_users(
+        session, user_ids
+    )
+    total_sessions = admin_service.get_session_count_by_user_and_status(
+        session, user_ids
+    )
+    active_sessions = admin_service.get_session_count_by_user_and_status(
+        session, user_ids, ConversationStatus.ACTIVE
+    )
+    return AccountStatisticsResponse(
+        total_users=len(user_ids),
+        total_sessions=total_sessions,
+        active_sessions=active_sessions,
+        escalated_sessions=escalated_sessions,
+    )
 
 
 def _validate_and_parse_request(update: UpdateAccountRequest) -> AccountParams:

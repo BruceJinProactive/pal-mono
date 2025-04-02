@@ -342,3 +342,19 @@ class MessageRepository:
             self.session.rollback()
             logger.error(f"Error retrieving messages: {e}")
             return []
+
+    def get_escalated_conversation_count(
+        self, conversation_ids: list[uuid.UUID]
+    ) -> int:
+        try:
+            # Using distinct() to avoid duplicate conversation IDs
+            return (
+                self.session.query(Message.conversation_id.distinct())
+                .filter(Message.conversation_id.in_(conversation_ids))
+                .filter(Message.body["extras"]["escalated"].astext == "true")
+                .count()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving escalated conversation IDs: {e}")
+            return 0

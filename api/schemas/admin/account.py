@@ -43,3 +43,10 @@ class CreateAccountRequest(UpdateAccountRequest):
     """Create Account Request"""
 
     name: str = Field(...)
+
+
+class AccountStatisticsResponse(BaseModel):
+    total_users: int
+    total_sessions: int
+    active_sessions: int
+    escalated_sessions: int

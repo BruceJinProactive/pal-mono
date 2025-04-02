@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
+from db import ConversationStatus
 
 from . import _implementation
 from .schema import UserSessionPreview
@@ -307,6 +308,28 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
     return _implementation.deauthorize_instagram_access_token(session, ig_user_id)
 
 
+def get_session_count_by_user_and_status(
+    session: Session,
+    user_ids: list[uuid.UUID],
+    status: ConversationStatus | None = None,
+) -> int:
+    """
+    Returns the number of sessions or the given user ids that match
+    the given status. If status is not given, it will not filter by
+    status.
+    """
+    return _implementation.get_session_count_by_user_and_status(
+        session, user_ids, status
+    )
+
+
+def get_escalated_session_count_by_users(
+    session: Session,
+    user_ids: list[uuid.UUID],
+) -> int:
+    return _implementation.get_escalated_session_count_by_users(session, user_ids)
+
+
 __all__ = [
     "list_user_sessions_in_account",
     "get_inbox_conversations",
@@ -321,4 +344,6 @@ __all__ = [
     "set_instagram_access_token",
     "remove_instagram_access_token",
     "deauthorize_instagram_access_token",
+    "get_session_count_by_user_and_status",
+    "get_escalated_session_count_by_users",
 ]

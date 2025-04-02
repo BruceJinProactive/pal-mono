@@ -8,6 +8,7 @@ from api.routes.admin._utils import SortOrder, UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.account import (
     Account,
+    AccountStatisticsResponse,
     CreateAccountRequest,
     ListAccountsResponse,
     UpdateAccountRequest,
@@ -116,6 +117,18 @@ async def update_account(
     Update the account based on the provided request data.
     """
     return await _account.update_account(account_name, account, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/stat")
+async def get_account_statistics(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> AccountStatisticsResponse:
+    """
+    Return basic account statistics such as total unique users and active sessions.
+    """
+    return await _account.get_account_statistics(account_name, context, session)
 
 
 """
