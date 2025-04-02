@@ -244,6 +244,9 @@ class AdoraTool(Toolkit):
         Returns:
             str: If the address is valid and within the delivery zone.
         """
+        if not address:
+            return "Could you provide your address?"
+
         delivery_address = _llm.llm_call(
             system_prompt="Extract the address into the given output format.",
             prompt=address,
@@ -254,7 +257,7 @@ class AdoraTool(Toolkit):
         if not isinstance(delivery_address, DeliveryAddress):
             return (
                 "Failed to identify address. "
-                "Please try again by providing the full address"
+                "Please try again by providing the full address."
             )
 
         validate_order_success, validate_order_message = self._validate_address(
