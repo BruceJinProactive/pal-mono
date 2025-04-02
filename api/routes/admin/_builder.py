@@ -36,6 +36,7 @@ def build_agent(agent: db.Agent) -> Agent:
         updated_at=int(agent.updated_at.timestamp() if agent.updated_at else 0),
         projects=[str(project.id) for project in agent.projects],
         account_id=agent.account_id,
+        agent_type=agent.raw_config.get("agent_type"),
     )
 
 

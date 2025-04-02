@@ -16,6 +16,7 @@ class Agent(BaseModel):
     updated_at: int  # timestamp in seconds and UTC tz
     projects: list[str]
     account_id: uuid.UUID
+    agent_type: str | None
 
 
 class CreateAgentRequest(BaseModel):
