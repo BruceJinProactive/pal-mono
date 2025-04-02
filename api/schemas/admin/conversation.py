@@ -8,10 +8,26 @@ class Message(BaseModel):
     """Message Model"""
 
     id: uuid.UUID
-    body: dict
-    conversation_id: uuid.UUID
+    content: str | None
+    type: str | None
+    channel: str | None
+    author_type: str | None
+    metadata: dict | None
+    channel_info: dict | None
+    sender_identifier: str | None
+    recipient_identifier: str | None
+    escalated: bool
+    sent_at: str | None
     created_at: datetime.datetime
-    updated_at: datetime.datetime | None
+    conversation_id: uuid.UUID
+
+
+class UserSession(BaseModel):
+    id: uuid.UUID
+    status: str
+    last_user_message: Message | None
+    total_messages: int
+    created_at: datetime.datetime
 
 
 class ConversationPreview(BaseModel):
@@ -33,10 +49,10 @@ class InboxResponse(BaseModel):
     inbox: list[ConversationPreview]
 
 
-class ListConversationsResponse(BaseModel):
-    conversations: list[ConversationPreview]
+class ListUserSessionsResponse(BaseModel):
+    sessions: list[UserSession]
+    total_sessions: int
     total_pages: int
-    total_conversations: int
 
 
 class ListConversationMessagesResponse(BaseModel):

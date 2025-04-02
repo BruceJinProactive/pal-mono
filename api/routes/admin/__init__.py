@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin._utils import UserContext
+from api.routes.admin._utils import SortOrder, UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.account import (
     Account,
@@ -16,7 +16,7 @@ from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentReques
 from api.schemas.admin.analytics import GetReportResponse
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
-    ListConversationsResponse,
+    ListUserSessionsResponse,
 )
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
@@ -178,12 +178,12 @@ async def list_account_conversations(
     ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> ListConversationsResponse:
+) -> ListUserSessionsResponse:
     """
     Retrieve the list of convo sessions for a given account. Returned conversations
     are sorted by the timestamp of the last message in reverse chronological order.
     """
-    return await _conversation.list_account_conversations(
+    return await _conversation.list_account_user_sessions(
         account_name, page, page_size, context, session
     )
 
@@ -195,6 +195,10 @@ async def list_session_messages(
     page_size: int = Query(
         ..., description="Size of each page, cannot be less than 1", gt=0
     ),
+    sort_order: SortOrder = Query(
+        SortOrder.desc,
+        description="The order in which messages are sorted by on the timestamp field",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListConversationMessagesResponse:
@@ -203,7 +207,7 @@ async def list_session_messages(
     in chronological order.
     """
     return await _conversation.list_conversation_messages(
-        session_id, page, page_size, context, session
+        session_id, page, page_size, sort_order, context, session
     )
 
 

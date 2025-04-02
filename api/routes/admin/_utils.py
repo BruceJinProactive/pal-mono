@@ -26,6 +26,11 @@ class UserContext:
     role: UserRole
 
 
+class SortOrder(str, Enum):
+    asc = "asc"
+    desc = "desc"
+
+
 async def retrieve_body_message(request: Request) -> str:
     """
     Retrieves the 'message' field to be injected into a Message object.

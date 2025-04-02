@@ -6,6 +6,18 @@ import db
 from api.schemas.admin.conversation import ConversationPreview
 
 from . import _implementation
+from .schema import UserSessionPreview
+
+
+def list_user_sessions_in_account(
+    account_id: uuid.UUID,
+    page: int,
+    page_size: int,
+    db_session: Session,
+) -> tuple[int, list[UserSessionPreview]]:
+    return _implementation.list_user_sessions_in_account(
+        account_id, page, page_size, db_session
+    )
 
 
 def get_inbox_conversations(
@@ -63,7 +75,10 @@ def get_conversation_by_id(
 
 
 def get_conversation_messages(
-    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+    session: Session,
+    account_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    sort_desc: bool = False,
 ) -> list[db.Message]:
     """
     Verifies that the requester has access to the conversation, then returns all messages
@@ -73,6 +88,8 @@ def get_conversation_messages(
         session (Session): The database session.
         account_id (uuid.UUID): The unique identifier of the incoming request's Account.
         conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
+        sort_desc (bool): Changes the sort order to reverse-chronological so last message
+            appears first.
 
     Returns:
         list[Message]: A list of Messages from the Conversation.
@@ -82,7 +99,7 @@ def get_conversation_messages(
         ValueError: If the Conversation or User is not found.
     """
     return _implementation.get_conversation_messages(
-        session, account_id, conversation_id
+        session, account_id, conversation_id, sort_desc
     )
 
 
@@ -291,6 +308,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
 
 
 __all__ = [
+    "list_user_sessions_in_account",
     "get_inbox_conversations",
     "get_conversation_by_id",
     "get_conversation_messages",

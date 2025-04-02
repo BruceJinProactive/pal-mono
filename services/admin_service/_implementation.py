@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session, declarative_base
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
+from services import message_service, user_service
+from services.admin_service.schema import UserSessionPreview
 from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
@@ -46,6 +48,35 @@ def get_conversation_by_id(
     conversation_repository = db.ConversationRepository(session)
     conversation = conversation_repository.get_conversation_by_id(conversation_id)
     return conversation
+
+
+def list_user_sessions_in_account(
+    account_id: uuid.UUID,
+    page: int,
+    page_size: int,
+    db_session: Session,
+) -> tuple[int, list[UserSessionPreview]]:
+    message_repository = db.MessageRepository(db_session)
+
+    account_users = user_service.get_users_by_account_id(db_session, account_id)
+    user_ids = [user.id for user in account_users]
+
+    total, conversations = message_service.get_conversations_by_users(
+        db_session, page, page_size, user_ids
+    )
+    user_session_previews = [
+        UserSessionPreview(
+            user_session=conversation,
+            last_message=message_repository.get_last_user_message_by_conversation(
+                conversation.id
+            ),
+            message_count=message_repository.get_message_count_by_conversation(
+                conversation.id
+            ),
+        )
+        for conversation in conversations
+    ]
+    return total, user_session_previews
 
 
 def get_inbox_conversations(
@@ -169,7 +200,10 @@ def get_inbox_conversations(
 
 
 def get_conversation_messages(
-    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
+    session: Session,
+    account_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    sort_desc: bool = False,
 ) -> list[db.Message]:
     conversation_repository = db.ConversationRepository(session)
     user_repository = db.UserRepository(session)
@@ -204,8 +238,13 @@ def get_conversation_messages(
     messages.sort(
         key=lambda m: (
             0 if isinstance(m, str) else 1,
-            m if isinstance(m, str) else m.body.get("timestamp", datetime.min),
+            (
+                m
+                if isinstance(m, str)
+                else m.body.get("timestamp", str(m.created_at or datetime.min))
+            ),
         ),
+        reverse=sort_desc,
     )
 
     return messages

@@ -2,7 +2,7 @@ import db
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account
 from api.schemas.admin.agent import Agent
-from api.schemas.admin.conversation import Message
+from api.schemas.admin.conversation import Message, UserSession
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.project import Project
 
@@ -52,12 +52,22 @@ def build_project(project: db.Project) -> Project:
 
 
 def build_message(message: db.Message) -> Message:
+    text = message.body.get("text") or {}
+    extras = message.body.get("extras") or {}
     return Message(
         id=message.id,
-        body=message.body,
+        content=text.get("body"),
+        type=message.body.get("type"),
+        channel=message.body.get("channel"),
+        author_type=message.body.get("author_type"),
+        metadata=message.body.get("metadata"),
+        channel_info=message.body.get("channel_info"),
+        sender_identifier=message.body.get("sender_identifier"),
+        recipient_identifier=message.body.get("recipient_identifier"),
+        escalated=bool(extras.get("escalated")),
+        sent_at=message.body.get("timestamp"),
         conversation_id=message.conversation_id,
         created_at=message.created_at,
-        updated_at=message.updated_at,
     )
 
 
@@ -76,4 +86,18 @@ def build_feedback(
         tags=feedback.tags,
         note=feedback.note,
         timestamp=feedback.updated_at.isoformat(),
+    )
+
+
+def build_user_session(
+    user_session: db.Conversation,
+    message_count: int,
+    last_message: db.Message,
+) -> UserSession:
+    return UserSession(
+        id=user_session.id,
+        status=user_session.status.value,
+        created_at=user_session.created_at,
+        last_user_message=build_message(last_message) if last_message else None,
+        total_messages=message_count,
     )
