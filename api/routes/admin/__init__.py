@@ -169,7 +169,7 @@ async def update_agent(
 """
 
 
-@admin_router.get("/accounts/{account_name}/conversations")
+@admin_router.get("/accounts/{account_name}/sessions")
 async def list_account_conversations(
     account_name: str,
     page: int = Query(..., description="Current page, first page starts at 1", gt=0),
@@ -180,7 +180,7 @@ async def list_account_conversations(
     session: Session = Depends(db.get_db),
 ) -> ListConversationsResponse:
     """
-    Retrieve the list of conversations for a given account. Returned conversations
+    Retrieve the list of convo sessions for a given account. Returned conversations
     are sorted by the timestamp of the last message in reverse chronological order.
     """
     return await _conversation.list_account_conversations(
@@ -188,9 +188,9 @@ async def list_account_conversations(
     )
 
 
-@admin_router.get("/conversations/{conversation_id}/messages")
-async def list_conversation_messages(
-    conversation_id: uuid.UUID,
+@admin_router.get("/sessions/{session_id}/messages")
+async def list_session_messages(
+    session_id: uuid.UUID,
     page: int = Query(..., description="Current page, first page starts at 1", gt=0),
     page_size: int = Query(
         ..., description="Size of each page, cannot be less than 1", gt=0
@@ -199,11 +199,11 @@ async def list_conversation_messages(
     session: Session = Depends(db.get_db),
 ) -> ListConversationMessagesResponse:
     """
-    Returns the detailed conversation messages for the given id. Messages are sorted
+    Returns the detailed convo session messages for the given id. Messages are sorted
     in chronological order.
     """
     return await _conversation.list_conversation_messages(
-        conversation_id, page, page_size, context, session
+        session_id, page, page_size, context, session
     )
 
 
