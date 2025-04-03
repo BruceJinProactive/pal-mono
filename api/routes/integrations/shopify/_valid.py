@@ -37,10 +37,11 @@ def valid_request(request: Request, app_name: str, is_callback=False) -> Shopify
     """
 
     # valid the app name
-    if app_name.lower() not in _app_name_whitelist:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="App not found."
-        )
+    # Disable the app name whitelist for now, as we can use secrets manager manage the app.
+    # if app_name.lower() not in _app_name_whitelist and False:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_404_NOT_FOUND, detail="App not found."
+    #     )
     shop_url = request.query_params.get("shop")
 
     # check the shop url
@@ -63,8 +64,14 @@ def valid_request(request: Request, app_name: str, is_callback=False) -> Shopify
                 detail="Invalid Request: Invalid State",
             )
         del _oauth_state[state]
-
-    session = get_shopify_session(shop_url, app_name)
+    try:
+        session = get_shopify_session(shop_url, app_name)
+    except Exception as e:
+        logger.error(f"Unable to get session for {shop_url}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Request: Unable to get App Session.",
+        )
 
     # validate the oauth request
 
