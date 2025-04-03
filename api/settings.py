@@ -111,6 +111,15 @@ class ApiSettings(BaseSettings):
             ]
         )
 
+        # Mindzero
+        valid_cors.extend(
+            [
+                "https://wordpress-899570-4918190.cloudwaysapps.com",
+                "https://mindzero.com",
+                "https://www.mindzero.com",
+            ]
+        )
+
         return valid_cors
 
 
