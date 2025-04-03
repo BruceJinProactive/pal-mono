@@ -119,6 +119,18 @@ async def update_account(
     return await _account.update_account(account_name, account, context, session)
 
 
+@admin_router.get("/accounts/{account_name}/projects")
+async def list_accounts_projects(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Retrieve a list of projects associated with the given account name.
+    """
+    return await _projects.list_accounts_projects(account_name, context, session)
+
+
 @admin_router.get("/accounts/{account_name}/stat")
 async def get_account_statistics(
     account_name: str,

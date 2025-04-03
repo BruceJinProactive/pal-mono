@@ -212,6 +212,24 @@ async def list_projects(
     return JSONResponse(jsonable_encoder([]))
 
 
+async def list_accounts_projects(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+) -> list[Project]:
+    authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return [build_project(project) for project in account.projects]
+
+
 def get_project(
     project_id: uuid.UUID,
     context: UserContext,
