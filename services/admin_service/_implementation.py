@@ -21,6 +21,9 @@ from services.user_service import get_users_by_account_id
 from utils import secret
 from utils.log import logger
 
+TEST_PHONE_NUMBERS = ["+16692463752", "+14384973894"]
+MOCK_USER_PREFIX = "mock-user"
+
 
 def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
     """
@@ -58,12 +61,13 @@ def list_user_sessions_in_account(
 ) -> tuple[int, list[UserSessionPreview]]:
     message_repository = db.MessageRepository(db_session)
 
+    # Retrieve all user sessions on the requested page
     account_users = user_service.get_users_by_account_id(db_session, account_id)
-    user_ids = [user.id for user in account_users]
-
+    account_users_ids = [user.id for user in account_users]
     total, conversations = message_service.get_conversations_by_users(
-        db_session, page, page_size, user_ids
+        db_session, page, page_size, account_users_ids
     )
+    # Build the session previews
     user_session_previews = [
         UserSessionPreview(
             user_session=conversation,
@@ -76,7 +80,22 @@ def list_user_sessions_in_account(
         )
         for conversation in conversations
     ]
-    return total, user_session_previews
+    # Filter out the test sessions
+    selected_session_previews = []
+    for preview in user_session_previews:
+        message = preview.last_message
+        if not message:
+            logger.warn(f"Session {preview.user_session.id} has no user messages!")
+            continue
+        if message.body.get("sender_identifier", "") in TEST_PHONE_NUMBERS:
+            continue
+        if str(message.body.get("sender_identifier", "")).startswith(MOCK_USER_PREFIX):
+            continue
+        if message.body.get("metadata", {}).get("testing"):
+            continue
+        selected_session_previews.append(preview)
+
+    return total, selected_session_previews
 
 
 def get_inbox_conversations(
