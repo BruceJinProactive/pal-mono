@@ -94,6 +94,15 @@ async def update_account(
     return build_account(db_account)
 
 
+async def delete_account(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+):
+    authorize_user_account(context, account_name)
+    account_service.delete_account(session, account_name)
+
+
 async def get_account_statistics(
     account_name: str,
     context: UserContext,

@@ -102,3 +102,17 @@ class AgentRepository:
             self.session.rollback()
             logger.error(f"Error replacing agent config: {e}")
             raise
+
+    def delete_agent(self, agent_id: uuid.UUID):
+        """
+        Delete the referenced agent. No-op if agent id does not exist.
+        """
+        try:
+            agent = self.get_agent(agent_id)
+            if agent:
+                self.session.delete(agent)
+                self.session.commit()
+        except (SQLAlchemyError, ValueError) as e:
+            self.session.rollback()
+            logger.error(f"Error deleting agent: {e}")
+            raise

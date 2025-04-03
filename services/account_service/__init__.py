@@ -104,6 +104,13 @@ def update_account(
     return _implementation.update_account(session, account_name, params)
 
 
+def delete_account(session: Session, account_name: str):
+    """
+    Delete the account identified by name.
+    """
+    return _implementation.delete_account(session, account_name)
+
+
 __all__ = [
     "get_accounts",
     "get_account",
@@ -111,4 +118,5 @@ __all__ = [
     "create_account_with_defaults",
     "create_account",
     "update_account",
+    "delete_account",
 ]

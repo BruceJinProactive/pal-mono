@@ -119,6 +119,18 @@ async def update_account(
     return await _account.update_account(account_name, account, context, session)
 
 
+@admin_router.delete("/accounts/{account_name}")
+async def delete_account(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete the account identified by name.
+    """
+    await _account.delete_account(account_name, context, session)
+
+
 @admin_router.get("/accounts/{account_name}/projects")
 async def list_accounts_projects(
     account_name: str,
@@ -186,6 +198,18 @@ async def update_agent(
     associated with the agent cannot be modified once created.
     """
     return await _agent.update_agent(agent_id, agent, context, session)
+
+
+@admin_router.delete("/agents/{agent_id}")
+async def delete_agent(
+    agent_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete the specified agent by id.
+    """
+    await _agent.delete_agent(agent_id, context, session)
 
 
 """
@@ -361,6 +385,18 @@ async def update_project(
     not be updated once created.
     """
     return await _projects.update_project(project_id, project, context, session)
+
+
+@admin_router.delete("/projects/{project_id}")
+async def delete_project(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete the specified project by id.
+    """
+    await _projects.delete_project(project_id, context, session)
 
 
 @admin_router.delete(

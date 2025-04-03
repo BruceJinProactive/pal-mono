@@ -93,9 +93,17 @@ def update_agent(
     return _implementation.update_agent(session, agent_id, params)
 
 
+def delete_agent(session: Session, agent_id: uuid.UUID):
+    """
+    Delete the specified agent, if agent_id does not exist, this is a no-op.
+    """
+    _implementation.delete_agent(session, agent_id)
+
+
 __all__ = [
     "get_agent",
     "replace_agent_config",
     "create_agent",
     "update_agent",
+    "delete_agent",
 ]

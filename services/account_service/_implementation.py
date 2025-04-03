@@ -73,3 +73,8 @@ def update_account(
     if updated_account is None:
         raise ValueError(f"Account {account_name} does not exist.")
     return updated_account
+
+
+def delete_account(session: Session, account_name: str):
+    account_repository = db.AccountRepository(session)
+    account_repository.delete_account(account_name)

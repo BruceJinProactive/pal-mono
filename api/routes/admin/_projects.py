@@ -299,3 +299,14 @@ async def update_project(
             headers={"Content-Type": "application/json"},
         )
     return build_project(db_project)
+
+
+async def delete_project(
+    project_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+):
+    project = project_service.get_project(session, project_id)
+    if project:
+        authorize_user_account(context, project.account.name)
+        project_service.delete_project(session, project_id)

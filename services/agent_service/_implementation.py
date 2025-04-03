@@ -101,3 +101,8 @@ def update_agent(
     if agent is None:
         raise ValueError(f"Agent with id {agent_id} not found")
     return agent
+
+
+def delete_agent(session: Session, agent_id: uuid.UUID):
+    agent_repository = db.AgentRepository(session)
+    agent_repository.delete_agent(agent_id)

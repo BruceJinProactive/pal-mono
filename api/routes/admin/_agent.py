@@ -82,3 +82,14 @@ async def update_agent(
             headers={"Content-Type": "application/json"},
         )
     return build_agent(db_agent)
+
+
+async def delete_agent(
+    agent_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+):
+    agent = agent_service.get_agent(session, agent_id)
+    if agent:
+        authorize_user_account(context, agent.account.name)
+        agent_service.delete_agent(session, agent_id)
