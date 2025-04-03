@@ -25,7 +25,7 @@ class Message(BaseModel):
 class UserSession(BaseModel):
     id: uuid.UUID
     status: str
-    last_user_message: Message | None
+    last_message: Message | None
     total_messages: int
     created_at: datetime.datetime
 

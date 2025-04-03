@@ -99,6 +99,6 @@ def build_user_session(
         id=user_session.id,
         status=user_session.status.value,
         created_at=user_session.created_at,
-        last_user_message=build_message(last_message) if last_message else None,
+        last_message=build_message(last_message) if last_message else None,
         total_messages=message_count,
     )

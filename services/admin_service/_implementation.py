@@ -61,6 +61,13 @@ def list_user_sessions_in_account(
 ) -> tuple[int, list[UserSessionPreview]]:
     message_repository = db.MessageRepository(db_session)
 
+    def is_test_message(message: db.Message) -> bool:
+        if message.body.get("metadata", {}).get("testing"):
+            return True
+        if message.body.get("sender_identifier", "").startswith(MOCK_USER_PREFIX):
+            return True
+        return False
+
     # Retrieve all user sessions on the requested page
     account_users = user_service.get_users_by_account_id(db_session, account_id)
     account_users_ids = [user.id for user in account_users]
@@ -73,7 +80,8 @@ def list_user_sessions_in_account(
             user_session=conversation,
             last_message=message_repository.get_last_user_message_by_conversation(
                 conversation.id
-            ),
+            )
+            or message_repository.get_last_message_by_conversation(conversation.id),
             message_count=message_repository.get_message_count_by_conversation(
                 conversation.id
             ),
@@ -84,14 +92,8 @@ def list_user_sessions_in_account(
     selected_session_previews = []
     for preview in user_session_previews:
         message = preview.last_message
-        if not message:
-            logger.warn(f"Session {preview.user_session.id} has no user messages!")
-            continue
-        if message.body.get("sender_identifier", "") in TEST_PHONE_NUMBERS:
-            continue
-        if str(message.body.get("sender_identifier", "")).startswith(MOCK_USER_PREFIX):
-            continue
-        if message.body.get("metadata", {}).get("testing"):
+        if message and is_test_message(message):
+            # drop this session
             continue
         selected_session_previews.append(preview)
 
