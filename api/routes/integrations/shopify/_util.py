@@ -58,6 +58,8 @@ def get_shopify_session(shop_url: str, app_name: str) -> shopify.Session:
         shopify.Session: The Shopify session for the given merchant.
     """
     app_envs = _get_envs_from_secret_manager(app_name)
+    if None in app_envs.values():
+        raise ValueError(f"Missing environment variables for {app_name}")
     session = shopify.Session(shop_url, app_envs["SHOPIFY_API_VER"])
     session.setup(
         api_key=app_envs["SHOPIFY_API_KEY"], secret=app_envs["SHOPIFY_API_SECRET"]
