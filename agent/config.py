@@ -37,3 +37,6 @@ class AgentConfig(BaseModel):
     tool: ToolConfig
 
     metadata: AgentMetadata
+
+    # Additional context added to the end of the system message.
+    additional_context: Optional[str] = None

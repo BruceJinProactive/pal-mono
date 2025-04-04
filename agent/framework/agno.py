@@ -55,7 +55,7 @@ class AgnoAgent:
             add_history_to_messages=True,
             num_history_responses=5,
             response_model=ResponseModel,
-            add_datetime_to_instructions=True,
+            additional_context=config.additional_context,
             debug_mode=True,
         )
 

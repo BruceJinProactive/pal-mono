@@ -44,6 +44,24 @@ class RawConfig(BaseModel):
             raise ValueError("'agent_raw_config' is not provided.")
 
         try:
+            additional_context = ""
+            # Add timezone datetime information
+            if self.project_raw_config and self.project_raw_config.get("timezone"):
+                # TODO: Once timezone PR is merged on Agno's side we can remove this
+                # logic and use add_datetime_to_instructions + timezone_identifier instead
+                from datetime import datetime
+                from zoneinfo import ZoneInfo, available_timezones
+
+                timezone = self.project_raw_config.get("timezone")
+
+                if timezone in available_timezones():
+                    tz = ZoneInfo(timezone)
+                    time = datetime.now(tz)
+
+                    additional_context += f"The current time is {time}."
+                else:
+                    raise ValueError(f"Timezone '{timezone}' is invalid.")
+
             return AgentConfig(
                 persona=self._get_agent_persona(self.agent_raw_config),
                 model=ModelConfig(
@@ -64,6 +82,7 @@ class RawConfig(BaseModel):
                     session_id=str(self.conversation_id),
                     framework=AgentFramework.AGNO,
                 ),
+                additional_context=additional_context,
             )
         except ValueError as e:
             raise ValueError(f"Invalid RawConfig: {e}") from e
