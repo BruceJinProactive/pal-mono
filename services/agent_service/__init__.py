@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import db
 from agent import AgentConfig
 
-from . import _implementation, legacy
+from . import _implementation
 from .schema import AgentParams
 
 
