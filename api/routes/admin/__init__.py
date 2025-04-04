@@ -233,6 +233,9 @@ async def list_account_conversations(
     page_size: int = Query(
         ..., description="Size of each page, cannot be less than 1", gt=0
     ),
+    hide_testing_sessions: bool = Query(
+        True, description="Set to false to include test sessions in the result"
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListUserSessionsResponse:
@@ -241,7 +244,15 @@ async def list_account_conversations(
     are sorted by the timestamp of the last message in reverse chronological order.
     """
     return await _conversation.list_account_user_sessions(
-        account_name, keyword, channel, lookback, page, page_size, context, session
+        account_name,
+        keyword,
+        channel,
+        lookback,
+        page,
+        page_size,
+        hide_testing_sessions,
+        context,
+        session,
     )
 
 

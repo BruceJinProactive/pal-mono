@@ -362,7 +362,11 @@ class MessageRepository:
             return 0
 
     def filter_sessions_by_keyword(
-        self, session_ids: list[uuid.UUID], keyword, channel: str
+        self,
+        session_ids: list[uuid.UUID],
+        keyword,
+        channel: str,
+        hide_testing_sessions: bool = True,
     ) -> list[uuid.UUID]:
         """
         Search for sessions in the provided session ids by message details.
@@ -371,6 +375,7 @@ class MessageRepository:
             session_ids: Limit the search to these session.
             keyword: A text to search against message content and sender phone number.
             channel: The channel of the message, e.g: sms, voice, etc...
+            hide_testing_sessions: Filters out testing sessions is True.
 
         Returns:
             List of matching session ids.
@@ -378,14 +383,24 @@ class MessageRepository:
         try:
             conditions = [
                 Message.conversation_id.in_(session_ids),
-                not_(Message.body["sender_identifier"].astext.like("mock-user%")),
-                not_(
-                    cast(
-                        coalesce(Message.body["metadata"]["testing"].astext, "false"),
-                        Boolean,
-                    )
-                ),
+                Message.body["author_type"].astext == "user",
             ]
+            if hide_testing_sessions:
+                conditions.extend(
+                    [
+                        not_(
+                            Message.body["sender_identifier"].astext.like("mock-user%")
+                        ),
+                        not_(
+                            cast(
+                                coalesce(
+                                    Message.body["metadata"]["testing"].astext, "false"
+                                ),
+                                Boolean,
+                            )
+                        ),
+                    ]
+                )
             if keyword:
                 conditions.append(
                     or_(

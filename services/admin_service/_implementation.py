@@ -60,6 +60,7 @@ def list_user_sessions_in_account(
     after_datetime: datetime | None,
     page: int,
     page_size: int,
+    hide_testing_sessions: bool,
     db_session: Session,
 ) -> tuple[int, list[UserSessionPreview]]:
     message_repository = db.MessageRepository(db_session)
@@ -72,7 +73,7 @@ def list_user_sessions_in_account(
         account_users_ids
     )
     filtered_session_ids = message_repository.filter_sessions_by_keyword(
-        all_session_ids, keyword, channel
+        all_session_ids, keyword, channel, hide_testing_sessions
     )
     total, sessions = conversation_repository.get_paginated_sessions_by_ids(
         filtered_session_ids, page, page_size, after_datetime

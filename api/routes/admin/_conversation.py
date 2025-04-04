@@ -22,6 +22,7 @@ async def list_account_user_sessions(
     lookback: int,
     page: int,
     page_size: int,
+    hide_testing_sessions: bool,
     context: UserContext,
     session: Session,
 ) -> ListUserSessionsResponse:
@@ -38,6 +39,7 @@ async def list_account_user_sessions(
         after_datetime=after_datetime,
         page=page,
         page_size=page_size,
+        hide_testing_sessions=hide_testing_sessions,
         db_session=session,
     )
     total_pages = (total + page_size - 1) // page_size

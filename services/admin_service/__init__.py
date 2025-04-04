@@ -18,10 +18,18 @@ def list_user_sessions_in_account(
     after_datetime: datetime.datetime | None,
     page: int,
     page_size: int,
+    hide_testing_sessions: bool,
     db_session: Session,
 ) -> tuple[int, list[UserSessionPreview]]:
     return _implementation.list_user_sessions_in_account(
-        account_id, keyword, channel, after_datetime, page, page_size, db_session
+        account_id,
+        keyword,
+        channel,
+        after_datetime,
+        page,
+        page_size,
+        hide_testing_sessions,
+        db_session,
     )
 
 
