@@ -2,11 +2,12 @@ import html
 
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 import db
 from api.routes.endpoints import endpoints
 from api.routes.integrations.shopify import _implementation
-from api.schemas.chat.chat import ChatRequest, ChatResponse
+from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
 
 integrations_router = APIRouter(prefix=endpoints.INTEGRATIONS, tags=["Integrations"])
@@ -48,4 +49,17 @@ async def chat(
 
     return await _implementation.api_chat(
         chat_request, request, html.escape(app_name), session
+    )
+
+
+@integrations_router.get("/shopify/{app_name}/chat/info")
+def get_project_info(
+    request: Request,
+    app_name: str,
+    session: Session = Depends(db.get_db),
+) -> ChatInfo:
+    return _implementation.api_project_info(
+        request,
+        html.escape(app_name),
+        session,
     )

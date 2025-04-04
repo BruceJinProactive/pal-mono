@@ -4,8 +4,9 @@ import os
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from api.routes.chat.chat import chat
+from api.routes.chat.chat import chat, get_project_info
 from api.schemas.chat.chat import ChatRequest
 from utils.log import logger
 
@@ -93,3 +94,16 @@ async def api_chat(
     # make sure the indentifer is identical to the store name, the store name can be trusted if the valid_request is true; the browser won't need to send the store name and the apikey in the request.
     chat_request.message.recipient_identifier = shopifyStore.recipient_identifier
     return await chat(chat_request, session)
+
+
+def api_project_info(
+    request: Request,
+    app_name: str,
+    session: Session,
+):
+    shopifyStore = valid_request(request, app_name)
+    return get_project_info(
+        request,
+        shopifyStore.store_name,
+        session,
+    )
