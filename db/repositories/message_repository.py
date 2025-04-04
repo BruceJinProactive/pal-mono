@@ -366,6 +366,7 @@ class MessageRepository:
         session_ids: list[uuid.UUID],
         keyword: str,
         channel: str | None,
+        escalated: bool,
         hide_testing_sessions: bool = True,
     ) -> list[uuid.UUID]:
         """
@@ -375,6 +376,7 @@ class MessageRepository:
             session_ids: Limit the search to these session.
             keyword: A text to search against message content and sender phone number.
             channel: The channel of the message, e.g: sms, voice, etc...
+            escalated: Search for escalated messages only if True.
             hide_testing_sessions: Filters out testing sessions is True.
 
         Returns:
@@ -382,9 +384,38 @@ class MessageRepository:
         """
         try:
             conditions = [
-                Message.conversation_id.in_(session_ids),
                 Message.body["author_type"].astext == "user",
             ]
+            if escalated:
+                # only search within those escalated conversations. We use
+                # sub-query because these escalation booleans are usually
+                # on the agent messages which are not included due to the
+                # above user author type check. Be very careful about modifying
+                # this logic.
+                conditions.append(
+                    Message.conversation_id.in_(
+                        select(distinct(Message.conversation_id)).where(
+                            cast(
+                                coalesce(
+                                    Message.body["extras"]["escalated"].astext, "false"
+                                ),
+                                Boolean,
+                            ),
+                            Message.conversation_id.in_(session_ids),
+                        )
+                    )
+                )
+            else:
+                conditions.append(Message.conversation_id.in_(session_ids))
+            if keyword:
+                conditions.append(
+                    or_(
+                        Message.body["text"]["body"].astext.ilike(f"%{keyword}%"),
+                        Message.body["sender_identifier"].astext.ilike(f"%{keyword}%"),
+                    )
+                )
+            if channel:
+                conditions.append(Message.body["channel"].astext == channel)
             if hide_testing_sessions:
                 conditions.extend(
                     [
@@ -401,16 +432,6 @@ class MessageRepository:
                         ),
                     ]
                 )
-            if keyword:
-                conditions.append(
-                    or_(
-                        Message.body["text"]["body"].astext.ilike(f"%{keyword}%"),
-                        Message.body["sender_identifier"].astext.ilike(f"%{keyword}%"),
-                    )
-                )
-            if channel:
-                conditions.append(Message.body["channel"].astext == channel)
-
             query = select(distinct(Message.conversation_id)).where(*conditions)
             result = self.session.execute(query).scalars()
             return list(result.all())

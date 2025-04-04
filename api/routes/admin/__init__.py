@@ -236,6 +236,9 @@ async def list_account_conversations(
     page_size: int = Query(
         ..., description="Size of each page, cannot be less than 1", gt=0
     ),
+    escalated: bool = Query(
+        False, description="Returns only the escalated sessions if set to true"
+    ),
     hide_testing_sessions: bool = Query(
         True, description="Set to false to include test sessions in the result"
     ),
@@ -253,6 +256,7 @@ async def list_account_conversations(
         lookback,
         page,
         page_size,
+        escalated,
         hide_testing_sessions,
         context,
         session,

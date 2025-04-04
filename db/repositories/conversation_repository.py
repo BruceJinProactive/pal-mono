@@ -182,7 +182,7 @@ class ConversationRepository:
     def get_paginated_sessions_by_ids(
         self,
         session_ids: list[uuid.UUID],
-        offset,
+        offset: int,
         limit: int,
         after_datetime: datetime.datetime | None,
     ) -> tuple[int, list[Conversation]]:

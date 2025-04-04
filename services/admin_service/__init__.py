@@ -18,6 +18,7 @@ def list_user_sessions_in_account(
     after_datetime: datetime.datetime | None,
     page: int,
     page_size: int,
+    escalated: bool,
     hide_testing_sessions: bool,
     db_session: Session,
 ) -> tuple[int, list[UserSessionPreview]]:
@@ -28,6 +29,7 @@ def list_user_sessions_in_account(
         after_datetime,
         page,
         page_size,
+        escalated,
         hide_testing_sessions,
         db_session,
     )

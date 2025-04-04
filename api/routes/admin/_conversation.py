@@ -24,6 +24,7 @@ async def list_account_user_sessions(
     lookback: int,
     page: int,
     page_size: int,
+    escalated: bool,
     hide_testing_sessions: bool,
     context: UserContext,
     session: Session,
@@ -41,6 +42,7 @@ async def list_account_user_sessions(
         after_datetime=after_datetime,
         page=page,
         page_size=page_size,
+        escalated=escalated,
         hide_testing_sessions=hide_testing_sessions,
         db_session=session,
     )
