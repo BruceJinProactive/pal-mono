@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from agent.legacy.memory import add_memory, clear_memory, delete_memory, get_memory
 from services.account_service import get_account, get_accounts
 
 
@@ -146,50 +145,6 @@ def universal_picker_ui(session: Session) -> None:
     account_picker_ui(session)
     project_picker_ui(session)
     agent_picker_ui(session)
-
-
-def memory_ui(account_name: str, user_id: str) -> None:
-    st.sidebar.write("---")
-    with st.sidebar:
-        st.subheader("Memory")
-
-    memory = get_memory(account_name)
-    memory_rows = memory.db.read_memories(user_id=None, limit=None)  # type: ignore
-
-    # Display existing memories
-    if memory_rows:
-        for index, memory_row in enumerate(memory_rows):
-            col1, col2 = st.sidebar.columns([12, 2.5])
-            with col1:
-                st.warning(memory_row.memory["memory"])
-            with col2:
-                st.write("")
-                if st.button("✕", key=f"remove_memory_{index}"):
-                    if isinstance(memory_row.id, str):
-                        delete_memory(memory, memory_row.id)
-                    st.rerun()
-    # Add the "Add Memory" button
-    if "add_memory" not in st.session_state:
-        st.session_state["add_memory"] = False
-    if st.sidebar.button("Add Memory"):
-        st.session_state["add_memory"] = not st.session_state["add_memory"]
-
-    # Show the text input field when "Add Memory" is clicked
-    if st.session_state["add_memory"]:
-        new_memory = st.sidebar.text_input("Enter memory")
-        if st.sidebar.button("Save"):
-            if new_memory:
-                add_memory(memory, new_memory)
-                # Close the text field after saving
-                st.session_state["add_memory"] = False
-                st.rerun()
-    st.sidebar.markdown("---")
-
-
-def clear_memory_ui(account_name: str, user_id: str) -> None:
-    if st.button("Clear memory"):
-        clear_memory(account_name, user_id)
-        st.rerun()
 
 
 def json_decode(json_string: str) -> dict:

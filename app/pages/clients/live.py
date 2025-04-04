@@ -15,9 +15,7 @@ from api.schemas.chat.message import (
 from app.auth import user
 from app.shared import (
     chat_render_toggle,
-    clear_memory_ui,
     get_app_db,
-    memory_ui,
     universal_picker_ui,
 )
 from services.account_service import get_account
@@ -107,7 +105,7 @@ def main() -> str | None:
         st.info(f"Agent Name: {agent_name}")
         st.info(f"Conversation start date: {getattr(conversation, 'created_at', None)}")
         chat_render_toggle()
-    col1, col2, _, _ = st.columns([1] * 4)
+    col1, _, _, _ = st.columns([1] * 4)
     with col1:
         if st.button("Create new chat") and not st.session_state["new_chat"]:
             st.session_state["new_chat"] = True
@@ -117,8 +115,6 @@ def main() -> str | None:
             except Exception as e:
                 st.error(f"Error creating new chat: {e}")
                 st.session_state["new_chat"] = False
-    with col2:
-        clear_memory_ui(account_name, str(db_user.id))
 
     # prompt user
     if prompt := st.chat_input():
@@ -159,7 +155,5 @@ def main() -> str | None:
 if user.is_logged_in:
     user_id = main()
     universal_picker_ui(session)
-    if user_id:
-        memory_ui(st.session_state.get("account_name", ""), user_id)
 else:
     switch_page("home")

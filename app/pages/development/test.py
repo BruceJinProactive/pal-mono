@@ -14,7 +14,7 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from app.auth import user
-from app.shared import clear_memory_ui, get_app_db, memory_ui, universal_picker_ui
+from app.shared import get_app_db, universal_picker_ui
 from services.account_service import get_account
 from services.message_service import create_conversation, get_chat_response
 from services.user_service import get_user_by_channel_identifier
@@ -127,9 +127,7 @@ def main() -> str | None:
         ]
         st.session_state["expected_outputs"] = new_outputs
 
-    col1, col2, _, _ = st.columns([1] * 4)
-    with col1:
-        clear_memory_ui(account_name, str(db_user.id))
+    _, col2, _, _ = st.columns([1] * 4)
     with col2:
         # Process predefined inputs as a batch and render as blocks
         if st.button("Run Automation"):
@@ -188,7 +186,5 @@ def main() -> str | None:
 if user.is_logged_in:
     user_id = main()
     universal_picker_ui(session)
-    if user_id:
-        memory_ui(st.session_state.get("account_name", ""), user_id)
 else:
     switch_page("home")
