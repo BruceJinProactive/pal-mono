@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -74,7 +75,10 @@ class ConversationRepository:
             return None
 
     def get_conversations_by_users(
-        self, user_ids: list[uuid.UUID], page: int, page_size: int
+        self,
+        user_ids: list[uuid.UUID],
+        page: int,
+        page_size: int,
     ) -> tuple[list[Conversation], int]:
         """
         Retrieve conversations for a list of user IDs with pagination support.
@@ -94,8 +98,9 @@ class ConversationRepository:
         try:
             # Base query without pagination for counting
             base_query = self.session.query(Conversation).filter(
-                Conversation.user_id.in_(user_ids)
+                Conversation.user_id.in_(user_ids),
             )
+
             total_count = base_query.count()
 
             # Apply ordering and pagination
@@ -173,3 +178,42 @@ class ConversationRepository:
             self.session.rollback()
             logger.error(f"Error retrieving session count: {e}")
             return 0
+
+    def get_paginated_sessions_by_ids(
+        self,
+        session_ids: list[uuid.UUID],
+        offset,
+        limit: int,
+        after_datetime: datetime.datetime | None,
+    ) -> tuple[int, list[Conversation]]:
+        """
+        Retrieve a paginated list of Conversation sessions by their IDs.
+
+        Args:
+            session_ids (list[uuid.UUID]): A list of Conversation IDs to filter by.
+            offset (int): The number of records to skip for pagination.
+            limit (int): The maximum number of records to return.
+            after_datetime (datetime): Restrict all sessions found to be created after this
+                time.
+
+        Returns:
+            list[Conversation]: A list of Conversation objects matching the given IDs,
+            ordered by creation date in descending order. Returns an empty list if an
+            error occurs or no matching records are found.
+        """
+        try:
+            base_query = (
+                self.session.query(Conversation)
+                .filter(
+                    Conversation.id.in_(session_ids),
+                    Conversation.created_at >= after_datetime,
+                )
+                .order_by(Conversation.created_at.desc())
+            )
+            count = base_query.count()
+            sessions = base_query.offset(offset).limit(limit).all()
+            return count, sessions
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving sessions: {e}")
+            return 0, []

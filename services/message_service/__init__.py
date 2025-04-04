@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from typing import AsyncIterator
 
@@ -142,8 +143,20 @@ def get_conversations_by_user(
     )
 
 
+def get_session_ids_by_users(
+    session: Session, user_ids: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    """
+    Returns an id list for the sessions that have the given user ids.
+    """
+    return _implementation.get_session_ids_by_users(session, user_ids)
+
+
 def get_conversations_by_users(
-    session: Session, page: int, page_size: int, user_ids: list[uuid.UUID]
+    session: Session,
+    page: int,
+    page_size: int,
+    user_ids: list[uuid.UUID],
 ) -> tuple[int, list[db.Conversation]]:
     """
     Retrieves conversations associated with a list of user IDs.

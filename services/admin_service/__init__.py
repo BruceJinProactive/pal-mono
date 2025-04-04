@@ -1,3 +1,4 @@
+import datetime
 import uuid
 
 from sqlalchemy.orm import Session
@@ -12,12 +13,15 @@ from .schema import UserSessionPreview
 
 def list_user_sessions_in_account(
     account_id: uuid.UUID,
+    keyword: str,
+    channel: str,
+    after_datetime: datetime.datetime | None,
     page: int,
     page_size: int,
     db_session: Session,
 ) -> tuple[int, list[UserSessionPreview]]:
     return _implementation.list_user_sessions_in_account(
-        account_id, page, page_size, db_session
+        account_id, keyword, channel, after_datetime, page, page_size, db_session
     )
 
 

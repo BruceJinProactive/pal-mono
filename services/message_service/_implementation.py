@@ -467,8 +467,19 @@ def get_conversations_by_user(
     return []
 
 
+def get_session_ids_by_users(
+    session: Session, user_ids: list[uuid.UUID]
+) -> list[uuid.UUID]:
+    conversation_repository = db.ConversationRepository(session)
+    session_ids = conversation_repository.get_conversation_ids_by_user_ids(user_ids)
+    return session_ids
+
+
 def get_conversations_by_users(
-    session: Session, page: int, page_size: int, user_ids: list[uuid.UUID]
+    session: Session,
+    page: int,
+    page_size: int,
+    user_ids: list[uuid.UUID],
 ) -> tuple[int, list[db.Conversation]]:
     conversation_repository = db.ConversationRepository(session)
     conversations, total_conversations = (

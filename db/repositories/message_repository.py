@@ -1,10 +1,12 @@
 import datetime
 import uuid
 
+from sqlalchemy import Boolean, cast, distinct, not_, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.functions import coalesce
 
 from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dttm import current_utc
@@ -358,3 +360,46 @@ class MessageRepository:
             self.session.rollback()
             logger.error(f"Error retrieving escalated conversation IDs: {e}")
             return 0
+
+    def filter_sessions_by_keyword(
+        self, session_ids: list[uuid.UUID], keyword, channel: str
+    ) -> list[uuid.UUID]:
+        """
+        Search for sessions in the provided session ids by message details.
+
+        Args:
+            session_ids: Limit the search to these session.
+            keyword: A text to search against message content and sender phone number.
+            channel: The channel of the message, e.g: sms, voice, etc...
+
+        Returns:
+            List of matching session ids.
+        """
+        try:
+            conditions = [
+                Message.conversation_id.in_(session_ids),
+                not_(Message.body["sender_identifier"].astext.like("mock-user%")),
+                not_(
+                    cast(
+                        coalesce(Message.body["metadata"]["testing"].astext, "false"),
+                        Boolean,
+                    )
+                ),
+            ]
+            if keyword:
+                conditions.append(
+                    or_(
+                        Message.body["text"].astext.ilike(f"%{keyword}%"),
+                        Message.body["sender_identifier"].astext.ilike(f"%{keyword}%"),
+                    )
+                )
+            if channel:
+                conditions.append(Message.body["channel"].astext == channel)
+
+            query = select(distinct(Message.conversation_id)).where(*conditions)
+            result = self.session.execute(query).scalars()
+            return list(result.all())
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error filtering sessions by keyword: {e}")
+            return []

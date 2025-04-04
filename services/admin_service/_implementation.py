@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, declarative_base
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
-from services import message_service, user_service
+from services import user_service
 from services.admin_service.schema import UserSessionPreview
 from services.message_service import (
     get_conversations_by_users,
@@ -55,49 +55,44 @@ def get_conversation_by_id(
 
 def list_user_sessions_in_account(
     account_id: uuid.UUID,
+    keyword: str,
+    channel: str,
+    after_datetime: datetime | None,
     page: int,
     page_size: int,
     db_session: Session,
 ) -> tuple[int, list[UserSessionPreview]]:
     message_repository = db.MessageRepository(db_session)
-
-    def is_test_message(message: db.Message) -> bool:
-        if message.body.get("metadata", {}).get("testing"):
-            return True
-        if message.body.get("sender_identifier", "").startswith(MOCK_USER_PREFIX):
-            return True
-        return False
+    conversation_repository = db.ConversationRepository(db_session)
 
     # Retrieve all user sessions on the requested page
     account_users = user_service.get_users_by_account_id(db_session, account_id)
     account_users_ids = [user.id for user in account_users]
-    total, conversations = message_service.get_conversations_by_users(
-        db_session, page, page_size, account_users_ids
+    all_session_ids = conversation_repository.get_conversation_ids_by_user_ids(
+        account_users_ids
     )
+    filtered_session_ids = message_repository.filter_sessions_by_keyword(
+        all_session_ids, keyword, channel
+    )
+    total, sessions = conversation_repository.get_paginated_sessions_by_ids(
+        filtered_session_ids, page, page_size, after_datetime
+    )
+
     # Build the session previews
     user_session_previews = [
         UserSessionPreview(
-            user_session=conversation,
+            user_session=session,
             last_message=message_repository.get_last_user_message_by_conversation(
-                conversation.id
+                session.id
             )
-            or message_repository.get_last_message_by_conversation(conversation.id),
+            or message_repository.get_last_message_by_conversation(session.id),
             message_count=message_repository.get_message_count_by_conversation(
-                conversation.id
+                session.id
             ),
         )
-        for conversation in conversations
+        for session in sessions
     ]
-    # Filter out the test sessions
-    selected_session_previews = []
-    for preview in user_session_previews:
-        message = preview.last_message
-        if message and is_test_message(message):
-            # drop this session
-            continue
-        selected_session_previews.append(preview)
-
-    return total, selected_session_previews
+    return total, user_session_previews
 
 
 def get_inbox_conversations(

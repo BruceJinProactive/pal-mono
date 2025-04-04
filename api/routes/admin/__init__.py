@@ -216,11 +216,19 @@ async def delete_agent(
 ---------- Conversation Endpoints ----------
 --------------------------------------------
 """
+DEFAULT_SESSION_AGE = 3600 * 24 * 365  # 365 days of history
 
 
 @admin_router.get("/accounts/{account_name}/sessions")
 async def list_account_conversations(
     account_name: str,
+    keyword: str = Query("", description="Optional keyword to filter the results by"),
+    channel: str = Query("", description="Optional channel to filter the results by"),
+    lookback: int = Query(
+        DEFAULT_SESSION_AGE,
+        description="Only retrieve sessions created within the specified lookback period in seconds.",
+        gt=0,
+    ),
     page: int = Query(..., description="Current page, first page starts at 1", gt=0),
     page_size: int = Query(
         ..., description="Size of each page, cannot be less than 1", gt=0
@@ -233,7 +241,7 @@ async def list_account_conversations(
     are sorted by the timestamp of the last message in reverse chronological order.
     """
     return await _conversation.list_account_user_sessions(
-        account_name, page, page_size, context, session
+        account_name, keyword, channel, lookback, page, page_size, context, session
     )
 
 

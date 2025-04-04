@@ -1,3 +1,4 @@
+import datetime
 import math
 import uuid
 
@@ -16,6 +17,9 @@ from ._utils import SortOrder, UserContext, not_found_error
 
 async def list_account_user_sessions(
     account_name: str,
+    keyword: str,
+    channel: str,
+    lookback: int,
     page: int,
     page_size: int,
     context: UserContext,
@@ -26,8 +30,12 @@ async def list_account_user_sessions(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
+    after_datetime = datetime.datetime.now() - datetime.timedelta(seconds=lookback)
     total, user_session_previews = admin_service.list_user_sessions_in_account(
         account_id=account.id,
+        keyword=keyword,
+        channel=channel,
+        after_datetime=after_datetime,
         page=page,
         page_size=page_size,
         db_session=session,
