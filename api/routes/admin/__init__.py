@@ -31,6 +31,7 @@ from api.schemas.admin.project import (
     Project,
     UpdateProjectRequest,
 )
+from api.schemas.chat.message import Channel
 
 from . import _account, _agent, _analytics, _conversation, _feedback, _projects
 from ._auth import authenticate_user, get_user_info
@@ -223,7 +224,9 @@ DEFAULT_SESSION_AGE = 3600 * 24 * 365  # 365 days of history
 async def list_account_conversations(
     account_name: str,
     keyword: str = Query("", description="Optional keyword to filter the results by"),
-    channel: str = Query("", description="Optional channel to filter the results by"),
+    channel: Channel | None = Query(
+        None, description="Optional channel to filter the results by"
+    ),
     lookback: int = Query(
         DEFAULT_SESSION_AGE,
         description="Only retrieve sessions created within the specified lookback period in seconds.",

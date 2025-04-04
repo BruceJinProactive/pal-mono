@@ -364,8 +364,8 @@ class MessageRepository:
     def filter_sessions_by_keyword(
         self,
         session_ids: list[uuid.UUID],
-        keyword,
-        channel: str,
+        keyword: str,
+        channel: str | None,
         hide_testing_sessions: bool = True,
     ) -> list[uuid.UUID]:
         """

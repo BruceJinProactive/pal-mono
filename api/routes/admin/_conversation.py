@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
+    UserSessionSearchFilters,
 )
+from api.schemas.chat.message import Channel
 from services import account_service, admin_service
 
 from . import _builder
@@ -18,7 +20,7 @@ from ._utils import SortOrder, UserContext, not_found_error
 async def list_account_user_sessions(
     account_name: str,
     keyword: str,
-    channel: str,
+    channel: Channel | None,
     lookback: int,
     page: int,
     page_size: int,
@@ -35,7 +37,7 @@ async def list_account_user_sessions(
     total, user_session_previews = admin_service.list_user_sessions_in_account(
         account_id=account.id,
         keyword=keyword,
-        channel=channel,
+        channel=channel.value if channel else None,
         after_datetime=after_datetime,
         page=page,
         page_size=page_size,
@@ -55,6 +57,9 @@ async def list_account_user_sessions(
 
     return ListUserSessionsResponse(
         sessions=user_sessions,
+        filters=UserSessionSearchFilters(
+            channels=[channel.value for channel in Channel]
+        ),
         total_sessions=total,
         total_pages=total_pages,
     )

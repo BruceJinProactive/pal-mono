@@ -49,8 +49,13 @@ class InboxResponse(BaseModel):
     inbox: list[ConversationPreview]
 
 
+class UserSessionSearchFilters(BaseModel):
+    channels: list[str]
+
+
 class ListUserSessionsResponse(BaseModel):
     sessions: list[UserSession]
+    filters: UserSessionSearchFilters
     total_sessions: int
     total_pages: int
 

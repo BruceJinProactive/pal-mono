@@ -56,7 +56,7 @@ def get_conversation_by_id(
 def list_user_sessions_in_account(
     account_id: uuid.UUID,
     keyword: str,
-    channel: str,
+    channel: str | None,
     after_datetime: datetime | None,
     page: int,
     page_size: int,
