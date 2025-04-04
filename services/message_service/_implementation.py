@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 import db
 from agent import Agent
 from agent.input_output import Output
-from agent.model import BaseOutputModel
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from api.schemas.chat.message import (
     AuthorType,
@@ -204,22 +203,9 @@ async def get_chat_response_async(
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[Message]:
+    logger.info(f"get_chat_response_stream received message: {message}")
     user = None
     message_repo = db.MessageRepositoryAsync(session)
-
-    async def error_response_generator() -> AsyncIterator[Message]:
-        error_message = Message(
-            author_type=AuthorType.AGENT,
-            sender_identifier=message.recipient_identifier,
-            recipient_identifier=message.sender_identifier,
-            channel=message.channel,
-            broker=message.broker,
-            channel_info=message.channel_info,
-            text=TextObject(body="Something went wrong. Please try again."),
-            metadata=message.metadata,
-            extras=Extras(),
-        )
-        yield error_message
 
     try:
         # find project with matching channel platform, identifier pair
@@ -256,7 +242,8 @@ async def get_chat_response_stream(
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
-        agent = await agent_service.legacy.get_ai_agent_async(
+        # Construct config
+        config = await agent_service.construct_agent_config(
             session=session,
             agent_id=agent_id,
             user_id=user.id,
@@ -264,123 +251,63 @@ async def get_chat_response_stream(
             conversation_id=conversation_id,
             stream=True,
         )
+        agent = Agent(config=config)
 
-        # Get response from agent
-        request_content = message.get_content()
-        response_stream = await agent.arun(request_content, stream=True)
-        event_properties = {
-            "account_name": account_name,
-            "channel": response_stream.channel.value,
-            "conversation_id": str(conversation_id),
-        }
-        analytics_service.track_event(
-            user_id=str(user.id),
-            event_name=AnalyticsEvent.AGENT_MESSAGE,
-            event_properties=event_properties,
+        input = _utils.get_agent_input_from_message(message=message)
+        logger.info(f"Input: {input}")
+
+        output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+
+        logger.info(f"Output: {output}")
+
+        new_flow_response_messages = _utils.get_messages_from_agent_output(
+            output=output, input_message=message, project_name=project.name
         )
 
-        return response_stream
+        if new_flow_response_messages:
+            first_msg = new_flow_response_messages[0]
+
+            event_properties = {
+                "account_name": account_name,
+                "channel": first_msg.channel.value,
+                "conversation_id": str(conversation_id),
+            }
+            analytics_service.track_event(
+                user_id=str(user.id),
+                event_name=AnalyticsEvent.AGENT_MESSAGE,
+                event_properties=event_properties,
+            )
+
+        async def message_response_generator() -> AsyncIterator[Message]:
+            for message in new_flow_response_messages:
+                yield message
+
+        return message_response_generator()
 
     except Exception:
         # Log any error and return error message stream
         logger.exception("Error in get_chat_response_stream")
+
+        async def error_response_generator() -> AsyncIterator[Message]:
+            error_message = Message(
+                author_type=AuthorType.AGENT,
+                sender_identifier=message.recipient_identifier,
+                recipient_identifier=message.sender_identifier,
+                channel=message.channel,
+                broker=message.broker,
+                channel_info=message.channel_info,
+                text=TextObject(body="Something went wrong. Please try again."),
+                metadata=message.metadata,
+                extras=Extras(),
+            )
+            yield error_message
+
         return error_response_generator()
 
 
-def get_chat_response(session: Session, message: Message) -> Message:
+def get_chat_response(_session: Session, message: Message) -> Message:
     logger.info(message)
-
-    user = None
-    metadata = {}
-    extras = {}
-
-    try:
-        # find project with matching channel platform, identifier pair
-        project = project_service.get_project_sync(session, message)
-
-        if project is None:
-            raise ValueError(
-                f"Project with channel platform '{message.channel.value}', channel_identifier '{message.recipient_identifier}' not found."
-            )
-
-        metadata["project_name"] = project.name
-
-        # Get user_id by sender channel/number with user_service
-        user_channel_identifier = f"{message.channel.value}:{message.sender_identifier}"
-        user = user_service.get_user_by_channel_identifier(
-            session=session,
-            account_id=project.account_id,
-            channel_identifier=user_channel_identifier,
-            create_new_user=False,
-        )
-
-        if user is None:
-            # Return user opt-in message if broker is Twilio
-            opt_in_message = build_opt_in_message(message, metadata, extras)
-            if opt_in_message:
-                # Create new user record right away:
-                user = user_service.get_user_by_channel_identifier(
-                    session=session,
-                    account_id=project.account_id,
-                    channel_identifier=user_channel_identifier,
-                    create_new_user=True,
-                )
-
-                if user:
-                    # Save request message to database
-                    db.MessageRepository(session).create_message(
-                        user_id=user.id, message_body=message.to_dict()
-                    )
-
-                    # Save response message to database
-                    db.MessageRepository(session).create_message(
-                        user_id=user.id, message_body=opt_in_message.to_dict()
-                    )
-
-                return opt_in_message
-            else:
-                raise ValueError("User not found")
-
-        # Save request message to database
-        request_message = db.MessageRepository(session).create_message(
-            user_id=user.id, message_body=message.to_dict()
-        )
-        conversation_id = request_message.conversation_id
-
-        # Get appropriate agent from account name
-        agent_id = project.agent_id
-        if agent_id is None:
-            raise ValueError("Agent ID not found")
-
-        agent = agent_service.legacy.get_ai_agent(
-            session=session,
-            agent_id=agent_id,
-            user_id=user.id,
-            project_id=project.id,
-            conversation_id=conversation_id,
-        )
-
-        # Get response from agent
-        request_content = message.get_content()
-        response_object = agent.run(request_content, stream=False)
-        if isinstance(response_object.content, str):
-            response = response_object.content
-        elif isinstance(response_object.content, BaseOutputModel):
-            response = response_object.content.content
-            extras = {"escalated": response_object.content.escalated}
-        else:
-            raise ValueError(
-                f"Can't handle response content type {type(response_object.content)} for userid {user.id} with request content {request_content}."
-            )
-
-        # Strip markdown content from response
-        response = _utils.strip_markdown_content(response)
-
-    except Exception as e:
-        # Log any error and set default error response
-        logger.error(e)
-        response = "Something went wrong. Please try again."
-
+    response = "Synch mode chat has been deprecated."
     response_message = Message(
         author_type=AuthorType.AGENT,
         sender_identifier=message.recipient_identifier,  # Swap sender and recipient
@@ -389,15 +316,7 @@ def get_chat_response(session: Session, message: Message) -> Message:
         broker=message.broker,
         channel_info=message.channel_info,
         text=TextObject(body=response),
-        metadata=Metadata(**metadata),
-        extras=Extras(**extras),
     )
-
-    if user:
-        # Save response message to database
-        db.MessageRepository(session).create_message(
-            user_id=user.id, message_body=response_message.to_dict()
-        )
 
     return response_message
 
