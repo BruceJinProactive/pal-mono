@@ -404,7 +404,7 @@ class MessageRepository:
             if keyword:
                 conditions.append(
                     or_(
-                        Message.body["text"].astext.ilike(f"%{keyword}%"),
+                        Message.body["text"]["body"].astext.ilike(f"%{keyword}%"),
                         Message.body["sender_identifier"].astext.ilike(f"%{keyword}%"),
                     )
                 )
