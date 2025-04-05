@@ -105,6 +105,7 @@ async def delete_account(
 
 async def get_account_statistics(
     account_name: str,
+    lookback: int,
     context: UserContext,
     session: Session,
 ):

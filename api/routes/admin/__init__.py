@@ -147,13 +147,19 @@ async def list_accounts_projects(
 @admin_router.get("/accounts/{account_name}/stat")
 async def get_account_statistics(
     account_name: str,
+    lookback: int = Query(
+        0,
+        description="Number of seconds to search back in time for stat, e.g. if 60, it will only return stat for sessions created in the last 60 seconds.",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> AccountStatisticsResponse:
     """
     Return basic account statistics such as total unique users and active sessions.
     """
-    return await _account.get_account_statistics(account_name, context, session)
+    return await _account.get_account_statistics(
+        account_name, lookback, context, session
+    )
 
 
 """
