@@ -24,8 +24,8 @@ on:
 
   # Add scheduled trigger for daily staging release
   schedule:
-    # Run at 16:00 UTC (9:00 AM PT considering Daylight Saving) Monday through Sunday
-    - cron: '0 16 * * 0-6'
+    # Run at 16:00 UTC (9:00 AM PT considering Daylight Saving) Monday through Saturday
+    - cron: '0 16 * * 1-6'
 
 permissions:
   contents: write
