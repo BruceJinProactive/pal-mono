@@ -1,0 +1,26 @@
+# General rules
+# 1. Owners are responsible for code quality in their directories.
+# 2. Assign at least two owners per directory for redundancy.
+# 3. List subdirectory owners below their parent directory owners.
+
+# Root and first level structural changes
+/* kelvin@proactiveailab.com dave.jagoda@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/*/* kelvin@proactiveailab.com dave.jagoda@proactiveailab.com jun.hyung.lee@proactiveailab.com
+
+# Consumer, business and core services
+/api/** frankie.liu@proactiveailab.com dan.liu@proactiveailab.com
+/services/** frankie.liu@proactiveailab.com dan.liu@proactiveailab.com
+/db/** frankie.liu@proactiveailab.com dan.liu@proactiveailab.com
+
+# Development pipeline and toolchain
+/.github/** jun.hyung.lee@proactiveailab.com dave.jagoda@proactiveailab.com
+/scripts/** jun.hyung.lee@proactiveailab.com dave.jagoda@proactiveailab.com
+/utils/** jun.hyung.lee@proactiveailab.com dave.jagoda@proactiveailab.com
+
+# Agent framework and tools
+/agent/** andy@proactiveailab.com shuo.wang@proactiveailab.com
+/tools/** andy@proactiveailab.com shuo.wang@proactiveailab.com
+
+# To be deleted
+/app/** kelvin@proactiveailab.com
+/workspace/** kelvin@proactiveailab.com
