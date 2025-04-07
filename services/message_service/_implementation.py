@@ -104,11 +104,15 @@ async def get_chat_response_async(
         )
         await session.refresh(project, attribute_names=["account"])
         account_name = project.account.name
+        is_testing = (
+            getattr(message.metadata, "testing", False) if message.metadata else False
+        )
 
         event_properties = {
             "account_name": account_name,
             "channel": message.channel.value,
             "conversation_id": str(request_message.conversation_id),
+            "testing": is_testing,
         }
 
         analytics_service.track_event(
@@ -177,6 +181,7 @@ async def get_chat_response_async(
                     "account_name": account_name,
                     "channel": first_msg.channel.value,
                     "conversation_id": str(conversation_id),
+                    "testing": is_testing,
                 },
             )
 
@@ -226,12 +231,16 @@ async def get_chat_response_stream(
         if not request_message:
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
+        is_testing = (
+            getattr(message.metadata, "testing", False) if message.metadata else False
+        )
 
         account_name = project.account.name
         event_properties = {
             "account_name": account_name,
             "channel": message.channel.value,
             "conversation_id": str(conversation_id),
+            "testing": is_testing,
         }
         analytics_service.track_event(
             user_id=str(user.id),
@@ -271,6 +280,7 @@ async def get_chat_response_stream(
                 "account_name": account_name,
                 "channel": first_msg.channel.value,
                 "conversation_id": str(conversation_id),
+                "testing": is_testing,
             }
             analytics_service.track_event(
                 user_id=str(user.id),
