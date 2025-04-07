@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,7 @@ def get_user_by_channel_identifier(
 def get_users_by_account_id(
     session: Session,
     account_id: uuid.UUID,
+    min_create_time: datetime | None = None,
 ) -> List[db.User]:
     """
     Retrieve a list of users associated with the provided account ID.
@@ -43,11 +45,12 @@ def get_users_by_account_id(
     Args:
         session (Session): The database session to use for the query.
         account_id (uuid.UUID): The unique identifier of the account.
+        min_create_time (datetime): The minimum create time of users.
 
     Returns:
         List[db.User]: A list of users associated with the account.
     """
-    return _implementation.get_users_by_account_id(session, account_id)
+    return _implementation.get_users_by_account_id(session, account_id, min_create_time)
 
 
 async def get_user_async(

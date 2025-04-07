@@ -117,10 +117,15 @@ class ConversationRepository:
             return [], 0
 
     def get_conversation_ids_by_user_ids(
-        self, user_ids: list[uuid.UUID]
+        self,
+        user_ids: list[uuid.UUID],
+        min_created_at: datetime.datetime | None = datetime.datetime.min,
     ) -> list[uuid.UUID]:
         try:
-            stmt = select(Conversation.id).filter(Conversation.user_id.in_(user_ids))
+            stmt = select(Conversation.id).filter(
+                Conversation.user_id.in_(user_ids),
+                Conversation.created_at >= min_created_at,
+            )
             conversation_ids = self.session.execute(stmt).scalars().all()
             return list(conversation_ids)
         except SQLAlchemyError as e:
@@ -161,7 +166,10 @@ class ConversationRepository:
             return None
 
     def get_session_count_by_user_and_status(
-        self, user_ids: list[uuid.UUID], status: ConversationStatus | None
+        self,
+        user_ids: list[uuid.UUID],
+        min_create_time: datetime.datetime | None = datetime.datetime.min,
+        status: ConversationStatus | None = None,
     ) -> int:
         """
         Returns all sessions that belong to the given list of user ids as well as having the
@@ -169,7 +177,8 @@ class ConversationRepository:
         """
         try:
             query = self.session.query(Conversation).filter(
-                Conversation.user_id.in_(user_ids)
+                Conversation.user_id.in_(user_ids),
+                Conversation.created_at >= min_create_time,
             )
             if status:
                 query = query.filter(Conversation.status == status)
@@ -184,7 +193,6 @@ class ConversationRepository:
         session_ids: list[uuid.UUID],
         offset: int,
         limit: int,
-        after_datetime: datetime.datetime | None,
     ) -> tuple[int, list[Conversation]]:
         """
         Retrieve a paginated list of Conversation sessions by their IDs.
@@ -193,8 +201,6 @@ class ConversationRepository:
             session_ids (list[uuid.UUID]): A list of Conversation IDs to filter by.
             offset (int): The number of records to skip for pagination.
             limit (int): The maximum number of records to return.
-            after_datetime (datetime): Restrict all sessions found to be created after this
-                time.
 
         Returns:
             list[Conversation]: A list of Conversation objects matching the given IDs,
@@ -206,7 +212,6 @@ class ConversationRepository:
                 self.session.query(Conversation)
                 .filter(
                     Conversation.id.in_(session_ids),
-                    Conversation.created_at >= after_datetime,
                 )
                 .order_by(Conversation.created_at.desc())
             )

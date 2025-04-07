@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,11 +67,19 @@ class UserRepository:
     def get_users(self, skip: int = 0, limit: int = 100):
         return self.session.query(User).offset(skip).limit(limit).all()
 
-    def get_users_by_account_id(self, account_id: uuid.UUID):
+    def get_users_by_account_id(
+        self, account_id: uuid.UUID, min_create_time: datetime | None = datetime.min
+    ):
         # no argument validation needed
-
         try:
-            return self.session.query(User).filter(User.account_id == account_id).all()
+            return (
+                self.session.query(User)
+                .filter(
+                    User.account_id == account_id,
+                    User.created_at >= min_create_time,
+                )
+                .all()
+            )
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving users: {e}")

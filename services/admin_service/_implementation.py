@@ -21,7 +21,6 @@ from services.user_service import get_users_by_account_id
 from utils import secret
 from utils.log import logger
 
-TEST_PHONE_NUMBERS = ["+16692463752", "+14384973894"]
 MOCK_USER_PREFIX = "mock-user"
 
 
@@ -57,7 +56,7 @@ def list_user_sessions_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
-    after_datetime: datetime | None,
+    min_create_time: datetime | None,
     page: int,
     page_size: int,
     escalated: bool,
@@ -71,7 +70,7 @@ def list_user_sessions_in_account(
     account_users = user_service.get_users_by_account_id(db_session, account_id)
     account_users_ids = [user.id for user in account_users]
     all_session_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        account_users_ids
+        account_users_ids, min_create_time
     )
     filtered_session_ids = message_repository.filter_sessions_by_keyword(
         all_session_ids, keyword, channel, escalated, hide_testing_sessions
@@ -80,7 +79,6 @@ def list_user_sessions_in_account(
         filtered_session_ids,
         offset=(page - 1) * page_size,
         limit=page_size,
-        after_datetime=after_datetime,
     )
 
     # Build the session previews
@@ -745,23 +743,25 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
 def get_session_count_by_user_and_status(
     session: Session,
     user_ids: list[uuid.UUID],
+    min_created_at: datetime,
     status: db.ConversationStatus | None = None,
 ) -> int:
     conversation_repository = db.ConversationRepository(session)
     return conversation_repository.get_session_count_by_user_and_status(
-        user_ids, status
+        user_ids, min_created_at, status
     )
 
 
 def get_escalated_session_count_by_users(
     session: Session,
     user_ids: list[uuid.UUID],
+    min_created_at: datetime,
 ) -> int:
     conversation_repository = db.ConversationRepository(session)
     message_repository = db.MessageRepository(session)
 
     conversation_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        user_ids
+        user_ids, min_created_at
     )
     escalated_conversation_count = message_repository.get_escalated_conversation_count(
         conversation_ids

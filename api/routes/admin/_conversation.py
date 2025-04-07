@@ -34,12 +34,12 @@ async def list_account_user_sessions(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
-    after_datetime = datetime.datetime.now() - datetime.timedelta(seconds=lookback)
+    min_create_time = datetime.datetime.now() - datetime.timedelta(seconds=lookback)
     total, user_session_previews = admin_service.list_user_sessions_in_account(
         account_id=account.id,
         keyword=keyword,
         channel=channel.value if channel else None,
-        after_datetime=after_datetime,
+        min_create_time=min_create_time,
         page=page,
         page_size=page_size,
         escalated=escalated,

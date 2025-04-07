@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 from mixpanel import Mixpanel
@@ -38,9 +39,10 @@ def get_user_by_channel_identifier(
 def get_users_by_account_id(
     session: Session,
     account_id: uuid.UUID,
+    min_create_time: datetime | None,
 ) -> List[db.User]:
     user_repository = db.UserRepository(session)
-    users = user_repository.get_users_by_account_id(account_id=account_id)
+    users = user_repository.get_users_by_account_id(account_id, min_create_time)
 
     return users
 

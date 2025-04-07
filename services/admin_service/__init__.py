@@ -15,7 +15,7 @@ def list_user_sessions_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
-    after_datetime: datetime.datetime | None,
+    min_create_time: datetime.datetime | None,
     page: int,
     page_size: int,
     escalated: bool,
@@ -26,7 +26,7 @@ def list_user_sessions_in_account(
         account_id,
         keyword,
         channel,
-        after_datetime,
+        min_create_time,
         page,
         page_size,
         escalated,
@@ -325,6 +325,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
 def get_session_count_by_user_and_status(
     session: Session,
     user_ids: list[uuid.UUID],
+    min_create_time: datetime.datetime,
     status: ConversationStatus | None = None,
 ) -> int:
     """
@@ -333,15 +334,18 @@ def get_session_count_by_user_and_status(
     status.
     """
     return _implementation.get_session_count_by_user_and_status(
-        session, user_ids, status
+        session, user_ids, min_create_time, status
     )
 
 
 def get_escalated_session_count_by_users(
     session: Session,
     user_ids: list[uuid.UUID],
+    min_create_time: datetime.datetime,
 ) -> int:
-    return _implementation.get_escalated_session_count_by_users(session, user_ids)
+    return _implementation.get_escalated_session_count_by_users(
+        session, user_ids, min_create_time
+    )
 
 
 __all__ = [

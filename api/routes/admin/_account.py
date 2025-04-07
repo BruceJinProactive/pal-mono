@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -113,17 +115,21 @@ async def get_account_statistics(
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found.")
+    if lookback:
+        min_create_time = datetime.now() - timedelta(seconds=lookback)
+    else:
+        min_create_time = datetime.min
 
-    users = user_service.get_users_by_account_id(session, account.id)
+    users = user_service.get_users_by_account_id(session, account.id, min_create_time)
     user_ids = [user.id for user in users]
     escalated_sessions = admin_service.get_escalated_session_count_by_users(
-        session, user_ids
+        session, user_ids, min_create_time
     )
     total_sessions = admin_service.get_session_count_by_user_and_status(
-        session, user_ids
+        session, user_ids, min_create_time
     )
     active_sessions = admin_service.get_session_count_by_user_and_status(
-        session, user_ids, ConversationStatus.ACTIVE
+        session, user_ids, min_create_time, ConversationStatus.ACTIVE
     )
     return AccountStatisticsResponse(
         total_users=len(user_ids),
