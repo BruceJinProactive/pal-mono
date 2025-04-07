@@ -44,7 +44,7 @@ envs==1.4
 et-xmlfile==2.0.0
 extra-streamlit-components==0.1.71
 faker==37.1.0
-fastapi==0.112.2
+fastapi==0.115.12
 fastavro==1.10.0
 favicon==0.7.0
 filelock==3.18.0
@@ -200,7 +200,7 @@ soupsieve==2.6
 sqlalchemy[asyncio]==2.0.32
 st-annotated-text==4.0.2
 st-theme==1.2.3
-starlette==0.38.6
+starlette==0.46.1
 streamlit==1.42.0
 streamlit-camera-input-live==0.2.0
 streamlit-card==1.0.2
