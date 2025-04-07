@@ -288,7 +288,9 @@ class Order(BaseModel):
     delivery_address: Optional[DeliveryAddress] = Field(
         description="Delivery address", serialization_alias="deliveryAddress"
     )
-    coupons: SkipJsonSchema[List[Dict[str, int]]] = Field(default=[])
+    coupon_ids: SkipJsonSchema[List[int]] = Field(
+        default=[], description="Discount coupon_ids"
+    )
     paid: SkipJsonSchema[bool] = Field(default=False)
     order_comment: Optional[str] = Field(
         description="Special ordering instructions requested by the customer. Empty if no special requests are made. These can be something like 'no cheese', 'extra sauce', etc.",
@@ -298,6 +300,14 @@ class Order(BaseModel):
     @computed_field
     def items(self) -> List[Dict[str, List[OrderItem]]]:
         return [{"group": [item]} for item in self.order_items]
+
+    @computed_field
+    def coupons(self) -> List[Dict[str, int]]:
+        # NOTE: Hardcode discount
+        if not self.coupon_ids:
+            return [{"coupon_id": 134}]
+
+        return [{"coupon_id": coupon_id} for coupon_id in self.coupon_ids]
 
 
 class SubQueries(BaseModel):

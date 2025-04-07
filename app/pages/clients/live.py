@@ -13,11 +13,7 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from app.auth import user
-from app.shared import (
-    chat_render_toggle,
-    get_app_db,
-    universal_picker_ui,
-)
+from app.shared import chat_render_toggle, get_app_db, universal_picker_ui
 from services.account_service import get_account
 from services.message_service import (
     create_conversation,

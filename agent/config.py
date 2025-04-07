@@ -3,6 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from agent.client import ClientConfig
 from agent.knowledge import KnowledgeConfig
 from agent.memory import MemoryConfig
 from agent.model import ModelConfig
@@ -37,6 +38,8 @@ class AgentConfig(BaseModel):
     tool: ToolConfig
 
     metadata: AgentMetadata
+
+    client: ClientConfig
 
     # Additional context added to the end of the system message.
     additional_context: Optional[str] = None

@@ -45,6 +45,9 @@ class ToolRegistry:
             if tool.access_metadata and tool.metadata:
                 args = {**args, **tool.metadata.model_dump()}
 
+            if tool.client_config:
+                args = {**args, **tool.client_config.model_dump(by_alias=True)}
+
             return toolkit_class(**args)
 
         return None

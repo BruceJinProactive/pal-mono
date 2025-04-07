@@ -1,4 +1,5 @@
 from agent.agent import Agent
+from agent.client import ClientConfig
 from agent.config import AgentConfig, AgentFramework, AgentMetadata, AgentPersona
 from agent.knowledge import (
     KnowledgeConfig,

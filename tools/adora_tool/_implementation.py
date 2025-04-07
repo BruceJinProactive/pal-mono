@@ -5,6 +5,7 @@ import os
 import traceback
 import uuid
 from datetime import datetime
+from typing import Any
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -39,6 +40,7 @@ class AdoraTool(Toolkit):
         user_id: uuid.UUID,
         session_id: uuid.UUID,
         namespace: str,
+        client_data: dict[str, Any],
     ):
         super().__init__(name="adora_tool")
 
@@ -50,11 +52,19 @@ class AdoraTool(Toolkit):
         self.user_id = user_id
         self.session_id = session_id
         self.namespace = namespace
+        self.discounts = []  # { coupon_id, discount_code }
 
         if self.store_id == ADORA_QA_STORE:  # QA store
             self.qa_store = True
         else:
             self.qa_store = False
+            self.discounts = client_data.get("discounts", [])
+
+        ### Cache adora token and store info ###
+        self.cached_store_info: str | None = None
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
 
         # Register tools
         # self.register(self.greeting) # TODO: let's unregister this
@@ -70,12 +80,6 @@ class AdoraTool(Toolkit):
         self.mp = None
         if MIXPANEL_PROJECT_TOKEN:
             self.mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
-
-        ### Cache adora token and store info ###
-        self.cached_store_info: str | None = None
-
-        loop = asyncio.get_running_loop()
-        loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
 
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
@@ -424,6 +428,10 @@ class AdoraTool(Toolkit):
                 "Please provide a valid phone number in the format XXX-XXX-XXXX."
             )
 
+        if self.qa_store:  # Do not apply discount for QA store
+            json_payload["coupons"] = []
+            payload = json.dumps(json_payload)
+
         validated_order = _apis.validate_order(
             bearer_token=bearer_token, payload=payload, qa_store=self.qa_store
         )
@@ -500,8 +508,15 @@ class AdoraTool(Toolkit):
 
             context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
 
+            final_extractor_system_prompt = _llm.EXTRACTOR_SYSTEM_PROMPT
+            if self.discounts:
+                final_extractor_system_prompt += (
+                    "\n\n"
+                    + _llm.DISCOUNT_SYSTEM_PROMPT.format(discounts=self.discounts)
+                )
+
             order = _llm.llm_call(
-                system_prompt=_llm.EXTRACTOR_SYSTEM_PROMPT,
+                system_prompt=final_extractor_system_prompt,
                 prompt=_llm.EXTRACTOR_USER_PROMPT.format(
                     context=context, chat_history=chat_history
                 ),
@@ -572,10 +587,6 @@ class AdoraTool(Toolkit):
             email = order.customer.email
             if not email or not _utils.is_valid_email(email):
                 order.customer.email = "jimmythesurfer@palona.ai"
-
-            # TODO: Hardcode discount
-            if not self.qa_store:  # Do not apply discount for QA store
-                order.coupons = [{"coupon_id": 134}]
 
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment

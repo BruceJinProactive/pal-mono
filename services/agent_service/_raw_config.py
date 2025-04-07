@@ -8,6 +8,7 @@ from agent import (
     AgentFramework,
     AgentMetadata,
     AgentPersona,
+    ClientConfig,
     KnowledgeConfig,
     KnowledgeProvider,
     LlamaIndexSettings,
@@ -23,10 +24,10 @@ from utils.log import logger
 class RawConfig(BaseModel):
     # Agent
     agent_id: UUID
-    agent_raw_config: dict[str, Any] | None
+    agent_raw_config: dict[str, Any]
 
     # Project level config (e.g. pizzamyheart-default, pizzamyheart-palo-alto)
-    project_raw_config: dict[str, Any] | None  # TODO: this is not used yet
+    project_raw_config: dict[str, Any] = {}
 
     # Account
     account_id: UUID
@@ -39,31 +40,44 @@ class RawConfig(BaseModel):
     # Agent stream
     stream: bool = False
 
+    # Client Config
+    client_config: ClientConfig | None = None
+
     def build(self) -> AgentConfig:
         if self.agent_raw_config is None:
             raise ValueError("'agent_raw_config' is not provided.")
 
         try:
-            additional_context = ""
-            # Add timezone datetime information
-            if self.project_raw_config and self.project_raw_config.get("timezone"):
-                # TODO: Once timezone PR is merged on Agno's side we can remove this
-                # logic and use add_datetime_to_instructions + timezone_identifier instead
-                from datetime import datetime
-                from zoneinfo import ZoneInfo, available_timezones
+            # NOTE: For now use only client data from project raw config
+            # TODO: Merge client data from agent raw config and project raw config
+            client_data = {}
 
+            additional_context = ""
+
+            # Add timezone datetime information
+            if self.project_raw_config:
                 timezone = self.project_raw_config.get("timezone")
 
-                if timezone in available_timezones():
-                    tz = ZoneInfo(timezone)
-                    time = datetime.now(tz)
+                if timezone:
+                    # TODO: Once timezone PR is merged on Agno's side we can remove this
+                    # logic and use add_datetime_to_instructions + timezone_identifier instead
+                    from datetime import datetime
+                    from zoneinfo import ZoneInfo
 
-                    additional_context += f"The current time is {time}."
-                else:
-                    raise ValueError(f"Timezone '{timezone}' is invalid.")
+                    try:
+                        tz = ZoneInfo(timezone)
+                        time = datetime.now(tz)
+
+                        additional_context += f"The current time is {time}."
+                    except Exception:
+                        raise ValueError(f"Timezone '{timezone}' is invalid.")
+
+                client_data = self.project_raw_config.get("client_data", {})
+
+            self.client_config = ClientConfig(data=client_data)
 
             return AgentConfig(
-                persona=self._get_agent_persona(self.agent_raw_config),
+                persona=self._get_agent_persona(),
                 model=ModelConfig(
                     identifier="medium",
                     stream=self.stream,
@@ -73,8 +87,8 @@ class RawConfig(BaseModel):
                     identifier=self.account_name,
                     instruction="Don't remember the user's gender.",
                 ),
-                knowledge=self._get_agent_knowledge(self.agent_raw_config),
-                tool=self._get_agent_tools(self.agent_raw_config),
+                knowledge=self._get_agent_knowledge(),
+                tool=self._get_agent_tools(),
                 metadata=AgentMetadata(
                     account_name=self.account_name,
                     agent_id=str(self.agent_id),
@@ -82,6 +96,7 @@ class RawConfig(BaseModel):
                     session_id=str(self.conversation_id),
                     framework=AgentFramework.AGNO,
                 ),
+                client=self.client_config,
                 additional_context=additional_context,
             )
         except ValueError as e:
@@ -89,9 +104,10 @@ class RawConfig(BaseModel):
         except Exception as e:
             raise ValueError(f"Failed to convert to AgentConfig: {e}") from e
 
-    def _get_agent_persona(self, raw_config: dict[str, Any]) -> AgentPersona:
+    def _get_agent_persona(self) -> AgentPersona:
         # Extract the persona section of the raw config
-        raw_persona = raw_config.get("persona")
+        raw_persona = self.agent_raw_config.get("persona")
+
         if not raw_persona:
             raise ValueError("'persona' is not provided in 'agent_raw_config'.")
 
@@ -106,9 +122,9 @@ class RawConfig(BaseModel):
             description=system_prompt,
         )
 
-    def _get_agent_knowledge(self, raw_config: dict[str, Any]) -> KnowledgeConfig:
+    def _get_agent_knowledge(self) -> KnowledgeConfig:
         # Extract the knowledge section of the raw config
-        raw_knowledge = raw_config.get("knowledge")
+        raw_knowledge = self.agent_raw_config.get("knowledge")
 
         if not raw_knowledge:
             logger.info("'knowledge' is not provided in 'agent_raw_config'.")
@@ -163,9 +179,9 @@ class RawConfig(BaseModel):
             settings=settings,
         )
 
-    def _get_agent_tools(self, raw_config: dict[str, Any]) -> ToolConfig:
+    def _get_agent_tools(self) -> ToolConfig:
         # Extract the knowledge section of the raw config
-        raw_tools = raw_config.get("tools")
+        raw_tools = self.agent_raw_config.get("tools")
 
         if not raw_tools:
             logger.info("'tools' is not provided in 'agent_raw_config'.")
@@ -187,21 +203,20 @@ class RawConfig(BaseModel):
             tool_args = raw_tool.get("tool_args", {})
             access_metadata = raw_tool.get("access_metadata", False)
 
-            metadata: ToolMetadata | None = None
-            if access_metadata:
-                metadata = ToolMetadata(
-                    agent_id=self.agent_id,
-                    account_id=self.account_id,
-                    account_name=self.account_name,
-                    user_id=self.user_id,
-                    session_id=self.conversation_id,
-                )
+            metadata = ToolMetadata(
+                agent_id=self.agent_id,
+                account_id=self.account_id,
+                account_name=self.account_name,
+                user_id=self.user_id,
+                session_id=self.conversation_id,
+            )
 
             tool = ToolIdentifier(
                 tool_name=tool_name,
                 args=tool_args,
                 access_metadata=access_metadata,
                 metadata=metadata,
+                client_config=self.client_config,
             )
             identifiers.append(tool)
 

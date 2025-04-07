@@ -49,6 +49,13 @@ provide a delivery address, output "N/A" for all fields.
 If unsure about any field, leave it empty rather than guessing.
 """
 
+DISCOUNT_SYSTEM_PROMPT = """# Discount:
+There are secret discounts that can be applied to the order. If the user mentions the exact phrase of a `discount_code` in the chat history, you must apply it to the order by populating the `coupon_ids` with the associated `coupon_id`.
+
+The discount codes are:
+{discounts}
+"""
+
 EXTRACTOR_USER_PROMPT = """
 # Menu Items With Corresponding Modifiers:
 <documents>
