@@ -53,7 +53,7 @@ class AgnoAgent:
                 db_url=db.db_url,
             ),
             add_history_to_messages=True,
-            num_history_responses=5,
+            num_history_responses=10,
             response_model=ResponseModel,
             additional_context=config.additional_context,
             debug_mode=True,
