@@ -1,5 +1,4 @@
 import random
-import time
 import uuid
 from typing import AsyncIterator
 
@@ -59,14 +58,9 @@ async def get_chat_response_async(
     metadata = {}
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
-    start_time = time.time()  # Start time for profiling latency
     try:
-        logger.info(f"Step 1: Initialization - {time.time() - start_time:.4f}s")
-
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
-
-        logger.info(f"Step 2: Retrieved project - {time.time() - start_time:.4f}s")
 
         metadata["project_name"] = project.name
 
@@ -90,10 +84,6 @@ async def get_chat_response_async(
                         )
 
                     response_messages.append(opt_in_message)
-
-        logger.info(
-            f"Step 3: Retrieved or created user - {time.time() - start_time:.4f}s"
-        )
 
         # Ensure user is fully loaded before accessing attributes
         await session.refresh(user)
@@ -125,8 +115,6 @@ async def get_chat_response_async(
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
 
-        logger.info(f"Step 4: Saved request message - {time.time() - start_time:.4f}s")
-
         # Get appropriate agent from account name
         agent_id = project.agent_id
         if agent_id is None:
@@ -147,7 +135,6 @@ async def get_chat_response_async(
         )
         logger.info(f"Agent config: {config}")
         agent = Agent(config=config)
-        logger.info(f"Step 5: Retrieved agent - {time.time() - start_time:.4f}s")
 
         # Get Input
         input = _utils.get_agent_input_from_message(message=message)
@@ -155,9 +142,6 @@ async def get_chat_response_async(
 
         # Get Output
         output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
-        logger.info(
-            f"Step 6: Agent response received - {time.time() - start_time:.4f}s"
-        )
         logger.info(f"Output: {output}")
 
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
@@ -201,7 +185,6 @@ async def get_chat_response_async(
         # Log any error and set default error response
         logger.exception("Error in get_chat_response_async")
 
-    logger.info(f"Total execution time: {time.time() - start_time:.4f}s")
     return response_messages
 
 
