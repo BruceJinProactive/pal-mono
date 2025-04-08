@@ -289,7 +289,7 @@ class Order(BaseModel):
         description="Delivery address", serialization_alias="deliveryAddress"
     )
     coupon_ids: SkipJsonSchema[List[int]] = Field(
-        default=[], description="Discount coupon_ids"
+        default=[], description="Discount coupon ids."
     )
     paid: SkipJsonSchema[bool] = Field(default=False)
     order_comment: Optional[str] = Field(

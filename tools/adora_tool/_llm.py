@@ -20,6 +20,7 @@ You will be given the chat history and relevant context. You goal is to convert 
 4. Make sure that the modifiers for every order are identified, if they were mentioned in the chat history. Modifiers are additional details about the order, such as "extra cheese" or "no onions". They are not the already included ingredients of an item.
 5. Map the items, names, modifiers, etc., that you identified from the english language to the structured data format that is required by the Adora API using the provided context.
 6. Make sure that the order type is correctly identified as "TakeOut" or "Delivery". If not specified it should be empty.
+7. Extract discount coupon codes if available.
 
 ## ORDER TYPE INSTRUCTIONS:
 - You must recognize user's implicit intent of takeout the order herself, and help the user place a takeout order. Here are a few examples how the user expresses their intention of taking out the order: "see you soon in the restaurant", "I will visit the restaurant", "see you at your place", "be there/around/ at the restaurant soon", "I will swing/pass/come/stop by"
@@ -50,10 +51,30 @@ If unsure about any field, leave it empty rather than guessing.
 """
 
 DISCOUNT_SYSTEM_PROMPT = """# Discount:
-There are secret discounts that can be applied to the order. If the user mentions the exact phrase of a `discount_code` in the chat history, you must apply it to the order by populating the `coupon_ids` with the associated `coupon_id`.
+There are secret discounts that can be applied to the order. If the user mentions the exact phrase of a "discount_code" in the chat history, you must apply it to the order by populating the `coupon_ids` with the associated "coupon_id".
 
 The discount codes are:
 {discounts}
+
+### Examples
+
+If the discount codes are:
+1. discount code "abc" with coupon_id 123
+2. discount code "xyz" with coupon_id 456
+
+** Example 1 **
+User: "I have a discount code abc"
+Agent: "Awesome! I'll apply your secret discount at checkout."
+
+You should populate the `coupon_ids` with [123].
+
+** Example 2 **
+User: "xyz"
+Agent: "Awesome! I'll apply your secret discount at checkout."
+User: "abc"
+Agent: "Awesome! I'll apply your secret discount at checkout."
+
+You should populate the `coupon_ids` with [456, 123].
 """
 
 EXTRACTOR_USER_PROMPT = """
