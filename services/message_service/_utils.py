@@ -175,7 +175,7 @@ def get_agent_input_from_message(message: Message) -> Input:
 def get_messages_from_agent_output(
     output: Output,
     input_message: Message,
-    project_name: str,  # Temporary fix for missing project_name in Metadata
+    metadata: Metadata,
 ) -> List[Message]:
     """
     Converts an Output object from the Agent into a Message object.
@@ -202,9 +202,6 @@ def get_messages_from_agent_output(
         logger.error("Metadata is missing in the input message")
         return response_messages
 
-    new_metadata = Metadata(project_name=project_name)
-    new_metadata.parent_message_id = input_message.id
-
     # Check if output.content contains http or .net and create additional SMS response if input_message.channel is VOICE
     if (
         re.search(r"http[s]?://|\.net", output.content)
@@ -219,7 +216,7 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             channel_info=input_message.channel_info,
             text=TextObject(body=voice_msg_text),
-            metadata=new_metadata,
+            metadata=metadata,
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -235,7 +232,7 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             channel_info=input_message.channel_info,
             text=TextObject(body=msg_text),
-            metadata=new_metadata,
+            metadata=metadata,
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,
@@ -262,7 +259,7 @@ def get_messages_from_agent_output(
                     broker=input_message.broker,
                     channel_info=input_message.channel_info,
                     text=TextObject(body=msg_content),
-                    metadata=new_metadata,
+                    metadata=metadata,
                     extras=Extras(
                         escalated=output.escalated,
                         closing_conversation=output.closing_conversation,
@@ -282,7 +279,7 @@ def get_messages_from_agent_output(
                     media=MediaObject(
                         url=msg_content, media_type="image", caption=msg_content
                     ),
-                    metadata=new_metadata,
+                    metadata=metadata,
                     extras=Extras(
                         escalated=output.escalated,
                         closing_conversation=output.closing_conversation,
@@ -299,7 +296,7 @@ def get_messages_from_agent_output(
             broker=input_message.broker,
             channel_info=input_message.channel_info,
             text=TextObject(body=msg_text),
-            metadata=new_metadata,
+            metadata=metadata,
             extras=Extras(
                 escalated=output.escalated,
                 closing_conversation=output.closing_conversation,

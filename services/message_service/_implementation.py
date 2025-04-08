@@ -53,38 +53,20 @@ async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
-    user = None
-    extras = {}
-    metadata = {}
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
     try:
+        # ==== Step 1: Get project, user, and save request message ====
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
-
-        metadata["project_name"] = project.name
 
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
             session, project, message
         )
-
         if user is None:
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
-
-            # Get opt-in message and append to list of messages if applicable
-            if is_new_sms_user:
-                opt_in_message = build_opt_in_message(message, metadata, extras)
-                if opt_in_message:
-                    if user:
-                        # Save the opt-in message to the database
-                        await message_repo.create_message(
-                            user_id=user.id, message_body=opt_in_message.to_dict()
-                        )
-
-                    response_messages.append(opt_in_message)
-
         # Ensure user is fully loaded before accessing attributes
         await session.refresh(user)
 
@@ -92,45 +74,40 @@ async def get_chat_response_async(
         request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
         )
+
+        # Send analytics event
         await session.refresh(project, attribute_names=["account"])
         account_name = project.account.name
-        is_testing = (
+        testing = (
             getattr(message.metadata, "testing", False) if message.metadata else False
         )
-
-        event_properties = {
-            "account_name": account_name,
-            "channel": message.channel.value,
-            "conversation_id": str(request_message.conversation_id),
-            "testing": is_testing,
-        }
-
         analytics_service.track_event(
             user_id=str(user.id),
             event_name=AnalyticsEvent.USER_MESSAGE,
-            event_properties=event_properties,
+            event_properties={
+                "account_name": account_name,
+                "channel": message.channel.value,
+                "conversation_id": str(request_message.conversation_id),
+                "testing": testing,
+            },
         )
 
         if not request_message:
             raise ValueError("Failed to create request message")
-        conversation_id = request_message.conversation_id
 
+        # ================= Step 2: Construct agent, get input, and generate output =================
         # Get appropriate agent from account name
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
 
-        logger.info(
-            f"User channel identifier: {message.channel.value}:{message.sender_identifier}"
-        )
-
-        # Construct config
+        # Construct agent config
         config = await agent_service.construct_agent_config(
             session=session,
             agent_id=agent_id,
             user_id=user.id,
             project_id=project.id,
-            conversation_id=conversation_id,
+            conversation_id=request_message.conversation_id,
             stream=False,
         )
         logger.info(f"Agent config: {config}")
@@ -144,28 +121,51 @@ async def get_chat_response_async(
         output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
         logger.info(f"Output: {output}")
 
+        # ================ Step 3: Get response messages ================
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
-        new_flow_response_messages = _utils.get_messages_from_agent_output(
-            output=output, input_message=message, project_name=project.name
+        output_message_metadata = Metadata(
+            account_name=account_name,
+            project_name=project.name,
+            agent_id=str(agent_id),
+            user_id=str(user.id),
+            session_id=str(request_message.conversation_id),
+            testing=testing,
         )
 
-        for message in new_flow_response_messages:
+        # Get opt-in message and append to list of messages if applicable
+        if is_new_sms_user:
+            opt_in_message = build_opt_in_message(message, output_message_metadata)
+            if opt_in_message:
+                if user:
+                    # Save the opt-in message to the database
+                    await message_repo.create_message(
+                        user_id=user.id, message_body=opt_in_message.to_dict()
+                    )
+                response_messages.append(opt_in_message)
+
+        # Get output messages from agent output
+        output_messages = _utils.get_messages_from_agent_output(
+            output=output, input_message=message, metadata=output_message_metadata
+        )
+        for message in output_messages:
+            # Append response message to list of response messages
+            response_messages.append(message)
             # Save response message to database
             await message_repo.create_message(
                 user_id=user.id, message_body=message.to_dict()
             )
 
         # Track only one event (for example, using the first message):
-        if new_flow_response_messages:
-            first_msg = new_flow_response_messages[0]
+        if output_messages:
+            first_msg = output_messages[0]
             analytics_service.track_event(
                 user_id=str(user.id),
                 event_name=AnalyticsEvent.AGENT_MESSAGE,
                 event_properties={
                     "account_name": account_name,
                     "channel": first_msg.channel.value,
-                    "conversation_id": str(conversation_id),
-                    "testing": is_testing,
+                    "conversation_id": str(request_message.conversation_id),
+                    "testing": testing,
                 },
             )
 
@@ -174,12 +174,10 @@ async def get_chat_response_async(
         if output.closing_conversation:
             conversation = await db.ConversationRepositoryAsync(
                 session
-            ).get_conversation_by_id(conversation_id=conversation_id)
+            ).get_conversation_by_id(conversation_id=request_message.conversation_id)
             if conversation:
                 conversation.status = db.ConversationStatus.CLOSING
                 await session.flush()
-
-        return new_flow_response_messages
 
     except Exception:
         # Log any error and set default error response
@@ -214,7 +212,7 @@ async def get_chat_response_stream(
         if not request_message:
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
-        is_testing = (
+        testing = (
             getattr(message.metadata, "testing", False) if message.metadata else False
         )
 
@@ -223,7 +221,7 @@ async def get_chat_response_stream(
             "account_name": account_name,
             "channel": message.channel.value,
             "conversation_id": str(conversation_id),
-            "testing": is_testing,
+            "testing": testing,
         }
         analytics_service.track_event(
             user_id=str(user.id),
@@ -253,7 +251,9 @@ async def get_chat_response_stream(
         logger.info(f"Output: {output}")
 
         new_flow_response_messages = _utils.get_messages_from_agent_output(
-            output=output, input_message=message, project_name=project.name
+            output=output,
+            input_message=message,
+            metadata=Metadata(),  # TODO: Please follow get_chat_response_async to add metadata
         )
 
         if new_flow_response_messages:
@@ -263,7 +263,7 @@ async def get_chat_response_stream(
                 "account_name": account_name,
                 "channel": first_msg.channel.value,
                 "conversation_id": str(conversation_id),
-                "testing": is_testing,
+                "testing": testing,
             }
             analytics_service.track_event(
                 user_id=str(user.id),
@@ -409,9 +409,7 @@ def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation
     return conversation_repository.create_conversation(user_id=user_id)
 
 
-def build_opt_in_message(
-    message: Message, metadata: dict, extras: dict
-) -> Message | None:
+def build_opt_in_message(message: Message, metadata: Metadata) -> Message | None:
     if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
         opt_in_text = (
             "You have successfully been subscribed to messages from this number. "
@@ -425,8 +423,8 @@ def build_opt_in_message(
             broker=message.broker,
             channel_info=message.channel_info,
             text=TextObject(body=opt_in_text),
-            metadata=Metadata(**metadata),
-            extras=Extras(**extras),
+            metadata=metadata,
+            extras=Extras(),
         )
 
     return None
