@@ -68,7 +68,7 @@ class UserRepository:
         return self.session.query(User).offset(skip).limit(limit).all()
 
     def get_users_by_account_id(
-        self, account_id: uuid.UUID, min_create_time: datetime | None = datetime.min
+        self, account_id: uuid.UUID, min_create_time: datetime | None = None
     ):
         # no argument validation needed
         try:
@@ -76,7 +76,7 @@ class UserRepository:
                 self.session.query(User)
                 .filter(
                     User.account_id == account_id,
-                    User.created_at >= min_create_time,
+                    User.created_at >= (min_create_time or datetime.min),
                 )
                 .all()
             )

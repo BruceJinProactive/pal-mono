@@ -1,5 +1,5 @@
-import datetime
 import uuid
+from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,14 +117,12 @@ class ConversationRepository:
             return [], 0
 
     def get_conversation_ids_by_user_ids(
-        self,
-        user_ids: list[uuid.UUID],
-        min_created_at: datetime.datetime | None = datetime.datetime.min,
+        self, user_ids: list[uuid.UUID], min_created_at: datetime | None = None
     ) -> list[uuid.UUID]:
         try:
             stmt = select(Conversation.id).filter(
                 Conversation.user_id.in_(user_ids),
-                Conversation.created_at >= min_created_at,
+                Conversation.created_at >= (min_created_at or datetime.min),
             )
             conversation_ids = self.session.execute(stmt).scalars().all()
             return list(conversation_ids)
@@ -168,7 +166,7 @@ class ConversationRepository:
     def get_session_count_by_user_and_status(
         self,
         user_ids: list[uuid.UUID],
-        min_create_time: datetime.datetime | None = datetime.datetime.min,
+        min_create_time: datetime | None = None,
         status: ConversationStatus | None = None,
     ) -> int:
         """
@@ -178,7 +176,7 @@ class ConversationRepository:
         try:
             query = self.session.query(Conversation).filter(
                 Conversation.user_id.in_(user_ids),
-                Conversation.created_at >= min_create_time,
+                Conversation.created_at >= (min_create_time or datetime.min),
             )
             if status:
                 query = query.filter(Conversation.status == status)
