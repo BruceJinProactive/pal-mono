@@ -56,7 +56,6 @@ class AgnoAgent:
             num_history_responses=10,
             response_model=ResponseModel,
             additional_context=config.additional_context,
-            debug_mode=True,
         )
 
         self._agent = agent

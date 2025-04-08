@@ -145,7 +145,6 @@ def llm_call(
         session_id="test-session",
         add_history_to_messages=True,
         knowledge=None,
-        debug_mode=True,
         response_model=response_format,
         system_message=system_prompt,
         num_history_responses=0,
