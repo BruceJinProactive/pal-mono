@@ -37,15 +37,15 @@ class AgnoAgent:
             session_id=config.metadata.session_id,
             # model
             model=OpenAIChat(id="gpt-4o"),
-            # memory
-            # Use mem0 for memory
-            ### Knowledge ###
-            # knowledge_base=get_knowledge(config.knowledge), # NOTE: use our own search tool
-            knowledge=None,
-            # search_knowledge=config.knowledge.enabled,
-            ### Tools ###
+            memory=None,  # using our own memory tool based on mem0
+            knowledge=None,  # using our own knowledge tool
             tools=[
-                tool for tool in get_tools(config.tool, config.knowledge)
+                tool
+                for tool in get_tools(
+                    config.tool,
+                    config.knowledge,
+                    user_id=config.metadata.user_id,
+                )
             ],  # construct search knowledge tool
             # storage
             storage=PostgresAgentStorage(

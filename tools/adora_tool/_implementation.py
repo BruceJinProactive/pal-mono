@@ -136,8 +136,8 @@ class AdoraTool(Toolkit):
                 # TODO: Maybe not the best way to update memory?
                 asyncio.run(
                     update_memory(
-                        user_id=str(self.user_id),  # type: ignore
-                        content=customer_info,  # type: ignore
+                        user_id=str(self.user_id),
+                        content=customer_info,
                     )
                 )
 
