@@ -1,10 +1,22 @@
 from datetime import datetime, timedelta
+from enum import Enum
 
 from pydantic import BaseModel
 
 
+class HttpMethod(str, Enum):
+    GET = "GET"
+    POST = "POST"
+    PUT = "PUT"
+    DELETE = "DELETE"
+
+
 class ToastHubResponse(BaseModel):
-    pass
+    """Class to handle Toast API response data"""
+
+    status: int
+    reason: str
+    decoded_body: str
 
 
 class ToastAccessToken(BaseModel):
