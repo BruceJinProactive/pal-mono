@@ -3,8 +3,10 @@ import json
 from typing import Optional
 
 from tools.toast_tool._apis._utils import API_TIMEOUT
-from tools.toast_tool.classes import Order, ToastAccessToken
+from tools.toast_tool.classes import HttpMethod, Order, RestaurantInfo, ToastAccessToken
 from utils.log import logger
+
+from . import _utils
 
 
 def get_toast_access_token(
@@ -92,7 +94,7 @@ def get_store_info(
     bearer_token: ToastAccessToken,
     store_id: str,
     include_archived: bool = False,
-) -> dict | None:
+) -> RestaurantInfo:
     """
     Get restaurant information from the Toast API.
 
@@ -102,20 +104,35 @@ def get_store_info(
         include_archived: Whether to include archived restaurants
 
     Returns:
-        Restaurant information as a dictionary or None if request failed
-
-    {
-        "guid": "string",
-        "general": {},
-        "urls": {},
-        "location": {},
-        "schedules": {},
-        "delivery": {},
-        "onlineOrdering": {},
-        "prepTimes": {}
-    }
+        RestaurantInfo object or None if request failed
     """
-    pass
+    query_params = {"includeArchived": str(include_archived).lower()}
+    try:
+        response = _utils.connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function=f"restaurants/v1/restaurants/{store_id}",
+            store_id=store_id,
+            query_params=query_params,
+            extra_headers=None,
+            payload=None,
+            logging_enabled=True,
+        )
+    except Exception as e:
+        # Will handle the exception at LLM level
+        raise Exception(
+            f"[ToastAPI.get_store_info] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        # Convert the JSON string to a RestaurantInfo object
+        restaurant_info = RestaurantInfo.model_validate_json(response.decoded_body)
+
+        return restaurant_info
+    else:
+        raise ValueError(
+            f"Failed to get restaurant info with status {response.status}: {response.decoded_body}"
+        )
 
 
 def get_online_ordering_status(

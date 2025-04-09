@@ -77,5 +77,20 @@ class ToastAccessToken(BaseModel):
         return bool(self.access_token and self.token_type)
 
 
+class RestaurantInfo(BaseModel):
+    """
+    RestaurantInfo object returned from the Toast API.
+    """
+
+    guid: str
+    general: dict
+    urls: dict
+    location: dict
+    schedules: dict
+    delivery: dict
+    online_ordering: dict
+    prep_times: dict
+
+
 class Order(BaseModel):
     pass

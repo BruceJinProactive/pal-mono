@@ -1,7 +1,6 @@
 import http.client
 import json
 import urllib.parse
-from typing import Optional
 
 from tools.toast_tool.classes import HttpMethod, ToastAccessToken, ToastHubResponse
 from utils.log import logger
@@ -22,7 +21,7 @@ def connect_toast_order_hub(
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
     logging_enabled: bool = True,
-) -> Optional[ToastHubResponse]:
+) -> ToastHubResponse:
 
     if logging_enabled:
         logger.info(f"Calling Toast API: {http_method} {api_function}")
