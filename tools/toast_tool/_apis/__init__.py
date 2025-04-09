@@ -1,6 +1,10 @@
-from typing import List, Optional
+import http.client
+import json
+from typing import Optional
 
+from tools.toast_tool._apis._utils import API_TIMEOUT
 from tools.toast_tool.classes import Order, ToastAccessToken
+from utils.log import logger
 
 
 def get_toast_access_token(
@@ -17,12 +21,71 @@ def get_toast_access_token(
         logging_enabled: Whether to log the authentication process
 
     Returns:
-        ToastAccessToken if successful, None otherwise
+        `ToastAccessToken` object if successful, None otherwise
     """
-    # TODO: implment the following variables as constants
-    # 1. toast_api_hostname: str = "toast-api-server"
-    # 2. user_access_type: str = "TOAST_MACHINE_CLIENT"
-    pass
+    # Define constants for the API request
+    TOAST_API_HOST_NAME = "toast-api-server"
+    USER_ACCESS_TYPE = "TOAST_MACHINE_CLIENT"
+
+    payload = {
+        "clientId": client_id,
+        "clientSecret": client_secret,
+        "userAccessType": USER_ACCESS_TYPE,
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    if logging_enabled:
+        logger.info("[ToastAPI.get_toast_access_token] Authenticating with Toast API")
+        logger.info(
+            f"[ToastAPI.get_toast_access_token] Using client ID: {'*' * 8}{client_id[-4:] if len(client_id) > 4 else '*' * 4}"
+        )
+    try:
+        conn = http.client.HTTPSConnection(TOAST_API_HOST_NAME, timeout=API_TIMEOUT)
+        conn.request(
+            "POST",
+            "/authentication/v1/authentication/login",
+            json.dumps(payload),
+            headers,
+        )
+
+        # Get the response from the server
+        response = conn.getresponse()
+        response_data = response.read().decode("utf-8")
+
+        # If successful, parse the response
+        # and create a ToastAccessToken object
+        if response.status == 200:
+            response_data = json.loads(response_data)
+
+            # The response_data variable should contain a `status` field and a `token` field
+
+            token = ToastAccessToken.from_toast_response(response_data=response_data)
+
+            # Check if the token is valid
+            if not token.is_valid():
+                raise ValueError(
+                    "[ToastAPI.get_toast_access_token] Failed to authenticate with Toast API. Invalid token"
+                )
+
+            if logging_enabled:
+                logger.info(
+                    "[ToastAPI.get_toast_access_token] Successfully authenticated with Toast API"
+                )
+                logger.info(
+                    f"[ToastAPI.get_toast_access_token] Token expires in: {token.expires_in} seconds"
+                )
+            return token
+        else:
+            raise ValueError(
+                f"[ToastAPI.get_toast_access_token] Failed to authenticate with Toast API. Status code: {response.status}"
+            )
+    except Exception as e:
+        logger.error(f"[ToastAPI.get_toast_access_token] An error occurred: {e}")
+    finally:
+        # Ensure the connection is closed after use
+        if "conn" in locals():
+            conn.close()  # type: ignore
 
 
 def get_store_info(

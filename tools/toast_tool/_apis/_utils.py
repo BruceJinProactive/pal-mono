@@ -1,5 +1,7 @@
 from tools.toast_tool.classes import ToastAccessToken, ToastHubResponse
 
+API_TIMEOUT = 30  # seconds
+
 
 def connect_toast_order_hub(
     http_method: str,
