@@ -10,6 +10,7 @@ import db
 from api.routes.admin._utils import UserContext, UserRole
 from api.schemas.admin.user import User
 from services.account_service import get_account
+from utils.log import logger
 
 """
 This module provides authentication and authorization utilities for the admin console using AWS Cognito.
@@ -162,7 +163,7 @@ def get_account_name(id_token):
         claims = parse_admin_console_id_token(id_token)
         return claims["custom:account_name"]
     except Exception as e:
-        print(f"Error parsing ID token: {e}")
+        logger.error(f"Error parsing ID token: {e}")
         return None
 
 

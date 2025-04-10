@@ -425,7 +425,7 @@ def update_knowledge(
             raise ValueError("Knowledge not found.")
 
         session.commit()
-        print("Knowledge updated successfully.")
+        logger.info("Knowledge updated successfully.")
 
     except Exception as e:
         logger.error(f"Unable to update knowledge by ID: {e}")

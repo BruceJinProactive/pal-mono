@@ -137,7 +137,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
         )
     except Exception as e:
         # Log the error
-        print(f"Error processing message: {str(e)}")
+        logger.error(f"Error processing message: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
