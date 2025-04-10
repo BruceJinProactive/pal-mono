@@ -104,6 +104,6 @@ def api_project_info(
     shopifyStore = valid_request(request, app_name)
     return get_project_info(
         request,
-        shopifyStore.recipient_identifier + "-default",
+        shopifyStore.recipient_identifier,
         session,
     )
