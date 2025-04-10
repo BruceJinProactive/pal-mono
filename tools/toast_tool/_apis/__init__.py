@@ -3,7 +3,13 @@ import json
 from typing import Optional
 
 from tools.toast_tool._apis._utils import API_TIMEOUT
-from tools.toast_tool.classes import HttpMethod, Order, RestaurantInfo, ToastAccessToken
+from tools.toast_tool.classes import (
+    HttpMethod,
+    Order,
+    RestaurantInfo,
+    RestaurantOrderingStatus,
+    ToastAccessToken,
+)
 from utils.log import logger
 
 from . import _utils
@@ -139,7 +145,7 @@ def get_online_ordering_status(
     bearer_token: ToastAccessToken,
     store_id: str,
     logging_enabled: bool = True,
-) -> str | None:
+) -> RestaurantOrderingStatus:
     """
     Get the online ordering availability status for a Toast restaurant.
 
@@ -149,16 +155,37 @@ def get_online_ordering_status(
         logging_enabled: Whether to log request and response details
 
     Returns:
-        String describing the availability status, or None if request failed
-
-    {
-        "restaurantGuid": "string",
-        "status": "ONLINE",
-        "reasonKey": "AVAILABILITY_ONLINE",
-        "reason": "string"
-    }
+        RestaurantOrderingStatus object containing the availability status
+        or raises an exception if the request fails.
     """
-    pass
+    try:
+        response = _utils.connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function="restaurant-availability/v1/availability",
+            store_id=store_id,
+            query_params=None,
+            extra_headers=None,
+            payload=None,
+            logging_enabled=logging_enabled,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_online_ordering_status] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        availability_info = RestaurantOrderingStatus.model_validate_json(
+            response.decoded_body
+        )
+        return availability_info
+    else:
+        logger.error(
+            f"Failed to get online ordering status with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to get online ordering status with status {response.status}: {response.decoded_body}"
+        )
 
 
 def get_order_prices(

@@ -92,5 +92,23 @@ class RestaurantInfo(BaseModel):
     prep_times: dict
 
 
+class OrderingStatus(str, Enum):
+    ONLINE = "ONLINE"
+    OFFLINE = "OFFLINE"
+
+
+class OrderingStatusReasonKey(str, Enum):
+    AVAILABILITY_ONLINE = "AVAILABILITY_ONLINE"
+    AVAILABILITY_OFFLINE = "AVAILABILITY_OFFLINE"
+
+
+class RestaurantOrderingStatus(BaseModel):
+
+    restaurant_guid: str
+    status: OrderingStatus
+    reason_key: OrderingStatusReasonKey
+    reason: str
+
+
 class Order(BaseModel):
     pass
