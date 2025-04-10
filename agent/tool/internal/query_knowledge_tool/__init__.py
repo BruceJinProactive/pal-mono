@@ -1,1 +1,3 @@
-from agent.tool.internal.query_knowledge_tool._implementation import QueryKnowledgeTool
+from . import _implementation
+
+QueryKnowledgeTool = _implementation.QueryKnowledgeTool

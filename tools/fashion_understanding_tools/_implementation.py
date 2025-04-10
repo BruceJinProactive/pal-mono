@@ -15,6 +15,7 @@ from ddtrace.llmobs.decorators import retrieval, task, tool
 from openai import AsyncOpenAI, OpenAI
 
 from agent.legacy.storage import get_storage
+from agent.tool import ToolMetadata
 from utils.log import logger
 
 from .classes import (
@@ -61,23 +62,19 @@ def load_json_from_file(file_path) -> dict[Any, Any] | Any:
 class FashionRecommendationLogicPipeline(Toolkit):
     def __init__(
         self,
-        agent_id: uuid.UUID,
-        account_id: uuid.UUID,
-        account_name: str,
-        user_id: uuid.UUID,
-        session_id: uuid.UUID,
         pinecone_index_name: str,
         pinecone_namespace: str,
+        tool_metadata: ToolMetadata,
     ):
         super().__init__(name="fashion_recommendation_logic_pipeline")
         self.register(self._recommendation_logic)
         self.register(self.get_close_up_images)
 
-        self.account_name = account_name
-        self.user_id = user_id
-        self.session_id = session_id
-        self.agent_id = agent_id
-        self.account_id = account_id
+        self.account_name = tool_metadata.account_name
+        self.user_id = tool_metadata.user_id
+        self.session_id = tool_metadata.session_id
+        self.agent_id = tool_metadata.agent_id
+        self.account_id = tool_metadata.account_id
 
         # Initialize OpenAI
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))

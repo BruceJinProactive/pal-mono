@@ -183,9 +183,17 @@ class RawConfig(BaseModel):
         # Extract the knowledge section of the raw config
         raw_tools = self.agent_raw_config.get("tools")
 
+        metadata = ToolMetadata(
+            agent_id=self.agent_id,
+            account_id=self.account_id,
+            account_name=self.account_name,
+            user_id=self.user_id,
+            session_id=self.conversation_id,
+        )
+
         if not raw_tools:
             logger.info("'tools' is not provided in 'agent_raw_config'.")
-            return ToolConfig()
+            return ToolConfig(metadata=metadata)
 
         # TODO: Tool provider configuration not implemented yet (not necessary for now)
 
@@ -203,21 +211,12 @@ class RawConfig(BaseModel):
             tool_args = raw_tool.get("tool_args", {})
             access_metadata = raw_tool.get("access_metadata", False)
 
-            metadata = ToolMetadata(
-                agent_id=self.agent_id,
-                account_id=self.account_id,
-                account_name=self.account_name,
-                user_id=self.user_id,
-                session_id=self.conversation_id,
-            )
-
             tool = ToolIdentifier(
                 tool_name=tool_name,
                 args=tool_args,
                 access_metadata=access_metadata,
-                metadata=metadata,
                 client_config=self.client_config,
             )
             identifiers.append(tool)
 
-        return ToolConfig(identifiers=identifiers)
+        return ToolConfig(identifiers=identifiers, metadata=metadata)

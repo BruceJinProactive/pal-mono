@@ -2,6 +2,7 @@ from agno.tools.toolkit import Toolkit
 
 from agent.knowledge import KnowledgeConfig
 from agent.tool.internal.query_knowledge_tool import QueryKnowledgeTool
+from agent.tool.internal.query_messages_tool import QueryMessagesTool
 
 from . import _config
 
@@ -13,10 +14,12 @@ def get_tools(
 
     tools = []
     for identifier in tool_config.identifiers:
-        tools.append(tool_registry.get_tool(identifier))
+        tools.append(tool_registry.get_tool(identifier, tool_config.metadata))
 
     if knowledge_config.enabled:
         # Add our own custom knowledge base search tool !!!
         tools.append(QueryKnowledgeTool(knowledge_config))
+
+    tools.append(QueryMessagesTool(tool_config.metadata))
 
     return tools

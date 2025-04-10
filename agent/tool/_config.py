@@ -26,7 +26,6 @@ class ToolIdentifier(BaseModel):
 
     # Access agent metadata fields (e.g. agent_id, session_id, etc.)
     access_metadata: bool = False
-    metadata: ToolMetadata | None = None
     client_config: ClientConfig | None = None
 
     @model_validator(mode="after")
@@ -40,3 +39,4 @@ class ToolIdentifier(BaseModel):
 class ToolConfig(BaseModel):
     provider: ToolProvider = ToolProvider.DEFAULT
     identifiers: List[ToolIdentifier] = Field(default_factory=list)
+    metadata: ToolMetadata

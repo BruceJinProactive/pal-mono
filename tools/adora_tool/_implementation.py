@@ -3,17 +3,17 @@ import functools
 import json
 import os
 import traceback
-import uuid
 from datetime import datetime
-from typing import Any
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, task, tool
 from mixpanel import Mixpanel
 
-from agent.legacy.storage import get_storage
+from agent.config import ClientConfig
 from agent.memory import update_memory
+from agent.tool import ToolMetadata
+from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from tools.adora_tool.classes import (
     AdoraAccessToken,
@@ -34,31 +34,23 @@ class AdoraTool(Toolkit):
     def __init__(
         self,
         store_id: str,
-        agent_id: uuid.UUID,
-        account_id: uuid.UUID,
-        account_name: str,
-        user_id: uuid.UUID,
-        session_id: uuid.UUID,
         namespace: str,
-        client_data: dict[str, Any],
+        tool_metadata: ToolMetadata,
+        client_config: ClientConfig,
     ):
         super().__init__(name="adora_tool")
 
         # Configs
         self.store_id = store_id
-        self.agent_id = agent_id
-        self.account_id = account_id
-        self.account_name = account_name
-        self.user_id = user_id
-        self.session_id = session_id
         self.namespace = namespace
+        self.tool_metadata = tool_metadata
         self.discounts = []  # { coupon_id, discount_code }
 
         if self.store_id == ADORA_QA_STORE:  # QA store
             self.qa_store = True
         else:
             self.qa_store = False
-            self.discounts = client_data.get("discounts", [])
+            self.discounts = client_config.data.get("discounts", [])
 
         ### Cache adora token and store info ###
         self.cached_store_info: str | None = None
@@ -74,6 +66,7 @@ class AdoraTool(Toolkit):
         self.register(self.check_address)
 
         self.query_engine = _query_engine.create_query_engine(self.namespace)
+        self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
 
         # Initialize Mixpanel
         MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
@@ -309,70 +302,6 @@ class AdoraTool(Toolkit):
             return True, "Address is validated and is in the delivery zone."
 
     @retrieval
-    def _get_chat_history(self, latest_user_message: str) -> str:
-        # NOTE: Hacky way to get FULL chat history.
-        # Latest user message is not in storage.
-
-        try:
-            try:
-                chat_history = ""
-                storage = get_storage(self.account_name)
-                agent_session = storage.read(str(self.session_id), str(self.user_id))
-
-                if not agent_session:
-                    logger.error(
-                        "Agent session not found for\n"
-                        f"Account Name: {self.account_name}\n"
-                        f"Account ID: {self.account_id}\n"
-                        f"Agent ID: {self.agent_id}\n"
-                        f"User ID: {self.user_id}\n"
-                        f"Session ID: {self.session_id}"
-                    )
-
-                    if latest_user_message:
-                        chat_history += f"**[User]**\n{latest_user_message}\n\n"
-                        return chat_history
-
-                    return "Agent session not found"
-
-                messages = agent_session.memory["runs"]  # type: ignore
-
-                for message in messages:
-                    role = message["message"]["role"]
-                    if role == "user":
-                        user_content = message["message"]["content"]
-                        chat_history += f"**[User]**\n{user_content}\n\n"
-
-                        assistant_response = json.loads(message["response"]["content"])
-                        assistant_content = assistant_response["content"]
-                        chat_history += f"**[Assistant]**\n{assistant_content}\n\n"
-                    else:
-                        logger.info(
-                            f"Skipping appending message to chat history:\n{message}"
-                        )
-
-                chat_history += f"**[User]**\n{latest_user_message}"
-
-                LLMObs.annotate(output_data=chat_history)
-
-                return chat_history
-
-            except ValueError:
-                logger.error(
-                    "Conversation history not found for\n"
-                    f"Account ID: {self.account_id}\n"
-                    f"Agent ID: {self.agent_id}\n"
-                    f"User ID: {self.user_id}\n"
-                    f"Session ID: {self.session_id}"
-                )
-                return "Conversation history not found."
-
-        except Exception as e:
-            error_msg = "Error in getting chat history"
-            logger.error(f"{error_msg}: {e}")
-            return error_msg
-
-    @retrieval
     async def _get_relevant_docs(self, chat_history: str) -> str:
         # Decompose chat history into multiple sub-queries
         sub_queries = _llm.llm_call(
@@ -446,8 +375,8 @@ class AdoraTool(Toolkit):
         if self.mp:
             event_properties = {
                 "action_name": AdoraTool.checkout_order.__name__,
-                "account_name": self.account_name,
-                "conversation_id": str(self.session_id),
+                "account_name": self.tool_metadata.account_name,
+                "conversation_id": str(self.tool_metadata.session_id),
                 "order_key": validated_order.key,
                 "order_payment_url": text_payment_url,
                 "order_total": (
@@ -457,7 +386,9 @@ class AdoraTool(Toolkit):
                 ),
             }
             self.mp.track(
-                str(self.user_id), AnalyticsEvent.CRITICAL_ACTION, event_properties
+                str(self.tool_metadata.user_id),
+                AnalyticsEvent.CRITICAL_ACTION,
+                event_properties,
             )
 
         output = (
@@ -504,7 +435,7 @@ class AdoraTool(Toolkit):
             str: The checkout order details including the payment URL.
         """
         try:
-            chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
 
             context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
 
