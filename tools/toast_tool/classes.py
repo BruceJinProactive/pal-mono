@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from enum import Enum
+from typing import Any, List, Optional
 
 from pydantic import BaseModel
 
@@ -110,5 +111,86 @@ class RestaurantOrderingStatus(BaseModel):
     reason: str
 
 
-class Order(BaseModel):
+class DiningBehavior(str, Enum):
+    DINE_IN = "DINE_IN"
+    TAKE_OUT = "TAKE_OUT"
+    DELIVERY = "DELIVERY"
+
+
+class DiningOption(BaseModel):
+    guid: str
+    entityType: str = "DiningOption"
+    curbside: Optional[bool]
+    behavior: Optional[DiningBehavior]
+    name: Optional[str]
+    external_id: Optional[Any]
+
+
+class ItemBase(BaseModel):
+    guid: str
+
+
+class OptionGroup(ItemBase):
     pass
+
+
+class MenuItem(ItemBase):
+    entityType: str = "MenuItem"
+
+
+class ItemGroup(ItemBase):
+    pass
+
+
+class Modifier(BaseModel):
+    entityType: str = "MenuItemSelection"
+    optionGroup: OptionGroup
+    item: MenuItem
+    quantity: int
+
+
+class ItemSelection(BaseModel):
+    entityType: str = "MenuItemSelection"
+    itemGroup: ItemGroup
+    item: ItemBase
+    quantity: int
+    modifiers: Optional[List[Modifier]] = []
+
+
+class Selections(BaseModel):
+    selections: List[ItemSelection]
+
+
+# Payment type must either be "CREDIT" or "OTHER"
+class PaymentType(str, Enum):
+    CREDIT = "CREDIT"
+    OTHER = "OTHER"
+
+
+class Payment(BaseModel):
+    guid: str
+    amount: float
+    tipAmount: float = 0.0
+    type: PaymentType
+
+
+class Customer(BaseModel):
+    firstName: str
+    lastName: str
+    phone: str
+    email: str
+
+
+class Check(BaseModel):
+    customer: Customer
+    payments: List[Payment]
+    selections: List[Selections]
+    amount: Optional[float]
+    taxAmount: Optional[float]
+    totalAmount: Optional[float]
+
+
+class Order(BaseModel):
+    checks: List[Check]
+    diningOption: DiningOption
+    guid: Optional[str]

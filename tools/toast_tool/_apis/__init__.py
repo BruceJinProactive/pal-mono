@@ -202,54 +202,37 @@ def get_order_prices(
         order_data: Order object containing the order details
 
     Returns:
-        `Order` object with the base price, tax amount, and total price of each `check`. The returned `Order` object will be used to submit the order to the Toast API.
-
-    {
-        "guid": "string",
-        "entityType": "string",
-        "externalId": "string",
-        "openedDate": "2025-02-07T08:00:00.000-0800",
-        "modifiedDate": "2025-02-07T08:00:00.000-0800",
-        "promisedDate": "2025-05-01T08:00:00.000-0800",
-        "channelGuid": "3c66b5cf-1850-49e6-aef3-40576e6de979",
-        "diningOption": {},
-        "checks": [],
-        "table": {},
-        "serviceArea": {},
-        "restaurantService": {},
-        "revenueCenter": {},
-        "source": "string",
-        "duration": 0,
-        "deliveryInfo": {},
-        "requiredPrepTime": "string",
-        "estimatedFulfillmentDate": "2025-05-01T08:00:00.000-0800",
-        "numberOfGuests": 0,
-        "voided": true,
-        "voidDate": "2025-02-07T08:00:00.000-0800",
-        "voidBusinessDate": 0,
-        "paidDate": "2025-02-07T08:00:00.000-0800",
-        "closedDate": "2025-02-07T08:00:00.000-0800",
-        "deletedDate": "2025-02-07T08:00:00.000-0800",
-        "deleted": true,
-        "businessDate": 0,
-        "server": {},
-        "pricingFeatures": [],
-        "approvalStatus": "NEEDS_APPROVAL",
-        "guestOrderStatus": "string",
-        "createdDevice": {},
-        "createdDate": "2025-02-07T08:00:00.000-0800",
-        "initialDate": 0,
-        "lastModifiedDevice": {},
-        "curbsidePickupInfo": {},
-        "deliveryServiceInfo": {},
-        "marketplaceFacilitatorTaxInfo": {},
-        "createdInTestMode": true,
-        "appliedPackagingInfo": {},
-        "excessFood": true,
-        "displayNumber": "string"
-    }
+        `Order` object with the base price, tax amount, and total price of each `check` object. The returned `Order` object will be used to submit the order to the Toast API.
     """
-    pass
+    # Make the API call to the order prices endpoint
+    try:
+        response = _utils.connect_toast_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=bearer_token,
+            api_function="orders/v2/prices",
+            store_id=store_id,
+            query_params=None,
+            extra_headers={"Content-Type": "application/json"},
+            payload=order_data.model_dump(),
+            logging_enabled=True,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_order_prices] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    # Process the response
+    if response.status == 200:
+        # Convert the JSON string to an Order object
+        order_prices = Order.model_validate_json(response.decoded_body)
+        return order_prices
+    else:
+        logger.error(
+            f"Order price calculation failed with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Order price calculation failed with status {response.status}: {response.decoded_body}"
+        )
 
 
 def submit_order(
