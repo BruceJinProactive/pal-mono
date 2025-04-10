@@ -136,6 +136,9 @@ def get_store_info(
 
         return restaurant_info
     else:
+        logger.error(
+            f"[ToastAPI.get_store_info] Failed to get restaurant info with status {response.status}: {response.decoded_body}"
+        )
         raise ValueError(
             f"Failed to get restaurant info with status {response.status}: {response.decoded_body}"
         )
@@ -192,7 +195,7 @@ def get_order_prices(
     bearer_token: ToastAccessToken,
     store_id: str,
     order_data: Order,
-) -> Order | None:
+) -> Order:
     """
     Calculates the check price amounts, tax amounts, and service charges for an Order object.
 
@@ -235,9 +238,7 @@ def get_order_prices(
         )
 
 
-def submit_order(
-    bearer_token: ToastAccessToken, store_id: str, order: Order
-) -> Order | None:
+def submit_order(bearer_token: ToastAccessToken, store_id: str, order: Order) -> Order:
     """
     Submits an order to the Toast API.
 
@@ -249,4 +250,27 @@ def submit_order(
     Returns:
         `Order` object that has been persisted in Toast.
     """
-    pass
+    try:
+        response = _utils.connect_toast_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=bearer_token,
+            api_function="orders/v2/orders",
+            store_id=store_id,
+            payload=order.model_dump(),
+            logging_enabled=True,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.submit_order] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        # Convert the JSON string to a dictionary
+        return Order.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Order submission failed with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Order submission failed with status {response.status}: {response.decoded_body}"
+        )
