@@ -25,16 +25,40 @@ class ToastTool(Toolkit):
 
     @tool
     def get_store_info(self) -> str:
+        """
+        Retrieves information about a store.
+
+        Returns:
+            str: JSON string containing store information
+        """
         raise Exception("Not Implemented")
 
     @tool
     def check_online_ordering_status(self) -> str:
+        """
+        Checks if online ordering is available for the store.
+
+        Returns:
+            str: Status of online ordering
+        """
         raise Exception("Not Implemented")
 
     @tool
     def checkout_order(self) -> str:
+        """
+        Processes an order checkout.
+
+        Returns:
+            str: Order checkout confirmation details
+        """
         raise Exception("Not Implemented")
 
     @tool
     def check_address(self) -> str:
+        """
+        Validates a delivery address.
+
+        Returns:
+            str: Address validation results
+        """
         raise Exception("Not Implemented")
