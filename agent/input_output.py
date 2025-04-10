@@ -10,15 +10,14 @@ class Input(BaseModel):
     A class used to represent an Input.
 
     content : str
-        The actual content from the user, for example "Hi there, What services or
-        features do you offer?".
+        The actual content from the user, for example "Hi there, What services or features do you offer?".
     context : str, optional
-        The context of the input, such as device info, membership information, etc.
-        (default is an empty string).
+        The context of the input, such as device info, membership information, etc. (default is an empty string).
     """
 
     content: str
     context: str = ""
+    memories: str = ""
     channel: str = ""
     sender_identifier: str = ""
 
@@ -34,6 +33,7 @@ class Input(BaseModel):
         return (
             f"<content>{self.content}</content>\n\n"
             + f"<context>{self.context}</context>\n\n"
+            + f"<memories>{self.memories}</memories>\n\n"
             + f"<channel>{self.channel}</channel>\n\n"
             + f"<sender_identifier>{self.sender_identifier}</sender_identifier>\n\n"
         )
