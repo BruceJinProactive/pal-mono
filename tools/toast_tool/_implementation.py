@@ -5,6 +5,7 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
+from tools.toast_tool._apis import get_online_ordering_status
 from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool._apis import get_toast_access_token
 from tools.toast_tool.classes import ToastAccessToken
@@ -70,11 +71,6 @@ class ToastTool(Toolkit):
                 self._toast_bearer_token, self.store_id
             ).model_dump_json()
 
-            if not store_info:
-                raise ValueError(
-                    f"Cannot get store information for store: {self.store_id}"
-                )
-
             # Cache store info
             self._cached_store_info = store_info
             return store_info
@@ -86,12 +82,33 @@ class ToastTool(Toolkit):
     @tool
     def check_online_ordering_status(self) -> str:
         """
-        Checks if online ordering is available for the store.
+        Retrieves the current online ordering availability status of a specified restaurant.
 
         Returns:
-            str: Status of online ordering
+            str: A JSON-formatted string containing:
+            - The restaurant's online ordering availability status
+            - The reason why the restaurant is available or unavailable to accept online orders
         """
-        raise Exception("Not Implemented")
+
+        try:
+            if not self._toast_bearer_token:
+                return (
+                    "Failed to authenticate ordering tool. Please reach out to our "
+                    "support team at help@palona.ai for assistance."
+                )
+
+            status = get_online_ordering_status(
+                self._toast_bearer_token, self.store_id, True
+            ).model_dump_json()
+
+            return status
+
+        except Exception as e:
+            logger.error(
+                "[ToastTool.check_online_ordering_status] "
+                f"Error in checking online ordering status: {e}"
+            )
+            return "Failed to check the online ordering status, please try again."
 
     @tool
     def checkout_order(self) -> str:
