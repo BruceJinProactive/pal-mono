@@ -186,9 +186,6 @@ def get_messages_from_agent_output(
     Returns:
         List[Message]: The Message object created from the Output.
     """
-
-    # NOTE: For now we only support returning image documents
-
     msg_text = f"{output.content}"
     # if output.documents:
     #     msg_text += f"\n\nDocuments:\n{output.documents}"

@@ -16,10 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.chat.completion_util import (
-    ChatCompletionStreamer,
-    CompletionRequest,
-)
+from api.routes.chat.completion_util import ChatCompletionStreamer, CompletionRequest
 from api.routes.endpoints import endpoints
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse

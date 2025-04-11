@@ -119,7 +119,7 @@ async def get_chat_response_async(
         logger.info(f"Input: {input}")
 
         # Get Output
-        output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+        output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
         logger.info(f"Output: {output}")
 
         # ================ Step 3: Get response messages ================
@@ -148,7 +148,29 @@ async def get_chat_response_async(
         output_messages = _utils.get_messages_from_agent_output(
             output=output, input_message=message, metadata=output_message_metadata
         )
+
+        # Check if messages need to be split into multiple messages using <BREAK> token
+        final_output_messages = []
         for message in output_messages:
+            if not message.text:
+                logger.error(f"Message {message} text is None, skipping message.")
+                continue
+
+            split_texts = message.text.body.split("<BREAK>")
+
+            for text in split_texts:
+                sub_message = Message(
+                    author_type=AuthorType.AGENT,
+                    sender_identifier=message.recipient_identifier,
+                    recipient_identifier=message.sender_identifier,
+                    channel=message.channel,
+                    broker=message.broker,
+                    text=TextObject(body=text.strip()),
+                    metadata=message.metadata,
+                )
+                final_output_messages.append(sub_message)
+
+        for message in final_output_messages:
             # Append response message to list of response messages
             response_messages.append(message)
             # Save response message to database

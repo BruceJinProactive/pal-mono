@@ -15,8 +15,9 @@ from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas.chat.message import AuthorType, Channel, Metadata, TextObject
+from api.schemas.chat.message import AuthorType, Channel
 from api.schemas.chat.message import Message as PalMessage
+from api.schemas.chat.message import Metadata, TextObject
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from utils.log import logger
 
