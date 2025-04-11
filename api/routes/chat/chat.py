@@ -2,12 +2,24 @@ import asyncio
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.chat.completion_util import (
+    ChatCompletionStreamer,
+    CompletionRequest,
+)
 from api.routes.endpoints import endpoints
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
@@ -174,3 +186,50 @@ def get_project_info(
         default_user_icon_url=map_uri_to_s3_url(user_icon)
         or map_uri_to_s3_url(DEFAULT_USER_ICON),
     )
+
+
+completion_chat_engine = ChatCompletionStreamer()
+
+
+@chat_router.post("/completions")
+async def chat_completions(
+    request: CompletionRequest, session: AsyncSession = Depends(db.get_db_async)
+):
+    if request.stream:
+        return StreamingResponse(
+            completion_chat_engine.stream_chat(
+                request.messages, request.model, session
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # For nginx
+            },
+        )
+    else:
+        result = await completion_chat_engine.full_response(
+            request.messages, request.model, session
+        )
+        return JSONResponse(content=result.model_dump())
+
+
+@chat_router.websocket("/ws/completions")
+async def ws_chat_completions(
+    websocket: WebSocket, session: AsyncSession = Depends(db.get_db_async)
+):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            model = data.get("model", "palona-default")
+            messages = data.get("messages", [])
+            if not messages:
+                continue
+            async for chunk_bytes in completion_chat_engine.stream_chat(
+                messages, model, session
+            ):
+                await websocket.send_text(chunk_bytes.decode("utf-8"))
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket: Client disconnected")

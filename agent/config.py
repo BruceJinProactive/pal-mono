@@ -40,6 +40,6 @@ class AgentConfig(BaseModel):
     metadata: AgentMetadata
 
     client: ClientConfig
-
+    stream: bool = False
     # Additional context added to the end of the system message.
     additional_context: Optional[str] = None

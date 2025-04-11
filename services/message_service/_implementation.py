@@ -110,6 +110,7 @@ async def get_chat_response_async(
             conversation_id=request_message.conversation_id,
             stream=False,
         )
+
         logger.info(f"Agent config: {config}")
         agent = Agent(config=config)
 
@@ -192,11 +193,11 @@ async def get_chat_response_stream(
     logger.info(f"get_chat_response_stream received message: {message}")
     user = None
     message_repo = db.MessageRepositoryAsync(session)
-
+    logger.info("Access db")
     try:
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
-
+        logger.info("Access project")
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
             session, project, message
@@ -204,11 +205,12 @@ async def get_chat_response_stream(
         if user is None:
             # If user not found, just create one (no opt-in here)
             user = await user_service.create_user_async(session, project, message)
-
+        logger.info("Access user")
         # Save request message to database
         request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
         )
+        logger.info(f"Save msg: {request_message.conversation_id}")
         if not request_message:
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
@@ -228,6 +230,7 @@ async def get_chat_response_stream(
             event_name=AnalyticsEvent.USER_MESSAGE,
             event_properties=event_properties,
         )
+        logger.info("Track_event")
         # Get appropriate agent from account name
         agent_id = project.agent_id
         if agent_id is None:
@@ -241,41 +244,15 @@ async def get_chat_response_stream(
             conversation_id=conversation_id,
             stream=True,
         )
+        config.stream = True
+        logger.info(f"Agent config: {config}")
         agent = Agent(config=config)
 
         input = _utils.get_agent_input_from_message(message=message)
-        logger.info(f"Input: {input}")
-
-        output: Output = await agent.arun(input)  # type: ignore # Temporarily disble specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
-
-        logger.info(f"Output: {output}")
-
-        new_flow_response_messages = _utils.get_messages_from_agent_output(
-            output=output,
-            input_message=message,
-            metadata=Metadata(),  # TODO: Please follow get_chat_response_async to add metadata
-        )
-
-        if new_flow_response_messages:
-            first_msg = new_flow_response_messages[0]
-
-            event_properties = {
-                "account_name": account_name,
-                "channel": first_msg.channel.value,
-                "conversation_id": str(conversation_id),
-                "testing": testing,
-            }
-            analytics_service.track_event(
-                user_id=str(user.id),
-                event_name=AnalyticsEvent.AGENT_MESSAGE,
-                event_properties=event_properties,
-            )
-
-        async def message_response_generator() -> AsyncIterator[Message]:
-            for message in new_flow_response_messages:
-                yield message
-
-        return message_response_generator()
+        logger.info("Input: Start")
+        flow_response_messages = await agent.arun(input)  # type: ignore
+        logger.info("Output: Done")
+        return flow_response_messages
 
     except Exception:
         # Log any error and return error message stream

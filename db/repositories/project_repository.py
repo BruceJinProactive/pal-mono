@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from db.tables import Project
 from utils.log import logger
@@ -26,8 +26,11 @@ class ProjectRepositoryAsync:
             Project, or None if no such Project is found.
         """
         # Use the `contains` operator for fast lookup
-        query = select(Project).filter(
-            Project.channel_identifiers.contains([channel_identifier])
+        # ISSUE: this query is called for each request.
+        query = (
+            select(Project)
+            .options(selectinload(Project.account))
+            .filter(Project.channel_identifiers.contains([channel_identifier]))
         )
         result = await self.session.execute(query)
         project = result.scalar_one_or_none()

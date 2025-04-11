@@ -54,16 +54,22 @@ class AgnoAgent:
             ),
             add_history_to_messages=True,
             num_history_responses=10,
-            response_model=ResponseModel,
+            response_model=(
+                ResponseModel if not config.stream else None
+            ),  # NOTE: stream response model is not supported by AGNO
             additional_context=config.additional_context,
+            stream=config.stream,
         )
 
         self._agent = agent
 
     @agent
     async def arun(self, input: Input) -> Output:
-        result = await self._agent.arun(input.get_prompt())
-
+        result = await self._agent.arun(
+            input.get_prompt(), stream=self._agent.is_streamable
+        )
+        if self._agent.is_streamable:
+            return result
         response_format = result.content
 
         if not isinstance(response_format, ResponseModel):
