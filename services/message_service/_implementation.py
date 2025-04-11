@@ -170,6 +170,10 @@ async def get_chat_response_async(
                 )
                 final_output_messages.append(sub_message)
 
+        # If no messages were split, use the original output messages
+        if not final_output_messages:
+            final_output_messages = output_messages
+
         for message in final_output_messages:
             # Append response message to list of response messages
             response_messages.append(message)
