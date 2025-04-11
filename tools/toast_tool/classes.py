@@ -2,9 +2,10 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
+######### TOAST API CLASS START ############
 class HttpMethod(str, Enum):
     GET = "GET"
     POST = "POST"
@@ -194,3 +195,18 @@ class Order(BaseModel):
     checks: List[Check]
     diningOption: DiningOption
     guid: Optional[str]
+
+
+########### TOAST API CLASS END ############
+
+
+class SubQueries(BaseModel):
+    queries: list[str] = Field(
+        description=(
+            "Decompose the chat history into individual order items. For example,"
+            "If the chat history is 'I would like to order a pizza with extra cheese "
+            "and pickles, burger, and salad.' The return would be ['pizza', "
+            "'burger', 'salad']\n\n"
+            "DO NOT include modifications (e.g. extra cheese, pickles)."
+        ),
+    )

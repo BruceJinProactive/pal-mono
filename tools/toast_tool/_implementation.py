@@ -1,3 +1,4 @@
+import asyncio
 from functools import cached_property
 
 from agno.tools.toolkit import Toolkit
@@ -11,6 +12,9 @@ from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool.classes import ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
+
+from . import _llm, _query_engine
+from .classes import SubQueries
 
 
 class ToastTool(Toolkit):
@@ -35,6 +39,8 @@ class ToastTool(Toolkit):
 
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
+
+        self.query_engine = _query_engine.create_query_engine(self.namespace)
 
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
@@ -141,6 +147,45 @@ class ToastTool(Toolkit):
         LLMObs.annotate(output_data=chat_history)
 
         return chat_history
+
+    @retrieval
+    async def _get_relevant_docs(self, chat_history: str) -> str:
+        # TODO: Implement llm_call
+        sub_queries = _llm.llm_call(
+            system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+            prompt=chat_history,
+            response_format=SubQueries,
+            reasoning=False,
+        )
+
+        # Retrieve relevant documents based on the sub-queries
+        # TODO: Implement `_query_engine.create_query_engine`
+        tasks = [
+            asyncio.create_task(self.query_engine.aquery(q))
+            for q in sub_queries.queries  # type: ignore
+        ]
+        results = await asyncio.gather(*tasks)
+
+        context = ""
+        output_data = []
+        doc_id = 0
+        for res in results:
+            for node in res.source_nodes:
+                if node.metadata:
+                    context += (
+                        f"<document index='{doc_id}'>\n"
+                        "\t<document_content>\n"
+                        f"\t\t{node.text}\n"
+                        "\t</document_content>\n"
+                        "</document>\n\n"
+                    )
+                    output_data.append({"id": node.id_, "text": node.text})
+                    doc_id += 1
+
+        LLMObs.annotate(
+            input_data={"chat_history": chat_history}, output_data=output_data
+        )
+        return context
 
     @tool
     def checkout_order(self) -> str:
