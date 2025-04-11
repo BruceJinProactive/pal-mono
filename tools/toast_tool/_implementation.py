@@ -2,12 +2,12 @@ from functools import cached_property
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import tool
+from ddtrace.llmobs.decorators import retrieval, tool
 
 from agent.tool import ToolMetadata
-from tools.toast_tool._apis import get_online_ordering_status
+from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from tools.toast_tool._apis import get_online_ordering_status, get_toast_access_token
 from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import get_toast_access_token
 from tools.toast_tool.classes import ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
@@ -33,9 +33,12 @@ class ToastTool(Toolkit):
         self.register(self.checkout_order)
         self.register(self.check_address)
 
+        # Retrieval tools
+        self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
+
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
-        with LLMObs.task(name="get_adora_bearer_token"):
+        with LLMObs.task(name="get_toast_bearer_token"):
             api_key = get_client_secret_with_fallback("TOAST_QA_API_KEY")
             api_secret = get_client_secret_with_fallback("TOAST_QA_API_SECRET")
             bearer_token = get_toast_access_token(api_key, api_secret, True)
@@ -109,6 +112,35 @@ class ToastTool(Toolkit):
                 f"Error in checking online ordering status: {e}"
             )
             return "Failed to check the online ordering status, please try again."
+
+    @retrieval
+    def _get_chat_history(self, latest_user_message: str) -> str:
+        """
+        Retrieves the chat history from the query messages tool.
+
+        Args:
+            latest_user_message (str): The latest user message to include in the chat history.
+
+        Returns:
+            str: A string representing the entire chat history.
+        """
+        # TODO: The query_messages function returns error messages rather than raising exceptions. There is no generic way to verify the validity of the returned chat_history.
+        chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
+
+        # Basic check for error messages (TEMPORARY workaround)
+        error_indicators = [
+            "Error in getting chat history",
+            "Conversation history not found",
+            "Agent session ot found",
+        ]
+        if any(indicator in chat_history for indicator in error_indicators):
+            logger.warning(
+                f"[ToastTool._get_chat_history] Possible issue with chat history: {chat_history}"
+            )
+
+        LLMObs.annotate(output_data=chat_history)
+
+        return chat_history
 
     @tool
     def checkout_order(self) -> str:
