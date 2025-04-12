@@ -212,7 +212,7 @@ async def get_chat_response_stream(
     try:
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
-        logger.info(f"Access project: {project}")
+        logger.info("Access project")
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
             session, project, message
