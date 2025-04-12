@@ -212,7 +212,7 @@ async def get_chat_response_stream(
     try:
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
-        logger.info("Access project")
+        logger.info(f"Access project: {project}")
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
             session, project, message
@@ -220,6 +220,7 @@ async def get_chat_response_stream(
         if user is None:
             # If user not found, just create one (no opt-in here)
             user = await user_service.create_user_async(session, project, message)
+            logger.info(f"Create new user: {user}")
         logger.info("Access user")
         # Save request message to database
         request_message = await message_repo.create_message(

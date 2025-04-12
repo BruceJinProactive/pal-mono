@@ -15,9 +15,8 @@ from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas.chat.message import AuthorType, Channel
+from api.schemas.chat.message import AuthorType, Channel, Metadata, TextObject
 from api.schemas.chat.message import Message as PalMessage
-from api.schemas.chat.message import Metadata, TextObject
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from utils.log import logger
 
@@ -55,11 +54,16 @@ class ChatCompletionStreamer:
             session=session,
             message=PalMessage(
                 author_type=AuthorType.USER,
-                sender_identifier="user_id",  # get the phone number.
+                sender_identifier="5797932533",  # get the phone number.
                 recipient_identifier=recipient_identifier,
-                channel=Channel.VOICE,
+                channel=Channel.API,
                 text=TextObject(body=user_msg),
-                metadata=Metadata(),
+                metadata=Metadata(
+                    account_name="palona-voice",
+                    project_name="palona-voice-default",
+                    agent_id="82dcb010-2fb9-47f9-bb14-96ce08fed8c4",
+                    user_id="fc86a16a-9920-4b5d-89e4-6336bede31e5",
+                ),
             ),
         )
         logger.info("Received response stream")
@@ -116,7 +120,12 @@ class ChatCompletionStreamer:
                 recipient_identifier=recipient_identifier,
                 channel=Channel.VOICE,
                 text=TextObject(body=user_msg),
-                metadata=Metadata(),  # TODO: add metadata, e.g., project name
+                metadata=Metadata(
+                    account_name="palona-voice",
+                    project_name="palona-voice-default",
+                    agent_id="82dcb010-2fb9-47f9-bb14-96ce08fed8c4",
+                    user_id="fc86a16a-9920-4b5d-89e4-6336bede31e5",
+                ),  # TODO: add metadata, e.g., project name
             ),
         )
         choices = []
