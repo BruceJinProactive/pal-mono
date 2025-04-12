@@ -217,10 +217,12 @@ async def get_chat_response_stream(
         user, is_new_sms_user = await user_service.get_user_async(
             session, project, message
         )
+
         if user is None:
             # If user not found, just create one (no opt-in here)
             user = await user_service.create_user_async(session, project, message)
-            logger.info(f"Create new user: {user}")
+            logger.info(f"Create new user: {user.id}")
+
         logger.info("Access user")
         # Save request message to database
         request_message = await message_repo.create_message(

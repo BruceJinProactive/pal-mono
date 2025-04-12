@@ -193,17 +193,18 @@ async def chat_completions(
     request: CompletionRequest, session: AsyncSession = Depends(db.get_db_async)
 ):
     if request.stream:
-        return StreamingResponse(
-            completion_chat_engine.stream_chat(
-                request.messages, request.model, session
-            ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # For nginx
-            },
-        )
+        async for new_session in db.get_db_async():
+            return StreamingResponse(
+                completion_chat_engine.stream_chat(
+                    request.messages, request.model, new_session
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",  # For nginx
+                },
+            )
     else:
         result = await completion_chat_engine.full_response(
             request.messages, request.model, session
