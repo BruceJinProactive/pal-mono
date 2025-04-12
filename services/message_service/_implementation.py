@@ -2,6 +2,7 @@ import random
 import uuid
 from typing import AsyncIterator
 
+from agno.models.openai.chat import OpenAIChat
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -206,65 +207,78 @@ async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[Message]:
     logger.info(f"get_chat_response_stream received message: {message}")
-    user = None
-    message_repo = db.MessageRepositoryAsync(session)
+    # user = None
+    # message_repo = db.MessageRepositoryAsync(session)
     logger.info("Access db")
     try:
-        # find project with matching channel platform, identifier pair
-        project = await project_service.get_project_async(session, message)
-        logger.info("Access project")
-        # Get user_id by sender channel/number with user_service
-        user, is_new_sms_user = await user_service.get_user_async(
-            session, project, message
-        )
+        # # find project with matching channel platform, identifier pair
+        # project = await project_service.get_project_async(session, message)
+        # logger.info("Access project")
+        # # Get user_id by sender channel/number with user_service
+        # user, is_new_sms_user = await user_service.get_user_async(
+        #     session, project, message
+        # )
 
-        if user is None:
-            # If user not found, just create one (no opt-in here)
-            user = await user_service.create_user_async(session, project, message)
-            logger.info(f"Create new user: {user.id}")
+        # if user is None:
+        #     # If user not found, just create one (no opt-in here)
+        #     user = await user_service.create_user_async(session, project, message)
+        #     logger.info(f"Create new user: {user.id}")
 
-        logger.info("Access user")
-        # Save request message to database
-        request_message = await message_repo.create_message(
-            user_id=user.id, message_body=message.to_dict()
-        )
-        logger.info(f"Save msg: {request_message.conversation_id}")
-        if not request_message:
-            raise ValueError("Failed to create request message")
-        conversation_id = request_message.conversation_id
-        testing = (
-            getattr(message.metadata, "testing", False) if message.metadata else False
-        )
+        # logger.info("Access user")
+        # # Save request message to database
+        # request_message = await message_repo.create_message(
+        #     user_id=user.id, message_body=message.to_dict()
+        # )
+        # logger.info(f"Save msg: {request_message.conversation_id}")
+        # if not request_message:
+        #     raise ValueError("Failed to create request message")
+        # conversation_id = request_message.conversation_id
+        # testing = (
+        #     getattr(message.metadata, "testing", False) if message.metadata else False
+        # )
 
-        account_name = project.account.name
-        event_properties = {
-            "account_name": account_name,
-            "channel": message.channel.value,
-            "conversation_id": str(conversation_id),
-            "testing": testing,
-        }
-        analytics_service.track_event(
-            user_id=str(user.id),
-            event_name=AnalyticsEvent.USER_MESSAGE,
-            event_properties=event_properties,
-        )
-        logger.info("Track_event")
+        # account_name = project.account.name
+        # event_properties = {
+        #     "account_name": account_name,
+        #     "channel": message.channel.value,
+        #     "conversation_id": str(conversation_id),
+        #     "testing": testing,
+        # }
+        # analytics_service.track_event(
+        #     user_id=str(user.id),
+        #     event_name=AnalyticsEvent.USER_MESSAGE,
+        #     event_properties=event_properties,
+        # )
+        # logger.info("Track_event")
         # Get appropriate agent from account name
-        agent_id = project.agent_id
+        # print(message.sender_identifier)
+        agent_id = uuid.UUID("82dcb010-2fb9-47f9-bb14-96ce08fed8c4")  # project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
         # Construct config
-        config = await agent_service.construct_agent_config(
-            session=session,
-            agent_id=agent_id,
-            user_id=user.id,
-            project_id=project.id,
-            conversation_id=conversation_id,
-            stream=True,
-        )
-        config.stream = True
-        logger.info(f"Agent config: {config}")
-        agent = Agent(config=config)
+        agent = message.cache.get(message.sender_identifier)  # type: ignore
+        if not message.cache.has(message.sender_identifier) or agent is None:  # type: ignore
+
+            config = await agent_service.construct_agent_config(
+                session=session,
+                agent_id=agent_id,
+                user_id=uuid.UUID(message.sender_identifier),  # user.id,
+                project_id=uuid.UUID(
+                    "e31cdd5f-7718-4985-b284-2795b08bcd6f"
+                ),  # project.id,
+                conversation_id=uuid.UUID(
+                    message.sender_identifier
+                ),  # conversation_id,
+                stream=True,
+            )
+            config.stream = True
+            logger.info(f"Agent config: {config}")
+            agent = Agent(config=config)
+            agent._agent._agent.model = OpenAIChat(id="gpt-4o-mini")
+            message.cache.set(message.sender_identifier, agent)  # type: ignore
+            logger.info(f"Set config {message.sender_identifier}")
+        else:
+            logger.info(f"Use existing config {message.sender_identifier}")
 
         input = _utils.get_agent_input_from_message(message=message)
         logger.info("Input: Start")

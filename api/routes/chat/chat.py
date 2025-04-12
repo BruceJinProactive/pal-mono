@@ -16,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.chat.completion_util import ChatCompletionStreamer, CompletionRequest
+from api.routes.chat.completion_util import (
+    ChatCompletionStreamer,
+    CompletionRequest,
+    MemoryCache,
+)
 from api.routes.endpoints import endpoints
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
@@ -32,7 +36,7 @@ from services.relay_service import send_messages
 from utils.log import logger
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
-
+_cache = MemoryCache()
 DEFAULT_ACCOUNT_ICON = "images/accounts/palona_icon.png"
 DEFAULT_USER_ICON = "images/agents/default_user_icon.png"
 
@@ -190,13 +194,29 @@ completion_chat_engine = ChatCompletionStreamer()
 
 @chat_router.post("/completions")
 async def chat_completions(
-    request: CompletionRequest, session: AsyncSession = Depends(db.get_db_async)
+    request: CompletionRequest,
+    raw_request: Request,
+    session: AsyncSession = Depends(db.get_db_async),
 ):
     if request.stream:
+        body = await raw_request.json()
+        try:
+            caller_number = body.get("call", {}).get("customer", {}).get("number")
+            if caller_number is None or caller_number == "":
+                logger.error("Empty caller number")
+                caller_number = "empty_number"
+        except Exception as e:
+            logger.error(f"Error extracting caller number: {e}")
+            caller_number = "empty_number"
+
         async for new_session in db.get_db_async():
             return StreamingResponse(
                 completion_chat_engine.stream_chat(
-                    request.messages, request.model, new_session
+                    request.messages,
+                    request.model,
+                    new_session,
+                    sender_identifier=caller_number,
+                    memory_cache=_cache,
                 ),
                 media_type="text/event-stream",
                 headers={

@@ -61,14 +61,15 @@ class Agent:
         Returns:
             Output: The output data from the agent.
         """
-        LLMObs.annotate(
-            tags={
-                "account_name": self._metadata.account_name,
-                "user_id": self._metadata.user_id,
-                "session_id": self._metadata.session_id,
-                "agent_id": self._metadata.agent_id,
-            }
-        )
+        if not self._agent._agent.is_streamable:
+            LLMObs.annotate(
+                tags={
+                    "account_name": self._metadata.account_name,
+                    "user_id": self._metadata.user_id,
+                    "session_id": self._metadata.session_id,
+                    "agent_id": self._metadata.agent_id,
+                }
+            )
 
         # Update memory with the user's input
         asyncio.create_task(
@@ -78,7 +79,10 @@ class Agent:
             )  # type: ignore
         )
         testing_accounts = ["proactiveailab", "palona"]
-        if self._metadata.account_name not in testing_accounts:
+        if (
+            self._metadata.account_name not in testing_accounts
+            and not self._agent._agent.is_streamable
+        ):
             # TODO: migrate to memory tools once implemeted
             memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
             input.memories = memories
