@@ -84,7 +84,10 @@ class Agent:
             input.memories = memories
 
         # Enable guardrails solely for LAT environment
-        if os.getenv("RUNTIME_ENV", "NA") == "lat":
+        if (
+            os.getenv("RUNTIME_ENV", "NA") == "lat"
+            and not self._agent._agent.is_streamable  # ISSUE: a temporary fix to avoid guardrails for streaming agents to reudce latency latency
+        ):
             safe = check_input(input.content)
             if not safe:
                 return Output(

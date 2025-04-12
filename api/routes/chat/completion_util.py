@@ -50,6 +50,7 @@ class ChatCompletionStreamer:
     ) -> AsyncGenerator[bytes, None]:
 
         user_msg = extract_user_text(messages)
+        logger.info(f"Received message: {user_msg}")
         response_stream = await get_chat_response_stream(
             session=session,
             message=PalMessage(
@@ -61,7 +62,7 @@ class ChatCompletionStreamer:
                 metadata=Metadata(),
             ),
         )
-
+        logger.info("Received response stream")
         if response_stream:
             i = 0
             async for chunk in response_stream:
