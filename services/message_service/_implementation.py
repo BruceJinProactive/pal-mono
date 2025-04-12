@@ -159,15 +159,8 @@ async def get_chat_response_async(
             split_texts = message.text.body.split("<BREAK>")
 
             for text in split_texts:
-                sub_message = Message(
-                    author_type=AuthorType.AGENT,
-                    sender_identifier=message.recipient_identifier,
-                    recipient_identifier=message.sender_identifier,
-                    channel=message.channel,
-                    broker=message.broker,
-                    text=TextObject(body=text.strip()),
-                    metadata=message.metadata,
-                )
+                sub_message = message.model_copy(deep=True)
+                sub_message.text = TextObject(body=text.strip())
                 final_output_messages.append(sub_message)
 
         for message in final_output_messages:
