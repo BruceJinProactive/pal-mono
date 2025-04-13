@@ -1,5 +1,4 @@
 import datetime
-import random
 import uuid
 from datetime import timedelta
 from functools import lru_cache
@@ -117,22 +116,22 @@ class ChatCompletionStreamer:
                 # user_id="fc86a16a-9920-4b5d-89e4-6336bede31e5",
             ),
         )
-        filler = random.choice(FILLER_PHRASES)
-        rid = self._gen_id()
-        filler_chunk = ChatCompletionChunk(
-            id=rid,
-            object="chat.completion.chunk",
-            created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            model=recipient_identifier,
-            choices=[
-                ChunkChoice(
-                    index=0,
-                    delta=ChoiceDelta(role="assistant", content=filler),
-                    finish_reason=None,
-                )
-            ],
-        )
-        yield f"data: {filler_chunk.model_dump_json()}\n\n".encode("utf-8")
+        # filler = random.choice(FILLER_PHRASES)
+        # rid = self._gen_id()
+        # filler_chunk = ChatCompletionChunk(
+        #     id=rid,
+        #     object="chat.completion.chunk",
+        #     created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+        #     model=recipient_identifier,
+        #     choices=[
+        #         ChunkChoice(
+        #             index=0,
+        #             delta=ChoiceDelta(role="assistant", content=filler),
+        #             finish_reason=None,
+        #         )
+        #     ],
+        # )
+        # yield f"data: {filler_chunk.model_dump_json()}\n\n".encode("utf-8")
         message.__dict__["cache"] = memory_cache
         # setattr(message, "cache", memory_cache)
         response_stream = await get_chat_response_stream(

@@ -210,22 +210,22 @@ async def chat_completions(
             logger.error(f"Error extracting caller number: {e}")
             caller_number = "empty_number"
 
-        # async for new_session in db.get_db_async():
-        return StreamingResponse(
-            completion_chat_engine.stream_chat(
-                request.messages,
-                request.model,
-                session,
-                sender_identifier=caller_number,
-                memory_cache=_cache,
-            ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # For nginx
-            },
-        )
+        async for new_session in db.get_db_async():
+            return StreamingResponse(
+                completion_chat_engine.stream_chat(
+                    request.messages,
+                    request.model,
+                    new_session,
+                    sender_identifier=caller_number,
+                    memory_cache=_cache,
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",  # For nginx
+                },
+            )
     else:
         result = await completion_chat_engine.full_response(
             request.messages, request.model, session
