@@ -1,4 +1,5 @@
 import datetime
+import random
 import uuid
 from datetime import timedelta
 from functools import lru_cache
@@ -27,7 +28,7 @@ class MemoryCache:
     def __init__(self):
         self.store = {}  # {key: (value, expire_time)}
 
-    def set(self, key: str, value, ttl_seconds: int = 3600):
+    def set(self, key: str, value, ttl_seconds: int = 300):
         expire_time = (
             datetime.datetime.now(datetime.timezone.utc)
             + timedelta(seconds=ttl_seconds)
@@ -77,6 +78,16 @@ def uuid_from_phone(phone_number: str) -> uuid.UUID:
     return uuid.uuid5(AGENT_NAMESPACE_UUID, phone_number)
 
 
+FILLER_PHRASES = [
+    "Sure thing.",
+    "Okay, one sec.",
+    "Let me see...",
+    "Just a moment.",
+    "Alright.",
+    "Give me a second.",
+]
+
+
 class ChatCompletionStreamer:
 
     def _gen_id(self):
@@ -90,7 +101,6 @@ class ChatCompletionStreamer:
         sender_identifier: str = "empty_number",
         memory_cache: MemoryCache = MemoryCache(),
     ) -> AsyncGenerator[bytes, None]:
-
         user_msg = extract_user_text(messages)
         logger.info(f"Received message: {user_msg},{sender_identifier}")
         sender_identifier = str(uuid_from_phone(sender_identifier))
@@ -107,7 +117,22 @@ class ChatCompletionStreamer:
                 # user_id="fc86a16a-9920-4b5d-89e4-6336bede31e5",
             ),
         )
-
+        filler = random.choice(FILLER_PHRASES)
+        rid = self._gen_id()
+        filler_chunk = ChatCompletionChunk(
+            id=rid,
+            object="chat.completion.chunk",
+            created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            model=recipient_identifier,
+            choices=[
+                ChunkChoice(
+                    index=0,
+                    delta=ChoiceDelta(role="assistant", content=filler),
+                    finish_reason=None,
+                )
+            ],
+        )
+        yield f"data: {filler_chunk.model_dump_json()}\n\n".encode("utf-8")
         message.__dict__["cache"] = memory_cache
         # setattr(message, "cache", memory_cache)
         response_stream = await get_chat_response_stream(
