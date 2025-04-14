@@ -5,6 +5,7 @@ from agent.tool.internal.query_knowledge_tool import QueryKnowledgeTool
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 
 from . import _config
+from utils.log import logger
 
 
 def get_tools(
@@ -14,7 +15,10 @@ def get_tools(
 
     tools = []
     for identifier in tool_config.identifiers:
-        tools.append(tool_registry.get_tool(identifier, tool_config.metadata))
+        try:
+            tools.append(tool_registry.get_tool(identifier, tool_config.metadata))
+        except Exception:
+            logger.exception(f"Tool {identifier} failed to load.")
 
     if knowledge_config.enabled:
         # Add our own custom knowledge base search tool !!!

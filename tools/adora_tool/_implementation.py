@@ -36,7 +36,7 @@ class AdoraTool(Toolkit):
         store_id: str,
         namespace: str,
         tool_metadata: ToolMetadata,
-        client_config: ClientConfig,
+        client_config: ClientConfig | None = None,
     ):
         super().__init__(name="adora_tool")
 
@@ -50,7 +50,9 @@ class AdoraTool(Toolkit):
             self.qa_store = True
         else:
             self.qa_store = False
-            self.discounts = client_config.data.get("discounts", [])
+
+            if client_config:
+                self.discounts = client_config.data.get("discounts", [])
 
         ### Cache adora token and store info ###
         self.cached_store_info: str | None = None
