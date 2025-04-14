@@ -8,7 +8,12 @@ from ddtrace.llmobs.decorators import retrieval, tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.toast_tool._apis import get_online_ordering_status, get_toast_access_token
+from tools.toast_tool._apis import (
+    get_online_ordering_status,
+    get_order_prices,
+    get_toast_access_token,
+    submit_order,
+)
 from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool.classes import ToastAccessToken
 from utils.log import logger
@@ -333,7 +338,28 @@ class ToastTool(Toolkit):
                 return "We'll need your phone number."
 
     def _submit_order(self, order: Order) -> str:
-        return "Pending Implementation"
+        # Retrieve the bearer token
+        toast_bearer_token = self._toast_bearer_token
+        if not toast_bearer_token:
+            return (
+                "Failed to authenticate ordering tool. "
+                "Please reach out to our support team at help@palona.ai "
+                "for assistance."
+            )
+        # First let toast API fill in the prices
+        try:
+            order = get_order_prices(toast_bearer_token, self.store_id, order)
+            order = submit_order(toast_bearer_token, self.store_id, order)
+
+            # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
+            return (
+                f"Order #{order.guid} submitted successfully! "
+                f"Your total is ${order.checks[0].totalAmount}. "
+                f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to submit the order: {e}")
+            return "There was an error while submitting the order. Please try again."
 
     def _validate_address(self, address: str) -> str:
         return "Pending Implementation"

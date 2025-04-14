@@ -191,10 +191,12 @@ class Check(BaseModel):
     totalAmount: Optional[float]
 
 
+# TODO: Implement input and output Order classes
 class Order(BaseModel):
     checks: List[Check]
     diningOption: DiningOption
     guid: Optional[str]
+    estimatedFulfillmentDate: Optional[str]
 
 
 ########### TOAST API CLASS END ############
