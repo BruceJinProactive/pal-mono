@@ -8,13 +8,13 @@ from ddtrace.llmobs.decorators import retrieval, tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.toast_tool._apis import get_online_ordering_status
+from tools.toast_tool._apis import get_online_ordering_status, get_toast_access_token
 from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import get_toast_access_token
 from tools.toast_tool.classes import ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
+from . import _utils
 from ._llm import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
@@ -127,6 +127,7 @@ class ToastTool(Toolkit):
             )
             return "Failed to check the online ordering status, please try again."
 
+    # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
     @tool
     async def checkout_order(self, latest_user_message: str) -> str:
         """
@@ -138,7 +139,6 @@ class ToastTool(Toolkit):
         try:
             # Datadog decorators screw the function signature so use type ignore as workaround
             chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
-
             context = self._get_relevant_docs(chat_history)  # type: ignore
 
             order = llm_call(
@@ -159,7 +159,11 @@ class ToastTool(Toolkit):
                 # Therefore, no need to do it. Let's check the behavior and clean up Adora
                 return "Failed to extract structured data. Please try again."
 
-            self._post_process_order(order)
+            # Validate and check the order
+            error_message = self._post_process_order(order)
+            if error_message:
+                return error_message
+
             return self._submit_order(order)
 
         except Exception as e:
@@ -245,8 +249,91 @@ class ToastTool(Toolkit):
         )
         return context
 
-    def _post_process_order(self, order: Order) -> None:
-        pass
+    def _post_process_order(self, order: Order) -> str | None:
+        """
+        Validates and processes an order before submission.
+
+        Args:
+            order (Order): The order object to validate and process.
+
+        Returns:
+            str | None: Error message if validation fails, None if successful.
+
+        """
+        # Check if the order type non-empty and takeout. For now, we only support takeout orders
+        if not order.diningOption.behavior:
+            logger.error("No order type specified.")
+            return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
+
+        try:
+            order.diningOption.behavior = _utils.validate_order_type(
+                order.diningOption.behavior
+            )
+        except Exception as e:
+            logger.error(f"Could not validate order type: {e}")
+            return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
+
+        # TODO: Validate the address if the order is for delivery
+        # PLACEHOLDER: Validate the address if the order is for delivery
+
+        logger.debug(f"Extracted structured data: {order}")
+        logger.debug(f"Extracted structured data type: {type(order)}")
+        if not self._toast_bearer_token:
+            return (
+                "Failed to authenticate ordering tool. "
+                "Please reach out to our support team at help@palona.ai "
+                "for assistance."
+            )
+
+        # TODO: Discuss with the team if we want to adopt Adora agent's approach to handling last names and email addresses.
+        ### Validate checks ###
+        if not order.checks:
+            logger.error("Order checks are missing.")
+            return "We'll need to check your order to place it."
+
+        # Validate each check in the order
+        for check in order.checks:
+            if not check.customer:
+                logger.error("Customer info is missing.")
+                return "We'll need your first name, last name, email, and phone number to place the order."
+            if not check.customer.firstName:
+                logger.error("Customer first name is missing.")
+                return "We'll need your first name."
+            if not check.customer.lastName:
+                logger.error("Customer last name is missing.")
+                return "We'll need your last name."
+
+            ########## NOTE: if we want to append "(via Toast Agent)" to the customer last name ##########
+
+            # check.customer.lastName = (
+            #     "(via Toast Agent)"
+            #     if not check.customer.lastName
+            #     else f"{check.customer.lastName} (via Jimmy)"
+            # )
+            ##############################################
+
+            email = check.customer.email
+            if not email or not _utils.is_valid_email(email):
+                logger.error(f"Invalid email address: {email}")
+                return "We'll need your email address."
+
+            ########## NOTE: the following is how Adora agent handles the email. ##########
+            # Set email to default if empty or if it is not valid
+            # email = order.customer.email
+            # if not email or not _utils.is_valid_email(email):
+            #     order.customer.email = "jimmythesurfer@palona.ai"
+            ##############################################
+
+            if not check.customer.phone or not _utils.is_valid_phone_number(
+                _utils.format_phone_number(check.customer.phone)
+            ):
+                logger.error(
+                    f"Customer phone number is missing or invalid. Phone: {check.customer.phone}"
+                )
+                return "We'll need your phone number."
 
     def _submit_order(self, order: Order) -> str:
+        return "Pending Implementation"
+
+    def _validate_address(self, address: str) -> str:
         return "Pending Implementation"
