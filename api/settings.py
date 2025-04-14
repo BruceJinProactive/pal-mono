@@ -48,7 +48,7 @@ class ApiSettings(BaseSettings):
         valid_cors.extend(["https://agno.app", "https://www.agno.app"])
 
         runtime_env = info.data.get("runtime_env")
-        if runtime_env == "dev" or runtime_env == "lat":
+        if runtime_env == "dev" or runtime_env == "lat" or runtime_env == "stg":
             # 8501 is the default port for streamlit
             # 3000 is the default port for create-react-app
             valid_cors.extend(
