@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from functools import cached_property
 
 from agno.tools.toolkit import Toolkit
@@ -14,8 +15,14 @@ from tools.toast_tool.classes import ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
-from . import _llm, _query_engine
-from .classes import SubQueries
+from ._llm import (
+    EXTRACTOR_SYSTEM_PROMPT,
+    EXTRACTOR_USER_PROMPT,
+    RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+    llm_call,
+)
+from ._query_engine import create_query_engine
+from .classes import Order, SubQueries
 
 
 class ToastTool(Toolkit):
@@ -41,7 +48,7 @@ class ToastTool(Toolkit):
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
 
-        self.query_engine = _query_engine.create_query_engine(self.namespace)
+        self.query_engine = create_query_engine(self.namespace)
 
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
@@ -120,6 +127,56 @@ class ToastTool(Toolkit):
             )
             return "Failed to check the online ordering status, please try again."
 
+    @tool
+    async def checkout_order(self, latest_user_message: str) -> str:
+        """
+        Processes an order checkout.
+
+        Returns:
+            str: Order checkout confirmation details
+        """
+        try:
+            # Datadog decorators screw the function signature so use type ignore as workaround
+            chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
+
+            context = self._get_relevant_docs(chat_history)  # type: ignore
+
+            order = llm_call(
+                system_prompt=EXTRACTOR_SYSTEM_PROMPT,
+                prompt=EXTRACTOR_USER_PROMPT.format(
+                    context=context, chat_history=chat_history
+                ),
+                response_format=Order,
+                reasoning=False,
+            )
+
+            if not isinstance(order, Order):
+                logger.error(
+                    f"`order` object in type {type(order)} but expected type Order.\n"
+                    f"`order` object: {order}"
+                )
+                # Checking logs for Adora, always failed the try to construct str to Order
+                # Therefore, no need to do it. Let's check the behavior and clean up Adora
+                return "Failed to extract structured data. Please try again."
+
+            self._post_process_order(order)
+            return self._submit_order(order)
+
+        except Exception as e:
+            logger.error(f"Error in submit order: {e}")
+            logger.error(traceback.format_exc())
+            return "Please try again."
+
+    @tool
+    def check_address(self) -> str:
+        """
+        Validates a delivery address.
+
+        Returns:
+            str: Address validation results
+        """
+        raise Exception("Not Implemented")
+
     @retrieval
     def _get_chat_history(self, latest_user_message: str) -> str:
         """
@@ -152,8 +209,8 @@ class ToastTool(Toolkit):
     @retrieval
     async def _get_relevant_docs(self, chat_history: str) -> str:
         # TODO: Implement llm_call
-        sub_queries = _llm.llm_call(
-            system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+        sub_queries = llm_call(
+            system_prompt=RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
             prompt=chat_history,
             response_format=SubQueries,
             reasoning=False,
@@ -188,22 +245,8 @@ class ToastTool(Toolkit):
         )
         return context
 
-    @tool
-    def checkout_order(self) -> str:
-        """
-        Processes an order checkout.
+    def _post_process_order(self, order: Order) -> None:
+        pass
 
-        Returns:
-            str: Order checkout confirmation details
-        """
-        raise Exception("Not Implemented")
-
-    @tool
-    def check_address(self) -> str:
-        """
-        Validates a delivery address.
-
-        Returns:
-            str: Address validation results
-        """
-        raise Exception("Not Implemented")
+    def _submit_order(self, order: Order) -> str:
+        return "Pending Implementation"
