@@ -4,19 +4,16 @@ from datetime import timedelta
 from functools import lru_cache
 from typing import AsyncGenerator, List, Optional
 
-from agno.run.response import RunResponse
 from openai.types.chat import (
     ChatCompletion,
-    ChatCompletionChunk,
     ChatCompletionMessage,
     ChatCompletionMessageParam,
 )
 from openai.types.chat.chat_completion import Choice as FinalChoice
-from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
-from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import db
 from api.schemas.chat.message import AuthorType, Channel, Metadata, TextObject
 from api.schemas.chat.message import Message as PalMessage
 from services.message_service import get_chat_response_async, get_chat_response_stream
@@ -100,82 +97,34 @@ class ChatCompletionStreamer:
         sender_identifier: str = "empty_number",
         memory_cache: MemoryCache = MemoryCache(),
     ) -> AsyncGenerator[bytes, None]:
-        user_msg = extract_user_text(messages)
-        logger.info(f"Received message: {user_msg},{sender_identifier}")
-        sender_identifier = str(uuid_from_phone(sender_identifier))
-        message = PalMessage(
-            author_type=AuthorType.USER,
-            sender_identifier=sender_identifier,  # get the phone number.
-            recipient_identifier=recipient_identifier,
-            channel=Channel.API,
-            text=TextObject(body=user_msg),
-            metadata=Metadata(
-                account_name="palona-voice",
-                project_name="palona-voice-default",
-                # agent_id="82dcb010-2fb9-47f9-bb14-96ce08fed8c4",
-                # user_id="fc86a16a-9920-4b5d-89e4-6336bede31e5",
-            ),
-        )
-        # filler = random.choice(FILLER_PHRASES)
-        # rid = self._gen_id()
-        # filler_chunk = ChatCompletionChunk(
-        #     id=rid,
-        #     object="chat.completion.chunk",
-        #     created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-        #     model=recipient_identifier,
-        #     choices=[
-        #         ChunkChoice(
-        #             index=0,
-        #             delta=ChoiceDelta(role="assistant", content=filler),
-        #             finish_reason=None,
-        #         )
-        #     ],
-        # )
-        # yield f"data: {filler_chunk.model_dump_json()}\n\n".encode("utf-8")
-        message.__dict__["cache"] = memory_cache
-        # setattr(message, "cache", memory_cache)
-        response_stream = await get_chat_response_stream(
-            session=session,
-            message=message,
-        )
-        logger.info("Received response stream")
-        if response_stream:
-            i = 0
+        async for new_session in db.get_db_async():
+            session = new_session
+            user_msg = extract_user_text(messages)
+            logger.info(f"Received message: {user_msg},{sender_identifier}")
+            sender_identifier = str(uuid_from_phone(sender_identifier))
+            message = PalMessage(
+                author_type=AuthorType.USER,
+                sender_identifier=sender_identifier,  # get the phone number.
+                recipient_identifier=recipient_identifier,
+                channel=Channel.API,
+                text=TextObject(body=user_msg),
+                metadata=Metadata(
+                    account_name="palona-voice",
+                    project_name="palona-voice-default",
+                    # agent_id="82dcb010-2fb9-47f9-bb14-96ce08fed8c4",
+                    # user_id="fc86a16a-9920-4b5d-89e4-6336bede31e5",
+                ),
+            )
+            message.__dict__["cache"] = memory_cache
+            # setattr(message, "cache", memory_cache)
+            response_stream = await get_chat_response_stream(
+                session=session,
+                message=message,
+            )
             async for chunk in response_stream:
-                rid = self._gen_id()
-                if isinstance(chunk, RunResponse):
-                    content = chunk.get_content_as_string()
-                elif isinstance(chunk, tuple):
-                    content = chunk[0]
-                elif isinstance(chunk, PalMessage):
-                    content = chunk.text.body if chunk.text else ""
-                    rid = chunk.id
-                elif chunk:
-                    if not isinstance(chunk, (str, int, float, bool)):
-                        logger.warning(f"Unexpected chunk type: {type(chunk)}")
-                        continue
-                    content = str(chunk)
-                else:
-                    content = ""
-                logger.info(f"Sending chunk: {content}")
-                chunk = ChatCompletionChunk(
-                    id=rid,
-                    object="chat.completion.chunk",
-                    created=int(
-                        datetime.datetime.now(datetime.timezone.utc).timestamp()
-                    ),
-                    model=recipient_identifier,
-                    choices=[
-                        ChunkChoice(
-                            index=i,
-                            delta=(ChoiceDelta(role="assistant", content=content)),
-                            finish_reason=None,
-                        )
-                    ],
-                )
                 yield f"data: {chunk.model_dump_json()}\n\n".encode("utf-8")
-                i += 1
-        yield b"data: [DONE]\n\n"
+
+            yield b"data: [DONE]\n\n"
 
     async def full_response(
         self,

@@ -1,8 +1,15 @@
+import datetime
 import random
 import uuid
 from typing import AsyncIterator
 
 from agno.models.openai.chat import OpenAIChat
+from agno.run.response import RunResponse
+from openai.types.chat import (
+    ChatCompletionChunk,
+)
+from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
+from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -203,7 +210,7 @@ async def get_chat_response_async(
     return response_messages
 
 
-async def get_chat_response_stream(
+async def get_chat_response_stream_cached(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[Message]:
     logger.info(f"get_chat_response_stream received message: {message}")
@@ -211,47 +218,6 @@ async def get_chat_response_stream(
     # message_repo = db.MessageRepositoryAsync(session)
     logger.info("Access db")
     try:
-        # # find project with matching channel platform, identifier pair
-        # project = await project_service.get_project_async(session, message)
-        # logger.info("Access project")
-        # # Get user_id by sender channel/number with user_service
-        # user, is_new_sms_user = await user_service.get_user_async(
-        #     session, project, message
-        # )
-
-        # if user is None:
-        #     # If user not found, just create one (no opt-in here)
-        #     user = await user_service.create_user_async(session, project, message)
-        #     logger.info(f"Create new user: {user.id}")
-
-        # logger.info("Access user")
-        # # Save request message to database
-        # request_message = await message_repo.create_message(
-        #     user_id=user.id, message_body=message.to_dict()
-        # )
-        # logger.info(f"Save msg: {request_message.conversation_id}")
-        # if not request_message:
-        #     raise ValueError("Failed to create request message")
-        # conversation_id = request_message.conversation_id
-        # testing = (
-        #     getattr(message.metadata, "testing", False) if message.metadata else False
-        # )
-
-        # account_name = project.account.name
-        # event_properties = {
-        #     "account_name": account_name,
-        #     "channel": message.channel.value,
-        #     "conversation_id": str(conversation_id),
-        #     "testing": testing,
-        # }
-        # analytics_service.track_event(
-        #     user_id=str(user.id),
-        #     event_name=AnalyticsEvent.USER_MESSAGE,
-        #     event_properties=event_properties,
-        # )
-        # logger.info("Track_event")
-        # Get appropriate agent from account name
-        # print(message.sender_identifier)
         agent_id = uuid.UUID("82dcb010-2fb9-47f9-bb14-96ce08fed8c4")  # project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
@@ -305,6 +271,156 @@ async def get_chat_response_stream(
             yield error_message
 
         return error_response_generator()
+
+
+async def get_chat_response_stream(
+    session: AsyncSession, message: Message
+) -> AsyncIterator[ChatCompletionChunk]:
+    logger.info(f"get_chat_response_stream received message: {message}")
+    user = None
+    message_repo = db.MessageRepositoryAsync(session)
+    logger.info("Access db")
+    try:
+        # find project with matching channel platform, identifier pair
+        project = await project_service.get_project_async(session, message)
+        logger.info(f"Access project: {project}")
+        # Get user_id by sender channel/number with user_service
+        user, is_new_sms_user = await user_service.get_user_async(
+            session, project, message
+        )
+        if user is None:
+            # If user not found, just create one (no opt-in here)
+            user = await user_service.create_user_async(session, project, message)
+            logger.info(f"Create new user: {user}")
+        logger.info("Access user")
+        await session.refresh(user)
+        # Save request message to database
+        request_message = await message_repo.create_message(
+            user_id=user.id, message_body=message.to_dict()
+        )
+        logger.info(f"Save msg: {request_message.conversation_id}")
+        if not request_message:
+            raise ValueError("Failed to create request message")
+        conversation_id = request_message.conversation_id
+        testing = (
+            getattr(message.metadata, "testing", False) if message.metadata else False
+        )
+        await session.refresh(project, attribute_names=["account"])
+        account_name = project.account.name
+        event_properties = {
+            "account_name": account_name,
+            "channel": message.channel.value,
+            "conversation_id": str(conversation_id),
+            "testing": testing,
+        }
+        analytics_service.track_event(
+            user_id=str(user.id),
+            event_name=AnalyticsEvent.USER_MESSAGE,
+            event_properties=event_properties,
+        )
+        logger.info("Track_event")
+        # Get appropriate agent from account name
+        agent_id = project.agent_id
+        if agent_id is None:
+            raise ValueError("Agent ID not found")
+        # Construct config
+        config = await agent_service.construct_agent_config(
+            session=session,
+            agent_id=agent_id,
+            user_id=user.id,
+            project_id=project.id,
+            conversation_id=conversation_id,
+            stream=True,
+        )
+        config.stream = True
+        logger.info(f"Agent config: {config}")
+        agent = Agent(config=config)
+
+        input = _utils.get_agent_input_from_message(message=message)
+        logger.info("Input: Start")
+        response_stream = await agent.arun(input)  # type: ignore
+        logger.info("Output: Done")
+        logger.info("Received response stream")
+        output_messages = []
+        if response_stream:
+            i = 0
+            async for chunk in response_stream:
+                rid = f"chatcmpl-{uuid.uuid4().hex}"  # TODO: fix this
+                if isinstance(chunk, RunResponse):
+                    content = chunk.get_content_as_string()
+                elif isinstance(chunk, tuple):
+                    content = chunk[0]
+                elif isinstance(chunk, Message):
+                    content = chunk.text.body if chunk.text else ""
+                    rid = chunk.id
+                elif chunk:
+                    if not isinstance(chunk, (str, int, float, bool)):
+                        logger.warning(f"Unexpected chunk type: {type(chunk)}")
+                        continue
+                    content = str(chunk)
+                else:
+                    content = ""
+                logger.info(f"Sending chunk: {content}")
+                chunk = ChatCompletionChunk(
+                    id=rid,
+                    object="chat.completion.chunk",
+                    created=int(
+                        datetime.datetime.now(datetime.timezone.utc).timestamp()
+                    ),
+                    model=message.recipient_identifier,
+                    choices=[
+                        ChunkChoice(
+                            index=i,
+                            delta=(ChoiceDelta(role="assistant", content=content)),
+                            finish_reason=None,
+                        )
+                    ],
+                )
+                yield chunk
+                i += 1
+                output_messages.append(content)
+
+        if response_stream:
+            analytics_service.track_event(
+                user_id=str(user.id),
+                event_name=AnalyticsEvent.AGENT_MESSAGE,
+                event_properties={
+                    "account_name": account_name,
+                    "channel": message.channel.value,
+                    "conversation_id": str(request_message.conversation_id),
+                    "testing": testing,
+                },
+            )
+
+            # Make sure to handle the case after the response messages are created
+            # Check if output.closing_conversation is True and mark the conversation as closing
+
+            conversation = await db.ConversationRepositoryAsync(
+                session
+            ).get_conversation_by_id(conversation_id=request_message.conversation_id)
+            if conversation:
+                conversation.status = db.ConversationStatus.CLOSING
+                await session.flush()
+
+                logger.info("Conversation status updated to CLOSING")
+            # await session.commit()
+    except Exception as e:
+        # Log any error and return error message stream
+        logger.error(f"Error in get_chat_response_stream: {message},{e}")
+        error_message = ChatCompletionChunk(
+            id=f"chatcmpl-{uuid.uuid4().hex}",  # TODO: fix this,
+            object="chat.completion.chunk",
+            created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            model=message.recipient_identifier,
+            choices=[
+                ChunkChoice(
+                    index=0,
+                    delta=(ChoiceDelta(role="assistant", content="")),
+                    finish_reason=None,
+                )
+            ],
+        )
+        yield error_message
 
 
 def get_chat_response(_session: Session, message: Message) -> Message:

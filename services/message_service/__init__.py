@@ -2,6 +2,7 @@ import datetime
 import uuid
 from typing import AsyncIterator
 
+from openai.types.chat import ChatCompletionChunk
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -37,7 +38,7 @@ async def get_chat_response_async(
 
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
-) -> AsyncIterator[Message]:
+) -> AsyncIterator[ChatCompletionChunk]:
     """
      Get a stream of chat responses for a given message.
 
@@ -56,7 +57,7 @@ async def get_chat_response_stream(
         ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
         ValueError: If the response type from the agent is unexpected.
     """
-    return await _implementation.get_chat_response_stream(session, message)
+    return _implementation.get_chat_response_stream(session, message)
 
 
 def get_chat_response(session: Session, message: Message) -> Message:

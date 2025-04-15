@@ -7,6 +7,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -192,40 +193,40 @@ def get_project_info(
 completion_chat_engine = ChatCompletionStreamer()
 
 
-@chat_router.post("/completions")
+@chat_router.post(
+    "/completions",
+)
 async def chat_completions(
     request: CompletionRequest,
     raw_request: Request,
     session: AsyncSession = Depends(db.get_db_async),
-):
+) -> Response:
     if request.stream:
 
         body = await raw_request.json()
         try:
             caller_number = body.get("call", {}).get("customer", {}).get("number")
             if caller_number is None or caller_number == "":
-                logger.error("Empty caller number")
                 caller_number = "empty_number"
         except Exception as e:
             logger.error(f"Error extracting caller number: {e}")
             caller_number = "empty_number"
-
-        async for new_session in db.get_db_async():
-            return StreamingResponse(
-                completion_chat_engine.stream_chat(
-                    request.messages,
-                    request.model,
-                    new_session,
-                    sender_identifier=caller_number,
-                    memory_cache=_cache,
-                ),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",  # For nginx
-                },
-            )
+        # TODO: when not from calling center, add get sender identifier from the request
+        return StreamingResponse(
+            completion_chat_engine.stream_chat(
+                request.messages,
+                request.model,
+                session,
+                sender_identifier=caller_number,
+                memory_cache=_cache,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # For nginx
+            },
+        )
     else:
         result = await completion_chat_engine.full_response(
             request.messages, request.model, session
