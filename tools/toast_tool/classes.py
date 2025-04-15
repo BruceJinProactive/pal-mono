@@ -75,8 +75,9 @@ class ToastAccessToken(BaseModel):
         return f"{self.token_type} {self.access_token}"
 
     def is_valid(self) -> bool:
-        """Basic check to see if token has required fields"""
-        return bool(self.access_token and self.token_type)
+        """Basic check to see if token has required fields and is not expired"""
+
+        return bool(self.access_token and self.token_type and not self.is_expired())
 
 
 class RestaurantInfo(BaseModel):
