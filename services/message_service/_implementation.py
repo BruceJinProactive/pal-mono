@@ -1,5 +1,6 @@
 import datetime
 import random
+import time
 import uuid
 from typing import AsyncIterator
 
@@ -276,29 +277,45 @@ async def get_chat_response_stream_cached(
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[ChatCompletionChunk]:
-    logger.info(f"get_chat_response_stream received message: {message}")
+    sender_identifier = message.sender_identifier
+
+    logger.info(
+        f"{sender_identifier}: get_chat_response_stream received message: {message}"
+    )
     user = None
+    commit_start = time.perf_counter()
     message_repo = db.MessageRepositoryAsync(session)
-    logger.info("Access db")
+    logger.info(
+        f"{sender_identifier}: message_repo, Took {time.perf_counter() - commit_start:.4f}s"
+    )
     try:
         # find project with matching channel platform, identifier pair
+        commit_start = time.perf_counter()
         project = await project_service.get_project_async(session, message)
-        logger.info(f"Access project: {project}")
+        logger.info(
+            f"{sender_identifier}: Access project: {project}, Took {time.perf_counter() - commit_start:.4f}s"
+        )
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
             session, project, message
         )
         if user is None:
             # If user not found, just create one (no opt-in here)
+            commit_start = time.perf_counter()
             user = await user_service.create_user_async(session, project, message)
-            logger.info(f"Create new user: {user}")
-        logger.info("Access user")
+            logger.info(
+                f"{sender_identifier}: Create new user: {user}, Took {time.perf_counter() - commit_start:.4f}s"
+            )
+        logger.info(f"{sender_identifier}: Access user")
         await session.refresh(user)
         # Save request message to database
+        commit_start = time.perf_counter()
         request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
         )
-        logger.info(f"Save msg: {request_message.conversation_id}")
+        logger.info(
+            f"{sender_identifier}: Save msg: {request_message.conversation_id}, Took {time.perf_counter() - commit_start:.4f}s"
+        )
         if not request_message:
             raise ValueError("Failed to create request message")
         conversation_id = request_message.conversation_id
@@ -313,17 +330,21 @@ async def get_chat_response_stream(
             "conversation_id": str(conversation_id),
             "testing": testing,
         }
+        commit_start = time.perf_counter()
         analytics_service.track_event(
             user_id=str(user.id),
             event_name=AnalyticsEvent.USER_MESSAGE,
             event_properties=event_properties,
         )
-        logger.info("Track_event")
+        logger.info(
+            f"{sender_identifier}: Track_event, Took {time.perf_counter() - commit_start:.4f}s"
+        )
         # Get appropriate agent from account name
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
         # Construct config
+        commit_start = time.perf_counter()
         config = await agent_service.construct_agent_config(
             session=session,
             agent_id=agent_id,
@@ -332,15 +353,22 @@ async def get_chat_response_stream(
             conversation_id=conversation_id,
             stream=True,
         )
+        logger.info(
+            f"{sender_identifier}: Agent config, Took {time.perf_counter() - commit_start:.4f}s"
+        )
         config.stream = True
-        logger.info(f"Agent config: {config}")
+        commit_start = time.perf_counter()
         agent = Agent(config=config)
-
+        logger.info(
+            f"{sender_identifier}: Agent init, Took {time.perf_counter() - commit_start:.4f}s"
+        )
         input = _utils.get_agent_input_from_message(message=message)
-        logger.info("Input: Start")
+        logger.info(f"{sender_identifier}: Input: Start")
+        commit_start = time.perf_counter()
         response_stream = await agent.arun(input)  # type: ignore
-        logger.info("Output: Done")
-        logger.info("Received response stream")
+        logger.info(
+            f"{sender_identifier}: Output: Done, Took {time.perf_counter() - commit_start:.4f}s"
+        )
         output_messages = []
         if response_stream:
             i = 0
@@ -360,7 +388,7 @@ async def get_chat_response_stream(
                     content = str(chunk)
                 else:
                     content = ""
-                logger.info(f"Sending chunk: {content}")
+                logger.info(f"{sender_identifier}: Sending chunk: {content}")
                 chunk = ChatCompletionChunk(
                     id=rid,
                     object="chat.completion.chunk",
@@ -400,9 +428,12 @@ async def get_chat_response_stream(
             ).get_conversation_by_id(conversation_id=request_message.conversation_id)
             if conversation:
                 conversation.status = db.ConversationStatus.CLOSING
+                commit_start = time.perf_counter()
                 await session.flush()
 
-                logger.info("Conversation status updated to CLOSING")
+                logger.info(
+                    f"{sender_identifier}: Conversation status updated to CLOSING, Took {time.perf_counter() - commit_start:.4f}s"
+                )
             # await session.commit()
     except Exception as e:
         # Log any error and return error message stream
