@@ -2,7 +2,7 @@ import http.client
 import json
 from typing import Optional
 
-from tools.toast_tool._apis._utils import API_TIMEOUT
+from tools.toast_tool._apis._utils import API_TIMEOUT, BASE_URL, connect_toast_order_hub
 from tools.toast_tool.classes import (
     HttpMethod,
     Order,
@@ -11,8 +11,6 @@ from tools.toast_tool.classes import (
     ToastAccessToken,
 )
 from utils.log import logger
-
-from . import _utils
 
 
 def get_toast_access_token(
@@ -32,7 +30,6 @@ def get_toast_access_token(
         `ToastAccessToken` object if successful, None otherwise
     """
     # Define constants for the API request
-    TOAST_API_HOST_NAME = "toast-api-server"
     USER_ACCESS_TYPE = "TOAST_MACHINE_CLIENT"
 
     payload = {
@@ -49,7 +46,7 @@ def get_toast_access_token(
             f"[ToastAPI.get_toast_access_token] Using client ID: {'*' * 8}{client_id[-4:] if len(client_id) > 4 else '*' * 4}"
         )
     try:
-        conn = http.client.HTTPSConnection(TOAST_API_HOST_NAME, timeout=API_TIMEOUT)
+        conn = http.client.HTTPSConnection(BASE_URL, timeout=API_TIMEOUT)
         conn.request(
             "POST",
             "/authentication/v1/authentication/login",
@@ -114,10 +111,10 @@ def get_store_info(
     """
     query_params = {"includeArchived": str(include_archived).lower()}
     try:
-        response = _utils.connect_toast_order_hub(
+        response = connect_toast_order_hub(
             http_method=HttpMethod.GET,
             bearer_token=bearer_token,
-            api_function=f"restaurants/v1/restaurants/{store_id}",
+            api_function=f"/restaurants/v1/restaurants/{store_id}",
             store_id=store_id,
             query_params=query_params,
             extra_headers=None,
@@ -162,10 +159,10 @@ def get_online_ordering_status(
         or raises an exception if the request fails.
     """
     try:
-        response = _utils.connect_toast_order_hub(
+        response = connect_toast_order_hub(
             http_method=HttpMethod.GET,
             bearer_token=bearer_token,
-            api_function="restaurant-availability/v1/availability",
+            api_function="/restaurant-availability/v1/availability",
             store_id=store_id,
             query_params=None,
             extra_headers=None,
@@ -209,10 +206,10 @@ def get_order_prices(
     """
     # Make the API call to the order prices endpoint
     try:
-        response = _utils.connect_toast_order_hub(
+        response = connect_toast_order_hub(
             http_method=HttpMethod.POST,
             bearer_token=bearer_token,
-            api_function="orders/v2/prices",
+            api_function="/orders/v2/prices",
             store_id=store_id,
             query_params=None,
             extra_headers={"Content-Type": "application/json"},
@@ -251,10 +248,10 @@ def submit_order(bearer_token: ToastAccessToken, store_id: str, order: Order) ->
         `Order` object that has been persisted in Toast.
     """
     try:
-        response = _utils.connect_toast_order_hub(
+        response = connect_toast_order_hub(
             http_method=HttpMethod.POST,
             bearer_token=bearer_token,
-            api_function="orders/v2/orders",
+            api_function="/orders/v2/orders",
             store_id=store_id,
             payload=order.model_dump(),
             logging_enabled=True,

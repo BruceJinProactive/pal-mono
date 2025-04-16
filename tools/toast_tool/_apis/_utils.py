@@ -6,7 +6,7 @@ from tools.toast_tool.classes import HttpMethod, ToastAccessToken, ToastHubRespo
 from utils.log import logger
 
 #################### CONSTANTS ####################
-BASE_URL = "toast-api-server"
+BASE_URL = "ws-sandbox-api.eng.toasttab.com"
 
 API_TIMEOUT = 30  # seconds
 ####################################################
@@ -47,6 +47,8 @@ def connect_toast_order_hub(
             request_body = json.dumps(payload)
         else:
             request_body = payload
+    else:
+        request_body = ""
 
     # Construct the full URL with query parameters
     if query_params:
@@ -57,10 +59,10 @@ def connect_toast_order_hub(
         # We focus on GET and POST methods for now
         # You can add more methods as needed
         if http_method == HttpMethod.GET:
-            conn.request(http_method, api_function, headers=headers)
+            conn.request(http_method.value, api_function, request_body, headers=headers)
 
         elif http_method == HttpMethod.POST:
-            conn.request(http_method, api_function, request_body, headers)
+            conn.request(http_method.value, api_function, request_body, headers)
 
         else:
             raise ValueError(

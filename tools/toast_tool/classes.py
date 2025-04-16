@@ -91,8 +91,8 @@ class RestaurantInfo(BaseModel):
     location: dict
     schedules: dict
     delivery: dict
-    online_ordering: dict
-    prep_times: dict
+    onlineOrdering: dict
+    prepTimes: dict
 
 
 class OrderingStatus(str, Enum):
@@ -107,9 +107,9 @@ class OrderingStatusReasonKey(str, Enum):
 
 class RestaurantOrderingStatus(BaseModel):
 
-    restaurant_guid: str
+    restaurantGuid: str
     status: OrderingStatus
-    reason_key: OrderingStatusReasonKey
+    reasonKey: OrderingStatusReasonKey
     reason: str
 
 
