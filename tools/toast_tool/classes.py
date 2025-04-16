@@ -122,10 +122,10 @@ class DiningBehavior(str, Enum):
 class DiningOption(BaseModel):
     guid: str
     entityType: str = "DiningOption"
-    curbside: Optional[bool]
-    behavior: Optional[DiningBehavior]
-    name: Optional[str]
-    external_id: Optional[Any]
+    curbside: Optional[bool] = None
+    behavior: Optional[DiningBehavior] = None
+    name: Optional[str] = None
+    externalId: Optional[Any] = None
 
 
 class ItemBase(BaseModel):
@@ -159,10 +159,6 @@ class ItemSelection(BaseModel):
     modifiers: Optional[List[Modifier]] = []
 
 
-class Selections(BaseModel):
-    selections: List[ItemSelection]
-
-
 # Payment type must either be "CREDIT" or "OTHER"
 class PaymentType(str, Enum):
     CREDIT = "CREDIT"
@@ -185,19 +181,19 @@ class Customer(BaseModel):
 
 class Check(BaseModel):
     customer: Customer
-    payments: List[Payment]
-    selections: List[Selections]
-    amount: Optional[float]
-    taxAmount: Optional[float]
-    totalAmount: Optional[float]
+    selections: List[ItemSelection]
+    payments: Optional[List[Payment]] = None
+    amount: Optional[float] = None
+    taxAmount: Optional[float] = None
+    totalAmount: Optional[float] = None
 
 
 # TODO: Implement input and output Order classes
 class Order(BaseModel):
     checks: List[Check]
     diningOption: DiningOption
-    guid: Optional[str]
-    estimatedFulfillmentDate: Optional[str]
+    guid: Optional[str] = None
+    estimatedFulfillmentDate: Optional[str] = None
 
 
 ########### TOAST API CLASS END ############

@@ -4,6 +4,7 @@ from typing import Optional
 
 from tools.toast_tool._apis._utils import API_TIMEOUT, BASE_URL, connect_toast_order_hub
 from tools.toast_tool.classes import (
+    DiningOption,
     HttpMethod,
     Order,
     RestaurantInfo,
@@ -212,8 +213,7 @@ def get_order_prices(
             api_function="/orders/v2/prices",
             store_id=store_id,
             query_params=None,
-            extra_headers={"Content-Type": "application/json"},
-            payload=order_data.model_dump(),
+            payload=order_data.model_dump(exclude_none=True),
             logging_enabled=True,
         )
     except Exception as e:
@@ -235,6 +235,51 @@ def get_order_prices(
         )
 
 
+def get_dining_options(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+) -> list[DiningOption]:
+    """
+    Retrieves available dining options from the Toast API for a restaurant.
+
+    Args:
+        bearer_token: Toast access token
+        store_id: External ID for the restaurant
+
+    Returns:
+        List of DiningOption objects containing the available dining options, or raises an exception if the request fails.
+    """
+    try:
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function="/config/v2/diningOptions",
+            store_id=store_id,
+            query_params=None,
+            payload=None,
+            logging_enabled=True,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_dining_options] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    response_data = response.decoded_body
+    if response.status == 200:
+
+        # Convert the JSON string to an Order object
+        dining_options = [
+            DiningOption.model_validate_json(json.dumps(option))
+            for option in json.loads(response_data)
+        ]
+        # Return the list of DiningOption objects
+        return dining_options
+    else:
+        raise ValueError(
+            f"Failed to get dining options with status {response.status}: {response_data}"
+        )
+
+
 def submit_order(bearer_token: ToastAccessToken, store_id: str, order: Order) -> Order:
     """
     Submits an order to the Toast API.
@@ -253,7 +298,7 @@ def submit_order(bearer_token: ToastAccessToken, store_id: str, order: Order) ->
             bearer_token=bearer_token,
             api_function="/orders/v2/orders",
             store_id=store_id,
-            payload=order.model_dump(),
+            payload=order.model_dump(exclude_none=True),
             logging_enabled=True,
         )
     except Exception as e:
