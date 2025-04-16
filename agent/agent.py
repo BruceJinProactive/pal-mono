@@ -7,7 +7,7 @@ from ddtrace.llmobs.decorators import workflow
 
 from agent.config import AgentConfig, AgentFramework
 from agent.framework import AgnoAgent
-from agent.guardrails import check_input
+from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import get_memory_context, update_memory
 from utils.log import logger
@@ -107,7 +107,7 @@ class Agent:
             os.getenv("RUNTIME_ENV", "NA") == "lat"
             and not self._agent._agent.is_streamable  # ISSUE: a temporary fix to avoid guardrails for streaming agents to reudce latency latency
         ):
-            safe = check_input(input.content)
+            safe = check_input_bedrock(input.content)
             if not safe:
                 return Output(
                     content="We cannot process your input. Please try again with a different input."
