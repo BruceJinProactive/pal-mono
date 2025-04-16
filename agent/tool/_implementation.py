@@ -3,9 +3,9 @@ from agno.tools.toolkit import Toolkit
 from agent.knowledge import KnowledgeConfig
 from agent.tool.internal.query_knowledge_tool import QueryKnowledgeTool
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from utils.log import logger
 
 from . import _config
-from utils.log import logger
 
 
 def get_tools(

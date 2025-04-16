@@ -6,9 +6,7 @@ from typing import AsyncIterator
 
 from agno.models.openai.chat import OpenAIChat
 from agno.run.response import RunResponse
-from openai.types.chat import (
-    ChatCompletionChunk,
-)
+from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -32,6 +32,8 @@ class QueryMessagesTool(Toolkit):
 
         try:
             try:
+                LLMObs.annotate(metadata=self.metadata.model_dump())
+
                 chat_history = ""
                 storage = get_storage(self.metadata.account_name)
                 agent_session = storage.read(
@@ -84,6 +86,7 @@ class QueryMessagesTool(Toolkit):
                     f"User ID: {self.metadata.user_id}\n"
                     f"Session ID: {self.metadata.session_id}"
                 )
+
                 return "Conversation history not found."
 
         except Exception as e:
