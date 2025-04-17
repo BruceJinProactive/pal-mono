@@ -2,6 +2,7 @@ import os
 
 import boto3
 from botocore.exceptions import ClientError
+from ddtrace.llmobs.decorators import task
 
 from agent.guardrails.rules.check_blacklisted import check_blacklisted
 from agent.guardrails.rules.check_code_or_injection import check_code_or_injection
@@ -13,6 +14,7 @@ from agent.guardrails.rules.check_unicode import check_unicode
 from utils.log import logger
 
 
+@task
 def check_input(prompt: str) -> bool:  # rule-based approach
     """
     Central function that chains all rules together.
@@ -30,6 +32,7 @@ def check_input(prompt: str) -> bool:  # rule-based approach
     return all(rule(prompt) for rule in checks)
 
 
+@task
 def check_input_bedrock(prompt: str) -> bool:  # aws bedrock approach
     """
     Checks a prompt against a Bedrock guardrail.
