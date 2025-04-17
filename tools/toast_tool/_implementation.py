@@ -1,21 +1,24 @@
 import asyncio
+import json
 import traceback
 from functools import cached_property
 
+import polyline
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, tool
+from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.toast_tool._apis import get_online_ordering_status, get_order_prices
 from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool._apis import get_toast_access_token, submit_order
-from tools.toast_tool.classes import ToastAccessToken
+from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
-from . import _utils
+from . import _llm, _utils
 from ._llm import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
@@ -42,7 +45,7 @@ class ToastTool(Toolkit):
 
         # Register tools
         self.register(self.check_online_ordering_status)
-        self.register(self.get_store_info)
+        self.register(self.get_store_info_tool)
         self.register(self.checkout_order)
         self.register(self.check_address)
 
@@ -60,7 +63,79 @@ class ToastTool(Toolkit):
             return bearer_token
 
     @tool
-    def get_store_info(self) -> str:
+    def check_address(self, address: str) -> str:
+        """
+        Validates if the given address (using x and y coordinates) is within the restaurant's delivery area.
+        Retrieves the store information (from cache or API), accesses the delivery area using dot notation,
+        decodes the polyline string into a list of Point objects, and creates a Polygon instance.
+        Finally, it checks whether the provided point lies inside the polygon area.
+        Args:
+            address (str): The address to validate.
+        Returns:
+            str: A message indicating whether the address is within the delivery area.
+        """
+        # Retrieve store information from cache if available.
+
+        if not address:
+            return "Could you provide your address?"
+
+        delivery_address = _llm.llm_call(
+            system_prompt="Extract the address into the given output format.",
+            prompt=address,
+            response_format=DeliveryAddress,
+            reasoning=False,
+        )
+
+        if not isinstance(delivery_address, DeliveryAddress):
+            return (
+                "Failed to identify address. "
+                "Please try again by providing the full address."
+            )
+
+        success, message, delivery_address = _utils.add_lat_long_to_address(
+            delivery_address
+        )
+        if not success:
+            return message
+
+        point = Point(delivery_address.lng, delivery_address.lat)
+
+        store_info_str = self.get_store_info()
+        if store_info_str == "Failed to get the store information, please try again.":
+            return store_info_str
+        try:
+            store_info = json.loads(store_info_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse store info JSON: {e}")
+            return "Failed to process store information."
+
+        polyline_str = (
+            store_info["delivery"]["area"]
+            if "delivery" in store_info and "area" in store_info["delivery"]
+            else None
+        )
+        if (
+            not polyline_str
+            or polyline_str == "Failed to get the store information, please try again."
+        ):
+            return "Delivery area is empty." if not polyline_str else polyline_str
+
+        # Decode the polyline string into a list of Point objects
+        try:
+            decoded = polyline.decode(polyline_str)
+            polygon = Polygon([(lng, lat) for lng, lat in decoded])
+        except Exception as e:
+            logger.error(f"Decode polyline to points failed: {e}")
+            return "Failed to decode the delivery area boundary."
+
+        # Validate the given point against the polygon's area using our helper method
+        if polygon.contains(point):
+            return "Address is within the delivery area."
+        else:
+            return "Address is outside the delivery area."
+
+    @tool
+    def get_store_info_tool(self) -> str:
         """
         Retrieves detailed configuration information for a specific restaurant.
 
@@ -73,6 +148,9 @@ class ToastTool(Toolkit):
                 - Prep times and supported web URLs
         """
 
+        return self.get_store_info()
+
+    def get_store_info(self) -> str:
         try:
             # If store info is already cached return it
             if self._cached_store_info:
@@ -171,16 +249,6 @@ class ToastTool(Toolkit):
             logger.error(f"Error in submit order: {e}")
             logger.error(traceback.format_exc())
             return "Please try again."
-
-    @tool
-    def check_address(self) -> str:
-        """
-        Validates a delivery address.
-
-        Returns:
-            str: Address validation results
-        """
-        raise Exception("Not Implemented")
 
     @retrieval
     def _get_chat_history(self, latest_user_message: str) -> str:
@@ -356,6 +424,3 @@ class ToastTool(Toolkit):
         except Exception as e:
             logger.error(f"Failed to submit the order: {e}")
             return "There was an error while submitting the order. Please try again."
-
-    def _validate_address(self, address: str) -> str:
-        return "Pending Implementation"

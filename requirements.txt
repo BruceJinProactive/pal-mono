@@ -149,6 +149,7 @@ pinecone-plugin-inference==1.1.0
 pinecone-plugin-interface==0.0.7
 plotly==6.0.1
 pluggy==1.5.0
+polyline==2.0.2
 portalocker==2.10.1
 posthog==3.23.0
 prometheus-client==0.21.1
@@ -190,7 +191,7 @@ rpds-py==0.24.0
 rsa==4.9
 s3transfer==0.11.4
 safetensors==0.5.3
-shapely==2.1.0rc1
+shapely==2.1.0
 shellingham==1.5.4
 shopifyapi==12.7.0
 six==1.17.0

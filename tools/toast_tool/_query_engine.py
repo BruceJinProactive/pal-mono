@@ -29,7 +29,6 @@ def create_query_engine(namespace) -> BaseQueryEngine:
     vector_store = PineconeVectorStore(
         pinecone_index=pinecone_index, namespace=namespace
     )
-    # Rest of the function implementation...
 
     cohere_api_key = os.getenv("COHERE_API_KEY")
     if not cohere_api_key:
