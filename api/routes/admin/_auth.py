@@ -26,15 +26,18 @@ The functions are ordered by responsibility:
 AWS_REGION = os.environ["AWS_REGION"]
 AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
 AWS_ADMIN_CONSOLE_APP_CLIENT_ID = os.environ["AWS_ADMIN_CONSOLE_APP_CLIENT_ID"]
+AWS_MANAGE_APP_USER_POOL_ID = os.environ.get("AWS_MANAGE_APP_USER_POOL_ID")
+AWS_MANAGE_APP_APP_CLIENT_ID = os.environ.get("AWS_MANAGE_APP_APP_CLIENT_ID")
 
-AWS_COGNITO_JWKS_URL = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{AWS_ADMIN_CONSOLE_USER_POOL_ID}/.well-known/jwks.json"
 
-
-def get_jwks():
+def get_jwks(user_pool_id: str):
     """
     Fetches the JSON Web Key Set (JWKS) from the AWS Cognito endpoint.
 
     The JWKS contains the public keys used to verify the signatures of JWT tokens issued by AWS Cognito.
+
+    Args:
+        user_pool_id (str): The ID of the cognito user pool.
 
     Returns:
         dict: A dictionary representing the JWKS.
@@ -42,13 +45,10 @@ def get_jwks():
     Raises:
         requests.exceptions.HTTPError: If the HTTP request to fetch the JWKS fails.
     """
-    response = requests.get(AWS_COGNITO_JWKS_URL)
+    jwks_url = f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{user_pool_id}/.well-known/jwks.json"
+    response = requests.get(jwks_url)
     response.raise_for_status()
     return response.json()
-
-
-# Saving the JWKS in a variable to prevent excessive requests to the AWS Cognito endpoint
-jwks = get_jwks()
 
 
 def get_public_key(jwks, kid):
@@ -104,7 +104,7 @@ def decode_verify_jwt(token, jwks, app_client_id) -> dict[str, Any]:
     return claims
 
 
-def parse_admin_console_id_token(id_token) -> dict[str, Any]:
+def parse_cognito_token(id_token, user_pool_id, app_client_id: str) -> dict[str, Any]:
     """
     Parses and verifies an ID token issued by AWS Cognito for the admin console.
 
@@ -132,6 +132,8 @@ def parse_admin_console_id_token(id_token) -> dict[str, Any]:
 
     Args:
         id_token (str): The ID token to be parsed and verified.
+        user_pool_id (str): ID of the cognito user pool.
+        app_client_id (str): ID of the app client for the given user pool.
 
     Returns:
         dict: The claims contained in the verified ID token.
@@ -139,8 +141,26 @@ def parse_admin_console_id_token(id_token) -> dict[str, Any]:
     Raises:
         ValueError: If the token is expired, the audience is invalid, or the token verification fails for any other reason.
     """
-    claims = decode_verify_jwt(id_token, jwks, AWS_ADMIN_CONSOLE_APP_CLIENT_ID)
+    jwks = get_jwks(user_pool_id)
+    claims = decode_verify_jwt(id_token, jwks, app_client_id)
+
     return claims
+
+
+def parse_admin_console_cognito_token(id_token: str) -> dict:
+    return parse_cognito_token(
+        id_token,
+        AWS_ADMIN_CONSOLE_USER_POOL_ID,
+        AWS_ADMIN_CONSOLE_APP_CLIENT_ID,
+    )
+
+
+def parse_manage_app_cognito_token(id_token: str) -> dict:
+    return parse_cognito_token(
+        id_token,
+        AWS_MANAGE_APP_USER_POOL_ID or "",
+        AWS_MANAGE_APP_APP_CLIENT_ID or "",
+    )
 
 
 def get_account_name(id_token):
@@ -160,7 +180,7 @@ def get_account_name(id_token):
         Exception: If there is an error parsing or verifying the ID token.
     """
     try:
-        claims = parse_admin_console_id_token(id_token)
+        claims = parse_admin_console_cognito_token(id_token)
         return claims["custom:account_name"]
     except Exception as e:
         logger.error(f"Error parsing ID token: {e}")
@@ -173,6 +193,8 @@ def decrypt_id_token(request: Request) -> dict[str, Any]:
 
     This function retrieves the 'Authorization' header from the request,
     decrypts the ID token, and returns the decrypted token as a dictionary.
+    It tries authenticating against the admin console pool first, and if that fails,
+    it tries the manage app pool.
 
     Args:
         request (Request): The FastAPI request object containing the headers with the authorization token.
@@ -181,19 +203,34 @@ def decrypt_id_token(request: Request) -> dict[str, Any]:
         dict: The decrypted ID token.
 
     Raises:
-        HTTPException: If the ID token is invalid or missing.
+        HTTPException: If the ID token is invalid or missing, or if authentication fails against both pools.
     """
-    try:
-        decrypted_id_token = parse_admin_console_id_token(
-            request.headers.get("Authorization")
-        )
-    except ValueError as e:
+    auth_token = request.headers.get("Authorization")
+    if not auth_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
+            detail="Authorization header is missing",
             headers={"Content-Type": "application/json"},
         )
-    return decrypted_id_token
+
+    try:
+        return parse_admin_console_cognito_token(auth_token)
+    except ValueError as admin_error:
+        if AWS_MANAGE_APP_USER_POOL_ID and AWS_MANAGE_APP_APP_CLIENT_ID:
+            try:
+                return parse_manage_app_cognito_token(auth_token)
+            except ValueError as manage_error:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=f"Authentication failed: {str(manage_error)}",
+                    headers={"Content-Type": "application/json"},
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Authentication failed: {str(admin_error)}",
+                headers={"Content-Type": "application/json"},
+            )
 
 
 def get_account_from_id_token(request: Request, session: Session) -> db.Account:
@@ -215,10 +252,10 @@ def get_account_from_id_token(request: Request, session: Session) -> db.Account:
         HTTPException: If the ID token is invalid or missing, or if the account is not found.
     """
     try:
-        decrypted_id_token = parse_admin_console_id_token(
-            request.headers.get("Authorization")
-        )
-    except ValueError as e:
+        decrypted_id_token = decrypt_id_token(request)
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
