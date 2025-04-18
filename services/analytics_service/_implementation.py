@@ -6,7 +6,17 @@ from mixpanel import Mixpanel
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from utils.log import logger
 
-MIXPANEL_BASE_URL = "https://mixpanel.com/api/query/insights"
+MIXPANEL_BASE_URL = "https://mixpanel.com/api"
+MIXPANEL_PROJECT_ID = 3584752
+MIXPANEL_WORKSPACE_ID = 9701744
+
+# Mapping of report names to bookmark IDs, will store them in db in the future
+BOOKMARK_ID_MAPPING = {
+    "DAU": 76662037,
+    "MAU": 76661239,
+    "MESSAGE": 76661240,
+    "CONVERSION": 76661919,
+}
 
 
 def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None:
@@ -21,8 +31,6 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
     """
     mixpanel_api_secret = os.getenv("MIXPANEL_API_SECRET")
     report_name = report_name.upper()
-    # Mapping of report names to bookmark IDs, will store them in db in the future
-    BOOKMARK_ID_MAPPING = {"MAU": "73277452", "MESSAGE": "73277513"}
     bookmark_id = BOOKMARK_ID_MAPPING.get(report_name)
 
     if not mixpanel_api_secret:
@@ -32,11 +40,20 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
             f"Environment variable MIXPANEL_{report_name}_BOOKMARK_ID is not set."
         )
 
-    url = f"{MIXPANEL_BASE_URL}?project_id=3584752&workspace_id=9298649&bookmark_id={bookmark_id}"
+    params = {
+        "project_id": MIXPANEL_PROJECT_ID,
+        "workspace_id": MIXPANEL_WORKSPACE_ID,
+        "bookmark_id": bookmark_id,
+    }
     headers = {"Accept": "application/json"}
 
     try:
-        response = requests.get(url, headers=headers, auth=(mixpanel_api_secret, ""))
+        response = requests.get(
+            url=f"{MIXPANEL_BASE_URL}/query/insights",
+            params=params,
+            headers=headers,
+            auth=(mixpanel_api_secret, ""),
+        )
         response.raise_for_status()  # Raises an HTTPError if the response code is 4xx/5xx
 
         response_data = response.json().get("series", {})
