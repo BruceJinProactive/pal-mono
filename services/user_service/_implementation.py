@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 import db as db
 from api.schemas.chat.message import Channel, Message
+from utils.log import logger
 
 
 # TODO: get_user_by_channel_identifier in user_service is deprecated, remove it once Streamlit internal_app is replaced with new one
@@ -51,63 +52,75 @@ async def get_user_async(
     session: AsyncSession, project: db.Project, message: Message
 ) -> Tuple[Optional[db.User], bool]:
     user_repo = db.UserRepositoryAsync(session)
-    user = None
-
     sender_identifier = message.sender_identifier
-    new_channel_identifier = f"{message.channel.value}:{sender_identifier}"
+    channel_identifier = f"{message.channel.value}:{sender_identifier}"
+    user = None
+    needs_opt_in = False
 
-    # Treat SMS and VOICE channels as the same user
-    if message.channel == Channel.SMS or message.channel == Channel.VOICE:
-        # Check for existing user with SMS or VOICE channel identifier
-        sms_channel_identifier = f"{Channel.SMS.value}:{sender_identifier}"
-        voice_channel_identifier = f"{Channel.VOICE.value}:{sender_identifier}"
-
-        user_sms = await user_repo.get_user_by_channel_identifier(
-            account_id=project.account_id,
-            channel_identifier=sms_channel_identifier,
-        )
-        user_voice = await user_repo.get_user_by_channel_identifier(
-            account_id=project.account_id,
-            channel_identifier=voice_channel_identifier,
-        )
-
-        # Determine if user exists
-        user = user_sms or user_voice
-
-        # If current channel is SMS
-        if message.channel == Channel.SMS:
-            if user_voice and not user_sms:
-                # If VOICE already exists for the user and SMS doesn't, add SMS to the user channel identifiers
-                if (
-                    user_voice.channel_identifiers
-                    and new_channel_identifier not in user_voice.channel_identifiers
-                ):
-                    user_voice.channel_identifiers.append(new_channel_identifier)
-                    await session.commit()
-                    return user_voice, True  # Indicate that opt-in message is needed
-            elif not user:
-                # User is SMS, Indicate that opt-in message is needed
-                return user, True
-        # If current channel is VOICE
-        elif message.channel == Channel.VOICE:
-            if user_sms and not user_voice:
-                # If SMS already exists for the user but VOICE doesn't, add VOICE to the user channel identifiers
-                if (
-                    user_sms.channel_identifiers
-                    and new_channel_identifier not in user_sms.channel_identifiers
-                ):
-                    user_sms.channel_identifiers.append(new_channel_identifier)
-                    await session.commit()
-                return user_sms, False
-
-    else:
-        # Check for existing user with the given channel identifier
+    # For SMS and VOICE channels, try to find user by either identifier
+    if message.channel in [Channel.SMS, Channel.VOICE]:
+        # Try to find user with the current channel identifier
         user = await user_repo.get_user_by_channel_identifier(
-            account_id=project.account_id,
-            channel_identifier=new_channel_identifier,
+            account_id=project.account_id, channel_identifier=channel_identifier
+        )
+        logger.info(f"Looking for user with channel_identifier: {channel_identifier}")
+
+        # If not found, try the other phone-based channel
+        if not user:
+            other_channel = (
+                Channel.VOICE if message.channel == Channel.SMS else Channel.SMS
+            )
+            other_channel_identifier = f"{other_channel.value}:{sender_identifier}"
+            logger.info(
+                f"Looking for user with other_channel_identifier: {other_channel_identifier}"
+            )
+            user = await user_repo.get_user_by_channel_identifier(
+                account_id=project.account_id,
+                channel_identifier=other_channel_identifier,
+            )
+
+            # If found with other channel, add the other channel identifier
+            if user:
+                logger.info(
+                    f"Found user with other channel. Current identifiers: {user.channel_identifiers}"
+                )
+
+                # Create a new list with both identifiers
+                # The channel_identifiers list has to be updated this way, otherwise the channel_identifier won't be inserted. Need more investigation.
+                updated_identifiers = list(user.channel_identifiers or [])
+                if channel_identifier not in updated_identifiers:
+                    updated_identifiers.append(channel_identifier)
+                    logger.info(f"Adding channel_identifier: {channel_identifier}")
+
+                    # Update the user directly in the database
+                    try:
+                        # Update the user's channel_identifiers
+                        user.channel_identifiers = updated_identifiers
+                        await session.commit()
+
+                        # Refresh the user to verify the update
+                        await session.refresh(user)
+                        logger.info(
+                            f"Updated user channel identifiers: {user.channel_identifiers}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error updating user channel identifiers: {e}")
+                        await session.rollback()
+
+                # SMS opt-in needed when switching from VOICE to SMS
+                if message.channel == Channel.SMS:
+                    needs_opt_in = True
+
+        # New SMS users need opt-in
+        elif message.channel == Channel.SMS:
+            needs_opt_in = True
+    else:
+        # For other channels, just look for exact match
+        user = await user_repo.get_user_by_channel_identifier(
+            account_id=project.account_id, channel_identifier=channel_identifier
         )
 
-    return user, False
+    return user, needs_opt_in
 
 
 async def create_user_async(
