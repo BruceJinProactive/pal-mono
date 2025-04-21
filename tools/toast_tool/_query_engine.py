@@ -12,7 +12,7 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
 
 # TODO: Create a knowledge index for the toast agent
-TOAST_AGENT_PINECONE_INDEX = "TBD"
+TOAST_AGENT_PINECONE_INDEX = "agents"
 
 
 def create_query_engine(namespace) -> BaseQueryEngine:

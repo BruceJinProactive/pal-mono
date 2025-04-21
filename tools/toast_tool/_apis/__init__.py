@@ -283,6 +283,39 @@ def get_dining_options(
         )
 
 
+def get_dining_option(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    dining_option_id: str,
+) -> DiningOption:
+    try:
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function=f"/config/v2/diningOptions/{dining_option_id}",
+            store_id=store_id,
+            query_params=None,
+            payload=None,
+            logging_enabled=True,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_dining_option] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    response_data = response.decoded_body
+    if response.status == 200:
+
+        # Convert the JSON string to an Order object
+        dining_option = DiningOption.model_validate_json(response_data)
+        # Return the list of DiningOption objects
+        return dining_option
+    else:
+        raise ValueError(
+            f"Failed to get dining option with status {response.status}: {response_data}"
+        )
+
+
 def submit_order(
     bearer_token: ToastAccessToken, store_id: str, order: OrderInput
 ) -> Order:

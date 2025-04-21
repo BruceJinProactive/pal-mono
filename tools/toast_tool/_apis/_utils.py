@@ -73,7 +73,9 @@ def connect_toast_order_hub(
 
         # If response status is not 200, raise an exception
         if response.status != 200:
-            raise Exception(f"Error: {response.status} - {response.reason}")
+            raise Exception(
+                f"Error: {response.status} - {response.reason} - {response_data}"
+            )
 
         toast_response = ToastHubResponse(
             status=response.status,

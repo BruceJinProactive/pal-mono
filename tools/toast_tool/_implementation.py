@@ -11,14 +11,18 @@ from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.toast_tool._apis import get_online_ordering_status, get_order_prices
+from tools.toast_tool._apis import (
+    get_dining_option,
+    get_online_ordering_status,
+    get_toast_access_token,
+    submit_order,
+)
 from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import get_toast_access_token, submit_order
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
-from . import _llm, _utils
+from . import _utils
 from ._llm import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
@@ -26,7 +30,7 @@ from ._llm import (
     llm_call,
 )
 from ._query_engine import create_query_engine
-from .classes import Order, SubQueries
+from .classes import OrderInput, SubQueries
 
 
 class ToastTool(Toolkit):
@@ -57,8 +61,8 @@ class ToastTool(Toolkit):
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
-            api_key = get_client_secret_with_fallback("TOAST_QA_API_KEY")
-            api_secret = get_client_secret_with_fallback("TOAST_QA_API_SECRET")
+            api_key = get_client_secret_with_fallback("TOAST_CLIENT_ID")
+            api_secret = get_client_secret_with_fallback("TOAST_CLIENT_SECRET")
             bearer_token = get_toast_access_token(api_key, api_secret, True)
             return bearer_token
 
@@ -79,7 +83,7 @@ class ToastTool(Toolkit):
         if not address:
             return "Could you provide your address?"
 
-        delivery_address = _llm.llm_call(
+        delivery_address = llm_call(
             system_prompt="Extract the address into the given output format.",
             prompt=address,
             response_format=DeliveryAddress,
@@ -208,7 +212,7 @@ class ToastTool(Toolkit):
 
     # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
     @tool
-    async def checkout_order(self, latest_user_message: str) -> str:
+    def checkout_order(self, latest_user_message: str) -> str:
         """
         Processes an order checkout.
 
@@ -218,18 +222,18 @@ class ToastTool(Toolkit):
         try:
             # Datadog decorators screw the function signature so use type ignore as workaround
             chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
-            context = self._get_relevant_docs(chat_history)  # type: ignore
+            context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
 
             order = llm_call(
                 system_prompt=EXTRACTOR_SYSTEM_PROMPT,
                 prompt=EXTRACTOR_USER_PROMPT.format(
                     context=context, chat_history=chat_history
                 ),
-                response_format=Order,
+                response_format=OrderInput,
                 reasoning=False,
             )
 
-            if not isinstance(order, Order):
+            if not isinstance(order, OrderInput):
                 logger.error(
                     f"`order` object in type {type(order)} but expected type Order.\n"
                     f"`order` object: {order}"
@@ -318,26 +322,35 @@ class ToastTool(Toolkit):
         )
         return context
 
-    def _post_process_order(self, order: Order) -> str | None:
+    def _post_process_order(self, order: OrderInput) -> str | None:
         """
         Validates and processes an order before submission.
 
         Args:
-            order (Order): The order object to validate and process.
+            order (OrderInput): The order object to validate and process.
 
         Returns:
             str | None: Error message if validation fails, None if successful.
 
         """
         # Check if the order type non-empty and takeout. For now, we only support takeout orders
-        if not order.diningOption.behavior:
-            logger.error("No order type specified.")
+
+        if not order.diningOption or not order.diningOption.guid:
+            logger.error("Order diningOption is missing or its guid is empty.")
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
 
-        try:
-            order.diningOption.behavior = _utils.validate_order_type(
-                order.diningOption.behavior
+        if not self._toast_bearer_token:
+            return (
+                "Failed to authenticate ordering tool. "
+                "Please reach out to our support team at help@palona.ai "
+                "for assistance."
             )
+        dining_behavior = get_dining_option(
+            self._toast_bearer_token, self.store_id, order.diningOption.guid
+        )
+
+        try:
+            _ = _utils.validate_order_type(dining_behavior.behavior)  # type: ignore
         except Exception as e:
             logger.error(f"Could not validate order type: {e}")
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
@@ -401,7 +414,7 @@ class ToastTool(Toolkit):
                 )
                 return "We'll need your phone number."
 
-    def _submit_order(self, order: Order) -> str:
+    def _submit_order(self, order: OrderInput) -> str:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
         if not toast_bearer_token:
@@ -412,7 +425,7 @@ class ToastTool(Toolkit):
             )
         # First let toast API fill in the prices
         try:
-            order = get_order_prices(toast_bearer_token, self.store_id, order)
+            # order = get_order_prices(toast_bearer_token, self.store_id, order)
             order = submit_order(toast_bearer_token, self.store_id, order)
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.

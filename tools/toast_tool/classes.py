@@ -113,6 +113,9 @@ class RestaurantOrderingStatus(BaseModel):
     reasonKey: OrderingStatusReasonKey
     reason: str
 
+    class Config:
+        use_enum_values = True
+
 
 class DiningBehavior(str, Enum):
     DINE_IN = "DINE_IN"
@@ -127,6 +130,9 @@ class DiningOption(BaseModel):
     behavior: Optional[DiningBehavior] = None
     name: Optional[str] = None
     externalId: Optional[Any] = None
+
+    class Config:
+        use_enum_values = True
 
 
 class ItemBase(BaseModel):
@@ -171,6 +177,9 @@ class Payment(BaseModel):
     amount: float
     tipAmount: float = 0.0
     type: PaymentType
+
+    class Config:
+        use_enum_values = True
 
 
 class Customer(BaseModel):
