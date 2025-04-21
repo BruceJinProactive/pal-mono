@@ -7,6 +7,7 @@ from tools.toast_tool.classes import (
     DiningOption,
     HttpMethod,
     Order,
+    OrderInput,
     RestaurantInfo,
     RestaurantOrderingStatus,
     ToastAccessToken,
@@ -192,15 +193,15 @@ def get_online_ordering_status(
 def get_order_prices(
     bearer_token: ToastAccessToken,
     store_id: str,
-    order_data: Order,
+    order_data: OrderInput,
 ) -> Order:
     """
-    Calculates the check price amounts, tax amounts, and service charges for an Order object.
+    Calculates the check price amounts, tax amounts, and service charges for an OrderInput object.
 
     Args:
         bearer_token: Toast access token
         store_id: External ID for the restaurant
-        order_data: Order object containing the order details
+        order_data: OrderInput object containing the order details
 
     Returns:
         `Order` object with the base price, tax amount, and total price of each `check` object. The returned `Order` object will be used to submit the order to the Toast API.
@@ -224,7 +225,9 @@ def get_order_prices(
     # Process the response
     if response.status == 200:
         # Convert the JSON string to an Order object
-        order_prices = Order.model_validate_json(response.decoded_body)
+        decoded_body = response.decoded_body
+        order_prices = Order.model_validate_json(decoded_body)
+
         return order_prices
     else:
         logger.error(
@@ -280,14 +283,16 @@ def get_dining_options(
         )
 
 
-def submit_order(bearer_token: ToastAccessToken, store_id: str, order: Order) -> Order:
+def submit_order(
+    bearer_token: ToastAccessToken, store_id: str, order: OrderInput
+) -> Order:
     """
     Submits an order to the Toast API.
 
     Args:
         bearer_token (ToastAccessToken): The Toast access token.
         store_id (str): The external ID of the restaurant.
-        order (Order): The Order object to be submitted.
+        order (OrderInput): The OrderInput object to be submitted.
 
     Returns:
         `Order` object that has been persisted in Toast.

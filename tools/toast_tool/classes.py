@@ -184,17 +184,24 @@ class Check(BaseModel):
     customer: Customer
     selections: List[ItemSelection]
     payments: Optional[List[Payment]] = None
-    amount: Optional[float] = None
-    taxAmount: Optional[float] = None
-    totalAmount: Optional[float] = None
+    amount: Optional[float] = None  # response only
+    taxAmount: Optional[float] = None  # response only
+    totalAmount: Optional[float] = None  # response only
 
 
 # TODO: Implement input and output Order classes
-class Order(BaseModel):
+class OrderInput(BaseModel):
     checks: List[Check]
     diningOption: DiningOption
-    guid: Optional[str] = None
-    estimatedFulfillmentDate: Optional[str] = None
+
+
+class Order(OrderInput):
+    guid: Optional[str] = None  # Not required when submitting an order
+    requiredPrepTime: Optional[str] = None  # Not required when submitting an order
+    openedDate: Optional[str] = None  # Not required when submitting an order
+    entityType: Optional[str] = None  # Not required when submitting an order
+    estimatedFulfillmentDate: Optional[str] = None  # response only
+    businessDate: Optional[int] = None  # YYYYMMDD, response only
 
 
 ########### TOAST API CLASS END ############
