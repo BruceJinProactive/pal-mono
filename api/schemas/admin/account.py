@@ -1,4 +1,5 @@
 from typing import List
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -20,10 +21,20 @@ class Account(BaseModel):
     agents: list[str] = []  # list of agent uuids
 
 
+class AccountSummary(BaseModel):
+    """Account Summary Model for List Responses"""
+
+    id: UUID
+    name: str
+    display_name: str
+    icon_url: str
+    industry: str | None
+
+
 class ListAccountsResponse(BaseModel):
     """List Accounts Response"""
 
-    accounts: List[Account]
+    accounts: List[AccountSummary]
 
 
 class UpdateAccountRequest(BaseModel):

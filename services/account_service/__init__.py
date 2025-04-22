@@ -111,10 +111,31 @@ def delete_account(session: Session, account_name: str):
     return _implementation.delete_account(session, account_name)
 
 
+def filter_accounts_by_name(
+    session: Session,
+    keyword: Optional[str] = None,
+    limit: int = 20,
+) -> List[db.Account]:
+    """
+    Filter accounts by a flexible name match using a keyword.
+    Returns a limited number of results (default 20) to prevent returning too much data.
+
+    Args:
+        session (Session): The database session.
+        keyword (Optional[str], optional): The keyword to search for in account names.
+        limit (int, optional): Maximum number of results to return. Defaults to 20.
+
+    Returns:
+        List[db.Account]: Accounts matching the keyword filter.
+    """
+    return _implementation.filter_accounts_by_name(session, keyword, limit)
+
+
 __all__ = [
     "get_accounts",
     "get_account",
     "mget_accounts",
+    "filter_accounts_by_name",
     "create_account_with_defaults",
     "create_account",
     "update_account",

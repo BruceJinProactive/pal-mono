@@ -25,6 +25,20 @@ def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account
     return accounts
 
 
+def filter_accounts_by_name(
+    session: Session,
+    keyword: Optional[str] = None,
+    limit: int = 20,
+) -> List[db.Account]:
+    """
+    Filter accounts by a flexible name match using a keyword.
+    Returns a limited number of results (default 20) to prevent returning too much data.
+    """
+    account_repository = db.AccountRepository(session)
+    accounts = account_repository.filter_accounts_by_name(keyword, limit)
+    return accounts
+
+
 def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
     # Instantiate the repositories
     account_repository = db.AccountRepository(session)

@@ -76,11 +76,14 @@ def get_user(context: UserContext = Depends(authenticate_user)):
 def list_accounts(
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
+    keyword: str = Query(
+        None, description="Optional keyword to filter the accounts by name"
+    ),
 ) -> ListAccountsResponse:
     """
     Retrieve a list of accounts that are associated with the current user.
     """
-    return _account.list_accounts(context, session)
+    return _account.list_accounts(context, session, keyword)
 
 
 @admin_router.put("/accounts", status_code=status.HTTP_201_CREATED)

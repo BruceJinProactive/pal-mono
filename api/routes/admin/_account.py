@@ -16,25 +16,19 @@ from services import account_service, admin_service, user_service
 from services.account_service import AccountParams
 
 from ._auth import authorize_user_account
-from ._builder import build_account
-from ._utils import UserContext, UserRole, not_found_error
+from ._builder import build_account, build_account_summary
+from ._utils import UserContext, not_found_error
 
 
 def list_accounts(
     context: UserContext,
     session: Session,
+    keyword: str | None = None,
 ) -> ListAccountsResponse:
-    if context.account_names:
-        accounts = account_service.mget_accounts(
-            session, account_names=context.account_names
-        )
-    elif context.role == UserRole.Admin:
-        accounts = account_service.get_accounts(session)
-    else:
-        accounts = []
+    accounts = account_service.filter_accounts_by_name(session, keyword=keyword)
 
     response = ListAccountsResponse(
-        accounts=[build_account(account) for account in accounts]
+        accounts=[build_account_summary(account) for account in accounts]
     )
     return response
 

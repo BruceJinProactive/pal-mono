@@ -41,6 +41,28 @@ class AccountRepository:
             logger.error(f"Error retrieving account: {e}")
             return []
 
+    def filter_accounts_by_name(
+        self, keyword: Optional[str] = None, limit: int = 20
+    ) -> List[Account]:
+        """
+        Filter accounts by a flexible name or display_name match, using a case-insensitive partial match.
+        If no keyword is provided, returns all accounts with a default limit of 20.
+        """
+        try:
+            query = self.session.query(Account)
+
+            if keyword:
+                query = query.filter(
+                    (Account.name.ilike(f"%{keyword}%"))
+                    | (Account.display_name.ilike(f"%{keyword}%"))
+                )
+
+            return query.limit(limit).all()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error filtering accounts by name: {e}")
+            return []
+
     def update_account(self, account_name: str, **kwargs) -> Account | None:
         """Update account details based on the account ID and provided fields."""
         try:

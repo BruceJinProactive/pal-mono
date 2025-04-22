@@ -1,6 +1,6 @@
 import db
 from api.routes.utils import map_uri_to_s3_url
-from api.schemas.admin.account import Account
+from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent
 from api.schemas.admin.conversation import Message, UserSession
 from api.schemas.admin.feedback import Feedback
@@ -21,6 +21,17 @@ def build_account(account: db.Account) -> Account:
         business_others=account.business_others,
         projects=[str(project.id) for project in account.projects],
         agents=[str(agent.id) for agent in account.agents],
+    )
+
+
+def build_account_summary(account: db.Account) -> AccountSummary:
+    """Build a simplified account summary for list responses"""
+    return AccountSummary(
+        id=account.id,
+        name=account.name,
+        display_name=account.display_name or account.name,
+        icon_url=map_uri_to_s3_url(account.icon_uri),
+        industry=account.industry,
     )
 
 
