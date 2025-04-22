@@ -33,20 +33,10 @@ phases:
       - CONTAINER_NAME_APP="${STAGE_NAME}-${IMAGE_REPO_NAME}-app"
       - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $UNIQUE_IMAGE_URL > imagedefinitions-app.json
 
-      # Legacy code for `proactiveailab` aws account
-      - CONTAINER_NAME_APP="${IMAGE_REPO_NAME}-${STAGE_NAME}-app"
-      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_APP $UNIQUE_IMAGE_URL > imagedefinitions_app.json
-      - CONTAINER_NAME_API="${IMAGE_REPO_NAME}-${STAGE_NAME}-api"
-      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME_API $UNIQUE_IMAGE_URL > imagedefinitions_api.json
-
 artifacts:
   files:
     - imagedefinitions-api.json
     - imagedefinitions-app.json
-
-    # Legacy code for `proactiveailab` aws account
-    - imagedefinitions_app.json
-    - imagedefinitions_api.json
 
 cache:
   paths:
