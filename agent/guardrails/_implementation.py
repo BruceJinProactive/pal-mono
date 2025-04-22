@@ -41,7 +41,8 @@ def check_input_bedrock(prompt: str) -> bool:  # aws bedrock approach
     """
     content = [{"text": {"text": prompt}}]
     AWS_REGION = os.getenv("AWS_REGION", "")
-    AWS_BEDROCK_GUARDRAIL_ID = os.getenv("AWS_BEDROCK_GUARDRAIL_ID", "")
+    env = os.getenv("RUNTIME_ENV", "lat")
+    AWS_BEDROCK_GUARDRAIL_ID = os.getenv(f"AWS_BEDROCK_GUARDRAIL_ID_{env.upper()}", "")
     AWS_BEDROCK_GUARDRAIL_VERSION = os.getenv("AWS_BEDROCK_GUARDRAIL_VERSION", "")
 
     if not (AWS_REGION and AWS_BEDROCK_GUARDRAIL_ID and AWS_BEDROCK_GUARDRAIL_VERSION):
