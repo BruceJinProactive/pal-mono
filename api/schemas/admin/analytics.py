@@ -15,3 +15,14 @@ class GetReportResponse(BaseModel):
     """Get Report Response"""
 
     report_data: dict
+
+
+class PerformanceReport(BaseModel):
+    name: str
+    data: dict
+
+
+class GetAllReportsResponse(BaseModel):
+    """Get All Reports Response"""
+
+    reports: list[PerformanceReport]

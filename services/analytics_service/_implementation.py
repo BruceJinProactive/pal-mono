@@ -18,6 +18,13 @@ BOOKMARK_ID_MAPPING = {
     "CONVERSION": 76661919,
 }
 
+MIXPANEL_REPORTS = [
+    (76662037, "Daily Active Users"),
+    (76661239, "Monthly Active Users"),
+    (76661240, "Turn of Messages"),
+    (76661919, "Checkout Conversion"),
+]
+
 
 def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None:
     """Fetches report data from Mixpanel for a given report name and account name.
@@ -29,16 +36,20 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
     Returns:
         dict|None: The report data from Mixpanel, or None if the request fails.
     """
-    mixpanel_api_secret = os.getenv("MIXPANEL_API_SECRET")
     report_name = report_name.upper()
     bookmark_id = BOOKMARK_ID_MAPPING.get(report_name)
-
-    if not mixpanel_api_secret:
-        raise ValueError("Environment variable MIXPANEL_API_SECRET is not set.")
     if not bookmark_id:
         raise ValueError(
             f"Environment variable MIXPANEL_{report_name}_BOOKMARK_ID is not set."
         )
+    return get_report_by_id(bookmark_id, account_name)
+
+
+def get_report_by_id(bookmark_id, account_name: str) -> dict | None:
+    mixpanel_api_secret = os.getenv("MIXPANEL_API_SECRET")
+
+    if not mixpanel_api_secret:
+        raise ValueError("Environment variable MIXPANEL_API_SECRET is not set.")
 
     params = {
         "project_id": MIXPANEL_PROJECT_ID,
@@ -68,9 +79,19 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
 
     except requests.exceptions.RequestException as e:
         logger.error(
-            f"Failed to fetch data from Mixpanel for report '{report_name}' and account '{account_name}': {e}"
+            f"Failed to fetch data from Mixpanel for report id '{bookmark_id}' and account '{account_name}': {e}"
         )
         return None
+
+
+def get_all_reports_from_mixpanel(account_name: str) -> list[tuple[str, dict]]:
+    results = []
+    for bookmark_id, report_name in MIXPANEL_REPORTS:
+        report_data = get_report_by_id(bookmark_id, account_name)
+        if not report_data:
+            continue
+        results.append((report_name, report_data))
+    return results
 
 
 def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict):

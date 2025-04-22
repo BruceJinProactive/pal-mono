@@ -14,7 +14,7 @@ from api.schemas.admin.account import (
     UpdateAccountRequest,
 )
 from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentRequest
-from api.schemas.admin.analytics import GetReportResponse
+from api.schemas.admin.analytics import GetAllReportsResponse, GetReportResponse
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
@@ -160,6 +160,18 @@ async def get_account_statistics(
     return await _account.get_account_statistics(
         account_name, lookback, context, session
     )
+
+
+@admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
+def get_account_reports(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> GetAllReportsResponse:
+    """
+    Retrieve all available report data for this account.
+    """
+    return GetAllReportsResponse(reports=_analytics.get_all_reports(account_name))
 
 
 """

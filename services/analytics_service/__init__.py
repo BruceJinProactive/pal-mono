@@ -29,3 +29,17 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
         dict | None: The report data from Mixpanel.
     """
     return _implementation.get_report_from_mixpanel(report_name, account_name)
+
+
+def get_all_reports_from_mixpanel(account_name: str) -> list[tuple[str, dict]]:
+    """
+    Fetches all available reports for the given account name.
+
+    Args:
+        account_name (str): The name of the account to fetch the report data.
+
+    Returns:
+        list[tuple[str, dict]]: The report data from Mixpanel where each tuple contains
+        the report name and the report data.
+    """
+    return _implementation.get_all_reports_from_mixpanel(account_name)
