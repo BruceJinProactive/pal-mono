@@ -306,7 +306,6 @@ class ToastTool(Toolkit):
     def _construct_order(self, latest_user_message: str) -> OrderInput:
         chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
         context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
-
         order = llm_call(
             system_prompt=EXTRACTOR_SYSTEM_PROMPT,
             prompt=EXTRACTOR_USER_PROMPT.format(
@@ -320,7 +319,6 @@ class ToastTool(Toolkit):
         # 1. get dining option guid (we need to find the guids for Takeout)
         # 2. get menu item guids(menuGroup and menuItem; ex. sodaGroup -> Pepsi)
         # 3. get modifiers guids(modifierGroup and modifierItem)
-
         if type(order) is str:
             order = json.loads(order)
             order = OrderInput(**order)

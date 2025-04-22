@@ -6,13 +6,12 @@ from llama_index.core.response_synthesizers import (
     ResponseMode,
     get_response_synthesizer,
 )
-from llama_index.core.vector_stores.types import ExactMatchFilter, MetadataFilters
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
 
 # TODO: Create a knowledge index for the toast agent
-TOAST_AGENT_PINECONE_INDEX = "agents"
+TOAST_AGENT_PINECONE_INDEX = "sandbox"
 
 
 def create_query_engine(namespace) -> BaseQueryEngine:
@@ -56,10 +55,6 @@ def create_query_engine(namespace) -> BaseQueryEngine:
     query_engine = index.as_query_engine(
         similarity_top_k=3,
         response_synthesizer=response_synthesizer,
-        # Use the menu documents with ids for extraction
-        filters=MetadataFilters(
-            filters=[ExactMatchFilter(key="include_ids", value="True")]
-        ),
     )
 
     return query_engine

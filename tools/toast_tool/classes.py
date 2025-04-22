@@ -127,7 +127,7 @@ class DiningOption(BaseModel):
     guid: str
     entityType: str = "DiningOption"
     curbside: Optional[bool] = None
-    behavior: Optional[DiningBehavior] = None
+    behavior: SkipJsonSchema[Optional[DiningBehavior]] = None
     name: Optional[str] = None
     externalId: Optional[Any] = None
 
@@ -222,10 +222,10 @@ class Order(OrderInput):
 class SubQueries(BaseModel):
     queries: list[str] = Field(
         description=(
-            "Decompose the chat history into individual order items. For example,"
+            "Decompose the chat history into individual order items and dining option if. For example,"
             "If the chat history is 'I would like to order a pizza with extra cheese "
-            "and pickles, burger, and salad.' The return would be ['pizza', "
-            "'burger', 'salad']\n\n"
+            "and pickles, burger, and salad, for takeout.' The return would be ['pizza', "
+            "'burger', 'salad', 'takeout']\n\n"
             "DO NOT include modifications (e.g. extra cheese, pickles)."
         ),
     )
