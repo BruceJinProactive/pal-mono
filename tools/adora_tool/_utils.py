@@ -4,7 +4,11 @@ from typing import Any, Tuple
 from ddtrace.llmobs.decorators import task
 from geopy.geocoders import Nominatim
 
-from tools.adora_tool.classes import AdoraOrderType, DeliveryAddress
+from tools.adora_tool.classes import (
+    AdoraOrderType,
+    DeliveryAddress,
+    ValidateAddressPayload,
+)
 from utils.log import logger
 
 
@@ -129,3 +133,44 @@ def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, st
     delivery_address.lat = geocoded_loc.latitude
     delivery_address.lng = geocoded_loc.longitude
     return (True, "Latitude and longitude added to delivery address.")
+
+
+def extract_street_parts(full_address: str):
+    """
+    Naively splits an address like '123 Main St' into:
+    - streetNo: '123'
+    - streetName: 'Main St'
+    """
+    parts = full_address.strip().split(" ", 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return "", full_address
+
+
+def build_validate_address_payload(
+    store_id: str, canonical_address: DeliveryAddress
+) -> Tuple[ValidateAddressPayload | None, str]:
+    # Use the address to get the latitude and longitude of the address
+    lat_lon_was_added, message = add_lat_long_to_address(canonical_address)  # type: ignore
+
+    if lat_lon_was_added:
+        assert isinstance(canonical_address, DeliveryAddress)
+        lat, long = canonical_address.lat, canonical_address.lng
+        logger.info(f"Latitude and longitude extracted: {lat}, {long}")
+    else:
+        return None, message
+
+    street_no, street_name = extract_street_parts(canonical_address.address)
+
+    payload = {
+        "storeId": store_id,
+        "lat": canonical_address.lat,
+        "lng": canonical_address.lng,
+        "streetNo": street_no,
+        "streetName": street_name,
+        "unitApt": canonical_address.extended_address,
+        "city": canonical_address.city,
+        "state": canonical_address.state,
+        "zip": canonical_address.zip,
+    }
+    return ValidateAddressPayload(**payload), ""

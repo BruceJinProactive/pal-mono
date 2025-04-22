@@ -235,6 +235,20 @@ class DeliveryAddress(BaseModel):
     zone_id: SkipJsonSchema[int] = Field(default=0, serialization_alias="zoneId")
 
 
+class ValidateAddressPayload(BaseModel):
+    store_id: str = Field(description="Store ID", alias="storeId")
+    lat: float = Field(description="Latitude")
+    lng: float = Field(description="Longitude")
+    street_no: str = Field(description="Street number", default="", alias="streetNo")
+    street_name: str = Field(description="Street name", alias="streetName")
+    unit_apt: str = Field(
+        description="Unit or apartment number", default="", alias="unitApt"
+    )
+    city: str = Field(description="City name")
+    state: str = Field(description="State abbreviation")
+    zip: str = Field(description="ZIP code")
+
+
 class Modifier(BaseModel):
     modifier_id: int = Field(
         description="Modifier ID is the valued defined in `modifier_id` for the corresponding modifier name",

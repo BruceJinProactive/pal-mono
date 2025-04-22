@@ -272,16 +272,6 @@ class AdoraTool(Toolkit):
 
     @task
     def _validate_address(self, canonical_address: DeliveryAddress) -> tuple[bool, str]:
-        # Use the address to get the latitude and longitude of the address
-        lat_lon_was_added, message = _utils.add_lat_long_to_address(canonical_address)  # type: ignore
-
-        if lat_lon_was_added:
-            assert isinstance(canonical_address, DeliveryAddress)
-            lat, long = canonical_address.lat, canonical_address.lng
-            logger.info(f"Latitude and longitude extracted: {lat}, {long}")
-        else:
-            return False, message
-
         # Use the latitude and longitude to get Adora API call (old Jimmy)
         if not self._adora_bearer_token:
             return (
@@ -292,9 +282,14 @@ class AdoraTool(Toolkit):
                     "for assistance."
                 ),
             )
+        payload, message = _utils.build_validate_address_payload(
+            self.store_id, canonical_address
+        )
+        if not payload:
+            return False, message
 
         validated_address_success, validated_address = _apis.validate_address(
-            self._adora_bearer_token, self.store_id, lat, long, qa_store=self.qa_store
+            self._adora_bearer_token, payload, qa_store=self.qa_store
         )
         logger.info(f"Validated address: {validated_address}")
 

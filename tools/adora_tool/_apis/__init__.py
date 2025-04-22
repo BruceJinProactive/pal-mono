@@ -8,6 +8,7 @@ from tools.adora_tool.classes import (
     AdoraSavedOrderResult,
     AdoraValidatedAddress,
     AdoraValidatedAddressList,
+    ValidateAddressPayload,
 )
 from utils.log import logger
 
@@ -192,9 +193,7 @@ def save_validated_order(
 
 def validate_address(
     bearer_token: AdoraAccessToken,
-    store_id: str,
-    lat: float,
-    long: float,
+    payload: ValidateAddressPayload,
     qa_store: bool,
 ) -> tuple[bool, list[AdoraValidatedAddress] | str]:
     """
@@ -202,9 +201,7 @@ def validate_address(
 
     Args:
         bearer_token (AccessToken): The bearer token to authenticate with Adora POS.
-        store_id (str): The store ID.
-        lat (str): The latitude of the address.
-        long (str): The longitude of the address.
+        payload (ValidateAddressPayload): The payload containing the address information.
         qa_store (bool): True if the QA environment should be used.
 
     Returns:
@@ -218,7 +215,7 @@ def validate_address(
         "validateAddress",
         query_params=None,
         extra_headers=None,
-        payload=json.dumps({"storeId": store_id, "lat": lat, "lng": long}),
+        payload=json.dumps(payload.model_dump(by_alias=True, exclude_defaults=True)),
         qa_store=qa_store,
     )
 
