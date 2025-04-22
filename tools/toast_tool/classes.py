@@ -189,13 +189,16 @@ class Customer(BaseModel):
     email: str
 
 
-class Check(BaseModel):
-    customer: Customer
-    selections: List[ItemSelection]
-    payments: Optional[List[Payment]] = None
+class Price(BaseModel):
     amount: Optional[float] = None  # response only
     taxAmount: Optional[float] = None  # response only
     totalAmount: Optional[float] = None  # response only
+
+
+class Check(Price):
+    customer: Customer
+    selections: List[ItemSelection]
+    payments: Optional[List[Payment]] = None
 
 
 # TODO: Implement input and output Order classes

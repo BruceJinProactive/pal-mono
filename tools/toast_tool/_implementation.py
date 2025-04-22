@@ -14,12 +14,11 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.toast_tool._apis import (
     get_dining_option,
     get_online_ordering_status,
-)
-from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import (
+    get_order_prices,
     get_toast_access_token,
     submit_order,
 )
+from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
@@ -32,7 +31,7 @@ from ._llm import (
     llm_call,
 )
 from ._query_engine import create_query_engine
-from .classes import OrderInput, SubQueries
+from .classes import OrderInput, Price, SubQueries
 
 
 class ToastTool(Toolkit):
@@ -222,27 +221,7 @@ class ToastTool(Toolkit):
             str: Order checkout confirmation details
         """
         try:
-            # Datadog decorators screw the function signature so use type ignore as workaround
-            chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
-            context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
-
-            order = llm_call(
-                system_prompt=EXTRACTOR_SYSTEM_PROMPT,
-                prompt=EXTRACTOR_USER_PROMPT.format(
-                    context=context, chat_history=chat_history
-                ),
-                response_format=OrderInput,
-                reasoning=False,
-            )
-
-            if not isinstance(order, OrderInput):
-                logger.error(
-                    f"`order` object in type {type(order)} but expected type Order.\n"
-                    f"`order` object: {order}"
-                )
-                # Checking logs for Adora, always failed the try to construct str to Order
-                # Therefore, no need to do it. Let's check the behavior and clean up Adora
-                return "Failed to extract structured data. Please try again."
+            order = self._construct_order(latest_user_message)
 
             # Validate and check the order
             error_message = self._post_process_order(order)
@@ -323,6 +302,37 @@ class ToastTool(Toolkit):
             input_data={"chat_history": chat_history}, output_data=output_data
         )
         return context
+
+    def _construct_order(self, latest_user_message: str) -> OrderInput:
+        chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
+        context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
+
+        order = llm_call(
+            system_prompt=EXTRACTOR_SYSTEM_PROMPT,
+            prompt=EXTRACTOR_USER_PROMPT.format(
+                context=context, chat_history=chat_history
+            ),
+            response_format=OrderInput,
+            reasoning=False,
+        )
+
+        # TODO: Check if we need to fill in the order guid and other fields
+        # 1. get dining option guid (we need to find the guids for Takeout)
+        # 2. get menu item guids(menuGroup and menuItem; ex. sodaGroup -> Pepsi)
+        # 3. get modifiers guids(modifierGroup and modifierItem)
+
+        if type(order) is str:
+            order = json.loads(order)
+            order = OrderInput(**order)
+
+        if not isinstance(order, OrderInput):
+            raise ValueError(
+                f"`order` object in type {type(order)} but expected type Order.\n"
+                f"`order` object: {order}"
+            )
+
+        print("Constructed order:", order.model_dump_json())
+        return order
 
     def _post_process_order(self, order: OrderInput) -> str | None:
         """
@@ -439,3 +449,38 @@ class ToastTool(Toolkit):
         except Exception as e:
             logger.error(f"Failed to submit the order: {e}")
             return "There was an error while submitting the order. Please try again."
+
+    def _get_order_prices(self, order: OrderInput) -> str:
+        # Retrieve the bearer token
+        toast_bearer_token = self._toast_bearer_token
+        if not toast_bearer_token:
+            return (
+                "Failed to authenticate ordering tool. "
+                "Please reach out to our support team at help@palona.ai "
+                "for assistance."
+            )
+        try:
+            order = get_order_prices(toast_bearer_token, self.store_id, order)
+            return Price(
+                amount=order.checks[0].amount,
+                taxAmount=order.checks[0].taxAmount,
+                totalAmount=order.checks[0].totalAmount,
+            ).model_dump_json()
+        except Exception as e:
+            logger.error(f"Failed to get the order prices: {e}")
+            return (
+                "There was an error while getting the order prices. Please try again."
+            )
+
+    @tool
+    def get_order_prices_tool(self, latest_user_message: str) -> str:
+        try:
+            order = self._construct_order(
+                latest_user_message,
+            )
+            return self._get_order_prices(order)
+        except Exception as e:
+            logger.error(f"Error in get order prices: {e}")
+            return (
+                "There was an error while getting the order prices. Please try again."
+            )
