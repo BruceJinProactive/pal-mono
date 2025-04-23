@@ -1,4 +1,5 @@
 from botocore.exceptions import ClientError, ParamValidationError
+from ddtrace import tracer
 
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
 from utils.log import logger
@@ -9,6 +10,7 @@ AWS_ASSET_BUCKET_NAME = _utils.AWS_ASSET_BUCKET_NAME
 AWS_REGION = _constants.AWS_REGION
 
 
+@tracer.wrap()
 def write_asset(file: WriteAssetRequest) -> AssetResponse:
     try:
         if not file.name:
@@ -44,6 +46,7 @@ def write_asset(file: WriteAssetRequest) -> AssetResponse:
 
 
 ## Read ##
+@tracer.wrap()
 @_utils.handle_s3_errors
 def read_asset_by_name(request: ReadAssetRequest) -> AssetResponse:
     """Read single asset by name."""
@@ -71,6 +74,7 @@ def read_asset_by_name(request: ReadAssetRequest) -> AssetResponse:
         raise  # Re-raise other exceptions
 
 
+@tracer.wrap()
 @_utils.handle_s3_errors
 def read_assets(request: ReadAssetRequest) -> list[AssetResponse]:
     """Read assets using either the `name` or `metadata` filters."""

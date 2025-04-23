@@ -5,6 +5,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from ddtrace import tracer
 from sqlalchemy import Table
 from sqlalchemy.orm import Session, declarative_base
 
@@ -24,6 +25,7 @@ from utils.log import logger
 MOCK_USER_PREFIX = "mock-user"
 
 
+@tracer.wrap()
 def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
     """
     An internal filter function that determines whether a conversation should be included in get_inbox_conversations
@@ -43,6 +45,7 @@ def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
     return True
 
 
+@tracer.wrap()
 def get_conversation_by_id(
     session: Session,
     conversation_id: uuid.UUID,
@@ -52,6 +55,7 @@ def get_conversation_by_id(
     return conversation
 
 
+@tracer.wrap()
 def list_user_sessions_in_account(
     account_id: uuid.UUID,
     keyword: str,
@@ -98,6 +102,7 @@ def list_user_sessions_in_account(
     return total, user_session_previews
 
 
+@tracer.wrap()
 def get_inbox_conversations(
     session: Session, account_id: uuid.UUID, max_age: int, page: int, page_size: int
 ) -> tuple[int, list[ConversationPreview]]:
@@ -218,6 +223,7 @@ def get_inbox_conversations(
     return total_conversations, inbox
 
 
+@tracer.wrap()
 def get_conversation_messages(
     session: Session,
     account_id: uuid.UUID,
@@ -269,6 +275,7 @@ def get_conversation_messages(
     return messages
 
 
+@tracer.wrap()
 def get_conversation_ids_by_message_ids(
     session: Session,
     message_ids: list[uuid.UUID],
@@ -301,6 +308,7 @@ def get_conversation_ids_by_message_ids(
     return result
 
 
+@tracer.wrap()
 def get_messages_by_conversation_id(
     session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> list[db.Message]:
@@ -340,6 +348,7 @@ def get_messages_by_conversation_id(
     return messages
 
 
+@tracer.wrap()
 def get_knowledge_base(session: Session, account_name: str) -> list:
     Base = declarative_base()
 
@@ -376,6 +385,7 @@ def get_knowledge_base(session: Session, account_name: str) -> list:
         raise RuntimeError("Unable to get knowledge base.") from e
 
 
+@tracer.wrap()
 def get_knowledge_base_by_document_id(
     session: Session, account_name: str, document_id: str
 ) -> dict:
@@ -388,6 +398,7 @@ def get_knowledge_base_by_document_id(
     return {}
 
 
+@tracer.wrap()
 def update_knowledge(
     session: Session, account_name: str, knowledge_id: str, content: str
 ) -> None:
@@ -432,14 +443,17 @@ def update_knowledge(
         raise RuntimeError("Unable to update knowledge by ID.") from e
 
 
+@tracer.wrap()
 def _project_name_to_ig_access_token_key(project_name: str) -> str:
     return f"{project_name.upper()}_INSTAGRAM_ACCESS_TOKEN"
 
 
+@tracer.wrap()
 def _ig_user_id_to_ig_project_name_key(user_id: str) -> str:
     return f"INSTAGRAM_USER_{user_id}_PROJECT_KEY"
 
 
+@tracer.wrap()
 def _parse_ig_project_secret_value(secret_value) -> dict:
     try:
         if not isinstance(secret_value, dict):
@@ -453,6 +467,7 @@ def _parse_ig_project_secret_value(secret_value) -> dict:
         raise RuntimeError("Unable to parse project secret value.") from e
 
 
+@tracer.wrap()
 def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
     project = get_project(session, project_id)
     if not project:
@@ -472,6 +487,7 @@ def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
         raise RuntimeError(f"Unable to get Instagram access token: {e}")
 
 
+@tracer.wrap()
 def get_instagram_username(session: Session, project_id: uuid.UUID) -> str:
     project = get_project(session, project_id)
     if not project:
@@ -502,6 +518,7 @@ def get_instagram_username(session: Session, project_id: uuid.UUID) -> str:
     return secret_dict.get("username", "")
 
 
+@tracer.wrap()
 def set_instagram_access_token(
     session: Session,
     project_id: uuid.UUID,
@@ -592,6 +609,7 @@ def set_instagram_access_token(
         raise RuntimeError("Unable to update project channel identifiers.") from e
 
 
+@tracer.wrap()
 def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> None:
     """
     Remove both project and user secrets using the project secret key
@@ -672,6 +690,7 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
         raise RuntimeError("Unable to remove Instagram access token.") from e
 
 
+@tracer.wrap()
 def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> None:
     """
     Remove both project and user secrets using the user secret key
@@ -740,6 +759,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
         raise RuntimeError("Unable to remove Instagram access token.") from e
 
 
+@tracer.wrap()
 def get_session_count_by_user_and_status(
     session: Session,
     user_ids: list[uuid.UUID],
@@ -752,6 +772,7 @@ def get_session_count_by_user_and_status(
     )
 
 
+@tracer.wrap()
 def get_escalated_session_count_by_users(
     session: Session,
     user_ids: list[uuid.UUID],

@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 from agno.models.openai.chat import OpenAIChat
 from agno.run.response import RunResponse
+from ddtrace import tracer
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
@@ -31,6 +32,7 @@ from utils.log import logger
 from . import _utils
 
 
+@tracer.wrap()
 def get_filler_message(message: Message) -> Message:
     # Collection of filler phrases for voice responses
     FILLER_PHRASES = [
@@ -56,6 +58,7 @@ def get_filler_message(message: Message) -> Message:
     return filler_message
 
 
+@tracer.wrap()
 async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
@@ -209,6 +212,7 @@ async def get_chat_response_async(
     return response_messages
 
 
+@tracer.wrap()
 async def get_chat_response_stream_cached(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[Message]:
@@ -272,6 +276,7 @@ async def get_chat_response_stream_cached(
         return error_response_generator()
 
 
+@tracer.wrap()
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[ChatCompletionChunk]:
@@ -452,6 +457,7 @@ async def get_chat_response_stream(
         yield error_message
 
 
+@tracer.wrap()
 def get_chat_response(_session: Session, message: Message) -> Message:
     logger.info(message)
     response = "Synch mode chat has been deprecated."
@@ -468,6 +474,7 @@ def get_chat_response(_session: Session, message: Message) -> Message:
     return response_message
 
 
+@tracer.wrap()
 def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | None:
     """
     Retrieves a Message by its unique identifier.
@@ -485,6 +492,7 @@ def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | N
     return message
 
 
+@tracer.wrap()
 def get_messages_by_ids(
     session: Session, message_ids: list[uuid.UUID]
 ) -> list[db.Message]:
@@ -494,6 +502,7 @@ def get_messages_by_ids(
     return messages
 
 
+@tracer.wrap()
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
 ) -> list[db.Message]:
@@ -515,6 +524,7 @@ def get_messages_by_conversation(
     return messages
 
 
+@tracer.wrap()
 def get_conversations_by_user(
     session: Session, user_id: uuid.UUID, create_new_conversation: bool = False
 ) -> list[db.Conversation]:
@@ -533,6 +543,7 @@ def get_conversations_by_user(
     return []
 
 
+@tracer.wrap()
 def get_session_ids_by_users(
     session: Session, user_ids: list[uuid.UUID]
 ) -> list[uuid.UUID]:
@@ -541,6 +552,7 @@ def get_session_ids_by_users(
     return session_ids
 
 
+@tracer.wrap()
 def get_conversations_by_users(
     session: Session,
     page: int,
@@ -558,11 +570,13 @@ def get_conversations_by_users(
     return total_conversations, conversations
 
 
+@tracer.wrap()
 def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:
     conversation_repository = db.ConversationRepository(session)
     return conversation_repository.create_conversation(user_id=user_id)
 
 
+@tracer.wrap()
 def build_opt_in_message(message: Message, metadata: Metadata) -> Message | None:
     if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
         opt_in_text = (

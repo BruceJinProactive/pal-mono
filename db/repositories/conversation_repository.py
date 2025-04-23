@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+from ddtrace import tracer
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -14,6 +15,7 @@ class ConversationRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    @tracer.wrap()
     async def get_conversation_by_id(self, conversation_id: uuid.UUID):
         result = await self.session.execute(
             select(Conversation).filter(Conversation.id == conversation_id)
@@ -30,6 +32,7 @@ class ConversationRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    @tracer.wrap()
     def get_conversations(self, skip: int = 0, limit: int = 100):
         """
         Retrieve a paginated list of conversations.
@@ -48,6 +51,7 @@ class ConversationRepository:
             logger.error(f"Error retrieving conversations: {e}")
             return None
 
+    @tracer.wrap()
     def get_conversations_by_user(self, user_id: uuid.UUID):
         """
         Retrieve all conversations for a specific user.
@@ -74,6 +78,7 @@ class ConversationRepository:
             logger.error(f"Error retrieving conversations by user: {e}")
             return None
 
+    @tracer.wrap()
     def get_conversations_by_users(
         self,
         user_ids: list[uuid.UUID],
@@ -116,6 +121,7 @@ class ConversationRepository:
             logger.error(f"Error retrieving conversations by users: {e}")
             return [], 0
 
+    @tracer.wrap()
     def get_conversation_ids_by_user_ids(
         self, user_ids: list[uuid.UUID], min_created_at: datetime | None = None
     ) -> list[uuid.UUID]:
@@ -131,6 +137,7 @@ class ConversationRepository:
             logger.error(f"Error retrieving conversation ids: {e}")
             return []
 
+    @tracer.wrap()
     def get_conversation_by_id(self, conversation_id: uuid.UUID) -> Conversation | None:
         try:
             return (
@@ -143,6 +150,7 @@ class ConversationRepository:
             logger.error(f"Error retrieving conversation by id: {e}")
             return None
 
+    @tracer.wrap()
     def create_conversation(self, user_id: uuid.UUID):
         """
         Create a new conversation for a specific user.
@@ -163,6 +171,7 @@ class ConversationRepository:
             logger.error(f"Error creating conversation: {e}")
             return None
 
+    @tracer.wrap()
     def get_session_count_by_user_and_status(
         self,
         user_ids: list[uuid.UUID],
@@ -186,6 +195,7 @@ class ConversationRepository:
             logger.error(f"Error retrieving session count: {e}")
             return 0
 
+    @tracer.wrap()
     def get_paginated_sessions_by_ids(
         self,
         session_ids: list[uuid.UUID],

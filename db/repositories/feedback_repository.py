@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from ddtrace import tracer
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,7 @@ class FeedbackRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    @tracer.wrap()
     def create_feedback(self, feedback: Feedback) -> Feedback:
         db_feedback = Feedback()
         for key, value in vars(feedback).items():
@@ -32,6 +34,7 @@ class FeedbackRepository:
 
         return db_feedback
 
+    @tracer.wrap()
     def delete_feedback_by_id(self, feedback_id: UUID) -> Feedback | None:
         try:
             db_feedback = self.get_feedback_by_id(feedback_id)
@@ -51,6 +54,7 @@ class FeedbackRepository:
             )
             raise
 
+    @tracer.wrap()
     def get_feedbacks(self) -> list[Feedback] | None:
         try:
             return self.session.query(Feedback).all()
@@ -59,6 +63,7 @@ class FeedbackRepository:
             logger.error(f"Error retrieving feedback: {e}")
             raise
 
+    @tracer.wrap()
     def get_feedback_by_id(self, feedback_id: UUID) -> Feedback | None:
         try:
             return (
@@ -69,6 +74,7 @@ class FeedbackRepository:
             logger.error(f"Error retrieving feedback: {e}")
             raise
 
+    @tracer.wrap()
     def update_feedback_by_id(
         self, feedback_id: UUID, updated_feedback: Feedback
     ) -> Feedback:
@@ -97,6 +103,7 @@ class FeedbackRepository:
             )
             raise
 
+    @tracer.wrap()
     def get_feedback_by_message_ids(self, message_ids: list[UUID]) -> list[Feedback]:
         try:
             return (

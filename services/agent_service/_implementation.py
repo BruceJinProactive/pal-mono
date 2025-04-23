@@ -2,6 +2,7 @@ import uuid
 from dataclasses import asdict
 from typing import Any, Dict, Optional
 
+from ddtrace import tracer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from . import _raw_config
 from .schema import AgentParams
 
 
+@tracer.wrap()
 async def construct_agent_config(
     db_session: AsyncSession,
     agent_id: uuid.UUID,
@@ -68,6 +70,7 @@ async def construct_agent_config(
     return raw_config.build()
 
 
+@tracer.wrap()
 def get_agent(session: Session, agent_id: uuid.UUID) -> Optional[db.Agent]:
     # Retrieve the agent from the database
     agent_repository = db.AgentRepository(session)
@@ -75,6 +78,7 @@ def get_agent(session: Session, agent_id: uuid.UUID) -> Optional[db.Agent]:
     return agent
 
 
+@tracer.wrap()
 def replace_agent_config(
     session: Session, agent_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
@@ -82,6 +86,7 @@ def replace_agent_config(
     agent_repository.replace_agent_config(agent_id=agent_id, config=config)
 
 
+@tracer.wrap()
 def create_agent(session: Session, account_name: str, params: AgentParams) -> db.Agent:
     # Create an agent for the given account
     account = account_service.get_account(session, account_name)
@@ -92,6 +97,7 @@ def create_agent(session: Session, account_name: str, params: AgentParams) -> db
     return agent
 
 
+@tracer.wrap()
 def update_agent(
     session: Session, agent_id: uuid.UUID, params: AgentParams
 ) -> db.Agent:
@@ -103,6 +109,7 @@ def update_agent(
     return agent
 
 
+@tracer.wrap()
 def delete_agent(session: Session, agent_id: uuid.UUID):
     agent_repository = db.AgentRepository(session)
     agent_repository.delete_agent(agent_id)

@@ -2,6 +2,7 @@ import uuid
 from dataclasses import asdict
 from typing import Any, Dict, List
 
+from ddtrace import tracer
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from .. import account_service, agent_service
 from .schema import ProjectParams
 
 
+@tracer.wrap()
 def create_project(
     session: Session, account_name: str, project_name: str, params: ProjectParams
 ) -> db.Project:
@@ -35,6 +37,7 @@ def create_project(
     return project
 
 
+@tracer.wrap()
 def update_project(
     session: Session, project_id: uuid.UUID, params: ProjectParams
 ) -> db.Project:
@@ -43,16 +46,19 @@ def update_project(
     return project
 
 
+@tracer.wrap()
 def get_project(session: Session, project_id: uuid.UUID):
     project_repository = db.ProjectRepository(session)
     return project_repository.get_project(project_id)
 
 
+@tracer.wrap()
 def get_project_by_name(session: Session, project_name: str):
     project_repository = db.ProjectRepository(session)
     return project_repository.get_project_by_name(project_name)
 
 
+@tracer.wrap()
 def update_project_config(
     session: Session, project_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
@@ -60,6 +66,7 @@ def update_project_config(
     project_repository.update_project_config(project_id=project_id, config=config)
 
 
+@tracer.wrap()
 def replace_project_channel_identifiers(
     session: Session, project_id: uuid.UUID, channel_identifiers: List[str]
 ) -> None:
@@ -69,6 +76,7 @@ def replace_project_channel_identifiers(
     )
 
 
+@tracer.wrap()
 def replace_project_config(
     session: Session, project_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
@@ -76,11 +84,13 @@ def replace_project_config(
     project_repository.replace_project_config(project_id=project_id, config=config)
 
 
+@tracer.wrap()
 def delete_project(session: Session, project_id: uuid.UUID) -> None:
     project_repository = db.ProjectRepository(session)
     project_repository.delete_project(project_id)
 
 
+@tracer.wrap()
 async def get_project_async(session: AsyncSession, message: Message) -> db.Project:
     project_channel_identifier = (
         f"{message.channel.value}:{message.recipient_identifier}"
@@ -97,6 +107,7 @@ async def get_project_async(session: AsyncSession, message: Message) -> db.Proje
     return project
 
 
+@tracer.wrap()
 def get_project_sync(session: Session, message: Message) -> db.Project:
     project_channel_identifier = (
         f"{message.channel.value}:{message.recipient_identifier}"

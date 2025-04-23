@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+from ddtrace import tracer
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -14,6 +15,7 @@ class UserRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    @tracer.wrap()
     async def get_user_by_channel_identifier(
         self, account_id: uuid.UUID, channel_identifier: str
     ) -> User | None:
@@ -41,6 +43,7 @@ class UserRepositoryAsync:
         user = result.scalars().first()
         return user
 
+    @tracer.wrap()
     async def create_user(
         self, account_id: uuid.UUID, channel_identifier: str = ""
     ) -> User:
@@ -64,9 +67,11 @@ class UserRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    @tracer.wrap()
     def get_users(self, skip: int = 0, limit: int = 100):
         return self.session.query(User).offset(skip).limit(limit).all()
 
+    @tracer.wrap()
     def get_users_by_account_id(
         self, account_id: uuid.UUID, min_create_time: datetime | None = None
     ):
@@ -85,6 +90,7 @@ class UserRepository:
             logger.error(f"Error retrieving users: {e}")
             return []
 
+    @tracer.wrap()
     def get_user_by_channel_identifier(
         self, account_id: uuid.UUID, channel_identifier: str
     ):
@@ -114,6 +120,7 @@ class UserRepository:
         )
         return user
 
+    @tracer.wrap()
     def get_user_by_id(self, user_id: uuid.UUID):
         query = self.session.query(User).filter(
             User.id == user_id,
@@ -121,12 +128,14 @@ class UserRepository:
         user = query.first()
         return user
 
+    @tracer.wrap()
     def create_user(self, account_id: uuid.UUID, channel_identifier: str = ""):
         db_user = User(account_id=account_id, channel_identifiers=[channel_identifier])
         self.session.add(db_user)
         self.session.commit()
         return db_user
 
+    @tracer.wrap()
     def update_user(self, user_id: uuid.UUID, raw_config: dict):
         query = self.session.query(User).filter(User.id == user_id)
         user = query.first()

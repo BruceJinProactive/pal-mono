@@ -1,6 +1,7 @@
 import datetime
 import uuid
 
+from ddtrace import tracer
 from sqlalchemy import Boolean, cast, distinct, not_, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,7 @@ class MessageRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    @tracer.wrap()
     async def create_message(self, user_id: uuid.UUID, message_body: dict):
         # Step 1: Get the user from the database
         result = await self.session.execute(select(User).filter(User.id == user_id))
@@ -124,6 +126,7 @@ class MessageRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    @tracer.wrap()
     def create_message(self, user_id: uuid.UUID, message_body: dict):
         # Step 1: Get the user from the database
         user = self.session.query(User).filter(User.id == user_id).first()
@@ -155,6 +158,7 @@ class MessageRepository:
 
         return message
 
+    @tracer.wrap()
     def is_conversation_escalated(self, conversation_id: uuid.UUID) -> bool:
         """
         Determine if any message in the conversation is escalated by checking
@@ -177,6 +181,7 @@ class MessageRepository:
         )
         return message is not None
 
+    @tracer.wrap()
     def get_message_by_id(self, message_id: uuid.UUID):
         """
         Retrieves a message by its unique identifier.
@@ -197,6 +202,7 @@ class MessageRepository:
             logger.error(f"Error retrieving message: {e}")
             return None
 
+    @tracer.wrap()
     def get_messages_by_conversation(self, conversation_id: uuid.UUID):
         """
         Retrieves all messages associated with a specific conversation id.
@@ -225,6 +231,7 @@ class MessageRepository:
             logger.error(f"Error retrieving last message: {e}")
             return []
 
+    @tracer.wrap()
     def get_last_message_by_conversation(self, conversation_id: uuid.UUID):
         """
         Retrieves the most recently created message associated with a specific
@@ -256,6 +263,7 @@ class MessageRepository:
             logger.error(f"Error retrieving last message: {e}")
             return None
 
+    @tracer.wrap()
     def get_last_user_message_by_conversation(self, conversation_id: uuid.UUID):
         """
         Retrieves the most recently created message associated with a specific
@@ -290,6 +298,7 @@ class MessageRepository:
             logger.error(f"Error retrieving last message: {e}")
             return None
 
+    @tracer.wrap()
     def get_message_count_by_conversation(self, conversation_id: uuid.UUID):
         """
         Retrieves the number of messages associated with a specific
@@ -314,6 +323,7 @@ class MessageRepository:
             logger.error(f"Error retrieving message count: {e}")
             return 0
 
+    @tracer.wrap()
     def get_conversation_id_by_message_id(self, message_id: uuid.UUID):
         """
         Retrieves the conversation id associated with a specific message id.
@@ -337,6 +347,7 @@ class MessageRepository:
             logger.error(f"Error retrieving conversation id: {e}")
             return None
 
+    @tracer.wrap()
     def get_messages_by_ids(self, message_ids: list[uuid.UUID]) -> list[Message]:
         try:
             return self.session.query(Message).filter(Message.id.in_(message_ids)).all()
@@ -345,6 +356,7 @@ class MessageRepository:
             logger.error(f"Error retrieving messages: {e}")
             return []
 
+    @tracer.wrap()
     def get_escalated_conversation_count(
         self, conversation_ids: list[uuid.UUID]
     ) -> int:
@@ -361,6 +373,7 @@ class MessageRepository:
             logger.error(f"Error retrieving escalated conversation IDs: {e}")
             return 0
 
+    @tracer.wrap()
     def filter_sessions_by_keyword(
         self,
         session_ids: list[uuid.UUID],

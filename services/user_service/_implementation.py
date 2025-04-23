@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Tuple
 
+from ddtrace import tracer
 from mixpanel import Mixpanel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from utils.log import logger
 
 
 # TODO: get_user_by_channel_identifier in user_service is deprecated, remove it once Streamlit internal_app is replaced with new one
+@tracer.wrap()
 def get_user_by_channel_identifier(
     session: Session,
     account_id: uuid.UUID,
@@ -37,6 +39,7 @@ def get_user_by_channel_identifier(
     return None
 
 
+@tracer.wrap()
 def get_users_by_account_id(
     session: Session,
     account_id: uuid.UUID,
@@ -48,6 +51,7 @@ def get_users_by_account_id(
     return users
 
 
+@tracer.wrap()
 async def get_user_async(
     session: AsyncSession, project: db.Project, message: Message
 ) -> Tuple[Optional[db.User], bool]:
@@ -110,7 +114,6 @@ async def get_user_async(
                     except Exception as e:
                         logger.error(f"Error updating user channel identifiers: {e}")
                         await session.rollback()
-
     else:
         # For other channels, just look for exact match
         user = await user_repo.get_user_by_channel_identifier(
@@ -120,6 +123,7 @@ async def get_user_async(
     return user, needs_opt_in
 
 
+@tracer.wrap()
 async def create_user_async(
     session: AsyncSession, project: db.Project, message: Message
 ) -> db.User:
