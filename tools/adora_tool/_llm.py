@@ -6,9 +6,13 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm
 from pydantic import BaseModel
 
-RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = (
-    "Identify all the order items of the user's final cart in the chat history."
-)
+RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """You are a helpful assistant that extracts full and specific order items' names from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items the user has added to their final order.
+Requirements:
+- Extract the **complete dish or drink name**, but **remove size or quantity information**.
+- Do not shorten or generalize the dish.
+- Only include items that the user **explicitly confirmed or finalized** as part of their order.
+- Output a JSON array of strings with **cleaned item names**.
+"""
 
 EXTRACTOR_SYSTEM_PROMPT = """You are an expert at structured data extraction.
 You will be given the chat history and relevant context. You goal is to convert it into the given structure.
