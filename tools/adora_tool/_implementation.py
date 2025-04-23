@@ -299,7 +299,7 @@ class AdoraTool(Toolkit):
             return True, "Address is validated and is in the delivery zone."
 
     @retrieval
-    async def _get_relevant_docs(self, chat_history: str) -> str:
+    def _get_relevant_docs(self, chat_history: str) -> str:
         # Decompose chat history into multiple sub-queries
         sub_queries = _llm.llm_call(
             system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
@@ -314,11 +314,16 @@ class AdoraTool(Toolkit):
         logger.info(f"Sub-queries identified: {sub_queries.queries}")
 
         # Perform knowledege retrieval on all sub-queries asynchronously
-        tasks = [
-            asyncio.create_task(self.query_engine.aquery(q))
-            for q in sub_queries.queries
-        ]
-        results = await asyncio.gather(*tasks)
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            query_tasks = asyncio.gather(
+                *[self.query_engine.aquery(q) for q in sub_queries.queries]
+            )
+            results = loop.run_until_complete(query_tasks)
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
 
         context = ""
         output_data = []
@@ -434,7 +439,7 @@ class AdoraTool(Toolkit):
         try:
             chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
 
-            context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
+            context = self._get_relevant_docs(chat_history)  # type: ignore
 
             final_extractor_system_prompt = _llm.EXTRACTOR_SYSTEM_PROMPT
             if self.discounts:
