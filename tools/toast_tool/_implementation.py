@@ -104,7 +104,6 @@ class ToastTool(Toolkit):
             return message
 
         point = Point(delivery_address.lng, delivery_address.lat)
-
         store_info_str = self.get_store_info()
         if store_info_str == "Failed to get the store information, please try again.":
             return store_info_str
@@ -127,7 +126,7 @@ class ToastTool(Toolkit):
 
         # Decode the polyline string into a list of Point objects
         try:
-            decoded = polyline.decode(polyline_str)
+            decoded = polyline.decode(polyline_str, geojson=True)
             polygon = Polygon([(lng, lat) for lng, lat in decoded])
         except Exception as e:
             logger.error(f"Decode polyline to points failed: {e}")
@@ -190,7 +189,6 @@ class ToastTool(Toolkit):
             - The restaurant's online ordering availability status
             - The reason why the restaurant is available or unavailable to accept online orders
         """
-
         try:
             if not self._toast_bearer_token:
                 return (
@@ -329,7 +327,6 @@ class ToastTool(Toolkit):
                 f"`order` object: {order}"
             )
 
-        print("Constructed order:", order.model_dump_json())
         return order
 
     def _post_process_order(self, order: OrderInput) -> str | None:
