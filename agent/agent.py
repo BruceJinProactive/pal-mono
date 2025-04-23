@@ -9,7 +9,7 @@ from agent.config import AgentConfig, AgentFramework
 from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
-from agent.memory import get_memory_context, update_memory
+from agent.memory import update_memory
 from utils.log import logger
 
 
@@ -27,7 +27,8 @@ class Agent:
             config (AgentConfig): The configuration for the agent.
 
         Raises:
-            ValueError: If the framework specified in the configuration is not supported.
+            ValueError: If the framework specified in the configuration is not
+                supported.
         """
         framework = (
             config.metadata.framework
@@ -91,16 +92,6 @@ class Agent:
                 user_id=self._metadata.user_id,  # type: ignore
                 content=input.content,  # type: ignore
             )  # type: ignore
-        )
-        logger.info(f"{input.sender_identifier}: get_memory_context")
-        commit_start = time.perf_counter()
-        testing_accounts = ["proactiveailab", "palona"]
-        if self._metadata.account_name not in testing_accounts:
-            # TODO: migrate to memory tools once implemeted
-            memories = await get_memory_context(user_id=self._metadata.user_id)  # type: ignore
-            input.memories = memories
-        logger.info(
-            f"{input.sender_identifier}: get_memory_context done, Took {time.perf_counter() - commit_start:.4f}s"
         )
         # Enable guardrails solely for LAT environment
         if (

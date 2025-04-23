@@ -133,7 +133,7 @@ class AdoraTool(Toolkit):
                     update_memory(
                         user_id=str(self.user_id),  # type: ignore
                         content=customer_info,  # type: ignore
-                    )
+                    )  # type: ignore
                 )
 
             return customer_info

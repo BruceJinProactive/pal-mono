@@ -38,7 +38,12 @@ class AgnoAgent:
         )
         commit_start = time.perf_counter()
         tools = [
-            tool for tool in get_tools(config.tool, config.knowledge)
+            tool
+            for tool in get_tools(
+                config.tool,
+                config.knowledge,
+                user_id=config.metadata.user_id,
+            )
         ]  # construct search knowledge tool
         logger.info(
             f"{config.metadata.user_id}: get_tools, Took {time.perf_counter() - commit_start:.4f}s"
