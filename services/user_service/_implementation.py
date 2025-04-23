@@ -65,8 +65,12 @@ async def get_user_async(
         )
         logger.info(f"Looking for user with channel_identifier: {channel_identifier}")
 
-        # If not found, try the other phone-based channel
         if not user:
+            # SMS opt-in needed for new SMS user
+            if message.channel == Channel.SMS:
+                needs_opt_in = True
+
+            # If not found, try the other phone-based channel
             other_channel = (
                 Channel.VOICE if message.channel == Channel.SMS else Channel.SMS
             )
@@ -107,13 +111,6 @@ async def get_user_async(
                         logger.error(f"Error updating user channel identifiers: {e}")
                         await session.rollback()
 
-                # SMS opt-in needed when switching from VOICE to SMS
-                if message.channel == Channel.SMS:
-                    needs_opt_in = True
-
-        # New SMS users need opt-in
-        elif message.channel == Channel.SMS:
-            needs_opt_in = True
     else:
         # For other channels, just look for exact match
         user = await user_repo.get_user_by_channel_identifier(
