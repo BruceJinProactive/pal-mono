@@ -207,10 +207,10 @@ async def chat_completions(
         try:
             caller_number = body.get("call", {}).get("customer", {}).get("number")
             if caller_number is None or caller_number == "":
-                caller_number = "empty_number"
+                caller_number = ""
         except Exception as e:
             logger.error(f"Error extracting caller number: {e}")
-            caller_number = "empty_number"
+            caller_number = ""
         # TODO: when not from calling center, add get sender identifier from the request
         return StreamingResponse(
             completion_chat_engine.stream_chat(
