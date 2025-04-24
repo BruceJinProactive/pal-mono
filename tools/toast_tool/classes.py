@@ -86,14 +86,14 @@ class RestaurantInfo(BaseModel):
     RestaurantInfo object returned from the Toast API.
     """
 
-    guid: str
-    general: dict
-    urls: dict
-    location: dict
-    schedules: dict
-    delivery: dict
-    onlineOrdering: dict
-    prepTimes: dict
+    guid: str = Field(description="Unique identifier for the restaurant")
+    general: dict = Field(description="General information about the restaurant")
+    urls: dict = Field(description="URLs related to the restaurant")
+    location: dict = Field(description="Location details of the restaurant")
+    schedules: dict = Field(description="Operating schedules of the restaurant")
+    delivery: dict = Field(description="Delivery configuration details")
+    onlineOrdering: dict = Field(description="Online ordering configuration")
+    prepTimes: dict = Field(description="Preparation time configurations")
 
 
 class OrderingStatus(str, Enum):
@@ -107,11 +107,14 @@ class OrderingStatusReasonKey(str, Enum):
 
 
 class RestaurantOrderingStatus(BaseModel):
-
-    restaurantGuid: str
-    status: OrderingStatus
-    reasonKey: OrderingStatusReasonKey
-    reason: str
+    restaurantGuid: str = Field(description="GUID of the restaurant")
+    status: OrderingStatus = Field(
+        description="Current ordering status (ONLINE or OFFLINE)"
+    )
+    reasonKey: OrderingStatusReasonKey = Field(
+        description="Key indicating the reason for the status"
+    )
+    reason: str = Field(description="Detailed reason for the ordering status")
 
     class Config:
         use_enum_values = True
@@ -124,19 +127,30 @@ class DiningBehavior(str, Enum):
 
 
 class DiningOption(BaseModel):
-    guid: str
-    entityType: str = "DiningOption"
-    curbside: Optional[bool] = None
-    behavior: SkipJsonSchema[Optional[DiningBehavior]] = None
-    name: Optional[str] = None
-    externalId: Optional[Any] = None
+    guid: str = Field(description="Unique identifier for the dining option")
+    entityType: str = Field(
+        default="DiningOption",
+        description="Type of the entity, defaults to 'DiningOption'",
+    )
+    curbside: SkipJsonSchema[Optional[bool]] = Field(
+        None, description="Indicates if curbside pickup is available"
+    )
+    behavior: SkipJsonSchema[Optional[DiningBehavior]] = Field(
+        None, description="Dining behavior (e.g., DINE_IN, TAKE_OUT, DELIVERY)"
+    )
+    name: SkipJsonSchema[Optional[str]] = Field(
+        None, description="Name of the dining option"
+    )
+    externalId: SkipJsonSchema[Optional[Any]] = Field(
+        None, description="External identifier for the dining option"
+    )
 
     class Config:
         use_enum_values = True
 
 
 class ItemBase(BaseModel):
-    guid: str
+    guid: str = Field(description="The GUID of the item")
 
 
 class OptionGroup(ItemBase):
@@ -144,7 +158,9 @@ class OptionGroup(ItemBase):
 
 
 class MenuItem(ItemBase):
-    entityType: str = "MenuItem"
+    entityType: str = Field(
+        description="The type of entity represented by this model", default="MenuItem"
+    )
 
 
 class ItemGroup(ItemBase):
@@ -152,18 +168,30 @@ class ItemGroup(ItemBase):
 
 
 class Modifier(BaseModel):
-    entityType: str = "MenuItemSelection"
-    optionGroup: OptionGroup
-    item: MenuItem
-    quantity: int
+    entityType: str = Field(
+        description="The type of entity represented by this model",
+        default="MenuItemSelection",
+    )
+    optionGroup: OptionGroup = Field(
+        description="The option group associated with the modifier"
+    )
+    item: MenuItem = Field(description="The item associated with the modifier")
+    quantity: int = Field(description="The quantity of the modifier")
 
 
 class ItemSelection(BaseModel):
-    entityType: str = "MenuItemSelection"
-    itemGroup: ItemGroup
-    item: ItemBase
-    quantity: int
-    modifiers: Optional[List[Modifier]] = []
+    entityType: str = Field(
+        description="The type of entity represented by this model",
+        default="MenuItemSelection",
+    )
+    itemGroup: ItemGroup = Field(
+        description="The item group associated with the item selection"
+    )
+    item: ItemBase = Field(description="The item selected")
+    quantity: int = Field(description="The quantity of the item selection")
+    modifiers: Optional[List[Modifier]] = Field(
+        description="The modifiers associated with the item selection", default=[]
+    )
 
 
 # Payment type must either be "CREDIT" or "OTHER"
@@ -173,10 +201,13 @@ class PaymentType(str, Enum):
 
 
 class Payment(BaseModel):
-    guid: str
-    amount: float
-    tipAmount: float = 0.0
-    type: PaymentType
+    guid: str = Field(description="The GUID of the payment")
+    amount: float = Field(description="The amount of the payment")
+    tipAmount: float = Field(description="The tip amount of the payment", default=0.0)
+    type: PaymentType = Field(
+        description="The type of payment, either credit or other",
+        default=PaymentType.CREDIT,
+    )
 
     class Config:
         use_enum_values = True
@@ -190,9 +221,9 @@ class Customer(BaseModel):
 
 
 class Price(BaseModel):
-    amount: Optional[float] = None  # response only
-    taxAmount: Optional[float] = None  # response only
-    totalAmount: Optional[float] = None  # response only
+    amount: SkipJsonSchema[Optional[float]] = None  # response only
+    taxAmount: SkipJsonSchema[Optional[float]] = None  # response only
+    totalAmount: SkipJsonSchema[Optional[float]] = None  # response only
 
 
 class Check(Price):
@@ -212,8 +243,8 @@ class Order(OrderInput):
     requiredPrepTime: Optional[str] = None  # Not required when submitting an order
     openedDate: Optional[str] = None  # Not required when submitting an order
     entityType: Optional[str] = None  # Not required when submitting an order
-    estimatedFulfillmentDate: Optional[str] = None  # response only
-    businessDate: Optional[int] = None  # YYYYMMDD, response only
+    estimatedFulfillmentDate: SkipJsonSchema[Optional[str]] = None  # response only
+    businessDate: SkipJsonSchema[Optional[int]] = None  # YYYYMMDD, response only
 
 
 ########### TOAST API CLASS END ############

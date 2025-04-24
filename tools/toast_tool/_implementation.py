@@ -7,6 +7,7 @@ import polyline
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, tool
+from pydantic import ValidationError
 from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
@@ -58,7 +59,6 @@ class ToastTool(Toolkit):
 
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
-
         self.query_engine = create_query_engine(self.namespace)
 
     @cached_property
@@ -223,6 +223,11 @@ class ToastTool(Toolkit):
         try:
             order = self._construct_order(latest_user_message)
 
+            # If the order is a string, it indicates an error message
+            # In this case, return the error message
+            if isinstance(order, str):
+                return order
+
             # Validate and check the order
             error_message = self._post_process_order(order)
             if error_message:
@@ -273,7 +278,6 @@ class ToastTool(Toolkit):
             response_format=SubQueries,
             reasoning=False,
         )
-
         # Retrieve relevant documents based on the sub-queries
         # TODO: Implement `_query_engine.create_query_engine`
         tasks = [
@@ -303,7 +307,7 @@ class ToastTool(Toolkit):
         )
         return context
 
-    def _construct_order(self, latest_user_message: str) -> OrderInput:
+    def _construct_order(self, latest_user_message: str) -> OrderInput | str:
         chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
         context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
         order = llm_call(
@@ -315,21 +319,34 @@ class ToastTool(Toolkit):
             reasoning=False,
         )
 
-        # TODO: Check if we need to fill in the order guid and other fields
-        # 1. get dining option guid (we need to find the guids for Takeout)
-        # 2. get menu item guids(menuGroup and menuItem; ex. sodaGroup -> Pepsi)
-        # 3. get modifiers guids(modifierGroup and modifierItem)
-        if type(order) is str:
-            order = json.loads(order)
-            order = OrderInput(**order)
+        # Check if the order is a string and convert it to an OrderInput object, catching any errors
+        try:
+            if type(order) is str:
+                order = json.loads(order)
+                order = OrderInput(**order)
 
-        if not isinstance(order, OrderInput):
-            raise ValueError(
-                f"`order` object in type {type(order)} but expected type Order.\n"
-                f"`order` object: {order}"
+            if not isinstance(order, OrderInput):
+                raise ValueError(
+                    f"`order` object in type {type(order)} but expected type Order.\n"
+                    f"`order` object: {order}"
+                )
+
+            return order
+        except ValidationError as e:
+            logger.warning(e)
+            warning_message = ""
+            for error in e.errors():
+                logger.warning(
+                    f"Missing or invalid order data in the response: {error}"
+                )
+                warning_message += f"Missing or invalid order data in the response: {error['loc'][-1]}: {error['msg']}, input: {error.get('input', 'N/A')}\n"
+            return (
+                warning_message
+                + "\nAsk the customer to provide the missing information or correct the invalid details."
             )
-
-        return order
+        except Exception as e:
+            logger.error(e)
+            return f"Failed to construct order: {e}"
 
     def _post_process_order(self, order: OrderInput) -> str | None:
         """
@@ -475,6 +492,12 @@ class ToastTool(Toolkit):
             order = self._construct_order(
                 latest_user_message,
             )
+
+            # If the order is a string, it indicates an error message
+            # In this case, return the error message
+            if isinstance(order, str):
+                return order
+
             return self._get_order_prices(order)
         except Exception as e:
             logger.error(f"Error in get order prices: {e}")
