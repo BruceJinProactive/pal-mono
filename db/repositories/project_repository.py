@@ -1,7 +1,6 @@
 import uuid
 from typing import Any, Dict, List
 
-from ddtrace import tracer
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +15,6 @@ class ProjectRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    @tracer.wrap()
     async def get_project_by_channel_identifier(
         self, channel_identifier: str
     ) -> Project | None:
@@ -35,82 +33,76 @@ class ProjectRepositoryAsync:
             .filter(Project.channel_identifiers.contains([channel_identifier]))
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        project = result.scalar_one_or_none()
+        return project
 
-    @tracer.wrap()
     async def get_project(self, id: uuid.UUID) -> Project | None:
         """
         Retrieve a project by its ID asynchronously.
         Args:
-            id (uuid.UUID): The ID of the project.
+            id (uuid.UUID): The unique identifier of the project.
         Returns:
             Project, or None if no such Project is found.
         """
-        query = (
-            select(Project)
-            .options(selectinload(Project.account))
-            .filter(Project.id == id)
-        )
+        query = select(Project).filter(Project.id == id)
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        project = result.scalar_one_or_none()
+        return project
 
 
 class ProjectRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    @tracer.wrap()
     def create_project(
         self, account_id: uuid.UUID, project_name: str, **kwargs
     ) -> Project:
-        """
-        Create a new project.
-        Args:
-            account_id (uuid.UUID): The account ID associated with the project.
-            project_name (str): The name of the project.
-            **kwargs: Additional project attributes.
-        Returns:
-            The newly created Project.
-        """
-        project = Project(account_id=account_id, name=project_name, **kwargs)
-        self.session.add(project)
-        self.session.commit()
-        self.session.refresh(project)
-        return project
-
-    @tracer.wrap()
-    def update_project(self, project_id: uuid.UUID, **kwargs) -> Project | None:
-        """
-        Update a project.
-        Args:
-            project_id (uuid.UUID): The ID of the project to update.
-            **kwargs: The attributes to update.
-        Returns:
-            The updated Project, or None if no such Project is found.
-        """
-        project = self.get_project(project_id)
-        if project:
+        try:
+            db_project = Project(account_id=account_id, name=project_name)
             for key, value in kwargs.items():
-                setattr(project, key, value)
+                if value is not None and hasattr(db_project, key):
+                    setattr(db_project, key, value)
+            self.session.add(db_project)
             self.session.commit()
-            self.session.refresh(project)
-        return project
+            self.session.refresh(db_project)
+            return db_project
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error creating project: {e}")
+            raise
 
-    @tracer.wrap()
+    def update_project(self, project_id: uuid.UUID, **kwargs) -> Project | None:
+        try:
+            db_project = (
+                self.session.query(Project).filter(Project.id == project_id).first()
+            )
+            if not db_project:
+                return None
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_project, key):
+                    setattr(db_project, key, value)
+            self.session.commit()
+            self.session.refresh(db_project)
+            return db_project
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating project: {e}")
+            raise
+
     def get_project(self, project_id: uuid.UUID) -> Project | None:
         return self.session.query(Project).filter(Project.id == project_id).first()
 
-    @tracer.wrap()
     def get_project_by_name(self, project_name: str) -> Project | None:
         return self.session.query(Project).filter(Project.name == project_name).first()
 
-    @tracer.wrap()
     def get_project_by_channel(self, channel_platform: str, channel_identifier: str):
         """
-        Retrieve a project by channel platform and identifier.
+        Retrieve a project by the channel platform and identifiers.
+
         Args:
-            channel_platform (str): The platform of the channel (e.g., 'sms', 'voice').
-            channel_identifier (str): The identifier of the channel (e.g., phone number).
+            channel_platform (str): The platform of the channel (eg. sms, whatsapp).
+            channel_identifier (str): The identifier of the channel (eg. phone number).
+
         Returns:
             Project, or None if no such Project is found.
         """
@@ -143,14 +135,15 @@ class ProjectRepository:
         project = query.first()
         return project
 
-    @tracer.wrap()
     def get_project_by_channel_identifier(
         self, channel_identifier: str
     ) -> Project | None:
         """
         Retrieve a project by a channel identifier.
+
         Args:
             channel_identifier (str): The identifier of the channel (e.g., phone number).
+
         Returns:
             Project, or None if no such Project is found.
         """
@@ -162,13 +155,18 @@ class ProjectRepository:
         )
         return project
 
-    @tracer.wrap()
     def update_project_config(self, project_id: uuid.UUID, config: Dict[str, Any]):
-        """
-        Update a project's configuration.
+        """Update a project's config in the database.
+
+        This function is best used to update specific fields in the configuration object.
+
         Args:
-            project_id (uuid.UUID): The ID of the project to update.
-            config (Dict[str, Any]): The configuration to update.
+            project_id (uuid.UUID): The unique identifier of the project.
+            config (Dict[str, Any]): The configuration dictionary to update the project's config with.
+
+        Raises:
+            ValueError: If the project with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
         """
         try:
             project = self.get_project(project_id)
@@ -182,15 +180,20 @@ class ProjectRepository:
             logger.error(f"Error updating project config: {e}")
             raise
 
-    @tracer.wrap()
     def replace_project_channel_identifiers(
         self, project_id: uuid.UUID, channel_identifiers: List[str]
     ) -> None:
-        """
-        Replace a project's channel identifiers.
+        """Replace an project's channel identifiers in the database.
+
+        This function replaces the entire `channel_identifiers` for the specified project.
+
         Args:
-            project_id (uuid.UUID): The ID of the project to update.
-            channel_identifiers (List[str]): The new channel identifiers.
+            project_id (uuid.UUID): The unique identifier of the project.
+            channel_identifiers (List[str]): The new `channel_identifiers` to replace the existing one.
+
+        Raises:
+            ValueError: If the project with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
         """
         try:
             project = self.get_project(project_id)
@@ -204,15 +207,20 @@ class ProjectRepository:
             logger.error(f"Error replacing project channel identifiers: {e}")
             raise
 
-    @tracer.wrap()
     def replace_project_config(
         self, project_id: uuid.UUID, config: Dict[str, Any]
     ) -> None:
-        """
-        Replace a project's configuration.
+        """Replace an project's config in the database.
+
+        This function replaces the entire `raw_config` for the specified project.
+
         Args:
-            project_id (uuid.UUID): The ID of the project to update.
-            config (Dict[str, Any]): The new configuration.
+            project_id (uuid.UUID): The unique identifier of the project.
+            config (Dict[str, Any]): The new `raw_config` to replace the existing one.
+
+        Raises:
+            ValueError: If the project with the given ID is not found.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
         """
         try:
             project = self.get_project(project_id)
@@ -226,12 +234,15 @@ class ProjectRepository:
             logger.error(f"Error replacing project config: {e}")
             raise
 
-    @tracer.wrap()
     def delete_project(self, project_id: uuid.UUID) -> None:
         """
-        Delete a project.
+        Delete a project from the database.
+
         Args:
-            project_id (uuid.UUID): The ID of the project to delete.
+            project_id (uuid.UUID): The unique identifier of the project.
+
+        Raises:
+            SQLAlchemyError: If there is an error committing the transaction to the database.
         """
         try:
             project = self.get_project(project_id)

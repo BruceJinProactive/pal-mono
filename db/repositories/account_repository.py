@@ -1,7 +1,6 @@
 import uuid
 from typing import List, Optional
 
-from ddtrace import tracer
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -13,7 +12,6 @@ class AccountRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    @tracer.wrap()
     def get_accounts(self, skip: int = 0, limit: int = 100) -> List[Account]:
         """Retrieve a list of accounts with pagination."""
         try:
@@ -23,7 +21,6 @@ class AccountRepository:
             logger.error(f"Error retrieving accounts: {e}")
             return []
 
-    @tracer.wrap()
     def get_account(self, account_name: str) -> Account | None:
         accounts = self.get_accounts_by_names([account_name])
         if accounts:
@@ -31,7 +28,6 @@ class AccountRepository:
         else:
             return None
 
-    @tracer.wrap()
     def get_accounts_by_names(self, account_names: List[str]) -> List[Account]:
         """Retrieve multiple accounts by their names."""
         try:
@@ -45,7 +41,6 @@ class AccountRepository:
             logger.error(f"Error retrieving account: {e}")
             return []
 
-    @tracer.wrap()
     def filter_accounts_by_name(
         self, keyword: Optional[str] = None, limit: int = 20
     ) -> List[Account]:
@@ -68,7 +63,6 @@ class AccountRepository:
             logger.error(f"Error filtering accounts by name: {e}")
             return []
 
-    @tracer.wrap()
     def update_account(self, account_name: str, **kwargs) -> Account | None:
         """Update account details based on the account ID and provided fields."""
         try:
@@ -88,7 +82,6 @@ class AccountRepository:
             logger.error(f"Error updating account: {e}")
             raise
 
-    @tracer.wrap()
     def delete_account(self, account_name: str) -> Optional[Account]:
         """Delete an account by its name."""
         try:
@@ -104,7 +97,6 @@ class AccountRepository:
             logger.error(f"Error deleting account: {e}")
             return None
 
-    @tracer.wrap()
     def create_account(self, account_name: str, **kwargs) -> Account:
         """Create a new account with a unique UUID."""
         try:

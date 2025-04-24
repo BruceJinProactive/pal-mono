@@ -1,35 +1,30 @@
 from dataclasses import asdict
 from typing import List, Optional
 
-from ddtrace import tracer
 from sqlalchemy.orm import Session
 
 import db
 from services.account_service.schema import AccountParams
 
 
-@tracer.wrap()
 def get_accounts(session: Session) -> List[db.Account]:
     account_repository = db.AccountRepository(session)
     accounts = account_repository.get_accounts()
     return accounts
 
 
-@tracer.wrap()
 def get_account(session: Session, account_name: str) -> Optional[db.Account]:
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name=account_name)
     return account
 
 
-@tracer.wrap()
 def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account]:
     account_repository = db.AccountRepository(session)
     accounts = account_repository.get_accounts_by_names(account_names)
     return accounts
 
 
-@tracer.wrap()
 def filter_accounts_by_name(
     session: Session,
     keyword: Optional[str] = None,
@@ -44,7 +39,6 @@ def filter_accounts_by_name(
     return accounts
 
 
-@tracer.wrap()
 def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
     # Instantiate the repositories
     account_repository = db.AccountRepository(session)
@@ -62,7 +56,6 @@ def create_account_with_defaults(session: Session, account_name: str) -> db.Acco
     return account
 
 
-@tracer.wrap()
 def create_account(
     session: Session, account_name: str, params: AccountParams
 ) -> db.Account:
@@ -81,7 +74,6 @@ def create_account(
     return account
 
 
-@tracer.wrap()
 def update_account(
     session: Session, account_name: str, params: AccountParams
 ) -> db.Account:
@@ -97,7 +89,6 @@ def update_account(
     return updated_account
 
 
-@tracer.wrap()
 def delete_account(session: Session, account_name: str):
     account_repository = db.AccountRepository(session)
     account_repository.delete_account(account_name)

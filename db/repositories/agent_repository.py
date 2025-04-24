@@ -1,7 +1,6 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
-from ddtrace import tracer
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -15,7 +14,6 @@ class AgentRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    @tracer.wrap()
     async def get_agent(self, agent_id: uuid.UUID) -> Optional[Agent]:
         result = await self.session.execute(
             select(Agent)
@@ -29,7 +27,6 @@ class AgentRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    @tracer.wrap()
     def get_agents(self, skip: int = 0, limit: int = 100) -> List[Agent]:
         """Retrieve a list of agents with pagination."""
         try:
@@ -39,7 +36,6 @@ class AgentRepository:
             logger.error(f"Error retrieving agents: {e}")
             return []
 
-    @tracer.wrap()
     def get_agent(self, agent_id: uuid.UUID) -> Optional[Agent]:
         """Retrieve a single agent by its ID."""
         try:
@@ -49,7 +45,6 @@ class AgentRepository:
             logger.error(f"Error retrieving agent: {e}")
             return None
 
-    @tracer.wrap()
     def create_agent(self, account_id: uuid.UUID, **kwargs) -> Agent:
         """Create a new agent with a unique UUID."""
         try:
@@ -66,7 +61,6 @@ class AgentRepository:
             logger.error(f"Error creating agent: {e}")
             raise
 
-    @tracer.wrap()
     def update_agent(self, agent_id: uuid.UUID, **kwargs) -> Agent | None:
         """Update an agent's details based on the agent ID and provided fields."""
         try:
@@ -84,7 +78,6 @@ class AgentRepository:
             logger.error(f"Error updating agent: {e}")
             raise
 
-    @tracer.wrap()
     def replace_agent_config(self, agent_id: uuid.UUID, config: Dict[str, Any]) -> None:
         """Replace an agent's config in the database.
 
@@ -110,7 +103,6 @@ class AgentRepository:
             logger.error(f"Error replacing agent config: {e}")
             raise
 
-    @tracer.wrap()
     def delete_agent(self, agent_id: uuid.UUID):
         """
         Delete the referenced agent. No-op if agent id does not exist.

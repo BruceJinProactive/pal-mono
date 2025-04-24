@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
-from ddtrace import tracer
 
 from api.schemas.chat.message import Message
 from utils.dttm import current_utc
@@ -17,7 +16,6 @@ stepfunctions = boto3.client("stepfunctions")
 AWS_RELAY_STATE_MACHINE_ARN = os.getenv("AWS_RELAY_STATE_MACHINE_ARN")
 
 
-@tracer.wrap()
 def send_message(message: Message, delivery_time: datetime = current_utc()) -> dict:
     logger.info(f"relay_service.send_message: {message}")
     try:
@@ -72,7 +70,6 @@ def send_message(message: Message, delivery_time: datetime = current_utc()) -> d
         return {"status": "error", "error_message": str(e)}
 
 
-@tracer.wrap()
 def send_messages(
     messages: list[Message], delivery_time: datetime = current_utc()
 ) -> list[dict]:

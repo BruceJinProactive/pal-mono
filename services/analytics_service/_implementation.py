@@ -1,7 +1,6 @@
 import os
 
 import requests
-from ddtrace import tracer
 from mixpanel import Mixpanel
 
 from api.schemas.admin.analytics import Event as AnalyticsEvent
@@ -27,7 +26,6 @@ MIXPANEL_REPORTS = [
 ]
 
 
-@tracer.wrap()
 def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None:
     """Fetches report data from Mixpanel for a given report name and account name.
 
@@ -47,7 +45,6 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
     return get_report_by_id(bookmark_id, account_name)
 
 
-@tracer.wrap()
 def get_report_by_id(bookmark_id, account_name: str) -> dict | None:
     mixpanel_api_secret = os.getenv("MIXPANEL_API_SECRET")
 
@@ -87,7 +84,6 @@ def get_report_by_id(bookmark_id, account_name: str) -> dict | None:
         return None
 
 
-@tracer.wrap()
 def get_all_reports_from_mixpanel(account_name: str) -> list[tuple[str, dict]]:
     results = []
     for bookmark_id, report_name in MIXPANEL_REPORTS:
@@ -98,7 +94,6 @@ def get_all_reports_from_mixpanel(account_name: str) -> list[tuple[str, dict]]:
     return results
 
 
-@tracer.wrap()
 def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict):
     MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
     mp = None
