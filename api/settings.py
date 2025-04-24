@@ -85,10 +85,17 @@ class ApiSettings(BaseSettings):
                 "https://api.palona.ai",
                 "https://lat-api.palona.ai",
                 "https://stg-api.palona.ai",
+            ]
+        )
+
+        # Admin Console & Manage App
+        valid_cors.extend(
+            [
                 "https://console.palona.ai",
-                "https://manage-app.palona.ai",
-                "https://lat-console.palona.ai",
                 "https://stg-console.palona.ai",
+                "https://lat-console.palona.ai",
+                "https://manage-app.palona.ai",
+                "https://stg-manage-app.palona.ai",
                 "https://lat-manage-app.palona.ai",
             ]
         )
