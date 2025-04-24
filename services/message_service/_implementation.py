@@ -287,6 +287,7 @@ async def get_chat_response_stream(
     )
     user = None
     commit_start = time.perf_counter()
+    receive_commit_start = time.perf_counter()
     message_repo = db.MessageRepositoryAsync(session)
     logger.info(
         f"{sender_identifier}: message_repo, Took {time.perf_counter() - commit_start:.4f}s"
@@ -391,7 +392,9 @@ async def get_chat_response_stream(
                     content = str(chunk)
                 else:
                     content = ""
-                logger.info(f"{sender_identifier}: Sending chunk: {content}")
+                logger.info(
+                    f"{sender_identifier}: Sending chunk: {content}, Took {time.perf_counter() - receive_commit_start:.4f}"
+                )
                 chunk = ChatCompletionChunk(
                     id=rid,
                     object="chat.completion.chunk",
