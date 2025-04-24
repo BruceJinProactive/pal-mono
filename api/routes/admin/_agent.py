@@ -4,11 +4,12 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentRequest
+from api.schemas.admin.project import ProjectSummary
 from services import agent_service
 
 from ._auth import authorize_user_account
-from ._builder import build_agent
-from ._utils import UserContext
+from ._builder import build_agent, build_project_summary
+from ._utils import UserContext, not_found_error
 
 
 def get_agent(
@@ -93,3 +94,16 @@ async def delete_agent(
     if agent:
         authorize_user_account(context, agent.account.name)
         agent_service.delete_agent(session, agent_id)
+
+
+async def list_agent_projects(
+    agent_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> list[ProjectSummary]:
+    agent = agent_service.get_agent(session, agent_id)
+    if not agent:
+        raise not_found_error(f"Agent {agent_id} not found")
+
+    authorize_user_account(context, agent.account.name)
+    return [build_project_summary(project) for project in agent.projects]

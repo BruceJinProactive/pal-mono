@@ -10,13 +10,14 @@ from api.schemas.admin.account import (
     ListAccountsResponse,
     UpdateAccountRequest,
 )
+from api.schemas.admin.agent import AgentSummary
 from db import ConversationStatus
 from db.tables.accounts import BusinessIndustry
 from services import account_service, admin_service, user_service
 from services.account_service import AccountParams
 
 from ._auth import authorize_user_account
-from ._builder import build_account, build_account_summary
+from ._builder import build_account, build_account_summary, build_agent_summary
 from ._utils import UserContext, not_found_error
 
 
@@ -154,3 +155,17 @@ def _validate_and_parse_request(update: UpdateAccountRequest) -> AccountParams:
         business_catalog=update.business_catalog,
         business_others=update.business_others,
     )
+
+
+async def list_account_agents(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+) -> list[AgentSummary]:
+    authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found")
+
+    return [build_agent_summary(agent) for agent in account.agents]

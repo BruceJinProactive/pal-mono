@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
+    ProjectSummary,
     UpdateProjectRequest,
 )
 from services import account_service, project_service
@@ -21,7 +22,8 @@ from services.admin_service import (
 
 from . import UserContext, _auth, _utils
 from ._auth import authorize_user_account
-from ._builder import build_project
+from ._builder import build_project, build_project_summary
+from ._utils import not_found_error
 
 
 async def connect_instagram(
@@ -212,22 +214,18 @@ async def list_projects(
     return JSONResponse(jsonable_encoder([]))
 
 
-async def list_accounts_projects(
+async def list_account_projects(
     account_name: str,
     context: UserContext,
     session: Session,
-) -> list[Project]:
+) -> list[ProjectSummary]:
     authorize_user_account(context, account_name)
 
     account = account_service.get_account(session, account_name)
     if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Account {account_name} not found",
-            headers={"Content-Type": "application/json"},
-        )
+        raise not_found_error(f"Account {account_name} not found")
 
-    return [build_project(project) for project in account.projects]
+    return [build_project_summary(project) for project in account.projects]
 
 
 def get_project(

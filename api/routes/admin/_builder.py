@@ -1,10 +1,10 @@
 import db
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
-from api.schemas.admin.agent import Agent
+from api.schemas.admin.agent import Agent, AgentSummary
 from api.schemas.admin.conversation import Message, UserSession
 from api.schemas.admin.feedback import Feedback
-from api.schemas.admin.project import Project
+from api.schemas.admin.project import Project, ProjectSummary
 
 
 def build_account(account: db.Account) -> Account:
@@ -47,7 +47,15 @@ def build_agent(agent: db.Agent) -> Agent:
         updated_at=int(agent.updated_at.timestamp() if agent.updated_at else 0),
         projects=[str(project.id) for project in agent.projects],
         account_id=agent.account_id,
-        agent_type=agent.raw_config.get("agent_type"),
+        agent_type=agent.agent_type,
+    )
+
+
+def build_agent_summary(agent: db.Agent) -> AgentSummary:
+    return AgentSummary(
+        id=agent.id,
+        name=agent.name,
+        agent_type=agent.agent_type,
     )
 
 
@@ -60,6 +68,15 @@ def build_project(project: db.Project) -> Project:
         channel_identifiers=project.channel_identifiers or [],
         agent_id=project.agent_id,
         account_id=project.account_id,
+    )
+
+
+def build_project_summary(project: db.Project) -> ProjectSummary:
+    return ProjectSummary(
+        id=project.id,
+        name=project.name,
+        display_name=project.display_name,
+        channel_identifiers=project.channel_identifiers,
     )
 
 

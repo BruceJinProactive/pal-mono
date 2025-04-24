@@ -132,6 +132,7 @@ def filter_accounts_by_name(
 
 
 __all__ = [
+    "AccountParams",
     "get_accounts",
     "get_account",
     "mget_accounts",

@@ -19,6 +19,14 @@ class Agent(BaseModel):
     agent_type: str | None
 
 
+class AgentSummary(BaseModel):
+    """Agent Summary Model with limited fields"""
+
+    id: uuid.UUID
+    name: str
+    agent_type: str | None
+
+
 class CreateAgentRequest(BaseModel):
     """Create Agent Request"""
 

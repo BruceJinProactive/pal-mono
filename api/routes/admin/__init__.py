@@ -13,7 +13,12 @@ from api.schemas.admin.account import (
     ListAccountsResponse,
     UpdateAccountRequest,
 )
-from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentRequest
+from api.schemas.admin.agent import (
+    Agent,
+    AgentSummary,
+    CreateAgentRequest,
+    UpdateAgentRequest,
+)
 from api.schemas.admin.analytics import GetAllReportsResponse, GetReportResponse
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
@@ -29,6 +34,7 @@ from api.schemas.admin.feedback import (
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
+    ProjectSummary,
     UpdateProjectRequest,
 )
 from api.schemas.chat.message import Channel
@@ -135,16 +141,40 @@ async def delete_account(
     await _account.delete_account(account_name, context, session)
 
 
-@admin_router.get("/accounts/{account_name}/projects")
-async def list_accounts_projects(
+@admin_router.get("/accounts/{account_name}/agents")
+async def list_account_agents(
     account_name: str,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-):
+) -> list[AgentSummary]:
+    """
+    Retrieve a list of agents associated with the given account name.
+    """
+    return await _account.list_account_agents(account_name, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/projects")
+async def list_account_projects(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> list[ProjectSummary]:
     """
     Retrieve a list of projects associated with the given account name.
     """
-    return await _projects.list_accounts_projects(account_name, context, session)
+    return await _projects.list_account_projects(account_name, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
+def get_account_reports(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> GetAllReportsResponse:
+    """
+    Retrieve all available report data for this account.
+    """
+    return GetAllReportsResponse(reports=_analytics.get_all_reports(account_name))
 
 
 @admin_router.get("/accounts/{account_name}/stat")
@@ -163,18 +193,6 @@ async def get_account_statistics(
     return await _account.get_account_statistics(
         account_name, lookback, context, session
     )
-
-
-@admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
-def get_account_reports(
-    account_name: str,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> GetAllReportsResponse:
-    """
-    Retrieve all available report data for this account.
-    """
-    return GetAllReportsResponse(reports=_analytics.get_all_reports(account_name))
 
 
 """
@@ -232,6 +250,18 @@ async def delete_agent(
     Delete the specified agent by id.
     """
     await _agent.delete_agent(agent_id, context, session)
+
+
+@admin_router.get("/agents/{agent_id}/projects")
+async def list_agent_projects(
+    agent_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> list[ProjectSummary]:
+    """
+    Retrieve a list of projects associated with the given agent ID.
+    """
+    return await _agent.list_agent_projects(agent_id, context, session)
 
 
 """

@@ -15,6 +15,15 @@ class Project(BaseModel):
     account_id: uuid.UUID
 
 
+class ProjectSummary(BaseModel):
+    """Project Summary Model with limited fields"""
+
+    id: uuid.UUID
+    name: str
+    display_name: str | None
+    channel_identifiers: list[str] | None
+
+
 class CreateProjectRequest(BaseModel):
     """Create Project Request"""
 
