@@ -271,8 +271,18 @@ class AdoraTool(Toolkit):
         return validate_order_message
 
     @task
-    def _validate_address(self, canonical_address: DeliveryAddress) -> tuple[bool, str]:
+    def _validate_address(
+        self, canonical_address: DeliveryAddress | None
+    ) -> tuple[bool, str]:
         # Use the latitude and longitude to get Adora API call (old Jimmy)
+
+        if not canonical_address:
+            logger.warning("[AdoraTool._validate_address] Canonical address is None")
+            return (
+                False,
+                "Could you provide your complete address?",
+            )
+
         if not self._adora_bearer_token:
             return (
                 False,
@@ -480,6 +490,11 @@ class AdoraTool(Toolkit):
 
             # Validate the address if the order is for delivery
             if order.order_type == AdoraOrderType.DELIVERY:
+                if not order.delivery_address:
+                    logger.warning(
+                        "AdoraTool.checkout_order] Delivery order constructed has no address"
+                    )
+                    return "Could you provide your address?"
                 validate_order_success, validate_order_message = self._validate_address(
                     order.delivery_address  # type: ignore
                 )
