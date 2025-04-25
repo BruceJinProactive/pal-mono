@@ -10,7 +10,6 @@ dependencies = [
   "fastapi==0.115.12",
   "uvicorn==0.30.6",
   "python-multipart==0.0.19",
-  "vertexai==1.70.0",
 
   # /app
   "openpyxl==3.1.5",
@@ -41,9 +40,6 @@ dependencies = [
   "instructor==1.7.2",
   "mem0ai==0.1.48",
   "mixpanel==4.10.1",
-  "google-generativeai==0.8.4",
-  "google-cloud-aiplatform==1.70.0",
-  "google-auth==2.35.0",
   "groq==0.15.0",
   "polyline==2.0.2",
   "shapely==2.1.0",
