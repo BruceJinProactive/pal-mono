@@ -48,7 +48,7 @@ class QueryMessagesTool(Toolkit):
 
                 # Get all messages for this conversation in chronological order
                 messages = message_repo.get_messages_by_conversation(conversation_id)
-                if not messages:
+                if not messages and not latest_user_message:
                     return "Conversation not found"
 
                 # Format each message into the chat history
