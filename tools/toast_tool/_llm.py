@@ -45,7 +45,6 @@ provide a delivery address, output "N/A" for all fields.
 - Maintain exact values as mentioned (don't modify numbers or text)
 - For phone numbers, only extract if a complete number is provided
 - For addresses, only extract if all required components are present
-- You must ALWAYS extract the `item_id` and `size_id` for an item. Use the relevant context to identify the CORRECT `item_id` and `size_id` for each item.
 
 If unsure about any field, leave it empty rather than guessing.
 """

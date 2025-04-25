@@ -179,6 +179,13 @@ class Modifier(BaseModel):
     quantity: int = Field(description="The quantity of the modifier")
 
 
+class OrderItemFulfillmentStatus(str, Enum):
+    NEW = "NEW"
+    HOLD = "HOLD"
+    SENT = "SENT"
+    READY = "READY"
+
+
 class ItemSelection(BaseModel):
     entityType: str = Field(
         description="The type of entity represented by this model",
@@ -188,9 +195,16 @@ class ItemSelection(BaseModel):
         description="The item group associated with the item selection"
     )
     item: ItemBase = Field(description="The item selected")
-    quantity: int = Field(description="The quantity of the item selection")
+    quantity: int = Field(description="The quantity of the item selection", gt=0)
     modifiers: Optional[List[Modifier]] = Field(
-        description="The modifiers associated with the item selection", default=[]
+        default_factory=list,
+        description=(
+            "The modifiers associated with the item selection. "
+            "Find the correct group ID and corresponding item ID."
+        ),
+    )
+    fulfillmentStatus: SkipJsonSchema[Optional[OrderItemFulfillmentStatus]] = Field(
+        None, description="The fulfillment status of the item selection"
     )
 
 
@@ -245,6 +259,10 @@ class Order(OrderInput):
     entityType: Optional[str] = None  # Not required when submitting an order
     estimatedFulfillmentDate: SkipJsonSchema[Optional[str]] = None  # response only
     businessDate: SkipJsonSchema[Optional[int]] = None  # YYYYMMDD, response only
+
+    class Config:
+        # Allow extra fields in case API response includes additional data
+        extra = "allow"
 
 
 ########### TOAST API CLASS END ############

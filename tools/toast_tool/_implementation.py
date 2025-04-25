@@ -16,12 +16,10 @@ from tools.toast_tool._apis import (
     get_dining_option,
     get_online_ordering_status,
     get_order_prices,
-)
-from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import (
     get_toast_access_token,
     submit_order,
 )
+from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
@@ -60,6 +58,10 @@ class ToastTool(Toolkit):
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
         self.query_engine = create_query_engine(self.namespace)
+
+        # TODO: See if the following lines are needed
+        # loop = asyncio.get_running_loop()
+        # loop.create_task(asyncio.to_thread(lambda: self._toast_bearer_token))
 
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
@@ -270,21 +272,31 @@ class ToastTool(Toolkit):
         return chat_history
 
     @retrieval
-    async def _get_relevant_docs(self, chat_history: str) -> str:
-        # TODO: Implement llm_call
+    def _get_relevant_docs(self, chat_history: str) -> str:
+        # Decompose chat history into multiple sub-queries
         sub_queries = llm_call(
             system_prompt=RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
             prompt=chat_history,
             response_format=SubQueries,
             reasoning=False,
         )
-        # Retrieve relevant documents based on the sub-queries
-        # TODO: Implement `_query_engine.create_query_engine`
-        tasks = [
-            asyncio.create_task(self.query_engine.aquery(q))
-            for q in sub_queries.queries  # type: ignore
-        ]
-        results = await asyncio.gather(*tasks)
+
+        if not isinstance(sub_queries, SubQueries):
+            return "Failed to identify the items the user ordered in the conversation."
+
+        logger.info(f"Sub-queries identified: {sub_queries.queries}")
+
+        # Perform knowledege retrieval on all sub-queries asynchronously
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            query_tasks = asyncio.gather(
+                *[self.query_engine.aquery(q) for q in sub_queries.queries]
+            )
+            results = loop.run_until_complete(query_tasks)
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
 
         context = ""
         output_data = []
@@ -302,14 +314,12 @@ class ToastTool(Toolkit):
                     output_data.append({"id": node.id_, "text": node.text})
                     doc_id += 1
 
-        LLMObs.annotate(
-            input_data={"chat_history": chat_history}, output_data=output_data
-        )
+        LLMObs.annotate(input_data=chat_history, output_data=output_data)
         return context
 
     def _construct_order(self, latest_user_message: str) -> OrderInput | str:
         chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
-        context = asyncio.run(self._get_relevant_docs(chat_history))  # type: ignore
+        context = self._get_relevant_docs(chat_history)  # type: ignore
         order = llm_call(
             system_prompt=EXTRACTOR_SYSTEM_PROMPT,
             prompt=EXTRACTOR_USER_PROMPT.format(
@@ -455,6 +465,9 @@ class ToastTool(Toolkit):
             order = submit_order(toast_bearer_token, self.store_id, order)
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
+            logger.info(
+                f"Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
+            )
             return (
                 f"Order #{order.guid} submitted successfully! "
                 f"Your total is ${order.checks[0].totalAmount}. "
