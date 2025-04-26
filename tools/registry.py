@@ -7,7 +7,6 @@ from agent.tool._config import ToolIdentifier, ToolMetadata
 from tools.adora_tool import AdoraTool
 from tools.booking_tool import BookingTool
 from tools.calculator_tool import CalculatorTool
-from tools.fashion_understanding_tools import FashionRecommendationLogicPipeline
 from tools.toast_tool import ToastTool
 
 
@@ -22,7 +21,6 @@ class ToolRegistry:
             # Register available tools
             "calculator_tool": CalculatorTool,
             "adora_tool": AdoraTool,
-            "windsor_tool": FashionRecommendationLogicPipeline,
             "booking_tool": BookingTool,
             "toast_tool": ToastTool,
         }
