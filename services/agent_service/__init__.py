@@ -60,7 +60,9 @@ def replace_agent_config(
     return _implementation.replace_agent_config(session, agent_id, config)
 
 
-def create_agent(session: Session, account_name: str, params: AgentParams) -> db.Agent:
+def create_agent(
+    session: Session, account_name: str, params: AgentParams, auto_commit: bool = True
+) -> db.Agent:
     """
     Creates a new agent for the specified account using provided parameters and saves
     it in the database.
@@ -69,11 +71,12 @@ def create_agent(session: Session, account_name: str, params: AgentParams) -> db
         session (Session): A database session used for executing the transaction.
         account_name (str): Name of the account to which the agent belongs.
         params (AgentParams): Agent parameters to be used for creating the agent.
+        auto_commit (bool): New agent will be committed automatically if True.
 
     Returns:
         Agent: The database model object representing the created agent.
     """
-    return _implementation.create_agent(session, account_name, params)
+    return _implementation.create_agent(session, account_name, params, auto_commit)
 
 
 def update_agent(

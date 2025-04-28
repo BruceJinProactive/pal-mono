@@ -57,12 +57,12 @@ def create_account_with_defaults(session: Session, account_name: str) -> db.Acco
 
 
 def create_account(
-    session: Session, account_name: str, params: AccountParams
+    session: Session, account_name: str, params: AccountParams, auto_commit: bool
 ) -> db.Account:
     """
     Create an account with the supplied params but without creating default project or agent.
     """
-    account_repository = db.AccountRepository(session)
+    account_repository = db.AccountRepository(session, auto_commit)
 
     # Check if the account exists
     found_account = get_account(session, account_name)

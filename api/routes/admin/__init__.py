@@ -31,6 +31,7 @@ from api.schemas.admin.feedback import (
     ListFeedbacksResponse,
     UpdateFeedbackRequest,
 )
+from api.schemas.admin.onboarding import OnboardingRequest, OnboardingResponse
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
@@ -41,6 +42,7 @@ from api.schemas.chat.message import Channel
 
 from . import _account, _agent, _analytics, _conversation, _feedback, _projects
 from ._auth import authenticate_user, get_user_info
+from ._onboarding import create_onboarding
 from .legacy import legacy_router
 
 """
@@ -579,3 +581,21 @@ def get_report(
     report_data = _analytics.get_report(request, report_name, session) or {}
 
     return GetReportResponse(report_data=report_data)
+
+
+"""
+---------- Onboarding Endpoint ----------
+---------------------------------------
+"""
+
+
+@admin_router.post("/onboarding", status_code=status.HTTP_201_CREATED)
+async def onboard(
+    request: OnboardingRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> OnboardingResponse:
+    """
+    Onboard a new account with agents and projects in a single transaction.
+    """
+    return await create_onboarding(request, context, session)

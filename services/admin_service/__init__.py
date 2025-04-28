@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 import db
 from api.schemas.admin.conversation import ConversationPreview
 from db import ConversationStatus
+from services.account_service import AccountParams
 
+from ..agent_service import AgentParams
+from ..project_service import ProjectParams
 from . import _implementation
 from .schema import UserSessionPreview
 
@@ -348,6 +351,39 @@ def get_escalated_session_count_by_users(
     )
 
 
+def onboard_new_account(
+    session: Session,
+    account_name: str,
+    account_params: AccountParams,
+    agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
+) -> dict:
+    """
+    Creates an account, agents, and projects in a single transaction.
+
+    Args:
+        session (Session): Database session
+        account_name (str): Name of the account to create
+        account_params (AccountParams): Account parameters
+        agent_projects (list[tuple[AgentParams, list[ProjectParams]]]):
+         List of agent and project configurations
+            Each item should contain:
+            - agent: Agent parameters
+            - projects: List of project parameters
+
+    Returns:
+        dict: Dictionary with created IDs
+            - account_id: UUID of the created account
+            - agents: List of dictionaries mapping agent name to agent ID
+            - projects: List of dictionaries mapping project name to project ID
+
+    Raises:
+        ValueError: If there's an error creating any of the entities
+    """
+    return _implementation.onboard_new_account(
+        session, account_name, account_params, agent_projects
+    )
+
+
 __all__ = [
     "list_user_sessions_in_account",
     "get_inbox_conversations",
@@ -364,4 +400,5 @@ __all__ = [
     "deauthorize_instagram_access_token",
     "get_session_count_by_user_and_status",
     "get_escalated_session_count_by_users",
+    "onboard_new_account",
 ]

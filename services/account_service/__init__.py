@@ -64,7 +64,7 @@ def create_account_with_defaults(session: Session, account_name: str) -> db.Acco
 
 
 def create_account(
-    session: Session, account_name: str, params: AccountParams
+    session: Session, account_name: str, params: AccountParams, auto_commit: bool = True
 ) -> db.Account:
     """
     Create an account in the database based on the provided account name and
@@ -75,13 +75,14 @@ def create_account(
         account_name (str): The name of the account to be created.
         params (AccountParams): The parameters containing details for the account
         to be created.
+        auto_commit (bool): New account will be committed automatically if True.
 
     Returns:
         Account: The newly created account object from the database.
     Raises:
         ValueError: If the account name already exists in the database.
     """
-    return _implementation.create_account(session, account_name, params)
+    return _implementation.create_account(session, account_name, params, auto_commit)
 
 
 def update_account(

@@ -2,7 +2,7 @@ import uuid
 from typing import Any, Dict, List
 
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, selectinload
@@ -51,8 +51,9 @@ class ProjectRepositoryAsync:
 
 
 class ProjectRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, auto_commit: bool = True):
         self.session = session
+        self.auto_commit = auto_commit
 
     def create_project(
         self, account_id: uuid.UUID, project_name: str, **kwargs
@@ -63,9 +64,19 @@ class ProjectRepository:
                 if value is not None and hasattr(db_project, key):
                     setattr(db_project, key, value)
             self.session.add(db_project)
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
             self.session.refresh(db_project)
             return db_project
+        except IntegrityError as e:
+            self.session.rollback()
+            logger.error(f"Error creating project: {e}")
+            error_summary = str(e).split("\n")[0]
+            raise ValueError(f"Error creating project: {error_summary}")
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error creating project: {e}")
@@ -81,7 +92,12 @@ class ProjectRepository:
             for key, value in kwargs.items():
                 if value is not None and hasattr(db_project, key):
                     setattr(db_project, key, value)
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
             self.session.refresh(db_project)
             return db_project
         except SQLAlchemyError as e:
@@ -174,7 +190,12 @@ class ProjectRepository:
                 raise ValueError(f"Project {project_id} not found")
 
             project.raw_config.update(config)
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
         except (SQLAlchemyError, ValueError) as e:
             self.session.rollback()
             logger.error(f"Error updating project config: {e}")
@@ -201,7 +222,12 @@ class ProjectRepository:
                 raise ValueError(f"project {project_id} not found")
 
             project.channel_identifiers = channel_identifiers
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
         except (SQLAlchemyError, ValueError) as e:
             self.session.rollback()
             logger.error(f"Error replacing project channel identifiers: {e}")
@@ -228,7 +254,12 @@ class ProjectRepository:
                 raise ValueError(f"project {project_id} not found")
 
             project.raw_config = config
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
         except (SQLAlchemyError, ValueError) as e:
             self.session.rollback()
             logger.error(f"Error replacing project config: {e}")
@@ -248,7 +279,10 @@ class ProjectRepository:
             project = self.get_project(project_id)
             if project:
                 self.session.delete(project)
-                self.session.commit()
+                if self.auto_commit:
+                    self.session.commit()
+                else:
+                    self.session.flush()
         except (SQLAlchemyError, ValueError) as e:
             self.session.rollback()
             logger.error(f"Error deleting project: {e}")

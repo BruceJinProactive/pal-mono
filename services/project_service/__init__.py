@@ -12,7 +12,11 @@ from .schema import ProjectParams
 
 
 def create_project(
-    session: Session, account_name: str, project_name: str, params: ProjectParams
+    session: Session,
+    account_name: str,
+    project_name: str,
+    params: ProjectParams,
+    auto_commit: bool = True,
 ) -> db.Project:
     """
     Create a new project for a specific account using provided parameters.
@@ -22,11 +26,14 @@ def create_project(
         account_name (str): The name of the account to which the project belongs.
         project_name (str): The unique name of the project to be created
         params (ProjectParams): The detailed configs of the project to be created.
+        auto_commit (bool): New project will be committed automatically if True.
 
     Returns:
         Project: The newly created project.
     """
-    return _implementation.create_project(session, account_name, project_name, params)
+    return _implementation.create_project(
+        session, account_name, project_name, params, auto_commit
+    )
 
 
 def update_project(

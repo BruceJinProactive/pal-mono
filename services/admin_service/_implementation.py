@@ -10,13 +10,19 @@ from sqlalchemy.orm import Session, declarative_base
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
-from services import user_service
+from services import account_service, agent_service, project_service, user_service
+from services.account_service import AccountParams
 from services.admin_service.schema import UserSessionPreview
+from services.agent_service import AgentParams
 from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
 )
-from services.project_service import get_project, replace_project_channel_identifiers
+from services.project_service import (
+    ProjectParams,
+    get_project,
+    replace_project_channel_identifiers,
+)
 from services.user_service import get_users_by_account_id
 from utils import secret
 from utils.log import logger
@@ -767,3 +773,55 @@ def get_escalated_session_count_by_users(
         conversation_ids
     )
     return escalated_conversation_count
+
+
+def onboard_new_account(
+    session: Session,
+    account_name: str,
+    account_params: AccountParams,
+    agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
+) -> dict:
+    try:
+        # Create the account
+        account = account_service.create_account(
+            session, account_name, account_params, auto_commit=False
+        )
+
+        created_agents = []
+        created_projects = []
+
+        for agent_project in agent_projects:
+            agent_param = agent_project[0]
+            projects_param = agent_project[1]
+            agent = agent_service.create_agent(
+                session=session,
+                account_name=account_name,
+                params=agent_param,
+                auto_commit=False,
+            )
+            created_agents.append(agent)
+
+            for project_param in projects_param:
+                # set the agent id before creating project
+                project_param.agent_id = agent.id
+                project = project_service.create_project(
+                    session=session,
+                    account_name=account_name,
+                    project_name=project_param.name or "",
+                    params=project_param,
+                    auto_commit=False,
+                )
+                created_projects.append(project)
+
+        # commit all changes at once.
+        session.commit()
+        return {
+            "account": account,
+            "agents": created_agents,
+            "projects": created_projects,
+        }
+    except Exception as e:
+        # Rollback the transaction if any error occurs
+        session.rollback()
+        logger.warn(f"Error creating resources for onboarding: {e}")
+        raise ValueError(f"Failed to onboarding account. {e}")

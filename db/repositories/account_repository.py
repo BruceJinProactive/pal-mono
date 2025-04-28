@@ -9,8 +9,9 @@ from utils.log import logger
 
 
 class AccountRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, auto_commit: bool = True):
         self.session = session
+        self.auto_commit = auto_commit
 
     def get_accounts(self, skip: int = 0, limit: int = 100) -> List[Account]:
         """Retrieve a list of accounts with pagination."""
@@ -74,7 +75,12 @@ class AccountRepository:
             for key, value in kwargs.items():
                 if value is not None and hasattr(db_account, key):
                     setattr(db_account, key, value)
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
             self.session.refresh(db_account)
             return db_account
         except SQLAlchemyError as e:
@@ -90,7 +96,10 @@ class AccountRepository:
             )
             if db_account:
                 self.session.delete(db_account)
-                self.session.commit()
+                if self.auto_commit:
+                    self.session.commit()
+                else:
+                    self.session.flush()
             return db_account
         except SQLAlchemyError as e:
             self.session.rollback()
@@ -108,7 +117,12 @@ class AccountRepository:
                 if value is not None and hasattr(db_account, key):
                     setattr(db_account, key, value)
             self.session.add(db_account)
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
             self.session.refresh(db_account)
             return db_account
         except SQLAlchemyError as e:

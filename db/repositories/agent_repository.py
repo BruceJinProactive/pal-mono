@@ -24,8 +24,9 @@ class AgentRepositoryAsync:
 
 
 class AgentRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, auto_commit: bool = True):
         self.session = session
+        self.auto_commit = auto_commit
 
     def get_agents(self, skip: int = 0, limit: int = 100) -> List[Agent]:
         """Retrieve a list of agents with pagination."""
@@ -53,7 +54,12 @@ class AgentRepository:
                 if value is not None and hasattr(db_agent, key):
                     setattr(db_agent, key, value)
             self.session.add(db_agent)
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
             self.session.refresh(db_agent)
             return db_agent
         except SQLAlchemyError as e:
@@ -70,7 +76,12 @@ class AgentRepository:
             for key, value in kwargs.items():
                 if value is not None and hasattr(db_agent, key):
                     setattr(db_agent, key, value)
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
             self.session.refresh(db_agent)
             return db_agent
         except SQLAlchemyError as e:
@@ -97,7 +108,12 @@ class AgentRepository:
                 raise ValueError(f"Agent {agent_id} not found")
 
             agent.raw_config = config
-            self.session.commit()
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
         except (SQLAlchemyError, ValueError) as e:
             self.session.rollback()
             logger.error(f"Error replacing agent config: {e}")
@@ -111,7 +127,10 @@ class AgentRepository:
             agent = self.get_agent(agent_id)
             if agent:
                 self.session.delete(agent)
-                self.session.commit()
+                if self.auto_commit:
+                    self.session.commit()
+                else:
+                    self.session.flush()
         except (SQLAlchemyError, ValueError) as e:
             self.session.rollback()
             logger.error(f"Error deleting agent: {e}")

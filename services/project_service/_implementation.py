@@ -2,7 +2,6 @@ import uuid
 from dataclasses import asdict
 from typing import Any, Dict, List
 
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -14,7 +13,11 @@ from .schema import ProjectParams
 
 
 def create_project(
-    session: Session, account_name: str, project_name: str, params: ProjectParams
+    session: Session,
+    account_name: str,
+    project_name: str,
+    params: ProjectParams,
+    auto_commit: bool,
 ) -> db.Project:
     # validate parameters
     account = account_service.get_account(session, account_name)
@@ -25,13 +28,10 @@ def create_project(
     agent = agent_service.get_agent(session, params.agent_id)
     if not agent or agent.account_id != account.id:
         raise ValueError("selected agent is not available in the account")
-    project_repository = db.ProjectRepository(session)
-    try:
-        project = project_repository.create_project(
-            account.id, project_name, **asdict(params)
-        )
-    except (SQLAlchemyError, IntegrityError):
-        raise ValueError("duplicate record not allowed")
+    project_repository = db.ProjectRepository(session, auto_commit)
+    project = project_repository.create_project(
+        account.id, project_name, **asdict(params)
+    )
     return project
 
 
