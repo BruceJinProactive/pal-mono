@@ -28,6 +28,7 @@ from utils.secret import get_client_secret_with_fallback
 from . import _apis, _llm, _query_engine, _utils
 
 ADORA_QA_STORE = "UQ5ZT"
+ADORA_QA_STORE_2 = "LE5AR"
 
 
 class AdoraTool(Toolkit):
@@ -46,7 +47,7 @@ class AdoraTool(Toolkit):
         self.tool_metadata = tool_metadata
         self.discounts = []  # { coupon_id, discount_code }
 
-        if self.store_id == ADORA_QA_STORE:  # QA store
+        if self.store_id in [ADORA_QA_STORE, ADORA_QA_STORE_2]:  # QA store
             self.qa_store = True
         else:
             self.qa_store = False
@@ -79,9 +80,12 @@ class AdoraTool(Toolkit):
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
         with LLMObs.task(name="get_adora_bearer_token"):
-            if self.qa_store:
+            if self.store_id == ADORA_QA_STORE:
                 api_key = get_client_secret_with_fallback("ADORA_API_KEY")
                 api_secret = get_client_secret_with_fallback("ADORA_API_SECRET")
+            elif self.store_id == ADORA_QA_STORE_2:
+                api_key = get_client_secret_with_fallback("ADORA_2_API_KEY")
+                api_secret = get_client_secret_with_fallback("ADORA_2_API_SECRET")
             else:
                 api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
                 api_secret = get_client_secret_with_fallback(
