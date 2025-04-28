@@ -127,7 +127,9 @@ class DiningBehavior(str, Enum):
 
 
 class DiningOption(BaseModel):
-    guid: str = Field(description="Unique identifier for the dining option")
+    guid: str = Field(
+        description="Unique guid identifier for the dining option. This attribute IS NOT an English name."
+    )
     curbside: SkipJsonSchema[Optional[bool]] = Field(
         None, description="Indicates if curbside pickup is available"
     )
@@ -259,10 +261,10 @@ class Order(OrderInput):
 class SubQueries(BaseModel):
     queries: list[str] = Field(
         description=(
-            "Decompose the chat history into individual order items and dining option if. For example,"
+            "Decompose the chat history into individual order items. For example,"
             "If the chat history is 'I would like to order a pizza with extra cheese "
             "and pickles, burger, and salad, for takeout.' The return would be ['pizza', "
-            "'burger', 'salad', 'takeout']\n\n"
+            "'burger', 'salad']\n\n"
             "DO NOT include modifications (e.g. extra cheese, pickles)."
         ),
     )

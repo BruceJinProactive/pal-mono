@@ -222,7 +222,12 @@ class ToastTool(Toolkit):
     @tool
     def checkout_order(self, latest_user_message: str) -> str:
         """
-        Processes an order checkout.
+        Validates an order for checkout by extracting structured ordering data from chat
+        history. This function absolutely must be invoked when all the required information is collected and the user asks to checkout,
+        pay, place the order, etc.
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: Order checkout confirmation details
