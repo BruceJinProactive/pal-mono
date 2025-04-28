@@ -34,9 +34,34 @@ def is_valid_email(email: str) -> bool:
 
 
 def validate_order_type(order_type: DiningBehavior) -> DiningBehavior:
-    if order_type == DiningBehavior.TAKE_OUT:
+    if order_type == DiningBehavior.TAKE_OUT or order_type == DiningBehavior.DINE_IN:
         return order_type
     raise ValueError(f"Invalid order type: {order_type}")
+
+
+def validate_item_modifier_quantity(selections: list) -> None:
+    """
+    Validate the quantity of item and modifiers in the selections. Each Modifier quantity must match the item quantity.
+
+    Args:
+        selections (list): List of item selections.
+
+    Returns:
+        None: Raises ValueError if the modifier quantity does not match the item quantity.
+    """
+
+    for selection in selections:
+        if "modifiers" in selection:
+            item_quantity = selection["quantity"]
+            for modifier in selection["modifiers"]:
+                if modifier["quantity"] != item_quantity:
+                    logger.debug(
+                        f"[ToastTool.validate_item_modifier_quantity] "
+                        f"Modifier quantity {modifier['quantity']} does not match item quantity {item_quantity}."
+                    )
+                    raise ValueError(
+                        f"Modifier {modifier}\n Modifier quantity {modifier['quantity']} does not match item quantity {item_quantity}."
+                    )
 
 
 def add_lat_long_to_address(

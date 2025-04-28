@@ -24,7 +24,6 @@ from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
-from . import _utils
 from ._llm import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
@@ -32,6 +31,14 @@ from ._llm import (
     llm_call,
 )
 from ._query_engine import create_query_engine
+from ._utils import (
+    add_lat_long_to_address,
+    format_phone_number,
+    is_valid_email,
+    is_valid_phone_number,
+    validate_item_modifier_quantity,
+    validate_order_type,
+)
 from .classes import OrderInput, Price, SubQueries
 
 
@@ -101,9 +108,7 @@ class ToastTool(Toolkit):
                 "Please try again by providing the full address."
             )
 
-        success, message, delivery_address = _utils.add_lat_long_to_address(
-            delivery_address
-        )
+        success, message, delivery_address = add_lat_long_to_address(delivery_address)
         if not success:
             return message
 
@@ -386,7 +391,8 @@ class ToastTool(Toolkit):
         )
 
         try:
-            _ = _utils.validate_order_type(dining_behavior.behavior)  # type: ignore
+            _ = validate_order_type(dining_behavior.behavior)  # type: ignore
+            _ = validate_item_modifier_quantity(order.checks[0].selections)
         except Exception as e:
             logger.error(f"Could not validate order type: {e}")
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
@@ -431,19 +437,19 @@ class ToastTool(Toolkit):
             ##############################################
 
             email = check.customer.email
-            if not email or not _utils.is_valid_email(email):
+            if not email or not is_valid_email(email):
                 logger.error(f"Invalid email address: {email}")
                 return "We'll need your email address."
 
             ########## NOTE: the following is how Adora agent handles the email. ##########
             # Set email to default if empty or if it is not valid
             # email = order.customer.email
-            # if not email or not _utils.is_valid_email(email):
+            # if not email or not is_valid_email(email):
             #     order.customer.email = "jimmythesurfer@palona.ai"
             ##############################################
 
-            if not check.customer.phone or not _utils.is_valid_phone_number(
-                _utils.format_phone_number(check.customer.phone)
+            if not check.customer.phone or not is_valid_phone_number(
+                format_phone_number(check.customer.phone)
             ):
                 logger.error(
                     f"Customer phone number is missing or invalid. Phone: {check.customer.phone}"

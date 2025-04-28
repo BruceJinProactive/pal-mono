@@ -128,10 +128,6 @@ class DiningBehavior(str, Enum):
 
 class DiningOption(BaseModel):
     guid: str = Field(description="Unique identifier for the dining option")
-    entityType: str = Field(
-        default="DiningOption",
-        description="Type of the entity, defaults to 'DiningOption'",
-    )
     curbside: SkipJsonSchema[Optional[bool]] = Field(
         None, description="Indicates if curbside pickup is available"
     )
@@ -158,9 +154,7 @@ class OptionGroup(ItemBase):
 
 
 class MenuItem(ItemBase):
-    entityType: str = Field(
-        description="The type of entity represented by this model", default="MenuItem"
-    )
+    pass
 
 
 class ItemGroup(ItemBase):
@@ -168,14 +162,10 @@ class ItemGroup(ItemBase):
 
 
 class Modifier(BaseModel):
-    entityType: str = Field(
-        description="The type of entity represented by this model",
-        default="MenuItemSelection",
-    )
     optionGroup: OptionGroup = Field(
-        description="The option group associated with the modifier"
+        description="The option group GUID of the modifier associated with the item. Find the correct group ID corresponding to the item ID."
     )
-    item: MenuItem = Field(description="The item associated with the modifier")
+    item: MenuItem = Field(description="The item ID associated with the modifier")
     quantity: int = Field(description="The quantity of the modifier")
 
 
@@ -187,10 +177,6 @@ class OrderItemFulfillmentStatus(str, Enum):
 
 
 class ItemSelection(BaseModel):
-    entityType: str = Field(
-        description="The type of entity represented by this model",
-        default="MenuItemSelection",
-    )
     itemGroup: ItemGroup = Field(
         description="The item group associated with the item selection"
     )
@@ -200,7 +186,7 @@ class ItemSelection(BaseModel):
         default_factory=list,
         description=(
             "The modifiers associated with the item selection. "
-            "Find the correct group ID and corresponding item ID."
+            "Find the correct group ID and corresponding item ID. They cannot be Null."
         ),
     )
     fulfillmentStatus: SkipJsonSchema[Optional[OrderItemFulfillmentStatus]] = Field(
@@ -242,7 +228,9 @@ class Price(BaseModel):
 
 class Check(Price):
     customer: Customer
-    selections: List[ItemSelection]
+    selections: List[ItemSelection] = Field(
+        description="List of item selections in the check. This must NOT be a dictionary."
+    )
     payments: Optional[List[Payment]] = None
 
 
