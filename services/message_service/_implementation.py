@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 from agno.models.openai.chat import OpenAIChat
 from agno.run.response import RunResponse
+from ddtrace import tracer
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
@@ -31,6 +32,7 @@ from utils.log import logger
 from . import _utils
 
 
+@tracer.wrap()
 def get_filler_message(message: Message) -> Message:
     # Collection of filler phrases for voice responses
     FILLER_PHRASES = [
@@ -56,6 +58,7 @@ def get_filler_message(message: Message) -> Message:
     return filler_message
 
 
+@tracer.wrap()
 async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
@@ -209,6 +212,7 @@ async def get_chat_response_async(
     return response_messages
 
 
+@tracer.wrap()
 async def get_chat_response_stream_cached(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[Message]:
@@ -272,6 +276,7 @@ async def get_chat_response_stream_cached(
         return error_response_generator()
 
 
+@tracer.wrap()
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[ChatCompletionChunk]:
@@ -280,181 +285,199 @@ async def get_chat_response_stream(
     logger.info(
         f"{sender_identifier}: get_chat_response_stream received message: {message}"
     )
-    user = None
-    commit_start = time.perf_counter()
-    receive_commit_start = time.perf_counter()
-    message_repo = db.MessageRepositoryAsync(session)
-    logger.info(
-        f"{sender_identifier}: message_repo, Took {time.perf_counter() - commit_start:.4f}s"
-    )
-    try:
-        # find project with matching channel platform, identifier pair
+    async for new_session in db.get_db_async():
+        session = new_session
+        user = None
         commit_start = time.perf_counter()
-        project = await project_service.get_project_async(session, message)
+        message_repo = db.MessageRepositoryAsync(session)
         logger.info(
-            f"{sender_identifier}: Access project: {project}, Took {time.perf_counter() - commit_start:.4f}s"
+            f"{sender_identifier}: message_repo, Took {time.perf_counter() - commit_start:.4f}s"
         )
-        # Get user_id by sender channel/number with user_service
-        user, is_new_sms_user = await user_service.get_user_async(
-            session, project, message
-        )
-        if user is None:
-            # If user not found, just create one (no opt-in here)
+        try:
+            # find project with matching channel platform, identifier pair
             commit_start = time.perf_counter()
-            user = await user_service.create_user_async(session, project, message)
+            project = await project_service.get_project_async(session, message)
             logger.info(
-                f"{sender_identifier}: Create new user: {user}, Took {time.perf_counter() - commit_start:.4f}s"
+                f"{sender_identifier}: Access project: {project}, Took {time.perf_counter() - commit_start:.4f}s"
             )
-        logger.info(f"{sender_identifier}: Access user")
-        await session.refresh(user)
-        # Save request message to database
-        commit_start = time.perf_counter()
-        request_message = await message_repo.create_message(
-            user_id=user.id, message_body=message.to_dict()
-        )
-        logger.info(
-            f"{sender_identifier}: Save msg: {request_message.conversation_id}, Took {time.perf_counter() - commit_start:.4f}s"
-        )
-        if not request_message:
-            raise ValueError("Failed to create request message")
-        conversation_id = request_message.conversation_id
-        testing = (
-            getattr(message.metadata, "testing", False) if message.metadata else False
-        )
-        await session.refresh(project, attribute_names=["account"])
-        account_name = project.account.name
-        event_properties = {
-            "account_name": account_name,
-            "channel": message.channel.value,
-            "conversation_id": str(conversation_id),
-            "testing": testing,
-        }
-        commit_start = time.perf_counter()
-        analytics_service.track_event(
-            user_id=str(user.id),
-            event_name=AnalyticsEvent.USER_MESSAGE,
-            event_properties=event_properties,
-        )
-        logger.info(
-            f"{sender_identifier}: Track_event, Took {time.perf_counter() - commit_start:.4f}s"
-        )
-        # Get appropriate agent from account name
-        agent_id = project.agent_id
-        if agent_id is None:
-            raise ValueError("Agent ID not found")
-        # Construct config
-        commit_start = time.perf_counter()
-        config = await agent_service.construct_agent_config(
-            session=session,
-            agent_id=agent_id,
-            user_id=user.id,
-            project_id=project.id,
-            conversation_id=conversation_id,
-            stream=True,
-        )
-        logger.info(
-            f"{sender_identifier}: Agent config, Took {time.perf_counter() - commit_start:.4f}s"
-        )
-        config.stream = True
-        commit_start = time.perf_counter()
-        agent = Agent(config=config)
-        logger.info(
-            f"{sender_identifier}: Agent init, Took {time.perf_counter() - commit_start:.4f}s"
-        )
-        input = _utils.get_agent_input_from_message(message=message)
-        logger.info(f"{sender_identifier}: Input: Start")
-        commit_start = time.perf_counter()
-        response_stream = await agent.arun(input)  # type: ignore
-        logger.info(
-            f"{sender_identifier}: Output: Done, Took {time.perf_counter() - commit_start:.4f}s"
-        )
-        output_messages = []
-        if response_stream:
-            i = 0
-            async for chunk in response_stream:
-                rid = f"chatcmpl-{uuid.uuid4().hex}"  # TODO: fix this
-                if isinstance(chunk, RunResponse):
-                    content = chunk.get_content_as_string()
-                elif isinstance(chunk, tuple):
-                    content = chunk[0]
-                elif isinstance(chunk, Message):
-                    content = chunk.text.body if chunk.text else ""
-                    rid = chunk.id
-                elif chunk:
-                    if not isinstance(chunk, (str, int, float, bool)):
-                        logger.warning(f"Unexpected chunk type: {type(chunk)}")
-                        continue
-                    content = str(chunk)
-                else:
-                    content = ""
+            # Get user_id by sender channel/number with user_service
+            user, is_new_sms_user = await user_service.get_user_async(
+                session, project, message
+            )
+            if user is None:
+                # If user not found, just create one (no opt-in here)
+                commit_start = time.perf_counter()
+                user = await user_service.create_user_async(session, project, message)
                 logger.info(
-                    f"{sender_identifier}: Sending chunk: {content}, Took {time.perf_counter() - receive_commit_start:.4f}"
+                    f"{sender_identifier}: Create new user: {user}, Took {time.perf_counter() - commit_start:.4f}s"
                 )
-                chunk = ChatCompletionChunk(
-                    id=rid,
-                    object="chat.completion.chunk",
-                    created=int(
-                        datetime.datetime.now(datetime.timezone.utc).timestamp()
-                    ),
-                    model=message.recipient_identifier,
-                    choices=[
-                        ChunkChoice(
-                            index=i,
-                            delta=(ChoiceDelta(role="assistant", content=content)),
-                            finish_reason=None,
-                        )
-                    ],
-                )
-                yield chunk
-                i += 1
-                output_messages.append(content)
-
-        if response_stream:
+            logger.info(f"{sender_identifier}: Access user")
+            await session.refresh(user)
+            # Save request message to database
+            commit_start = time.perf_counter()
+            request_message = await message_repo.create_message(
+                user_id=user.id, message_body=message.to_dict()
+            )
+            logger.info(
+                f"{sender_identifier}: Save msg: {request_message.conversation_id}, Took {time.perf_counter() - commit_start:.4f}s"
+            )
+            if not request_message:
+                raise ValueError("Failed to create request message")
+            conversation_id = request_message.conversation_id
+            testing = (
+                getattr(message.metadata, "testing", False)
+                if message.metadata
+                else False
+            )
+            await session.refresh(project, attribute_names=["account"])
+            account_name = project.account.name
+            event_properties = {
+                "account_name": account_name,
+                "channel": message.channel.value,
+                "conversation_id": str(conversation_id),
+                "testing": testing,
+            }
+            commit_start = time.perf_counter()
             analytics_service.track_event(
                 user_id=str(user.id),
-                event_name=AnalyticsEvent.AGENT_MESSAGE,
-                event_properties={
-                    "account_name": account_name,
-                    "channel": message.channel.value,
-                    "conversation_id": str(request_message.conversation_id),
-                    "testing": testing,
-                },
+                event_name=AnalyticsEvent.USER_MESSAGE,
+                event_properties=event_properties,
             )
+            logger.info(
+                f"{sender_identifier}: Track_event, Took {time.perf_counter() - commit_start:.4f}s"
+            )
+            # Get appropriate agent from account name
+            agent_id = project.agent_id
+            if agent_id is None:
+                raise ValueError("Agent ID not found")
+            # Construct config
+            commit_start = time.perf_counter()
+            config = await agent_service.construct_agent_config(
+                session=session,
+                agent_id=agent_id,
+                user_id=user.id,
+                project_id=project.id,
+                conversation_id=conversation_id,
+                stream=True,
+            )
+            logger.info(
+                f"{sender_identifier}: Agent config, Took {time.perf_counter() - commit_start:.4f}s"
+            )
+            config.stream = True
+            commit_start = time.perf_counter()
+            agent = Agent(config=config)
+            logger.info(
+                f"{sender_identifier}: Agent init, Took {time.perf_counter() - commit_start:.4f}s"
+            )
+            input = _utils.get_agent_input_from_message(message=message)
+            logger.info(f"{sender_identifier}: Input: Start")
+            commit_start = time.perf_counter()
+            response_stream = await agent.arun(input)  # type: ignore
+            logger.info(
+                f"{sender_identifier}: Output: Done, Took {time.perf_counter() - commit_start:.4f}s"
+            )
+            output_messages = []
+            if response_stream:
+                i = 0
+                async for chunk in response_stream:
+                    rid = f"chatcmpl-{uuid.uuid4().hex}"  # TODO: fix this
+                    if isinstance(chunk, RunResponse):
+                        content = chunk.get_content_as_string()
+                    elif isinstance(chunk, tuple):
+                        content = chunk[0]
+                    elif isinstance(chunk, Message):
+                        content = chunk.text.body if chunk.text else ""
+                        rid = chunk.id
+                    elif chunk:
+                        if not isinstance(chunk, (str, int, float, bool)):
+                            logger.warning(f"Unexpected chunk type: {type(chunk)}")
+                            continue
+                        content = str(chunk)
+                    else:
+                        content = ""
+                    logger.info(f"{sender_identifier}: Sending chunk: {content}")
+                    chunk = ChatCompletionChunk(
+                        id=rid,
+                        object="chat.completion.chunk",
+                        created=int(
+                            datetime.datetime.now(datetime.timezone.utc).timestamp()
+                        ),
+                        model=message.recipient_identifier,
+                        choices=[
+                            ChunkChoice(
+                                index=i,
+                                delta=(ChoiceDelta(role="assistant", content=content)),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+                    yield chunk
+                    i += 1
+                    output_messages.append(content)
 
-            # Make sure to handle the case after the response messages are created
-            # Check if output.closing_conversation is True and mark the conversation as closing
+            if response_stream:
+                final_output_messages = []
 
-            conversation = await db.ConversationRepositoryAsync(
-                session
-            ).get_conversation_by_id(conversation_id=request_message.conversation_id)
-            if conversation:
-                conversation.status = db.ConversationStatus.CLOSING
-                commit_start = time.perf_counter()
-                await session.flush()
+                split_texts = " ".join(output_messages).split("<BREAK>")
 
-                logger.info(
-                    f"{sender_identifier}: Conversation status updated to CLOSING, Took {time.perf_counter() - commit_start:.4f}s"
+                for text in split_texts:
+                    sub_message = message.model_copy(deep=True)
+                    sub_message.text = TextObject(body=text.strip())
+                    final_output_messages.append(sub_message)
+
+                for message in final_output_messages:
+                    # Save response message to database
+                    await message_repo.create_message(
+                        user_id=user.id, message_body=message.to_dict()
+                    )
+                analytics_service.track_event(
+                    user_id=str(user.id),
+                    event_name=AnalyticsEvent.AGENT_MESSAGE,
+                    event_properties={
+                        "account_name": account_name,
+                        "channel": message.channel.value,
+                        "conversation_id": str(request_message.conversation_id),
+                        "testing": testing,
+                    },
                 )
-            # await session.commit()
-    except Exception as e:
-        # Log any error and return error message stream
-        logger.error(f"Error in get_chat_response_stream: {message},{e}")
-        error_message = ChatCompletionChunk(
-            id=f"chatcmpl-{uuid.uuid4().hex}",  # TODO: fix this,
-            object="chat.completion.chunk",
-            created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            model=message.recipient_identifier,
-            choices=[
-                ChunkChoice(
-                    index=0,
-                    delta=(ChoiceDelta(role="assistant", content="")),
-                    finish_reason=None,
-                )
-            ],
-        )
-        yield error_message
+
+                # Make sure to handle the case after the response messages are created
+                # Check if output.closing_conversation is True and mark the conversation as closing
+                if False:
+                    conversation = await db.ConversationRepositoryAsync(
+                        session
+                    ).get_conversation_by_id(
+                        conversation_id=request_message.conversation_id
+                    )
+                    if conversation:
+                        conversation.status = db.ConversationStatus.CLOSING
+                        commit_start = time.perf_counter()
+                        await session.flush()
+
+                        logger.info(
+                            f"{sender_identifier}: Conversation status updated to CLOSING, Took {time.perf_counter() - commit_start:.4f}s"
+                        )
+                # await session.commit()
+        except Exception as e:
+            # Log any error and return error message stream
+            logger.error(f"Error in get_chat_response_stream: {message},{e}")
+            error_message = ChatCompletionChunk(
+                id=f"chatcmpl-{uuid.uuid4().hex}",  # TODO: fix this,
+                object="chat.completion.chunk",
+                created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+                model=message.recipient_identifier,
+                choices=[
+                    ChunkChoice(
+                        index=0,
+                        delta=(ChoiceDelta(role="assistant", content="")),
+                        finish_reason=None,
+                    )
+                ],
+            )
+            yield error_message
 
 
+@tracer.wrap()
 def get_chat_response(_session: Session, message: Message) -> Message:
     logger.info(message)
     response = "Synch mode chat has been deprecated."
@@ -471,6 +494,7 @@ def get_chat_response(_session: Session, message: Message) -> Message:
     return response_message
 
 
+@tracer.wrap()
 def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | None:
     """
     Retrieves a Message by its unique identifier.
@@ -488,6 +512,7 @@ def get_message_by_id(session: Session, message_id: uuid.UUID) -> db.Message | N
     return message
 
 
+@tracer.wrap()
 def get_messages_by_ids(
     session: Session, message_ids: list[uuid.UUID]
 ) -> list[db.Message]:
@@ -497,6 +522,7 @@ def get_messages_by_ids(
     return messages
 
 
+@tracer.wrap()
 def get_messages_by_conversation(
     session: Session, conversation_id: uuid.UUID
 ) -> list[db.Message]:
@@ -518,6 +544,7 @@ def get_messages_by_conversation(
     return messages
 
 
+@tracer.wrap()
 def get_conversations_by_user(
     session: Session, user_id: uuid.UUID, create_new_conversation: bool = False
 ) -> list[db.Conversation]:
@@ -536,6 +563,7 @@ def get_conversations_by_user(
     return []
 
 
+@tracer.wrap()
 def get_session_ids_by_users(
     session: Session, user_ids: list[uuid.UUID]
 ) -> list[uuid.UUID]:
@@ -544,6 +572,7 @@ def get_session_ids_by_users(
     return session_ids
 
 
+@tracer.wrap()
 def get_conversations_by_users(
     session: Session,
     page: int,
@@ -561,11 +590,13 @@ def get_conversations_by_users(
     return total_conversations, conversations
 
 
+@tracer.wrap()
 def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:
     conversation_repository = db.ConversationRepository(session)
     return conversation_repository.create_conversation(user_id=user_id)
 
 
+@tracer.wrap()
 def build_opt_in_message(message: Message, metadata: Metadata) -> Message | None:
     if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
         opt_in_text = (

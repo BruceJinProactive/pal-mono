@@ -1,3 +1,4 @@
+import time
 import uuid
 from typing import Dict
 
@@ -28,6 +29,7 @@ class QueryMessagesTool(Toolkit):
         Returns:
             str: A string representing the entire chat history.
         """
+        fcommit_start = time.perf_counter()
 
         try:
             LLMObs.annotate(metadata=self.metadata.model_dump())
@@ -39,6 +41,7 @@ class QueryMessagesTool(Toolkit):
 
             # Get database session using the context manager provided by db/session.py
             # Use the generator from get_db() function
+            commit_start = time.perf_counter()
             db_generator = get_db()
             db = next(db_generator)
 
@@ -48,6 +51,9 @@ class QueryMessagesTool(Toolkit):
 
                 # Get all messages for this conversation in chronological order
                 messages = message_repo.get_messages_by_conversation(conversation_id)
+                logger.info(
+                    f"{self.metadata.user_id}: Get_message_agent, Took {time.perf_counter() - commit_start:.4f}s"
+                )
                 if not messages and not latest_user_message:
                     return "Conversation not found"
 
@@ -85,3 +91,7 @@ class QueryMessagesTool(Toolkit):
             error_msg = "Error in getting chat history"
             logger.error(f"{error_msg}: {e}")
             return error_msg
+        finally:
+            logger.info(
+                f"{self.metadata.user_id}: QueryMessage, Took {time.perf_counter() - fcommit_start:.4f}s"
+            )

@@ -13,7 +13,6 @@ from openai.types.chat.chat_completion import Choice as FinalChoice
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import db
 from api.schemas.chat.message import AuthorType, Channel, Metadata, TextObject
 from api.schemas.chat.message import Message as PalMessage
 from services.message_service import get_chat_response_async, get_chat_response_stream
@@ -97,34 +96,33 @@ class ChatCompletionStreamer:
         sender_identifier: str = "",
         memory_cache: MemoryCache = MemoryCache(),
     ) -> AsyncGenerator[bytes, None]:
-        async for new_session in db.get_db_async():
-            session = new_session
-            user_msg = extract_user_text(messages)
-            logger.info(f"Received message: {user_msg},{sender_identifier}")
-            # sender_identifier = str(uuid_from_phone(sender_identifier))
-            message = PalMessage(
-                author_type=AuthorType.USER,
-                sender_identifier=sender_identifier,  # get the phone number.
-                recipient_identifier=recipient_identifier,
-                channel=Channel.VOICE if sender_identifier else Channel.API,
-                text=TextObject(body=user_msg),
-                metadata=Metadata(
-                    account_name="pizzamyheart",
-                    project_name="pizzamyheart-default",
-                    # agent_id="82dcb010-2fb9-47f9-bb14-96ce08fed8c4",
-                    user_id=sender_identifier,
-                ),
-            )
-            message.__dict__["cache"] = memory_cache
-            # setattr(message, "cache", memory_cache)
-            response_stream = await get_chat_response_stream(
-                session=session,
-                message=message,
-            )
-            async for chunk in response_stream:
-                yield f"data: {chunk.model_dump_json()}\n\n".encode("utf-8")
 
-            yield b"data: [DONE]\n\n"
+        user_msg = extract_user_text(messages)
+        logger.info(f"Received message: {user_msg},{sender_identifier}")
+        # sender_identifier = str(uuid_from_phone(sender_identifier))
+        message = PalMessage(
+            author_type=AuthorType.USER,
+            sender_identifier=sender_identifier,  # get the phone number.
+            recipient_identifier=recipient_identifier,
+            channel=Channel.VOICE if sender_identifier else Channel.API,
+            text=TextObject(body=user_msg),
+            metadata=Metadata(
+                account_name="pizzamyheart",
+                project_name="pizzamyheart-default",
+                # agent_id="82dcb010-2fb9-47f9-bb14-96ce08fed8c4",
+                user_id=str(uuid_from_phone(sender_identifier)),
+            ),
+        )
+        message.__dict__["cache"] = memory_cache
+        # setattr(message, "cache", memory_cache)
+        response_stream = await get_chat_response_stream(
+            session=session,
+            message=message,
+        )
+        async for chunk in response_stream:
+            yield f"data: {chunk.model_dump_json()}\n\n".encode("utf-8")
+
+        yield b"data: [DONE]\n\n"
 
     async def full_response(
         self,
