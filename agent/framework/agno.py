@@ -86,7 +86,12 @@ class AgnoAgent:
 
         if not isinstance(response_format, ResponseModel):
             logger.error(
-                f"Error with getting proper response format: {response_format}"
+                (
+                    f"Error with getting proper response format:{response_format}\n"
+                    f"response type: {type(response_format)}\n"
+                    f"agent stream: {self._agent.stream}\n"
+                    f"response model: {self._agent.response_model}"
+                )
             )
             return Output(content="")
 
