@@ -16,12 +16,10 @@ from tools.toast_tool._apis import (
     get_dining_option,
     get_online_ordering_status,
     get_order_prices,
-)
-from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import (
     get_toast_access_token,
     submit_order,
 )
+from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
@@ -479,11 +477,12 @@ class ToastTool(Toolkit):
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
             logger.info(
-                f"Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
+                f"Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order summary: {order.checks[0].selections}.\n\nYour order will be ready for pickup at {order.estimatedFulfillmentDate}"
             )
             return (
                 f"Order #{order.guid} submitted successfully! "
                 f"Your total is ${order.checks[0].totalAmount}. "
+                f"Your order summary: {order.checks[0].selections}.\n\n"
                 f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
             )
         except Exception as e:

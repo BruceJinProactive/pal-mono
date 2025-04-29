@@ -169,6 +169,7 @@ class Modifier(BaseModel):
     )
     item: MenuItem = Field(description="The item ID associated with the modifier")
     quantity: int = Field(description="The quantity of the modifier")
+    displayName: SkipJsonSchema[Optional[str]] = None
 
 
 class OrderItemFulfillmentStatus(str, Enum):
