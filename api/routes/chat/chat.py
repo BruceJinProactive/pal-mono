@@ -50,7 +50,13 @@ DEFAULT_USER_ICON = "images/agents/default_user_icon.png"
 async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_async)):
     try:
         # Process the message
-        logger.info(f"Received message: {request.message}")
+        logger.info(
+            f"Received message: {request.message}",
+            extra={
+                "relay_response": request.relay_response,
+                "stream": request.stream,
+            },
+        )
 
         if request.stream:
 
