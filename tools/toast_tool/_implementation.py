@@ -12,14 +12,9 @@ from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.toast_tool._apis import (
-    get_dining_option,
-    get_online_ordering_status,
-    get_order_prices,
-    get_toast_access_token,
-    submit_order,
-)
+from tools.toast_tool._apis import get_online_ordering_status, get_order_prices
 from tools.toast_tool._apis import get_store_info as get_store_info_api
+from tools.toast_tool._apis import get_toast_access_token, submit_order
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
@@ -37,7 +32,6 @@ from ._utils import (
     is_valid_email,
     is_valid_phone_number,
     validate_item_modifier_quantity,
-    validate_order_type,
 )
 from .classes import OrderInput, Price, SubQueries
 
@@ -391,12 +385,8 @@ class ToastTool(Toolkit):
                 "Please reach out to our support team at help@palona.ai "
                 "for assistance."
             )
-        dining_behavior = get_dining_option(
-            self._toast_bearer_token, self.store_id, order.diningOption.guid
-        )
 
         try:
-            _ = validate_order_type(dining_behavior.behavior)  # type: ignore
             _ = validate_item_modifier_quantity(order.checks[0].selections)
         except Exception as e:
             logger.error(f"Could not validate order type: {e}")
