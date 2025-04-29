@@ -4,7 +4,7 @@ import uuid
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
-from ddtrace import tracer
+from ddtrace.trace import tracer
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
