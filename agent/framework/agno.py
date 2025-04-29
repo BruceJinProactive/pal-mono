@@ -1,5 +1,3 @@
-import time
-
 import agno.agent.agent
 from agno.models.openai.chat import OpenAIChat
 from agno.storage.agent.postgres import PostgresAgentStorage
@@ -28,15 +26,12 @@ class ResponseModel(BaseModel):
 
 class AgnoAgent:
     def __init__(self, config: AgentConfig):
-        commit_start = time.perf_counter()
+
         storage = PostgresAgentStorage(
             table_name=f"{config.metadata.account_name}_storage_agno",
             db_url=db.db_url,
         )
-        logger.info(
-            f"{config.metadata.user_id}: PostgresAgentStorage, Took {time.perf_counter() - commit_start:.4f}s"
-        )
-        commit_start = time.perf_counter()
+
         tools = [
             tool
             for tool in get_tools(
@@ -45,17 +40,9 @@ class AgnoAgent:
                 user_id=config.metadata.user_id,
             )
         ]  # construct search knowledge tool
-        logger.info(
-            f"{config.metadata.user_id}: get_tools, Took {time.perf_counter() - commit_start:.4f}s"
-        )
 
-        commit_start = time.perf_counter()
         model = OpenAIChat(id="gpt-4o")
-        logger.info(
-            f"{config.metadata.user_id}: OpenAIChat, Took {time.perf_counter() - commit_start:.4f}s"
-        )
 
-        commit_start = time.perf_counter()
         agent = agno.agent.agent.Agent(
             # persona
             name=config.persona.name,
@@ -84,9 +71,6 @@ class AgnoAgent:
             ),  # NOTE: stream response model is not supported by AGNO
             additional_context=config.additional_context,
             stream=config.stream,
-        )
-        logger.info(
-            f"{config.metadata.user_id}: agno.agent.agent.Agent, Took {time.perf_counter() - commit_start:.4f}s"
         )
 
         self._agent = agent

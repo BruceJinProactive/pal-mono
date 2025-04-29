@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import workflow
@@ -10,7 +9,6 @@ from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
-from utils.log import logger
 
 
 class Agent:
@@ -37,16 +35,9 @@ class Agent:
         )
         if framework != AgentFramework.AGNO:
             raise ValueError(f"Unsupported framework: {framework}")
-        logger.info(f"{config.metadata.user_id}: Agent.__init__")
-        commit_start = time.perf_counter()
         self._agent = AgnoAgent(config)
-        logger.info(
-            f"{config.metadata.user_id}: Agent.__init__ Done, Took {time.perf_counter() - commit_start:.4f}s"
-        )
         self._metadata = config.metadata
 
-        logger.info(f"{config.metadata.user_id}: Datadog LLM Observability")
-        commit_start = time.perf_counter()
         # Set up Datadog LLM Observability
         LLMObs.enable(
             ml_app="pal",
@@ -57,9 +48,6 @@ class Agent:
                 "user_id": config.metadata.user_id,
                 "session_id": config.metadata.session_id,
             }
-        )
-        logger.info(
-            f"{config.metadata.user_id}: Datadog LLM Observability done, Took {time.perf_counter() - commit_start:.4f}s"
         )
 
     @workflow
@@ -73,8 +61,7 @@ class Agent:
         Returns:
             Output: The output data from the agent.
         """
-        logger.info(f"{input.sender_identifier}: Running LLMObs")
-        commit_start = time.perf_counter()
+
         LLMObs.annotate(
             tags={
                 "account_name": self._metadata.account_name,
@@ -83,9 +70,7 @@ class Agent:
                 "agent_id": self._metadata.agent_id,
             }
         )
-        logger.info(
-            f"{input.sender_identifier}: Running LLMObs Done, Took {time.perf_counter() - commit_start:.4f}s"
-        )
+
         # Update memory with the user's input
         asyncio.create_task(
             update_memory(
@@ -103,10 +88,7 @@ class Agent:
                 return Output(
                     content="We cannot process your input. Please try again with a different input."
                 )
-        logger.info(f"{input.sender_identifier}: self._agent.arun")
-        commit_start = time.perf_counter()
+
         output = await self._agent.arun(input)  # type: ignore
-        logger.info(
-            f"{input.sender_identifier}: self._agent.arun done, Took {time.perf_counter() - commit_start:.4f}s"
-        )
+
         return output
