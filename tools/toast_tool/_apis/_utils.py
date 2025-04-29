@@ -5,11 +5,7 @@ import urllib.parse
 from tools.toast_tool.classes import HttpMethod, ToastAccessToken, ToastHubResponse
 from utils.log import logger
 
-#################### CONSTANTS ####################
 BASE_URL = "ws-sandbox-api.eng.toasttab.com"
-
-API_TIMEOUT = 30  # seconds
-####################################################
 
 
 def connect_toast_order_hub(
@@ -55,7 +51,7 @@ def connect_toast_order_hub(
         api_function += "?" + urllib.parse.urlencode(query_params)
 
     try:
-        conn = http.client.HTTPSConnection(BASE_URL, timeout=API_TIMEOUT)
+        conn = http.client.HTTPSConnection(BASE_URL, timeout=30)
         # We focus on GET and POST methods for now
         # You can add more methods as needed
         if http_method == HttpMethod.GET:

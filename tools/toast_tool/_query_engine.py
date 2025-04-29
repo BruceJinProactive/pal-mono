@@ -10,7 +10,6 @@ from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
 
-# TODO: Create a knowledge index for the toast agent
 TOAST_AGENT_PINECONE_INDEX = "sandbox"
 
 

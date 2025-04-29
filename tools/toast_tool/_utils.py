@@ -7,6 +7,9 @@ from geopy.geocoders import Nominatim
 from tools.toast_tool.classes import DeliveryAddress, DiningBehavior
 from utils.log import logger
 
+VALID_PHONE_PATTERN = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
+VALID_EMAIL_PATTERN = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+
 
 def format_phone_number(phone_number: str) -> str:
     # Remove non-digit characters
@@ -24,13 +27,11 @@ def format_phone_number(phone_number: str) -> str:
 
 
 def is_valid_phone_number(phone_number: str) -> bool:
-    pattern = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
-    return re.match(pattern, phone_number) is not None
+    return re.match(VALID_PHONE_PATTERN, phone_number) is not None
 
 
 def is_valid_email(email: str) -> bool:
-    pattern = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-    return re.match(pattern, email) is not None
+    return re.match(VALID_EMAIL_PATTERN, email) is not None
 
 
 def validate_order_type(order_type: DiningBehavior) -> DiningBehavior:

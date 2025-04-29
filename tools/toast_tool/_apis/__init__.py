@@ -2,7 +2,7 @@ import http.client
 import json
 from typing import Optional
 
-from tools.toast_tool._apis._utils import API_TIMEOUT, BASE_URL, connect_toast_order_hub
+from tools.toast_tool._apis._utils import connect_toast_order_hub
 from tools.toast_tool.classes import (
     DiningOption,
     HttpMethod,
@@ -13,6 +13,8 @@ from tools.toast_tool.classes import (
     ToastAccessToken,
 )
 from utils.log import logger
+
+BASE_URL = "ws-sandbox-api.eng.toasttab.com"
 
 
 def get_toast_access_token(
@@ -48,7 +50,7 @@ def get_toast_access_token(
             f"[ToastAPI.get_toast_access_token] Using client ID: {'*' * 8}{client_id[-4:] if len(client_id) > 4 else '*' * 4}"
         )
     try:
-        conn = http.client.HTTPSConnection(BASE_URL, timeout=API_TIMEOUT)
+        conn = http.client.HTTPSConnection(BASE_URL, timeout=30)
         conn.request(
             "POST",
             "/authentication/v1/authentication/login",

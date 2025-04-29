@@ -19,12 +19,12 @@ from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
-from ._llm import (
+from ._prompt_constants import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
     RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
-    llm_call,
 )
+from ._llm import llm_call
 from ._query_engine import create_query_engine
 from ._utils import (
     add_lat_long_to_address,
