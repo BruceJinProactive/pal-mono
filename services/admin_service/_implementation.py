@@ -10,8 +10,17 @@ from sqlalchemy.orm import Session, declarative_base
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
-from services import account_service, agent_service, project_service, user_service
+from services import (
+    account_service,
+    agent_service,
+    knowledge_service,
+    project_service,
+    user_service,
+)
 from services.account_service import AccountParams
+from services.admin_service._utils import (
+    get_knowledge_settings,
+)
 from services.admin_service.schema import UserSessionPreview
 from services.agent_service import AgentParams
 from services.message_service import (
@@ -28,6 +37,7 @@ from utils import secret
 from utils.log import logger
 
 MOCK_USER_PREFIX = "mock-user"
+DEFAULT_INDEX_NAME = "projects"
 
 
 def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
@@ -825,3 +835,68 @@ def onboard_new_account(
         session.rollback()
         logger.warn(f"Error creating resources for onboarding: {e}")
         raise ValueError(f"Failed to onboarding account. {e}")
+
+
+def upload_project_knowledge(
+    session: Session,
+    target: db.Project | db.Agent,
+    file_name: str,
+    content: bytes,
+):
+    """
+    Upload a text file to the project's knowledge base.
+    This function gets the knowledge settings from the project's raw_config,
+    generates embeddings for the text content, and stores them in Pinecone.
+    """
+    index_name, namespace = get_knowledge_settings(session, target, auto_create=True)
+    existing_files = knowledge_service.list_knowledge_files(index_name, namespace)
+    if file_name in existing_files:
+        logger.info(
+            "File to upload already exist!",
+            extra={
+                "file_name": file_name,
+                "files": existing_files,
+            },
+        )
+        raise ValueError(
+            "The file already exist in knowledge base, to update, first delete the file before uploading again."
+        )
+    return knowledge_service.upload_knowledge_file(
+        index_name,
+        namespace,
+        file_name,
+        content,
+    )
+
+
+def list_knowledge_files(
+    session: Session,
+    target: db.Project | db.Agent,
+) -> list[str]:
+    """
+    Retrieve a list of knowledge file names for a specific project.
+    This function gets the knowledge settings from the project's raw_config
+    and uses them to query the Pinecone index for all files.
+    """
+    index_name, namespace = get_knowledge_settings(session, target)
+    if not index_name or not namespace:
+        logger.info(
+            "Target has missing knowledge setting, knowledge files not retrieved.",
+            extra={
+                "target_id": target.id,
+                "target_type": type(target),
+                "index_name": index_name,
+                "namespace": namespace,
+            },
+        )
+        return []
+    return knowledge_service.list_knowledge_files(index_name, namespace)
+
+
+def delete_knowledge_file(
+    session: Session,
+    target: db.Project | db.Agent,
+    filename: str,
+) -> list[str]:
+    index_name, namespace = get_knowledge_settings(session, target)
+    return knowledge_service.delete_knowledge_file(index_name, namespace, filename)

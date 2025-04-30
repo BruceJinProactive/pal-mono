@@ -1,5 +1,6 @@
 import datetime
 import uuid
+from typing import Union
 
 from sqlalchemy.orm import Session
 
@@ -384,6 +385,76 @@ def onboard_new_account(
     )
 
 
+def upload_knowledge_file(
+    session: Session,
+    target: db.Project | db.Agent,
+    file_name: str,
+    content: bytes,
+):
+    """
+    Upload a text file to the project's knowledge base.
+    This function gets the knowledge settings from the project's raw_config,
+    generates embeddings for the text content, and stores them in Pinecone.
+
+    Args:
+        session (Session): The database session.
+        target (db.Project | db.Agent): The target to upload knowledge file for.
+        file_name (str): The name of the file to upload.
+        content (str): The text content of the file.
+
+    Returns:
+        dict: A dictionary containing a success message and the document ID.
+
+    Raises:
+        ValueError: If the project is not found or knowledge is not configured.
+        RuntimeError: If there is an error uploading the file.
+    """
+    return _implementation.upload_project_knowledge(session, target, file_name, content)
+
+
+def list_knowledge_files(
+    session: Session,
+    target: db.Project | db.Agent,
+) -> list[str]:
+    """
+    Retrieve a list of knowledge file names for a specific project.
+    This function gets the knowledge settings from the project's raw_config
+    and uses them to query the Pinecone index for all files.
+
+    Args:
+        session (Session): The database session.
+        target (db.Project | db.Agent): The target to retrieve knowledge files for.
+
+    Returns:
+        list[str]: A list of knowledge file names.
+
+    Raises:
+        ValueError: If the project is not found.
+        RuntimeError: If there is an error retrieving the files.
+    """
+    return _implementation.list_knowledge_files(session, target)
+
+
+def delete_knowledge_file(
+    session: Session,
+    target: db.Project | db.Agent,
+    filename: str,
+) -> list[str]:
+    """
+    Delete a knowledge file from the knowledge base specified by the
+    knowledge_config. This function deletes the file from the Pinecone index.
+
+    Args:
+        session (Session): The database session.
+        target (Union[db.Project | db.Agent]): The project or agent that this delete happens to.
+        filename (str): The name of the file to delete.
+
+    Returns:
+        list[str]: List of embedding IDs that are deleted.
+    """
+    return _implementation.delete_knowledge_file(session, target, filename)
+
+
 __all__ = [
     "list_user_sessions_in_account",
     "get_inbox_conversations",
@@ -401,4 +472,7 @@ __all__ = [
     "get_session_count_by_user_and_status",
     "get_escalated_session_count_by_users",
     "onboard_new_account",
+    "list_knowledge_files",
+    "upload_knowledge_file",
+    "delete_knowledge_file",
 ]

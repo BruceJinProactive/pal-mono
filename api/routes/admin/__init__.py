@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 import db
@@ -31,6 +31,7 @@ from api.schemas.admin.feedback import (
     ListFeedbacksResponse,
     UpdateFeedbackRequest,
 )
+from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
 from api.schemas.admin.onboarding import OnboardingRequest, OnboardingResponse
 from api.schemas.admin.project import (
     CreateProjectRequest,
@@ -40,7 +41,15 @@ from api.schemas.admin.project import (
 )
 from api.schemas.chat.message import Channel
 
-from . import _account, _agent, _analytics, _conversation, _feedback, _projects
+from . import (
+    _account,
+    _agent,
+    _analytics,
+    _conversation,
+    _feedback,
+    _knowledge,
+    _projects,
+)
 from ._auth import authenticate_user, get_user_info
 from ._onboarding import create_onboarding
 from .legacy import legacy_router
@@ -560,6 +569,73 @@ async def get_project_instagram_username(
 
     """
     return _projects.get_project_instagram_username(project_id, session)
+
+
+"""
+---------- Knowledge Endpoints ----------
+-----------------------------------------
+"""
+
+
+@admin_router.get("/knowledge/{resource}/{resource_id}/files")
+async def get_knowledge_files(
+    resource: ResourceType,
+    resource_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListKnowledgeFileResponse:
+    """
+    Retrieve a list of knowledge file names for a specific target resource (e.g. project).
+    Returns a list of file names from the knowledge base (Pinecone index)
+    """
+    return await _knowledge.get_project_knowledge_files(
+        resource, resource_id, context, session
+    )
+
+
+@admin_router.post("/knowledge/{resource}/{resource_id}/files")
+async def upload_knowledge_files(
+    resource: ResourceType,
+    resource_id: uuid.UUID,
+    file: UploadFile = File(...),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Upload a text file to the target resource's knowledge base.
+    This endpoint gets the knowledge settings from the target's raw_config,
+    generates embeddings for the text content, and stores them in Pinecone.
+
+    The file should be uploaded as a form-data file field.
+    """
+    content = await file.read()
+
+    filename = file.filename or f"uploaded_file_{str(uuid.uuid4())[-12:]}.txt"
+
+    return await _knowledge.upload_knowledge_file(
+        resource, resource_id, filename, content, context, session
+    )
+
+
+@admin_router.delete("/knowledge/{resource}/{resource_id}/files")
+async def delete_project_knowledge(
+    resource: ResourceType,
+    resource_id: uuid.UUID,
+    filename: str = Query(...),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> str:
+    """
+    Delete a text file from the target resource's knowledge base.
+    This endpoint deletes the vector data associated with the file name
+    from the pinecone index.
+
+    The endpoint returns 200 OK if file is deleted, or if file doesn't
+    exist in the index.
+    """
+    return await _knowledge.delete_knowledge_file(
+        resource, resource_id, filename, context, session
+    )
 
 
 """
