@@ -267,7 +267,7 @@ class AdoraTool(Toolkit):
             delivery_address  # type: ignore
         )
 
-        logger.info(
+        logger.debug(
             f"Validated order: {validate_order_success}\n"
             f"Validate order message: {validate_order_message}"
         )
@@ -305,7 +305,7 @@ class AdoraTool(Toolkit):
         validated_address_success, validated_address = _apis.validate_address(
             self._adora_bearer_token, payload, qa_store=self.qa_store
         )
-        logger.info(f"Validated address: {validated_address}")
+        logger.debug(f"Validated address: {validated_address}")
 
         if not validated_address_success:
             return False, "Address is not in the delivery zone."
@@ -325,7 +325,7 @@ class AdoraTool(Toolkit):
         if not isinstance(sub_queries, SubQueries):
             return "Failed to identify the items the user ordered in the conversation."
 
-        logger.info(f"Sub-queries identified: {sub_queries.queries}")
+        logger.debug(f"Sub-queries identified: {sub_queries.queries}")
 
         # Perform knowledege retrieval on all sub-queries asynchronously
         loop = asyncio.new_event_loop()
@@ -381,7 +381,7 @@ class AdoraTool(Toolkit):
             bearer_token=bearer_token, payload=payload, qa_store=self.qa_store
         )
 
-        logger.info(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
+        logger.debug(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
 
         if not validated_order or not validated_order.key:
             return "Failed to validate order. Please try again."

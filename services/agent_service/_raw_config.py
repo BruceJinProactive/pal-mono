@@ -127,7 +127,7 @@ class RawConfig(BaseModel):
         raw_knowledge = self.agent_raw_config.get("knowledge")
 
         if not raw_knowledge:
-            logger.info("'knowledge' is not provided in 'agent_raw_config'.")
+            logger.warning("'knowledge' is not provided in 'agent_raw_config'.")
             return KnowledgeConfig(enabled=False)
 
         # Use the identifier, provider, settings from the knowledge section
@@ -170,7 +170,7 @@ class RawConfig(BaseModel):
 
         # Enable by default
         enable_knowledge = raw_knowledge.get("enabled", True)
-        logger.info(f"Knowledge enabled: {enable_knowledge}")
+        logger.debug(f"Knowledge enabled: {enable_knowledge}")
 
         return KnowledgeConfig(
             enabled=enable_knowledge,
@@ -192,7 +192,7 @@ class RawConfig(BaseModel):
         )
 
         if not raw_tools:
-            logger.info("'tools' is not provided in 'agent_raw_config'.")
+            logger.warning("'tools' is not provided in 'agent_raw_config'.")
             return ToolConfig(metadata=metadata)
 
         # TODO: Tool provider configuration not implemented yet (not necessary for now)

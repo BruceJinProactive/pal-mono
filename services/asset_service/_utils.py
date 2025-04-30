@@ -85,7 +85,7 @@ def generate_presigned_url(
 def init_s3(region_name: str) -> botocore.client.BaseClient:
     try:
         if os.getenv("LOCAL_AWS_ACCESS_KEY_ID"):
-            logger.info("Using local aws credentials.")
+            logger.debug("Using local aws credentials.")
             s3_client = boto3.client(
                 "s3",
                 region_name=region_name,

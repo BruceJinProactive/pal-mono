@@ -63,9 +63,9 @@ def check_input_bedrock(prompt: str) -> bool:  # aws bedrock approach
         )
 
         if response.get("action") == "GUARDRAIL_INTERVENED":
-            logger.info("Guardrail intervened:")
+            logger.debug("Guardrail intervened:")
             for output in response.get("outputs", []):
-                logger.info(f" - {output.get('text')}")
+                logger.debug(f" - {output.get('text')}")
             return False
         else:
             return True

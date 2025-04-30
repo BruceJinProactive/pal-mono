@@ -37,16 +37,16 @@ def connect_adora_order_hub(
     """Utility function to connect to Adora Order Hub API"""
 
     if logging:
-        logger.info(
+        logger.debug(
             f"[AdoraTool._apis._utils.connect_adora_order_hub] Calling Adora API: {http_method} {api_function}"
         )
-        logger.info(
+        logger.debug(
             f"[AdoraTool._apis._utils.connect_adora_order_hub] Query Params: {query_params}"
         )
-        logger.info(
+        logger.debug(
             f"[AdoraTool._apis._utils.connect_adora_order_hub] Extra Headers: {extra_headers}"
         )
-        logger.info(
+        logger.debug(
             f"[AdoraTool._apis._utils.connect_adora_order_hub] Payload: {payload}"
         )
 
@@ -83,7 +83,7 @@ def connect_adora_order_hub(
     )
 
     if logging:
-        logger.info(
+        logger.debug(
             f"[AdoraTool._apis._utils.connect_adora_order_hub] Response: {order_hub_response}"
         )
 

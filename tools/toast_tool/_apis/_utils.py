@@ -20,10 +20,10 @@ def connect_toast_order_hub(
 ) -> ToastHubResponse:
 
     if logging_enabled:
-        logger.info(f"Calling Toast API: {http_method} {api_function}")
-        logger.info(f"Query Params: {query_params}")
-        logger.info(f"Extra Headers: {extra_headers}")
-        logger.info(f"Payload: {payload}")
+        logger.debug(f"Calling Toast API: {http_method} {api_function}")
+        logger.debug(f"Query Params: {query_params}")
+        logger.debug(f"Extra Headers: {extra_headers}")
+        logger.debug(f"Payload: {payload}")
 
     # Set up headers
     headers = {
@@ -79,7 +79,7 @@ def connect_toast_order_hub(
             decoded_body=response_data,
         )
         if logging_enabled:
-            logger.info(
+            logger.debug(
                 f"[ToastTool._apis._utils.connect_toast_order_hub] ToastResponse: {toast_response}"
             )
         return toast_response

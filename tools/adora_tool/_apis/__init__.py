@@ -137,7 +137,7 @@ def get_store_info(
 def validate_order(
     bearer_token: AdoraAccessToken, payload: str, qa_store: bool
 ) -> AdoraOrderCalculationResult | None:
-    logger.info(f"[AdoraTool._apis.validate_order] Payload: {payload}")
+    logger.debug(f"[AdoraTool._apis.validate_order] Payload: {payload}")
 
     response = _utils.connect_adora_order_hub(
         "POST",

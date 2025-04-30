@@ -288,7 +288,7 @@ class ToastTool(Toolkit):
         if not isinstance(sub_queries, SubQueries):
             return "Failed to identify the items the user ordered in the conversation."
 
-        logger.info(f"Sub-queries identified: {sub_queries.queries}")
+        logger.debug(f"Sub-queries identified: {sub_queries.queries}")
 
         # Perform knowledege retrieval on all sub-queries asynchronously
         loop = asyncio.new_event_loop()
@@ -466,7 +466,7 @@ class ToastTool(Toolkit):
             order = submit_order(toast_bearer_token, self.store_id, order)
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
-            logger.info(
+            logger.debug(
                 f"Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order summary: {order.checks[0].selections}.\n\nYour order will be ready for pickup at {order.estimatedFulfillmentDate}"
             )
             return (

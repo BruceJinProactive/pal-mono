@@ -15,7 +15,7 @@ def check_code_or_injection(prompt: str) -> bool:
 
     for pattern in _constants.CODE_PATTERNS:
         if re.search(pattern, prompt, re.IGNORECASE | re.DOTALL):
-            logger.info(f"Code or injection pattern detected: {pattern}")
+            logger.warning(f"Code or injection pattern detected: {pattern}")
             return False
 
     return True

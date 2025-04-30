@@ -22,7 +22,7 @@ def check_encoded_text(prompt: str) -> bool:
 
     for pattern in patterns_to_remove:
         filtered_prompt = pattern.sub("__REMOVED__", filtered_prompt)
-    logger.info(f"Filtered prompt for encoded txt check: {filtered_prompt}")
+    logger.warning(f"Filtered prompt for encoded txt check: {filtered_prompt}")
 
     base64_pattern = re.compile(_constants.BASE64)
     binary_pattern = re.compile(_constants.BINARY)
@@ -42,6 +42,6 @@ def check_encoded_text(prompt: str) -> bool:
             ascii_pattern,
         )
     ):
-        logger.info("Encoded text found in prompt")
+        logger.warning("Encoded text found in prompt")
         return False
     return True

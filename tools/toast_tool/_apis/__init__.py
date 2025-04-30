@@ -45,8 +45,8 @@ def get_toast_access_token(
     headers = {"Content-Type": "application/json"}
 
     if logging_enabled:
-        logger.info("[ToastAPI.get_toast_access_token] Authenticating with Toast API")
-        logger.info(
+        logger.debug("[ToastAPI.get_toast_access_token] Authenticating with Toast API")
+        logger.debug(
             f"[ToastAPI.get_toast_access_token] Using client ID: {'*' * 8}{client_id[-4:] if len(client_id) > 4 else '*' * 4}"
         )
     try:
@@ -78,10 +78,10 @@ def get_toast_access_token(
                 )
 
             if logging_enabled:
-                logger.info(
+                logger.debug(
                     "[ToastAPI.get_toast_access_token] Successfully authenticated with Toast API"
                 )
-                logger.info(
+                logger.debug(
                     f"[ToastAPI.get_toast_access_token] Token expires in: {token.expires_in} seconds"
                 )
             return token

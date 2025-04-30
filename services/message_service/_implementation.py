@@ -116,16 +116,16 @@ async def get_chat_response_async(
             stream=False,
         )
 
-        logger.info(f"Agent config: {config}")
+        logger.debug(f"Agent config: {config}")
         agent = Agent(config=config)
 
         # Get Input
         input = _utils.get_agent_input_from_message(message=message)
-        logger.info(f"Input: {input}")
+        logger.debug(f"Input: {input}")
 
         # Get Output
         output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
-        logger.info(f"Output: {output}")
+        logger.debug(f"Output: {output}")
 
         # ================ Step 3: Get response messages ================
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
@@ -212,7 +212,7 @@ async def get_chat_response_stream(
 ) -> AsyncIterator[ChatCompletionChunk]:
     sender_identifier = message.sender_identifier
 
-    logger.info(
+    logger.debug(
         f"{sender_identifier}: get_chat_response_stream received message: {message}"
     )
     async for new_session in db.get_db_async():
@@ -286,7 +286,7 @@ async def get_chat_response_stream(
 
             input = _utils.get_agent_input_from_message(message=message)
 
-            logger.info(f"Input: {input}")
+            logger.debug(f"Input: {input}")
             response_stream = await agent.arun(input)  # type: ignore
             output_messages = []
             if response_stream:
@@ -307,7 +307,7 @@ async def get_chat_response_stream(
                         content = str(chunk)
                     else:
                         content = ""
-                    logger.info(f"{sender_identifier}: Sending chunk: {content}")
+                    logger.debug(f"{sender_identifier}: Sending chunk: {content}")
                     chunk = ChatCompletionChunk(
                         id=rid,
                         object="chat.completion.chunk",

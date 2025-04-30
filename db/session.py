@@ -10,7 +10,6 @@ from .settings import db_settings
 
 # Sync database URL
 db_url = db_settings.get_db_url()
-logger.info(f"Database URL: {db_url}")
 
 # Synchronous engine
 sync_db_engine: Engine = create_engine(
@@ -41,7 +40,6 @@ def get_db():
 
 # Async database URL
 db_url_async = db_settings.get_db_url_async()
-logger.info(f"Database URL Async: {db_url_async}")
 
 # Asynchronous engine
 db_engin_asynce: AsyncEngine = create_async_engine(
@@ -64,7 +62,7 @@ async def get_db_async():
     """
     Async dependency to get an asynchronous database session.
     """
-    logger.info("Get db_async")
+    logger.debug("Get db_async")
     async with AsyncSessionLocal() as db:
         try:
             yield db

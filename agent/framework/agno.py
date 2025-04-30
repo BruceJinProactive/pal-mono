@@ -44,7 +44,7 @@ class AgnoAgent:
         model = OpenAIChat(id="gpt-4o")
 
         agent = agno.agent.agent.Agent(
-            # persona
+            ### Persona ###
             name=config.persona.name,
             role=config.persona.role,
             description=config.persona.description,
@@ -52,17 +52,15 @@ class AgnoAgent:
             agent_id=config.metadata.agent_id,
             user_id=config.metadata.user_id,
             session_id=config.metadata.session_id,
-            # model
+            ### Model ###
             model=model,
-            # memory
+            ### Memory ###
             # Use mem0 for memory
             ### Knowledge ###
-            # knowledge_base=get_knowledge(config.knowledge), # NOTE: use our own search tool
             knowledge=None,
-            # search_knowledge=config.knowledge.enabled,
             ### Tools ###
             tools=tools,  # type: ignore
-            # storage
+            ### Storage ### # Note: To be replaced by our own session and message tables
             storage=storage,
             add_history_to_messages=True,
             num_history_responses=10,
@@ -98,8 +96,6 @@ class AgnoAgent:
         content = response_format.content
         escalated = response_format.escalated
         closing_conversation = response_format.closing_conversation
-
-        logger.info(f"Current Session ID: {self._agent.session_id}")
 
         documents = []
         images = []

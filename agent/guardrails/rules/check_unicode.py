@@ -32,7 +32,7 @@ def check_unicode(prompt: str) -> bool:
             and char not in _constants.ALLOWED_PUNCTUATION
         ):
             message = f"Non-ASCII character found: {char} (ord: {char_ord})"
-            logger.info(message)
+            logger.warning(message)
             return False
 
         # Check for characters in banned Unicode categories.
@@ -41,6 +41,6 @@ def check_unicode(prompt: str) -> bool:
             and char not in _constants.ALLOWED_WHITE_SPACE
         ):
             message = f"Banned Unicode category '{unicodedata.category(char)}' found for character: {char}"
-            logger.info(message)
+            logger.warning(message)
             return False
     return True

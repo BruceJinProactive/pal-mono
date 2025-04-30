@@ -54,7 +54,7 @@ async def list_account_feedbacks(
     # Get all conversations that have feedbacks regardless of account
     feedbacks = feedback_service.get_feedbacks(session)
     if not feedbacks:
-        logger.info("No feedbacks found!")
+        logger.debug("No feedbacks found!")
         return ListFeedbacksResponse(feedbacks=[])
     msg_id_to_feedbacks = defaultdict(list)
     for feedback in feedbacks:
@@ -70,7 +70,7 @@ async def list_account_feedbacks(
         if message.conversation_id in conversation_ids:
             account_feedbacks.extend(msg_id_to_feedbacks[message.id])
 
-    logger.info(
+    logger.debug(
         f"Found {len(account_feedbacks)} feedbacks for account {account_name}",
         extra={
             "users_in_account": len(account_users_ids),

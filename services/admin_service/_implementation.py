@@ -18,9 +18,7 @@ from services import (
     user_service,
 )
 from services.account_service import AccountParams
-from services.admin_service._utils import (
-    get_knowledge_settings,
-)
+from services.admin_service._utils import get_knowledge_settings
 from services.admin_service.schema import UserSessionPreview
 from services.agent_service import AgentParams
 from services.message_service import (
@@ -484,7 +482,7 @@ def get_instagram_connected(session: Session, project_id: uuid.UUID) -> bool:
         return False
     except Exception as e:
         # if any other error occurs, log and raise
-        logger.info(f"Unable to get Instagram access token: {e}")
+        logger.error(f"Unable to get Instagram access token: {e}")
         raise RuntimeError(f"Unable to get Instagram access token: {e}")
 
 
@@ -502,11 +500,11 @@ def get_instagram_username(session: Session, project_id: uuid.UUID) -> str:
     except KeyError:
         # if the key does not exist, then the project is not connected
         # log and raise
-        logger.info("Project is not connected to Instagram.")
+        logger.error("Project is not connected to Instagram.")
         raise ValueError("Project is not connected to Instagram.")
     except Exception as e:
         # if any other error occurs, log and raise
-        logger.info(f"Unable to get Instagram access token: {e}")
+        logger.error(f"Unable to get Instagram access token: {e}")
         raise RuntimeError(f"Unable to get Instagram access token: {e}")
 
     try:
@@ -567,7 +565,7 @@ def set_instagram_access_token(
             ) from add_e
     except KeyError as e:
         # If the project_secret_key already exists, check whether the user_secret_key exists
-        logger.info(e)
+        logger.error(e)
         try:
             # if user_secret_key exists as well, then the project is already connected
             secret.get_client_secret(user_secret_key)
@@ -622,7 +620,7 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
         secret_value = secret.get_client_secret(project_secret_key)
     except KeyError as e:
         # if the key does not exist, then the project is not connected
-        logger.info(e)
+        logger.error(e)
         return
     except Exception as e:
         logger.error(f"Unable to remove Instagram access token: {e}")
@@ -651,7 +649,7 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
             secret.remove_client_secret(user_secret_key)
         except KeyError as e:
             # if the user_secret_key does not exist, log and continue
-            logger.info(
+            logger.error(
                 f"user secret {user_secret_key} does not exist, continuing: {e}"
             )
         except Exception as e:
@@ -659,7 +657,7 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
             raise RuntimeError("Unable to remove user secret.") from e
     except KeyError as e:
         # If the project_secret_key does not exist, check whether the user_secret_key exists
-        logger.info(
+        logger.error(
             f"project secret does not exist, checking whether user secret exists: {e}"
         )
 
@@ -667,7 +665,7 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
             secret.get_client_secret(user_secret_key)
         except KeyError as get_e:
             # Neither keys exists, so the project was already disconnected
-            logger.info(
+            logger.error(
                 f"Neither project secret nor user secret exist, continuing: {get_e}"
             )
             return
@@ -701,7 +699,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
         project_secret_key = secret.get_client_secret(user_secret_key)
     except KeyError as e:
         # if the key does not exist, then the project is not connected
-        logger.info(e)
+        logger.error(e)
         return
     except Exception as e:
         logger.error(f"Unable to deauthorize Instagram access token: {e}")
@@ -718,7 +716,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
             secret.remove_client_secret(user_secret_key)
         except KeyError as e:
             # if the user_secret_key does not exist, log and continue
-            logger.info(
+            logger.error(
                 f"user secret {user_secret_key} does not exist, continuing: {e}"
             )
         except Exception as e:
@@ -726,7 +724,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
             raise RuntimeError("Unable to remove user secret.") from e
     except KeyError as e:
         # If the project_secret_key does not exist, check whether the user_secret_key exists
-        logger.info(
+        logger.error(
             f"project secret does not exist, checking whether user secret exists: {e}"
         )
 
@@ -735,7 +733,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
             secret.get_client_secret(user_secret_key)
         except KeyError as get_e:
             # Neither keys exists, so the project was already disconnected
-            logger.info(
+            logger.error(
                 f"Neither project secret nor user secret exist, continuing: {get_e}"
             )
             return
@@ -851,7 +849,7 @@ def upload_project_knowledge(
     index_name, namespace = get_knowledge_settings(session, target, auto_create=True)
     existing_files = knowledge_service.list_knowledge_files(index_name, namespace)
     if file_name in existing_files:
-        logger.info(
+        logger.error(
             "File to upload already exist!",
             extra={
                 "file_name": file_name,
@@ -880,7 +878,7 @@ def list_knowledge_files(
     """
     index_name, namespace = get_knowledge_settings(session, target)
     if not index_name or not namespace:
-        logger.info(
+        logger.error(
             "Target has missing knowledge setting, knowledge files not retrieved.",
             extra={
                 "target_id": target.id,

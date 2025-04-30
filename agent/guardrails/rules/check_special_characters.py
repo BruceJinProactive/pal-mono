@@ -12,6 +12,6 @@ def check_special_characters(prompt: str) -> bool:
         1 for char in prompt if char not in _constants.ALLOWED_CHARACTERS
     )
     if special_chars_count / max(1, len(prompt)) > 0.3:
-        logger.info("Excessive special characters found in prompt")
+        logger.warning("Excessive special characters found in prompt")
         return False
     return True

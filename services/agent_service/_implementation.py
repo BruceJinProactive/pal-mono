@@ -64,7 +64,7 @@ async def construct_agent_config(
     )
 
     # Convert blueprint to agent config
-    logger.info("Loading agent config...")
+    logger.debug("Loading agent config...")
     return raw_config.build()
 
 

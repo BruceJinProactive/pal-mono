@@ -14,7 +14,7 @@ async def update_memory(
     session_id: str | None = None,
 ) -> None:
     client = AsyncMemoryClient()
-    logger.info(f"Updating memory for user {user_id} with content: {content}")
+    logger.debug(f"Updating memory for user {user_id} with content: {content}")
     await client.add(
         messages=[
             {
@@ -27,7 +27,7 @@ async def update_memory(
         model="gpt-4o-mini",
     )
 
-    logger.info(f"Successfully added memory for user {user_id}")
+    logger.debug(f"Successfully added memory for user {user_id}")
 
 
 @task
@@ -40,6 +40,6 @@ async def get_all_memories(user_id: str) -> str:
     client = AsyncMemoryClient()
     memories = await client.get_all(user_id=user_id)
     memories_string = ", ".join([item["memory"] for item in memories])
-    logger.info(f"All memories for user {user_id}: {memories_string}")
-    logger.info(f"Get all memories took: {time.perf_counter() - start_time:.4f}s")
+    logger.debug(f"All memories for user {user_id}: {memories_string}")
+    logger.debug(f"Get all memories took: {time.perf_counter() - start_time:.4f}s")
     return memories_string

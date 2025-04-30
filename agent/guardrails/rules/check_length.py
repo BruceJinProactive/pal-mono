@@ -9,6 +9,6 @@ def check_length(prompt: str) -> bool:
     Returns False if the prompt is too long.
     """
     if len(prompt.strip().split()) > _constants.MAX_PROMPT_LENGTH:
-        logger.info(f"Prompt length exceeded: {len(prompt)}")
+        logger.warning(f"Prompt length exceeded: {len(prompt)}")
         return False
     return True

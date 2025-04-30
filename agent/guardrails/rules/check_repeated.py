@@ -40,6 +40,6 @@ def check_repeated(prompt: str) -> bool:
     """
     prompt = separate_concatenated_words_in_prompt(prompt)
     if re.compile(_constants.REPEATED_WORD_PATTERN, re.IGNORECASE).search(prompt):
-        logger.info("Repeated words found in prompt")
+        logger.warning("Repeated words found in prompt")
         return False
     return True

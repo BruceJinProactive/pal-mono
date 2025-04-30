@@ -80,7 +80,7 @@ def upload_knowledge_file(
             node.metadata["file_name"] = file_name
             upsert_data.append((str(uuid.uuid4()), embedding, node.metadata))
 
-        logger.info(
+        logger.debug(
             "Uploading file to Pinecone.",
             extra={
                 "index": index_name,
@@ -111,7 +111,7 @@ def delete_knowledge_file(
         match["id"] for match in data if match["metadata"].get("file_name") == file_name
     ]
 
-    logger.info(
+    logger.debug(
         "About to delete vector data for file",
         extra={
             "index": index_name,

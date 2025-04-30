@@ -63,7 +63,7 @@ async def get_user_async(
         user = await user_repo.get_user_by_channel_identifier(
             account_id=project.account_id, channel_identifier=channel_identifier
         )
-        logger.info(f"Looking for user with channel_identifier: {channel_identifier}")
+        logger.debug(f"Looking for user with channel_identifier: {channel_identifier}")
 
         if not user:
             # SMS opt-in needed for new SMS user
@@ -75,7 +75,7 @@ async def get_user_async(
                 Channel.VOICE if message.channel == Channel.SMS else Channel.SMS
             )
             other_channel_identifier = f"{other_channel.value}:{sender_identifier}"
-            logger.info(
+            logger.debug(
                 f"Looking for user with other_channel_identifier: {other_channel_identifier}"
             )
             user = await user_repo.get_user_by_channel_identifier(
@@ -85,7 +85,7 @@ async def get_user_async(
 
             # If found with other channel, add the other channel identifier
             if user:
-                logger.info(
+                logger.debug(
                     f"Found user with other channel. Current identifiers: {user.channel_identifiers}"
                 )
 
@@ -94,7 +94,7 @@ async def get_user_async(
                 updated_identifiers = list(user.channel_identifiers or [])
                 if channel_identifier not in updated_identifiers:
                     updated_identifiers.append(channel_identifier)
-                    logger.info(f"Adding channel_identifier: {channel_identifier}")
+                    logger.debug(f"Adding channel_identifier: {channel_identifier}")
 
                     # Update the user directly in the database
                     try:
@@ -104,7 +104,7 @@ async def get_user_async(
 
                         # Refresh the user to verify the update
                         await session.refresh(user)
-                        logger.info(
+                        logger.debug(
                             f"Updated user channel identifiers: {user.channel_identifiers}"
                         )
                     except Exception as e:

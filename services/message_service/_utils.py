@@ -140,7 +140,7 @@ def extract_image_links(response: str) -> list[tuple[str, str]]:
             if image_urls:
                 # Convert the string of list of image URLs to a list
                 image_urls = json.loads(image_urls.group(1).replace("'", '"'))
-                logger.info(f"Image URLs found: {image_urls}")
+                logger.debug(f"Image URLs found: {image_urls}")
 
                 for url in image_urls:
                     processed_parts.append(("image", url))
