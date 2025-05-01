@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel
 
@@ -21,4 +21,3 @@ class CreateUserRequest(BaseModel):
 
     email: str
     name: str
-    temporary_password: Optional[str] = None

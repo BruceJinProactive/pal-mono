@@ -927,39 +927,47 @@ def delete_knowledge_file(
     return knowledge_service.delete_knowledge_file(index_name, namespace, filename)
 
 
+def get_attr(attrs, key):
+    return next((a["Value"] for a in attrs if a["Name"] == key), "")
+
+
 def list_account_users(account_name: str) -> list[CognitoUser]:
     user_pool_id = AWS_ADMIN_CONSOLE_USER_POOL_ID
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
     users = []
     pagination_token = None
 
-    # Create a filter to search by account name directly
-    filter_expression = f'custom:account_name = "{account_name}"'
-
     try:
         while True:
-            response = cognito_client.list_users(
-                UserPoolId=user_pool_id,
-                Filter=filter_expression,
-                PaginationToken=pagination_token,
-            )
+            # Unfortunately we can't search by custom attributes, therefore we
+            # must first list all users, then manually filter by account name
+            # to only return the users for this account.
+            if pagination_token:
+                response = cognito_client.list_users(
+                    UserPoolId=user_pool_id,
+                    PaginationToken=pagination_token,
+                )
+            else:
+                response = cognito_client.list_users(
+                    UserPoolId=user_pool_id,
+                )
 
             fetched_users = response.get("Users", [])
             for user in fetched_users:
-                if "Attributes" not in user:
+                attributes = user.get("Attributes")
+                if not attributes:
                     logger.warn(
                         "User has no attributes!",
                         extra={"user_pool_id": user_pool_id, "user_data": user},
                     )
                     continue
 
-                attrs = user["Attributes"]
-                email = next(
-                    (attr["Value"] for attr in attrs if attr["Name"] == "email"), ""
-                )
-                name = next(
-                    (attr["Value"] for attr in attrs if attr["Name"] == "name"), ""
-                )
+                account = get_attr(attributes, "custom:account_name")
+                if account != account_name:
+                    continue
+
+                email = get_attr(attributes, "email")
+                name = get_attr(attributes, "name")
 
                 users.append(CognitoUser(email=email, name=name))
 
@@ -1010,17 +1018,16 @@ def create_account_user(
 def delete_account_user(account_name: str, user_email: str) -> None:
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
     try:
-        response = cognito_client.admin_get_user(
+        response = cognito_client.list_users(
             UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
-            Username=user_email,
+            Filter=f'email="{user_email}"',
         )
+        users = response.get("Users", [])
+        if not users:
+            raise ValueError(f"User not found for email: {user_email}")
 
-        user_account_name = None
-
-        for attr in response.get("UserAttributes", []):
-            if attr["Name"] == "custom:account_name":
-                user_account_name = attr["Value"]
-                break
+        user = users[0]
+        user_account_name = get_attr(user.get("Attributes", []), "custom:account_name")
 
         if user_account_name != account_name:
             logger.error(f"User {user_email} not found in account {account_name}")
