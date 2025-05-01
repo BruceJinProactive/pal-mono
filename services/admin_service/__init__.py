@@ -10,6 +10,7 @@ from db import ConversationStatus
 from services.account_service import AccountParams
 
 from ..agent_service import AgentParams
+from ..knowledge_service import KnowledgeFile
 from ..project_service import ProjectParams
 from . import _implementation
 from .schema import CognitoUser, UserSessionPreview
@@ -418,24 +419,26 @@ def upload_knowledge_file(
 def list_knowledge_files(
     session: Session,
     target: db.Project | db.Agent,
-) -> list[str]:
+    offset: int = 0,
+    limit: int = 100,
+) -> tuple[int, list[KnowledgeFile]]:
     """
-    Retrieve a list of knowledge file names for a specific project.
-    This function gets the knowledge settings from the project's raw_config
-    and uses them to query the Pinecone index for all files.
+    Retrieve a list of knowledge file data for a specific project with pagination.
 
     Args:
-        session (Session): The database session.
-        target (db.Project | db.Agent): The target to retrieve knowledge files for.
+        session: The database session
+        target: The project or agent to retrieve knowledge files for
+        offset: The number of files to skip
+        limit: The maximum number of files to return
 
     Returns:
-        list[str]: A list of knowledge file names.
+        tuple[int, list[dict]]: A tuple containing the total number of files and a list of file data
 
     Raises:
         ValueError: If the project is not found.
         RuntimeError: If there is an error retrieving the files.
     """
-    return _implementation.list_knowledge_files(session, target)
+    return _implementation.list_knowledge_files(session, target, offset, limit)
 
 
 def delete_knowledge_file(

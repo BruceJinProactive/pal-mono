@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+from datetime import datetime
 
 import openai
 from llama_index.core import SimpleDirectoryReader
@@ -8,6 +9,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import TextNode
 from pinecone import Index, Pinecone
 
+from services.knowledge_service.schema import KnowledgeFile
 from utils.log import logger
 
 # Check if Pinecone API key exists
@@ -20,19 +22,31 @@ if not PINECONE_API_KEY:
 def list_knowledge_files(
     index_name: str,
     namespace: str,
-) -> list[str]:
+    limit: int = 1000,
+    offset: int = 0,
+) -> tuple[int, list[KnowledgeFile]]:
     try:
         index = _get_index(index_name)
         data = _list_data(index, namespace)
-
-        # Use a set to avoid duplicates
-        file_set = set()
+        file_dict = {}
         for match in data:
             if "metadata" in match and "file_name" in match["metadata"]:
-                file = match["metadata"]["file_name"]
-                file_set.add(file)
+                file_name = match["metadata"]["file_name"]
+                if file_name not in file_dict:
+                    file_dict[file_name] = KnowledgeFile(
+                        name=file_name,
+                        size=match["metadata"].get("file_size", 0),
+                        created_at=match["metadata"].get("creation_date", "unknown"),
+                    )
+                else:
+                    # accumulate file size
+                    file_dict[file_name].size += match["metadata"].get("file_size", 0)
 
-        return sorted(list(file_set))
+        file_list = sorted(file_dict.values(), key=lambda x: x.name)
+        total = len(file_list)
+        paginated_files = file_list[offset : offset + limit]
+
+        return total, paginated_files
     except Exception as e:
         logger.error(f"Error retrieving knowledge files: {e}")
         raise
@@ -71,6 +85,7 @@ def upload_knowledge_file(
 
         # Prepare vectors and metadata for Pinecone
         upsert_data = []
+        file_created_at = datetime.now().isoformat()
         for node in nodes:
             if isinstance(node, TextNode):
                 embedding = get_openai_embeddings(node.text)
@@ -78,6 +93,8 @@ def upload_knowledge_file(
                 raise TypeError("Expected TextNode, got something else.")
             node.embedding = embedding
             node.metadata["file_name"] = file_name
+            node.metadata["size_bytes"] = len(content)
+            node.metadata["created_at"] = file_created_at
             upsert_data.append((str(uuid.uuid4()), embedding, node.metadata))
 
         logger.debug(

@@ -1,27 +1,30 @@
 from . import _implementation
+from .schema import KnowledgeFile
 
 
 def list_knowledge_files(
     index_name: str,
     namespace: str,
-) -> list[str]:
+    limit: int = 1000,
+    offset: int = 0,
+) -> tuple[int, list[KnowledgeFile]]:
     """
-    Retrieve a list of knowledge file names for a specific project.
-    This function gets the knowledge settings from the project's raw_config
-    and uses them to query the Pinecone index for all files.
+    Retrieve a list of knowledge files with pagination.
 
     Args:
-        index_name (str): The index name for the pinecone vector database.
-        namespace (str): The namespace within the index to retrieve files from.
+        index_name: The name of the Pinecone index to query
+        namespace: The namespace within the index to query
+        limit: The maximum number of files to return
+        offset: The number of files to skip
 
     Returns:
-        list[str]: A list of file names.
+        tuple[int, list[dict]]: A tuple containing the total number of files and a list of file data with metadata
 
     Raises:
         ValueError: If the project is not found.
         RuntimeError: If there is an error retrieving the files.
     """
-    return _implementation.list_knowledge_files(index_name, namespace)
+    return _implementation.list_knowledge_files(index_name, namespace, limit, offset)
 
 
 def upload_knowledge_file(

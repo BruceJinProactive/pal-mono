@@ -630,6 +630,10 @@ async def delete_account_user(
 async def get_knowledge_files(
     resource: ResourceType,
     resource_id: uuid.UUID,
+    page: int = Query(1, description="Current page, first page starts at 1", gt=0),
+    page_size: int = Query(
+        10, description="Size of each page, cannot be less than 1", gt=0
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListKnowledgeFileResponse:
@@ -638,7 +642,7 @@ async def get_knowledge_files(
     Returns a list of file names from the knowledge base (Pinecone index)
     """
     return await _knowledge.get_project_knowledge_files(
-        resource, resource_id, context, session
+        resource, resource_id, page, page_size, context, session
     )
 
 

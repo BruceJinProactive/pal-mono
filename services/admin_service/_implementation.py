@@ -24,6 +24,7 @@ from services.account_service import AccountParams
 from services.admin_service._utils import get_knowledge_settings
 from services.admin_service.schema import CognitoUser, UserSessionPreview
 from services.agent_service import AgentParams
+from services.knowledge_service import KnowledgeFile
 from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
@@ -860,18 +861,20 @@ def upload_project_knowledge(
     generates embeddings for the text content, and stores them in Pinecone.
     """
     index_name, namespace = get_knowledge_settings(session, target, auto_create=True)
-    existing_files = knowledge_service.list_knowledge_files(index_name, namespace)
-    if file_name in existing_files:
-        logger.error(
-            "File to upload already exist!",
-            extra={
-                "file_name": file_name,
-                "files": existing_files,
-            },
-        )
-        raise ValueError(
-            "The file already exist in knowledge base, to update, first delete the file before uploading again."
-        )
+    _, existing_files = knowledge_service.list_knowledge_files(index_name, namespace)
+
+    for file in existing_files:
+        if file_name == file.name:
+            logger.error(
+                "File to upload already exist!",
+                extra={
+                    "file_name": file_name,
+                    "files": existing_files,
+                },
+            )
+            raise ValueError(
+                "The file already exist in knowledge base, to update, first delete the file before uploading again."
+            )
     return knowledge_service.upload_knowledge_file(
         index_name,
         namespace,
@@ -883,11 +886,22 @@ def upload_project_knowledge(
 def list_knowledge_files(
     session: Session,
     target: db.Project | db.Agent,
-) -> list[str]:
+    offset: int = 0,
+    limit: int = 100,
+) -> tuple[int, list[KnowledgeFile]]:
     """
-    Retrieve a list of knowledge file names for a specific project.
+    Retrieve a list of knowledge file data for a specific project with pagination.
     This function gets the knowledge settings from the project's raw_config
     and uses them to query the Pinecone index for all files.
+
+    Args:
+        session: The database session
+        target: The project or agent to retrieve knowledge files for
+        offset: The number of files to skip
+        limit: The maximum number of files to return
+
+    Returns:
+        tuple[int, list[dict]]: A tuple containing the total number of files and a list of file data
     """
     index_name, namespace = get_knowledge_settings(session, target)
     if not index_name or not namespace:
@@ -900,8 +914,8 @@ def list_knowledge_files(
                 "namespace": namespace,
             },
         )
-        return []
-    return knowledge_service.list_knowledge_files(index_name, namespace)
+        return 0, []
+    return knowledge_service.list_knowledge_files(index_name, namespace, limit, offset)
 
 
 def delete_knowledge_file(

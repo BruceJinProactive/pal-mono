@@ -4,7 +4,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 import db
-from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
+from api.schemas.admin.knowledge import (
+    KnowledgeFile,
+    ListKnowledgeFileResponse,
+    ResourceType,
+)
 from services import admin_service, agent_service, project_service
 from utils.log import logger
 
@@ -15,6 +19,8 @@ from ._utils import not_found_error
 async def get_project_knowledge_files(
     resource: ResourceType,
     resource_id: uuid.UUID,
+    page: int,
+    page_size: int,
     context: UserContext,
     session: Session,
 ) -> ListKnowledgeFileResponse:
@@ -26,9 +32,24 @@ async def get_project_knowledge_files(
     target = get_and_authorize(resource, resource_id, context, session)
 
     try:
-        file_names = admin_service.list_knowledge_files(session, target)
+        total, file_data = admin_service.list_knowledge_files(
+            session, target, offset=(page - 1) * page_size, limit=page_size
+        )
+        files = [
+            KnowledgeFile(
+                name=file.name,
+                size_bytes=file.size,
+                created_at=file.created_at,
+            )
+            for file in file_data
+        ]
+
+        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
+
         return ListKnowledgeFileResponse(
-            files=file_names,
+            files=files,
+            total_files=total,
+            total_pages=total_pages,
         )
     except ValueError as e:
         raise HTTPException(
