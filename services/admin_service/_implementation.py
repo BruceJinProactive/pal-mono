@@ -22,7 +22,7 @@ from services import (
 )
 from services.account_service import AccountParams
 from services.admin_service._utils import get_knowledge_settings
-from services.admin_service.schema import UserSessionPreview
+from services.admin_service.schema import CognitoUser, UserSessionPreview
 from services.agent_service import AgentParams
 from services.message_service import (
     get_conversations_by_users,
@@ -794,7 +794,7 @@ def onboard_new_account(
     account_name: str,
     account_params: AccountParams,
     agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
-    users: list[tuple[str, str]] = [],
+    users: list[CognitoUser] | None,
 ) -> dict:
     try:
         # Create the account
@@ -804,7 +804,6 @@ def onboard_new_account(
 
         created_agents = []
         created_projects = []
-        created_cognito_users = []
 
         for agent_project in agent_projects:
             agent_param = agent_project[0]
@@ -829,8 +828,10 @@ def onboard_new_account(
                 )
                 created_projects.append(project)
 
-        if users:
-            created_cognito_users = create_cognito_users(account_name, users)
+        created_cognito_users = [
+            create_account_user(account_name, user.email, user.name)
+            for user in users or []
+        ]
 
         # commit all changes at once.
         session.commit()
@@ -912,53 +913,115 @@ def delete_knowledge_file(
     return knowledge_service.delete_knowledge_file(index_name, namespace, filename)
 
 
-def create_cognito_users(
-    account_name: str,
-    users: list[tuple[str, str]],
-) -> list[dict]:
-    """
-    Create Cognito user accounts for the provided list of users using AdminCreateUser.
-
-    Args:
-        account_name (str): The account name to associate the users with
-        users (list[tuple[str, str]]): A list of (email, name) tuples for user creation
-
-    Returns:
-        list[dict]: List of created user details
-
-    Raises:
-        ValueError: If there's an error creating a user account
-    """
-
+def list_account_users(account_name: str) -> list[CognitoUser]:
+    user_pool_id = AWS_ADMIN_CONSOLE_USER_POOL_ID
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
-    created_users = []
+    users = []
+    pagination_token = None
 
-    for email, name in users:
-        try:
-            # Create the user in Cognito using AdminCreateUser
-            response = cognito_client.admin_create_user(
-                UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
-                Username=email,
-                UserAttributes=[
-                    {"Name": "email", "Value": email},
-                    {"Name": "email_verified", "Value": "true"},
-                    {"Name": "name", "Value": name},
-                    {"Name": "custom:account_name", "Value": account_name},
-                ],
-                DesiredDeliveryMediums=["EMAIL"],
+    # Create a filter to search by account name directly
+    filter_expression = f'custom:account_name = "{account_name}"'
+
+    try:
+        while True:
+            response = cognito_client.list_users(
+                UserPoolId=user_pool_id,
+                Filter=filter_expression,
+                PaginationToken=pagination_token,
             )
 
-            user_data = {
-                "UserId": response["User"]["Username"],
-                "Email": email,
-            }
-            created_users.append(user_data)
+            fetched_users = response.get("Users", [])
+            for user in fetched_users:
+                if "Attributes" not in user:
+                    logger.warn(
+                        "User has no attributes!",
+                        extra={"user_pool_id": user_pool_id, "user_data": user},
+                    )
+                    continue
 
-            logger.info(f"Created user account for {email} using AdminCreateUser")
-        except ClientError as e:
+                attrs = user["Attributes"]
+                email = next(
+                    (attr["Value"] for attr in attrs if attr["Name"] == "email"), ""
+                )
+                name = next(
+                    (attr["Value"] for attr in attrs if attr["Name"] == "name"), ""
+                )
+
+                users.append(CognitoUser(email=email, name=name))
+
+            pagination_token = response.get("PaginationToken")
+            if not pagination_token or not fetched_users:
+                break
+        return users
+    except ClientError as e:
+        logger.error(f"Error listing Cognito users: {e}")
+        raise ValueError(f"Failed to list Cognito users: {str(e)}")
+
+
+def create_account_user(
+    account_name: str,
+    user_email: str,
+    user_name: str,
+) -> CognitoUser:
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+
+    try:
+        cognito_client.admin_create_user(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Username=user_email,
+            UserAttributes=[
+                {"Name": "email", "Value": user_email},
+                {"Name": "email_verified", "Value": "true"},
+                {"Name": "name", "Value": user_name},
+                {"Name": "custom:account_name", "Value": account_name},
+            ],
+            DesiredDeliveryMediums=["EMAIL"],
+        )
+        logger.info(f"Created user account for {user_email} using AdminCreateUser")
+        return CognitoUser(
+            email=user_email,
+            name=user_name,
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "UsernameExistsException":
+            logger.error(f"User with email {user_email} already exists: {e}")
+            raise ValueError(f"User with email {user_email} already exists") from e
+        else:
             logger.error(f"Error creating Cognito user: {e}")
             raise ValueError(
-                f"Failed to create Cognito user account for {email}: {str(e)}"
-            )
+                f"Failed to create Cognito user account for {user_email}: {e}"
+            ) from e
 
-    return created_users
+
+def delete_account_user(account_name: str, user_email: str) -> None:
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+    try:
+        response = cognito_client.admin_get_user(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Username=user_email,
+        )
+
+        user_account_name = None
+
+        for attr in response.get("UserAttributes", []):
+            if attr["Name"] == "custom:account_name":
+                user_account_name = attr["Value"]
+                break
+
+        if user_account_name != account_name:
+            logger.error(f"User {user_email} not found in account {account_name}")
+            raise ValueError(f"User {user_email} not found in account {account_name}")
+
+        cognito_client.admin_delete_user(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Username=user_email,
+        )
+
+        logger.info(f"Deleted cognito user from account {account_name}")
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "UserNotFoundException":
+            logger.error(f"User {user_email} not found: {e}")
+            raise ValueError(f"User {user_email} not found")
+        else:
+            logger.error(f"Error deleting Cognito user: {e}")
+            raise ValueError(f"Failed to delete Cognito user: {str(e)}")

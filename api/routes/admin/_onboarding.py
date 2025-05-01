@@ -5,6 +5,7 @@ from api.schemas.admin.onboarding import OnboardingRequest, OnboardingResponse
 from db.tables.accounts import BusinessIndustry
 from services import admin_service
 from services.account_service import AccountParams
+from services.admin_service.schema import CognitoUser
 from services.agent_service import AgentParams
 from services.project_service import ProjectParams
 
@@ -69,13 +70,16 @@ async def create_onboarding(
 
         agent_projects_data.append((agent_data, projects_data))
 
+    cognito_users = [
+        CognitoUser(email=user.email, name=user.name) for user in request.users
+    ]
     try:
         result = admin_service.onboard_new_account(
             session,
             request.account.name,
             account_params,
             agent_projects_data,
-            users=[(user.email, user.name) for user in request.users],
+            users=cognito_users,
         )
         return OnboardingResponse(
             account=build_account(result["account"]),

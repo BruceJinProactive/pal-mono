@@ -1,6 +1,6 @@
 import datetime
 import uuid
-from typing import Union
+from typing import Optional, Union
 
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,7 @@ from services.account_service import AccountParams
 from ..agent_service import AgentParams
 from ..project_service import ProjectParams
 from . import _implementation
-from .schema import UserSessionPreview
+from .schema import CognitoUser, UserSessionPreview
 
 
 def list_user_sessions_in_account(
@@ -357,7 +357,7 @@ def onboard_new_account(
     account_name: str,
     account_params: AccountParams,
     agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
-    users: list[tuple[str, str]] = [],
+    users: list[CognitoUser] | None = None,
 ) -> dict:
     """
     Creates an account, agents, and projects in a single transaction.
@@ -371,8 +371,7 @@ def onboard_new_account(
             Each item should contain:
             - agent: Agent parameters
             - projects: List of project parameters
-        users (list[tuple[str, str]], optional): List of (email, name) tuples for creating Cognito users.
-            Defaults to [].
+        users (list[CognitoUser], optional): List of (email, name) tuples for creating Cognito users.
 
     Returns:
         dict: Dictionary with created IDs
@@ -459,6 +458,58 @@ def delete_knowledge_file(
     return _implementation.delete_knowledge_file(session, target, filename)
 
 
+def list_account_users(account_name: str) -> list[CognitoUser]:
+    """
+    List all admin users for a specific account.
+
+    Args:
+        account_name: The name of the account to list users for
+
+    Returns:
+        list[CognitoUser]: A list of admin users for the account
+
+    Raises:
+        ValueError: If there's an error listing Cognito users
+    """
+    return _implementation.list_account_users(account_name)
+
+
+def create_account_user(
+    account_name: str,
+    user_email: str,
+    user_name: str,
+) -> CognitoUser:
+    """
+    Create Cognito user accounts for the provided list of users using AdminCreateUser.
+
+    Args:
+        account_name (str): The account name to associate the users with
+        user_email (str): User's email used for login
+        user_name (str): User's first name
+
+    Returns:
+        CognitoUser: Created user details
+
+    Raises:
+        ValueError: If there's an error creating a user account
+    """
+    return _implementation.create_account_user(account_name, user_email, user_name)
+
+
+def delete_account_user(account_name: str, user_email: str) -> None:
+    """
+    Delete an admin user for a specific account.
+
+    Args:
+        account_name: The name of the account the user belongs to
+        user_email: The user ID (email) to delete
+
+    Raises:
+        ValueError: If the user is not found or there's an error deleting the user
+    """
+    return _implementation.delete_account_user(account_name, user_email)
+
+
 __all__ = [
     "list_user_sessions_in_account",
     "get_inbox_conversations",
@@ -479,4 +530,7 @@ __all__ = [
     "list_knowledge_files",
     "upload_knowledge_file",
     "delete_knowledge_file",
+    "list_account_users",
+    "create_account_user",
+    "delete_account_user",
 ]

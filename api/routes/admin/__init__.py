@@ -39,6 +39,11 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
+from api.schemas.admin.user_management import (
+    CreateUserRequest,
+    ListUsersResponse,
+    UserInfo,
+)
 from api.schemas.chat.message import Channel
 
 from . import (
@@ -49,6 +54,7 @@ from . import (
     _feedback,
     _knowledge,
     _projects,
+    _users,
 )
 from ._auth import authenticate_user, get_user_info
 from ._onboarding import create_onboarding
@@ -569,6 +575,49 @@ async def get_project_instagram_username(
 
     """
     return _projects.get_project_instagram_username(project_id, session)
+
+
+"""
+---------- User Management Endpoints ----------
+----------------------------------------------
+"""
+
+
+@admin_router.post("/accounts/{account_name}/users")
+async def list_account_users(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+) -> ListUsersResponse:
+    """
+    Retrieve a list of admin users for a specific account.
+    Filters users by the custom:account_name attribute in Cognito.
+    """
+    return await _users.list_account_users(account_name, context)
+
+
+@admin_router.put("/accounts/{account_name}/users")
+async def create_account_user(
+    account_name: str,
+    user: CreateUserRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> UserInfo:
+    """
+    Create a new admin user for a specific account.
+    Uses AdminCreateUser flow to create the user in Cognito.
+    """
+    return await _users.create_account_user(account_name, user, context)
+
+
+@admin_router.delete("/accounts/{account_name}/users")
+async def delete_account_user(
+    account_name: str,
+    email: str = Query(..., description="Email address for the user to be deleted"),
+    context: UserContext = Depends(authenticate_user),
+):
+    """
+    Delete an admin user for a specific account by user email
+    """
+    await _users.delete_account_user(account_name, email, context)
 
 
 """
