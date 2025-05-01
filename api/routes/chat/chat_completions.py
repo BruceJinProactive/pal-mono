@@ -1,5 +1,7 @@
+import datetime
 import json
 import os
+import uuid
 from typing import Any, Dict, List, Literal, Optional
 
 import openai
@@ -10,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from api.routes.chat.chat import chat_router
+from api.schemas.chat.message import AuthorType, Channel, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
+from services.message_service import get_chat_response_async, get_chat_response_stream
 from utils.log import logger
 
 
@@ -42,6 +46,273 @@ class ChatCompletionRequest(BaseModel):
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 async def chat_completions(
+    request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
+):
+
+    # If request.model is "default", use gpt-4o, otherwise just print the model
+    if request.model == "default":
+        model = "gpt-4o"
+        logger.info(f"Using default model: {model}")
+        return await chat_completions_oai(request, session)
+    else:
+        logger.info(f"Requested model: {request.model}")
+        model = request.model
+        return await chat_completions_agno(request, model, session)
+
+
+async def chat_completions_agno(
+    request: ChatCompletionRequest,
+    model: str,
+    session: AsyncSession = Depends(db.get_db_async),
+):
+    # Log the request
+    logger.info(f"Agno chat completions request: {json.dumps(request.model_dump())}")
+
+    try:
+        # Convert request format to a Message object
+        if request.messages:
+            # Build a message from the messages array
+            content = ""
+            for msg in request.messages:
+                if msg.get("role") == "user":
+                    content = msg.get("content", "")
+                    break
+
+            if not content:
+                content = request.messages[-1].get("content", "")
+        elif request.message:
+            content = request.message
+        else:
+            raise ValueError("Either 'message' or 'messages' must be provided")
+
+        # Create a Message object
+        message = Message(
+            author_type=AuthorType.USER,
+            sender_identifier="user",
+            recipient_identifier=model,
+            channel=Channel.API,
+            broker=None,  # API doesn't need a broker
+            text=TextObject(body=content),
+            metadata=Metadata(
+                testing=False,
+                # Add any other metadata needed
+            ),
+        )
+
+        if request.stream:
+            # Use streaming response
+            async def generate_stream():
+                try:
+                    try:
+                        response_stream = await get_chat_response_stream(
+                            session=session, message=message
+                        )
+                    except Exception as es:
+                        # Log the error and create a fallback response
+                        logger.error(
+                            f"Error getting streaming response from agent: {str(es)}"
+                        )
+                        # Create a fallback error message that follows ChatCompletionChunk format
+                        fallback_id = f"chatcmpl-{uuid.uuid4().hex}"
+                        fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
+
+                        # Create a fallback stream chunk
+                        fallback_chunk = {
+                            "id": fallback_id,
+                            "object": "chat.completion.chunk",
+                            "created": int(
+                                datetime.datetime.now(datetime.timezone.utc).timestamp()
+                            ),
+                            "model": model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": fallback_content,
+                                    },
+                                    "finish_reason": "stop",
+                                }
+                            ],
+                        }
+                        yield f"data: {json.dumps(fallback_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+
+                    if response_stream:
+                        chunk_count = 0
+                        async for chunk in response_stream:
+                            chunk_count += 1
+
+                            # Only log first chunk to avoid excessive logging
+                            if chunk_count == 1:
+                                if hasattr(chunk, "model_dump"):
+                                    chunk_data = chunk.model_dump()
+                                else:
+                                    # Fall back to dict representation
+                                    chunk_data = {
+                                        "id": chunk.id,
+                                        "object": chunk.object,
+                                        "created": chunk.created,
+                                        "model": chunk.model,
+                                        "choices": [
+                                            {
+                                                "index": choice.index,
+                                                "delta": {
+                                                    "role": (
+                                                        choice.delta.role
+                                                        if hasattr(choice.delta, "role")
+                                                        else None
+                                                    ),
+                                                    "content": (
+                                                        choice.delta.content
+                                                        if hasattr(
+                                                            choice.delta, "content"
+                                                        )
+                                                        else None
+                                                    ),
+                                                },
+                                                "finish_reason": choice.finish_reason,
+                                            }
+                                            for choice in chunk.choices
+                                        ],
+                                    }
+                                logger.info(
+                                    f"First stream chunk: {json.dumps(chunk_data)}"
+                                )
+
+                            if hasattr(chunk, "model_dump"):
+                                chunk_data = chunk.model_dump()
+                            else:
+                                # Fall back to dict representation
+                                chunk_data = {
+                                    "id": chunk.id,
+                                    "object": chunk.object,
+                                    "created": chunk.created,
+                                    "model": chunk.model,
+                                    "choices": [
+                                        {
+                                            "index": choice.index,
+                                            "delta": {
+                                                "role": (
+                                                    choice.delta.role
+                                                    if hasattr(choice.delta, "role")
+                                                    else None
+                                                ),
+                                                "content": (
+                                                    choice.delta.content
+                                                    if hasattr(choice.delta, "content")
+                                                    else None
+                                                ),
+                                            },
+                                            "finish_reason": choice.finish_reason,
+                                        }
+                                        for choice in chunk.choices
+                                    ],
+                                }
+
+                            yield f"data: {json.dumps(chunk_data)}\n\n"
+
+                        # Log completion of stream
+                        logger.info(
+                            f"Completed streaming response after {chunk_count} chunks"
+                        )
+                        yield "data: [DONE]\n\n"
+                except Exception as e:
+                    logger.error(f"Error in streaming response: {str(e)}")
+                    error_data = {
+                        "error": {
+                            "message": str(e),
+                            "type": "server_error",
+                            "code": 500,
+                        }
+                    }
+                    yield f"data: {json.dumps(error_data)}\n\n"
+                    yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                generate_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",  # For nginx
+                },
+            )
+
+        # Define fallback content up front to ensure it's always defined
+        fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
+
+        try:
+            # Non-streaming response
+            response_messages = await get_chat_response_async(
+                session=session, message=message
+            )
+
+            if not response_messages:
+                # Fall back to a default response if no messages are returned
+                logger.warning(
+                    f"No response messages from agent for model {model}, using fallback"
+                )
+        except Exception as e:
+            # Log the specific error and use a fallback response
+            logger.error(f"Error getting response from agent: {str(e)}")
+            response_messages = []
+
+        # Extract content from the first message or use fallback
+        if response_messages and response_messages[0].text:
+            content = response_messages[0].text.body
+        else:
+            content = fallback_content
+
+        # Create a response similar to OpenAI format
+        response_data = {
+            "id": f"chatcmpl-{uuid.uuid4().hex}",
+            "object": "chat.completion",
+            "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": content,
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 0,  # We don't track these
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            },
+        }
+
+        # Log the response
+        logger.info(f"Agno chat completions response: {json.dumps(response_data)}")
+
+        return response_data
+
+    except ValueError as ve:
+        logger.error(f"Error validating agno chat completion request: {ve}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="VALIDATION_ERROR", error_message=str(ve)
+            ).model_dump(),
+        )
+    except Exception as e:
+        logger.error(f"Error processing agno chat completion request: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error_code="INTERNAL_SERVER_ERROR",
+                error_message="An unexpected error occurred while processing the request",
+            ).model_dump(),
+        )
+
+
+async def chat_completions_oai(
     request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
 ):
     # Log the complete request as JSON
