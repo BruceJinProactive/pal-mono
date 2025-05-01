@@ -37,9 +37,10 @@ class AgnoAgent:
             for tool in get_tools(
                 config.tool,
                 config.knowledge,
+                config.memory,
                 user_id=config.metadata.user_id,
             )
-        ]  # construct search knowledge tool
+        ]  # Construct tools based on configuration (memory and knowledge tools are conditionally added)
 
         model = OpenAIChat(id="gpt-4o")
 
