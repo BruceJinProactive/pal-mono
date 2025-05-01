@@ -69,7 +69,7 @@ class ToastTool(Toolkit):
         with LLMObs.task(name="get_toast_bearer_token"):
             api_key = get_client_secret_with_fallback("TOAST_CLIENT_ID")
             api_secret = get_client_secret_with_fallback("TOAST_CLIENT_SECRET")
-            bearer_token = get_toast_access_token(api_key, api_secret, True)
+            bearer_token = get_toast_access_token(api_key, api_secret)
             return bearer_token
 
     @tool
@@ -200,7 +200,7 @@ class ToastTool(Toolkit):
                 )
 
             status = get_online_ordering_status(
-                self._toast_bearer_token, self.store_id, True
+                self._toast_bearer_token, self.store_id
             ).model_dump_json()
 
             return status

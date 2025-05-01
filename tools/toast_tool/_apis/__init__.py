@@ -20,7 +20,6 @@ BASE_URL = "ws-sandbox-api.eng.toasttab.com"
 def get_toast_access_token(
     client_id: str,
     client_secret: str,
-    logging_enabled: bool = True,
 ) -> Optional[ToastAccessToken]:
     """
     Obtains an access token from the Toast Authentication API.
@@ -44,11 +43,9 @@ def get_toast_access_token(
 
     headers = {"Content-Type": "application/json"}
 
-    if logging_enabled:
-        logger.debug("[ToastAPI.get_toast_access_token] Authenticating with Toast API")
-        logger.debug(
-            f"[ToastAPI.get_toast_access_token] Using client ID: {'*' * 8}{client_id[-4:] if len(client_id) > 4 else '*' * 4}"
-        )
+    logger.debug(
+        f"[ToastAPI.get_toast_access_token] Authenticating with Toast API using client ID: {'*' * 8}{client_id[-4:] if len(client_id) > 4 else '*' * 4}"
+    )
     try:
         conn = http.client.HTTPSConnection(BASE_URL, timeout=30)
         conn.request(
@@ -77,13 +74,9 @@ def get_toast_access_token(
                     "[ToastAPI.get_toast_access_token] Failed to authenticate with Toast API. Invalid token"
                 )
 
-            if logging_enabled:
-                logger.debug(
-                    "[ToastAPI.get_toast_access_token] Successfully authenticated with Toast API"
-                )
-                logger.debug(
-                    f"[ToastAPI.get_toast_access_token] Token expires in: {token.expires_in} seconds"
-                )
+            logger.debug(
+                f"[ToastAPI.get_toast_access_token] Successfully authenticated with Toast API expiring in: {token.expires_in} seconds"
+            )
             return token
         else:
             raise ValueError(
@@ -123,7 +116,6 @@ def get_store_info(
             query_params=query_params,
             extra_headers=None,
             payload=None,
-            logging_enabled=True,
         )
     except Exception as e:
         # Will handle the exception at LLM level
@@ -148,7 +140,6 @@ def get_store_info(
 def get_online_ordering_status(
     bearer_token: ToastAccessToken,
     store_id: str,
-    logging_enabled: bool = True,
 ) -> RestaurantOrderingStatus:
     """
     Get the online ordering availability status for a Toast restaurant.
@@ -156,7 +147,6 @@ def get_online_ordering_status(
     Args:
         bearer_token: Toast access token
         store_id: External ID for the restaurant
-        logging_enabled: Whether to log request and response details
 
     Returns:
         RestaurantOrderingStatus object containing the availability status
@@ -171,7 +161,6 @@ def get_online_ordering_status(
             query_params=None,
             extra_headers=None,
             payload=None,
-            logging_enabled=logging_enabled,
         )
     except Exception as e:
         raise Exception(
@@ -217,7 +206,6 @@ def get_order_prices(
             store_id=store_id,
             query_params=None,
             payload=order_data.model_dump(exclude_none=True),
-            logging_enabled=True,
         )
     except Exception as e:
         raise Exception(
@@ -262,7 +250,6 @@ def get_dining_options(
             store_id=store_id,
             query_params=None,
             payload=None,
-            logging_enabled=True,
         )
     except Exception as e:
         raise Exception(
@@ -298,7 +285,6 @@ def get_dining_option(
             store_id=store_id,
             query_params=None,
             payload=None,
-            logging_enabled=True,
         )
     except Exception as e:
         raise Exception(
@@ -339,7 +325,6 @@ def submit_order(
             api_function="/orders/v2/orders",
             store_id=store_id,
             payload=order.model_dump(exclude_none=True),
-            logging_enabled=True,
         )
     except Exception as e:
         raise Exception(

@@ -16,14 +16,14 @@ def connect_toast_order_hub(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
-    logging_enabled: bool = True,
 ) -> ToastHubResponse:
 
-    if logging_enabled:
-        logger.debug(f"Calling Toast API: {http_method} {api_function}")
-        logger.debug(f"Query Params: {query_params}")
-        logger.debug(f"Extra Headers: {extra_headers}")
-        logger.debug(f"Payload: {payload}")
+    logger.debug(
+        f"[ToastTool._apis._utils.connect_toast_order_hub] Calling Toast API: {http_method} {api_function} | "
+        f"Query Params: {query_params} | "
+        f"Extra Headers: {extra_headers} | "
+        f"Payload: {payload}"
+    )
 
     # Set up headers
     headers = {
@@ -78,10 +78,9 @@ def connect_toast_order_hub(
             reason=response.reason,
             decoded_body=response_data,
         )
-        if logging_enabled:
-            logger.debug(
-                f"[ToastTool._apis._utils.connect_toast_order_hub] ToastResponse: {toast_response}"
-            )
+        logger.debug(
+            f"[ToastTool._apis._utils.connect_toast_order_hub] ToastResponse: {toast_response}"
+        )
         return toast_response
 
     except Exception as e:
