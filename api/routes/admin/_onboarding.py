@@ -71,12 +71,17 @@ async def create_onboarding(
 
     try:
         result = admin_service.onboard_new_account(
-            session, request.account.name, account_params, agent_projects_data
+            session,
+            request.account.name,
+            account_params,
+            agent_projects_data,
+            users=[(user.email, user.name) for user in request.users],
         )
         return OnboardingResponse(
             account=build_account(result["account"]),
             agents=[build_agent(agent) for agent in result["agents"]],
             projects=[build_project(project) for project in result["projects"]],
+            cognito_users=result.get("cognito_users", []),
         )
     except ValueError as err:
         raise HTTPException(

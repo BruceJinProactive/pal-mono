@@ -1,10 +1,13 @@
 import json
+import os
 import re
 import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+import boto3
+from botocore.exceptions import ClientError
 from sqlalchemy import Table
 from sqlalchemy.orm import Session, declarative_base
 
@@ -35,7 +38,10 @@ from utils import secret
 from utils.log import logger
 
 MOCK_USER_PREFIX = "mock-user"
-DEFAULT_INDEX_NAME = "projects"
+
+
+AWS_REGION = os.environ["AWS_REGION"]
+AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
 
 
 def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
@@ -788,6 +794,7 @@ def onboard_new_account(
     account_name: str,
     account_params: AccountParams,
     agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
+    users: list[tuple[str, str]] = [],
 ) -> dict:
     try:
         # Create the account
@@ -797,6 +804,7 @@ def onboard_new_account(
 
         created_agents = []
         created_projects = []
+        created_cognito_users = []
 
         for agent_project in agent_projects:
             agent_param = agent_project[0]
@@ -821,12 +829,16 @@ def onboard_new_account(
                 )
                 created_projects.append(project)
 
+        if users:
+            created_cognito_users = create_cognito_users(account_name, users)
+
         # commit all changes at once.
         session.commit()
         return {
             "account": account,
             "agents": created_agents,
             "projects": created_projects,
+            "cognito_users": created_cognito_users,
         }
     except Exception as e:
         # Rollback the transaction if any error occurs
@@ -898,3 +910,55 @@ def delete_knowledge_file(
 ) -> list[str]:
     index_name, namespace = get_knowledge_settings(session, target)
     return knowledge_service.delete_knowledge_file(index_name, namespace, filename)
+
+
+def create_cognito_users(
+    account_name: str,
+    users: list[tuple[str, str]],
+) -> list[dict]:
+    """
+    Create Cognito user accounts for the provided list of users using AdminCreateUser.
+
+    Args:
+        account_name (str): The account name to associate the users with
+        users (list[tuple[str, str]]): A list of (email, name) tuples for user creation
+
+    Returns:
+        list[dict]: List of created user details
+
+    Raises:
+        ValueError: If there's an error creating a user account
+    """
+
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+    created_users = []
+
+    for email, name in users:
+        try:
+            # Create the user in Cognito using AdminCreateUser
+            response = cognito_client.admin_create_user(
+                UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+                Username=email,
+                UserAttributes=[
+                    {"Name": "email", "Value": email},
+                    {"Name": "email_verified", "Value": "true"},
+                    {"Name": "name", "Value": name},
+                    {"Name": "custom:account_name", "Value": account_name},
+                ],
+                DesiredDeliveryMediums=["EMAIL"],
+            )
+
+            user_data = {
+                "UserId": response["User"]["Username"],
+                "Email": email,
+            }
+            created_users.append(user_data)
+
+            logger.info(f"Created user account for {email} using AdminCreateUser")
+        except ClientError as e:
+            logger.error(f"Error creating Cognito user: {e}")
+            raise ValueError(
+                f"Failed to create Cognito user account for {email}: {str(e)}"
+            )
+
+    return created_users

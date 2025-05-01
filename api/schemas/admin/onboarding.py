@@ -12,11 +12,19 @@ class OnboardingAgentProject(BaseModel):
     projects: list[CreateProjectRequest]
 
 
+class UserInfo(BaseModel):
+    """User information for creating Cognito accounts during onboarding"""
+
+    email: str
+    name: str
+
+
 class OnboardingRequest(BaseModel):
     """Onboarding request model for creating account, agents, and projects in a single transaction"""
 
     account: CreateAccountRequest
     agent_projects: list[OnboardingAgentProject]
+    users: list[UserInfo] = []
 
 
 class OnboardingResponse(BaseModel):
@@ -25,3 +33,4 @@ class OnboardingResponse(BaseModel):
     account: Account
     agents: list[Agent] = []
     projects: list[Project] = []
+    cognito_users: list[dict] = []
