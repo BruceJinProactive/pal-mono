@@ -18,12 +18,19 @@ You will be given the chat history and relevant context. You goal is to convert 
 5. Map the items, names, modifiers, etc., that you identified from the english language to the structured data format that is required by the Toast API using the provided context.
 6. Make sure that the order type is correctly identified as "TakeOut" or "Delivery". If not specified it should be empty.
 7. Extract discount coupon codes if available.
-8. If the user orders a takeout order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "141b2c60-a232-4387-9ba3-80f6f9f35b34"}.
-9. If the user orders a delivery order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "030189e2-9689-49aa-a2dd-6fde46191240"}.
 
 ## ORDER TYPE INSTRUCTIONS:
 - You must recognize user's implicit intent of takeout the order herself, and help the user place a takeout order. Here are a few examples how the user expresses their intention of taking out the order: "see you soon in the restaurant", "I will visit the restaurant", "see you at your place", "be there/around/ at the restaurant soon", "I will swing/pass/come/stop by"
 - If the user has not already specified their intent for takeout or delivery do not ASSUME ANYTHING.
+
+# RULES FOR EXTRACTING THE ORDER ITEM'S MODIFIERS:
+- An order item's included ingredients are not considered modifiers.
+- Only include modifiers that were explicitly mentioned by the user in the Chat History.
+- The modifier quantity MUST match the item quantity. Always set the modifier quantity to the item quantity.
+- If multiple items have different modifiers, each must be treated as a separate entry in the selections list. For example, if the user orders 2 items with different modifiers, you must treat them as 2 different items in the selections list.
+- The modifier item ID of one item belongs only to the modifier optionGroup ID of the same item. You must identify the correct modifier optionGroup ID and modifier item ID pair of each item. You can find them in the document related to the specific item. 
+- You must not mix up the modifier optionGroup ID and modifier item ID for different items. The modifier item ID of one item must be paired with the modifier optionGroup ID of the same item.
+- If in the item's document there is only a base price, you must not include any size modifier group ID and size modifier item ID of any kind for that item in the selections list. You must NOT use other items' modifier group ID and item ID for that item.
 
 # RULES FOR EXTRACTING THE DELIVERY ADDRESS:
 - Extract the last delivery address from the context.
@@ -32,14 +39,9 @@ You will be given the chat history and relevant context. You goal is to convert 
 provide a delivery address, output "N/A" for all fields.
 - If any modifier group id or modifier item id is missing, do not include them in the output.
 
-# RULES FOR EXTRACTING THE ORDER ITEM'S MODIFIERS:
-- An order item's included ingredients are not considered modifiers.
-- Only include modifiers that were explicitly mentioned by the user in the Chat History.
-- The modifier quantity MUST match the item quantity. Always set the modifier quantity to the item quantity.
-- If multiple items have different modifiers, each must be treated as a separate entry in the selections list. For example, if the user orders 2 items with different modifiers, you must treat them as 2 different items in the selections list.
-- You must identify the correct modifier option group ID and modifier item ID pair for each item's size, toppings, or other modifiers. You can find them in the document related to the specific item. 
-- You must not mix up the size modifier group ID and size modifier item ID for different items. They are specific to each item.
-- If an item does not have a size modifier group ID or size modifier item ID, it means that the item does not have a size or modifier. In this case, you must not include the size modifier group ID and size modifier item ID for the item.
+# RULES FOR BUILDING THE DiningOption OBJECT:
+- If the user places a **takeout** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "141b2c60-a232-4387-9ba3-80f6f9f35b34"}.
+- If the user places a **dinein** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "030189e2-9689-49aa-a2dd-6fde46191240"}.
 
 # IMPORTANT RULES:
 - Do NOT make assumptions or fabricate data
@@ -64,5 +66,5 @@ EXTRACTOR_USER_PROMPT = """
 {chat_history}
 </history>
 
-Please construct the structured order with the correct response format from the above Chat History and Menu Items.
+Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beutify the response. We will parse the JSON object later.
 """

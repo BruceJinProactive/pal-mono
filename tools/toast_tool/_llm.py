@@ -45,10 +45,8 @@ def llm_call(
     client = Groq(id=model_name)
 
     if response_format:
-        system_prompt += """
-\n
-Structure your response as a valid JSON object, do not include "json" in the beginning
-of the response.
+        system_prompt += """\n\nStructure your response as a valid JSON object, do not include "json" in the beginning
+of the response. Do not include newline characters in the JSON object.
 """
 
     # Deepseek models works better if everything is passed in the user prompt

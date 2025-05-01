@@ -1,5 +1,6 @@
 import asyncio
 import json
+import textwrap
 import traceback
 from functools import cached_property
 
@@ -12,9 +13,13 @@ from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.toast_tool._apis import get_online_ordering_status, get_order_prices
+from tools.toast_tool._apis import (
+    get_online_ordering_status,
+    get_order_prices,
+    get_toast_access_token,
+    submit_order,
+)
 from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import get_toast_access_token, submit_order
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
@@ -304,22 +309,56 @@ class ToastTool(Toolkit):
 
         context = ""
         output_data = []
-        doc_id = 0
+        found_doc_names = set()
+        # Iterate through the results and extract relevant information
         for res in results:
             for node in res.source_nodes:
                 if node.metadata:
+                    doc_name = node.metadata["file_name"]
+
+                    # Check if the document name is already in the set
+                    # If it is, skip to the next node
+                    # If not, add it to the set and process the node
+                    if doc_name in found_doc_names:
+                        continue
+                    found_doc_names.add(doc_name)
+
+                    # Indent the text
+                    node_text = textwrap.indent(node.text, 2 * "\t")
+
                     context += (
-                        f"<document index='{doc_id}'>\n"
+                        f"<document index='{doc_name}'>\n"
                         "\t<document_content>\n"
-                        f"\t\t{node.text}\n"
+                        f"{node_text}\n"
                         "\t</document_content>\n"
                         "</document>\n\n"
                     )
                     output_data.append({"id": node.id_, "text": node.text})
-                    doc_id += 1
 
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
         return context
+
+    def _remove_invalid_modifiers(self, order: OrderInput) -> OrderInput:
+        try:
+            for check in order.checks:  # type: ignore
+                for selection in check.selections:
+                    # Filter out modifiers with None or 'N/A' GUIDs
+                    if selection.modifiers:
+                        selection.modifiers = [
+                            modifier
+                            for modifier in selection.modifiers
+                            if modifier.optionGroup.guid not in (None, "N/A")
+                            and modifier.item.guid not in (None, "N/A")
+                        ]
+
+            return order
+
+        except Exception as e:
+            logger.error(
+                "[ToastTool._remove_invalid_modifiers] "
+                f"Error in removing invalid modifiers: {e}"
+            )
+            raise e
 
     def _construct_order(self, latest_user_message: str) -> OrderInput | str:
         chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
@@ -335,9 +374,15 @@ class ToastTool(Toolkit):
 
         # Check if the order is a string and convert it to an OrderInput object, catching any errors
         try:
+            if order is None:
+                raise ValueError("Order is None")
+
             if type(order) is str:
                 order = json.loads(order)
                 order = OrderInput(**order)
+
+            # Validate modifiers in the order
+            order = self._remove_invalid_modifiers(order)
 
             if not isinstance(order, OrderInput):
                 raise ValueError(

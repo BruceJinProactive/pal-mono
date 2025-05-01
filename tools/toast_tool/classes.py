@@ -148,7 +148,7 @@ class DiningOption(BaseModel):
 
 
 class ItemBase(BaseModel):
-    guid: str = Field(description="The GUID of the item")
+    guid: Optional[str] = Field(description="The GUID of the item")
 
 
 class OptionGroup(ItemBase):
@@ -189,7 +189,8 @@ class ItemSelection(BaseModel):
         default_factory=list,
         description=(
             "The modifiers associated with the item selection. "
-            "Find the correct group ID and corresponding item ID. They cannot be Null."
+            "Find the correct group ID and corresponding item ID. They cannot be Null. "
+            "Do not add a modifier if the item has no modifiers. "
         ),
     )
     fulfillmentStatus: SkipJsonSchema[Optional[OrderItemFulfillmentStatus]] = Field(
