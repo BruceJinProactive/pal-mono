@@ -583,7 +583,7 @@ async def get_project_instagram_username(
 """
 
 
-@admin_router.post("/accounts/{account_name}/users")
+@admin_router.get("/accounts/{account_name}/users")
 async def list_account_users(
     account_name: str,
     context: UserContext = Depends(authenticate_user),
