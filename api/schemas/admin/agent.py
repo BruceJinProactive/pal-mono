@@ -46,3 +46,4 @@ class UpdateAgentRequest(BaseModel):
     communication_style: str | None = None
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
+    agent_type: str | None = None

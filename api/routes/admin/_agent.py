@@ -67,6 +67,15 @@ async def update_agent(
             headers={"Content-Type": "application/json"},
         )
     authorize_user_account(context, agent.account.name)
+
+    if update_request.agent_type is not None:
+        if update_request.raw_config is not None:
+            update_request.raw_config["agent_type"] = update_request.agent_type
+        else:
+            current_config = agent.raw_config.copy()
+            current_config["agent_type"] = update_request.agent_type
+            update_request.raw_config = current_config
+
     agent_params = agent_service.AgentParams(
         name=update_request.name,
         description=update_request.description,

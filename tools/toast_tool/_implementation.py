@@ -16,10 +16,12 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.toast_tool._apis import (
     get_online_ordering_status,
     get_order_prices,
+)
+from tools.toast_tool._apis import get_store_info as get_store_info_api
+from tools.toast_tool._apis import (
     get_toast_access_token,
     submit_order,
 )
-from tools.toast_tool._apis import get_store_info as get_store_info_api
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.ordering._llm import llm_call
