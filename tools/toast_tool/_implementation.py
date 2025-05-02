@@ -19,19 +19,21 @@ from tools.toast_tool._apis import get_toast_access_token, submit_order
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
+from utils.ordering._utils import (
+    format_phone_number,
+    is_valid_email,
+    is_valid_phone_number,
+)
+from utils.ordering._query_engine import create_query_engine
+from utils.ordering._llm import llm_call
 
-from ._llm import llm_call
 from ._prompt_constants import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
     RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
 )
-from ._query_engine import create_query_engine
 from ._utils import (
     add_lat_long_to_address,
-    format_phone_number,
-    is_valid_email,
-    is_valid_phone_number,
     validate_item_modifier_quantity,
 )
 from .classes import OrderInput, Price, SubQueries
