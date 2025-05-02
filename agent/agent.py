@@ -1,5 +1,6 @@
 import asyncio
 import os
+from typing import AsyncIterator
 
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import workflow
@@ -51,7 +52,7 @@ class Agent:
         )
 
     @workflow
-    async def arun(self, input: Input) -> Output:
+    async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
         Runs the agent asynchronously with the given input.
 
@@ -59,7 +60,9 @@ class Agent:
             input (Input): The input data for the agent.
 
         Returns:
-            Output: The output data from the agent.
+            Output | AsyncIterator[Output]: The output data from the agent.
+            If input.stream is True, returns an AsyncIterator[Output].
+            If input.stream is False, returns a single Output.
         """
 
         LLMObs.annotate(

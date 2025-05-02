@@ -2,8 +2,6 @@ from typing import Any
 
 from pydantic import BaseModel
 
-# TODO: Support output structure
-
 
 class Input(BaseModel):
     """
@@ -15,6 +13,10 @@ class Input(BaseModel):
     context : str, optional
         The context of the input, such as device info, membership information, etc.
         (default is an empty string).
+    stream : bool, optional
+        Whether to stream the output (default is False).
+        If True, the response will be streamed as AsyncIterator[Output].
+        If False, the response will be a single Output.
     """
 
     content: str
@@ -40,7 +42,6 @@ class Input(BaseModel):
         )
 
 
-# TODO: Support output structure, streaming, etc.
 class Output(BaseModel):
     """
     A class used to represent an Output.
@@ -56,6 +57,12 @@ class Output(BaseModel):
 
     images : list, optional
         A list of images retrieved.
+
+    escalated : bool, optional
+        Whether the response should be escalated to a human (default is False).
+
+    closing_conversation : bool, optional
+        Whether the conversation should be closed (default is False).
     """
 
     content: str

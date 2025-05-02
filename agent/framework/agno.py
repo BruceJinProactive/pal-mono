@@ -1,3 +1,5 @@
+from typing import AsyncIterator
+
 import agno.agent.agent
 from agno.models.openai.chat import OpenAIChat
 from agno.storage.agent.postgres import PostgresAgentStorage
@@ -74,10 +76,29 @@ class AgnoAgent:
         self._agent = agent
 
     @agent
-    async def arun(self, input: Input) -> Output:
+    async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         result = await self._agent.arun(input.get_prompt(), stream=input.stream)
+
+        # Handle streaming case
         if input.stream:
-            return result
+
+            async def stream_output() -> AsyncIterator[Output]:
+                try:
+                    async for chunk in result:
+                        yield Output(
+                            content=(
+                                chunk.content if hasattr(chunk, "content") else chunk
+                            ),
+                            documents=[],
+                            images=[],
+                        )
+                except Exception as e:
+                    logger.error(f"Error streaming output: {e}")
+                    yield Output(content="Error streaming output")
+
+            return stream_output()
+
+        # Handle non-streaming case
         response_format = result.content
 
         if not isinstance(response_format, ResponseModel):
