@@ -419,6 +419,7 @@ def upload_knowledge_file(
 def list_knowledge_files(
     session: Session,
     target: db.Project | db.Agent,
+    filename: str | None = None,
     offset: int = 0,
     limit: int = 100,
 ) -> tuple[int, list[KnowledgeFile]]:
@@ -428,6 +429,7 @@ def list_knowledge_files(
     Args:
         session: The database session
         target: The project or agent to retrieve knowledge files for
+        filename: Optional filename to filter results by (case-insensitive partial match)
         offset: The number of files to skip
         limit: The maximum number of files to return
 
@@ -438,7 +440,9 @@ def list_knowledge_files(
         ValueError: If the project is not found.
         RuntimeError: If there is an error retrieving the files.
     """
-    return _implementation.list_knowledge_files(session, target, offset, limit)
+    return _implementation.list_knowledge_files(
+        session, target, filename, offset, limit
+    )
 
 
 def delete_knowledge_file(

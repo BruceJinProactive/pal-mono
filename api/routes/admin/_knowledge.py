@@ -19,6 +19,7 @@ from ._utils import not_found_error
 async def get_project_knowledge_files(
     resource: ResourceType,
     resource_id: uuid.UUID,
+    filename: str | None,
     page: int,
     page_size: int,
     context: UserContext,
@@ -28,12 +29,13 @@ async def get_project_knowledge_files(
     Retrieve a list of knowledge file names for a specific project.
     This endpoint gets the knowledge settings from the project's raw_config
     and uses them to query the Pinecone index for all files.
+    Optionally filter the results by filename (case-insensitive partial match).
     """
     target = get_and_authorize(resource, resource_id, context, session)
 
     try:
         total, file_data = admin_service.list_knowledge_files(
-            session, target, offset=(page - 1) * page_size, limit=page_size
+            session, target, filename, offset=(page - 1) * page_size, limit=page_size
         )
         files = [
             KnowledgeFile(

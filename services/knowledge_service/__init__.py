@@ -5,6 +5,7 @@ from .schema import KnowledgeFile
 def list_knowledge_files(
     index_name: str,
     namespace: str,
+    filename: str | None = None,
     limit: int = 1000,
     offset: int = 0,
 ) -> tuple[int, list[KnowledgeFile]]:
@@ -14,6 +15,7 @@ def list_knowledge_files(
     Args:
         index_name: The name of the Pinecone index to query
         namespace: The namespace within the index to query
+        filename: Optional filename to filter results by (case-insensitive partial match)
         limit: The maximum number of files to return
         offset: The number of files to skip
 
@@ -24,7 +26,9 @@ def list_knowledge_files(
         ValueError: If the project is not found.
         RuntimeError: If there is an error retrieving the files.
     """
-    return _implementation.list_knowledge_files(index_name, namespace, limit, offset)
+    return _implementation.list_knowledge_files(
+        index_name, namespace, filename, limit, offset
+    )
 
 
 def upload_knowledge_file(

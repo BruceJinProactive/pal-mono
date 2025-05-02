@@ -634,15 +634,25 @@ async def get_knowledge_files(
     page_size: int = Query(
         10, description="Size of each page, cannot be less than 1", gt=0
     ),
+    filename: str | None = Query(
+        None, description="Optional filename to filter results by"
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListKnowledgeFileResponse:
     """
     Retrieve a list of knowledge file names for a specific target resource (e.g. project).
-    Returns a list of file names from the knowledge base (Pinecone index)
+    Returns a list of file names from the knowledge base (Pinecone index).
+    Optionally filter the results by filename (case-insensitive partial match).
     """
     return await _knowledge.get_project_knowledge_files(
-        resource, resource_id, page, page_size, context, session
+        resource,
+        resource_id,
+        filename,
+        page=page,
+        page_size=page_size,
+        context=context,
+        session=session,
     )
 
 

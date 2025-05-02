@@ -22,6 +22,7 @@ if not PINECONE_API_KEY:
 def list_knowledge_files(
     index_name: str,
     namespace: str,
+    filename: str | None = None,
     limit: int = 1000,
     offset: int = 0,
 ) -> tuple[int, list[KnowledgeFile]]:
@@ -38,11 +39,12 @@ def list_knowledge_files(
                         size=match["metadata"].get("file_size", 0),
                         created_at=match["metadata"].get("creation_date", "unknown"),
                     )
-                else:
-                    # accumulate file size
-                    file_dict[file_name].size += match["metadata"].get("file_size", 0)
 
         file_list = sorted(file_dict.values(), key=lambda x: x.name)
+
+        if filename:
+            file_list = [f for f in file_list if filename.lower() in f.name.lower()]
+
         total = len(file_list)
         paginated_files = file_list[offset : offset + limit]
 
@@ -80,7 +82,7 @@ def upload_knowledge_file(
 
         # Load documents and split into sentences
         documents = SimpleDirectoryReader(tmp_dir).load_data()
-        splitter = SentenceSplitter(chunk_size=2048, chunk_overlap=50)
+        splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=50)
         nodes = splitter.get_nodes_from_documents(documents)
 
         # Prepare vectors and metadata for Pinecone
