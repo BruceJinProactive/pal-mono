@@ -10,4 +10,3 @@ class ModelProvider(StrEnum):
 class ModelConfig(BaseModel):
     provider: ModelProvider = ModelProvider.DEFAULT
     identifier: str = "medium"
-    stream: bool = False

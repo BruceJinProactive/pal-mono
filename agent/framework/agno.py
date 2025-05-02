@@ -69,17 +69,14 @@ class AgnoAgent:
                 ResponseModel if not config.stream else None
             ),  # NOTE: stream response model is not supported by AGNO
             additional_context=config.additional_context,
-            stream=config.stream,
         )
 
         self._agent = agent
 
     @agent
     async def arun(self, input: Input) -> Output:
-        result = await self._agent.arun(
-            input.get_prompt(), stream=self._agent.is_streamable
-        )
-        if self._agent.is_streamable:
+        result = await self._agent.arun(input.get_prompt(), stream=input.stream)
+        if input.stream:
             return result
         response_format = result.content
 

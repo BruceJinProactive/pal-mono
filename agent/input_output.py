@@ -21,6 +21,7 @@ class Input(BaseModel):
     context: str = ""
     channel: str = ""
     sender_identifier: str = ""
+    stream: bool = False
 
     def get_prompt(self):
         """

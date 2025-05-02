@@ -113,7 +113,6 @@ async def get_chat_response_async(
             user_id=user.id,
             project_id=project.id,
             conversation_id=request_message.conversation_id,
-            stream=False,
         )
 
         logger.debug(f"Agent config: {config}")
@@ -277,14 +276,13 @@ async def get_chat_response_stream(
                 user_id=user.id,
                 project_id=project.id,
                 conversation_id=conversation_id,
-                stream=True,
             )
-
             config.stream = True
 
             agent = Agent(config=config)
 
             input = _utils.get_agent_input_from_message(message=message)
+            input.stream = True
 
             logger.debug(f"Input: {input}")
             response_stream = await agent.arun(input)  # type: ignore

@@ -17,7 +17,6 @@ async def construct_agent_config(
     user_id: uuid.UUID,
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    stream: bool = False,
 ) -> AgentConfig:
     return await _implementation.construct_agent_config(
         session,
@@ -25,7 +24,6 @@ async def construct_agent_config(
         user_id,
         project_id,
         conversation_id,
-        stream=stream,
     )
 
 

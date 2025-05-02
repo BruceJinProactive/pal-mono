@@ -20,7 +20,6 @@ async def construct_agent_config(
     user_id: uuid.UUID,
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
-    stream: bool = False,
 ) -> AgentConfig:
     """
     Builds an Agent Config based on the Raw Config.
@@ -31,7 +30,6 @@ async def construct_agent_config(
         user_id (uuid.UUID): The user id.
         project_id (uuid.UUID): The project id.
         conversation_id (uuid.UUID): The conversation (session) id of the user-agent interaction.
-        stream (bool, optional): Wether to stream the agent's response. Defaults to False.
 
     Raises:
         ValueError: If the agent_id or project_id is invalid.
@@ -60,7 +58,6 @@ async def construct_agent_config(
         account_name=db_agent.account.name,
         user_id=user_id,
         conversation_id=conversation_id,
-        stream=stream,
     )
 
     # Convert blueprint to agent config

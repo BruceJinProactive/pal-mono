@@ -37,9 +37,6 @@ class RawConfig(BaseModel):
     user_id: UUID
     conversation_id: UUID  # Session ID
 
-    # Agent stream
-    stream: bool = False
-
     # Client Config
     client_config: ClientConfig | None = None
 
@@ -80,7 +77,6 @@ class RawConfig(BaseModel):
                 persona=self._get_agent_persona(),
                 model=ModelConfig(
                     identifier="medium",
-                    stream=self.stream,
                 ),
                 memory=MemoryConfig(
                     enabled=True,
