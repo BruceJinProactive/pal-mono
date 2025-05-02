@@ -56,7 +56,7 @@ If unsure about any field, leave it empty rather than guessing.
 """
 
 EXTRACTOR_USER_PROMPT = """
-# Menu Items With Corresponding Modifiers:
+# Menu Items:
 <documents>
 {context}
 </documents>
@@ -67,4 +67,6 @@ EXTRACTOR_USER_PROMPT = """
 </history>
 
 Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beutify the response. We will parse the JSON object later.
+
+When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. If the user specified any modifiers for an item, select the modifier group id and modifier option item id within that document for the item. The modifier group id and modifier option item id must be found in the same document as the item. If you cannot find the correct document, do NOT use any modifier group id and modifier option item id from any other document because this will break the ordering process.
 """

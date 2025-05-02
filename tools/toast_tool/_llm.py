@@ -46,7 +46,7 @@ def llm_call(
 
     if response_format:
         system_prompt += """\n\nStructure your response as a valid JSON object, do not include "json" in the beginning
-of the response. Do not include newline characters in the JSON object.
+of the response. Do not include newline characters in the returned JSON object.
 """
 
     # Deepseek models works better if everything is passed in the user prompt
