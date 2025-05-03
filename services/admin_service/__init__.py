@@ -359,7 +359,7 @@ def onboard_new_account(
     account_params: AccountParams,
     agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
     users: list[CognitoUser] | None = None,
-) -> dict:
+):
     """
     Creates an account, agents, and projects in a single transaction.
 
@@ -373,13 +373,6 @@ def onboard_new_account(
             - agent: Agent parameters
             - projects: List of project parameters
         users (list[CognitoUser], optional): List of (email, name) tuples for creating Cognito users.
-
-    Returns:
-        dict: Dictionary with created IDs
-            - account_id: UUID of the created account
-            - agents: List of dictionaries mapping agent name to agent ID
-            - projects: List of dictionaries mapping project name to project ID
-            - cognito_users: List of created Cognito user details
 
     Raises:
         ValueError: If there's an error creating any of the entities

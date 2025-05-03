@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 
-from api.schemas.admin.account import Account, CreateAccountRequest
-from api.schemas.admin.agent import Agent, CreateAgentRequest
-from api.schemas.admin.project import CreateProjectRequest, Project
+from api.schemas.admin.account import CreateAccountRequest
+from api.schemas.admin.agent import CreateAgentRequest
+from api.schemas.admin.project import CreateProjectRequest
 
 
 class OnboardingAgentProject(BaseModel):
@@ -25,12 +25,3 @@ class OnboardingRequest(BaseModel):
     account: CreateAccountRequest
     agent_projects: list[OnboardingAgentProject]
     users: list[UserInfo] = []
-
-
-class OnboardingResponse(BaseModel):
-    """Onboarding response model with created IDs"""
-
-    account: Account
-    agents: list[Agent] = []
-    projects: list[Project] = []
-    cognito_users: list[dict] = []

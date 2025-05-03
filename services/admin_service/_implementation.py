@@ -796,15 +796,12 @@ def onboard_new_account(
     account_params: AccountParams,
     agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
     users: list[CognitoUser] | None,
-) -> dict:
+):
     try:
         # Create the account
-        account = account_service.create_account(
+        account_service.create_account(
             session, account_name, account_params, auto_commit=False
         )
-
-        created_agents = []
-        created_projects = []
 
         for agent_project in agent_projects:
             agent_param = agent_project[0]
@@ -815,33 +812,24 @@ def onboard_new_account(
                 params=agent_param,
                 auto_commit=False,
             )
-            created_agents.append(agent)
 
             for project_param in projects_param:
                 # set the agent id before creating project
                 project_param.agent_id = agent.id
-                project = project_service.create_project(
+                project_service.create_project(
                     session=session,
                     account_name=account_name,
                     project_name=project_param.name or "",
                     params=project_param,
                     auto_commit=False,
                 )
-                created_projects.append(project)
 
-        created_cognito_users = [
+        # create cognito user accounts
+        for user in users or []:
             create_account_user(account_name, user.email, user.name)
-            for user in users or []
-        ]
 
         # commit all changes at once.
         session.commit()
-        return {
-            "account": account,
-            "agents": created_agents,
-            "projects": created_projects,
-            "cognito_users": created_cognito_users,
-        }
     except Exception as e:
         # Rollback the transaction if any error occurs
         session.rollback()

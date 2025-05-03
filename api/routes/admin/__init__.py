@@ -32,7 +32,7 @@ from api.schemas.admin.feedback import (
     UpdateFeedbackRequest,
 )
 from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
-from api.schemas.admin.onboarding import OnboardingRequest, OnboardingResponse
+from api.schemas.admin.onboarding import OnboardingRequest
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
@@ -733,8 +733,8 @@ async def onboard(
     request: OnboardingRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> OnboardingResponse:
+):
     """
     Onboard a new account with agents and projects in a single transaction.
     """
-    return await create_onboarding(request, context, session)
+    await create_onboarding(request, context, session)

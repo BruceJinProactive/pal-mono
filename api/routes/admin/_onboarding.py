@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.schemas.admin.onboarding import OnboardingRequest, OnboardingResponse
+from api.schemas.admin.onboarding import OnboardingRequest
 from db.tables.accounts import BusinessIndustry
 from services import admin_service
 from services.account_service import AccountParams
@@ -10,7 +10,6 @@ from services.agent_service import AgentParams
 from services.project_service import ProjectParams
 
 from ._auth import authorize_user_account
-from ._builder import build_account, build_agent, build_project
 from ._utils import UserContext
 
 
@@ -18,7 +17,7 @@ async def create_onboarding(
     request: OnboardingRequest,
     context: UserContext,
     session: Session,
-) -> OnboardingResponse:
+):
     """
     Create a new account, agents, and projects in a single transaction.
 
@@ -74,18 +73,12 @@ async def create_onboarding(
         CognitoUser(email=user.email, name=user.name) for user in request.users
     ]
     try:
-        result = admin_service.onboard_new_account(
+        admin_service.onboard_new_account(
             session,
             request.account.name,
             account_params,
             agent_projects_data,
             users=cognito_users,
-        )
-        return OnboardingResponse(
-            account=build_account(result["account"]),
-            agents=[build_agent(agent) for agent in result["agents"]],
-            projects=[build_project(project) for project in result["projects"]],
-            cognito_users=result.get("cognito_users", []),
         )
     except ValueError as err:
         raise HTTPException(
