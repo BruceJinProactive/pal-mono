@@ -10,6 +10,7 @@ from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
+from utils.sys import log_sys_info
 
 
 class Agent:
@@ -73,6 +74,7 @@ class Agent:
                 "agent_id": self._metadata.agent_id,
             }
         )
+        log_sys_info("agent arun called")
 
         # Update memory with the user's input
         asyncio.create_task(

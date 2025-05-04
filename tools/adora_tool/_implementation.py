@@ -24,6 +24,7 @@ from tools.adora_tool.classes import (
 )
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
+from utils.sys import log_sys_info
 
 from . import _apis, _llm, _query_engine, _utils
 
@@ -40,6 +41,11 @@ class AdoraTool(Toolkit):
         client_config: ClientConfig | None = None,
     ):
         super().__init__(name="adora_tool")
+
+        # Log instance creation with built-in id
+        instance_id = id(self)
+        logger.debug(f"AdoraTool instance created: id={instance_id}")
+        log_sys_info("AdoraTool is being created")
 
         # Configs
         self.store_id = store_id
@@ -79,6 +85,7 @@ class AdoraTool(Toolkit):
 
     @functools.cached_property
     def _adora_bearer_token(self) -> AdoraAccessToken | None:
+        log_sys_info("Fetch Adora bearer token")
         with LLMObs.task(name="get_adora_bearer_token"):
             if self.store_id == ADORA_QA_STORE:
                 api_key = get_client_secret_with_fallback("ADORA_API_KEY")
@@ -315,6 +322,8 @@ class AdoraTool(Toolkit):
     @retrieval
     def _get_relevant_docs(self, chat_history: str) -> str:
         # Decompose chat history into multiple sub-queries
+        log_sys_info("AdoraTool._get_relevant_docs starting")
+
         sub_queries = _llm.llm_call(
             system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
             prompt=chat_history,
@@ -327,12 +336,20 @@ class AdoraTool(Toolkit):
 
         logger.debug(f"Sub-queries identified: {sub_queries.queries}")
 
-        # Perform knowledege retrieval on all sub-queries asynchronously
+        # Create a wrapper function to log system info for each query
+        async def query_with_logging(query, index):
+            log_sys_info(f"AdoraTool subquery {index}: '{query}'")
+            result = await self.query_engine.aquery(query)
+            log_sys_info(f"AdoraTool subquery {index} completed")
+            return result
+
+        # Perform knowledge retrieval on all sub-queries asynchronously
         loop = asyncio.new_event_loop()
         try:
             asyncio.set_event_loop(loop)
+            # Use the wrapper function to process each query with logging
             query_tasks = asyncio.gather(
-                *[self.query_engine.aquery(q) for q in sub_queries.queries]
+                *[query_with_logging(q, i) for i, q in enumerate(sub_queries.queries)]
             )
             results = loop.run_until_complete(query_tasks)
         finally:
@@ -356,6 +373,7 @@ class AdoraTool(Toolkit):
                     doc_id += 1
 
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
+        log_sys_info("AdoraTool._get_relevant_docs completed")
         return context
 
     @task(name="_fulfill_order [via Adora API]")
@@ -451,6 +469,7 @@ class AdoraTool(Toolkit):
             str: The checkout order details including the payment URL.
         """
         try:
+            log_sys_info("adora checkout_order called")
             chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
 
             context = self._get_relevant_docs(chat_history)  # type: ignore

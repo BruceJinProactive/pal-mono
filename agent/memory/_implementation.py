@@ -4,6 +4,7 @@ from ddtrace.llmobs.decorators import task
 from mem0 import AsyncMemoryClient
 
 from utils.log import logger
+from utils.sys import log_sys_info
 
 
 @task
@@ -15,6 +16,7 @@ async def update_memory(
 ) -> None:
     client = AsyncMemoryClient()
     logger.debug(f"Updating memory for user {user_id} with content: {content}")
+    log_sys_info("update_memory")
     await client.add(
         messages=[
             {

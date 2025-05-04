@@ -11,6 +11,7 @@ from agent.config import AgentConfig
 from agent.input_output import Input, Output
 from agent.tool import get_tools
 from utils.log import logger
+from utils.sys import log_sys_info
 
 
 class ResponseModel(BaseModel):
@@ -28,7 +29,7 @@ class ResponseModel(BaseModel):
 
 class AgnoAgent:
     def __init__(self, config: AgentConfig):
-
+        log_sys_info("AgnoAgent created")
         storage = PostgresAgentStorage(
             table_name=f"{config.metadata.account_name}_storage_agno",
             db_url=db.db_url,
@@ -77,6 +78,7 @@ class AgnoAgent:
 
     @agent
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
+        log_sys_info("AgnoAgent arun called")
         result = await self._agent.arun(input.get_prompt(), stream=input.stream)
 
         # Handle streaming case

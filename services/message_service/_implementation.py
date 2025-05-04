@@ -59,11 +59,11 @@ async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
+    log_sys_info("get_chat_response_async received message")
 
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
     try:
-        await log_sys_info("get_chat_response_async received message")
         # ==== Step 1: Get project, user, and save request message ====
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
