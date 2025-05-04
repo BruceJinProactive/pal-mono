@@ -13,9 +13,16 @@ def log_sys_info(desc: str):
         f"Thread name: {threading.current_thread().name}\n"
         f"Thread ID: {threading.get_ident()}\n"
         f"Event loop: {_get_event_loop_info()}\n"
-        f"Current task: {asyncio.current_task() or 'No current task'}"
+        f"Current task: {_get_current_task()}"
     )
     logger.debug(log_message)
+
+
+def _get_current_task():
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return "Not current task"
 
 
 def _get_event_loop_info():
