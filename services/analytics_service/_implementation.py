@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import requests
@@ -95,12 +96,17 @@ def get_all_reports_from_mixpanel(account_name: str) -> list[tuple[str, dict]]:
 
 
 def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict):
-    MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
-    mp = None
-    if MIXPANEL_PROJECT_TOKEN:
-        mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
+    def _track():
+        try:
+            MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
+            mp = None
+            if MIXPANEL_PROJECT_TOKEN:
+                mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
+            if mp:
+                runtime_env = os.getenv("RUNTIME_ENV", "dev")
+                event_properties["runtime_env"] = runtime_env
+                mp.track(user_id, event_name, event_properties)
+        except Exception as e:
+            logger.error(f"Error tracking event {event_name} for user {user_id}: {e}")
 
-    if mp:
-        runtime_env = os.getenv("RUNTIME_ENV", "dev")
-        event_properties["runtime_env"] = runtime_env
-        mp.track(user_id, event_name, event_properties)
+    asyncio.create_task(asyncio.to_thread(_track))

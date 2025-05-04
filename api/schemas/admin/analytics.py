@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class Event(str, Enum):
-    """Anslytics Event"""
+    """Analytics Event"""
 
     AGENT_MESSAGE = "Agent Message"
     USER_MESSAGE = "User Message"
