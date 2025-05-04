@@ -57,3 +57,4 @@ class ToolRegistry:
 
 
 tool_registry = ToolRegistry()
+print(f"created tool registry: {tool_registry}")
