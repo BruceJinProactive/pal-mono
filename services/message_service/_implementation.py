@@ -25,7 +25,6 @@ from api.schemas.chat.message import (
 )
 from services import agent_service, analytics_service, project_service, user_service
 from utils.log import logger
-from utils.sys import log_sys_info
 
 from . import _utils
 
@@ -59,7 +58,6 @@ async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
-    log_sys_info("get_chat_response_async received message")
 
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []

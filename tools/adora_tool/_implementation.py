@@ -23,7 +23,6 @@ from tools.adora_tool.classes import (
 )
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
-from utils.sys import log_sys_info
 
 from . import _apis, _llm, _query_engine, _utils
 
@@ -44,7 +43,6 @@ class AdoraTool(Toolkit):
         # Log instance creation with built-in id
         instance_id = id(self)
         logger.debug(f"AdoraTool instance created: id={instance_id}")
-        log_sys_info("AdoraTool is being created")
 
         # Configs
         self.store_id = store_id
@@ -95,7 +93,6 @@ class AdoraTool(Toolkit):
         """
         if not self._adora_bearer_token:
             logger.debug("Prefetching Adora bearer token")
-            print("Prefetching")
             self._adora_bearer_token = self._fetch_adora_bearer_token()
         return self._adora_bearer_token
 
@@ -379,7 +376,6 @@ class AdoraTool(Toolkit):
     @retrieval
     def _get_relevant_docs(self, chat_history: str) -> str:
         # Decompose chat history into multiple sub-queries
-        log_sys_info("AdoraTool._get_relevant_docs starting")
 
         sub_queries = _llm.llm_call(
             system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
@@ -427,7 +423,6 @@ class AdoraTool(Toolkit):
                     doc_id += 1
 
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
-        log_sys_info("AdoraTool._get_relevant_docs completed")
         return context
 
     @task(name="_fulfill_order [via Adora API]")
@@ -523,7 +518,6 @@ class AdoraTool(Toolkit):
             str: The checkout order details including the payment URL.
         """
         try:
-            log_sys_info("adora checkout_order called")
             chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
 
             context = self._get_relevant_docs(chat_history)  # type: ignore

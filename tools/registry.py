@@ -9,7 +9,6 @@ from tools.booking_tool import BookingTool
 from tools.calculator_tool import CalculatorTool
 from tools.toast_tool import ToastTool
 from utils.log import logger
-from utils.sys import log_sys_info
 
 
 class ToolRegistry:
@@ -29,7 +28,6 @@ class ToolRegistry:
         # Log instance creation with built-in id
         instance_id = id(self)
         logger.debug(f"ToolRegistry instance created: id={instance_id}")
-        log_sys_info("tool_registry created")
 
     def get_tool(
         self, tool: ToolIdentifier, metadata: ToolMetadata
