@@ -97,6 +97,7 @@ def build_message(message: db.Message) -> Message:
         sent_at=message.body.get("timestamp"),
         conversation_id=message.conversation_id,
         created_at=message.created_at,
+        media=message.body.get("media"),
     )
 
 

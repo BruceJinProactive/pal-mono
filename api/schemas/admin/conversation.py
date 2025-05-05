@@ -20,6 +20,7 @@ class Message(BaseModel):
     sent_at: str | None
     created_at: datetime.datetime
     conversation_id: uuid.UUID
+    media: dict | None = None
 
 
 class UserSession(BaseModel):
