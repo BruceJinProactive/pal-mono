@@ -336,31 +336,28 @@ class AdoraTool(Toolkit):
 
         logger.debug(f"Sub-queries identified: {sub_queries.queries}")
 
-        # Create a wrapper function to log system info for each query
-        async def query_with_logging(query, index):
-            log_sys_info(f"AdoraTool subquery {index}: '{query}'")
-            result = await self.query_engine.aquery(query)
-            log_sys_info(f"AdoraTool subquery {index} completed")
-            return result
-
-        # Perform knowledge retrieval on all sub-queries asynchronously
-        loop = asyncio.new_event_loop()
-        try:
-            asyncio.set_event_loop(loop)
-            # Use the wrapper function to process each query with logging
-            query_tasks = asyncio.gather(
-                *[query_with_logging(q, i) for i, q in enumerate(sub_queries.queries)]
+        async def run_all_queries():
+            return await asyncio.gather(
+                *[self.query_engine.aquery(query) for query in sub_queries.queries],
+                return_exceptions=True,  # This is key - it prevents exceptions from stopping all queries
             )
-            results = loop.run_until_complete(query_tasks)
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
+
+        # Use asyncio.run for a simple async execution without need for manual event loop management
+        try:
+            results = asyncio.run(run_all_queries())
+        except Exception as e:
+            logger.error(f"Error executing queries: {e}")
+            results = []
 
         context = ""
         output_data = []
         doc_id = 0
         for res in results:
-            for node in res.source_nodes:
+            if isinstance(res, Exception):
+                # Log the exception but continue processing other results
+                logger.error(f"Error in sub-query: {res}")
+                continue
+            for node in res.source_nodes:  # type: ignore
                 if node.metadata:
                     context += (
                         f"<document index='{doc_id}'>\n"
