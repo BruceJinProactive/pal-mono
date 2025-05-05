@@ -7,10 +7,14 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.endpoints import endpoints
 from api.routes.integrations.shopify import _implementation
+from api.routes.integrations.vapi import vapi_router
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
 
 integrations_router = APIRouter(prefix=endpoints.INTEGRATIONS, tags=["Integrations"])
+
+# Include the VAPI router
+integrations_router.include_router(vapi_router)
 
 
 @integrations_router.get("/shopify/{app_name}/install", status_code=status.HTTP_200_OK)

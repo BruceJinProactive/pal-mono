@@ -19,6 +19,7 @@ class MediaObject(BaseModel):
 class AuthorType(str, Enum):
     USER = "user"
     AGENT = "agent"
+    SYSTEM = "system"
 
 
 class Channel(str, Enum):
