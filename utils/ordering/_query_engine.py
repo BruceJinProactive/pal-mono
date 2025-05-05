@@ -17,7 +17,7 @@ from utils.log import logger
 class QueryEngineConfig:
     """Configuration for query engine dependencies."""
 
-    PINECONE_INDEX_NAME = "agents"
+    PINECONE_INDEX_NAME = "sandbox"
     COHERE_MODEL_NAME = "embed-english-v3.0"
     SIMILARITY_TOP_K = 3
 
