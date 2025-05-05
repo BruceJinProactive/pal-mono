@@ -390,10 +390,20 @@ class AdoraTool(Toolkit):
         logger.debug(f"Sub-queries identified: {sub_queries.queries}")
 
         async def run_all_queries():
-            return await asyncio.gather(
-                *[self.query_engine.aquery(query) for query in sub_queries.queries],
-                return_exceptions=True,  # This is key - it prevents exceptions from stopping all queries
-            )
+            tasks = [
+                asyncio.create_task(self.query_engine.aquery(query))
+                for query in sub_queries.queries
+            ]
+            try:
+                return await asyncio.gather(*tasks)
+            except Exception:
+                # Cancel remaining tasks
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                # Wait for all tasks to complete cancellation (optional)
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
 
         # Use asyncio.run for a simple async execution without need for manual event loop management
         try:
@@ -406,11 +416,7 @@ class AdoraTool(Toolkit):
         output_data = []
         doc_id = 0
         for res in results:
-            if isinstance(res, Exception):
-                # Log the exception but continue processing other results
-                logger.error(f"Error in sub-query: {res}")
-                continue
-            for node in res.source_nodes:  # type: ignore
+            for node in res.source_nodes:
                 if node.metadata:
                     context += (
                         f"<document index='{doc_id}'>\n"
