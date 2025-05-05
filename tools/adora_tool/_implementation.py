@@ -1,5 +1,4 @@
 import asyncio
-import functools
 import json
 import os
 import traceback
@@ -64,8 +63,11 @@ class AdoraTool(Toolkit):
         ### Cache adora token and store info ###
         self.cached_store_info: str | None = None
 
+        self._adora_bearer_token: AdoraAccessToken | None = None
+
+        # Start prefetching the token in the background
         loop = asyncio.get_running_loop()
-        loop.create_task(asyncio.to_thread(lambda: self._adora_bearer_token))
+        loop.create_task(asyncio.to_thread(self._prefetch_adora_bearer_token))
 
         # Register tools
         # self.register(self.greeting) # TODO: let's unregister this
@@ -83,10 +85,42 @@ class AdoraTool(Toolkit):
         if MIXPANEL_PROJECT_TOKEN:
             self.mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
 
-    @functools.cached_property
-    def _adora_bearer_token(self) -> AdoraAccessToken | None:
-        log_sys_info("Fetch Adora bearer token")
-        with LLMObs.task(name="get_adora_bearer_token"):
+    def _prefetch_adora_bearer_token(self) -> AdoraAccessToken | None:
+        """
+        Prefetches the Adora bearer token without LLMObs tracking.
+        This is called during initialization to start token fetching in the background.
+
+        Returns:
+            AdoraAccessToken | None: The bearer token or None if fetching failed
+        """
+        if not self._adora_bearer_token:
+            logger.debug("Prefetching Adora bearer token")
+            print("Prefetching")
+            self._adora_bearer_token = self._fetch_adora_bearer_token()
+        return self._adora_bearer_token
+
+    def _get_adora_bearer_token(self) -> AdoraAccessToken | None:
+        """
+        Gets the Adora bearer token with LLMObs task tracking.
+        This should be used during tool methods that need observation.
+
+        Returns:
+            AdoraAccessToken | None: The bearer token or None if fetching failed
+        """
+        if not self._adora_bearer_token:
+            logger.debug("Fetching Adora bearer token with LLMObs tracking")
+            with LLMObs.task(name="get_adora_bearer_token"):
+                self._adora_bearer_token = self._fetch_adora_bearer_token()
+        return self._adora_bearer_token
+
+    def _fetch_adora_bearer_token(self) -> AdoraAccessToken | None:
+        """
+        Internal method to fetch the token from the Adora API.
+
+        Returns:
+            AdoraAccessToken | None: The bearer token or None if fetching failed
+        """
+        try:
             if self.store_id == ADORA_QA_STORE:
                 api_key = get_client_secret_with_fallback("ADORA_API_KEY")
                 api_secret = get_client_secret_with_fallback("ADORA_API_SECRET")
@@ -98,10 +132,14 @@ class AdoraTool(Toolkit):
                 api_secret = get_client_secret_with_fallback(
                     "PIZZAMYHEART_ADORA_API_SECRET"
                 )
+
             bearer_token = _apis.get_adora_pos_auth_token(
                 api_key, api_secret, qa_store=self.qa_store
             )
             return bearer_token
+        except Exception as e:
+            logger.error(f"Error fetching Adora bearer token: {e}")
+            return None
 
     @tool
     def greeting(self, phone_number: str) -> str:
@@ -120,14 +158,16 @@ class AdoraTool(Toolkit):
             if not phone_number:
                 raise ValueError("Invalid phone number format.")
 
-            if not self._adora_bearer_token:
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
                 return (
                     "Failed to authenticate ordering tool. Please reach out to our "
                     "support team at help@palona.ai for assistance."
                 )
 
             customer_info = _apis.get_customer_info(
-                self._adora_bearer_token,
+                bearer_token,
                 self.store_id,
                 phone_number,
                 qa_store=self.qa_store,
@@ -166,14 +206,16 @@ class AdoraTool(Toolkit):
             return "The store is open for online ordering."
 
         try:
-            if not self._adora_bearer_token:
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
                 return (
                     "Failed to authenticate ordering tool. Please reach out to our "
                     "support team at help@palona.ai for assistance."
                 )
 
             status = _apis.get_online_ordering_status(
-                self._adora_bearer_token, self.store_id, qa_store=self.qa_store
+                bearer_token, self.store_id, qa_store=self.qa_store
             )
 
             if not status:
@@ -219,7 +261,9 @@ class AdoraTool(Toolkit):
             if self.cached_store_info:
                 return self.cached_store_info
 
-            if not self._adora_bearer_token:
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
                 return (
                     "Failed to authenticate ordering tool. "
                     "Please reach out to our support team at help@palona.ai "
@@ -227,7 +271,7 @@ class AdoraTool(Toolkit):
                 )
 
             store_info = _apis.get_store_info(
-                self._adora_bearer_token, self.store_id, date, qa_store=self.qa_store
+                bearer_token, self.store_id, date, qa_store=self.qa_store
             )
 
             if not store_info:
@@ -285,8 +329,16 @@ class AdoraTool(Toolkit):
     def _validate_address(
         self, canonical_address: DeliveryAddress | None
     ) -> tuple[bool, str]:
-        # Use the latitude and longitude to get Adora API call (old Jimmy)
+        """
+        Validates if an address can be delivered to.
 
+        Args:
+            canonical_address: The address to validate in DeliveryAddress format
+
+        Returns:
+            tuple[bool, str]: (is_valid, message)
+        """
+        # Use the latitude and longitude to get Adora API call (old Jimmy)
         if not canonical_address:
             logger.warning("[AdoraTool._validate_address] Canonical address is None")
             return (
@@ -294,7 +346,9 @@ class AdoraTool(Toolkit):
                 "Could you provide your complete address?",
             )
 
-        if not self._adora_bearer_token:
+        # Use _get_adora_bearer_token to ensure LLMObs tracking
+        bearer_token = self._get_adora_bearer_token()
+        if not bearer_token:
             return (
                 False,
                 (
@@ -303,14 +357,17 @@ class AdoraTool(Toolkit):
                     "for assistance."
                 ),
             )
+
+        # Build payload for address validation
         payload, message = _utils.build_validate_address_payload(
             self.store_id, canonical_address
         )
         if not payload:
             return False, message
 
+        # Validate the address
         validated_address_success, validated_address = _apis.validate_address(
-            self._adora_bearer_token, payload, qa_store=self.qa_store
+            bearer_token, payload, qa_store=self.qa_store
         )
         logger.debug(f"Validated address: {validated_address}")
 
@@ -524,7 +581,10 @@ class AdoraTool(Toolkit):
 
             logger.debug(f"Extracted structured data: {order}")
             logger.debug(f"Extracted structured data type: {type(order)}")
-            if not self._adora_bearer_token:
+
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
                 return (
                     "Failed to authenticate ordering tool. "
                     "Please reach out to our support team at help@palona.ai "
@@ -559,7 +619,7 @@ class AdoraTool(Toolkit):
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment
 
-            return self._fulfill_order(order, self._adora_bearer_token)  # type: ignore
+            return self._fulfill_order(order, bearer_token)
 
         except Exception as e:
             logger.error(f"Error in extracting structured data: {e}")
