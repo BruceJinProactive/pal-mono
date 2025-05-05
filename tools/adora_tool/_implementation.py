@@ -290,8 +290,8 @@ class AdoraTool(Toolkit):
         delivery address can be delivered to.
 
         Args:
-            address (str): The delivery address to check.
-
+            address (str): A complete **physical street address** (e.g., "123 Main St, Springfield, IL 62704").
+                This must **not include phone numbers**, names, or unrelated info.
         Returns:
             str: If the address is valid and within the delivery zone.
         """
