@@ -81,9 +81,9 @@ class Agent:
                 content=input.content,  # type: ignore
             )  # type: ignore
         )
-        # Enable guardrails solely for LAT environment
+
         if (
-            os.getenv("RUNTIME_ENV", "NA") in ["lat", "stg"]
+            os.getenv("RUNTIME_ENV", "NA") in ["lat", "stg", "prd"]
             and not self._agent._agent.is_streamable  # ISSUE: a temporary fix to avoid guardrails for streaming agents to reudce latency latency
         ):
             safe = check_input_bedrock(input.content)
