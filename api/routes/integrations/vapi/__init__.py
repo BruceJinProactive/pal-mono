@@ -8,7 +8,7 @@ from api.schemas.error.error import ErrorResponse
 
 from ._implementation import api_vapi_server
 
-vapi_router = APIRouter(prefix="/vapi", tags=["VAPI Integration"])
+vapi_router = APIRouter(prefix="/vapi", tags=["Integrations"])
 
 
 @vapi_router.post(
