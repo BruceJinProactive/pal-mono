@@ -16,10 +16,8 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.toast_tool._apis import (
     get_online_ordering_status,
     get_order_prices,
-)
-from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import (
     get_toast_access_token,
+    get_store_info as get_store_info_api,
     submit_order,
 )
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
@@ -47,12 +45,14 @@ class ToastTool(Toolkit):
         self,
         store_id: str,
         namespace: str,
+        index_name: str,
         tool_metadata: ToolMetadata,
     ):
         super().__init__(name="toast_tool")
 
         self.store_id = store_id
         self.namespace = namespace
+        self.index_name = index_name
         self.tool_metadata = tool_metadata
         self._cached_store_info: str | None = None
 
@@ -64,7 +64,9 @@ class ToastTool(Toolkit):
 
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
-        self.query_engine = create_query_engine(self.namespace)
+        self.query_engine = create_query_engine(
+            namespace=self.namespace, index_name=self.index_name
+        )
 
         # TODO: See if the following lines are needed
         # loop = asyncio.get_running_loop()
