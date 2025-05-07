@@ -212,8 +212,9 @@ class CustomerInfo(BaseModel):
 
 class DeliveryAddress(BaseModel):
     address: str = Field(description="Street address")
-    extended_address: Optional[str] = Field(
+    extended_address: str = Field(
         description="Extended address (if applicable)",
+        default="",
         serialization_alias="extendedAddress",
     )
     city: str = Field(description="City name")
@@ -221,17 +222,17 @@ class DeliveryAddress(BaseModel):
     zip: str = Field(description="ZIP code")
     lat: float = Field(description="Latitude", default=0)
     lng: float = Field(description="Longitude", default=0)
-    instruction: Optional[str] = Field(
-        description="Special instructions for the delivery address"
+    instruction: str = Field(
+        description="Special instructions for the delivery address", default=""
     )
     type_id: int = Field(default=1, serialization_alias="typeId")
-    extra_field_1: Optional[str] = Field(
-        description="Extra field 1", serialization_alias="extraField1"
+    extra_field_1: str = Field(
+        description="Extra field 1", default="", serialization_alias="extraField1"
     )
-    extra_field_2: Optional[str] = Field(
-        description="Extra field 2", serialization_alias="extraField2"
+    extra_field_2: str = Field(
+        description="Extra field 2", default="", serialization_alias="extraField2"
     )
-    zone_id: Optional[int] = Field(serialization_alias="zoneId")
+    zone_id: int = Field(default=0, serialization_alias="zoneId")
 
 
 class ValidateAddressPayload(BaseModel):
