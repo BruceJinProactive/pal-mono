@@ -1,7 +1,5 @@
 import http.client
 import urllib.parse
-from decimal import Decimal
-from json import JSONEncoder
 
 from jsonschema import ValidationError
 
@@ -79,10 +77,3 @@ def connect_adora_order_hub(
     )
 
     return order_hub_response
-
-
-class DecimalEncoder(JSONEncoder):
-    def default(self, o):
-        if isinstance(o, Decimal):
-            return str(o)
-        return super().default(o)

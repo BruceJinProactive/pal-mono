@@ -96,49 +96,6 @@ class AdoraHubResponse(BaseModel):
     decoded_body: str
 
 
-class AdoraOrderItem(BaseModel):
-    """
-    This is the shape of an order item that is sent to the Adora API at the add_to_order step.
-    """
-
-    def __init__(
-        self,
-        item_id: int,
-        size_id: int,
-        quantity: int,
-        comment: str,
-        price: float,
-        modifiers: list[str],
-    ):
-        self.itemId = item_id
-        self.sizeId = size_id
-        self.quantity = quantity
-        self.comment = comment
-        self.price = price
-
-        self.taxes = [{"id": 0, "taxAmount": 0}]
-
-        self.modifiers = modifiers
-
-    def __str__(self):
-        return f"quantity: {self.quantity} sizeId: {self.sizeId} itemId: {self.itemId} with {self.modifiers} for {str(self.price)}"
-
-    def to_dict(self):
-        """
-        Returns a dictionary containing only the attributes of AdoraOrderItem.
-        Use this to generate the JSON payload to send to the Adora API.
-        """
-        return {
-            "itemId": self.itemId,
-            "sizeId": self.sizeId,
-            "quantity": self.quantity,
-            "comment": self.comment,
-            "price": self.price,
-            "taxes": self.taxes,
-            "modifiers": self.modifiers,
-        }
-
-
 class AdoraOrderType(StrEnum):
     DELIVERY = "Delivery"
     TAKEOUT = "TakeOut"
