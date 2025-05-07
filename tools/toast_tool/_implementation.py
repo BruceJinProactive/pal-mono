@@ -13,13 +13,9 @@ from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.toast_tool._apis import (
-    get_online_ordering_status,
-    get_order_prices,
-    get_toast_access_token,
-    get_store_info as get_store_info_api,
-    submit_order,
-)
+from tools.toast_tool._apis import get_online_ordering_status, get_order_prices
+from tools.toast_tool._apis import get_store_info as get_store_info_api
+from tools.toast_tool._apis import get_toast_access_token, submit_order
 from tools.toast_tool.classes import DeliveryAddress, ToastAccessToken
 from utils.log import logger
 from utils.ordering._llm import llm_call
@@ -392,7 +388,7 @@ class ToastTool(Toolkit):
                     f"`order` object in type {type(order)} but expected type Order.\n"
                     f"`order` object: {order}"
                 )
-
+            logger.debug(f"Constructed order: {order}")
             return order
         except ValidationError as e:
             logger.warning(e)

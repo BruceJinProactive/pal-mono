@@ -238,10 +238,35 @@ class Check(Price):
     payments: Optional[List[Payment]] = None
 
 
+class ToastDeliveryInfo(BaseModel):
+    address1: str = Field(description="Street address")
+    address2: Optional[str] = Field(description="Extended address (if applicable)")
+    city: str
+    state: str
+    notes: str = Field(
+        description="Special notes that the user has provided, including but not limited to any adjustments to the menu items ordered. Notes must be between 2 and 100 characters in length."
+    )
+    zipCode: str
+
+
+class ToastCurbsidePickupInfo(BaseModel):
+    notes: str = Field(
+        description="Special notes that the user has provided, including but not limited to any adjustments to the menu items ordered. Do not include transport description in this field. Notes must be between 2 and 100 characters in length."
+    )
+    transportDescription: str = Field(
+        description="The description of the transport method used for curbside pickup. If the order type is not curbside pickup, set the field to 'None'.",
+        default="No transport",
+    )
+
+
 # TODO: Implement input and output Order classes
 class OrderInput(BaseModel):
-    checks: List[Check]
+    checks: List[Check] = Field(
+        description="List of checks in the order. This must NOT be a dictionary."
+    )
     diningOption: DiningOption
+    deliveryInfo: Optional[ToastDeliveryInfo] = None
+    curbsidePickupInfo: Optional[ToastCurbsidePickupInfo] = None
 
 
 class Order(OrderInput):

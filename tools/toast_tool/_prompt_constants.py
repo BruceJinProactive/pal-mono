@@ -40,8 +40,16 @@ provide a delivery address, output "N/A" for all fields.
 - If any modifier group id or modifier item id is missing, do not include them in the output.
 
 # RULES FOR BUILDING THE DiningOption OBJECT:
-- If the user places a **takeout** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "141b2c60-a232-4387-9ba3-80f6f9f35b34"}.
+- If the user places a **takeout** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "db44f25f-479f-4d9c-852c-aebff86e6923"}.
 - If the user places a **dinein** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "030189e2-9689-49aa-a2dd-6fde46191240"}.
+- If the user places a **curbside pickup** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "141b2c60-a232-4387-9ba3-80f6f9f35b34"}.
+- If the user places a **delivery** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "2581adcf-3b04-4598-8df4-4c79cfcfc2dd"}.
+
+# RULES FOR ADDING SPECIAL NOTES TO THE ORDER:
+- You must recognize any notes/requests that the user wants to add to the order from the chat history. If there are any, add them to the order object appropriately. Be specific.
+- If the user is placing a delivery order, fill out the attribute `curbsidePickupInfo`.
+- If the user is placing other order types, fill out the attribute `ToastCurbsidePickupInfo`. Set the `transportDescription` field to "None" if the order type is not curbside pickup.
+- If the user did not specify any special notes, set the `notes` field to "No notes specified".
 
 # IMPORTANT RULES:
 - Do NOT make assumptions or fabricate data
