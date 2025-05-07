@@ -212,9 +212,8 @@ class CustomerInfo(BaseModel):
 
 class DeliveryAddress(BaseModel):
     address: str = Field(description="Street address")
-    extended_address: str = Field(
+    extended_address: Optional[str] = Field(
         description="Extended address (if applicable)",
-        default="",
         serialization_alias="extendedAddress",
     )
     city: str = Field(description="City name")
@@ -222,17 +221,17 @@ class DeliveryAddress(BaseModel):
     zip: str = Field(description="ZIP code")
     lat: float = Field(description="Latitude", default=0)
     lng: float = Field(description="Longitude", default=0)
-    instruction: str = Field(
+    instruction: Optional[str] = Field(
         description="Special instructions for the delivery address"
     )
-    type_id: SkipJsonSchema[int] = Field(default=1, serialization_alias="typeId")
-    extra_field_1: SkipJsonSchema[str] = Field(
-        description="Extra field 1", default="", serialization_alias="extraField1"
+    type_id: int = Field(default=1, serialization_alias="typeId")
+    extra_field_1: Optional[str] = Field(
+        description="Extra field 1", serialization_alias="extraField1"
     )
-    extra_field_2: SkipJsonSchema[str] = Field(
-        description="Extra field 2", default="", serialization_alias="extraField2"
+    extra_field_2: Optional[str] = Field(
+        description="Extra field 2", serialization_alias="extraField2"
     )
-    zone_id: SkipJsonSchema[int] = Field(default=0, serialization_alias="zoneId")
+    zone_id: Optional[int] = Field(serialization_alias="zoneId")
 
 
 class ValidateAddressPayload(BaseModel):
@@ -302,10 +301,7 @@ class Order(BaseModel):
     delivery_address: Optional[DeliveryAddress] = Field(
         description="Delivery address", serialization_alias="deliveryAddress"
     )
-    coupon_ids: SkipJsonSchema[List[int]] = Field(
-        default=[], description="Discount coupon ids."
-    )
-    paid: SkipJsonSchema[bool] = Field(default=False)
+    coupon_ids: Optional[List[int]] = Field(description="Discount coupon ids.")
     order_comment: Optional[str] = Field(
         description="Special ordering instructions requested by the customer. Empty if no special requests are made. These can be something like 'no cheese', 'extra sauce', etc.",
         serialization_alias="orderComment",
