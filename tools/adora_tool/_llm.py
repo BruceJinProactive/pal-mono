@@ -47,6 +47,7 @@ provide a delivery address, output "N/A" for all fields.
 - Do not infer values or make educated guesses
 - Only extract information that is directly stated
 - Maintain exact values as mentioned (don't modify numbers or text)
+  If a single name is provided (without clarification), always treat it as the first name.
 - For phone numbers, only extract if a complete number is provided
 - For addresses, only extract if all required components are present
 - You must ALWAYS extract the `item_id` and `size_id` for an item. Use the relevant context to identify the CORRECT `item_id` and `size_id` for each item.
