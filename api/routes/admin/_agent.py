@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from agent import AgentConfig
 from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentRequest
 from api.schemas.admin.project import ProjectSummary
-from services import agent_service
+from services import agent_service, project_service
 
 from ._auth import authorize_user_account
 from ._builder import build_agent, build_project_summary
@@ -149,7 +149,17 @@ async def get_agent_config(
     if not agent:
         raise not_found_error(f"Agent {agent_id} not found")
 
+    project = project_service.get_project(sync_session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} not found")
+
     authorize_user_account(context, agent.account.name)
+    if project.agent_id != agent.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The provided project does not use this agent! Cannot build agent_config.",
+            headers={"Content-Type": "application/json"},
+        )
 
     try:
         return await agent_service.construct_agent_config(

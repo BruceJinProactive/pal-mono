@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import AgentConfig
+from services import account_service
 from utils.log import logger
 
-from .. import account_service
 from . import _raw_config
 from .schema import AgentParams
 
@@ -51,11 +51,9 @@ async def construct_agent_config(
         raise ValueError("Invalid project_id")
 
     raw_config = _raw_config.RawConfig(
-        agent_id=agent_id,
-        agent_raw_config=db_agent.raw_config,
-        project_raw_config=db_project.raw_config,
-        account_id=db_agent.account.id,
-        account_name=db_agent.account.name,
+        agent=db_agent,
+        project=db_project,
+        account=db_agent.account,
         user_id=user_id,
         conversation_id=conversation_id,
     )
