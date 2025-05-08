@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError, model_validator
 
 class KnowledgeProvider(StrEnum):
     LLAMAINDEX = auto()  # Default knowledge provider
+    KNOWLEDGE_CONFIG = auto()
 
 
 ### Settings for specific knowledge providers ###
@@ -23,6 +24,10 @@ class LlamaIndexSettings(BaseModel):
     vector_store_modality: VectorStoreModality
     index_name: str
     namespace: str
+
+
+class KnowledgeConfigSettings(BaseModel):
+    content: str
 
 
 ### Knowledge Config ###

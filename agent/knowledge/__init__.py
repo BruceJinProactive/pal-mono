@@ -11,6 +11,7 @@ KnowledgeProvider = _config.KnowledgeProvider
 
 # Provider specific configs
 LlamaIndexSettings = _config.LlamaIndexSettings
+KnowledgeConfigSettings = _config.KnowledgeConfigSettings
 
 # Vector store configs
 VectorStoreProvider = _config.VectorStoreProvider

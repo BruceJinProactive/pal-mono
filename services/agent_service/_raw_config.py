@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -20,6 +21,7 @@ from agent import (
     ToolIdentifier,
     ToolMetadata,
 )
+from agent.knowledge import KnowledgeConfigSettings
 from utils.log import logger
 
 
@@ -47,23 +49,8 @@ class RawConfig:
             # TODO: Merge client data from agent raw config and project raw config
             client_data = {}
 
-            additional_context = ""
-
             # Add timezone datetime information
             if self.project.raw_config:
-                timezone = self.project.raw_config.get("timezone")
-
-                if timezone:
-                    # TODO: Once timezone PR is merged on Agno's side we can remove this
-                    # logic and use add_datetime_to_instructions + timezone_identifier instead
-                    try:
-                        tz = ZoneInfo(timezone)
-                        time = datetime.now(tz)
-
-                        additional_context += f"The current time is {time}."
-                    except Exception:
-                        raise ValueError(f"Timezone '{timezone}' is invalid.")
-
                 client_data = self.project.raw_config.get("client_data", {})
 
             self.client_config = ClientConfig(data=client_data)
@@ -88,7 +75,7 @@ class RawConfig:
                     framework=AgentFramework.AGNO,
                 ),
                 client=self.client_config,
-                additional_context=additional_context,
+                additional_context=self._get_additional_context(),
             )
         except ValueError as e:
             raise ValueError(f"Invalid RawConfig: {e}") from e
@@ -122,58 +109,30 @@ class RawConfig:
         # Extract the knowledge section of the raw config
         raw_knowledge = self.agent.raw_config.get("knowledge")
 
-        if not raw_knowledge:
-            logger.warning("'knowledge' is not provided in 'agent.raw_config'.")
-            return KnowledgeConfig(enabled=False)
+        if raw_knowledge:
+            provider = self._get_knowledge_provider(raw_knowledge)
 
-        # Use the identifier, provider, settings from the knowledge section
-        identifier = raw_knowledge.get("identifier")
-        if identifier is None:
-            raise ValueError(
-                "'knowledge.identifier' is not provided in 'agent.raw_config'."
-            )
-        raw_provider = raw_knowledge.get("provider")
+            if provider == KnowledgeProvider.LLAMAINDEX:
+                # Use the identifier, provider, settings from the knowledge section
+                identifier = raw_knowledge.get("identifier")
+                if identifier is None:
+                    raise ValueError(
+                        "'knowledge.identifier' is not provided in 'agent.raw_config'."
+                    )
 
-        if not raw_provider:
-            raise ValueError(
-                "'knowledge.provider' is not provided in 'agent.raw_config'."
-            )
+                settings = raw_knowledge.get("settings")
+                self._validate_settings(provider, settings)
+                # Enable by default
+                enable_knowledge = raw_knowledge.get("enabled", True)
+                logger.debug(f"Knowledge enabled: {enable_knowledge}")
 
-        # Check if provider is supported
-        provider = KnowledgeProvider(raw_provider)
-        if provider not in KnowledgeProvider:
-            raise ValueError(
-                "'knowledge.provider' is not valid."
-                f"Supported providers: {KnowledgeProvider}"
-            )
-        elif provider == KnowledgeProvider.LLAMAINDEX:
-            settings = raw_knowledge.get("settings")
-            if settings is None:
-                raise ValueError(
-                    "'knowledge.settings' is not provided in 'agent.raw_config'."
+                return KnowledgeConfig(
+                    enabled=enable_knowledge,
+                    provider=provider,
+                    identifier=identifier,
+                    settings=settings,
                 )
-
-            # Validate that the knowledge config settings are valid for llamaindex provider
-            try:
-                LlamaIndexSettings.model_validate(settings)
-            except ValidationError as e:
-                raise ValueError(
-                    "Invalid KnowledgeConfig settings for provider 'LlamaIndex'."
-                ) from e
-        else:
-            # For other providers, settings is not required
-            settings = None
-
-        # Enable by default
-        enable_knowledge = raw_knowledge.get("enabled", True)
-        logger.debug(f"Knowledge enabled: {enable_knowledge}")
-
-        return KnowledgeConfig(
-            enabled=enable_knowledge,
-            provider=provider,
-            identifier=identifier,
-            settings=settings,
-        )
+        return KnowledgeConfig(enabled=False)
 
     def _get_agent_tools(self) -> ToolConfig:
         # Extract the knowledge section of the raw config
@@ -247,3 +206,74 @@ class RawConfig:
         sections.extend(build_section("# Brand Information", brand_info_list))
         sections.extend(build_section("# Agent Information", agent_info_list))
         return "\n".join(sections)
+
+    def _get_additional_context(self) -> str:
+        additional_context = ""
+        # Add timezone datetime information
+        if self.project.raw_config:
+            timezone = self.project.raw_config.get("timezone")
+
+            if timezone:
+                # TODO: Once timezone PR is merged on Agno's side we can remove this
+                # logic and use add_datetime_to_instructions + timezone_identifier instead
+                try:
+                    tz = ZoneInfo(timezone)
+                    time = datetime.now(tz)
+
+                    additional_context += f"The current time is {time}."
+                except Exception:
+                    raise ValueError(f"Timezone '{timezone}' is invalid.")
+
+        raw_knowledge = self.agent.raw_config.get("knowledge")
+        if raw_knowledge:
+            provider = self._get_knowledge_provider(raw_knowledge)
+            if provider == KnowledgeProvider.KNOWLEDGE_CONFIG:
+                settings = raw_knowledge.get("settings")
+                self._validate_settings(provider, settings)
+
+                additional_context += f"""
+                --- MENU START ---
+                {settings["content"]}
+                --- MENU END ---
+                """
+
+        return additional_context
+
+    def _get_knowledge_provider(self, raw_knowledge) -> Optional[KnowledgeProvider]:
+        raw_provider = raw_knowledge.get("provider")
+
+        if not raw_provider:
+            raise ValueError(
+                "'knowledge.provider' is not provided in 'agent.raw_config'."
+            )
+
+        provider = KnowledgeProvider(raw_provider)
+        if provider not in KnowledgeProvider:
+            raise ValueError(
+                "'knowledge.provider' is not valid."
+                f"Supported providers: {KnowledgeProvider}"
+            )
+
+        return provider
+
+    def _validate_settings(self, provider: KnowledgeProvider, settings):
+        if settings is None:
+            raise ValueError(
+                "'knowledge.settings' is not provided in 'agent.raw_config'."
+            )
+
+        if provider == KnowledgeProvider.LLAMAINDEX:
+            # Validate that the knowledge config settings are valid for llamaindex provider
+            try:
+                LlamaIndexSettings.model_validate(settings)
+            except ValidationError as e:
+                raise ValueError(
+                    "Invalid KnowledgeConfig settings for provider 'LlamaIndex'."
+                ) from e
+        elif provider == KnowledgeProvider.KNOWLEDGE_CONFIG:
+            try:
+                KnowledgeConfigSettings.model_validate(settings)
+            except ValidationError as e:
+                raise ValueError(
+                    "Invalid KnowledgeConfig settings for provider 'KnowledgeConfig'."
+                ) from e
