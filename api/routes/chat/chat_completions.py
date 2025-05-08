@@ -72,14 +72,18 @@ async def chat_completions_agno(
         # Convert request format to a Message object
         if request.messages:
             # Build a message from the messages array
-            content = ""
-            for msg in request.messages:
-                if msg.get("role") == "user":
-                    content = msg.get("content", "")
-                    break
-
-            if not content:
+            user_messages = [
+                msg.get("content", "")
+                for msg in request.messages
+                if msg.get("role") == "user"
+            ]
+            if not user_messages:
                 content = request.messages[-1].get("content", "")
+            else:
+                content = user_messages[-1]
+            logger.debug(
+                f"chat_completions_agno request has messages {user_messages}, and message:{request.message}"
+            )
         elif request.message:
             content = request.message
         else:
