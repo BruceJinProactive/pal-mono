@@ -42,7 +42,7 @@ entrypoints==0.4
 envier==0.5.2
 envs==1.4
 et-xmlfile==2.0.0
-extra-streamlit-components==0.1.71
+# Removed: extra-streamlit-components==0.1.71
 faker==37.1.0
 fastapi==0.115.12
 fastavro==1.10.0
@@ -191,20 +191,20 @@ smmap==5.0.2
 sniffio==1.3.1
 soupsieve==2.6
 sqlalchemy[asyncio]==2.0.32
-st-annotated-text==4.0.2
-st-theme==1.2.3
+# Removed: st-annotated-text==4.0.2
+# Removed: st-theme==1.2.3
 starlette==0.46.1
-streamlit==1.42.0
-streamlit-camera-input-live==0.2.0
-streamlit-card==1.0.2
-streamlit-cognito-auth==1.3.1
-streamlit-embedcode==0.1.2
-streamlit-extras==0.5.0
-streamlit-faker==0.0.3
-streamlit-image-coordinates==0.1.9
-streamlit-keyup==0.3.0
-streamlit-toggle-switch==1.0.2
-streamlit-vertical-slider==2.5.5
+# Removed: streamlit==1.42.0
+# Removed: streamlit-camera-input-live==0.2.0
+# Removed: streamlit-card==1.0.2
+# Removed: streamlit-cognito-auth==1.3.1
+# Removed: streamlit-embedcode==0.1.2
+# Removed: streamlit-extras==0.5.0
+# Removed: streamlit-faker==0.0.3
+# Removed: streamlit-image-coordinates==0.1.9
+# Removed: streamlit-keyup==0.3.0
+# Removed: streamlit-toggle-switch==1.0.2
+# Removed: streamlit-vertical-slider==2.5.5
 striprtf==0.0.26
 tenacity==9.0.0
 tiktoken==0.9.0
