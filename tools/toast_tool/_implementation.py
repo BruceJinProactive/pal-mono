@@ -294,17 +294,28 @@ class ToastTool(Toolkit):
 
         logger.debug(f"Sub-queries identified: {sub_queries.queries}")
 
-        # Perform knowledege retrieval on all sub-queries asynchronously
-        loop = asyncio.new_event_loop()
+        async def run_all_queries():
+            tasks = [
+                asyncio.create_task(self.query_engine.aquery(query))
+                for query in sub_queries.queries
+            ]
+            try:
+                return await asyncio.gather(*tasks)
+            except Exception:
+                # Cancel remaining tasks
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                # Wait for all tasks to complete cancellation (optional)
+                await asyncio.gather(*tasks, return_exceptions=True)
+                raise
+
+        # Use asyncio.run for a simple async execution without need for manual event loop management
         try:
-            asyncio.set_event_loop(loop)
-            query_tasks = asyncio.gather(
-                *[self.query_engine.aquery(q) for q in sub_queries.queries]
-            )
-            results = loop.run_until_complete(query_tasks)
-        finally:
-            loop.close()
-            asyncio.set_event_loop(None)
+            results = asyncio.run(run_all_queries())
+        except Exception as e:
+            logger.error(f"Error executing queries: {e}")
+            results = []
 
         context = ""
         output_data = []
