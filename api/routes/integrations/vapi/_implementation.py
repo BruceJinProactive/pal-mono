@@ -209,6 +209,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         return {
             "assistant": {
                 "firstMessage": greeting,
+                "transcriber": {"provider": "deepgram"},
                 "model": {
                     "provider": "custom-llm",
                     "url": f"{api_url}/v1",
@@ -216,6 +217,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                     "messages": [
                         {"role": "system", "content": config.persona.description}
                     ],
+                },
+                "voice": {
+                    "provider": "cartesia",
+                    "voiceId": "ed81fd13-2016-4a49-8fe3-c0d2761695fc",  # Sportsman
                 },
             }
         }
