@@ -5,9 +5,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Enum, String
@@ -63,6 +62,9 @@ class CampaignMessage(Base):
         nullable=False,
         index=True,
     )
+    campaign_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
     recipient: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[CampaignMessageStatus] = mapped_column(
         Enum(CampaignMessageStatus), nullable=False
@@ -74,9 +76,3 @@ class CampaignMessage(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
     )
-
-    # Relationships
-    campaign_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("campaign.id"), nullable=False, index=True
-    )
-    campaign: Mapped["Campaign"] = relationship("Campaign", back_populates="messages")
