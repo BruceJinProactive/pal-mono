@@ -126,7 +126,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         customer_number = customer_data.get("number", "")
 
         logger.info(
-            f"Handling assistant request for call {call_id} from {customer_number}"
+            f"Handling assistant request for call {call_id} from {customer_number} to {phone_number}"
         )
 
         # Create a Message object for this call request
@@ -212,7 +212,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 "model": {
                     "provider": "custom-llm",
                     "url": f"{api_url}/v1",
-                    "model": caller_info,  # Pass dictionary directly - will be serialized to JSON
+                    "model": json.dumps(caller_info),
                     "messages": [
                         {"role": "system", "content": config.persona.description}
                     ],
