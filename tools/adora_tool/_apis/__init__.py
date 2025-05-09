@@ -233,3 +233,52 @@ def validate_address(
     else:
         # return error message, likely "Address was not found in the list of delivery zones!"
         return False, response.decoded_body
+
+
+def validate_coupon_code(
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+    coupon_code: str,
+    qa_store: bool,
+    culture_code: str = "en-US",
+) -> dict | None:
+    """
+    Validate a coupon code for a specific store.
+
+    Args:
+        bearer_token (AdoraAccessToken): The bearer token to authenticate with Adora POS.
+        store_id (str): The ID of the store.
+        coupon_code (str): The coupon code to validate.
+        qa_store (bool): True if the QA environment should be used.
+        culture_code (str, optional): The culture code. Defaults to "en-US".
+
+    Returns:
+        dict | None: A dictionary containing validation results if successful, None otherwise.
+            The dictionary includes:
+            - isValid (bool): Whether the coupon code is valid
+            - message (str): Message about the validation result
+            - couponId (int): ID of the coupon if valid
+            - couponCode (str): The validated coupon code
+            - description (str): Description of the coupon
+    """
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "validateCouponCode",
+        query_params={
+            "sid": store_id,
+            "couponCode": coupon_code,
+            "clCode": culture_code,
+        },
+        extra_headers=None,
+        payload=None,
+        qa_store=qa_store,
+    )
+
+    if response.status == 200:
+        return json.loads(response.decoded_body)
+    else:
+        logger.error(
+            f"[AdoraTool._apis.validate_coupon_code] Failed to validate coupon with status {response.status}: {response.decoded_body}"
+        )
+        return None
