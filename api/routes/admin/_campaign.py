@@ -3,10 +3,12 @@ import uuid
 from sqlalchemy.orm import Session
 
 from api.routes.admin import UserContext
+from api.schemas.admin.campaign import CreateCampaignRequest
 
 
 async def create_campaign(
     account_name: str,
+    campaign_request: CreateCampaignRequest,
     context: UserContext,
     session: Session,
 ):
@@ -15,19 +17,22 @@ async def create_campaign(
     Make sure user has permission for this account.
     """
     # TODO (@dan.liu): implement necessary logics
-    pass
+    raise NotImplementedError("not implemented yet")
 
 
-async def submit_campaign_message(
-    account_name: str,
+async def get_campaign_detail(
     campaign_id: uuid.UUID,
     context: UserContext,
     session: Session,
 ):
-    """
-    Uses the campaign id to retrieve the campaign metadata and then send a message
-    to the recipient using relay service. Make sure user has permission to the associated
-    account.
-    """
     # TODO (@dan.liu): implement necessary logics
-    pass
+    raise NotImplementedError("not implemented yet")
+
+
+async def list_account_campaigns(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+):
+    # TODO (@dan.liu): implement necessary logics
+    raise NotImplementedError("not implemented yet")

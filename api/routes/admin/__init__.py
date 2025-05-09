@@ -22,6 +22,12 @@ from api.schemas.admin.agent import (
     UpdateAgentRequest,
 )
 from api.schemas.admin.analytics import GetAllReportsResponse, GetReportResponse
+from api.schemas.admin.campaign import (
+    CampaignDetail,
+    CreateCampaignRequest,
+    CreateCampaignResponse,
+    ListCampaignsResponse,
+)
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
@@ -311,36 +317,49 @@ async def get_agent_config(
 
 
 """
----------- Conversation Endpoints ----------
---------------------------------------------
+---------- Campaign Endpoints ----------
+----------------------------------------
 """
 
 
 @admin_router.put("/accounts/{account_name}/campaigns")
 async def create_campaign(
     account_name: str,
+    campaign_request: CreateCampaignRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-):
+) -> CreateCampaignResponse:
     """
     Creates a new marketing campaign where it can be used to send promotional
     contents to a select list of users.
     """
-    # TODO (dan.liu): add a request body to the API so caller can pass in the campaign metadata
-    return await _campaign.create_campaign(account_name, context, session)
+    return await _campaign.create_campaign(
+        account_name, campaign_request, context, session
+    )
 
 
-@admin_router.put("/campaigns/{campaign_id}/messages")
-async def submit_campaign_message(
-    account_name: str,
+@admin_router.get("/campaigns/{campaign_id}")
+async def get_campaign_detail(
     campaign_id: uuid.UUID,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-):
-    # TODO (dan.liu): add a request body to the API so caller can pass in the message details
-    return await _campaign.submit_campaign_message(
-        account_name, campaign_id, context, session
-    )
+) -> CampaignDetail:
+    """
+    Uses the campaign id to retrieve the campaign metadata and execution results.
+    """
+    return await _campaign.get_campaign_detail(campaign_id, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/campaigns")
+async def list_account_campaigns(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListCampaignsResponse:
+    """
+    Retrieves a list of campaign summaries for the given account.
+    """
+    return await _campaign.list_account_campaigns(account_name, context, session)
 
 
 """
