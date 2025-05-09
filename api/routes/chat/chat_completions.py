@@ -132,6 +132,9 @@ async def chat_completions_agno(
             async def generate_stream():
                 try:
                     try:
+                        # Log stream start
+                        logger.info(f"Starting streaming response for model={model}")
+
                         response_stream = await get_chat_response_stream(
                             session=session, message=message
                         )
@@ -243,7 +246,7 @@ async def chat_completions_agno(
 
                         # Log completion of stream
                         logger.info(
-                            f"Completed streaming response after {chunk_count} chunks"
+                            f"Completed streaming response after {chunk_count} chunks."
                         )
                         yield "data: [DONE]\n\n"
                 except Exception as e:
