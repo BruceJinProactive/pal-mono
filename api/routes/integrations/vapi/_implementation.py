@@ -213,6 +213,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                     "provider": "custom-llm",
                     "url": f"{api_url}/v1",
                     "model": json.dumps(caller_info),
+                    "stream": True,
                     "messages": [
                         {"role": "system", "content": config.persona.description}
                     ],
