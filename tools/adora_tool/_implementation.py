@@ -67,7 +67,7 @@ class AdoraTool(Toolkit):
         loop.create_task(asyncio.to_thread(self._prefetch_adora_bearer_token))
 
         # Register tools
-        # self.register(self.greeting) # TODO: let's unregister this
+        # self.register(self.get_customer_info) # TODO: let's unregister this
         self.register(self.check_online_ordering_status)
         self.register(self.get_store_info)
         self.register(self.checkout_order)
@@ -138,17 +138,27 @@ class AdoraTool(Toolkit):
             return None
 
     @tool
-    def greeting(self, phone_number: str) -> str:
+    def get_customer_info(self, phone_number: str) -> str:
         """
-        Greet the customer and check if their info exists in the Adora database.
-        If so, retrieve their info and use that to greet them.
+        Retrieves customer information from the Adora API including loyalty status and rewards.
+
+        This tool should be used when:
+        - You need to check a customer's loyalty status or available rewards
+        - You need to verify if a customer exists in the system
+        - The customer asks about their points, rewards, or loyalty program status
+        - You need to personalize the ordering experience based on customer history
 
         Args:
-            phone_number (str): The phone number.
+            phone_number (str): The customer's phone number.
 
         Returns:
-            str: Greeting to the customer.
+            str: Customer information including name, loyalty program status, available rewards. Returns an error message if the
+                 customer cannot be found or if there's an issue with the API.
         """
+        error_message = (
+            "There was an error retrieving your information. Please try again."
+        )
+
         try:
             phone_number = _utils.format_phone_number(phone_number)
             if not phone_number:
@@ -157,10 +167,7 @@ class AdoraTool(Toolkit):
             # Use _get_adora_bearer_token to ensure LLMObs tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
-                return (
-                    "Failed to authenticate ordering tool. Please reach out to our "
-                    "support team at help@palona.ai for assistance."
-                )
+                raise ValueError("Failed to authenticate ordering tool.")
 
             customer_info = _apis.get_customer_info(
                 bearer_token,
@@ -169,17 +176,16 @@ class AdoraTool(Toolkit):
                 qa_store=self.qa_store,
             )
 
-            # If customer does not exist or something else happened
             if customer_info is None:
-                return (
-                    "There was an error retrieving your information. Please try again."
-                )
+                raise ValueError("Internal server error.")
 
             return customer_info
 
         except Exception as e:
-            logger.error(f"[AdoraTool.greeting] Error in greeting customer: {e}")
-            return ""
+            logger.error(
+                f"[AdoraTool.get_customer_info] Error retrieving customer information: {e}"
+            )
+            return error_message
 
     @tool
     def check_online_ordering_status(self) -> str:
