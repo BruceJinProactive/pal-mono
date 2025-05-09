@@ -89,13 +89,37 @@ async def chat_completions_agno(
         else:
             raise ValueError("Either 'message' or 'messages' must be provided")
 
+        # Convert model to a JSON structure for caller identification
+        try:
+            # Parse model as JSON, it could be a string representation of JSON
+            caller_info = json.loads(model) if isinstance(model, str) else model
+
+            # Validate required fields
+            if (
+                "sender_identifier" not in caller_info
+                or "recipient_identifier" not in caller_info
+            ):
+                logger.warning(f"Missing required fields in caller_info: {caller_info}")
+                # Use defaults if missing
+                sender_identifier = caller_info.get("sender_identifier", "user")
+                recipient_identifier = caller_info.get(
+                    "recipient_identifier",
+                    model if isinstance(model, str) else "default",
+                )
+            else:
+                sender_identifier = caller_info["sender_identifier"]
+                recipient_identifier = caller_info["recipient_identifier"]
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            # Handle case where model isn't valid JSON
+            raise Exception(f"Error parsing model as JSON: {e}. Using defaults.")
+
         # Create a Message object
         message = Message(
             author_type=AuthorType.USER,
-            sender_identifier="user",
-            recipient_identifier=model,
-            channel=Channel.API,
-            broker=None,  # API doesn't need a broker
+            sender_identifier=sender_identifier,
+            recipient_identifier=recipient_identifier,
+            channel=Channel.VOICE,
+            broker=None,
             text=TextObject(body=content),
             metadata=Metadata(
                 testing=False,

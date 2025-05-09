@@ -195,15 +195,24 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         greeting = f"Hi this is {config.persona.name} from {account_name}. How can I help you today?"
 
+        # Create caller_info with required fields for message routing
+        caller_info = {
+            "sender_identifier": customer_number,
+            "recipient_identifier": phone_number,
+            "call_id": call_id,  # Adding call_id for future reference
+        }
+
         # Return a transient assistant configuration
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
+        # Document the expected format using a comment
+        # Model field format: {sender_identifier: string, recipient_identifier: string, call_id?: string}
         return {
             "assistant": {
                 "firstMessage": greeting,
                 "model": {
                     "provider": "custom-llm",
                     "url": f"{api_url}/v1",
-                    "model": project.name,
+                    "model": caller_info,  # Pass dictionary directly - will be serialized to JSON
                     "messages": [
                         {"role": "system", "content": config.persona.description}
                     ],
