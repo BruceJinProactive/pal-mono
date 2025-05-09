@@ -10,12 +10,14 @@ import db
 from api.schemas.chat.message import Message
 
 from . import _implementation
+from utils.dd import traced
 
 
 def get_filler_message(message: Message) -> Message:
     return _implementation.get_filler_message(message)
 
 
+@traced("message_service: get_chat_response_async")
 async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
@@ -36,6 +38,7 @@ async def get_chat_response_async(
     return await _implementation.get_chat_response_async(session, message)
 
 
+@traced("message_service: get_chat_response_stream")
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[ChatCompletionChunk]:
