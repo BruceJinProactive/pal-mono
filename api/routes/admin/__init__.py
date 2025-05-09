@@ -52,6 +52,7 @@ from . import (
     _account,
     _agent,
     _analytics,
+    _campaign,
     _conversation,
     _feedback,
     _knowledge,
@@ -306,6 +307,39 @@ async def get_agent_config(
     """
     return await _agent.get_agent_config(
         agent_id, project_id, context, sync_session, async_session
+    )
+
+
+"""
+---------- Conversation Endpoints ----------
+--------------------------------------------
+"""
+
+
+@admin_router.put("/accounts/{account_name}/campaigns")
+async def create_campaign(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Creates a new marketing campaign where it can be used to send promotional
+    contents to a select list of users.
+    """
+    # TODO (dan.liu): add a request body to the API so caller can pass in the campaign metadata
+    return await _campaign.create_campaign(account_name, context, session)
+
+
+@admin_router.put("/campaigns/{campaign_id}/messages")
+async def submit_campaign_message(
+    account_name: str,
+    campaign_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    # TODO (dan.liu): add a request body to the API so caller can pass in the message details
+    return await _campaign.submit_campaign_message(
+        account_name, campaign_id, context, session
     )
 
 
