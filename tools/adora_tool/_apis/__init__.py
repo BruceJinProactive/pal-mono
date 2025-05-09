@@ -49,6 +49,125 @@ def get_adora_pos_auth_token(
     return _utils.parse_json(AdoraAccessToken, bearer_token_json)
 
 
+def _get_loyalty_status(customer_info: dict) -> bool:
+    """
+    Extract loyalty status from customer info.
+
+    Args:
+        customer_info: Dictionary containing customer information
+
+    Returns:
+        bool: True if customer is a loyalty member, False otherwise
+    """
+    is_loyalty_member = False
+
+    if "loyaltyMember" in customer_info:
+        is_loyalty_member = bool(customer_info["loyaltyMember"])
+
+    return is_loyalty_member
+
+
+def _get_reward_info(customer_info: dict) -> str:
+    """
+    Extract reward information from customer info.
+
+    Args:
+        customer_info: Dictionary containing customer information
+
+    Returns:
+        str: Formatted reward information
+    """
+    rewards_info = ""
+
+    if "customerRewards" in customer_info and customer_info["customerRewards"]:
+        rewards_info = "Customer Rewards:\n\n"
+        for reward in customer_info["customerRewards"]:
+            reward_date = reward.get("earnedDate", "")
+            formatted_date = reward_date
+            if reward_date:
+                try:
+                    date_obj = datetime.fromisoformat(
+                        reward_date.replace("Z", "+00:00")
+                    )
+                    formatted_date = date_obj.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    logger.error(f"Error formatting reward date: {e}")
+                    formatted_date = reward_date
+
+            rewards_info += (
+                f"Reward ID: {reward.get('rewardId', '')}\n"
+                f"Earned Date: {formatted_date}\n"
+                f"Coupon ID: {reward.get('couponId', '')}\n"
+                f"Coupon Name: {reward.get('couponName', '')}\n"
+                f"Reward Name: {reward.get('rewardName', '')}\n\n"
+            )
+
+    return rewards_info
+
+
+def _get_offer_info(customer_info: dict) -> str:
+    """
+    Extract offer information from customer info.
+
+    Args:
+        customer_info: Dictionary containing customer information
+
+    Returns:
+        str: Formatted offer information
+    """
+    offers_info = ""
+
+    if "customerOffers" in customer_info and customer_info["customerOffers"]:
+        offers = customer_info["customerOffers"]
+        offers_info = "Customer Offers:\n\n"
+
+        # Extract codes
+        if "codes" in offers and offers["codes"]:
+            offers_info += "Campaign Codes:\n"
+            for code in offers["codes"]:
+                offers_info += f"{json.dumps(code, indent=2)}\n\n"
+
+        # Extract coupons
+        if "coupons" in offers and offers["coupons"]:
+            offers_info += "Coupons:\n"
+            for coupon in offers["coupons"]:
+                offers_info += f"{json.dumps(coupon, indent=2)}\n\n"
+
+    return offers_info
+
+
+def _get_next_order_credits(customer_info: dict) -> str:
+    """
+    Extract next order credits information from customer info.
+
+    Args:
+        customer_info: Dictionary containing customer information
+
+    Returns:
+        str: Formatted next order credits information
+    """
+    credits_info = ""
+
+    if (
+        "customerNextOrderCredits" in customer_info
+        and customer_info["customerNextOrderCredits"]
+    ):
+        credits = customer_info["customerNextOrderCredits"]
+        credits_info = "Customer Next Order Credits:\n\n"
+
+        for credit in credits:
+            credits_info += (
+                f"Credit ID: {credit.get('creditId', '')}\n"
+                f"Store Key: {credit.get('storeKey', '')}\n"
+                f"Coupon ID: {credit.get('couponId', '')}\n"
+                f"Discount: {credit.get('discount', '')}\n"
+                f"Coupon Name: {credit.get('couponName', '')}\n"
+                f"Coupon Description: {credit.get('couponDescription', '')}\n\n"
+            )
+
+    return credits_info
+
+
 def get_customer_info(
     bearer_token: AdoraAccessToken, store_id: str, phone_number: str, qa_store: bool
 ) -> str | None:
@@ -70,7 +189,22 @@ def get_customer_info(
         customer_name = (
             f"Customer name: {customer_info['name']} {customer_info['lastname']}\n\n"
         )
-        return customer_name
+
+        loyalty_status = _get_loyalty_status(customer_info)
+        if not loyalty_status:
+            return customer_name + f"\nLoyalty status: {loyalty_status}"
+
+        reward_info = _get_reward_info(customer_info)
+        offer_info = _get_offer_info(customer_info)
+        next_order_credits = _get_next_order_credits(customer_info)
+
+        return (
+            customer_name
+            + f"\nLoyalty status: {loyalty_status}"
+            + f"\nRewards: {reward_info or 'None'}"
+            + f"\nOffers: {offer_info or 'None'}"
+            + f"\nNext Order Credits: {next_order_credits or 'None'}"
+        )
 
     elif response.status == 404:
         logger.debug(
