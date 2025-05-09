@@ -10,7 +10,6 @@ from ddtrace.llmobs.decorators import retrieval, task, tool
 from mixpanel import Mixpanel
 
 from agent.config import ClientConfig
-from agent.memory import update_memory
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
@@ -172,16 +171,8 @@ class AdoraTool(Toolkit):
 
             # If customer does not exist or something else happened
             if customer_info is None:
-                raise ValueError(f"Returned invalid customer info: {customer_info}")
-
-            # If the customer info exists in PMH
-            if customer_info:
-                # TODO: Maybe not the best way to update memory?
-                asyncio.run(
-                    update_memory(
-                        user_id=str(self.user_id),  # type: ignore
-                        content=customer_info,  # type: ignore
-                    )  # type: ignore
+                return (
+                    "There was an error retrieving your information. Please try again."
                 )
 
             return customer_info

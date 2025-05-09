@@ -66,28 +66,25 @@ def get_customer_info(
     )
 
     customer_info = json.loads(response.decoded_body)
-
-    # Customer does not exist
-    if isinstance(customer_info, str):
-        return ""
-
-    name = f"Customer name: {customer_info['name']} {customer_info['lastname']}\n\n"
-
-    if len(customer_info["addresses"]) > 0:
-        addresses = "Addresses:\n\n"
-
-        for addr in customer_info["addresses"]:
-            addresses += (
-                f"{addr['streetNo']} {addr['address']}, "
-                f"{addr['city']}, {addr['state']}, "
-                f"{addr['zip']}\n\n"
-            )
-    else:
-        addresses = ""
-
     if response.status == 200:
-        return name + addresses
+        customer_name = (
+            f"Customer name: {customer_info['name']} {customer_info['lastname']}\n\n"
+        )
+        return customer_name
+
+    elif response.status == 404:
+        logger.debug(
+            f"[AdoraTool._apis.get_customer_info] Customer not found: {customer_info}"
+        )
+        return (
+            customer_info.get("message", "Customer not found.")
+            + " Please double check your phone number and try again."
+        )
+
     else:
+        logger.debug(
+            f"[AdoraTool._apis.get_customer_info] Internal server error: {customer_info}"
+        )
         return None
 
 
