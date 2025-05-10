@@ -265,9 +265,11 @@ async def get_chat_response_stream(
 
         # Initialize agent and set up streaming input
         agent = Agent(config=config)
+
+        logger.debug(f"Agent config stream mode: {config}")
         input = _utils.get_agent_input_from_message(message=message)
         input.stream = True
-        logger.debug(f"Input: {input}")
+        logger.debug(f"Input stream mode: {input}")
 
         # Get streaming response
         response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
