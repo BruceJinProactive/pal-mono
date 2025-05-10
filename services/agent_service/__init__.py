@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import AgentConfig
+from utils.dd import traced
 
 from . import _implementation
 from .schema import AgentParams
 
 
+@traced("agent_service: construct_agent_config")
 async def construct_agent_config(
     session: AsyncSession,
     agent_id: uuid.UUID,

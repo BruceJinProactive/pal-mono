@@ -10,6 +10,7 @@ from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
+from utils.dd import traced
 
 
 class Agent:
@@ -18,6 +19,7 @@ class Agent:
     with the provided configuration.
     """
 
+    @traced("Agent: initializing")
     def __init__(self, config: AgentConfig):
         """
         Initializes the Agent with the given configuration.
