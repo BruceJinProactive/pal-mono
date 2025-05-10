@@ -270,7 +270,7 @@ async def get_chat_response_stream(
         logger.debug(f"Input: {input}")
 
         # Get streaming response
-        response_stream = await agent.arun(input)  # type: ignore
+        response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
         collected_content = []
 
         # ==== Step 3: Process the streaming response ====

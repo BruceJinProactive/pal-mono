@@ -17,7 +17,7 @@ def get_filler_message(message: Message) -> Message:
     return _implementation.get_filler_message(message)
 
 
-@traced("message_service: get_chat_response_async")
+@traced("Message Service Async Processing")
 async def get_chat_response_async(
     session: AsyncSession, message: Message
 ) -> list[Message]:
@@ -38,7 +38,7 @@ async def get_chat_response_async(
     return await _implementation.get_chat_response_async(session, message)
 
 
-@traced("message_service: get_chat_response_stream")
+@traced("Message Service Stream Processing")
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[ChatCompletionChunk]:

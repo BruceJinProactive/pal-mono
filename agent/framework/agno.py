@@ -46,7 +46,7 @@ class AgnoAgent:
 
         model = OpenAIChat(id="gpt-4o")
 
-        with trace_block("agno agent creation"):
+        with trace_block("Agno Core Agent Creation"):
             agent = agno.agent.agent.Agent(
                 ### Persona ###
                 name=config.persona.name,
@@ -76,9 +76,9 @@ class AgnoAgent:
 
         self._agent = agent
 
-    @agent
+    @agent(name="AgnoAgent")
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
-        with trace_block("agno agent arun"):
+        with trace_block("Agno Core Agent Processing"):
             result = await self._agent.arun(input.get_prompt(), stream=input.stream)
 
         # Handle streaming case

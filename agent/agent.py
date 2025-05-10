@@ -19,7 +19,7 @@ class Agent:
     with the provided configuration.
     """
 
-    @traced("Agent: initializing")
+    @traced("Pal Agent Initialization")
     def __init__(self, config: AgentConfig):
         """
         Initializes the Agent with the given configuration.
@@ -53,7 +53,7 @@ class Agent:
             }
         )
 
-    @workflow
+    @workflow(name="Pal Agent Processing")
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
         Runs the agent asynchronously with the given input.

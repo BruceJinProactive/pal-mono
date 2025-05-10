@@ -12,7 +12,7 @@ from . import _implementation
 from .schema import AgentParams
 
 
-@traced("agent_service: construct_agent_config")
+@traced("Agent Service Constructing Config")
 async def construct_agent_config(
     session: AsyncSession,
     agent_id: uuid.UUID,

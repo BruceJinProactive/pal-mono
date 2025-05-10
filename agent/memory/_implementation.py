@@ -6,7 +6,7 @@ from mem0 import AsyncMemoryClient
 from utils.log import logger
 
 
-@task
+@task(name="Memory Update")
 async def update_memory(
     user_id: str,
     content: str,

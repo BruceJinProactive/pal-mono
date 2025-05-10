@@ -32,7 +32,7 @@ def check_input(prompt: str) -> bool:  # rule-based approach
     return all(rule(prompt) for rule in checks)
 
 
-@task
+@task(name="Bedrock Checking")
 def check_input_bedrock(prompt: str) -> bool:  # aws bedrock approach
     """
     Checks a prompt against a Bedrock guardrail.
