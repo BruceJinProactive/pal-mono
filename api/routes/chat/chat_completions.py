@@ -60,6 +60,134 @@ async def chat_completions(
         return await chat_completions_agno(request, model, session)
 
 
+def _extract_content_from_request(request: ChatCompletionRequest) -> str:
+    """Extract content from the request object."""
+    if request.messages:
+        # Build a message from the messages array
+        user_messages = [
+            msg.get("content", "")
+            for msg in request.messages
+            if msg.get("role") == "user"
+        ]
+        if not user_messages:
+            content = request.messages[-1].get("content", "")
+        else:
+            content = user_messages[-1]
+        logger.debug(
+            f"chat_completions_agno request has messages {user_messages}, and message:{request.message}"
+        )
+    elif request.message:
+        content = request.message
+    else:
+        raise ValueError("Either 'message' or 'messages' must be provided")
+
+    return content
+
+
+def _parse_caller_info(model: str) -> tuple[str, str]:
+    """Parse model string to extract sender and recipient identifiers."""
+    try:
+        # Parse model as JSON, it could be a string representation of JSON
+        caller_info = json.loads(model) if isinstance(model, str) else model
+
+        # Validate required fields
+        if (
+            "sender_identifier" not in caller_info
+            or "recipient_identifier" not in caller_info
+        ):
+            logger.warning(f"Missing required fields in caller_info: {caller_info}")
+            # Use defaults if missing
+            sender_identifier = caller_info.get("sender_identifier", "user")
+            recipient_identifier = caller_info.get(
+                "recipient_identifier",
+                model if isinstance(model, str) else "default",
+            )
+        else:
+            sender_identifier = caller_info["sender_identifier"]
+            recipient_identifier = caller_info["recipient_identifier"]
+
+        return sender_identifier, recipient_identifier
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        # Handle case where model isn't valid JSON
+        raise Exception(f"Error parsing model as JSON: {e}.")
+
+
+def _convert_chunk_to_dict(chunk):
+    """Convert a chunk to a dictionary representation."""
+    if hasattr(chunk, "model_dump"):
+        return chunk.model_dump()
+
+    # Fall back to dict representation
+    return {
+        "id": chunk.id,
+        "object": chunk.object,
+        "created": chunk.created,
+        "model": chunk.model,
+        "choices": [
+            {
+                "index": choice.index,
+                "delta": {
+                    "role": (
+                        choice.delta.role if hasattr(choice.delta, "role") else None
+                    ),
+                    "content": (
+                        choice.delta.content
+                        if hasattr(choice.delta, "content")
+                        else None
+                    ),
+                },
+                "finish_reason": choice.finish_reason,
+            }
+            for choice in chunk.choices
+        ],
+    }
+
+
+def _create_fallback_chunk(model: str, content: str) -> dict:
+    """Create a fallback chunk for streaming responses."""
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "content": content,
+                },
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
+def _create_response_data(model: str, content: str) -> dict:
+    """Create a standard response data object."""
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 0,  # We don't track these
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        },
+    }
+
+
 async def chat_completions_agno(
     request: ChatCompletionRequest,
     model: str,
@@ -69,49 +197,11 @@ async def chat_completions_agno(
     logger.info(f"Agno chat completions request: {json.dumps(request.model_dump())}")
 
     try:
-        # Convert request format to a Message object
-        if request.messages:
-            # Build a message from the messages array
-            user_messages = [
-                msg.get("content", "")
-                for msg in request.messages
-                if msg.get("role") == "user"
-            ]
-            if not user_messages:
-                content = request.messages[-1].get("content", "")
-            else:
-                content = user_messages[-1]
-            logger.debug(
-                f"chat_completions_agno request has messages {user_messages}, and message:{request.message}"
-            )
-        elif request.message:
-            content = request.message
-        else:
-            raise ValueError("Either 'message' or 'messages' must be provided")
+        # Extract content from request
+        content = _extract_content_from_request(request)
 
-        # Convert model to a JSON structure for caller identification
-        try:
-            # Parse model as JSON, it could be a string representation of JSON
-            caller_info = json.loads(model) if isinstance(model, str) else model
-
-            # Validate required fields
-            if (
-                "sender_identifier" not in caller_info
-                or "recipient_identifier" not in caller_info
-            ):
-                logger.warning(f"Missing required fields in caller_info: {caller_info}")
-                # Use defaults if missing
-                sender_identifier = caller_info.get("sender_identifier", "user")
-                recipient_identifier = caller_info.get(
-                    "recipient_identifier",
-                    model if isinstance(model, str) else "default",
-                )
-            else:
-                sender_identifier = caller_info["sender_identifier"]
-                recipient_identifier = caller_info["recipient_identifier"]
-        except (json.JSONDecodeError, TypeError, ValueError) as e:
-            # Handle case where model isn't valid JSON
-            raise Exception(f"Error parsing model as JSON: {e}. Using defaults.")
+        # Parse caller info from model
+        sender_identifier, recipient_identifier = _parse_caller_info(model)
 
         # Create a Message object
         message = Message(
@@ -121,11 +211,10 @@ async def chat_completions_agno(
             channel=Channel.VOICE,
             broker=None,
             text=TextObject(body=content),
-            metadata=Metadata(
-                testing=False,
-                # Add any other metadata needed
-            ),
+            metadata=Metadata(testing=False),
         )
+
+        fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
 
         if request.stream:
             # Use streaming response
@@ -134,7 +223,6 @@ async def chat_completions_agno(
                     try:
                         # Log stream start
                         logger.info(f"Starting streaming response for model={model}")
-
                         response_stream = await get_chat_response_stream(
                             session=session, message=message
                         )
@@ -143,29 +231,7 @@ async def chat_completions_agno(
                         logger.error(
                             f"Error getting streaming response from agent: {str(es)}"
                         )
-                        # Create a fallback error message that follows ChatCompletionChunk format
-                        fallback_id = f"chatcmpl-{uuid.uuid4().hex}"
-                        fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
-
-                        # Create a fallback stream chunk
-                        fallback_chunk = {
-                            "id": fallback_id,
-                            "object": "chat.completion.chunk",
-                            "created": int(
-                                datetime.datetime.now(datetime.timezone.utc).timestamp()
-                            ),
-                            "model": model,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {
-                                        "role": "assistant",
-                                        "content": fallback_content,
-                                    },
-                                    "finish_reason": "stop",
-                                }
-                            ],
-                        }
+                        fallback_chunk = _create_fallback_chunk(model, fallback_content)
                         yield f"data: {json.dumps(fallback_chunk)}\n\n"
                         yield "data: [DONE]\n\n"
                         return
@@ -174,73 +240,13 @@ async def chat_completions_agno(
                         chunk_count = 0
                         async for chunk in response_stream:
                             chunk_count += 1
+                            chunk_data = _convert_chunk_to_dict(chunk)
 
                             # Only log first chunk to avoid excessive logging
                             if chunk_count == 1:
-                                if hasattr(chunk, "model_dump"):
-                                    chunk_data = chunk.model_dump()
-                                else:
-                                    # Fall back to dict representation
-                                    chunk_data = {
-                                        "id": chunk.id,
-                                        "object": chunk.object,
-                                        "created": chunk.created,
-                                        "model": chunk.model,
-                                        "choices": [
-                                            {
-                                                "index": choice.index,
-                                                "delta": {
-                                                    "role": (
-                                                        choice.delta.role
-                                                        if hasattr(choice.delta, "role")
-                                                        else None
-                                                    ),
-                                                    "content": (
-                                                        choice.delta.content
-                                                        if hasattr(
-                                                            choice.delta, "content"
-                                                        )
-                                                        else None
-                                                    ),
-                                                },
-                                                "finish_reason": choice.finish_reason,
-                                            }
-                                            for choice in chunk.choices
-                                        ],
-                                    }
                                 logger.info(
                                     f"First stream chunk: {json.dumps(chunk_data)}"
                                 )
-
-                            if hasattr(chunk, "model_dump"):
-                                chunk_data = chunk.model_dump()
-                            else:
-                                # Fall back to dict representation
-                                chunk_data = {
-                                    "id": chunk.id,
-                                    "object": chunk.object,
-                                    "created": chunk.created,
-                                    "model": chunk.model,
-                                    "choices": [
-                                        {
-                                            "index": choice.index,
-                                            "delta": {
-                                                "role": (
-                                                    choice.delta.role
-                                                    if hasattr(choice.delta, "role")
-                                                    else None
-                                                ),
-                                                "content": (
-                                                    choice.delta.content
-                                                    if hasattr(choice.delta, "content")
-                                                    else None
-                                                ),
-                                            },
-                                            "finish_reason": choice.finish_reason,
-                                        }
-                                        for choice in chunk.choices
-                                    ],
-                                }
 
                             yield f"data: {json.dumps(chunk_data)}\n\n"
 
@@ -271,9 +277,6 @@ async def chat_completions_agno(
                 },
             )
 
-        # Define fallback content up front to ensure it's always defined
-        fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
-
         try:
             # Non-streaming response
             response_messages = await get_chat_response_async(
@@ -285,6 +288,7 @@ async def chat_completions_agno(
                 logger.warning(
                     f"No response messages from agent for model {model}, using fallback"
                 )
+                response_messages = []
         except Exception as e:
             # Log the specific error and use a fallback response
             logger.error(f"Error getting response from agent: {str(e)}")
@@ -297,27 +301,7 @@ async def chat_completions_agno(
             content = fallback_content
 
         # Create a response similar to OpenAI format
-        response_data = {
-            "id": f"chatcmpl-{uuid.uuid4().hex}",
-            "object": "chat.completion",
-            "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": content,
-                    },
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": 0,  # We don't track these
-                "completion_tokens": 0,
-                "total_tokens": 0,
-            },
-        }
+        response_data = _create_response_data(model, content)
 
         # Log the response
         logger.info(f"Agno chat completions response: {json.dumps(response_data)}")
