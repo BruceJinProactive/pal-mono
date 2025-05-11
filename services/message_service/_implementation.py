@@ -281,59 +281,68 @@ async def get_chat_response_stream(
             async with trace_async_block("Message Service Streaming"):
                 index = 0
                 async for chunk in response_stream:
-                    # Process different chunk types into content string
-                    content = ""
-                    if isinstance(chunk, Output):
-                        content = chunk.content
-                        # Check for conversation closing if available
-                        if (
-                            hasattr(chunk, "closing_conversation")
-                            and chunk.closing_conversation
-                        ):
-                            conversation = await db.ConversationRepositoryAsync(
-                                session
-                            ).get_conversation_by_id(
-                                conversation_id=request_message.conversation_id
-                            )
-                            if conversation:
-                                conversation.status = db.ConversationStatus.CLOSING
-                                await session.flush()
-                    elif isinstance(chunk, RunResponse):
-                        content = chunk.get_content_as_string()
-                    elif isinstance(chunk, tuple):
-                        content = chunk[0]
-                    elif isinstance(chunk, Message):
-                        content = chunk.text.body if chunk.text else ""
-                    elif chunk:
-                        if not isinstance(chunk, (str, int, float, bool)):
-                            logger.warning(f"Unexpected chunk type: {type(chunk)}")
+                    async with trace_async_block(
+                        "Process Stream Chunk",
+                        tags={
+                            "chunk_index": index,
+                            "conversation_id": str(request_message.conversation_id),
+                        },
+                    ):
+                        # Process different chunk types into content string
+                        content = ""
+                        if isinstance(chunk, Output):
+                            content = chunk.content
+                            # Check for conversation closing if available
+                            if (
+                                hasattr(chunk, "closing_conversation")
+                                and chunk.closing_conversation
+                            ):
+                                conversation = await db.ConversationRepositoryAsync(
+                                    session
+                                ).get_conversation_by_id(
+                                    conversation_id=request_message.conversation_id
+                                )
+                                if conversation:
+                                    conversation.status = db.ConversationStatus.CLOSING
+                                    await session.flush()
+                        elif isinstance(chunk, RunResponse):
+                            content = chunk.get_content_as_string()
+                        elif isinstance(chunk, tuple):
+                            content = chunk[0]
+                        elif isinstance(chunk, Message):
+                            content = chunk.text.body if chunk.text else ""
+                        elif chunk:
+                            if not isinstance(chunk, (str, int, float, bool)):
+                                logger.warning(f"Unexpected chunk type: {type(chunk)}")
+                                continue
+                            content = str(chunk)
+
+                        # Skip empty chunks
+                        if not content:
                             continue
-                        content = str(chunk)
 
-                    # Skip empty chunks
-                    if not content:
-                        continue
-
-                    # Create and yield chunk
-                    chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
-                    completion_chunk = ChatCompletionChunk(
-                        id=chunk_id,
-                        object="chat.completion.chunk",
-                        created=int(
-                            datetime.datetime.now(datetime.timezone.utc).timestamp()
-                        ),
-                        model=message.recipient_identifier,
-                        choices=[
-                            ChunkChoice(
-                                index=index,
-                                delta=ChoiceDelta(role="assistant", content=content),
-                                finish_reason=None,
-                            )
-                        ],
-                    )
-                    yield completion_chunk
-                    collected_content.append(content)
-                    index += 1
+                        # Create and yield chunk
+                        chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
+                        completion_chunk = ChatCompletionChunk(
+                            id=chunk_id,
+                            object="chat.completion.chunk",
+                            created=int(
+                                datetime.datetime.now(datetime.timezone.utc).timestamp()
+                            ),
+                            model=message.recipient_identifier,
+                            choices=[
+                                ChunkChoice(
+                                    index=index,
+                                    delta=ChoiceDelta(
+                                        role="assistant", content=content
+                                    ),
+                                    finish_reason=None,
+                                )
+                            ],
+                        )
+                        yield completion_chunk
+                        collected_content.append(content)
+                        index += 1
 
             # ==== Step 4: After streaming, save final messages to database ====
             if collected_content:
