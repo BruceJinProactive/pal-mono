@@ -10,7 +10,6 @@ from utils.log import logger
 
 async def upload_asset(asset: UploadFile, path: str, metadata: dict) -> AssetResponse:
     try:
-        # Process the message
         logger.info(f"Received asset to upload: {asset.filename} and path")
 
         if not asset.filename:

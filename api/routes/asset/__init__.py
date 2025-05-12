@@ -1,7 +1,9 @@
 import json
 
-from fastapi import APIRouter, File, Form, Path, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Path, UploadFile
 
+from api.routes.admin._auth import authenticate_user
+from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.asset.asset import AssetResponse
 from api.schemas.error.error import ErrorResponse
@@ -20,6 +22,7 @@ async def upload_asset(
     asset: UploadFile = File(...),
     path: str = Form("", description="The desired upload path"),
     metadata: str | None = Form(None),
+    context: UserContext = Depends(authenticate_user),
 ) -> AssetResponse:
     from utils.log import logger
 
