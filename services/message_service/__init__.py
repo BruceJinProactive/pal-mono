@@ -38,7 +38,7 @@ async def get_chat_response_async(
     return await _implementation.get_chat_response_async(session, message)
 
 
-@traced("Message Service Stream Processing")
+# Cannot trace iterator consumption here
 async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[ChatCompletionChunk]:

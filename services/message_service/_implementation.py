@@ -212,209 +212,220 @@ async def get_chat_response_stream(
     session: AsyncSession, message: Message
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
-    message_repo = db.MessageRepositoryAsync(session)
 
-    try:
-        # ==== Step 1: Get project, user, and save request message ====
-        project = await project_service.get_project_async(session, message)
+    async with trace_async_block("Message Service Stream Processing"):
+        message_repo = db.MessageRepositoryAsync(session)
 
-        user, is_new_sms_user = await user_service.get_user_async(
-            session, project, message
-        )
-        if user is None:
-            user = await user_service.create_user_async(session, project, message)
-        await session.refresh(user)
+        try:
+            # ==== Step 1: Get project, user, and save request message ====
+            project = await project_service.get_project_async(session, message)
 
-        request_message = await message_repo.create_message(
-            user_id=user.id, message_body=message.to_dict()
-        )
-        if not request_message:
-            raise ValueError("Failed to create request message")
+            user, is_new_sms_user = await user_service.get_user_async(
+                session, project, message
+            )
+            if user is None:
+                user = await user_service.create_user_async(session, project, message)
+            await session.refresh(user)
 
-        # Track user message event
-        await session.refresh(project, attribute_names=["account"])
-        account_name = project.account.name
-        testing = (
-            getattr(message.metadata, "testing", False) if message.metadata else False
-        )
-        event_properties = {
-            "account_name": account_name,
-            "channel": message.channel.value,
-            "conversation_id": str(request_message.conversation_id),
-            "testing": testing,
-        }
-        analytics_service.track_event(
-            user_id=str(user.id),
-            event_name=AnalyticsEvent.USER_MESSAGE,
-            event_properties=event_properties,
-        )
+            request_message = await message_repo.create_message(
+                user_id=user.id, message_body=message.to_dict()
+            )
+            if not request_message:
+                raise ValueError("Failed to create request message")
 
-        # ==== Step 2: Set up agent and generate streaming response ====
-        agent_id = project.agent_id
-        if agent_id is None:
-            raise ValueError("Agent ID not found")
+            # Track user message event
+            await session.refresh(project, attribute_names=["account"])
+            account_name = project.account.name
+            testing = (
+                getattr(message.metadata, "testing", False)
+                if message.metadata
+                else False
+            )
+            event_properties = {
+                "account_name": account_name,
+                "channel": message.channel.value,
+                "conversation_id": str(request_message.conversation_id),
+                "testing": testing,
+            }
+            analytics_service.track_event(
+                user_id=str(user.id),
+                event_name=AnalyticsEvent.USER_MESSAGE,
+                event_properties=event_properties,
+            )
 
-        # Configure agent for streaming
-        config = await agent_service.construct_agent_config(
-            session=session,
-            agent_id=agent_id,
-            user_id=user.id,
-            project_id=project.id,
-            conversation_id=request_message.conversation_id,
-        )
-        config.stream = True
+            # ==== Step 2: Set up agent and generate streaming response ====
+            agent_id = project.agent_id
+            if agent_id is None:
+                raise ValueError("Agent ID not found")
 
-        # Initialize agent and set up streaming input
-        agent = Agent(config=config)
+            # Configure agent for streaming
+            config = await agent_service.construct_agent_config(
+                session=session,
+                agent_id=agent_id,
+                user_id=user.id,
+                project_id=project.id,
+                conversation_id=request_message.conversation_id,
+            )
+            config.stream = True
 
-        logger.debug(f"Agent config stream mode: {config}")
-        input = _utils.get_agent_input_from_message(message=message)
-        input.stream = True
-        logger.debug(f"Input stream mode: {input}")
+            # Initialize agent and set up streaming input
+            agent = Agent(config=config)
 
-        # Get streaming response
-        response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
-        collected_content = []
+            logger.debug(f"Agent config stream mode: {config}")
+            input = _utils.get_agent_input_from_message(message=message)
+            input.stream = True
+            logger.debug(f"Input stream mode: {input}")
 
-        # ==== Step 3: Process the streaming response ====
-        if response_stream:
-            async with trace_async_block("Message Service Streaming"):
-                index = 0
-                async for chunk in response_stream:
-                    async with trace_async_block(
-                        "Process Stream Chunk",
-                        tags={
-                            "chunk_index": index,
-                            "conversation_id": str(request_message.conversation_id),
-                        },
-                    ):
-                        # Process different chunk types into content string
-                        content = ""
-                        if isinstance(chunk, Output):
-                            content = chunk.content
-                            # Check for conversation closing if available
-                            if (
-                                hasattr(chunk, "closing_conversation")
-                                and chunk.closing_conversation
-                            ):
-                                conversation = await db.ConversationRepositoryAsync(
-                                    session
-                                ).get_conversation_by_id(
-                                    conversation_id=request_message.conversation_id
-                                )
-                                if conversation:
-                                    conversation.status = db.ConversationStatus.CLOSING
-                                    await session.flush()
-                        elif isinstance(chunk, RunResponse):
-                            content = chunk.get_content_as_string()
-                        elif isinstance(chunk, tuple):
-                            content = chunk[0]
-                        elif isinstance(chunk, Message):
-                            content = chunk.text.body if chunk.text else ""
-                        elif chunk:
-                            if not isinstance(chunk, (str, int, float, bool)):
-                                logger.warning(f"Unexpected chunk type: {type(chunk)}")
+            # Get streaming response
+            response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
+            collected_content = []
+
+            # ==== Step 3: Process the streaming response ====
+            if response_stream:
+                async with trace_async_block("Message Service Streaming"):
+                    index = 0
+                    async for chunk in response_stream:
+                        async with trace_async_block(
+                            "Process Stream Chunk",
+                            tags={
+                                "chunk_index": index,
+                                "conversation_id": str(request_message.conversation_id),
+                            },
+                        ):
+
+                            # Process different chunk types into content string
+                            content = ""
+                            if isinstance(chunk, Output):
+                                content = chunk.content
+                                # Check for conversation closing if available
+                                if (
+                                    hasattr(chunk, "closing_conversation")
+                                    and chunk.closing_conversation
+                                ):
+                                    conversation = await db.ConversationRepositoryAsync(
+                                        session
+                                    ).get_conversation_by_id(
+                                        conversation_id=request_message.conversation_id
+                                    )
+                                    if conversation:
+                                        conversation.status = (
+                                            db.ConversationStatus.CLOSING
+                                        )
+                                        await session.flush()
+                            elif isinstance(chunk, RunResponse):
+                                content = chunk.get_content_as_string()
+                            elif isinstance(chunk, tuple):
+                                content = chunk[0]
+                            elif isinstance(chunk, Message):
+                                content = chunk.text.body if chunk.text else ""
+                            elif chunk:
+                                if not isinstance(chunk, (str, int, float, bool)):
+                                    logger.warning(
+                                        f"Unexpected chunk type: {type(chunk)}"
+                                    )
+                                    continue
+                                content = str(chunk)
+
+                            # Skip empty chunks
+                            if not content:
                                 continue
-                            content = str(chunk)
 
-                        # Skip empty chunks
-                        if not content:
-                            continue
+                            # Create and yield chunk
+                            chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
+                            completion_chunk = ChatCompletionChunk(
+                                id=chunk_id,
+                                object="chat.completion.chunk",
+                                created=int(
+                                    datetime.datetime.now(
+                                        datetime.timezone.utc
+                                    ).timestamp()
+                                ),
+                                model=message.recipient_identifier,
+                                choices=[
+                                    ChunkChoice(
+                                        index=index,
+                                        delta=ChoiceDelta(
+                                            role="assistant", content=content
+                                        ),
+                                        finish_reason=None,
+                                    )
+                                ],
+                            )
+                            yield completion_chunk
+                            collected_content.append(content)
+                            index += 1
 
-                        # Create and yield chunk
-                        chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
-                        completion_chunk = ChatCompletionChunk(
-                            id=chunk_id,
-                            object="chat.completion.chunk",
-                            created=int(
-                                datetime.datetime.now(datetime.timezone.utc).timestamp()
-                            ),
-                            model=message.recipient_identifier,
-                            choices=[
-                                ChunkChoice(
-                                    index=index,
-                                    delta=ChoiceDelta(
-                                        role="assistant", content=content
-                                    ),
-                                    finish_reason=None,
-                                )
-                            ],
-                        )
-                        yield completion_chunk
-                        collected_content.append(content)
-                        index += 1
-
-            # ==== Step 4: After streaming, save final messages to database ====
-            if collected_content:
-                # Construct final messages from collected content, handling <BREAK> tokens
-                output_message_metadata = Metadata(
-                    account_name=account_name,
-                    project_name=project.name,
-                    agent_id=str(agent_id),
-                    user_id=str(user.id),
-                    session_id=str(request_message.conversation_id),
-                    testing=testing,
-                )
-
-                # Handle SMS opt-in if needed (same logic as get_chat_response_async)
-                if is_new_sms_user:
-                    opt_in_message = build_opt_in_message(
-                        message, output_message_metadata
+                # ==== Step 4: After streaming, save final messages to database ====
+                if collected_content:
+                    # Construct final messages from collected content, handling <BREAK> tokens
+                    output_message_metadata = Metadata(
+                        account_name=account_name,
+                        project_name=project.name,
+                        agent_id=str(agent_id),
+                        user_id=str(user.id),
+                        session_id=str(request_message.conversation_id),
+                        testing=testing,
                     )
-                    if opt_in_message and user:
+
+                    # Handle SMS opt-in if needed (same logic as get_chat_response_async)
+                    if is_new_sms_user:
+                        opt_in_message = build_opt_in_message(
+                            message, output_message_metadata
+                        )
+                        if opt_in_message and user:
+                            await message_repo.create_message(
+                                user_id=user.id, message_body=opt_in_message.to_dict()
+                            )
+
+                    # Process content with <BREAK> tokens just like in get_chat_response_async
+                    full_response = " ".join(collected_content)
+                    split_texts = full_response.split("<BREAK>")
+                    final_messages = []
+
+                    for text in split_texts:
+                        if text.strip():
+                            response_message = Message(
+                                author_type=AuthorType.AGENT,
+                                sender_identifier=message.recipient_identifier,
+                                recipient_identifier=message.sender_identifier,
+                                channel=message.channel,
+                                broker=message.broker,
+                                channel_info=message.channel_info,
+                                text=TextObject(body=text.strip()),
+                                metadata=output_message_metadata,
+                            )
+                            final_messages.append(response_message)
+
+                    # Save all messages to database
+                    for msg in final_messages:
                         await message_repo.create_message(
-                            user_id=user.id, message_body=opt_in_message.to_dict()
+                            user_id=user.id, message_body=msg.to_dict()
                         )
 
-                # Process content with <BREAK> tokens just like in get_chat_response_async
-                full_response = " ".join(collected_content)
-                split_texts = full_response.split("<BREAK>")
-                final_messages = []
-
-                for text in split_texts:
-                    if text.strip():
-                        response_message = Message(
-                            author_type=AuthorType.AGENT,
-                            sender_identifier=message.recipient_identifier,
-                            recipient_identifier=message.sender_identifier,
-                            channel=message.channel,
-                            broker=message.broker,
-                            channel_info=message.channel_info,
-                            text=TextObject(body=text.strip()),
-                            metadata=output_message_metadata,
-                        )
-                        final_messages.append(response_message)
-
-                # Save all messages to database
-                for msg in final_messages:
-                    await message_repo.create_message(
-                        user_id=user.id, message_body=msg.to_dict()
+                    # Send analytics for agent response (only once)
+                    analytics_service.track_event(
+                        user_id=str(user.id),
+                        event_name=AnalyticsEvent.AGENT_MESSAGE,
+                        event_properties=event_properties,
                     )
 
-                # Send analytics for agent response (only once)
-                analytics_service.track_event(
-                    user_id=str(user.id),
-                    event_name=AnalyticsEvent.AGENT_MESSAGE,
-                    event_properties=event_properties,
-                )
-
-    except Exception as e:
-        # Log error and return a single error chunk
-        logger.exception(f"Error in get_chat_response_stream: {e}")
-        error_message = ChatCompletionChunk(
-            id=f"chatcmpl-{uuid.uuid4().hex}",
-            object="chat.completion.chunk",
-            created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-            model=message.recipient_identifier if message else "unknown",
-            choices=[
-                ChunkChoice(
-                    index=0,
-                    delta=ChoiceDelta(role="assistant", content=""),
-                    finish_reason="stop",  # Using a valid finish_reason value
-                )
-            ],
-        )
-        yield error_message
+        except Exception as e:
+            # Log error and return a single error chunk
+            logger.exception(f"Error in get_chat_response_stream: {e}")
+            error_message = ChatCompletionChunk(
+                id=f"chatcmpl-{uuid.uuid4().hex}",
+                object="chat.completion.chunk",
+                created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+                model=message.recipient_identifier if message else "unknown",
+                choices=[
+                    ChunkChoice(
+                        index=0,
+                        delta=ChoiceDelta(role="assistant", content=""),
+                        finish_reason="stop",  # Using a valid finish_reason value
+                    )
+                ],
+            )
+            yield error_message
 
 
 def get_chat_response(_session: Session, message: Message) -> Message:
