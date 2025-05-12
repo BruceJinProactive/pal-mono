@@ -177,7 +177,7 @@ class AdoraTool(Toolkit):
             )
 
             if customer_info is None:
-                raise ValueError("Internal server error.")
+                raise ValueError("500: Internal server error.")
 
             return customer_info
 

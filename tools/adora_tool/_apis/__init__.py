@@ -4,6 +4,7 @@ from datetime import datetime
 
 from tools.adora_tool.classes import (
     AdoraAccessToken,
+    AdoraCustomerInfo,
     AdoraOrderCalculationResult,
     AdoraSavedOrderResult,
     AdoraValidatedAddress,
@@ -168,6 +169,47 @@ def _get_next_order_credits(customer_info: dict) -> str:
     return credits_info
 
 
+def _format_customer_info(customer_info: AdoraCustomerInfo) -> str:
+    """
+    Format AdoraCustomerInfo object into a concise string representation.
+
+    Args:
+        customer_info: AdoraCustomerInfo object containing customer information
+
+    Returns:
+        str: Formatted customer information as a string
+    """
+    info_dict = customer_info.model_dump()
+
+    # Basic customer information
+    formatted_info = (
+        f"Customer: {info_dict.get('firstName', '')} {info_dict.get('lastName', '')}\n"
+    )
+
+    # Loyalty status
+    formatted_info += (
+        f"Loyalty Member: {'Yes' if _get_loyalty_status(info_dict) else 'No'}\n"
+    )
+
+    # Add reward information (simplified)
+    if rewards := info_dict.get("customerRewards", []):
+        formatted_info += f"Rewards: {len(rewards)} available\n"
+
+    # Add offer information (simplified)
+    if "customerOffers" in info_dict and info_dict["customerOffers"]:
+        offers = info_dict["customerOffers"]
+        codes_count = len(offers.get("codes", []))
+        coupons_count = len(offers.get("coupons", []))
+        if codes_count or coupons_count:
+            formatted_info += f"Offers: {codes_count} codes, {coupons_count} coupons\n"
+
+    # Add next order credits (simplified)
+    if credits := info_dict.get("customerNextOrderCredits", []):
+        formatted_info += f"Credits: {len(credits)} available\n"
+
+    return formatted_info
+
+
 def get_customer_info(
     bearer_token: AdoraAccessToken, store_id: str, phone_number: str, qa_store: bool
 ) -> str | None:
@@ -184,40 +226,25 @@ def get_customer_info(
         qa_store=qa_store,
     )
 
-    customer_info = json.loads(response.decoded_body)
     if response.status == 200:
-        customer_name = (
-            f"Customer name: {customer_info['name']} {customer_info['lastname']}\n\n"
-        )
-
-        loyalty_status = _get_loyalty_status(customer_info)
-        if not loyalty_status:
-            return customer_name + f"\nLoyalty status: {loyalty_status}"
-
-        reward_info = _get_reward_info(customer_info)
-        offer_info = _get_offer_info(customer_info)
-        next_order_credits = _get_next_order_credits(customer_info)
-
-        return (
-            customer_name
-            + f"\nLoyalty status: {loyalty_status}"
-            + f"\nRewards: {reward_info or 'None'}"
-            + f"\nOffers: {offer_info or 'None'}"
-            + f"\nNext Order Credits: {next_order_credits or 'None'}"
-        )
-
-    elif response.status == 404:
+        customer_info = _utils.parse_json(AdoraCustomerInfo, response.decoded_body)
+        if customer_info:
+            return _format_customer_info(customer_info)
         logger.debug(
-            f"[AdoraTool._apis.get_customer_info] Customer not found: {customer_info}"
+            f"[AdoraTool._apis.get_customer_info] Error parsing customer info: {response.decoded_body}"
         )
-        return (
-            customer_info.get("message", "Customer not found.")
-            + " Please double check your phone number and try again."
+        return None
+    elif response.status == 404:
+        # For 404 responses, parse the error message from the response
+        error_info = json.loads(response.decoded_body)
+        logger.debug(
+            f"[AdoraTool._apis.get_customer_info] Customer not found: {error_info}"
         )
-
+        error_message = error_info.get("message", "Customer not found.")
+        return error_message + " Please double check your phone number and try again."
     else:
         logger.debug(
-            f"[AdoraTool._apis.get_customer_info] Internal server error: {customer_info}"
+            f"[AdoraTool._apis.get_customer_info] Internal error {response.status}: {response.decoded_body}"
         )
         return None
 

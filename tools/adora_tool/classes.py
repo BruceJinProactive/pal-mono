@@ -288,3 +288,51 @@ class SubQueries(BaseModel):
             "DO NOT include modifications (e.g. extra cheese, pickles)."
         ),
     )
+
+
+class AdoraCustomerReward(BaseModel):
+    """
+    Represents a customer reward from the Adora API
+    """
+
+    rewardId: Optional[str] = None
+    earnedDate: Optional[str] = None
+    couponId: Optional[str] = None
+    couponName: Optional[str] = None
+    rewardName: Optional[str] = None
+
+
+class AdoraNextOrderCredit(BaseModel):
+    """
+    Represents a customer's next order credit from the Adora API
+    """
+
+    creditId: Optional[str] = None
+    storeKey: Optional[str] = None
+    couponId: Optional[str] = None
+    discount: Optional[str] = None
+    couponName: Optional[str] = None
+    couponDescription: Optional[str] = None
+
+
+class AdoraCustomerOffers(BaseModel):
+    """
+    Represents customer offers from the Adora API
+    """
+
+    codes: Optional[List[dict]] = None
+    coupons: Optional[List[dict]] = None
+
+
+class AdoraCustomerInfo(BaseModel):
+    """
+    Represents customer information from the Adora API
+    """
+
+    name: Optional[str] = None
+    lastname: Optional[str] = None
+    loyaltyMember: Optional[bool] = False
+    customerRewards: Optional[List[AdoraCustomerReward]] = None
+    customerOffers: Optional[AdoraCustomerOffers] = None
+    customerNextOrderCredits: Optional[List[AdoraNextOrderCredit]] = None
+    message: Optional[str] = None  # For error messages
