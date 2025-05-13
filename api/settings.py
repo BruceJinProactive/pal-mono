@@ -124,6 +124,7 @@ class ApiSettings(BaseSettings):
         valid_cors.extend(
             [
                 "https://wordpress-899570-4918190.cloudwaysapps.com",
+                "https://wordpress-899570-5508508.cloudwaysapps.com",
                 "https://mindzero.com",
                 "https://www.mindzero.com",
             ]
