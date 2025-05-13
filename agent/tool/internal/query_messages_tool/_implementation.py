@@ -49,6 +49,9 @@ class QueryMessagesTool(Toolkit):
 
                 # Get all messages for this conversation in chronological order
                 messages = message_repo.get_messages_by_conversation(conversation_id)
+                logger.debug(
+                    f"QueryMessagesTool queries conversation: {conversation_id} and gets messages: {messages}"
+                )
 
                 if not messages and not latest_user_message:
                     return "Conversation not found"

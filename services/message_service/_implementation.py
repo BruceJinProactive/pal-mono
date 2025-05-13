@@ -231,6 +231,9 @@ async def get_chat_response_stream(
                 user = await user_service.create_user_async(session, project, message)
             await session.refresh(user)
 
+            logger.debug(
+                f"Persist streaming inbound message: {message.to_dict()} from user: {user.id}"
+            )
             request_message = await message_repo.create_message(
                 user_id=user.id, message_body=message.to_dict()
             )
@@ -383,6 +386,9 @@ async def get_chat_response_stream(
                         metadata=output_message_metadata,
                     )
 
+                    logger.debug(
+                        f"Persist streaming outbound message: {response_message.to_dict()} to user: {user.id}"
+                    )
                     await message_repo.create_message(
                         user_id=user.id, message_body=response_message.to_dict()
                     )
