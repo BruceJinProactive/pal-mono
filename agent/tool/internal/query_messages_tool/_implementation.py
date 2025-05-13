@@ -50,7 +50,7 @@ class QueryMessagesTool(Toolkit):
                 # Get all messages for this conversation in chronological order
                 messages = message_repo.get_messages_by_conversation(conversation_id)
                 logger.debug(
-                    f"QueryMessagesTool queries conversation: {conversation_id} and gets messages: {[m.to_dict() for m in messages]}"
+                    f"QueryMessagesTool queries conversation: {conversation_id} and gets messages: {[m.body for m in messages]}"
                 )
 
                 if not messages and not latest_user_message:
