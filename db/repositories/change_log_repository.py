@@ -78,6 +78,9 @@ class ChangeLogRepository:
             action: The type of action performed (edit, add, delete)
             changes: List of dictionaries containing field, old_value, and new_value
         """
+        if not changes:
+            return None
+
         try:
             # Create the change log
             change_log = ChangeLog(

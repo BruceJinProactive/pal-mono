@@ -94,7 +94,7 @@ def create_account(
             account_id=account.id,
             resource_type=ChangeResourceType.Account,
             resource_id=str(account.id),
-            author=context.username,
+            author=context.email,
             old_record=None,
             new_record=account,
         )
@@ -133,7 +133,7 @@ def update_account(
             account_id=existing_account.id,
             resource_type=ChangeResourceType.Account,
             resource_id=str(existing_account.id),
-            author=context.username,
+            author=context.email,
             old_record=old_account,
             new_record=updated_account,
         )
@@ -163,7 +163,7 @@ def delete_account(session: Session, account_name: str, context: UserContext):
             account_id=account.id,
             resource_type=ChangeResourceType.Account,
             resource_id=str(account.id),
-            author=context.username,
+            author=context.email,
             old_record=account,
             new_record=None,
         )
