@@ -201,9 +201,9 @@ async def get_chat_response_async(
                 conversation.status = db.ConversationStatus.CLOSING
                 await session.flush()
 
-    except Exception:
-        # Log any error and set default error response
+    except Exception as e:
         logger.exception("Error in get_chat_response_async")
+        raise e
 
     return response_messages
 
