@@ -1,6 +1,5 @@
 import datetime
 import random
-import re
 import uuid
 from typing import AsyncIterator
 
@@ -298,8 +297,9 @@ async def get_chat_response_stream(
                             tags={
                                 "chunk_index": index,
                                 "conversation_id": str(request_message.conversation_id),
+                                "chunk_type": type(chunk).__name__,
                             },
-                        ):
+                        ) as span:
 
                             # Process different chunk types into content string
                             content = ""
@@ -338,22 +338,11 @@ async def get_chat_response_stream(
                             if not content:
                                 continue
 
-                            # Filter out URLs from content
-                            filtered_content = content
-
-                            # Single comprehensive URL pattern that captures various URL formats
-                            url_pattern = r"https?://[^\s]+(?:/[^\s]*)?(?:\?[^\s]*)?"
-
-                            if re.search(url_pattern, content):
-                                # Keep original content for relay service but filter for display
-                                logger.debug(f"Found URL in content chunk: {content}")
-                                # Replace full URLs with placeholder
-                                filtered_content = re.sub(
-                                    url_pattern,
-                                    "payment link sent in text message",
-                                    content,
-                                )
-                                logger.debug(f"Filtered content: {filtered_content}")
+                            # Update span tags with content
+                            span.set_tag(
+                                "content",
+                                content[:100] if len(content) > 100 else content,
+                            )
 
                             # Create and yield chunk
                             chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -370,7 +359,7 @@ async def get_chat_response_stream(
                                     ChunkChoice(
                                         index=index,
                                         delta=ChoiceDelta(
-                                            role="assistant", content=filtered_content
+                                            role="assistant", content=content
                                         ),
                                         finish_reason=None,
                                     )
