@@ -797,8 +797,8 @@ async def list_account_changes(
     account_name: str,
     page: int = Query(1, gt=0),
     page_size: int = Query(25, gt=0, le=1000),
-    resource_type: Optional[ChangeResourceType] = None,
-    resource_id: Optional[str] = None,
+    resource_types: list[ChangeResourceType] | None = None,
+    resource_id: str | None = None,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListChangeLogsResponse:
@@ -811,7 +811,7 @@ async def list_account_changes(
         account_name=account_name,
         page=page,
         page_size=page_size,
-        resource_type=resource_type,
+        resource_types=resource_types,
         resource_id=resource_id,
     )
 

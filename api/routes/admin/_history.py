@@ -1,3 +1,4 @@
+import math
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ async def list_account_change_logs(
     account_name: str,
     page: int,
     page_size: int,
-    resource_type: ChangeResourceType | None,
+    resource_types: list[ChangeResourceType] | None,
     resource_id: str | None,
 ) -> ListChangeLogsResponse:
     _auth.authorize_user_account(context, account_name)
@@ -29,14 +30,16 @@ async def list_account_change_logs(
         account.id,
         page,
         page_size,
-        resource_type,
+        resource_types,
         resource_id,
     )
+    total_pages = math.ceil(total / page_size)
     return ListChangeLogsResponse(
-        items=[
+        changes=[
             _builder.build_change_log_summary(change_log) for change_log in change_logs
         ],
-        total=total,
+        total_changes=total,
+        total_pages=int(total_pages),
     )
 
 

@@ -18,7 +18,7 @@ class ChangeLogRepository:
         account_id: uuid.UUID,
         skip: int = 0,
         limit: int = 100,
-        resource_type: ChangeResourceType | None = None,
+        resource_types: list[ChangeResourceType] | None = None,
         resource_id: str | None = None,
     ) -> tuple[List[ChangeLog], int]:
         """Retrieve a list of change changes for a given account with optional filtering."""
@@ -27,8 +27,8 @@ class ChangeLogRepository:
                 ChangeLog.account_id == account_id
             )
 
-            if resource_type:
-                query = query.filter(ChangeLog.resource_type == resource_type)
+            if resource_types:
+                query = query.filter(ChangeLog.resource_type.in_(resource_types))
             if resource_id:
                 query = query.filter(ChangeLog.resource_id == resource_id)
 
@@ -88,14 +88,14 @@ class ChangeLogRepository:
                 action=action,
             )
             self.session.add(change_log)
+            self.session.flush()
+            self.session.refresh(change_log)
 
             # Create the changed fields
             for change in changes:
                 change.change_log = change_log
                 self.session.add(change)
 
-            self.session.commit()
-            self.session.refresh(change_log)
             return change_log
         except SQLAlchemyError as e:
             self.session.rollback()

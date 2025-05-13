@@ -14,7 +14,7 @@ def list_account_change_logs(
     account_id: uuid.UUID,
     page: int,
     page_size: int,
-    resource_type: ChangeResourceType | None,
+    resource_types: list[ChangeResourceType] | None,
     resource_id: str | None,
 ) -> tuple[list[ChangeLog], int]:
     """
@@ -25,7 +25,7 @@ def list_account_change_logs(
         account_id (uuid.UUID): ID of the account to retrieve change logs for
         page (int): Current page number (starts at 1)
         page_size (int): Number of change logs to retrieve
-        resource_type (ChangeResourceType): Name of the resource type, e.g. "account", "agent", etc...
+        resource_types (list[ChangeResourceType]): List of the resource types, e.g. "Account", "Agent", etc...
         resource_id (str): Database ID of that resource (usually a UUID)
 
     Returns:
@@ -33,7 +33,7 @@ def list_account_change_logs(
          and the total number of change logs for the account
     """
     return _implementation.list_account_change_logs(
-        session, account_id, page, page_size, resource_type, resource_id
+        session, account_id, page, page_size, resource_types, resource_id
     )
 
 

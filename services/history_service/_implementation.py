@@ -14,7 +14,7 @@ def list_account_change_logs(
     account_id: uuid.UUID,
     page: int,
     page_size: int,
-    resource_type: ChangeResourceType | None,
+    resource_types: list[ChangeResourceType] | None,
     resource_id: str | None,
 ) -> tuple[list[ChangeLog], int]:
     change_log_repo = ChangeLogRepository(session)
@@ -23,7 +23,7 @@ def list_account_change_logs(
         account_id=account_id,
         skip=skip,
         limit=page_size,
-        resource_type=resource_type,
+        resource_types=resource_types,
         resource_id=resource_id,
     )
     return change_logs, count

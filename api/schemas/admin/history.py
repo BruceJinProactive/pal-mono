@@ -16,8 +16,9 @@ class ChangeLogSummary(BaseModel):
 
 
 class ListChangeLogsResponse(BaseModel):
-    items: List[ChangeLogSummary]
-    total: int
+    changes: List[ChangeLogSummary]
+    total_changes: int
+    total_pages: int
 
 
 class ChangeField(BaseModel):
