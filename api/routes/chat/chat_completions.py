@@ -13,7 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from api.routes.chat.chat import chat_router
-from api.schemas.chat.message import AuthorType, Channel, Message, Metadata, TextObject
+from api.schemas.chat.message import (
+    AuthorType,
+    Broker,
+    Channel,
+    Message,
+    Metadata,
+    TextObject,
+)
 from api.schemas.error.error import ErrorResponse
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_message
@@ -253,7 +260,7 @@ async def chat_completions_agno(
                             collected_content.append(content)
                             # Only log first chunk to avoid excessive logging
                             if chunk_count == 1:
-                                logger.info(
+                                logger.debug(
                                     f"First stream chunk: {json.dumps(chunk_data)}"
                                 )
 
@@ -270,19 +277,19 @@ async def chat_completions_agno(
                         urls = re.findall(url_pattern, full_content)
 
                         if urls:
-                            logger.info(f"Found URLs in response: {urls}")
+                            logger.debug(f"Found URLs in response: {urls}")
                             # Create a Message object and send it via relay service
                             relay_message = Message(
                                 author_type=AuthorType.AGENT,
                                 sender_identifier=recipient_identifier,
                                 recipient_identifier=sender_identifier,
-                                channel=message.channel,  # Respect the original channel (voice in this case)
-                                broker=message.broker,
+                                channel=Channel.SMS,
+                                broker=Broker.TWILIO,
                                 text=TextObject(body=full_content),
                                 metadata=Metadata(testing=False),
                             )
                             send_result = send_message(relay_message)
-                            logger.info(f"Relay service result: {send_result}")
+                            logger.debug(f"Relay service result: {send_result}")
 
                         yield "data: [DONE]\n\n"
                 except Exception as e:
