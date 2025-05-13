@@ -341,13 +341,17 @@ async def get_chat_response_stream(
                             # Filter out URLs from content
                             filtered_content = content
 
-                            url_pattern = r"http[s]?://|\.net"
+                            # Single comprehensive URL pattern that captures various URL formats
+                            url_pattern = r"https?://[^\s]+(?:/[^\s]*)?(?:\?[^\s]*)?"
+
                             if re.search(url_pattern, content):
                                 # Keep original content for relay service but filter for display
                                 logger.debug(f"Found URL in content chunk: {content}")
-                                # Replace URLs with placeholder
+                                # Replace full URLs with placeholder
                                 filtered_content = re.sub(
-                                    url_pattern, "in text message", content
+                                    url_pattern,
+                                    "payment link sent in text message",
+                                    content,
                                 )
                                 logger.debug(f"Filtered content: {filtered_content}")
 
