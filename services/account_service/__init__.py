@@ -1,8 +1,10 @@
+import uuid
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.admin import UserContext
 
 from . import _implementation
 from .schema import AccountParams
@@ -35,6 +37,20 @@ def get_account(session: Session, account_name: str) -> Optional[db.Account]:
     return _implementation.get_account(session, account_name)
 
 
+def get_account_by_id(session: Session, account_id: uuid.UUID) -> Optional[db.Account]:
+    """
+    Retrieve an Account by its id.
+
+    Args:
+        session (Session): The database session.
+        account_id (uuid.UUID): The id of the Account to retrieve.
+
+    Returns:
+        Account: The Account with the given name, or None if no such Account is found.
+    """
+    return _implementation.get_account_by_id(session, account_id)
+
+
 def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account]:
     """
     Retrieve multiple Accounts by names.
@@ -64,7 +80,11 @@ def create_account_with_defaults(session: Session, account_name: str) -> db.Acco
 
 
 def create_account(
-    session: Session, account_name: str, params: AccountParams, auto_commit: bool = True
+    session: Session,
+    account_name: str,
+    params: AccountParams,
+    context: UserContext,
+    auto_commit: bool = True,
 ) -> db.Account:
     """
     Create an account in the database based on the provided account name and
@@ -75,6 +95,7 @@ def create_account(
         account_name (str): The name of the account to be created.
         params (AccountParams): The parameters containing details for the account
         to be created.
+        context (UserContext): Information about the current user
         auto_commit (bool): New account will be committed automatically if True.
 
     Returns:
@@ -82,11 +103,13 @@ def create_account(
     Raises:
         ValueError: If the account name already exists in the database.
     """
-    return _implementation.create_account(session, account_name, params, auto_commit)
+    return _implementation.create_account(
+        session, account_name, params, auto_commit, context
+    )
 
 
 def update_account(
-    session: Session, account_name: str, params: AccountParams
+    session: Session, account_name: str, params: AccountParams, context: UserContext
 ) -> db.Account:
     """
     Updates the account details with the provided parameters.
@@ -96,20 +119,21 @@ def update_account(
         account_name (str): The name of the account to be updated.
         params (AccountParams): The parameters containing details for the account
         to be updated.
+        context (UserContext): Information about the current user
 
     Returns:
         Account: The updated account object from the database.
     Raises:
         ValueError: If the account name does not exist in the database.
     """
-    return _implementation.update_account(session, account_name, params)
+    return _implementation.update_account(session, account_name, params, context)
 
 
-def delete_account(session: Session, account_name: str):
+def delete_account(session: Session, account_name: str, context: UserContext):
     """
     Delete the account identified by name.
     """
-    return _implementation.delete_account(session, account_name)
+    return _implementation.delete_account(session, account_name, context)
 
 
 def filter_accounts_by_name(

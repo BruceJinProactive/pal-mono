@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +40,7 @@ from api.schemas.admin.feedback import (
     ListFeedbacksResponse,
     UpdateFeedbackRequest,
 )
+from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
 from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
 from api.schemas.admin.onboarding import OnboardingRequest
 from api.schemas.admin.project import (
@@ -53,6 +55,7 @@ from api.schemas.admin.user_management import (
     UserInfo,
 )
 from api.schemas.chat.message import Channel
+from db.tables.change_log import ChangeResourceType
 
 from . import (
     _account,
@@ -61,6 +64,7 @@ from . import (
     _campaign,
     _conversation,
     _feedback,
+    _history,
     _knowledge,
     _projects,
     _users,
@@ -779,6 +783,52 @@ async def delete_project_knowledge(
     """
     return await _knowledge.delete_knowledge_file(
         resource, resource_id, filename, context, session
+    )
+
+
+"""
+---------- Change Log Endpoints ----------
+------------------------------------------
+"""
+
+
+@admin_router.get("/accounts/{account_name}/changes")
+async def list_account_changes(
+    account_name: str,
+    page: int = Query(1, gt=0),
+    page_size: int = Query(25, gt=0, le=1000),
+    resource_type: Optional[ChangeResourceType] = None,
+    resource_id: Optional[str] = None,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListChangeLogsResponse:
+    """
+    Retrieve a list of change logs for a given account with optional filtering.
+    """
+    return await _history.list_account_change_logs(
+        context=context,
+        session=session,
+        account_name=account_name,
+        page=page,
+        page_size=page_size,
+        resource_type=resource_type,
+        resource_id=resource_id,
+    )
+
+
+@admin_router.get("/changes/{change_log_id}")
+async def get_change_log(
+    change_log_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ChangeLogDetails:
+    """
+    Retrieve the details of a specific change log including the changed fields.
+    """
+    return await _history.get_change_log_details(
+        change_log_id=change_log_id,
+        context=context,
+        session=session,
     )
 
 

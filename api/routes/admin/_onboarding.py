@@ -75,6 +75,7 @@ async def create_onboarding(
     try:
         admin_service.onboard_new_account(
             session,
+            context,
             request.account.name,
             account_params,
             agent_projects_data,

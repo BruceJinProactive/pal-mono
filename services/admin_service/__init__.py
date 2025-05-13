@@ -1,10 +1,11 @@
 import datetime
 import uuid
-from typing import Optional, Union
+from typing import Union
 
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
 from db import ConversationStatus
 from services.account_service import AccountParams
@@ -355,6 +356,7 @@ def get_escalated_session_count_by_users(
 
 def onboard_new_account(
     session: Session,
+    context: UserContext,
     account_name: str,
     account_params: AccountParams,
     agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
@@ -365,6 +367,7 @@ def onboard_new_account(
 
     Args:
         session (Session): Database session
+        context (UserContext): Information for the current user
         account_name (str): Name of the account to create
         account_params (AccountParams): Account parameters
         agent_projects (list[tuple[AgentParams, list[ProjectParams]]]):
@@ -378,7 +381,7 @@ def onboard_new_account(
         ValueError: If there's an error creating any of the entities
     """
     return _implementation.onboard_new_account(
-        session, account_name, account_params, agent_projects, users
+        session, context, account_name, account_params, agent_projects, users
     )
 
 

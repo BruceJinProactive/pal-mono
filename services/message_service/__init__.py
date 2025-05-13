@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 
 import db
 from api.schemas.chat.message import Message
+from utils.dd import traced
 
 from . import _implementation
-from utils.dd import traced
 
 
 def get_filler_message(message: Message) -> Message:

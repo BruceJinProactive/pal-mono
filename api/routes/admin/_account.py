@@ -59,7 +59,7 @@ async def create_account(
     account_params = _validate_and_parse_request(create_request)
     try:
         db_account = account_service.create_account(
-            session, create_request.name, account_params
+            session, create_request.name, account_params, context
         )
     except ValueError as err:
         raise HTTPException(
@@ -80,7 +80,7 @@ async def update_account(
     account_params = _validate_and_parse_request(update_request)
     try:
         db_account = account_service.update_account(
-            session, account_name, account_params
+            session, account_name, account_params, context
         )
     except ValueError as err:
         raise HTTPException(
@@ -97,7 +97,7 @@ async def delete_account(
     session: Session,
 ):
     authorize_user_account(context, account_name)
-    account_service.delete_account(session, account_name)
+    account_service.delete_account(session, account_name, context)
 
 
 async def get_account_statistics(

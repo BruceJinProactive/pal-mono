@@ -1,5 +1,6 @@
 from .account_repository import AccountRepository
 from .agent_repository import AgentRepository, AgentRepositoryAsync
+from .change_log_repository import ChangeLogRepository
 from .conversation_repository import ConversationRepository, ConversationRepositoryAsync
 from .feedback_repository import FeedbackRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync

@@ -29,6 +29,15 @@ class AccountRepository:
         else:
             return None
 
+    def get_account_by_id(self, account_id: uuid.UUID) -> Account | None:
+        """Retrieve a single account by its ID."""
+        try:
+            return self.session.query(Account).filter(Account.id == account_id).first()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving account by ID: {e}")
+            return None
+
     def get_accounts_by_names(self, account_names: List[str]) -> List[Account]:
         """Retrieve multiple accounts by their names."""
         try:

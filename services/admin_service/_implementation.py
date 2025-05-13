@@ -12,6 +12,7 @@ from sqlalchemy import Table
 from sqlalchemy.orm import Session, declarative_base
 
 import db
+from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
 from services import (
     account_service,
@@ -22,7 +23,10 @@ from services import (
 )
 from services.account_service import AccountParams
 from services.admin_service._utils import get_knowledge_settings
-from services.admin_service.schema import CognitoUser, UserSessionPreview
+from services.admin_service.schema import (
+    CognitoUser,
+    UserSessionPreview,
+)
 from services.agent_service import AgentParams
 from services.knowledge_service import KnowledgeFile
 from services.message_service import (
@@ -792,6 +796,7 @@ def get_escalated_session_count_by_users(
 
 def onboard_new_account(
     session: Session,
+    context: UserContext,
     account_name: str,
     account_params: AccountParams,
     agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
@@ -800,7 +805,7 @@ def onboard_new_account(
     try:
         # Create the account
         account_service.create_account(
-            session, account_name, account_params, auto_commit=False
+            session, account_name, account_params, context, auto_commit=False
         )
 
         for agent_project in agent_projects:

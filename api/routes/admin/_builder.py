@@ -4,6 +4,7 @@ from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
 from api.schemas.admin.conversation import Message, UserSession
 from api.schemas.admin.feedback import Feedback
+from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
 from api.schemas.admin.project import Project, ProjectSummary
 
 
@@ -130,4 +131,35 @@ def build_user_session(
         created_at=user_session.created_at,
         last_message=build_message(last_message) if last_message else None,
         total_messages=message_count,
+    )
+
+
+def build_change_log_summary(
+    change_log: db.ChangeLog,
+) -> ChangeLogSummary:
+    return ChangeLogSummary(
+        id=change_log.id,
+        account_id=change_log.account_id,
+        resource_type=change_log.resource_type,
+        resource_id=change_log.resource_id,
+        author=change_log.author,
+        action=change_log.action.value,
+        created_at=change_log.created_at,
+    )
+
+
+def build_change_log_details(
+    change_log: db.ChangeLog,
+) -> ChangeLogDetails:
+    fields = [
+        ChangeField(
+            field=f.field,
+            old_value=f.old_value,
+            new_value=f.new_value,
+        )
+        for f in change_log.fields
+    ]
+    return ChangeLogDetails(
+        info=build_change_log_summary(change_log),
+        fields=fields,
     )

@@ -1,0 +1,58 @@
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from api.routes.admin import _auth, _builder
+from api.routes.admin._utils import UserContext, not_found_error
+from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
+from db.tables.change_log import ChangeResourceType
+from services import account_service, history_service
+from utils.log import logger
+
+
+async def list_account_change_logs(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    page: int,
+    page_size: int,
+    resource_type: ChangeResourceType | None,
+    resource_id: str | None,
+) -> ListChangeLogsResponse:
+    _auth.authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found.")
+
+    change_logs, total = history_service.list_account_change_logs(
+        session,
+        account.id,
+        page,
+        page_size,
+        resource_type,
+        resource_id,
+    )
+    return ListChangeLogsResponse(
+        items=[
+            _builder.build_change_log_summary(change_log) for change_log in change_logs
+        ],
+        total=total,
+    )
+
+
+async def get_change_log_details(
+    change_log_id: UUID,
+    context: UserContext,
+    session: Session,
+) -> ChangeLogDetails:
+    change_log = history_service.get_change_log(session, change_log_id)
+    if not change_log:
+        raise not_found_error(f"Change log does not exist for id: {change_log_id}")
+
+    account = account_service.get_account_by_id(session, change_log.account_id)
+    if account:
+        _auth.authorize_user_account(context, account.name)
+    else:
+        logger.error("Account does not exist for the change log.")
+
+    return _builder.build_change_log_details(change_log)
