@@ -14,15 +14,12 @@ MINDZERO_CLASS_URL = "https://mindzero.marianatek.com/api/class_sessions?include
 
 class BookingTool(Toolkit):
 
-    def __init__(self, location_id: str):
+    def __init__(self):
         super().__init__(name="booking_tools")
 
         # Register tools
         self.register(self.book_a_class)
         self.register(self.get_classes)
-
-        # Configs
-        self.location_id = location_id
 
     @tool
     def book_a_class(self) -> str:
@@ -38,12 +35,13 @@ class BookingTool(Toolkit):
         return "Please contact a sales representative to book a class session!"
 
     @tool
-    def get_classes(self, num_days: int) -> str:
+    def get_classes(self, num_days: int, location_id: str) -> str:
         """
         Use this function to answer any questions regarding class session availability.
 
         Args:
             num_days (int): Number of days in advance to look for.
+            location_id (str): Location ID corresponding to a MindZero location. Use the correct location ID from your prompts.
 
         Returns:
             str: JSON string of class session availability.
@@ -57,7 +55,7 @@ class BookingTool(Toolkit):
         try:
             response = httpx.get(
                 MINDZERO_CLASS_URL.format(
-                    location_id=self.location_id, max_date=max_date, min_date=min_date
+                    location_id=location_id, max_date=max_date, min_date=min_date
                 )
             )
             response.raise_for_status()  # Raise an exception for HTTP errors
