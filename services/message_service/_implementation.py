@@ -1,5 +1,6 @@
 import datetime
 import random
+import re
 import uuid
 from typing import AsyncIterator
 
@@ -337,6 +338,19 @@ async def get_chat_response_stream(
                             if not content:
                                 continue
 
+                            # Filter out URLs from content
+                            filtered_content = content
+
+                            url_pattern = r"http[s]?://|\.net"
+                            if re.search(url_pattern, content):
+                                # Keep original content for relay service but filter for display
+                                logger.debug(f"Found URL in content chunk: {content}")
+                                # Replace URLs with placeholder
+                                filtered_content = re.sub(
+                                    url_pattern, "in text message", content
+                                )
+                                logger.debug(f"Filtered content: {filtered_content}")
+
                             # Create and yield chunk
                             chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
                             completion_chunk = ChatCompletionChunk(
@@ -352,13 +366,14 @@ async def get_chat_response_stream(
                                     ChunkChoice(
                                         index=index,
                                         delta=ChoiceDelta(
-                                            role="assistant", content=content
+                                            role="assistant", content=filtered_content
                                         ),
                                         finish_reason=None,
                                     )
                                 ],
                             )
                             yield completion_chunk
+                            # Store original content for relay service
                             collected_content.append(content)
                             index += 1
 
