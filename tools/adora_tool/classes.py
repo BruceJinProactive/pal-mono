@@ -1,7 +1,7 @@
 import re
 from decimal import Decimal
 from enum import StrEnum
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, computed_field, field_serializer
 from pydantic.json_schema import SkipJsonSchema
@@ -116,6 +116,8 @@ class AdoraOrderCalculationResult(BaseModel):
     serviceCharge: Decimal | None = None
     deliveryCharge: Decimal | None = None
     paymentUrl: str | None = None
+    coupons: Optional[List[Dict[str, int | str]]] = None
+    loyalty_discounts: Optional[List[Dict[str, str | int]]] = None
 
     class Config:
         # Allow extra fields in case API response includes additional data
@@ -239,6 +241,40 @@ class OrderItem(BaseModel):
     )
 
 
+class LoyaltyReward(BaseModel):
+    loyalty_type: Literal["Reward"] = "Reward"
+    coupon_id: int = Field(
+        description="The ID of the coupon associated with the reward."
+    )
+    reward_id: int = Field(description="The ID of the customer reward to redeem.")
+
+
+class LoyaltyRedeemItem(BaseModel):
+    loyalty_type: Literal["RedeemItem"] = "RedeemItem"
+    item_id: int = Field(description="The ID of the item to redeem.")
+    size_id: int = Field(description="The ID of the item size to redeem.")
+
+
+class LoyaltyNextOrderCredit(BaseModel):
+    loyalty_type: Literal["NextOrderCredit"] = "NextOrderCredit"
+    credit_id: int = Field(
+        description="The ID of the customer's available next order credit."
+    )
+
+
+class LoyaltyOffer(BaseModel):
+    loyalty_type: Literal["Offer"] = "Offer"
+    coupon_id: int = Field(
+        description="The ID of the coupon associated with the offer."
+    )
+    coupon_code: str = Field(description="The code used to apply the offer.")
+
+
+LoyaltyDiscount = Union[
+    LoyaltyReward, LoyaltyRedeemItem, LoyaltyNextOrderCredit, LoyaltyOffer
+]
+
+
 class Order(BaseModel):
     store_id: SkipJsonSchema[Optional[str]] = Field(
         default=None, serialization_alias="storeId"
@@ -263,6 +299,10 @@ class Order(BaseModel):
     order_comment: Optional[str] = Field(
         description="Special ordering instructions requested by the customer. Empty if no special requests are made. These can be something like 'no cheese', 'extra sauce', etc.",
         serialization_alias="orderComment",
+    )
+    loyalty_discounts: Optional[List[LoyaltyDiscount]] = Field(
+        description="Loyalty discounts, only valid if customer has a profile and is a loyalty member",
+        default=None,
     )
 
     @computed_field
@@ -295,9 +335,9 @@ class AdoraCustomerReward(BaseModel):
     Represents a customer reward from the Adora API
     """
 
-    rewardId: Optional[str] = None
+    rewardId: Optional[int] = None
     earnedDate: Optional[str] = None
-    couponId: Optional[str] = None
+    couponId: Optional[int] = None
     couponName: Optional[str] = None
     rewardName: Optional[str] = None
 
@@ -309,7 +349,7 @@ class AdoraNextOrderCredit(BaseModel):
 
     creditId: Optional[str] = None
     storeKey: Optional[str] = None
-    couponId: Optional[str] = None
+    couponId: Optional[int] = None
     discount: Optional[str] = None
     couponName: Optional[str] = None
     couponDescription: Optional[str] = None

@@ -193,7 +193,7 @@ def _format_customer_info(customer_info: AdoraCustomerInfo) -> str:
 
     # Add reward information (simplified)
     if rewards := info_dict.get("customerRewards", []):
-        formatted_info += f"Rewards: {len(rewards)} available\n"
+        formatted_info += f"Rewards: {rewards}\n"
 
     # Add offer information (simplified)
     if "customerOffers" in info_dict and info_dict["customerOffers"]:
