@@ -223,6 +223,10 @@ async def get_chat_response_stream(
             user, is_new_sms_user = await user_service.get_user_async(
                 session, project, message
             )
+
+            if is_new_sms_user:
+                raise ValueError("Stream mode should be only for voice mode")
+
             if user is None:
                 user = await user_service.create_user_async(session, project, message)
             await session.refresh(user)
@@ -357,7 +361,7 @@ async def get_chat_response_stream(
 
                 # ==== Step 4: After streaming, save final messages to database ====
                 if collected_content:
-                    # Construct final messages from collected content, handling <BREAK> tokens
+                    # Construct final messages from collected content
                     output_message_metadata = Metadata(
                         account_name=account_name,
                         project_name=project.name,
@@ -367,40 +371,21 @@ async def get_chat_response_stream(
                         testing=testing,
                     )
 
-                    # Handle SMS opt-in if needed (same logic as get_chat_response_async)
-                    if is_new_sms_user:
-                        opt_in_message = build_opt_in_message(
-                            message, output_message_metadata
-                        )
-                        if opt_in_message and user:
-                            await message_repo.create_message(
-                                user_id=user.id, message_body=opt_in_message.to_dict()
-                            )
+                    full_response = " ".join(collected_content).strip()
+                    response_message = Message(
+                        author_type=AuthorType.AGENT,
+                        sender_identifier=message.recipient_identifier,
+                        recipient_identifier=message.sender_identifier,
+                        channel=message.channel,
+                        broker=message.broker,
+                        channel_info=message.channel_info,
+                        text=TextObject(body=full_response),
+                        metadata=output_message_metadata,
+                    )
 
-                    # Process content with <BREAK> tokens just like in get_chat_response_async
-                    full_response = " ".join(collected_content)
-                    split_texts = full_response.split("<BREAK>")
-                    final_messages = []
-
-                    for text in split_texts:
-                        if text.strip():
-                            response_message = Message(
-                                author_type=AuthorType.AGENT,
-                                sender_identifier=message.recipient_identifier,
-                                recipient_identifier=message.sender_identifier,
-                                channel=message.channel,
-                                broker=message.broker,
-                                channel_info=message.channel_info,
-                                text=TextObject(body=text.strip()),
-                                metadata=output_message_metadata,
-                            )
-                            final_messages.append(response_message)
-
-                    # Save all messages to database
-                    for msg in final_messages:
-                        await message_repo.create_message(
-                            user_id=user.id, message_body=msg.to_dict()
-                        )
+                    await message_repo.create_message(
+                        user_id=user.id, message_body=response_message.to_dict()
+                    )
 
                     # Send analytics for agent response (only once)
                     analytics_service.track_event(

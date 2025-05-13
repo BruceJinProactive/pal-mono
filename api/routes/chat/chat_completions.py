@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import re
 import uuid
 from typing import Any, Dict, List, Literal, Optional
 
@@ -15,6 +16,7 @@ from api.routes.chat.chat import chat_router
 from api.schemas.chat.message import AuthorType, Channel, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from services.message_service import get_chat_response_async, get_chat_response_stream
+from services.relay_service import send_message
 from utils.log import logger
 
 
@@ -236,12 +238,19 @@ async def chat_completions_agno(
                         yield "data: [DONE]\n\n"
                         return
 
+                    collected_content = []
                     if response_stream:
                         chunk_count = 0
                         async for chunk in response_stream:
                             chunk_count += 1
                             chunk_data = _convert_chunk_to_dict(chunk)
 
+                            content = (
+                                chunk_data.get("choices", [])[0]
+                                .get("delta", {})
+                                .get("content", "")
+                            )
+                            collected_content.append(content)
                             # Only log first chunk to avoid excessive logging
                             if chunk_count == 1:
                                 logger.info(
@@ -254,6 +263,27 @@ async def chat_completions_agno(
                         logger.info(
                             f"Completed streaming response after {chunk_count} chunks."
                         )
+
+                        # Check for URLs in the collected content
+                        full_content = "".join(collected_content)
+                        url_pattern = r"http[s]?://|\.net"
+                        urls = re.findall(url_pattern, full_content)
+
+                        if urls:
+                            logger.info(f"Found URLs in response: {urls}")
+                            # Create a Message object and send it via relay service
+                            relay_message = Message(
+                                author_type=AuthorType.AGENT,
+                                sender_identifier=recipient_identifier,
+                                recipient_identifier=sender_identifier,
+                                channel=message.channel,  # Respect the original channel (voice in this case)
+                                broker=message.broker,
+                                text=TextObject(body=full_content),
+                                metadata=Metadata(testing=False),
+                            )
+                            send_result = send_message(relay_message)
+                            logger.info(f"Relay service result: {send_result}")
+
                         yield "data: [DONE]\n\n"
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
