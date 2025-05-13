@@ -2,6 +2,7 @@ import asyncio
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
+from ddtrace.trace import tracer
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +28,17 @@ DEFAULT_ACCOUNT_ICON = "images/accounts/palona_icon.png"
 DEFAULT_USER_ICON = "images/agents/default_user_icon.png"
 
 
+def categorize_chat_request(request: ChatRequest) -> str:
+    """
+    Check the type of chat request based on the Request object
+    """
+    if request.stream:
+        return "STREAM"
+    if request.relay_response:
+        return "RELAY"
+    return "REGULAR"
+
+
 @chat_router.post(
     "/",
     response_model=ChatResponse,
@@ -42,6 +54,13 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                 "stream": request.stream,
             },
         )
+
+        # Override the DD Trace to add request type facet
+        current_span = tracer.current_span()
+        if current_span:
+            current_span.set_tag(
+                "http.params.chat_type", categorize_chat_request(request)
+            )
 
         if request.stream:
 
