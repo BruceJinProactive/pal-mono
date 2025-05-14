@@ -1,7 +1,7 @@
 import http.client
 import urllib.parse
 
-from jsonschema import ValidationError
+from pydantic import ValidationError
 
 from tools.adora_tool.classes import AdoraAccessToken, AdoraHubResponse
 from utils.log import logger
