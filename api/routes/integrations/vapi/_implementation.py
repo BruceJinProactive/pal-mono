@@ -158,24 +158,21 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             raise ValueError("Project not found for this message")
 
         # Get user_id by sender channel/number with user_service
-        user, is_new_user = await user_service.get_user_async(session, project, message)
+        user, _ = await user_service.get_user_async(session, project, message)
         if not user:
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
-            if not user:
-                raise ValueError("Failed to create user")
-        # Ensure user is fully loaded before accessing attributes
-        await session.refresh(user)
 
         # Save request message to database
         message_repo = db.MessageRepositoryAsync(session)
         request_message = await message_repo.create_message(
             user_id=user.id, message_body=message.to_dict()
         )
+        await session.refresh(user, attribute_names=["id"])
+
         if not request_message:
             raise ValueError("Failed to create request message")
 
-        # Send analytics event
         await session.refresh(project, attribute_names=["account"])
         account_name = project.account.name
 

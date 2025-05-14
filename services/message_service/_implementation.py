@@ -74,8 +74,6 @@ async def get_chat_response_async(
         if user is None:
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
-        # Ensure user is fully loaded before accessing attributes
-        await session.refresh(user)
 
         # Save request message to database
         request_message = await message_repo.create_message(
@@ -83,6 +81,7 @@ async def get_chat_response_async(
         )
 
         # Send analytics event
+        await session.refresh(user, attribute_names=["id"])
         await session.refresh(project, attribute_names=["account"])
         account_name = project.account.name
         testing = (
@@ -148,6 +147,8 @@ async def get_chat_response_async(
                     await message_repo.create_message(
                         user_id=user.id, message_body=opt_in_message.to_dict()
                     )
+
+                    await session.refresh(user, attribute_names=["id"])
                 response_messages.append(opt_in_message)
 
         # Get output messages from agent output
@@ -169,14 +170,17 @@ async def get_chat_response_async(
                 sub_message.text = TextObject(body=text.strip())
                 final_output_messages.append(sub_message)
 
+        user_id = user.id
         for message in final_output_messages:
             # Append response message to list of response messages
             response_messages.append(message)
             # Save response message to database
             await message_repo.create_message(
-                user_id=user.id, message_body=message.to_dict()
+                user_id=user_id, message_body=message.to_dict()
             )
 
+        await session.refresh(user, attribute_names=["id"])
+        await session.refresh(request_message, attribute_names=["conversation_id"])
         # Track only one event (for example, using the first message):
         if output_messages:
             first_msg = output_messages[0]
@@ -229,7 +233,7 @@ async def get_chat_response_stream(
 
             if user is None:
                 user = await user_service.create_user_async(session, project, message)
-            await session.refresh(user)
+            await session.refresh(user, attribute_names=["id"])
 
             logger.debug(
                 f"Persist streaming inbound message: {message.to_dict()} from user: {user.id}"
@@ -241,6 +245,7 @@ async def get_chat_response_stream(
                 raise ValueError("Failed to create request message")
 
             # Track user message event
+            await session.refresh(user, attribute_names=["id"])
             await session.refresh(project, attribute_names=["account"])
             account_name = project.account.name
             testing = (
@@ -254,6 +259,7 @@ async def get_chat_response_stream(
                 "conversation_id": str(request_message.conversation_id),
                 "testing": testing,
             }
+
             analytics_service.track_event(
                 user_id=str(user.id),
                 event_name=AnalyticsEvent.USER_MESSAGE,
@@ -401,6 +407,7 @@ async def get_chat_response_stream(
                         user_id=user.id, message_body=response_message.to_dict()
                     )
 
+                    await session.refresh(user, attribute_names=["id"])
                     # Send analytics for agent response (only once)
                     analytics_service.track_event(
                         user_id=str(user.id),
