@@ -112,8 +112,7 @@ class MessageRepositoryAsync:
         # Step 6: Create a message with message_body and add it to the conversation
         message = Message(conversation_id=conversation_id, body=message_body)
         self.session.add(message)
-        await self.session.flush()
-
+        await self.session.commit()
         # Refresh to get the new message ID
         await self.session.refresh(message)
 
