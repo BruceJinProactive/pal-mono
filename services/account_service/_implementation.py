@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
-from services import history_service
 from services.account_service.schema import AccountParams
+from services.history_service import change_log_context
 from utils.log import logger
 
 
@@ -54,10 +54,10 @@ def filter_accounts_by_name(
 
 def create_account(
     session: Session,
+    context: UserContext,
     account_name: str,
     params: AccountParams,
     auto_commit: bool,
-    context: UserContext,
 ) -> db.Account:
     """
     Create an account with the supplied params but without creating default project or agent.
@@ -69,24 +69,17 @@ def create_account(
     if found_account:
         raise ValueError(f"Account {account_name} already exists.")
 
-    try:
-        # Only create an account if the account name does not exist
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Account,
+        author=context.email,
+        auto_commit=auto_commit,
+    ) as ctx:
         account = account_repository.create_account(account_name, **asdict(params))
-        history_service.create_change_log(
-            session=session,
-            account_id=account.id,
-            resource_type=ChangeResourceType.Account,
-            resource_id=str(account.id),
-            author=context.email,
-            old_record=None,
-            new_record=account,
-        )
-        if auto_commit:
-            session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to create account due to error: {e}")
-        raise
+        # Update the context with the actual account ID and record
+        ctx.account_id = account.id
+        ctx.resource_id = str(account.id)
+        ctx.new_record = account
 
     return account
 
@@ -104,27 +97,22 @@ def update_account(
     if existing_account is None:
         raise ValueError(f"Account {account_name} does not exist.")
 
-    try:
-        # Keep a copy of the account before the update because sqlalchemy uses in place update
-        old_account = copy.copy(existing_account)
+    # Keep a copy of the account before the update because sqlalchemy uses in place update
+    old_account = copy.copy(existing_account)
+
+    with change_log_context(
+        session=session,
+        account_id=existing_account.id,
+        resource_id=str(existing_account.id),
+        resource_type=ChangeResourceType.Account,
+        author=context.email,
+        old_record=old_account,
+    ) as ctx:
         # Update the account
         updated_account = account_repository.update_account(
             account_name, **asdict(params)
         )
-        history_service.create_change_log(
-            session=session,
-            account_id=existing_account.id,
-            resource_type=ChangeResourceType.Account,
-            resource_id=str(existing_account.id),
-            author=context.email,
-            old_record=old_account,
-            new_record=updated_account,
-        )
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to update account due to error: {e}")
-        raise
+        ctx.new_record = updated_account
 
     return updated_account
 
@@ -138,20 +126,13 @@ def delete_account(session: Session, account_name: str, context: UserContext):
         logger.warn(f"Account {account_name} does not exist, cannot delete.")
         return
 
-    try:
+    with change_log_context(
+        session=session,
+        account_id=account.id,
+        resource_id=str(account.id),
+        resource_type=ChangeResourceType.Account,
+        author=context.email,
+        old_record=account,
+    ):
         # Delete the account
         account_repository.delete_account(account_name)
-        history_service.create_change_log(
-            session=session,
-            account_id=account.id,
-            resource_type=ChangeResourceType.Account,
-            resource_id=str(account.id),
-            author=context.email,
-            old_record=account,
-            new_record=None,
-        )
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to delete account due to error: {e}")
-        raise

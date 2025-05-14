@@ -1,4 +1,6 @@
 import uuid
+from contextlib import contextmanager
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,7 @@ from db import ChangeLog
 from db.tables.change_log import ChangeResourceType
 
 from . import _implementation
+from ._context import ChangeLogContext
 
 
 def list_account_change_logs(
@@ -54,34 +57,52 @@ def get_change_log(
     return _implementation.get_change_log_details(session, change_log_id)
 
 
-def create_change_log(
+@contextmanager
+def change_log_context(
     session: Session,
-    account_id: uuid.UUID,
     resource_type: ChangeResourceType,
-    resource_id: str,
     author: str,
-    old_record,
-    new_record,
+    account_id: Optional[uuid.UUID] = None,
+    resource_id: Optional[str] = None,
+    old_record: Optional[Any] = None,
+    new_record: Optional[Any] = None,
+    auto_commit: bool = True,
 ):
     """
-    Creates a change log for the given input.
+    A context manager for creating change logs with built-in exception handling and session management.
+    Usage example:
 
-    Args:
-        session (Session): database connection
-        account_id (uuid.UUID): ID of the account
-        resource_type (ChangeResourceType): Name of the edited resource, e.g. Account
-        resource_id (str): ID of the edited resource
-        author (str): LDAP of the user who performed this edit
-        old_record (Base): The db record before the edit
-        new_record (Base): The db record after the edit
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Account,
+        author=context.email,
+        old_record=old_account,
+        new_record=new_account,
+        auto_commit=True,  # Set to False if you want to manage commits yourself
+    ) as ctx:
+        # Perform the operation that needs to be logged
+        account = account_repository.create_account(...)
+        # Update context with actual values if needed
+        ctx.account_id = account.id
+        ctx.resource_id = str(account.id)
+        ctx.new_record = account
     """
-    return _implementation.create_change_log(
-        session, account_id, resource_type, resource_id, author, old_record, new_record
+    context = ChangeLogContext(
+        session=session,
+        resource_type=resource_type,
+        author=author,
+        account_id=account_id,
+        resource_id=resource_id,
+        old_record=old_record,
+        new_record=new_record,
+        auto_commit=auto_commit,
     )
+    with context as ctx:
+        yield ctx
 
 
 __all__ = [
     "list_account_change_logs",
     "get_change_log",
-    "create_change_log",
+    "change_log_context",
 ]

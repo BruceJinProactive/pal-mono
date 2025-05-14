@@ -805,7 +805,7 @@ def onboard_new_account(
     try:
         # Create the account
         account_service.create_account(
-            session, account_name, account_params, context, auto_commit=False
+            session, context, account_name, account_params, auto_commit=False
         )
 
         for agent_project in agent_projects:

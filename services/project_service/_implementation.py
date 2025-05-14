@@ -10,9 +10,9 @@ import db
 from api.routes.admin import UserContext
 from api.schemas.chat.message import Message
 from db.tables.change_log import ChangeResourceType
-from utils.log import logger
+from services.history_service import change_log_context
 
-from .. import account_service, agent_service, history_service
+from .. import account_service, agent_service
 from .schema import ProjectParams
 
 
@@ -37,25 +37,19 @@ def create_project(
 
     project_repository = db.ProjectRepository(session, auto_commit=False)
 
-    try:
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Project,
+        author=context.email,
+        account_id=account.id,
+        auto_commit=auto_commit,
+    ) as ctx:
         project = project_repository.create_project(
             account.id, project_name, **asdict(params)
         )
-        history_service.create_change_log(
-            session=session,
-            account_id=account.id,
-            resource_type=ChangeResourceType.Project,
-            resource_id=str(project.id),
-            author=context.email,
-            old_record=None,
-            new_record=project,
-        )
-        if auto_commit:
-            session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to create project due to error: {e}")
-        raise
+        ctx.resource_id = str(project.id)
+        ctx.new_record = project
+
     return project
 
 
@@ -71,26 +65,21 @@ def update_project(
     if not existing_project:
         raise ValueError(f"Project {project_id} does not exist.")
 
-    try:
-        old_project = copy.copy(existing_project)
+    old_project = copy.copy(existing_project)
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Project,
+        author=context.email,
+        account_id=existing_project.account.id,
+        resource_id=str(project_id),
+        old_record=old_project,
+    ) as ctx:
         updated_project = project_repository.update_project(
             project_id, **asdict(params)
         )
-        history_service.create_change_log(
-            session=session,
-            account_id=existing_project.account.id,
-            resource_type=ChangeResourceType.Project,
-            resource_id=str(project_id),
-            author=context.email,
-            old_record=old_project,
-            new_record=updated_project,
-        )
-        session.commit()
+        ctx.new_record = updated_project
         return updated_project
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to update project due to error: {e}")
-        raise
 
 
 def get_project(session: Session, project_id: uuid.UUID):
@@ -137,22 +126,15 @@ def delete_project(
     if not existing_project:
         return
 
-    try:
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Project,
+        author=context.email,
+        account_id=existing_project.account.id,
+        resource_id=str(existing_project.id),
+        old_record=existing_project,
+    ):
         project_repository.delete_project(project_id)
-        history_service.create_change_log(
-            session=session,
-            account_id=existing_project.account.id,
-            resource_type=ChangeResourceType.Project,
-            resource_id=str(existing_project.id),
-            author=context.email,
-            old_record=existing_project,
-            new_record=None,
-        )
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to delete project due to error: {e}")
-        raise
 
 
 async def get_project_async(session: AsyncSession, message: Message) -> db.Project:

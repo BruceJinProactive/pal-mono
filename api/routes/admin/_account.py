@@ -59,7 +59,7 @@ async def create_account(
     account_params = _validate_and_parse_request(create_request)
     try:
         db_account = account_service.create_account(
-            session, create_request.name, account_params, context
+            session, context, create_request.name, account_params
         )
     except ValueError as err:
         raise HTTPException(

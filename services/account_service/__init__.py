@@ -67,9 +67,9 @@ def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account
 
 def create_account(
     session: Session,
+    context: UserContext,
     account_name: str,
     params: AccountParams,
-    context: UserContext,
     auto_commit: bool = True,
 ) -> db.Account:
     """
@@ -78,10 +78,10 @@ def create_account(
 
     Args:
         session (Session): The database session used to interact with the database.
+        context (UserContext): Information about the current user
         account_name (str): The name of the account to be created.
         params (AccountParams): The parameters containing details for the account
         to be created.
-        context (UserContext): Information about the current user
         auto_commit (bool): New account will be committed automatically if True.
 
     Returns:
@@ -90,7 +90,7 @@ def create_account(
         ValueError: If the account name already exists in the database.
     """
     return _implementation.create_account(
-        session, account_name, params, auto_commit, context
+        session, context, account_name, params, auto_commit
     )
 
 

@@ -10,7 +10,8 @@ import db
 from agent import AgentConfig
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
-from services import account_service, history_service
+from services import account_service
+from services.history_service import change_log_context
 from utils.log import logger
 
 from . import _raw_config
@@ -92,23 +93,17 @@ def create_agent(
     if not account:
         raise ValueError(f"Account {account_name} does not exist")
     agent_repository = db.AgentRepository(session, auto_commit=False)
-    try:
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Agent,
+        author=context.email,
+        account_id=account.id,
+        auto_commit=auto_commit,
+    ) as ctx:
         agent = agent_repository.create_agent(account.id, **asdict(params))
-        history_service.create_change_log(
-            session=session,
-            account_id=account.id,
-            resource_type=ChangeResourceType.Agent,
-            resource_id=str(agent.id),
-            author=context.email,
-            old_record=None,
-            new_record=agent,
-        )
-        if auto_commit:
-            session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to create agent due to error: {e}")
-        raise
+        ctx.resource_id = str(agent.id)
+        ctx.new_record = agent
 
     return agent
 
@@ -126,24 +121,19 @@ def update_agent(
     if not existing_agent:
         raise ValueError(f"Agent with id {agent_id} not found")
 
-    try:
-        old_agent = copy.copy(existing_agent)
+    old_agent = copy.copy(existing_agent)
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Agent,
+        author=context.email,
+        account_id=existing_agent.account.id,
+        resource_id=str(agent_id),
+        old_record=old_agent,
+    ) as ctx:
         new_agent = agent_repository.update_agent(agent_id, **asdict(params))
-        history_service.create_change_log(
-            session=session,
-            account_id=existing_agent.account.id,
-            resource_type=ChangeResourceType.Agent,
-            resource_id=str(agent_id),
-            author=context.email,
-            old_record=old_agent,
-            new_record=new_agent,
-        )
-        session.commit()
+        ctx.new_record = new_agent
         return new_agent
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to update agent due to error: {e}")
-        raise
 
 
 def delete_agent(session: Session, context: UserContext, agent_id: uuid.UUID):
@@ -153,19 +143,12 @@ def delete_agent(session: Session, context: UserContext, agent_id: uuid.UUID):
     if not existing_agent:
         return
 
-    try:
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Agent,
+        author=context.email,
+        account_id=existing_agent.account.id,
+        resource_id=str(existing_agent.id),
+        old_record=existing_agent,
+    ):
         agent_repository.delete_agent(agent_id)
-        history_service.create_change_log(
-            session=session,
-            account_id=existing_agent.account.id,
-            resource_type=ChangeResourceType.Agent,
-            resource_id=str(existing_agent.id),
-            author=context.email,
-            old_record=existing_agent,
-            new_record=None,
-        )
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to delete agent due to error: {e}")
-        raise
