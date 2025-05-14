@@ -65,6 +65,27 @@ Since Agno installs these dependencies in the Docker container environment, our 
 ./scripts/install.sh
 ```
 
+### Database Migration
+
+After making changes to the db model, run this command to generate a revision file.
+Note if you don't generate the revision file, the changes you made to the database model python files will diverge from the actual database schema in RDS.
+```commandline
+docker exec -it pal-mono-api alembic -c db/alembic.ini revision --autogenerate -m "<db-change-message>" # replace with a meaningful yet short message
+```
+
+Run the upgrade command below to bring your local database schema up to date:
+```commandline
+docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
+```
+
+If later you want to modify the model again, the easiest way is to create another migration file for it. It's straightforward, but you are left with two revision files.
+If you prefer to have only one revision file, you can delete the old revision file and just generate a new one. But if you've already upgraded to the latest schema locally, you have to downgrade the db before regenerating
+a new revision. That can be done by this command:
+```commandline
+docker exec -it pal-mono-api alembic -c db/alembic.ini downgrade -1
+```
+
+
 ### Channel Configurations
 
 To open up channels (e.g. the internal app's live page, api) to talk to a local agent, they need to be configured. In the Channel:Identifier table under the projects page, save the following rows for each account.
