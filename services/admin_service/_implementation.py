@@ -813,6 +813,7 @@ def onboard_new_account(
             projects_param = agent_project[1]
             agent = agent_service.create_agent(
                 session=session,
+                context=context,
                 account_name=account_name,
                 params=agent_param,
                 auto_commit=False,
@@ -823,6 +824,7 @@ def onboard_new_account(
                 project_param.agent_id = agent.id
                 project_service.create_project(
                     session=session,
+                    context=context,
                     account_name=account_name,
                     project_name=project_param.name or "",
                     params=project_param,
@@ -844,6 +846,7 @@ def onboard_new_account(
 
 def upload_project_knowledge(
     session: Session,
+    context: UserContext,
     target: db.Project | db.Agent,
     file_name: str,
     content: bytes,
@@ -853,7 +856,9 @@ def upload_project_knowledge(
     This function gets the knowledge settings from the project's raw_config,
     generates embeddings for the text content, and stores them in Pinecone.
     """
-    index_name, namespace = get_knowledge_settings(session, target, auto_create=True)
+    index_name, namespace = get_knowledge_settings(
+        session, context, target, auto_create=True
+    )
     _, existing_files = knowledge_service.list_knowledge_files(index_name, namespace)
 
     for file in existing_files:
@@ -878,6 +883,7 @@ def upload_project_knowledge(
 
 def list_knowledge_files(
     session: Session,
+    context: UserContext,
     target: db.Project | db.Agent,
     filename: str | None = None,
     offset: int = 0,
@@ -898,7 +904,7 @@ def list_knowledge_files(
     Returns:
         tuple[int, list[dict]]: A tuple containing the total number of files and a list of file data
     """
-    index_name, namespace = get_knowledge_settings(session, target)
+    index_name, namespace = get_knowledge_settings(session, context, target)
     if not index_name or not namespace:
         logger.error(
             "Target has missing knowledge setting, knowledge files not retrieved.",
@@ -917,10 +923,11 @@ def list_knowledge_files(
 
 def delete_knowledge_file(
     session: Session,
+    context: UserContext,
     target: db.Project | db.Agent,
     filename: str,
 ) -> list[str]:
-    index_name, namespace = get_knowledge_settings(session, target)
+    index_name, namespace = get_knowledge_settings(session, context, target)
     return knowledge_service.delete_knowledge_file(index_name, namespace, filename)
 
 

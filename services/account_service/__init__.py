@@ -65,20 +65,6 @@ def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account
     return _implementation.mget_accounts(session, account_names)
 
 
-def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
-    """
-    Creates a new account with default settings.
-
-    Args:
-        session (Session): The database session.
-        account_name (str): The name of the new account.
-
-    Returns:
-        Account: The created account
-    """
-    return _implementation.create_account_with_defaults(session, account_name)
-
-
 def create_account(
     session: Session,
     account_name: str,
@@ -162,7 +148,6 @@ __all__ = [
     "get_account",
     "mget_accounts",
     "filter_accounts_by_name",
-    "create_account_with_defaults",
     "create_account",
     "update_account",
     "delete_account",

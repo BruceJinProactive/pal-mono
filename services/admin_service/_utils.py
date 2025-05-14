@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.admin import UserContext
 from services import agent_service, project_service
 from services.agent_service import AgentParams
 from services.project_service import ProjectParams
@@ -13,19 +14,21 @@ DEFAULT_AGENT_INDEX = "agents"
 
 def get_knowledge_settings(
     session: Session,
+    context: UserContext,
     target: db.Project | db.Agent,
     auto_create: bool = False,
 ):
     if isinstance(target, db.Project):
-        return _get_project_knowledge_settings(session, target, auto_create)
+        return _get_project_knowledge_settings(session, context, target, auto_create)
     elif isinstance(target, db.Agent):
-        return _get_agent_knowledge_settings(session, target, auto_create)
+        return _get_agent_knowledge_settings(session, context, target, auto_create)
     else:
         raise ValueError(f"Unrecognized target type: {type(target)}")
 
 
 def _get_project_knowledge_settings(
     session: Session,
+    context: UserContext,
     target: db.Project,
     auto_create: bool = False,
 ):
@@ -40,13 +43,14 @@ def _get_project_knowledge_settings(
     )
     if missing and auto_create:
         project_service.update_project(
-            session, target.id, ProjectParams(raw_config=raw_config)
+            session, context, target.id, ProjectParams(raw_config=raw_config)
         )
     return index_name, namespace
 
 
 def _get_agent_knowledge_settings(
     session: Session,
+    context: UserContext,
     target: db.Agent,
     auto_create: bool = False,
 ):
@@ -61,7 +65,7 @@ def _get_agent_knowledge_settings(
     )
     if missing and auto_create:
         agent_service.update_agent(
-            session, target.id, AgentParams(raw_config=raw_config)
+            session, context, target.id, AgentParams(raw_config=raw_config)
         )
     return index_name, namespace
 

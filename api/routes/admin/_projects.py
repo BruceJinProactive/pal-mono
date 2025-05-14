@@ -257,7 +257,11 @@ async def create_project(
     )
     try:
         db_project = project_service.create_project(
-            session, create_request.account_name, create_request.name, project_params
+            session,
+            context,
+            create_request.account_name,
+            create_request.name,
+            project_params,
         )
     except ValueError as err:
         raise HTTPException(
@@ -289,7 +293,9 @@ async def update_project(
         channel_identifiers=update_request.channel_identifiers,
     )
     try:
-        db_project = project_service.update_project(session, project_id, project_params)
+        db_project = project_service.update_project(
+            session, context, project_id, project_params
+        )
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -307,4 +313,4 @@ async def delete_project(
     project = project_service.get_project(session, project_id)
     if project:
         authorize_user_account(context, project.account.name)
-        project_service.delete_project(session, project_id)
+        project_service.delete_project(session, context, project_id)

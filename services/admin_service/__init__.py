@@ -387,6 +387,7 @@ def onboard_new_account(
 
 def upload_knowledge_file(
     session: Session,
+    context: UserContext,
     target: db.Project | db.Agent,
     file_name: str,
     content: bytes,
@@ -398,6 +399,7 @@ def upload_knowledge_file(
 
     Args:
         session (Session): The database session.
+        context (UserContext): Information for the current user.
         target (db.Project | db.Agent): The target to upload knowledge file for.
         file_name (str): The name of the file to upload.
         content (str): The text content of the file.
@@ -409,11 +411,14 @@ def upload_knowledge_file(
         ValueError: If the project is not found or knowledge is not configured.
         RuntimeError: If there is an error uploading the file.
     """
-    return _implementation.upload_project_knowledge(session, target, file_name, content)
+    return _implementation.upload_project_knowledge(
+        session, context, target, file_name, content
+    )
 
 
 def list_knowledge_files(
     session: Session,
+    context: UserContext,
     target: db.Project | db.Agent,
     filename: str | None = None,
     offset: int = 0,
@@ -424,6 +429,7 @@ def list_knowledge_files(
 
     Args:
         session: The database session
+        context (UserContext): Information for the current user.
         target: The project or agent to retrieve knowledge files for
         filename: Optional filename to filter results by (case-insensitive partial match)
         offset: The number of files to skip
@@ -437,12 +443,13 @@ def list_knowledge_files(
         RuntimeError: If there is an error retrieving the files.
     """
     return _implementation.list_knowledge_files(
-        session, target, filename, offset, limit
+        session, context, target, filename, offset, limit
     )
 
 
 def delete_knowledge_file(
     session: Session,
+    context: UserContext,
     target: db.Project | db.Agent,
     filename: str,
 ) -> list[str]:
@@ -452,13 +459,14 @@ def delete_knowledge_file(
 
     Args:
         session (Session): The database session.
+        context (UserContext): Information for the current user.
         target (Union[db.Project | db.Agent]): The project or agent that this delete happens to.
         filename (str): The name of the file to delete.
 
     Returns:
         list[str]: List of embedding IDs that are deleted.
     """
-    return _implementation.delete_knowledge_file(session, target, filename)
+    return _implementation.delete_knowledge_file(session, context, target, filename)
 
 
 def list_account_users(account_name: str) -> list[CognitoUser]:

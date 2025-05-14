@@ -52,23 +52,6 @@ def filter_accounts_by_name(
     return accounts
 
 
-def create_account_with_defaults(session: Session, account_name: str) -> db.Account:
-    # Instantiate the repositories
-    account_repository = db.AccountRepository(session)
-    project_repository = db.ProjectRepository(session)
-    agent_repository = db.AgentRepository(session)
-
-    # Use the repositories to create the account, project, and agent
-    account = account_repository.create_account(account_name)
-    agent = agent_repository.create_agent(account_id=account.id)
-    project_repository.create_project(
-        account.id,
-        f"{account_name}-default",
-        agent_id=agent.id,
-    )
-    return account
-
-
 def create_account(
     session: Session,
     account_name: str,

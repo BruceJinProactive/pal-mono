@@ -1,3 +1,4 @@
+import copy
 import uuid
 from dataclasses import asdict
 from typing import Any, Dict, Optional
@@ -7,7 +8,9 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import AgentConfig
-from services import account_service
+from api.routes.admin import UserContext
+from db.tables.change_log import ChangeResourceType
+from services import account_service, history_service
 from utils.log import logger
 
 from . import _raw_config
@@ -78,28 +81,91 @@ def replace_agent_config(
 
 
 def create_agent(
-    session: Session, account_name: str, params: AgentParams, auto_commit: bool
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    params: AgentParams,
+    auto_commit: bool,
 ) -> db.Agent:
     # Create an agent for the given account
     account = account_service.get_account(session, account_name)
     if not account:
         raise ValueError(f"Account {account_name} does not exist")
-    agent_repository = db.AgentRepository(session, auto_commit)
-    agent = agent_repository.create_agent(account.id, **asdict(params))
+    agent_repository = db.AgentRepository(session, auto_commit=False)
+    try:
+        agent = agent_repository.create_agent(account.id, **asdict(params))
+        history_service.create_change_log(
+            session=session,
+            account_id=account.id,
+            resource_type=ChangeResourceType.Agent,
+            resource_id=str(agent.id),
+            author=context.email,
+            old_record=None,
+            new_record=agent,
+        )
+        if auto_commit:
+            session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to create agent due to error: {e}")
+        raise
+
     return agent
 
 
 def update_agent(
-    session: Session, agent_id: uuid.UUID, params: AgentParams
+    session: Session,
+    context: UserContext,
+    agent_id: uuid.UUID,
+    params: AgentParams,
 ) -> db.Agent:
     # Update the specified agent with the provided params
     agent_repository = db.AgentRepository(session)
-    agent = agent_repository.update_agent(agent_id, **asdict(params))
-    if agent is None:
+
+    existing_agent = agent_repository.get_agent(agent_id)
+    if not existing_agent:
         raise ValueError(f"Agent with id {agent_id} not found")
-    return agent
+
+    try:
+        old_agent = copy.copy(existing_agent)
+        new_agent = agent_repository.update_agent(agent_id, **asdict(params))
+        history_service.create_change_log(
+            session=session,
+            account_id=existing_agent.account.id,
+            resource_type=ChangeResourceType.Agent,
+            resource_id=str(agent_id),
+            author=context.email,
+            old_record=old_agent,
+            new_record=new_agent,
+        )
+        session.commit()
+        return new_agent
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to update agent due to error: {e}")
+        raise
 
 
-def delete_agent(session: Session, agent_id: uuid.UUID):
-    agent_repository = db.AgentRepository(session)
-    agent_repository.delete_agent(agent_id)
+def delete_agent(session: Session, context: UserContext, agent_id: uuid.UUID):
+    agent_repository = db.AgentRepository(session, auto_commit=False)
+
+    existing_agent = agent_repository.get_agent(agent_id)
+    if not existing_agent:
+        return
+
+    try:
+        agent_repository.delete_agent(agent_id)
+        history_service.create_change_log(
+            session=session,
+            account_id=existing_agent.account.id,
+            resource_type=ChangeResourceType.Agent,
+            resource_id=str(existing_agent.id),
+            author=context.email,
+            old_record=existing_agent,
+            new_record=None,
+        )
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to delete agent due to error: {e}")
+        raise

@@ -46,7 +46,7 @@ async def create_agent(
     )
     try:
         db_agent = agent_service.create_agent(
-            session, create_request.account_name, agent_params
+            session, context, create_request.account_name, agent_params
         )
     except ValueError as err:
         raise HTTPException(
@@ -88,7 +88,7 @@ async def update_agent(
         raw_config=update_request.raw_config,
     )
     try:
-        db_agent = agent_service.update_agent(session, agent_id, agent_params)
+        db_agent = agent_service.update_agent(session, context, agent_id, agent_params)
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -106,7 +106,7 @@ async def delete_agent(
     agent = agent_service.get_agent(session, agent_id)
     if agent:
         authorize_user_account(context, agent.account.name)
-        agent_service.delete_agent(session, agent_id)
+        agent_service.delete_agent(session, context, agent_id)
 
 
 async def list_agent_projects(

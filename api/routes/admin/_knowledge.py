@@ -35,7 +35,12 @@ async def get_project_knowledge_files(
 
     try:
         total, file_data = admin_service.list_knowledge_files(
-            session, target, filename, offset=(page - 1) * page_size, limit=page_size
+            session,
+            context,
+            target,
+            filename,
+            offset=(page - 1) * page_size,
+            limit=page_size,
         )
         files = [
             KnowledgeFile(
@@ -82,7 +87,7 @@ async def upload_knowledge_file(
     target = get_and_authorize(resource, resource_id, context, session)
     try:
         result = admin_service.upload_knowledge_file(
-            session, target, file_name, content
+            session, context, target, file_name, content
         )
         return result
     except ValueError as e:
@@ -101,7 +106,9 @@ async def delete_knowledge_file(
 ) -> str:
     target = get_and_authorize(resource, resource_id, context, session)
     try:
-        ids_deleted = admin_service.delete_knowledge_file(session, target, filename)
+        ids_deleted = admin_service.delete_knowledge_file(
+            session, context, target, filename
+        )
         return f"Deleted {len(ids_deleted)} embeddings for the file {filename}"
     except ValueError as e:
         raise HTTPException(

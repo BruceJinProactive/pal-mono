@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import AgentConfig
+from api.routes.admin import UserContext
 from utils.dd import traced
 
 from . import _implementation
@@ -61,7 +62,11 @@ def replace_agent_config(
 
 
 def create_agent(
-    session: Session, account_name: str, params: AgentParams, auto_commit: bool = True
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    params: AgentParams,
+    auto_commit: bool = True,
 ) -> db.Agent:
     """
     Creates a new agent for the specified account using provided parameters and saves
@@ -76,11 +81,16 @@ def create_agent(
     Returns:
         Agent: The database model object representing the created agent.
     """
-    return _implementation.create_agent(session, account_name, params, auto_commit)
+    return _implementation.create_agent(
+        session, context, account_name, params, auto_commit
+    )
 
 
 def update_agent(
-    session: Session, agent_id: uuid.UUID, params: AgentParams
+    session: Session,
+    context: UserContext,
+    agent_id: uuid.UUID,
+    params: AgentParams,
 ) -> db.Agent:
     """
     Update the specified agent with the parameters provided
@@ -93,14 +103,18 @@ def update_agent(
     Returns:
         Agent: The database model object representing the updated agent.
     """
-    return _implementation.update_agent(session, agent_id, params)
+    return _implementation.update_agent(session, context, agent_id, params)
 
 
-def delete_agent(session: Session, agent_id: uuid.UUID):
+def delete_agent(
+    session: Session,
+    context: UserContext,
+    agent_id: uuid.UUID,
+):
     """
     Delete the specified agent, if agent_id does not exist, this is a no-op.
     """
-    _implementation.delete_agent(session, agent_id)
+    _implementation.delete_agent(session, context, agent_id)
 
 
 __all__ = [

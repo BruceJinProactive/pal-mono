@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from api.routes.admin import UserContext
 from api.schemas.chat.message import Message
 
 from . import _implementation
@@ -13,6 +14,7 @@ from .schema import ProjectParams
 
 def create_project(
     session: Session,
+    context: UserContext,
     account_name: str,
     project_name: str,
     params: ProjectParams,
@@ -23,6 +25,7 @@ def create_project(
 
     Args:
         session (Session): The database connection.
+        context (UserContext): Information for the current user
         account_name (str): The name of the account to which the project belongs.
         project_name (str): The unique name of the project to be created
         params (ProjectParams): The detailed configs of the project to be created.
@@ -32,25 +35,29 @@ def create_project(
         Project: The newly created project.
     """
     return _implementation.create_project(
-        session, account_name, project_name, params, auto_commit
+        session, context, account_name, project_name, params, auto_commit
     )
 
 
 def update_project(
-    session: Session, project_id: uuid.UUID, params: ProjectParams
+    session: Session,
+    context: UserContext,
+    project_id: uuid.UUID,
+    params: ProjectParams,
 ) -> db.Project:
     """
     Update the specified project with the provided params.
 
     Args:
         session (Session): The database connection.
+        context (UserContext): Information for the current user
         project_id (uuid.UUID): The uuid of the project to update.
         params (ProjectParams): The detailed configs of the project to be updated.
 
     Returns:
         Project: The updated project.
     """
-    return _implementation.update_project(session, project_id, params)
+    return _implementation.update_project(session, context, project_id, params)
 
 
 def get_project(session: Session, project_id: uuid.UUID):
@@ -139,18 +146,23 @@ def replace_project_config(
     return _implementation.replace_project_config(session, project_id, config)
 
 
-def delete_project(session: Session, project_id: uuid.UUID) -> None:
+def delete_project(
+    session: Session,
+    context: UserContext,
+    project_id: uuid.UUID,
+) -> None:
     """
     Deletes a specific project using its unique identifier.
 
     Args:
         session (Session): The database connection.
+        context (UserContext): Information for the current user
         project_id (uuid.UUID): The unique identifier of the project.
 
     Returns:
         None
     """
-    return _implementation.delete_project(session, project_id)
+    return _implementation.delete_project(session, context, project_id)
 
 
 async def get_project_async(session: AsyncSession, message: Message) -> db.Project:
