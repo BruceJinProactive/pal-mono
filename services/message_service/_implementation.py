@@ -229,7 +229,7 @@ async def get_chat_response_stream(
 
             if user is None:
                 user = await user_service.create_user_async(session, project, message)
-            await session.refresh(user, attribute_names=["id"])
+            await session.refresh(user)
 
             logger.debug(
                 f"Persist streaming inbound message: {message.to_dict()} from user: {user.id}"
@@ -242,7 +242,6 @@ async def get_chat_response_stream(
 
             # Track user message event
             await session.refresh(project, attribute_names=["account"])
-            await session.refresh(user, attribute_names=["id"])
             account_name = project.account.name
             testing = (
                 getattr(message.metadata, "testing", False)
@@ -402,7 +401,6 @@ async def get_chat_response_stream(
                         user_id=user.id, message_body=response_message.to_dict()
                     )
 
-                    await session.refresh(user, attribute_names=["id"])
                     # Send analytics for agent response (only once)
                     analytics_service.track_event(
                         user_id=str(user.id),
