@@ -678,12 +678,13 @@ class AdoraTool(Toolkit):
                  its description, and any relevant details or error messages.
                  Lists which codes are valid and which are invalid.
         """
+        logger.debug(f"Validating coupon codes: {coupon_codes}")
         if not coupon_codes:
             return "Please provide at least one coupon code to validate."
 
-        # Ensure we have a list of valid codes (non-empty strings)
-        codes = [code.strip() for code in coupon_codes if code and code.strip()]
+        codes = list({code.strip() for code in coupon_codes if code and code.strip()})
 
+        # check if all codes in the list are empty strings or only contain whitespace
         if not codes:
             return "Please provide at least one valid coupon code to validate."
 
@@ -697,10 +698,7 @@ class AdoraTool(Toolkit):
                     "for assistance."
                 )
 
-            valid_codes = []
-            invalid_codes = []
-            results = []
-            valid_coupons = []
+            results = ["Present all the details in the following validation results:"]
 
             for code in codes:
                 result = _apis.validate_coupon_code(
@@ -708,57 +706,21 @@ class AdoraTool(Toolkit):
                 )
 
                 if not result:
-                    invalid_codes.append(code)
                     results.append(f"Failed to validate coupon code: {code}")
                     continue
 
                 if result.get("isValid", False):
-                    valid_codes.append(code)
                     results.append(
-                        f"Coupon code '{code}' is valid.\n"
-                        f"Description: {result.get('description', 'No description available')}"
+                        f"Coupon code '{code}' is valid;"
+                        f"description: {result.get('description', 'No description available')}"
                     )
 
-                    # Add valid coupon to discounts if not already there
-                    coupon_data = {
-                        "coupon_id": result.get("couponId"),
-                        "coupon_code": code,
-                    }
-
-                    # Check if this coupon is already in discounts
-                    coupon_exists = False
-                    for discount in self.discounts:
-                        if (
-                            isinstance(discount, dict)
-                            and discount.get("coupon_code") == code
-                        ):
-                            coupon_exists = True
-                            break
-
-                    if not coupon_exists:
-                        valid_coupons.append(coupon_data)
                 else:
-                    invalid_codes.append(code)
                     results.append(
                         f"Coupon code '{code}' is not valid. {result.get('message', '')}"
                     )
 
-            # Add valid coupons to discounts
-            if valid_coupons:
-                self.discounts += valid_coupons
-
-            # Create summary message
-            summary = "Present the following coupon validation results including all the details."
-            if valid_codes:
-                summary += f"Valid coupon codes: {', '.join(valid_codes)}\n\n"
-            if invalid_codes:
-                summary += f"Invalid coupon codes: {', '.join(invalid_codes)}\n\n"
-
-            # Combine summary with detailed results
-            if len(codes) == 1:
-                return results[0]
-            else:
-                return summary + "\n".join(results)
+            return "\n".join(results)
 
         except Exception as e:
             logger.error(
