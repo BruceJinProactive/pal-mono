@@ -158,7 +158,7 @@ def _get_next_order_credits(customer_info: dict) -> str:
 
         for credit in credits:
             credits_info += (
-                f"Credit ID: {credit.get('creditId', '')}\n"
+                f"Credit ID: {credit.get('CreditId', '')}\n"
                 f"Store Key: {credit.get('storeKey', '')}\n"
                 f"Coupon ID: {credit.get('couponId', '')}\n"
                 f"Discount: {credit.get('discount', '')}\n"
@@ -191,21 +191,17 @@ def _format_customer_info(customer_info: AdoraCustomerInfo) -> str:
         f"Loyalty Member: {'Yes' if _get_loyalty_status(info_dict) else 'No'}\n"
     )
 
-    # Add reward information (simplified)
+    # Add reward information
     if rewards := info_dict.get("customerRewards", []):
         formatted_info += f"Rewards: {rewards}\n"
 
-    # Add offer information (simplified)
+    # Add offer information
     if "customerOffers" in info_dict and info_dict["customerOffers"]:
-        offers = info_dict["customerOffers"]
-        codes_count = len(offers.get("codes", []))
-        coupons_count = len(offers.get("coupons", []))
-        if codes_count or coupons_count:
-            formatted_info += f"Offers: {codes_count} codes, {coupons_count} coupons\n"
+        formatted_info += _get_offer_info(info_dict)
 
-    # Add next order credits (simplified)
-    if credits := info_dict.get("customerNextOrderCredits", []):
-        formatted_info += f"Credits: {len(credits)} available\n"
+    # Add next order credits
+    if info_dict.get("customerNextOrderCredits", []):
+        formatted_info += _get_next_order_credits(info_dict)
 
     return formatted_info
 

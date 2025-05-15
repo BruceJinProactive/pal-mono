@@ -352,7 +352,7 @@ class AdoraNextOrderCredit(BaseModel):
     creditId: Optional[str] = None
     storeKey: Optional[str] = None
     couponId: Optional[int] = None
-    discount: Optional[str] = None
+    discount: Optional[float] = None
     couponName: Optional[str] = None
     couponDescription: Optional[str] = None
 

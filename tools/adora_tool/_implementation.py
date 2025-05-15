@@ -75,6 +75,7 @@ class AdoraTool(Toolkit):
         self.register(self.checkout_order)
         self.register(self.check_address)
         self.register(self.validate_coupons)
+        self.register(self.get_loyalty_info)
 
         self.query_engine = _query_engine.create_query_engine(self.namespace)
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -651,7 +652,6 @@ class AdoraTool(Toolkit):
 
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment
-
             return self._fulfill_order(order, bearer_token)
 
         except Exception as e:
@@ -727,3 +727,54 @@ class AdoraTool(Toolkit):
                 f"[AdoraTool.validate_coupons] Error validating coupon code(s): {e}"
             )
             return "There was an error validating the coupon code(s). Please try again."
+
+    @tool
+    def get_loyalty_info(self, phone_number: str) -> str:
+        """
+        Access customer information and retrieve their loyalty status through phone number
+
+        This tool should be used when:
+        - A customer asks about his information recorded in the store
+        - A customer asks about their loyalty program status
+        - A customer provides their phone number
+
+        Args:
+            phone_number (str): The customer's phone number.
+
+        Returns:
+            str: Customer information including loyalty status, available rewards,
+                 pending offers, and any credits. Returns an error message if the customer
+                 cannot be found or if there's an issue with the API.
+        """
+        error_message = (
+            "There was an error retrieving your loyalty information. Please try again."
+        )
+
+        try:
+            phone_number = _utils.format_phone_number(phone_number)
+            if not phone_number:
+                return "Please provide a valid phone number in the format XXX-XXX-XXXX."
+
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
+                logger.debug("[AdoraTool.get_loyalty_info] No bearer token found")
+                return error_message
+
+            customer_info = _apis.get_customer_info(
+                bearer_token,
+                self.store_id,
+                phone_number,
+                qa_store=self.qa_store,
+            )
+
+            if customer_info is None:
+                return "Failed to retrieve customer information. Please try again."
+
+            return customer_info
+
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool.get_loyalty_info] Error validating loyalty status: {e}"
+            )
+            return error_message
