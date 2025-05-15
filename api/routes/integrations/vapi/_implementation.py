@@ -199,9 +199,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             "call_id": call_id,  # Adding call_id for future reference
         }
 
-        # Get voice_id from config
-        voice_id = config.persona.voice_id
-
         # Return a transient assistant configuration
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
         # Document the expected format using a comment
@@ -220,9 +217,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 },
                 "voice": {
                     "provider": "cartesia",
-                    "voiceId": (
-                        voice_id if voice_id else "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
-                    ),  # Default to Jimmy's voice id
+                    "voiceId": "ed81fd13-2016-4a49-8fe3-c0d2761695fc",  # Sportsman
                 },
             }
         }
