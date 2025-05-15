@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
+from api.routes.chat._utils import create_url_filter
 from api.routes.chat.chat import chat_router
 from api.schemas.chat.message import (
     AuthorType,
@@ -217,7 +218,7 @@ async def chat_completions_agno(
             author_type=AuthorType.USER,
             sender_identifier=sender_identifier,
             recipient_identifier=recipient_identifier,
-            channel=Channel.VOICE,
+            channel=Channel.API,
             broker=None,
             text=TextObject(body=content),
             metadata=Metadata(testing=False),
@@ -248,6 +249,7 @@ async def chat_completions_agno(
                     collected_content = []
                     if response_stream:
                         chunk_count = 0
+                        url_filter = create_url_filter()
                         async for chunk in response_stream:
                             chunk_count += 1
                             chunk_data = _convert_chunk_to_dict(chunk)
@@ -264,7 +266,18 @@ async def chat_completions_agno(
                                     f"First stream chunk: {json.dumps(chunk_data)}"
                                 )
 
-                            yield f"data: {json.dumps(chunk_data)}\n\n"
+                            filtered_content = url_filter.filter_content(content)
+                            if filtered_content is not None:
+                                # Replace the original content in chunk_data with filtered_content
+                                if (
+                                    chunk_data.get("choices")
+                                    and len(chunk_data["choices"]) > 0
+                                ):
+                                    if "delta" in chunk_data["choices"][0]:
+                                        chunk_data["choices"][0]["delta"][
+                                            "content"
+                                        ] = filtered_content
+                                yield f"data: {json.dumps(chunk_data)}\n\n"
 
                         # Log completion of stream
                         logger.info(
@@ -273,7 +286,7 @@ async def chat_completions_agno(
 
                         # Check for URLs in the collected content
                         full_content = "".join(collected_content)
-                        url_pattern = r"http[s]?://|\.net"
+                        url_pattern = r"https?://[^\s\)]+"
                         urls = re.findall(url_pattern, full_content)
 
                         if urls:
