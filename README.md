@@ -40,7 +40,7 @@ ag ws setup
 6. Build and run both API and web app locally.
 
 ```bash
-ag ws up
+ag ws up -y # appending -y allows you to skip the confirmation step
 
 ag ws up -f (Force rebuild from scratch)
 ```
@@ -102,9 +102,22 @@ For example,
 | internal_app | palona-default |
 | api          | palona-default |
 
+## Managing Data
+### PSQL Connection
+You can connect to the docker postgres instance directly via
+```commandline
+psql -h localhost -U app
+```
+Password is **_app_**
+
+### Using Managed App
+If you are scared of modifying the database directly and frankly you should be, then using a local built manage app to
+modify the data is your best option. To launch the manage-app locally, clone the repo `pal-manage-app` and build it
+following the guidelines in the readme doc there.
+
 ## Others
 
-1. You can read the API documentation running on your local host: [http://localhost:8000/docs#/](http://localhost:8000/docs#/), and view the web app running on your local host: [http://localhost:8501/](http://localhost:8501/).
+1. You can read the API documentation running on your local host: [http://localhost:8000/docs#/](http://localhost:8000/docs#/)
 
 2. You can install this [Visual Studio extension](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff) to run the Python lint check in your IDE while you code.
 
@@ -156,9 +169,9 @@ The CI/CD pipeline consists of 4 environments:
 
 Endpoints are hosted in dedicated AWS accounts: `lat`, `stg`, and `prd`.
 
-| env | streamlit app                                                      | admin console                  | api                        |
-|-----|--------------------------------------------------------------------|--------------------------------|----------------------------|
-| dev | http://localhost:8501/                                             | http://localhost:8501/         | http://localhost:8000/     |
-| lat | http://lat-pal-mono-app-lb-944853732.us-east-1.elb.amazonaws.com/  | https://lat-console.palona.ai/ | https://lat-api.palona.ai/ |
-| stg | http://stg-pal-mono-app-lb-1494675788.us-east-1.elb.amazonaws.com/ | https://stg-console.palona.ai/ | https://stg-api.palona.ai/ |
-| prd | http://prd-pal-mono-app-lb-1794342643.us-east-1.elb.amazonaws.com/ | https://console.palona.ai/     | https://api.palona.ai/     |
+| env | manage app                       | admin console                  | api                        |
+|-----|----------------------------------|--------------------------------|----------------------------|
+| dev | http://localhost:3000/           | http://localhost:8501/         | http://localhost:8000/     |
+| lat | http://lat-manage-app.palona.ai/ | https://lat-console.palona.ai/ | https://lat-api.palona.ai/ |
+| stg | http://stg-manage-app.palona.ai/ | https://stg-console.palona.ai/ | https://stg-api.palona.ai/ |
+| prd | http://manage-app.palona.ai/     | https://console.palona.ai/     | https://api.palona.ai/     |
