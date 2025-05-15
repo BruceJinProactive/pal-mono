@@ -35,6 +35,13 @@ def create_project(
     if not agent or agent.account_id != account.id:
         raise ValueError("selected agent is not available in the account")
 
+    # Add API channel with project name as identifier
+    api_channel_identifier = f"api:{project_name}"
+    if params.channel_identifiers is None:
+        params.channel_identifiers = []
+    if api_channel_identifier not in params.channel_identifiers:
+        params.channel_identifiers.append(api_channel_identifier)
+
     project_repository = db.ProjectRepository(session, auto_commit=False)
 
     with change_log_context(
@@ -66,6 +73,12 @@ def update_project(
         raise ValueError(f"Project {project_id} does not exist.")
 
     old_project = copy.copy(existing_project)
+
+    api_channel_identifier = f"api:{existing_project.name}"
+    if params.channel_identifiers is None:
+        params.channel_identifiers = []
+    if api_channel_identifier not in params.channel_identifiers:
+        params.channel_identifiers.append(api_channel_identifier)
 
     with change_log_context(
         session=session,
