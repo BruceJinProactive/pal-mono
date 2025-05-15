@@ -30,7 +30,8 @@ class AccountRepository:
             return None
 
     def get_account_by_id(self, account_id: uuid.UUID) -> Account | None:
-        """Retrieve a single account by its ID."""
+        """Retrieve an account by its ID."""
+
         try:
             return self.session.query(Account).filter(Account.id == account_id).first()
         except SQLAlchemyError as e:

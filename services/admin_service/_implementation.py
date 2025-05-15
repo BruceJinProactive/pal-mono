@@ -23,10 +23,7 @@ from services import (
 )
 from services.account_service import AccountParams
 from services.admin_service._utils import get_knowledge_settings
-from services.admin_service.schema import (
-    CognitoUser,
-    UserSessionPreview,
-)
+from services.admin_service.schema import CognitoUser, UserSessionPreview
 from services.agent_service import AgentParams
 from services.knowledge_service import KnowledgeFile
 from services.message_service import (

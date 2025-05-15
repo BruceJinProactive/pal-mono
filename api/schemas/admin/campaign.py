@@ -28,10 +28,13 @@ class CampaignDetail(BaseModel):
 
 
 class CampaignSummary(BaseModel):
+    """Summary model for campaign list responses"""
+
+    id: uuid.UUID
     name: str
     internal_recipient: bool
     total_scheduled: int
-    status: str
+    status: str  # One of: initializing | in_progress | complete
     created_at: datetime.datetime
 
 

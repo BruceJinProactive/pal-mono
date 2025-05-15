@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, Enum, String
+from sqlalchemy.types import Boolean, DateTime, Enum, String
 
 from .base import Base
 
@@ -35,6 +35,9 @@ class Campaign(Base):
     message: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[CampaignChannel] = mapped_column(
         Enum(CampaignChannel), nullable=False, index=True
+    )
+    internal_recipient: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
     )
 
     # Metadata columns

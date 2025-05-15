@@ -357,13 +357,19 @@ async def get_campaign_detail(
 @admin_router.get("/accounts/{account_name}/campaigns")
 async def list_account_campaigns(
     account_name: str,
+    status: str | None = Query(
+        None, description="Optional status to filter campaigns by"
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListCampaignsResponse:
     """
     Retrieves a list of campaign summaries for the given account.
+    Optionally filter by campaign status.
     """
-    return await _campaign.list_account_campaigns(account_name, context, session)
+    return await _campaign.list_account_campaigns(
+        account_name, status, context, session
+    )
 
 
 """
