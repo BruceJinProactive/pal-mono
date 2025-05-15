@@ -296,6 +296,9 @@ class Order(BaseModel):
         description="Delivery address", serialization_alias="deliveryAddress"
     )
     coupon_ids: Optional[List[int]] = Field(description="Discount coupon ids.")
+    coupon_codes: Optional[List[str]] = Field(
+        description="Discount coupon codes. Include all valid coupon codes in the chat history in the order they were mentioned. Coupon codes are always a string, do not mistake them for coupon ids."
+    )
     order_comment: Optional[str] = Field(
         description="Special ordering instructions requested by the customer. Empty if no special requests are made. These can be something like 'no cheese', 'extra sauce', etc.",
         serialization_alias="orderComment",
@@ -311,11 +314,10 @@ class Order(BaseModel):
 
     @computed_field
     def coupons(self) -> List[Dict[str, int]]:
-        # NOTE: Hardcode discount
-        if not self.coupon_ids:
-            return [{"coupon_id": 134}]
-
-        return [{"coupon_id": coupon_id} for coupon_id in self.coupon_ids]
+        if self.coupon_ids:
+            return [{"coupon_id": coupon_id} for coupon_id in self.coupon_ids]
+        else:
+            return []
 
 
 class SubQueries(BaseModel):

@@ -3,6 +3,7 @@ import json
 import os
 import traceback
 from datetime import datetime
+from typing import List
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -47,15 +48,16 @@ class AdoraTool(Toolkit):
         self.store_id = store_id
         self.namespace = namespace
         self.tool_metadata = tool_metadata
-        self.discounts = []  # { coupon_id, discount_code }
+        self.discounts = []  # { coupon_id, coupon_code }
+        self.default_coupon_id = 134
 
         if self.store_id in [ADORA_QA_STORE, ADORA_QA_STORE_2]:  # QA store
             self.qa_store = True
         else:
             self.qa_store = False
 
-            if client_config:
-                self.discounts = client_config.data.get("discounts", [])
+        if client_config:
+            self.discounts = client_config.data.get("discounts", [])
 
         ### Cache adora token and store info ###
         self.cached_store_info: str | None = None
@@ -72,6 +74,7 @@ class AdoraTool(Toolkit):
         self.register(self.get_store_info)
         self.register(self.checkout_order)
         self.register(self.check_address)
+        self.register(self.validate_coupons)
 
         self.query_engine = _query_engine.create_query_engine(self.namespace)
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -444,7 +447,6 @@ class AdoraTool(Toolkit):
             )
 
         if self.qa_store:  # Do not apply discount for QA store
-            json_payload["coupons"] = []
             payload = json.dumps(json_payload)
 
         validated_order = _apis.validate_order(
@@ -526,11 +528,6 @@ class AdoraTool(Toolkit):
             context = self._get_relevant_docs(chat_history)  # type: ignore
 
             final_extractor_system_prompt = _llm.EXTRACTOR_SYSTEM_PROMPT
-            if self.discounts:
-                final_extractor_system_prompt += (
-                    "\n\n"
-                    + _llm.DISCOUNT_SYSTEM_PROMPT.format(discounts=self.discounts)
-                )
 
             order = _llm.llm_call(
                 system_prompt=final_extractor_system_prompt,
@@ -575,6 +572,45 @@ class AdoraTool(Toolkit):
 
                 if not validate_order_success:
                     return validate_order_message
+
+            # Validate coupon codes mentioned by the user
+            # NOTE: for now, include only the last single valid coupon code even if there are multiple coupon codes mentioned in the chat history, later we may want to include multiple coupon codes
+            if order.coupon_codes:
+                code = order.coupon_codes[-1]
+
+                # Use _get_adora_bearer_token to ensure LLMObs tracking
+                bearer_token = self._get_adora_bearer_token()
+                if bearer_token:
+                    # Validate each coupon code
+
+                    result = _apis.validate_coupon_code(
+                        bearer_token,
+                        self.store_id,
+                        code,
+                        qa_store=self.qa_store,
+                    )
+                    if result and result.get("isValid", False) and "couponId" in result:
+                        if order.coupon_ids:
+                            order.coupon_ids.append(result["couponId"])
+                        else:
+                            order.coupon_ids = [result["couponId"]]
+                    else:
+                        logger.debug(
+                            f"Invalid coupon code: {code} with result: {result}"
+                        )
+
+            if self.default_coupon_id:
+                if order.coupon_ids:
+                    order.coupon_ids.append(self.default_coupon_id)
+                else:
+                    order.coupon_ids = [self.default_coupon_id]
+
+            if not self.qa_store:
+                if order.coupon_ids and 134 not in order.coupon_ids:
+                    order.coupon_ids.append(134)
+            else:
+                if order.coupon_ids and 134 in order.coupon_ids:
+                    order.coupon_ids.remove(134)
 
             logger.debug(f"Extracted structured data: {order}")
             logger.debug(f"Extracted structured data type: {type(order)}")
@@ -622,3 +658,110 @@ class AdoraTool(Toolkit):
             logger.error(f"Error in extracting structured data: {e}")
             logger.error(traceback.format_exc())
             return "Please try again."
+
+    @tool
+    def validate_coupons(self, coupon_codes: List[str]) -> str:
+        """
+        Validates one or more coupon codes and returns information about their validity.
+
+        This tool should be used when:
+        - A customer asks if one or more coupon codes are valid
+        - A customer provides one or more coupon codes
+        - You need to check the details of specific coupon codes
+        - You need to verify discounts before applying them to an order
+
+        Args:
+            coupon_codes (List[str]): List of coupon codes to validate.
+
+        Returns:
+            str: Information about each coupon code including whether it's valid,
+                 its description, and any relevant details or error messages.
+                 Lists which codes are valid and which are invalid.
+        """
+        if not coupon_codes:
+            return "Please provide at least one coupon code to validate."
+
+        # Ensure we have a list of valid codes (non-empty strings)
+        codes = [code.strip() for code in coupon_codes if code and code.strip()]
+
+        if not codes:
+            return "Please provide at least one valid coupon code to validate."
+
+        try:
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
+                return (
+                    "Failed to authenticate ordering tool. "
+                    "Please reach out to our support team at help@palona.ai "
+                    "for assistance."
+                )
+
+            valid_codes = []
+            invalid_codes = []
+            results = []
+            valid_coupons = []
+
+            for code in codes:
+                result = _apis.validate_coupon_code(
+                    bearer_token, self.store_id, code, qa_store=self.qa_store
+                )
+
+                if not result:
+                    invalid_codes.append(code)
+                    results.append(f"Failed to validate coupon code: {code}")
+                    continue
+
+                if result.get("isValid", False):
+                    valid_codes.append(code)
+                    results.append(
+                        f"Coupon code '{code}' is valid.\n"
+                        f"Description: {result.get('description', 'No description available')}"
+                    )
+
+                    # Add valid coupon to discounts if not already there
+                    coupon_data = {
+                        "coupon_id": result.get("couponId"),
+                        "coupon_code": code,
+                    }
+
+                    # Check if this coupon is already in discounts
+                    coupon_exists = False
+                    for discount in self.discounts:
+                        if (
+                            isinstance(discount, dict)
+                            and discount.get("coupon_code") == code
+                        ):
+                            coupon_exists = True
+                            break
+
+                    if not coupon_exists:
+                        valid_coupons.append(coupon_data)
+                else:
+                    invalid_codes.append(code)
+                    results.append(
+                        f"Coupon code '{code}' is not valid. {result.get('message', '')}"
+                    )
+
+            # Add valid coupons to discounts
+            if valid_coupons:
+                self.discounts += valid_coupons
+
+            # Create summary message
+            summary = "Present the following coupon validation results including all the details."
+            if valid_codes:
+                summary += f"Valid coupon codes: {', '.join(valid_codes)}\n\n"
+            if invalid_codes:
+                summary += f"Invalid coupon codes: {', '.join(invalid_codes)}\n\n"
+
+            # Combine summary with detailed results
+            if len(codes) == 1:
+                return results[0]
+            else:
+                return summary + "\n".join(results)
+
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool.validate_coupons] Error validating coupon code(s): {e}"
+            )
+            return "There was an error validating the coupon code(s). Please try again."

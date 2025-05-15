@@ -80,6 +80,7 @@ User: "abc"
 Agent: "Awesome! I'll apply your secret discount at checkout."
 
 You should populate the `coupon_ids` with [456, 123].
+However, there may be multiple coupon codes mentioned in the chat history, you should extract all of them and populate the `coupon_codes` with all of them. Do not mistake the coupon_ids for coupon_codes.
 """
 
 EXTRACTOR_USER_PROMPT = """
