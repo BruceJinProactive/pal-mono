@@ -19,6 +19,7 @@ class AgentPersona(BaseModel):
     name: str
     role: str
     description: Optional[str] = None
+    voice_id: Optional[str] = None
 
 
 class AgentMetadata(BaseModel):
