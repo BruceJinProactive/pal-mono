@@ -18,24 +18,6 @@ from . import _raw_config
 from .schema import AgentParams
 
 
-def _sync_agent_type(params: AgentParams) -> dict:
-    """Synchronize agent_type between the column and raw_config.
-
-    Args:
-        params: The agent parameters containing the agent_type
-
-    Returns:
-        dict: The updated parameters with agent_type synchronized
-    """
-    agent_params = asdict(params)
-    if params.agent_type is not None:
-        if agent_params.get("raw_config") is None:
-            agent_params["raw_config"] = {}
-        agent_params["raw_config"]["agent_type"] = params.agent_type
-        agent_params["agent_type"] = params.agent_type
-    return agent_params
-
-
 async def construct_agent_config(
     db_session: AsyncSession,
     agent_id: uuid.UUID,
@@ -112,8 +94,6 @@ def create_agent(
         raise ValueError(f"Account {account_name} does not exist")
     agent_repository = db.AgentRepository(session, auto_commit=False)
 
-    agent_params = _sync_agent_type(params)
-
     with change_log_context(
         session=session,
         resource_type=ChangeResourceType.Agent,
@@ -121,7 +101,7 @@ def create_agent(
         account_id=account.id,
         auto_commit=auto_commit,
     ) as ctx:
-        agent = agent_repository.create_agent(account.id, **agent_params)
+        agent = agent_repository.create_agent(account.id, **asdict(params))
         ctx.resource_id = str(agent.id)
         ctx.new_record = agent
 
@@ -143,8 +123,6 @@ def update_agent(
 
     old_agent = copy.copy(existing_agent)
 
-    agent_params = _sync_agent_type(params)
-
     with change_log_context(
         session=session,
         resource_type=ChangeResourceType.Agent,
@@ -153,7 +131,7 @@ def update_agent(
         resource_id=str(agent_id),
         old_record=old_agent,
     ) as ctx:
-        new_agent = agent_repository.update_agent(agent_id, **agent_params)
+        new_agent = agent_repository.update_agent(agent_id, **asdict(params))
         ctx.new_record = new_agent
         return new_agent
 
