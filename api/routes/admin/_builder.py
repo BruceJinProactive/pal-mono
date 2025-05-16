@@ -1,7 +1,7 @@
 import db
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
-from api.schemas.admin.agent import Agent, AgentSummary
+from api.schemas.admin.agent import Agent, AgentSummary, AgentType
 from api.schemas.admin.conversation import Message, UserSession
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
@@ -48,7 +48,13 @@ def build_agent(agent: db.Agent) -> Agent:
         updated_at=int(agent.updated_at.timestamp() if agent.updated_at else 0),
         projects=[str(project.id) for project in agent.projects],
         account_id=agent.account_id,
-        agent_type=agent.agent_type,
+        agent_type=(
+            AgentType(agent.agent_type)
+            if agent.agent_type
+            else (
+                AgentType(agent.agent_type_legacy) if agent.agent_type_legacy else None
+            )
+        ),
     )
 
 
@@ -56,7 +62,13 @@ def build_agent_summary(agent: db.Agent) -> AgentSummary:
     return AgentSummary(
         id=agent.id,
         name=agent.name,
-        agent_type=agent.agent_type,
+        agent_type=(
+            AgentType(agent.agent_type)
+            if agent.agent_type
+            else (
+                AgentType(agent.agent_type_legacy) if agent.agent_type_legacy else None
+            )
+        ),
     )
 
 

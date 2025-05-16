@@ -1,6 +1,15 @@
 import uuid
+from enum import Enum
 
 from pydantic import BaseModel, Field
+
+
+class AgentType(str, Enum):
+    """Agent Type Enum"""
+
+    GENERAL = "general"
+    ORDERING = "ordering"
+    SALES = "sales"
 
 
 class Agent(BaseModel):
@@ -16,7 +25,7 @@ class Agent(BaseModel):
     updated_at: int  # timestamp in seconds and UTC tz
     projects: list[str]
     account_id: uuid.UUID
-    agent_type: str | None
+    agent_type: AgentType | None
 
 
 class AgentSummary(BaseModel):
@@ -24,7 +33,7 @@ class AgentSummary(BaseModel):
 
     id: uuid.UUID
     name: str
-    agent_type: str | None
+    agent_type: AgentType | None
 
 
 class CreateAgentRequest(BaseModel):
@@ -36,6 +45,7 @@ class CreateAgentRequest(BaseModel):
     communication_style: str | None = None
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
+    agent_type: AgentType = Field(default=AgentType.GENERAL)
 
 
 class UpdateAgentRequest(BaseModel):
@@ -46,4 +56,4 @@ class UpdateAgentRequest(BaseModel):
     communication_style: str | None = None
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
-    agent_type: str | None = None
+    agent_type: AgentType | None = None

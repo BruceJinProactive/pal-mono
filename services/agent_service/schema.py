@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from api.schemas.admin.agent import AgentType
+
 
 @dataclass
 class AgentParams:
@@ -8,3 +10,4 @@ class AgentParams:
     communication_style: str | None = None
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
+    agent_type: AgentType | None = None

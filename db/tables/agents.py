@@ -10,7 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, String
+from sqlalchemy.types import DateTime, Enum, String
+
+from api.schemas.admin.agent import AgentType
 
 from .base import Base
 
@@ -58,6 +60,10 @@ class Agent(Base):
     account: Mapped["Account"] = relationship("Account", back_populates="agents")
     projects: Mapped[List["Project"]] = relationship("Project", back_populates="agent")
 
+    agent_type: Mapped[AgentType] = mapped_column(
+        Enum(AgentType), nullable=False, server_default=AgentType.GENERAL.value
+    )
+
     @property
-    def agent_type(self):
+    def agent_type_legacy(self):
         return self.raw_config.get("agent_type")

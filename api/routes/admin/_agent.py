@@ -74,10 +74,10 @@ async def update_agent(
 
     if update_request.agent_type is not None:
         if update_request.raw_config is not None:
-            update_request.raw_config["agent_type"] = update_request.agent_type
+            update_request.raw_config["agent_type"] = update_request.agent_type.value
         else:
             current_config = agent.raw_config.copy()
-            current_config["agent_type"] = update_request.agent_type
+            current_config["agent_type"] = update_request.agent_type.value
             update_request.raw_config = current_config
 
     agent_params = agent_service.AgentParams(
@@ -86,6 +86,7 @@ async def update_agent(
         communication_style=update_request.communication_style,
         interaction_guidelines=update_request.interaction_guidelines,
         raw_config=update_request.raw_config,
+        agent_type=update_request.agent_type,
     )
     try:
         db_agent = agent_service.update_agent(session, context, agent_id, agent_params)
