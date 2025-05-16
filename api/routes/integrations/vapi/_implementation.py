@@ -174,7 +174,11 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             raise ValueError("Failed to create request message")
 
         await session.refresh(project, attribute_names=["account"])
-        account_name = project.account.name
+
+        account_display_name = project.account.display_name
+        # Fallback to account name if display name is not set
+        if not account_display_name:
+            account_display_name = project.account.name
 
         # ================= Step 2: Construct agent and generate output =================
         agent_id = project.agent_id
@@ -190,7 +194,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             conversation_id=request_message.conversation_id,
         )
 
-        greeting = f"Hi this is {config.persona.name} from {account_name}. How can I help you today?"
+        greeting = f"Hi this is {config.persona.name} from {account_display_name}. How can I help you today?"
 
         # Create caller_info with required fields for message routing
         caller_info = {
