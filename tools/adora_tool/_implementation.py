@@ -10,7 +10,6 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, task, tool
 from mixpanel import Mixpanel
 
-from agent.config import ClientConfig
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
@@ -42,7 +41,6 @@ class AdoraTool(Toolkit):
         loyalty_enabled: bool = False,
         coupons_enabled: bool = False,
         default_coupon_id: int | None = None,
-        client_config: ClientConfig | None = None,
     ):
         super().__init__(name="adora_tool")
 
@@ -62,9 +60,6 @@ class AdoraTool(Toolkit):
             self.qa_store = True
         else:
             self.qa_store = False
-
-        if client_config:
-            self.discounts = client_config.data.get("discounts", [])
 
         ### Cache adora token and store info ###
         self.cached_store_info: str | None = None
