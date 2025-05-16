@@ -207,8 +207,12 @@ def _format_customer_info(customer_info: AdoraCustomerInfo) -> str:
 
 
 def get_customer_info(
-    bearer_token: AdoraAccessToken, store_id: str, phone_number: str, qa_store: bool
-) -> str | None:
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+    phone_number: str,
+    qa_store: bool,
+    reformat: bool = True,
+) -> str | AdoraCustomerInfo | None:
     response = _utils.connect_adora_order_hub(
         "GET",
         bearer_token,
@@ -225,7 +229,7 @@ def get_customer_info(
     if response.status == 200:
         customer_info = _utils.parse_json(AdoraCustomerInfo, response.decoded_body)
         if customer_info:
-            return _format_customer_info(customer_info)
+            return _format_customer_info(customer_info) if reformat else customer_info
         logger.debug(
             f"[AdoraTool._apis.get_customer_info] Error parsing customer info: {response.decoded_body}"
         )

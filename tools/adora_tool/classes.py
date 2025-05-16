@@ -349,7 +349,7 @@ class AdoraNextOrderCredit(BaseModel):
     Represents a customer's next order credit from the Adora API
     """
 
-    creditId: Optional[str] = None
+    CreditId: Optional[int] = None
     storeKey: Optional[str] = None
     couponId: Optional[int] = None
     discount: Optional[float] = None

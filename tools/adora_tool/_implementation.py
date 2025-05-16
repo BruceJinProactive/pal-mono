@@ -18,6 +18,9 @@ from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraOrderType,
     DeliveryAddress,
+    LoyaltyNextOrderCredit,
+    LoyaltyOffer,
+    LoyaltyReward,
     Order,
     SubQueries,
 )
@@ -36,6 +39,9 @@ class AdoraTool(Toolkit):
         store_id: str,
         namespace: str,
         tool_metadata: ToolMetadata,
+        loyalty_enabled: bool = False,
+        coupons_enabled: bool = False,
+        default_coupon_id: int | None = None,
         client_config: ClientConfig | None = None,
     ):
         super().__init__(name="adora_tool")
@@ -49,8 +55,9 @@ class AdoraTool(Toolkit):
         self.namespace = namespace
         self.tool_metadata = tool_metadata
         self.discounts = []  # { coupon_id, coupon_code }
-        self.default_coupon_id = 134
-
+        self.default_coupon_id = default_coupon_id
+        self.loyalty_enabled = loyalty_enabled
+        self.coupons_enabled = coupons_enabled
         if self.store_id in [ADORA_QA_STORE, ADORA_QA_STORE_2]:  # QA store
             self.qa_store = True
         else:
@@ -69,13 +76,14 @@ class AdoraTool(Toolkit):
         loop.create_task(asyncio.to_thread(self._prefetch_adora_bearer_token))
 
         # Register tools
-        # self.register(self.get_customer_info) # TODO: let's unregister this
         self.register(self.check_online_ordering_status)
         self.register(self.get_store_info)
         self.register(self.checkout_order)
         self.register(self.check_address)
-        self.register(self.validate_coupons)
-        self.register(self.get_loyalty_info)
+        if self.coupons_enabled:
+            self.register(self.validate_coupons)
+        if self.loyalty_enabled:
+            self.register(self.get_loyalty_info)
 
         self.query_engine = _query_engine.create_query_engine(self.namespace)
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -140,56 +148,6 @@ class AdoraTool(Toolkit):
         except Exception as e:
             logger.error(f"Error fetching Adora bearer token: {e}")
             return None
-
-    @tool
-    def get_customer_info(self, phone_number: str) -> str:
-        """
-        Retrieves customer information from the Adora API including loyalty status and rewards.
-
-        This tool should be used when:
-        - You need to check a customer's loyalty status or available rewards
-        - You need to verify if a customer exists in the system
-        - The customer asks about their points, rewards, or loyalty program status
-        - You need to personalize the ordering experience based on customer history
-
-        Args:
-            phone_number (str): The customer's phone number.
-
-        Returns:
-            str: Customer information including name, loyalty program status, available rewards. Returns an error message if the
-                 customer cannot be found or if there's an issue with the API.
-        """
-        error_message = (
-            "There was an error retrieving your information. Please try again."
-        )
-
-        try:
-            phone_number = _utils.format_phone_number(phone_number)
-            if not phone_number:
-                raise ValueError("Invalid phone number format.")
-
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
-            bearer_token = self._get_adora_bearer_token()
-            if not bearer_token:
-                raise ValueError("Failed to authenticate ordering tool.")
-
-            customer_info = _apis.get_customer_info(
-                bearer_token,
-                self.store_id,
-                phone_number,
-                qa_store=self.qa_store,
-            )
-
-            if customer_info is None:
-                raise ValueError("500: Internal server error.")
-
-            return customer_info
-
-        except Exception as e:
-            logger.error(
-                f"[AdoraTool.get_customer_info] Error retrieving customer information: {e}"
-            )
-            return error_message
 
     @tool
     def check_online_ordering_status(self) -> str:
@@ -435,7 +393,6 @@ class AdoraTool(Toolkit):
     @task(name="_fulfill_order [via Adora API]")
     def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
         payload = order.model_dump_json(by_alias=True)
-
         LLMObs.annotate(input_data=order, metadata={"payload": payload})
 
         # Guaranteed phone number since we validated it in the order
@@ -507,8 +464,245 @@ class AdoraTool(Toolkit):
         )
 
         LLMObs.annotate(output_data=output)
-
         return output
+
+    @task(name="_add_loyalty_discounts")
+    def _add_loyalty_discounts(
+        self, order: Order, bearer_token: AdoraAccessToken
+    ) -> None:
+        """
+        Adds loyalty discounts to the order if the customer is a loyalty member.
+
+        Args:
+            order: The order to add loyalty discounts to
+            bearer_token: The Adora API authentication token
+        """
+        try:
+            logger.debug("Starting _add_loyalty_discounts method")
+            if not order.customer or not order.customer.phone_number:
+                logger.debug(
+                    "No customer or phone number found, skipping loyalty discounts"
+                )
+                return
+
+            # Get and parse customer loyalty data directly
+            logger.debug(
+                f"Getting loyalty info for customer: {order.customer.phone_number}"
+            )
+            # Get customer loyalty information
+            customer_loyalty_info = _apis.get_customer_info(
+                bearer_token,
+                self.store_id,
+                order.customer.phone_number,
+                qa_store=self.qa_store,
+                reformat=False,  # Do not reformat the customer info, return the raw pydantic object
+            )
+
+            if not customer_loyalty_info:
+                logger.debug("No customer loyalty info found")
+                return
+
+            logger.debug("Parsing customer loyalty data")
+            # Ensure customer_data is a dictionary
+            if isinstance(customer_loyalty_info, str):
+                customer_data = json.loads(customer_loyalty_info)
+            else:
+                # If it's an AdoraCustomerInfo object, convert to dict
+                customer_data = json.loads(
+                    json.dumps(customer_loyalty_info, default=lambda o: o.__dict__)
+                )
+
+            # Only proceed if customer is a loyalty member
+            is_loyalty_member = customer_data.get("loyaltyMember", False)
+            logger.debug(f"Customer loyalty status: {is_loyalty_member}")
+            if not is_loyalty_member:
+                logger.debug(
+                    "Customer is not a loyalty member, skipping loyalty discounts"
+                )
+                return
+
+            logger.debug("Customer is a loyalty member, adding loyalty discounts")
+            logger.debug("Initializing loyalty discounts")
+
+            # Initialize loyalty_discounts if not already present
+            if not hasattr(order, "loyalty_discounts") or not order.loyalty_discounts:
+                order.loyalty_discounts = []
+
+            # Add various types of discounts
+            self._add_loyalty_rewards(order, customer_data)
+            self._add_next_order_credits(order, customer_data)
+            self._add_loyalty_offers(order, customer_data)
+
+            logger.debug(
+                f"Finished adding loyalty discounts: {order.loyalty_discounts}"
+            )
+        except Exception as e:
+            logger.warning(f"Error adding loyalty discounts: {e}")
+            # Continue without loyalty discounts if there's an error
+
+    def _add_loyalty_rewards(self, order: Order, customer_data: dict) -> None:
+        """
+        Add customer rewards to the order.
+
+        Args:
+            order: The order to add loyalty discounts to
+            customer_data: Customer loyalty data
+        """
+        if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
+            order.loyalty_discounts = []
+
+        logger.debug("Checking for customer rewards")
+        customer_rewards = customer_data.get("customerRewards", [])
+        if customer_rewards:
+            logger.debug(f"Found customer rewards: {len(customer_rewards)}")
+            for reward in customer_rewards:
+                if (
+                    isinstance(reward, dict)
+                    and "rewardId" in reward
+                    and "couponId" in reward
+                ):
+                    logger.debug(
+                        f"Adding reward: {reward['rewardId']}, coupon: {reward['couponId']}"
+                    )
+                    order.loyalty_discounts.append(
+                        LoyaltyReward(
+                            coupon_id=reward["couponId"],
+                            reward_id=reward["rewardId"],
+                        )
+                    )
+
+    def _add_next_order_credits(self, order: Order, customer_data: dict) -> None:
+        """
+        Add next order credits to the order.
+
+        Args:
+            order: The order to add loyalty discounts to
+            customer_data: Customer loyalty data
+        """
+        if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
+            order.loyalty_discounts = []
+
+        logger.debug("Checking for customer next order credits")
+        customer_credits = customer_data.get("customerNextOrderCredits", [])
+        if customer_credits:
+            logger.debug(f"Found customer next order credits: {len(customer_credits)}")
+            for credit in customer_credits:
+                if isinstance(credit, dict):
+                    # Check for both CreditId and credit_id field variations
+                    logger.debug(f"Credit: {credit}")
+                    credit_id = None
+                    if "CreditId" in credit:
+                        credit_id = credit["CreditId"]
+                        logger.debug(f"Adding credit with CreditId: {credit_id}")
+
+                    if credit_id:
+                        order.loyalty_discounts.append(
+                            LoyaltyNextOrderCredit(
+                                credit_id=(
+                                    int(credit_id)
+                                    if isinstance(credit_id, str)
+                                    and credit_id.isdigit()
+                                    else (
+                                        int(credit_id)
+                                        if isinstance(credit_id, (int, float))
+                                        else 0
+                                    )
+                                )
+                            )
+                        )
+
+    def _add_loyalty_offers(self, order: Order, customer_data: dict) -> None:
+        """
+        Add loyalty offers to the order.
+
+        Args:
+            order: The order to add loyalty discounts to
+            customer_data: Customer loyalty data
+        """
+        if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
+            order.loyalty_discounts = []
+
+        logger.debug("Checking for customer offers")
+        customer_offers = customer_data.get("customerOffers", {})
+        if customer_offers:
+            self._add_offer_codes(order, customer_offers)
+            self._add_offer_coupons(order, customer_offers)
+
+    def _add_offer_codes(self, order: Order, customer_offers: dict) -> None:
+        """
+        Add offer codes to the order.
+
+        Args:
+            order: The order to add loyalty discounts to
+            customer_offers: Customer offer data
+        """
+        if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
+            order.loyalty_discounts = []
+
+        codes_list = customer_offers.get("codes", [])
+        if codes_list:
+            logger.debug(f"Found offer codes: {len(codes_list)}")
+            for code in codes_list:
+                if (
+                    isinstance(code, dict)
+                    and "couponId" in code
+                    and "couponCode" in code
+                ):
+                    logger.debug(
+                        f"Adding offer code: coupon ID {code['couponId']}, code {code['couponCode']}"
+                    )
+                    order.loyalty_discounts.append(
+                        LoyaltyOffer(
+                            coupon_id=code["couponId"],
+                            coupon_code=code["couponCode"],
+                        )
+                    )
+        else:
+            logger.debug("No offer codes found")
+
+    def _add_offer_coupons(self, order: Order, customer_offers: dict) -> None:
+        """
+        Add offer coupons to the order.
+
+        Args:
+            order: The order to add loyalty discounts to
+            customer_offers: Customer offer data
+        """
+        if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
+            order.loyalty_discounts = []
+
+        coupons_list = customer_offers.get("coupons", [])
+        codes_list = customer_offers.get("codes", [])
+
+        if coupons_list:
+            logger.debug(f"Found coupons: {len(coupons_list)}")
+            for coupon in coupons_list:
+                if isinstance(coupon, dict) and "couponId" in coupon:
+                    coupon_id = coupon["couponId"]
+                    coupon_name = coupon.get("name", "Unnamed coupon")
+                    logger.debug(f"Adding coupon: ID {coupon_id}, name {coupon_name}")
+
+                    # For coupons without codes, we need to use the coupon_id but can leave coupon_code empty
+                    # Look for matching code in codes_list first
+                    matching_code = None
+                    for code in codes_list:
+                        if (
+                            isinstance(code, dict)
+                            and code.get("couponId") == coupon_id
+                            and "couponCode" in code
+                        ):
+                            matching_code = code["couponCode"]
+                            break
+
+                    order.loyalty_discounts.append(
+                        LoyaltyOffer(
+                            coupon_id=coupon_id,
+                            coupon_code=matching_code
+                            or "",  # Use matching code or empty string
+                        )
+                    )
+        else:
+            logger.debug("No coupons found")
 
     @tool
     def checkout_order(self, latest_user_message: str) -> str:
@@ -576,7 +770,7 @@ class AdoraTool(Toolkit):
 
             # Validate coupon codes mentioned by the user
             # NOTE: for now, include only the last single valid coupon code even if there are multiple coupon codes mentioned in the chat history, later we may want to include multiple coupon codes
-            if order.coupon_codes:
+            if order.coupon_codes and self.coupons_enabled:
                 code = order.coupon_codes[-1]
 
                 # Use _get_adora_bearer_token to ensure LLMObs tracking
@@ -605,16 +799,6 @@ class AdoraTool(Toolkit):
                     order.coupon_ids.append(self.default_coupon_id)
                 else:
                     order.coupon_ids = [self.default_coupon_id]
-
-            if not self.qa_store:
-                if order.coupon_ids and 134 not in order.coupon_ids:
-                    order.coupon_ids.append(134)
-            else:
-                if order.coupon_ids and 134 in order.coupon_ids:
-                    order.coupon_ids.remove(134)
-
-            logger.debug(f"Extracted structured data: {order}")
-            logger.debug(f"Extracted structured data type: {type(order)}")
 
             # Use _get_adora_bearer_token to ensure LLMObs tracking
             bearer_token = self._get_adora_bearer_token()
@@ -652,6 +836,12 @@ class AdoraTool(Toolkit):
 
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment
+
+            # Add loyalty discounts to the order
+            if self.loyalty_enabled:
+                self._add_loyalty_discounts(order, bearer_token)
+
+            logger.debug(f"Extracted structured order: {order}")
             return self._fulfill_order(order, bearer_token)
 
         except Exception as e:
@@ -770,6 +960,10 @@ class AdoraTool(Toolkit):
 
             if customer_info is None:
                 return "Failed to retrieve customer information. Please try again."
+
+            # Ensure we return a string
+            if not isinstance(customer_info, str):
+                customer_info = json.dumps(customer_info, default=lambda o: o.__dict__)
 
             return customer_info
 
