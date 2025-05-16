@@ -1,5 +1,4 @@
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,8 +23,6 @@ from api.schemas.admin.agent import (
 )
 from api.schemas.admin.analytics import GetAllReportsResponse, GetReportResponse
 from api.schemas.admin.campaign import (
-    CampaignDetail,
-    CreateCampaignRequest,
     CreateCampaignResponse,
     ListCampaignsResponse,
 )
@@ -56,6 +53,7 @@ from api.schemas.admin.user_management import (
 )
 from api.schemas.chat.message import Channel
 from db.tables.change_log import ChangeResourceType
+from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 
 from . import (
     _account,
@@ -347,7 +345,7 @@ async def get_campaign_detail(
     campaign_id: uuid.UUID,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> CampaignDetail:
+) -> CampaignDetails:
     """
     Uses the campaign id to retrieve the campaign metadata and execution results.
     """
@@ -360,6 +358,8 @@ async def list_account_campaigns(
     status: str | None = Query(
         None, description="Optional status to filter campaigns by"
     ),
+    page: int = Query(1, gt=0, description="Page number"),
+    page_size: int = Query(20, gt=0, le=100, description="Number of items per page"),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListCampaignsResponse:
@@ -368,7 +368,7 @@ async def list_account_campaigns(
     Optionally filter by campaign status.
     """
     return await _campaign.list_account_campaigns(
-        account_name, status, context, session
+        account_name, status, context, session, page, page_size
     )
 
 
