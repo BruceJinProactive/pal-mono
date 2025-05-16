@@ -1,3 +1,4 @@
+import os
 import uuid
 from typing import List, Optional
 
@@ -14,6 +15,15 @@ from api.schemas.admin.campaign import (
     CreateCampaignResponse,
     ListCampaignsResponse,
 )
+from api.schemas.chat.message import (
+    AuthorType,
+    Broker,
+    Channel,
+    Extras,
+    Message,
+    Metadata,
+    TextObject,
+)
 from db.repositories.account_repository import AccountRepository
 from db.repositories.campaign_repository import (
     CampaignMessageRepository,
@@ -25,7 +35,8 @@ from db.tables.campaigns import (
     CampaignMessage,
     CampaignMessageStatus,
 )
-from services import account_service
+from services import account_service, relay_service
+from utils.log import logger
 
 
 async def create_campaign(
@@ -69,8 +80,70 @@ async def create_campaign(
                 status=CampaignMessageStatus.pending,
             )
             message_repo.create_campaign_message(message)
+            try:
+                # Send the campaign message using the relay service
+                result = send_msg_to_twilio(
+                    message=campaign.message,
+                    from_="",  # Will use default number
+                    to=recipient,
+                )
+
+                # Update message status based on send result
+                if result.get("status") == "scheduled":
+                    message.status = CampaignMessageStatus.success
+                else:
+                    message.status = CampaignMessageStatus.failed
+                    message.error_detail = str(
+                        result.get("error_message", "Unknown error")
+                    )
+
+                session.add(message)
+                session.commit()
+
+            except Exception as e:
+                logger.error(f"Error sending message to {recipient}: {e}")
+                message.status = CampaignMessageStatus.failed
+                message.error_detail = str(e)
+                session.add(message)
+                session.commit()
 
     return CreateCampaignResponse(campaign_id=campaign.id)
+
+
+# Hoist default once
+DEFAULT_TWILIO_NUMBER = os.getenv("DEFAULT_TWILIO_NUMBER", "+18553762332")
+
+
+def send_msg_to_twilio(message: str, from_: str, to: str) -> dict:
+    """
+    Send an SMS message using the relay service.
+
+    Args:
+        message: The message content to send
+        from_: The sender phone number (will use default if empty)
+        to: The recipient phone number
+
+    Returns:
+        dict: Response from the relay service
+    """
+    # Optional E.164 check:
+    # if not re.match(r'^\+\d{1,15}$', to):
+    #     raise ValueError(f"Invalid number: {to}")
+
+    # Create a Message object for the SMS
+    sms_message = Message(
+        author_type=AuthorType.SYSTEM,
+        sender_identifier=from_ or DEFAULT_TWILIO_NUMBER,
+        recipient_identifier=to,
+        channel=Channel.SMS,
+        broker=Broker.TWILIO,
+        text=TextObject(body=message),
+        metadata=Metadata(testing=False),
+        extras=Extras(),
+    )
+
+    # Send the message through the relay service
+    return relay_service.send_message(sms_message)
 
 
 async def get_campaign_detail(
