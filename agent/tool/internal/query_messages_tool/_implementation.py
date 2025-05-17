@@ -53,7 +53,7 @@ class QueryMessagesTool(Toolkit):
                     f"QueryMessagesTool queries conversation: {conversation_id} and gets messages: {[m.body for m in messages]}"
                 )
 
-                if not messages and not latest_user_message:
+                if not messages:
                     return "Conversation not found"
 
                 # Format each message into the chat history
@@ -72,8 +72,6 @@ class QueryMessagesTool(Toolkit):
                                 chat_history += (
                                     f"**[Assistant]**\n{assistant_content}\n\n"
                                 )
-
-                chat_history += f"**[User]**\n{latest_user_message}\n\n"
 
                 LLMObs.annotate(output_data=chat_history)
 
