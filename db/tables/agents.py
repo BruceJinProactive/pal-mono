@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -10,13 +11,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, String
+from sqlalchemy.types import DateTime, Enum, String
 
 from .base import Base
 
 if TYPE_CHECKING:
     from .accounts import Account
     from .projects import Project
+
+
+class AgentType(str, enum.Enum):
+    """Agent Type Enum"""
+
+    general = "general"
+    ordering = "ordering"
+    sales = "sales"
 
 
 class Agent(Base):
@@ -35,6 +44,9 @@ class Agent(Base):
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     communication_style: Mapped[str | None] = mapped_column(String, nullable=True)
     interaction_guidelines: Mapped[str | None] = mapped_column(String, nullable=True)
+    agent_type: Mapped[AgentType] = mapped_column(
+        Enum(AgentType), nullable=False, server_default=AgentType.general
+    )
 
     # deprecated, use the explicit fields instead
     raw_config: Mapped[Dict] = mapped_column(
@@ -59,5 +71,5 @@ class Agent(Base):
     projects: Mapped[List["Project"]] = relationship("Project", back_populates="agent")
 
     @property
-    def agent_type(self):
+    def agent_type_legacy(self):
         return self.raw_config.get("agent_type")

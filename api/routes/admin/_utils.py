@@ -8,7 +8,10 @@ from typing import List
 
 from fastapi import HTTPException, Request, status
 
+import db
+from db.tables.agents import AgentType
 from utils import secret
+from utils.log import logger
 
 
 class UserRole(str, Enum):
@@ -109,3 +112,18 @@ def verify_instagram_deauthorize_signature(
         return payload_json
     except Exception as e:
         raise ValueError(f"Error during signature verification: {e}")
+
+
+def get_agent_type(agent: db.Agent) -> AgentType:
+    # The agent_type defined in raw_config takes higher priority than
+    # the dedicated agent_type column.
+    agent_type_str = agent.agent_type_legacy
+    if agent.agent_type_legacy:
+        try:
+            return AgentType(agent_type_str)
+        except ValueError:
+            logger.warn(
+                f"Unrecognized agent type value in raw_config: {agent_type_str}"
+            )
+
+    return agent.agent_type

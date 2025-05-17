@@ -2,6 +2,8 @@ import uuid
 
 from pydantic import BaseModel, Field
 
+from db.tables.agents import AgentType
+
 
 class Agent(BaseModel):
     """Agent Model"""
@@ -16,7 +18,7 @@ class Agent(BaseModel):
     updated_at: int  # timestamp in seconds and UTC tz
     projects: list[str]
     account_id: uuid.UUID
-    agent_type: str | None
+    agent_type: AgentType | None
 
 
 class AgentSummary(BaseModel):
@@ -24,7 +26,7 @@ class AgentSummary(BaseModel):
 
     id: uuid.UUID
     name: str
-    agent_type: str | None
+    agent_type: AgentType | None
 
 
 class CreateAgentRequest(BaseModel):
@@ -36,6 +38,7 @@ class CreateAgentRequest(BaseModel):
     communication_style: str | None = None
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
+    agent_type: AgentType = Field(default=AgentType.general)
 
 
 class UpdateAgentRequest(BaseModel):
@@ -46,4 +49,4 @@ class UpdateAgentRequest(BaseModel):
     communication_style: str | None = None
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
-    agent_type: str | None = None
+    agent_type: AgentType | None = None

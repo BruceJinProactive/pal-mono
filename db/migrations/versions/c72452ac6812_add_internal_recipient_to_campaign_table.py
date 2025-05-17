@@ -1,7 +1,7 @@
 """add internal_recipient to campaign table
 
 Revision ID: c72452ac6812
-Revises: f4e911c7947a
+Revises: 8f55a8c5d0ad
 Create Date: 2025-05-13 17:30:29.765471
 
 """

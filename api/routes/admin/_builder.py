@@ -1,4 +1,5 @@
 import db
+from api.routes.admin._utils import get_agent_type
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
@@ -48,7 +49,7 @@ def build_agent(agent: db.Agent) -> Agent:
         updated_at=int(agent.updated_at.timestamp() if agent.updated_at else 0),
         projects=[str(project.id) for project in agent.projects],
         account_id=agent.account_id,
-        agent_type=agent.agent_type,
+        agent_type=get_agent_type(agent),
     )
 
 
@@ -56,7 +57,7 @@ def build_agent_summary(agent: db.Agent) -> AgentSummary:
     return AgentSummary(
         id=agent.id,
         name=agent.name,
-        agent_type=agent.agent_type,
+        agent_type=get_agent_type(agent),
     )
 
 
