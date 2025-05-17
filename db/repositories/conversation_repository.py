@@ -25,6 +25,28 @@ class ConversationRepositoryAsync:
 
         return conversation
 
+    async def get_open_conversations_by_user_id(
+        self, user_id: uuid.UUID, limit: int = 5
+    ):
+        """
+        Retrieve all active conversations for a specific user.
+
+        Args:
+            user_id (uuid.UUID): The ID of the user whose active conversations are being retrieved.
+
+        Returns:
+            list[Conversation]: A list of active conversation objects for the specified user.
+        """
+        result = await self.session.execute(
+            select(Conversation)
+            .filter(
+                Conversation.user_id == user_id,
+                Conversation.status == ConversationStatus.ACTIVE,
+            )
+            .limit(limit)
+        )
+        return result.scalars().all()
+
 
 class ConversationRepository:
     def __init__(self, session: Session):

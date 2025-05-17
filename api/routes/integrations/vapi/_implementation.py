@@ -68,23 +68,20 @@ async def api_vapi_server(request: Request, session: AsyncSession) -> JSONRespon
         message_type = message_data.get("type")
 
         # Handle different message types from VAPI
-        if message_type == "assistant-request":
-            # Handle incoming call event
-            response_data = await handle_assistant_request(message_data, session)
-        elif message_type == "status-update":
-            # Handle status update event
-            response_data = handle_status_update(message_data)
-        elif message_type == "function-call":
-            # Handle function call event
-            response_data = handle_function_call(message_data)
-        elif message_type == "transcript-update":
-            # Handle transcript update event
-            response_data = handle_transcript_update(message_data)
-        else:
-            # Unknown message type
-            logger.warning(f"Received unknown VAPI message type: {message_type}")
-            response_data = {"status": "acknowledged"}
-
+        match message_type:
+            case "assistant-request":
+                response_data = await handle_assistant_request(message_data, session)
+            case "status-update":
+                response_data = handle_status_update(message_data)
+            case "function-call":
+                response_data = handle_function_call(message_data)
+            case "transcript-update":
+                response_data = handle_transcript_update(message_data)
+            case "end-of-call-report":
+                response_data = await handle_session_closure(message_data, session)
+            case _:
+                logger.warning(f"Received unknown VAPI message type: {message_type}")
+                response_data = {"status": "acknowledged"}
         return JSONResponse(content=response_data)
 
     except json.JSONDecodeError:
@@ -380,4 +377,75 @@ def handle_transcript_update(message_data):
         return {"status": "acknowledged"}
     except Exception as e:
         logger.error(f"Error in handle_transcript_update: {str(e)}")
+        return {"error": str(e)}
+
+
+async def handle_session_closure(message_data, session: AsyncSession):
+    """
+    Handle end-of-call-report message type.
+    This is sent when a call has ended and the conversation should be closed.
+
+    Args:
+        message_data: The message data from the request
+
+    Returns:
+        dict: Response for VAPI
+    """
+    try:
+        # Extract call information
+        call_data = message_data.get("call", {})
+        call_id = call_data.get("id")
+
+        # Extract caller information
+        customer_data = message_data.get("customer", {})
+        customer_number = customer_data.get("number", "")
+
+        # Extract business information
+        phone_number_data = message_data.get("phoneNumber", {})
+        phone_number = phone_number_data.get("number", "")
+
+        logger.debug(
+            f"Session closure request for call {call_id} from {customer_number} to {phone_number}"
+        )
+
+        # Find the conversation by caller information and update its status
+        channel_identifier = f'"voice":{customer_number}'
+        project_channel_identifier = f'"voice":{phone_number}'
+
+        project_repo = db.ProjectRepositoryAsync(session)
+        project = await project_repo.get_project_by_channel_identifier(
+            project_channel_identifier
+        )
+        if not project:
+            raise ValueError("Project not found for this message")
+
+        user_repo = db.UserRepositoryAsync(session)
+        user = await user_repo.get_user_by_channel_identifier(
+            account_id=project.account_id, channel_identifier=channel_identifier
+        )
+        if not user:
+            raise ValueError("User not found for this message")
+
+        conversation_repo = db.ConversationRepositoryAsync(session)
+        conversations = await conversation_repo.get_open_conversations_by_user_id(
+            user.id
+        )
+
+        if not conversations:
+            logger.warning(f"No matching active conversation found for call {call_id}")
+        else:
+            if len(conversations) > 1:
+                logger.warning(
+                    f"There are {len(conversations)} open conversations exist for user: {user.id}"
+                )
+            for conversation in conversations:
+                conversation.status = db.ConversationStatus.CLOSING
+
+            await session.commit()
+        return {
+            "status": "session closed",
+        }
+
+    except Exception as e:
+        logger.error(f"Error in handle_session_closure: {str(e)}")
         return {"error": str(e)}
