@@ -409,22 +409,26 @@ async def handle_session_closure(message_data, session: AsyncSession):
         )
 
         # Find the conversation by caller information and update its status
-        channel_identifier = f'"voice":{customer_number}'
-        project_channel_identifier = f'"voice":{phone_number}'
+        channel_identifier = f"voice:{customer_number}"
+        project_channel_identifier = f"voice:{phone_number}"
 
         project_repo = db.ProjectRepositoryAsync(session)
         project = await project_repo.get_project_by_channel_identifier(
             project_channel_identifier
         )
         if not project:
-            raise ValueError("Project not found for this message")
+            raise ValueError(
+                f"Project not found for this message: {project_channel_identifier}"
+            )
 
         user_repo = db.UserRepositoryAsync(session)
         user = await user_repo.get_user_by_channel_identifier(
             account_id=project.account_id, channel_identifier=channel_identifier
         )
         if not user:
-            raise ValueError("User not found for this message")
+            raise ValueError(
+                f"User not found for this message: account_id: {project.account_id}, channel_identifier:{channel_identifier}"
+            )
 
         conversation_repo = db.ConversationRepositoryAsync(session)
         conversations = await conversation_repo.get_open_conversations_by_user_id(
