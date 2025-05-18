@@ -62,6 +62,15 @@ jobs:
         run: |
           .venv/bin/pyright .
 
+      - name: Database migration validation
+        run: |
+          HEAD_COUNT=$(alembic -c db/alembic.ini heads | wc -l)
+          if [ "$HEAD_COUNT" -ne 1 ]; then
+            echo "Alembic has $HEAD_COUNT heads. Migration history is diverged."
+            alembic -c db/alembic.ini heads
+            exit 1
+          fi
+
       # If the job fails, send a message to Slack
       - name: Notify Slack
         uses: act10ns/slack@v2
@@ -88,7 +97,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-      
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -106,14 +115,14 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip setuptools wheel
           .venv/bin/pip install uv
           .venv/bin/uv pip install -r requirements.txt
-      
+
       - name: Run main pytest report
         id: get_main_coverage
         run: |
           echo "coverage<<EOF" >> $GITHUB_OUTPUT
           echo "$(.venv/bin/pytest --cov=. | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-  
+
   test:
     if: ${{ false }}  # This will prevent the job from running
     runs-on: ubuntu-latest
@@ -146,18 +155,18 @@ jobs:
           .venv/bin/python -m pip install uv
           .venv/bin/uv pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
           .venv/bin/uv pip install --no-cache -r requirements.txt
-      
+
       - name: Run new pytest report
         id: get_new_coverage
         run: |
           echo "coverage<<EOF" >> $GITHUB_OUTPUT
           echo "$(.venv/bin/pytest --cov=. | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-      
+
       - name: Get changed files
         id: changed-files
         uses: tj-actions/changed-files@v45
-      
+
       - name: Get coverage warnings
         env:
           ALL_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
@@ -166,7 +175,7 @@ jobs:
           echo "warnings<<EOF" >> $GITHUB_OUTPUT
           echo "$(.venv/bin/python ./.github/workflows/coverage_analysis.py '${{ needs.pre-coverage.outputs.main_coverage }}' '${{ steps.get_new_coverage.outputs.coverage }}' ${ALL_CHANGED_FILES[@]} | awk '{printf "%s\\n", $0}')" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-      
+
       - name: PR testing coverage comment
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7

@@ -1,0 +1,39 @@
+name: Check Migration Rebase
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    branches:
+      - "main"
+    paths:
+      - 'db/migrations/versions/**'
+
+jobs:
+  check-rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for comparing branches
+
+      - name: Set up Git
+        run: |
+          git fetch origin main
+
+      - name: Check if PR branch is behind main
+        run: |
+          BASE_BRANCH=origin/main
+          CURRENT_BRANCH=HEAD
+
+          # Count commits that exist in main but not in PR
+          BEHIND_COUNT=$(git rev-list --count $CURRENT_BRANCH..$BASE_BRANCH)
+
+          if [ "$BEHIND_COUNT" -gt 0 ]; then
+            echo "❌ This PR is behind main by $BEHIND_COUNT commit(s). Please rebase."
+            exit 1
+          else
+            echo "✅ This PR is up-to-date with main."
+          fi
