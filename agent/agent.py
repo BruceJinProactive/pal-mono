@@ -1,5 +1,8 @@
 import asyncio
 import os
+
+# AsyncIterator from typing is for type hint only, not for runtime check
+from collections.abc import AsyncIterator as _AsyncIterator
 from typing import AsyncIterator
 
 from ddtrace.llmobs import LLMObs
@@ -53,7 +56,6 @@ class Agent:
             }
         )
 
-    @workflow(name="Pal Agent Processing")
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
         Runs the agent asynchronously with the given input.
@@ -66,13 +68,23 @@ class Agent:
             If input.stream is True, returns an AsyncIterator[Output].
             If input.stream is False, returns a single Output.
         """
+        # For non-streaming case, use the standard workflow decorator
+        if not input.stream:
+            return await self._arun_with_workflow(input)
 
+        # For streaming case, use a wrapper that maintains the workflow span
+        return self._create_traced_stream_iterator(input)
+
+    @workflow(name="Pal Agent Processing")
+    async def _arun_with_workflow(self, input: Input) -> Output:
+        """Internal method for non-streaming responses with workflow tracing"""
         LLMObs.annotate(
             tags={
                 "account_name": self._metadata.account_name,
                 "user_id": self._metadata.user_id,
                 "session_id": self._metadata.session_id,
                 "agent_id": self._metadata.agent_id,
+                "streaming": False,
             }
         )
 
@@ -86,7 +98,7 @@ class Agent:
 
         if (
             os.getenv("RUNTIME_ENV", "NA") in ["lat", "stg", "prd"]
-            and not self._agent._agent.is_streamable  # ISSUE: a temporary fix to avoid guardrails for streaming agents to reudce latency latency
+            and not self._agent._agent.is_streamable  # ISSUE: a temporary fix to avoid guardrails for streaming agents to reduce latency
         ):
             safe = check_input_bedrock(input.content)
             if not safe:
@@ -95,5 +107,72 @@ class Agent:
                 )
 
         output = await self._agent.arun(input)  # type: ignore
+        if isinstance(output, _AsyncIterator):
+            # This should never happen in non-streaming mode
+            LLMObs.annotate(
+                tags={"error": "Non-streaming result received in non-streaming mode"}
+            )
+            raise TypeError(
+                "Expected an single Output in non-streaming mode, but got a AsyncIterator."
+            )
 
         return output
+
+    def _create_traced_stream_iterator(self, input: Input) -> AsyncIterator[Output]:
+        """
+        Creates an AsyncIterator that maintains the workflow span throughout its lifecycle.
+        This ensures the entire streaming process is captured in the Datadog trace.
+        """
+
+        async def stream_wrapper() -> AsyncIterator[Output]:
+            # Apply workflow decorator to a generator function to trace the entire stream lifecycle
+            @workflow(name="Pal Agent Processing")
+            async def process_stream() -> AsyncIterator[Output]:
+                LLMObs.annotate(
+                    tags={
+                        "account_name": self._metadata.account_name,
+                        "user_id": self._metadata.user_id,
+                        "session_id": self._metadata.session_id,
+                        "agent_id": self._metadata.agent_id,
+                        "streaming": True,
+                    }
+                )
+
+                # Update memory with the user's input
+                asyncio.create_task(
+                    update_memory(
+                        user_id=self._metadata.user_id,  # type: ignore
+                        content=input.content,  # type: ignore
+                    )  # type: ignore
+                )
+
+                try:
+                    output_stream = await self._agent.arun(input)  # type: ignore
+                    if not isinstance(output_stream, _AsyncIterator):
+                        LLMObs.annotate(
+                            tags={
+                                "error": "Non-streaming result received in streaming mode"
+                            }
+                        )
+                        raise TypeError(
+                            "Expected an AsyncIterator in streaming mode, but got a single Output."
+                        )
+
+                    # Process each chunk within the same workflow span
+                    chunk_count = 0
+                    async for chunk in output_stream:
+                        chunk_count += 1
+                        if chunk_count == 1:
+                            LLMObs.annotate(tags={"first_chunk_received": True})
+                        yield chunk
+
+                    LLMObs.annotate(tags={"total_chunks": chunk_count})
+                except Exception as e:
+                    yield Output(content=f"Error in streaming response: {str(e)}")
+
+            # Call the decorated function and return its iterator
+            async for item in process_stream():
+                yield item
+
+        # Return the wrapped streaming iterator
+        return stream_wrapper()
