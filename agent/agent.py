@@ -49,12 +49,6 @@ class Agent:
             ml_app="pal",
             agentless_enabled=True,
         )
-        LLMObs.annotate(
-            tags={
-                "user_id": config.metadata.user_id,
-                "session_id": config.metadata.session_id,
-            }
-        )
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -129,13 +123,14 @@ class Agent:
             @workflow(name="Pal Agent Processing")
             async def process_stream() -> AsyncIterator[Output]:
                 LLMObs.annotate(
+                    input_data=input.content,
                     tags={
                         "account_name": self._metadata.account_name,
                         "user_id": self._metadata.user_id,
                         "session_id": self._metadata.session_id,
                         "agent_id": self._metadata.agent_id,
                         "streaming": True,
-                    }
+                    },
                 )
 
                 # Update memory with the user's input
@@ -160,13 +155,18 @@ class Agent:
 
                     # Process each chunk within the same workflow span
                     chunk_count = 0
+                    output_content = ""
                     async for chunk in output_stream:
                         chunk_count += 1
                         if chunk_count == 1:
                             LLMObs.annotate(tags={"first_chunk_received": True})
+                        output_content += chunk.content
                         yield chunk
 
-                    LLMObs.annotate(tags={"total_chunks": chunk_count})
+                    LLMObs.annotate(
+                        output_data=output_content, tags={"total_chunks": chunk_count}
+                    )
+
                 except Exception as e:
                     yield Output(content=f"Error in streaming response: {str(e)}")
 
