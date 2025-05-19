@@ -25,6 +25,7 @@ from api.schemas.chat.message import (
 from api.schemas.error.error import ErrorResponse
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_message
+from utils.dd import dd_histogram_duration
 from utils.log import logger
 
 
@@ -58,7 +59,6 @@ class ChatCompletionRequest(BaseModel):
 async def chat_completions(
     request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
 ):
-
     # If request.model is "default", use gpt-4o, otherwise just print the model
     if request.model == "default":
         model = "gpt-4o"
@@ -205,7 +205,7 @@ async def chat_completions_agno(
 ):
     # Log the request
     logger.info(f"Agno chat completions request: {json.dumps(request.model_dump())}")
-
+    start_time = datetime.datetime.now(datetime.timezone.utc)
     try:
         # Extract content from request
         content = _extract_content_from_request(request)
@@ -262,8 +262,19 @@ async def chat_completions_agno(
                             collected_content.append(content)
                             # Only log first chunk to avoid excessive logging
                             if chunk_count == 1:
+                                first_chunk_time = datetime.datetime.now(
+                                    datetime.timezone.utc
+                                )
+                                duration_ms = (
+                                    first_chunk_time - start_time
+                                ).total_seconds() * 1000
                                 logger.debug(
-                                    f"First stream chunk: {json.dumps(chunk_data)}"
+                                    f"First stream chunk: {json.dumps(chunk_data)}, time to first chunk: {duration_ms:.2f}ms"
+                                )
+                                dd_histogram_duration(
+                                    "chat_completions.first_chunk",
+                                    duration_ms,
+                                    ["path:agno"],
                                 )
 
                             filtered_content = url_filter.filter_content(content)

@@ -86,3 +86,10 @@ statsd = DogStatsd(
         f"service:{os.environ.get('DD_SERVICE', 'pal-mono')}",
     ],
 )
+
+
+def dd_histogram_duration(name: str, duration_ms: float, tags: list):
+    env = os.getenv("RUNTIME_ENV", "none")
+    base_tags = [f"env:{env}"]
+    base_tags.extend(tags)
+    statsd.histogram(name, duration_ms, tags=base_tags)
