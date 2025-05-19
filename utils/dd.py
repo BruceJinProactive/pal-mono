@@ -1,8 +1,10 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager, contextmanager
 from functools import wraps
 from typing import Any, Dict, Optional
 
+from datadog import DogStatsd  # pyright: ignore[reportPrivateImportUsage]
 from ddtrace import tracer  # pyright: ignore[reportPrivateImportUsage]
 
 
@@ -71,3 +73,16 @@ async def trace_async_block(name, resource=None, service=None, tags=None):
             yield span
         except Exception as e:
             _handle_exception(span, e)
+
+
+# Initialize global DogStatsd client
+# Use environment variables with defaults for configuration
+statsd = DogStatsd(
+    host=os.environ.get("DD_AGENT_HOST", "localhost"),
+    port=int(os.environ.get("DD_AGENT_PORT", 8125)),
+    namespace=os.environ.get("DD_NAMESPACE", None),
+    constant_tags=[
+        f"env:{os.environ.get('DD_ENV', 'dev')}",
+        f"service:{os.environ.get('DD_SERVICE', 'pal-mono')}",
+    ],
+)
