@@ -62,6 +62,7 @@ async def chat_completions(
 
     try:
         statsd.increment(metric="chat_completions", value=1)
+        logger.debug("increment statsd metric 'chat_completions'")
     except Exception as e:
         logger.warning(f"Failed to increment statsd metric 'chat_completions': {e}")
     # If request.model is "default", use gpt-4o, otherwise just print the model
