@@ -25,6 +25,7 @@ from api.schemas.chat.message import (
 from api.schemas.error.error import ErrorResponse
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_message
+from utils.dd import statsd
 from utils.log import logger
 
 
@@ -59,6 +60,10 @@ async def chat_completions(
     request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
 ):
 
+    try:
+        statsd.increment(metric="chat_completions", value=1)
+    except Exception as e:
+        logger.warning(f"Failed to increment statsd metric 'chat_completions': {e}")
     # If request.model is "default", use gpt-4o, otherwise just print the model
     if request.model == "default":
         model = "gpt-4o"
