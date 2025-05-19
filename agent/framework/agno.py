@@ -3,6 +3,7 @@ from typing import AsyncIterator
 import agno.agent.agent
 from agno.models.openai.chat import OpenAIChat
 from agno.storage.agent.postgres import PostgresAgentStorage
+from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
 from pydantic import BaseModel, Field
 
@@ -76,59 +77,86 @@ class AgnoAgent:
 
         self._agent = agent
 
-    @agent(name="AgnoAgent")
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
+        # Handle streaming case
+        if not input.stream:
+            return await self._arun_with_workflow(input)
+
+        return self._create_traced_stream_iterator(input)
+
+    @agent(name="AgnoAgent")
+    async def _arun_with_workflow(self, input: Input) -> Output:
         with trace_block("Agno Core Agent Processing"):
             result = await self._agent.arun(input.get_prompt(), stream=input.stream)
 
-        # Handle streaming case
-        if input.stream:
+            # Handle non-streaming case
+            response_format = result.content
 
-            async def stream_output() -> AsyncIterator[Output]:
-                try:
-                    async for chunk in result:
-                        yield Output(
-                            content=(
-                                chunk.content if hasattr(chunk, "content") else chunk
-                            ),
-                            documents=[],
-                            images=[],
-                        )
-                except Exception as e:
-                    logger.error(f"Error streaming output: {e}")
-                    yield Output(content="Error streaming output")
-
-            return stream_output()
-
-        # Handle non-streaming case
-        response_format = result.content
-
-        if not isinstance(response_format, ResponseModel):
-            logger.error(
-                (
-                    f"Error with getting proper response format:{response_format}\n"
-                    f"response type: {type(response_format)}\n"
-                    f"agent stream: {self._agent.stream}\n"
-                    f"response model: {self._agent.response_model}"
+            if not isinstance(response_format, ResponseModel):
+                logger.error(
+                    (
+                        f"Error with getting proper response format:{response_format}\n"
+                        f"response type: {type(response_format)}\n"
+                        f"agent stream: {self._agent.stream}\n"
+                        f"response model: {self._agent.response_model}"
+                    )
                 )
+                return Output(content="")
+
+            content = response_format.content
+            escalated = response_format.escalated
+            closing_conversation = response_format.closing_conversation
+
+            documents = []
+            images = []
+
+            return (
+                Output(
+                    content=content,
+                    documents=documents,
+                    images=images,
+                    escalated=escalated,
+                    closing_conversation=closing_conversation,
+                )
+                if content is not None
+                else Output(content="", documents=documents, images=images)
             )
-            return Output(content="")
 
-        content = response_format.content
-        escalated = response_format.escalated
-        closing_conversation = response_format.closing_conversation
+    def _create_traced_stream_iterator(self, input: Input) -> AsyncIterator[Output]:
+        async def stream_wrapper() -> AsyncIterator[Output]:
+            @agent(name="AgnoAgent")
+            async def process_stream() -> AsyncIterator[Output]:
+                LLMObs.annotate(
+                    input_data=input,
+                    tags={
+                        "streaming": True,
+                    },
+                )
 
-        documents = []
-        images = []
+                output_content = ""
+                with trace_block("Agno Core Agent Processing"):
+                    result = await self._agent.arun(
+                        input.get_prompt(), stream=input.stream
+                    )
+                    try:
+                        async for chunk in result:
+                            output_content += chunk.content
+                            yield Output(
+                                content=(
+                                    chunk.content
+                                    if hasattr(chunk, "content")
+                                    else chunk
+                                ),
+                                documents=[],
+                                images=[],
+                            )
 
-        return (
-            Output(
-                content=content,
-                documents=documents,
-                images=images,
-                escalated=escalated,
-                closing_conversation=closing_conversation,
-            )
-            if content is not None
-            else Output(content="", documents=documents, images=images)
-        )
+                    except Exception as e:
+                        logger.error(f"Error streaming output: {e}")
+                        yield Output(content="Error streaming output")
+                LLMObs.annotate(output_data=output_content)
+
+            async for item in process_stream():
+                yield item
+
+        return stream_wrapper()

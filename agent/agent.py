@@ -123,7 +123,7 @@ class Agent:
             @workflow(name="Pal Agent Processing")
             async def process_stream() -> AsyncIterator[Output]:
                 LLMObs.annotate(
-                    input_data=input.content,
+                    input_data=input,
                     tags={
                         "account_name": self._metadata.account_name,
                         "user_id": self._metadata.user_id,
