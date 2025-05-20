@@ -177,9 +177,7 @@ class DeliveryAddress(BaseModel):
         serialization_alias="extendedAddress",
     )
     city: str = Field(description="City name")
-    state: str = Field(
-        description="Two-letter US state abbreviation (e.g., 'CA', 'NY', 'TX')"
-    )
+    state: str = Field(description="State abbreviation")
     zip: str = Field(description="ZIP code")
     lat: float = Field(description="Latitude", default=0)
     lng: float = Field(description="Longitude", default=0)

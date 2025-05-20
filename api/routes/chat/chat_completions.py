@@ -218,7 +218,7 @@ async def chat_completions_agno(
             author_type=AuthorType.USER,
             sender_identifier=sender_identifier,
             recipient_identifier=recipient_identifier,
-            channel=Channel.API,
+            channel=Channel.VOICE,
             broker=None,
             text=TextObject(body=content),
             metadata=Metadata(testing=False),
