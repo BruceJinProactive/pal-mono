@@ -5,8 +5,6 @@ from typing import Any, Dict, List
 from pydantic import BaseModel, Field, model_validator
 from typing_extensions import Self
 
-from agent.client import ClientConfig
-
 
 class ToolProvider(StrEnum):
     DEFAULT = auto()
@@ -26,7 +24,6 @@ class ToolIdentifier(BaseModel):
 
     # Access agent metadata fields (e.g. agent_id, session_id, etc.)
     access_metadata: bool = False
-    client_config: ClientConfig | None = None
 
     @model_validator(mode="after")
     def validate_tool(self) -> Self:

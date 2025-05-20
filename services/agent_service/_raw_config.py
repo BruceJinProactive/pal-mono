@@ -172,7 +172,6 @@ class RawConfig:
                 tool_name=tool_name,
                 args=tool_args,
                 access_metadata=access_metadata,
-                client_config=self.client_config,
             )
             identifiers.append(tool)
 

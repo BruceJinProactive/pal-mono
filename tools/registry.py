@@ -52,9 +52,6 @@ class ToolRegistry:
             if tool.access_metadata and metadata:
                 args = {**args, "tool_metadata": metadata}
 
-            if tool.client_config and tool.client_config.data:
-                args = {**args, "client_config": tool.client_config}
-
             return toolkit_class(**args)
 
         return None
