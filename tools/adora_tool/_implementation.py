@@ -253,7 +253,7 @@ class AdoraTool(Toolkit):
             return "Could you provide your address?"
 
         delivery_address = _llm.llm_call(
-            system_prompt="Extract the address into the given output format.",
+            system_prompt="Extract the address into the given output format. Use only 2-letter U.S. state abbreviations (e.g., CA, NY, TX) for the state field. Do not use full state names.",
             prompt=address,
             response_format=DeliveryAddress,
             reasoning=False,
