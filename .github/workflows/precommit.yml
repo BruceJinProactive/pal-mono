@@ -62,15 +62,6 @@ jobs:
         run: |
           .venv/bin/pyright .
 
-      - name: Database migration validation
-        run: |
-          HEAD_COUNT=$(alembic -c db/alembic.ini heads | wc -l)
-          if [ "$HEAD_COUNT" -ne 1 ]; then
-            echo "Alembic has $HEAD_COUNT heads. Migration history is diverged."
-            alembic -c db/alembic.ini heads
-            exit 1
-          fi
-
       # If the job fails, send a message to Slack
       - name: Notify Slack
         uses: act10ns/slack@v2

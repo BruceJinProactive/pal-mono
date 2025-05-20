@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
+from sqlalchemy import Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -23,6 +24,13 @@ class BusinessIndustry(str, enum.Enum):
     FOOD_BEVERAGE = "food_beverage"
     LIFESTYLE = "lifestyle"
     E_COMMERCE = "e_commerce"
+
+
+class AccountStatus(str, enum.Enum):
+    active = "active"  # default status
+    pending = "pending"  # onboarding in progress
+    disabled = "disabled"  # temporarily disabled account
+    deleted = "deleted"  # soft deleting account
 
 
 class Account(Base):
@@ -48,6 +56,9 @@ class Account(Base):
     business_others: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns
+    status: Mapped[AccountStatus] = mapped_column(
+        Enum(AccountStatus), nullable=False, server_default=AccountStatus.active.value
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )

@@ -19,21 +19,34 @@ jobs:
         with:
           fetch-depth: 0  # Needed for comparing branches
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          cache: "pip"
+
+      - name: Install alembic
+        run: |
+          python -m pip install --upgrade pip
+          pip install alembic
+
       - name: Set up Git
         run: |
           git fetch origin main
 
       - name: Check if PR branch is behind main
         run: |
-          BASE_BRANCH=origin/main
-          CURRENT_BRANCH=HEAD
-
-          # Count commits that exist in main but not in PR
-          BEHIND_COUNT=$(git rev-list --count $CURRENT_BRANCH..$BASE_BRANCH)
-
-          if [ "$BEHIND_COUNT" -gt 0 ]; then
-            echo "❌ This PR is behind main by $BEHIND_COUNT commit(s). Please rebase."
-            exit 1
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "✅ Branch is up to date with origin/main"
           else
-            echo "✅ This PR is up-to-date with main."
+            echo "❌ Branch is NOT up to date with origin/main, please rebase!"
+            exit 1
+          fi
+
+      - name: Check migration chain has a single HEAD
+        run: |
+          HEAD_COUNT=$(alembic -c db/alembic.ini heads | wc -l)
+          if [ "$HEAD_COUNT" -ne 1 ]; then
+            echo "Alembic has $HEAD_COUNT heads. Migration history is diverged."
+            alembic -c db/alembic.ini heads
+            exit 1
           fi
