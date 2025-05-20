@@ -33,9 +33,9 @@ You will be given the chat history and relevant context. You goal is to convert 
 
 # RULES FOR EXTRACTING THE DELIVERY ADDRESS:
 - Extract the last delivery address from the context.
-- For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
-- If any field is missing, output "N/A" for that field, i.e., if the user did not
-provide a delivery address, output "N/A" for all fields.
+- Use only 2-letter U.S. state abbreviations for the state field.
+- If the user provides a full state name (like “Texas”), convert it to its abbreviation (“TX”).
+- If any field is missing, output "N/A" for that field, i.e., if the user did not provide a delivery address, output "N/A" for all fields.
 
 # RULES FOR EXTRACTING THE ORDER ITEM'S MODIFIERS:
 - An order item's included ingredients are not considered modifiers.
