@@ -1,0 +1,2 @@
+class OloTool:
+    pass
