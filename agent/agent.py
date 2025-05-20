@@ -90,11 +90,8 @@ class Agent:
             )  # type: ignore
         )
 
-        if (
-            os.getenv("RUNTIME_ENV", "NA") in ["lat", "stg", "prd"]
-            and not self._agent._agent.is_streamable  # ISSUE: a temporary fix to avoid guardrails for streaming agents to reduce latency
-        ):
-            safe = check_input_bedrock(input.content)
+        if os.getenv("AWS_BEDROCK_GUARDRAIL_ID", ""):
+            safe = check_input_bedrock(prompt=input.content)
             if not safe:
                 return Output(
                     content="We cannot process your input. Please try again with a different input."

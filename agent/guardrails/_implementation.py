@@ -36,30 +36,37 @@ def check_input(prompt: str) -> bool:  # rule-based approach
 def check_input_bedrock(prompt: str) -> bool:  # aws bedrock approach
     """
     Checks a prompt against a Bedrock guardrail.
-    Returns True if the prompt is allowed (no intervention),
-    False if the guardrail blocks it.
-    """
-    content = [{"text": {"text": prompt}}]
-    AWS_REGION = os.getenv("AWS_REGION", "")
-    env = os.getenv("RUNTIME_ENV", "lat")
-    AWS_BEDROCK_GUARDRAIL_ID = os.getenv(f"AWS_BEDROCK_GUARDRAIL_ID_{env.upper()}", "")
-    AWS_BEDROCK_GUARDRAIL_VERSION = os.getenv("AWS_BEDROCK_GUARDRAIL_VERSION", "")
+    Gets region, guardrail ID, and guardrail version from environment variables.
 
-    if not (AWS_REGION and AWS_BEDROCK_GUARDRAIL_ID and AWS_BEDROCK_GUARDRAIL_VERSION):
+    Args:
+        prompt: The text to check
+
+    Returns:
+        True if the prompt is allowed (no intervention),
+        False if the guardrail blocks it.
+    """
+    # Get region and version from environment variables
+    region = os.getenv("AWS_REGION", "")
+    guardrail_version = os.getenv("AWS_BEDROCK_GUARDRAIL_VERSION", "")
+    guardrail_id = os.getenv("AWS_BEDROCK_GUARDRAIL_ID", "")
+
+    content = [{"text": {"text": prompt}}]
+
+    if not region or not guardrail_version or not guardrail_id:
         raise ValueError(
-            f"Missing required environment variables: "
-            f"AWS_REGION={AWS_REGION or '[missing]'}, "
-            f"AWS_BEDROCK_GUARDRAIL_ID={AWS_BEDROCK_GUARDRAIL_ID or '[missing]'}"
-            f", AWS_BEDROCK_GUARDRAIL_VERSION={AWS_BEDROCK_GUARDRAIL_VERSION or '[missing]'}"
+            f"Values missing for Bedrock guardrail checks. "
+            f"Region: {region or '[missing]'}, "
+            f"Guardrail version: {guardrail_version or '[missing]'}, "
+            f"Guardrail ID: {guardrail_id or '[missing]'}"
         )
 
     try:
-        bedrock_runtime = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+        bedrock_runtime = boto3.client("bedrock-runtime", region_name=region)
         response = bedrock_runtime.apply_guardrail(  # useful doc: https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ApplyGuardrail.html
-            guardrailIdentifier=AWS_BEDROCK_GUARDRAIL_ID,  # required field
-            guardrailVersion=AWS_BEDROCK_GUARDRAIL_VERSION,  # required field; ex. "DRAFT", "1","2", ...
-            source="INPUT",  # required field; INPUT | OUTPUT
-            content=content,  # required field
+            guardrailIdentifier=guardrail_id,
+            guardrailVersion=guardrail_version,  # ex. "DRAFT", "1","2", ...
+            source="INPUT",  # INPUT | OUTPUT
+            content=content,  #
         )
 
         if response.get("action") == "GUARDRAIL_INTERVENED":
