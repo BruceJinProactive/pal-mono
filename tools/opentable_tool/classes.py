@@ -179,6 +179,38 @@ class AvailabilitySearchResponse(BaseModel):
     href: Optional[str] = None
 
 
+# ---- Availability Metadata API Models ----
+
+
+class DiningArea(BaseModel):
+    """Detailed information about available dining areas"""
+
+    id: int = Field(description="Identifier of the dining area")
+    name: str = Field(description="Name of the dining area")
+    description: str = Field(description="Description of the dining area")
+    environment: Optional[EnvironmentType] = Field(
+        None, description="Environment type (e.g., Indoor, Outdoor)"
+    )
+
+
+class AvailabilityMetadataData(BaseModel):
+    """Data object in the Availability Metadata response"""
+
+    environments: List[EnvironmentType] = Field(
+        description="Available environment types"
+    )
+    attributes: List[TableAttribute] = Field(description="Available table attributes")
+    dining_areas: List[DiningArea] = Field(
+        description="Detailed information about available dining areas"
+    )
+
+
+class AvailabilityMetadataResponse(BaseModel):
+    """Response from the Availability Metadata API"""
+
+    data: AvailabilityMetadataData
+
+
 ######### OpenTable API CLASS END ############
 
 
