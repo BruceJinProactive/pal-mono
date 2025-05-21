@@ -52,8 +52,50 @@ def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
         )
 
 
-def get_online_ordering_status():
-    pass
+def get_online_ordering_status(
+    restaurant_id: int, olo_token: OloAccessToken
+) -> Optional[int]:
+    """
+    Get the online ordering status for ONE given restaurant ID
+
+    Args:
+        restaurant_id (int): The restaurant ID
+        olo_token (OloAccessToken): The Olo access token
+
+    Returns:
+        int | None: Current estimated ASAP order lead time. None if the restaurant is not accepting online orders.
+    """
+    try:
+        request_body = {
+            "vendorids": [restaurant_id],
+        }
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=olo_token,
+            api_function="/v1.1/restaurants/capacity/leadtimes",
+            query_params=None,
+            payload=request_body,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.get_online_ordering_status] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        response_json = json.loads(response.decoded_body)
+        if len(response_json["leadtimes"]) > 0:
+            return response_json["leadtimes"][0]["totalminutes"]
+        else:
+            raise ValueError(
+                f"No leadtime data found for restaurant {restaurant_id}.\nMessage: {response_json['errors']}"
+            )
+    else:
+        logger.error(
+            f"Failed to get online ordering status for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to get online ordering status for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
+        )
 
 
 def validate_address():
