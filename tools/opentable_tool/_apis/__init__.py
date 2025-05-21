@@ -1,3 +1,4 @@
+import base64
 import http.client
 import json
 from typing import Dict, Optional
@@ -16,6 +17,7 @@ from utils.log import logger
 def get_opentable_access_token(
     client_id: str,
     client_secret: str,
+    use_production: bool = False,
 ) -> Optional[OpenTableAccessToken]:
     """
     Obtains an access token from the OpenTable Authentication API.
@@ -23,11 +25,57 @@ def get_opentable_access_token(
     Args:
         client_id: Your OpenTable API client identifier
         client_secret: Your OpenTable API client secret
+        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         `OpenTableAccessToken` object if successful, None otherwise
     """
-    return None
+    try:
+        # Create basic auth credentials
+        credentials = f"{client_id}:{client_secret}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+
+        # Set up connection to OpenTable auth server
+        host = "oauth.opentable.com" if use_production else "oauth-pp.opentable.com"
+        conn = http.client.HTTPSConnection(host)
+
+        # Set headers with basic auth
+        headers = {
+            "Authorization": f"Basic {encoded_credentials}",
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+        }
+
+        # Set query parameters
+        params = urlencode({"grant_type": "client_credentials"})
+
+        # Make the request
+        conn.request("GET", f"/api/v2/oauth/token?{params}", headers=headers)
+
+        # Get the response
+        response = conn.getresponse()
+        data = response.read().decode()
+        conn.close()
+
+        # Parse the response
+        if response.status == 200:
+            response_data = json.loads(data)
+            return OpenTableAccessToken(
+                access_token=response_data.get("access_token", ""),
+                token_type=response_data.get("token_type", ""),
+                expires_in=response_data.get("expires_in", 0),
+                scope=response_data.get("scope"),
+            )
+        else:
+            logger.error(
+                f"Failed to get OpenTable access token: {response.status} {response.reason}"
+            )
+            logger.error(f"Response: {data}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error getting OpenTable access token: {str(e)}")
+        return None
 
 
 def search_availability(
