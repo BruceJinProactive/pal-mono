@@ -4,9 +4,14 @@ from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
 
-from tools.opentable_tool._apis import get_opentable_access_token, search_availability
+from tools.opentable_tool._apis import (
+    get_availability_metadata,
+    get_opentable_access_token,
+    search_availability,
+)
 from tools.opentable_tool._utils import (
     extract_booking_url,
+    format_availability_metadata,
     format_availability_results,
     validate_search_parameters,
 )
@@ -35,6 +40,7 @@ class OpenTableTool(Toolkit):
 
         # Register tools
         self.register(self.search_availability)
+        self.register(self.get_availability_metadata)
 
     @cached_property
     def _opentable_bearer_token(self) -> OpenTableAccessToken | None:
@@ -171,3 +177,44 @@ class OpenTableTool(Toolkit):
         except Exception as e:
             logger.error(f"Error searching OpenTable availability: {str(e)}")
             return f"Error searching for restaurant availability: {str(e)}"
+
+    @tool
+    def get_availability_metadata(
+        self,
+        restaurant_id: int,
+    ) -> str:
+        """
+        Get detailed availability metadata for an OpenTable restaurant.
+        Returns information about dining areas, table attributes, and environments.
+
+        Args:
+            restaurant_id: The OpenTable ID (rid) of the restaurant
+
+        Returns:
+            Formatted string with restaurant availability options and attributes
+        """
+        # Get bearer token
+        bearer_token = self._opentable_bearer_token
+        if not bearer_token:
+            return "Error: Unable to authenticate with OpenTable"
+
+        # Validate required parameters
+        if not restaurant_id or not isinstance(restaurant_id, int):
+            return "Error: restaurant_id is required and must be a valid integer"
+
+        try:
+            # Get availability metadata
+            with LLMObs.task(name="get_opentable_availability_metadata"):
+                result = get_availability_metadata(
+                    bearer_token=bearer_token,
+                    restaurant_id=restaurant_id,
+                    use_production=self.use_production,
+                )
+
+            # Format the results in a human-readable way
+            formatted_result = format_availability_metadata(result)
+            return formatted_result
+
+        except Exception as e:
+            logger.error(f"Error getting OpenTable availability metadata: {str(e)}")
+            return f"Error retrieving availability options for restaurant ID {restaurant_id}: {str(e)}"
