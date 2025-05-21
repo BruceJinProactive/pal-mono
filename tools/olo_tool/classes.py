@@ -274,3 +274,7 @@ class ValidatedBasketTotals(BaseModel):
     upsellgroups: Optional[list[UpsellGroup]] = None
     posreferenceresponse: str
     taxexemptaccountidentifier: Optional[str] = None
+
+
+class OloCCSFToken(BaseModel):
+    accesstoken: str

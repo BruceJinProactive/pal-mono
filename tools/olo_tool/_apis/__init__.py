@@ -7,6 +7,7 @@ from tools.olo_tool.classes import (
     OloAccessToken,
     OloBasket,
     OloBasketHandoffMode,
+    OloCCSFToken,
     OloProductInput,
     OloStore,
     ValidatedBasketTotals,
@@ -267,8 +268,45 @@ def get_basket_details():
     pass
 
 
-def request_ccsf_token():
-    pass
+def request_ccsf_token(
+    basket_id: str, olo_token: OloAccessToken, auth_token: Optional[str] = None
+) -> OloCCSFToken:
+    """
+    Requests a CCSF token for a given basket ID.
+
+    Args:
+        basket_id (str): The basket ID
+        olo_token (OloAccessToken): The Olo access token
+        auth_token (Optional[str], optional): The auth token used to identify the user. Defaults to None.
+    Returns:
+        OloCCSFToken: A validated CCSF token object from the API response
+    """
+    try:
+        request_body = {
+            "authtoken": auth_token,
+        }
+
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/baskets/{basket_id}/checkout",
+            query_params=None,
+            payload=request_body,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.request_ccsf_token] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return OloCCSFToken.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Failed to request CCSF token with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to request CCSF token with status {response.status}: {response.decoded_body}"
+        )
 
 
 def submit_order():
