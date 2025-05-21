@@ -6,6 +6,7 @@ from tools.olo_tool.classes import (
     HttpMethod,
     OloAccessToken,
     OloBasket,
+    OloBasketHandoffMode,
     OloProductInput,
     OloStore,
 )
@@ -145,8 +146,45 @@ def add_items_to_basket(
         )
 
 
-def set_basket_handoff_mode():
-    pass
+def set_basket_handoff_mode(
+    basket_id: str, olo_token: OloAccessToken, handoff_mode: OloBasketHandoffMode
+) -> OloBasket:
+    """
+    Sets the handoff mode for a basket.
+
+    Args:
+        basket_id (str): The basket ID
+        olo_token (OloAccessToken): The Olo access token
+        handoff_mode (OloBasketHandoffMode): The handoff mode
+
+    Returns:
+        OloBasket: A validated basket object from the API response
+    """
+    try:
+        request_body = {
+            "deliverymode": handoff_mode,
+        }
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.PUT,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/baskets/{basket_id}/deliverymode",
+            query_params=None,
+            payload=request_body,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.set_basket_handoff_mode] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return OloBasket.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Failed to set basket handoff mode with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to set basket handoff mode with status {response.status}: {response.decoded_body}"
+        )
 
 
 def validate_basket():

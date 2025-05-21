@@ -203,3 +203,12 @@ class ProductInput(BaseModel):
 class OloProductInput(BaseModel):
     products: list[ProductInput]
     replacebasketcontents: bool
+
+
+class OloBasketHandoffMode(str, Enum):
+    delivery = "delivery"
+    dispatch = "dispatch"
+    curbside = "curbside"
+    pickup = "pickup"
+    dinein = "dinein"
+    drivethru = "drivethru"
