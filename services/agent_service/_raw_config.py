@@ -22,6 +22,7 @@ from agent import (
     ToolMetadata,
 )
 from agent.knowledge import KnowledgeConfigSettings
+from agent.model import ModelProvider
 from utils.log import logger
 
 
@@ -57,9 +58,7 @@ class RawConfig:
 
             return AgentConfig(
                 persona=self._get_agent_persona(),
-                model=ModelConfig(
-                    identifier="medium",
-                ),
+                model=self._get_agent_model_config(),
                 memory=MemoryConfig(
                     enabled=True,
                     identifier=self.account.name,
@@ -176,6 +175,13 @@ class RawConfig:
             identifiers.append(tool)
 
         return ToolConfig(identifiers=identifiers, metadata=metadata)
+
+    def _get_agent_model_config(self) -> ModelConfig:
+        raw_model = self.agent.raw_config.get("model", {})
+        provider = raw_model.get("provider") or ModelProvider.OPENAI
+        identifier = raw_model.get("identifier") or "gpt-4o"
+
+        return ModelConfig(provider=provider, identifier=identifier)
 
     def _build_agent_prompt(self) -> str:
         def build_section(title, info_list) -> list[str]:

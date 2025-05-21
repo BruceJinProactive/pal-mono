@@ -4,9 +4,9 @@ from pydantic import BaseModel
 
 
 class ModelProvider(StrEnum):
-    DEFAULT = auto()
+    OPENAI = auto()
 
 
 class ModelConfig(BaseModel):
-    provider: ModelProvider = ModelProvider.DEFAULT
-    identifier: str = "medium"
+    provider: ModelProvider = ModelProvider.OPENAI
+    identifier: str = "gpt-4o"

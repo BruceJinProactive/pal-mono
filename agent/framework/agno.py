@@ -14,6 +14,10 @@ from agent.tool import get_tools
 from utils.dd import trace_block
 from utils.log import logger
 
+MODEL_PROVIDER_MAP = {
+    "openai": OpenAIChat,
+}
+
 
 class ResponseModel(BaseModel):
     """Used as structured output response by agent."""
@@ -45,7 +49,7 @@ class AgnoAgent:
             )
         ]  # Construct tools based on configuration (memory and knowledge tools are conditionally added)
 
-        model = OpenAIChat(id="gpt-4o")
+        model = self._get_agent_model(config)
 
         with trace_block("Agno Core Agent Creation"):
             agent = agno.agent.agent.Agent(
@@ -160,3 +164,23 @@ class AgnoAgent:
                 yield item
 
         return stream_wrapper()
+
+    def _get_agent_model(self, config: AgentConfig):
+        model_config = config.model
+        if not model_config:
+            model = OpenAIChat(id="gpt-4o")
+        else:
+            provider = model_config.provider.lower()
+            model_cls = MODEL_PROVIDER_MAP.get(provider)
+            if model_cls:
+                try:
+                    model = model_cls(id=model_config.identifier)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to load model {provider}, fallback to gpt-4o: {e}"
+                    )
+                    model = OpenAIChat(id="gpt-4o")
+            else:
+                logger.warning(f"Unknown provider {provider}, fallback to gpt-4o")
+                model = OpenAIChat(id="gpt-4o")
+        return model
