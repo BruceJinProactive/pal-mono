@@ -1,7 +1,14 @@
+import json
 from typing import Optional
 
 from tools.olo_tool._apis._utils import connect_olo_order_hub
-from tools.olo_tool.classes import HttpMethod, OloAccessToken, OloBasket, OloStore
+from tools.olo_tool.classes import (
+    HttpMethod,
+    OloAccessToken,
+    OloBasket,
+    OloProductInput,
+    OloStore,
+)
 from utils.log import logger
 
 
@@ -94,8 +101,48 @@ def create_basket(
         )
 
 
-def add_items_to_basket():
-    pass
+def add_items_to_basket(
+    basket_id: str, olo_token: OloAccessToken, olo_product_input: OloProductInput
+) -> dict:
+    """
+    Adds items to a basket.
+
+    Args:
+        basket_id (str): The basket ID
+        olo_token (OloAccessToken): The Olo access token
+        olo_product_input (OloProductInput): The Olo product input
+
+    Returns:
+        dict: A dictionary containing the new basket (OloBasket) and a list of errors
+    """
+    try:
+        request_body = olo_product_input.model_dump(exclude_none=True)
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/baskets/{basket_id}/products/batch",
+            query_params=None,
+            payload=request_body,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.add_items_to_basket] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        response_json = json.loads(response.decoded_body)
+
+        # Validate the basket object
+        response_json["basket"] = OloBasket.model_validate(response_json["basket"])
+
+        return response_json
+    else:
+        logger.error(
+            f"Failed to add items to basket with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to add items to basket with status {response.status}: {response.decoded_body}"
+        )
 
 
 def set_basket_handoff_mode():

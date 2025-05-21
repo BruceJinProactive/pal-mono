@@ -177,3 +177,29 @@ class OloStore(BaseModel):
     supportedcountries: list[str]
     supportedarrivalmessagehandoffmodes: Optional[list[str]] = None
     calendars: Optional[list[dict]] = None
+
+
+class CustomFieldInput(BaseModel):
+    fieldid: int
+    value: str
+
+
+class ChoiceInput(BaseModel):
+    choiceid: int
+    quantity: int
+    customfields: Optional[list[CustomFieldInput]] = None
+
+
+class ProductInput(BaseModel):
+    productid: int
+    quantity: int
+    specialinstructions: Optional[str] = None
+    recipient: Optional[str] = None
+    customdata: Optional[dict] = None
+    choices: Optional[list[ChoiceInput]] = None
+    isupsell: Optional[bool] = None
+
+
+class OloProductInput(BaseModel):
+    products: list[ProductInput]
+    replacebasketcontents: bool
