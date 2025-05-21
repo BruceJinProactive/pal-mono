@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
@@ -23,7 +23,7 @@ class OpenTableResponse(BaseModel):
 
     status: int
     reason: str
-    decoded_body: str
+    decoded_body: Dict[str, Any]
 
 
 class OpenTableAccessToken(BaseModel):
@@ -118,7 +118,7 @@ class DiningAreaAttribute(BaseModel):
     """Attributes of a dining area"""
 
     id: int
-    attributes: str
+    attributes: List[str]
     environment: EnvironmentType
     booking_url: Optional[str] = Field(None, alias="booking_url")
     booking_restref_url: Optional[str] = Field(None, alias="booking_restref_url")

@@ -3,41 +3,14 @@ import json
 from typing import Dict, Optional
 from urllib.parse import urlencode
 
+from tools.opentable_tool._apis._utils import connect_opentable_api
 from tools.opentable_tool.classes import (
     AvailabilitySearchRequest,
     AvailabilitySearchResponse,
     HttpMethod,
     OpenTableAccessToken,
-    OpenTableResponse,
-    OpenTableRestaurantInfo,
 )
 from utils.log import logger
-
-
-def connect_opentable_api(
-    http_method: HttpMethod,
-    bearer_token: OpenTableAccessToken,
-    api_function: str,
-    query_params: Optional[Dict[str, str]] = None,
-    extra_headers: Optional[Dict[str, str]] = None,
-    payload: Optional[dict] = None,
-) -> OpenTableResponse:
-    """
-    Makes a request to the OpenTable API.
-
-    Args:
-        http_method: HTTP method to use (GET, POST, PUT, DELETE)
-        bearer_token: OpenTable access token
-        api_function: API endpoint to call
-        query_params: Query parameters to include in the request
-        extra_headers: Additional headers to include in the request
-        payload: JSON payload to include in the request
-
-    Returns:
-        OpenTableResponse object containing the response data
-    """
-    # Placeholder implementation
-    return OpenTableResponse(status=0, reason="", decoded_body="")
 
 
 def get_opentable_access_token(
@@ -73,11 +46,68 @@ def search_availability(
     Returns:
         AvailabilitySearchResponse object or raises an exception if request fails
     """
-    # Placeholder implementation with minimal required parameters
+    # Construct API endpoint
+    api_function = f"/v2/availability/{restaurant_id}"
+
+    # Convert search parameters to query parameters
+    # keep aliases & drop Nones in one shot
+    query_params: Dict[str, str] = {
+        k: (",".join(v) if isinstance(v, list) else str(v))
+        for k, v in search_params.model_dump(
+            by_alias=True, exclude_none=True, exclude_unset=True
+        ).items()
+    }
+
+    # Call the OpenTable API
+    response = connect_opentable_api(
+        http_method=HttpMethod.GET,
+        bearer_token=bearer_token,
+        api_function=api_function,
+        query_params=query_params,
+    )
+
+    # Handle the response
+    if response.status != 200:
+        logger.error(
+            f"OpenTable API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
+
+    # Parse response body - ensure it's a dictionary
+    data = response.decoded_body
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode JSON response: {data}")
+            data = {}
+
+    if not isinstance(data, dict):
+        data = {}
+
+    # Extract relevant data from the response
+    times_available = data.get("times_available", [])
+
+    # For each times_available entry, ensure diningArea attributes are properly handled
+    for time_slot in times_available:
+        if "availability_types" in time_slot:
+            for avail_type in time_slot["availability_types"]:
+                if "diningArea" in avail_type and isinstance(
+                    avail_type["diningArea"], list
+                ):
+                    for area in avail_type["diningArea"]:
+                        # Ensure attributes is always a list
+                        if "attributes" in area and not isinstance(
+                            area["attributes"], list
+                        ):
+                            area["attributes"] = [area["attributes"]]
+
+    # Construct and return the AvailabilitySearchResponse
     return AvailabilitySearchResponse(
-        rid=0,
-        party_size=0,
-        times=[],
-        times_available=[],
-        no_availability_reasons=[],
+        rid=data.get("rid", restaurant_id),
+        party_size=data.get("party_size", search_params.party_size),
+        times=data.get("times", []),
+        times_available=times_available,
+        no_availability_reasons=data.get("no_availability_reasons", []),
     )
