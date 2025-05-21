@@ -1,7 +1,10 @@
 import datetime
 from typing import Any, List, Optional, Tuple
 
-from tools.opentable_tool.classes import AvailabilitySearchResponse
+from tools.opentable_tool.classes import (
+    AvailabilityMetadataResponse,
+    AvailabilitySearchResponse,
+)
 
 
 def format_availability_results(availability: AvailabilitySearchResponse) -> str:
@@ -337,5 +340,52 @@ def parse_no_availability_reasons(reasons: List[str]) -> str:
     for reason in reasons:
         explanation = reason_explanations.get(reason, reason)
         result.append(explanation)
+
+    return "\n".join(result)
+
+
+def format_availability_metadata(metadata: AvailabilityMetadataResponse) -> str:
+    """
+    Formats the availability metadata into a user-friendly string.
+
+    Args:
+        metadata: The availability metadata response from the API
+
+    Returns:
+        A formatted string with the dining areas and attributes
+    """
+    if not metadata or not hasattr(metadata, "data"):
+        return "No metadata available."
+
+    result = ["Restaurant Environment and Dining Areas:"]
+
+    # Format environments
+    if hasattr(metadata.data, "environments") and metadata.data.environments:
+        result.append("\nAvailable Environments:")
+        for env in metadata.data.environments:
+            result.append(f"• {env}")
+
+    # Format attributes
+    if hasattr(metadata.data, "attributes") and metadata.data.attributes:
+        result.append("\nAvailable Table Attributes:")
+        for attr in metadata.data.attributes:
+            result.append(f"• {attr}")
+
+    # Format dining areas
+    if hasattr(metadata.data, "dining_areas") and metadata.data.dining_areas:
+        result.append("\nDining Areas:")
+        for area in metadata.data.dining_areas:
+            area_name = getattr(area, "name", "Unnamed Area")
+            area_desc = getattr(area, "description", "No description")
+            area_env = getattr(area, "environment", "Unknown environment")
+            area_id = getattr(area, "id", "Unknown ID")
+
+            area_info = f"• {area_name} (ID: {area_id})"
+            if area_env:
+                area_info += f" - {area_env}"
+            if area_desc and area_desc != area_name:
+                area_info += f"\n  Description: {area_desc}"
+
+            result.append(area_info)
 
     return "\n".join(result)
