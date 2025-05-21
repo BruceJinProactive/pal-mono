@@ -8,6 +8,8 @@ from tools.olo_tool.classes import (
     OloBasket,
     OloBasketHandoffMode,
     OloCCSFToken,
+    OloOrderSubmissionBody,
+    OloOrderSubmissionResponse,
     OloProductInput,
     OloStore,
     ValidatedBasketTotals,
@@ -309,5 +311,40 @@ def request_ccsf_token(
         )
 
 
-def submit_order():
-    pass
+def submit_order(
+    basket_id: str,
+    olo_token: OloAccessToken,
+    olo_order_submission_body: OloOrderSubmissionBody,
+) -> OloOrderSubmissionResponse:
+    """
+    Submits an order for a given basket ID.
+
+    Args:
+        basket_id (str): The basket ID
+        olo_order_submission_body (OloOrderSubmissionBody): The order submission body
+
+    Returns:
+        OloOrderSubmissionResponse: A validated order submission response object from the API response
+    """
+    try:
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/baskets/{basket_id}/submit",
+            query_params=None,
+            payload=olo_order_submission_body.model_dump(exclude_none=True),
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.submit_order] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return OloOrderSubmissionResponse.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Failed to submit order with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to submit order with status {response.status}: {response.decoded_body}"
+        )
