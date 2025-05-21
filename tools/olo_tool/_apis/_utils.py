@@ -1,2 +1,84 @@
-def connect_olo_order_hub():
-    pass
+import http.client
+import json
+import urllib.parse
+
+from tools.olo_tool.classes import HttpMethod, OloAccessToken, OloHubResponse
+from utils.log import logger
+
+BASE_URL = "ordering.api.olosandbox.com"
+
+
+def connect_olo_order_hub(
+    http_method: HttpMethod,
+    bearer_token: OloAccessToken,
+    api_function: str,
+    query_params: dict | None = None,
+    extra_headers: dict | None = None,
+    payload: dict | str | None = None,
+) -> OloHubResponse:
+
+    logger.debug(
+        f"[OloTool._apis._utils.connect_olo_order_hub] Calling Olo API: {http_method} {api_function} | "
+        f"Query Params: {query_params} | "
+        f"Extra Headers: {extra_headers} | "
+        f"Payload: {payload}"
+    )
+
+    # Set up headers
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": bearer_token.get_token_header_value(),
+    }
+
+    # Add any extra headers
+    if extra_headers:
+        headers.update(extra_headers)
+
+    # Prepare payload
+    request_body = ""
+    if payload is not None:
+        if isinstance(payload, dict):
+            request_body = json.dumps(payload)
+        else:
+            request_body = payload
+
+    # Construct the full URL with query parameters
+    if query_params:
+        api_function += "?" + urllib.parse.urlencode(query_params)
+
+    try:
+        conn = http.client.HTTPSConnection(BASE_URL, timeout=30)
+        if http_method in [HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT]:
+            conn.request(http_method.value, api_function, request_body, headers=headers)
+        else:
+            raise ValueError(
+                f"[OloTool._apis._utils.connect_olo_order_hub] Invalid HTTP method: {http_method}"
+            )
+
+        response = conn.getresponse()
+        response_data = response.read().decode("utf-8")
+
+        # If response status is not 200, raise an exception
+        if response.status != 200:
+            raise Exception(
+                f"Error: {response.status} - {response.reason} - {response_data}"
+            )
+
+        olo_response = OloHubResponse(
+            status=response.status,
+            reason=response.reason,
+            decoded_body=response_data,
+        )
+        logger.debug(
+            f"[OloTool._apis._utils.connect_olo_order_hub] OloResponse: {olo_response}"
+        )
+        return olo_response
+
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis._utils.connect_olo_order_hub] Error while calling {http_method} {api_function}: {str(e)}"
+        ) from e
+    finally:
+        conn_var = locals().get("conn")
+        if conn_var:
+            conn_var.close()

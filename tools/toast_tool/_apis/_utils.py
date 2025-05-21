@@ -37,14 +37,12 @@ def connect_toast_order_hub(
         headers.update(extra_headers)
 
     # Prepare payload
-    request_body = None
+    request_body = ""
     if payload is not None:
         if isinstance(payload, dict):
             request_body = json.dumps(payload)
         else:
-            request_body = payload
-    else:
-        request_body = ""
+            request_body = str(payload)
 
     # Construct the full URL with query parameters
     if query_params:
@@ -54,16 +52,13 @@ def connect_toast_order_hub(
         conn = http.client.HTTPSConnection(BASE_URL, timeout=30)
         # We focus on GET and POST methods for now
         # You can add more methods as needed
-        if http_method == HttpMethod.GET:
+        if http_method in [HttpMethod.GET, HttpMethod.POST]:
             conn.request(http_method.value, api_function, request_body, headers=headers)
-
-        elif http_method == HttpMethod.POST:
-            conn.request(http_method.value, api_function, request_body, headers)
-
         else:
             raise ValueError(
                 f"[ToastTool._apis._utils.connect_toast_order_hub] Invalid HTTP method: {http_method}"
             )
+
         response = conn.getresponse()
         response_data = response.read().decode("utf-8")
 
