@@ -212,3 +212,65 @@ class OloBasketHandoffMode(str, Enum):
     pickup = "pickup"
     dinein = "dinein"
     drivethru = "drivethru"
+
+
+class Fee(BaseModel):
+    amount: float
+    description: str
+    note: str
+
+
+class Donation(BaseModel):
+    id: int
+    amount: float
+    description: str
+    note: str
+    detailednote: str
+    imagepath: str
+
+
+class UpsellImage(BaseModel):
+    groupname: str
+    description: str
+    isdefault: bool
+    filename: str
+    url: Optional[str] = None
+
+
+class UpsellItem(BaseModel):
+    id: int
+    name: str
+    cost: str
+    chainproductid: int
+    shortdescription: str
+    minquantity: int
+    maxquantity: int
+    images: list[UpsellImage]
+
+
+class UpsellGroup(BaseModel):
+    title: str
+    items: list[UpsellItem]
+
+
+class ContextualPricing(BaseModel):
+    isposvalidated: bool
+    issyndicated: bool
+
+
+class ValidatedBasketTotals(BaseModel):
+    basketid: str
+    contextualpricing: Optional[ContextualPricing] = None
+    tax: float
+    taxes: list[Tax]
+    customerhandoffcharge: float
+    fees: list[Fee]
+    donations: list[Donation]
+    subtotal: float
+    total: float
+    readytime: str
+    totalfees: float
+    totaldonations: float
+    upsellgroups: Optional[list[UpsellGroup]] = None
+    posreferenceresponse: str
+    taxexemptaccountidentifier: Optional[str] = None

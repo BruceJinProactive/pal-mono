@@ -9,6 +9,7 @@ from tools.olo_tool.classes import (
     OloBasketHandoffMode,
     OloProductInput,
     OloStore,
+    ValidatedBasketTotals,
 )
 from utils.log import logger
 
@@ -229,8 +230,37 @@ def set_basket_handoff_mode(
         )
 
 
-def validate_basket():
-    pass
+def validate_basket(basket_id: str, olo_token: OloAccessToken) -> ValidatedBasketTotals:
+    """
+    Validates a basket.
+
+    Args:
+        basket_id (str): The basket ID
+        olo_token (OloAccessToken): The Olo access token
+
+    Returns:
+        ValidatedBasketTotals: A validated basket totals object from the API response
+    """
+    try:
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/baskets/{basket_id}/validate",
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.validate_basket] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return ValidatedBasketTotals.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Failed to validate basket with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to validate basket with status {response.status}: {response.decoded_body}"
+        )
 
 
 def get_basket_details():
