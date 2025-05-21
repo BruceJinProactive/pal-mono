@@ -93,3 +93,87 @@ class OloBasket(BaseModel):
     vendorid: int
     vendoronline: bool
     wasupsold: bool
+
+
+class RestaurantCustomLabel(BaseModel):
+    key: str
+    value: str
+
+
+class OloStore(BaseModel):
+    id: int
+    name: str
+    brand: Optional[str] = None
+    storename: str
+    telephone: str
+    streetaddress: str
+    streetaddress2: Optional[str] = None
+    crossstreet: Optional[str] = None
+    city: str
+    contextualpricing: Optional[dict] = None
+    state: str
+    zip: str
+    country: str
+    latitude: float
+    longitude: float
+    locationid: Optional[str] = None
+    utcoffset: int
+    url: str
+    mobileurl: str
+    distance: Optional[float] = None
+    extref: Optional[str] = None
+    advanceonly: bool
+    advanceorderdays: int
+    allowstaxexemption: bool
+    supportscoupons: bool
+    supportsloyalty: bool
+    supportedcardtypes: str
+    supportsmanualfire: bool
+    candeliver: bool
+    canpickup: bool
+    supportscurbside: bool
+    supportsdispatch: bool
+    supportsdinein: bool
+    hasolopass: bool
+    deliveryarea: Optional[str] = None
+    minimumdeliveryorder: Optional[float] = None
+    maximumdeliveryorder: Optional[float] = None
+    minimumpickuporder: Optional[float] = None
+    maximumpayinstoreorder: Optional[float] = None
+    deliveryfee: Optional[float] = None
+    deliveryfeetiers: Optional[list[dict]] = None
+    supportstip: bool
+    supportsspecialinstructions: bool
+    specialinstructionsmaxlength: Optional[int] = None
+    supportsguestordering: bool
+    requiresphonenumber: bool
+    supportsonlineordering: bool
+    supportsnationalmenu: bool
+    supportsfeedback: bool
+    supportssplitpayments: bool
+    slug: str
+    isavailable: bool
+    iscurrentlyopen: bool
+    deliverydelayalertenabled: bool
+    deliverydelayalertmessage: Optional[str] = None
+    supportsgrouporders: bool
+    supportsproductrecipientnames: bool
+    supportsbaskettransfers: bool
+    allowhandoffchoiceatmanualfire: bool
+    orderingurls: Optional[list[dict]] = None
+    productrecipientnamelabel: Optional[str] = None
+    customerfacingmessage: Optional[str] = None
+    availabilitymessage: Optional[str] = None
+    supportsdrivethru: bool
+    showcalories: bool
+    acceptsordersuntilclosing: bool
+    acceptsordersbeforeopening: bool
+    suggestedtippercentage: Optional[int] = None
+    customfields: Optional[list[dict]] = None
+    labels: Optional[list[RestaurantCustomLabel]] = None
+    metadata: Optional[list[dict]] = None
+    supportedtimemodes: list[str]
+    attributes: Optional[list[str]] = None
+    supportedcountries: list[str]
+    supportedarrivalmessagehandoffmodes: Optional[list[str]] = None
+    calendars: Optional[list[dict]] = None

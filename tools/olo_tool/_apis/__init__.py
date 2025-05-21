@@ -1,7 +1,7 @@
 from typing import Optional
 
 from tools.olo_tool._apis._utils import connect_olo_order_hub
-from tools.olo_tool.classes import HttpMethod, OloAccessToken, OloBasket
+from tools.olo_tool.classes import HttpMethod, OloAccessToken, OloBasket, OloStore
 from utils.log import logger
 
 
@@ -9,8 +9,39 @@ def get_customer_info():
     pass
 
 
-def get_store_info():
-    pass
+def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
+    """
+    Get the store info for a given restaurant ID
+
+    Args:
+        restaurant_id (int): The restaurant ID
+        olo_token (OloAccessToken): The Olo access token
+
+    Returns:
+        OloStore: A validated store object from the API response
+    """
+    try:
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/restaurants/{restaurant_id}",
+            query_params=None,
+            payload=None,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.get_store_info] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return OloStore.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Failed to get store info for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to get store info for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
+        )
 
 
 def get_online_ordering_status():
