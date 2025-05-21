@@ -10,7 +10,9 @@ from tools.opentable_tool.classes import (
 )
 from utils.log import logger
 
-BASE_URL = "TBD"
+# Production and pre-production API hosts
+PRODUCTION_HOST = "api.opentable.com"
+PREPROD_HOST = "api-pp.opentable.com"
 DEFAULT_TIMEOUT = 30  # 30 seconds default timeout
 
 
@@ -22,6 +24,7 @@ def connect_opentable_api(
     extra_headers: Optional[Dict[str, str]] = None,
     payload: Optional[dict] = None,
     timeout: int = DEFAULT_TIMEOUT,
+    use_production: bool = False,
 ) -> OpenTableResponse:
     """
     Makes a request to the OpenTable API.
@@ -34,10 +37,13 @@ def connect_opentable_api(
         extra_headers: Additional headers to include in the request
         payload: JSON payload to include in the request
         timeout: Connection and read timeout in seconds (default: 30)
+        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         OpenTableResponse object containing the response data
     """
+    # Determine the appropriate host based on the use_production flag
+    host = PRODUCTION_HOST if use_production else PREPROD_HOST
 
     # Build the query string if query parameters are provided
     query_string = ""
@@ -45,7 +51,7 @@ def connect_opentable_api(
         query_string = f"?{urlencode(query_params)}"
 
     # Set up the connection with timeout
-    conn = http.client.HTTPSConnection(BASE_URL, timeout=timeout)
+    conn = http.client.HTTPSConnection(host, timeout=timeout)
 
     # Set up headers
     headers = {

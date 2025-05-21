@@ -82,6 +82,7 @@ def search_availability(
     bearer_token: OpenTableAccessToken,
     restaurant_id: int,
     search_params: AvailabilitySearchRequest,
+    use_production: bool = False,
 ) -> AvailabilitySearchResponse:
     """
     Search for reservation availability for a specific restaurant.
@@ -90,6 +91,7 @@ def search_availability(
         bearer_token: OpenTable access token
         restaurant_id: Restaurant ID
         search_params: Search parameters for availability
+        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         AvailabilitySearchResponse object or raises an exception if request fails
@@ -112,6 +114,7 @@ def search_availability(
         bearer_token=bearer_token,
         api_function=api_function,
         query_params=query_params,
+        use_production=use_production,
     )
 
     # Handle the response
