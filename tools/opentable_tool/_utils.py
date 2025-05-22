@@ -4,6 +4,7 @@ from typing import Any, List, Optional, Tuple
 from tools.opentable_tool.classes import (
     AvailabilityMetadataResponse,
     AvailabilitySearchResponse,
+    CancellationPolicyDetails,
 )
 
 
@@ -44,7 +45,21 @@ def format_availability_results(availability: AvailabilitySearchResponse) -> str
                 areas = []
                 # Access availability_types as an attribute
                 availability_types = getattr(time_slot, "availability_types", [])
+
+                # Track if we have cancellation policy info for this time slot
+                cancellation_info = None
+
                 for avail_type in availability_types:
+                    # Check for cancellation policy
+                    if not cancellation_info and hasattr(
+                        avail_type, "cancellation_policy"
+                    ):
+                        policy = getattr(avail_type, "cancellation_policy")
+                        if policy:
+                            cancellation_info = format_cancellation_policy_for_timeslot(
+                                policy
+                            )
+
                     # Get dining areas
                     dining_areas = getattr(avail_type, "diningArea", [])
                     for area in dining_areas:
@@ -55,6 +70,10 @@ def format_availability_results(availability: AvailabilitySearchResponse) -> str
                 # Add formatted time slot to results
                 area_info = f" - {', '.join(areas)}" if areas else ""
                 result.append(f"• {formatted_time}{area_info}")
+
+                # Add cancellation policy info if available
+                if cancellation_info:
+                    result.append(f"  {cancellation_info}")
     else:
         # Simpler format if times_available is not present
         for time_str in getattr(availability, "times", []):
@@ -389,3 +408,215 @@ def format_availability_metadata(metadata: AvailabilityMetadataResponse) -> str:
             result.append(area_info)
 
     return "\n".join(result)
+
+
+def format_cancellation_policy(policy: CancellationPolicyDetails) -> str:
+    """
+    Formats the cancellation policy details into a user-friendly string.
+
+    Args:
+        policy: The cancellation policy details from the API
+
+    Returns:
+        A formatted string with the cancellation policy information
+    """
+    if not policy:
+        return "No cancellation policy information available."
+
+    # Format the basic policy information
+    result = [f"Cancellation Policy for Party of {policy.party_size}:"]
+    result.append(f"Policy Type: {policy.policy_type}")
+
+    # Format deposit details
+    if hasattr(policy, "deposit_details"):
+        deposit = policy.deposit_details
+
+        # Calculate the actual amount in major currency units
+        amount_major = deposit.amount / deposit.denominator
+
+        # Determine if the deposit is per guest or total
+        if deposit.type == "PerGuest":
+            deposit_type = f"{amount_major} {deposit.currency} per guest"
+            total = amount_major * policy.party_size
+            deposit_type += f" (Total: {total} {deposit.currency})"
+        else:
+            deposit_type = f"{amount_major} {deposit.currency} total"
+
+        result.append(f"Deposit Required: {deposit_type}")
+
+    # Format cutoff information
+    if hasattr(policy, "cut_off"):
+        cutoff = policy.cut_off
+
+        if cutoff.cutoff_type == "DaysBefore":
+            cutoff_info = f"{cutoff.days_before_cutoff} days before the reservation"
+        else:
+            cutoff_info = cutoff.cutoff_type
+
+        result.append(f"Cancellation Cutoff: {cutoff_info}")
+
+        # Add explanation of what the cutoff means
+        if cutoff.cutoff_type == "DaysBefore":
+            explanation = (
+                f"You must cancel at least {cutoff.days_before_cutoff} days before "
+                f"your reservation to avoid possible charges."
+            )
+            result.append(f"Note: {explanation}")
+
+    return "\n".join(result)
+
+
+def format_cancellation_policy_for_timeslot(cancellation_policy: Any) -> str:
+    """
+    Formats the cancellation policy information from a timeslot's availability_types
+    into a user-friendly string.
+
+    Args:
+        cancellation_policy: The cancellation policy object from a timeslot's availability_types
+
+    Returns:
+        A formatted string with basic cancellation policy information
+    """
+    if not cancellation_policy:
+        return "No cancellation policy information."
+
+    policy_type = getattr(cancellation_policy, "type", "Unknown")
+    policy_id = getattr(cancellation_policy, "id", "Unknown")
+
+    result = [f"Cancellation Policy: {policy_type} (ID: {policy_id})"]
+
+    # Add deposit information if available
+    amount = getattr(cancellation_policy, "amount", None)
+    currency = getattr(cancellation_policy, "currency", None)
+    denominator = getattr(cancellation_policy, "denominator", None)
+    deposit_type = getattr(cancellation_policy, "deposit_type", None)
+
+    if amount is not None and currency and denominator is not None and denominator != 0:
+        amount_major = amount / denominator
+        deposit_info = f"{amount_major} {currency}"
+
+        if deposit_type == "PerGuest":
+            deposit_info += " per guest"
+
+        result.append(f"Deposit: {deposit_info}")
+
+    return "\n".join(result)
+
+
+def validate_cancellation_policy_parameters(
+    restaurant_id: int,
+    cancellation_id: str,
+) -> Tuple[bool, str, dict]:
+    """
+    Validate parameters for OpenTable cancellation policy API.
+
+    Args:
+        restaurant_id: The restaurant ID (rid)
+        cancellation_id: The cancellation policy ID
+
+    Returns:
+        Tuple of (is_valid, error_message, validated_params)
+    """
+    validated_params = {}
+
+    # Validate restaurant_id
+    if not isinstance(restaurant_id, int) or restaurant_id <= 0:
+        return (
+            False,
+            f"Restaurant ID must be a positive integer, got: {restaurant_id}",
+            {},
+        )
+    validated_params["restaurant_id"] = restaurant_id
+
+    # Validate cancellation_id
+    if not cancellation_id or not isinstance(cancellation_id, str):
+        return (
+            False,
+            f"Cancellation ID must be a non-empty string, got: {cancellation_id}",
+            {},
+        )
+    validated_params["cancellation_id"] = cancellation_id
+
+    return True, "", validated_params
+
+
+def calculate_cancellation_fee(
+    policy: CancellationPolicyDetails,
+    reservation_datetime: datetime.datetime,
+    current_datetime: Optional[datetime.datetime] = None,
+) -> Tuple[bool, float, str]:
+    """
+    Calculate potential cancellation fee based on cancellation policy and dates.
+
+    Args:
+        policy: The cancellation policy details
+        reservation_datetime: The datetime of the reservation
+        current_datetime: The current datetime (defaults to now if not provided)
+
+    Returns:
+        Tuple of (fee_applies, fee_amount, explanation)
+    """
+    if current_datetime is None:
+        current_datetime = datetime.datetime.now()
+
+    if (
+        not policy
+        or not hasattr(policy, "cut_off")
+        or not hasattr(policy, "deposit_details")
+    ):
+        return False, 0.0, "No valid cancellation policy available."
+
+    # Get policy details
+    cutoff = policy.cut_off
+    deposit = policy.deposit_details
+
+    # Calculate fee amount (default to 0)
+    fee_amount = 0.0
+    fee_applies = False
+
+    if policy.policy_type != "Deposit":
+        return False, 0.0, f"No cancellation fee for policy type: {policy.policy_type}"
+
+    # Calculate precise days (can be fractional)
+    delta_seconds = (reservation_datetime - current_datetime).total_seconds()
+    days_until_reservation = delta_seconds / 86_400
+
+    # Past reservations – no fee logic needed
+    if days_until_reservation < 0:
+        return False, 0.0, "Reservation date is in the past."
+
+    # Check if we're within the cutoff period
+    if cutoff.cutoff_type == "DaysBefore":
+        fee_applies = days_until_reservation < float(cutoff.days_before_cutoff)
+
+        if fee_applies:
+            # Calculate the fee based on deposit details
+            if deposit.denominator == 0:
+                amount_major = 0.0  # Default to zero if denominator is zero
+            else:
+                amount_major = deposit.amount / deposit.denominator
+
+            if deposit.type == "PerGuest":
+                fee_amount = float(amount_major * policy.party_size)
+                explanation = (
+                    f"Cancellation fee applies: {days_until_reservation:.2f} days until reservation, "
+                    f"which is less than the required {cutoff.days_before_cutoff} days notice. "
+                    f"Fee: {amount_major} {deposit.currency} per guest × {policy.party_size} guests = "
+                    f"{fee_amount} {deposit.currency}"
+                )
+            else:
+                fee_amount = float(amount_major)
+                explanation = (
+                    f"Cancellation fee applies: {days_until_reservation:.2f} days until reservation, "
+                    f"which is less than the required {cutoff.days_before_cutoff} days notice. "
+                    f"Fee: {fee_amount} {deposit.currency}"
+                )
+        else:
+            explanation = (
+                f"No cancellation fee: {days_until_reservation:.2f} days until reservation, "
+                f"which is at least the required {cutoff.days_before_cutoff} days notice."
+            )
+    else:
+        explanation = f"Unable to calculate cancellation fee for cutoff type: {cutoff.cutoff_type}"
+
+    return fee_applies, fee_amount, explanation
