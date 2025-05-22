@@ -481,8 +481,8 @@ class ResponseOloAuthStatus(BaseModel):
 
 
 class OloOrderSubmissionResponse(BaseModel):
-    id: str  # guid
-    oloid: str
+    id: str  # Olo order id
+    oloid: str  # Internal Olo Order ID, a non-sequential int64 value. When reaching out to Olo about an order, please provide this id.
     vendorid: int
     status: OrderStatus
     subtotal: float

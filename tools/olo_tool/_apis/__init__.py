@@ -20,10 +20,6 @@ from tools.olo_tool.classes import (
 from utils.log import logger
 
 
-def get_customer_info():
-    pass
-
-
 def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
     """
     Get the store info for a given restaurant ID
@@ -70,7 +66,7 @@ def get_online_ordering_status(
         olo_token (OloAccessToken): The Olo access token
 
     Returns:
-        int | None: Current estimated ASAP order lead time. None if the restaurant is not accepting online orders.
+        int | None: Current estimated ASAP order lead time in minutes. None if the restaurant is not accepting online orders.
     """
     try:
         request_body = {
@@ -314,8 +310,41 @@ def validate_basket(basket_id: str, olo_token: OloAccessToken) -> ValidatedBaske
         )
 
 
-def get_basket_details():
-    pass
+def get_order_status(
+    order_id: str, olo_token: OloAccessToken
+) -> OloOrderSubmissionResponse:
+    """
+    Get the status of an order.
+
+    Args:
+        order_id (str): The order ID
+        olo_token (OloAccessToken): The Olo access token
+
+    Returns:
+        OloOrderSubmissionResponse: A validated order response object from the API response. See the `OloOrderSubmissionResponse.status` field for the order status.
+    """
+    try:
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/orders/{order_id}",
+            query_params=None,
+            payload=None,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.get_order_status] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return OloOrderSubmissionResponse.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Failed to get order status with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to get order status with status {response.status}: {response.decoded_body}"
+        )
 
 
 def request_ccsf_token(
