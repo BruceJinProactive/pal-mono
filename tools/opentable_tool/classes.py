@@ -73,20 +73,6 @@ class TableAttribute(str, Enum):
     OUTDOOR = "outdoor"
 
 
-class CancellationPolicyType(str, Enum):
-    """Types of cancellation policies"""
-
-    DEPOSIT = "Deposit"
-    HOLD = "Hold"
-
-
-class DepositType(str, Enum):
-    """Types of deposits"""
-
-    PER_GUEST = "PerGuest"
-    FLAT_FEE = "FlatFee"
-
-
 class EnvironmentType(str, Enum):
     """Types of dining environments"""
 
@@ -106,12 +92,12 @@ class NoAvailabilityReason(str, Enum):
 class CancellationPolicy(BaseModel):
     """Details of the cancellation policy"""
 
-    type: CancellationPolicyType
+    type: str
     id: str
     amount: Optional[int] = None
     denominator: Optional[int] = None
     currency: Optional[str] = None
-    deposit_type: Optional[DepositType] = Field(None, alias="depositType")
+    deposit_type: Optional[str] = Field(None, alias="depositType")
 
 
 class DiningAreaAttribute(BaseModel):
@@ -177,6 +163,42 @@ class AvailabilitySearchResponse(BaseModel):
         None, alias="no_availability_reasons"
     )
     href: Optional[str] = None
+
+
+# ---- Cancellation Policies API Models ----
+
+
+class DepositDetails(BaseModel):
+    """Details of the deposit for cancellation policy"""
+
+    amount: int = Field(description="Deposit amount in minor currency units")
+    currency: str = Field(description="Currency of the deposit amount")
+    denominator: int = Field(description="Conversion factor for minor units")
+    type: str = Field(description="Specifies if the deposit is per guest")
+
+
+class CutoffPolicy(BaseModel):
+    """Cutoff policy details"""
+
+    cutoff_type: str = Field(alias="cutoffType", description="Type of cutoff applied")
+    days_before_cutoff: int = Field(
+        alias="daysBeforeCutoff", description="Number of days before cutoff"
+    )
+
+
+class CancellationPolicyDetails(BaseModel):
+    """Response from the Cancellation Policies API"""
+
+    party_size: int = Field(
+        alias="partySize", description="The number of guests for the reservation"
+    )
+    policy_type: str = Field(
+        alias="policyType", description="Type of cancellation policy"
+    )
+    deposit_details: DepositDetails = Field(
+        alias="depositDetails", description="Details of the deposit policy"
+    )
+    cut_off: CutoffPolicy = Field(alias="cutOff", description="Cutoff policy details")
 
 
 # ---- Availability Metadata API Models ----
