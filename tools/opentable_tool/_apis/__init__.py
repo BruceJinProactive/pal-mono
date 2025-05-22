@@ -1,7 +1,7 @@
 import base64
 import http.client
 import json
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
 from tools.opentable_tool._apis._utils import connect_opentable_api
@@ -10,8 +10,13 @@ from tools.opentable_tool.classes import (
     AvailabilitySearchRequest,
     AvailabilitySearchResponse,
     CancellationPolicyDetails,
+    EnvironmentType,
+    Experience,
     HttpMethod,
     OpenTableAccessToken,
+    SlotLockRequest,
+    SlotLockResponse,
+    TableAttribute,
 )
 from utils.log import logger
 
@@ -268,3 +273,83 @@ def get_cancellation_policy(
 
     # Construct and return the CancellationPolicyDetails
     return CancellationPolicyDetails(**data)
+
+
+def create_slot_lock(
+    bearer_token: OpenTableAccessToken,
+    restaurant_id: int,
+    party_size: int,
+    date_time: str,
+    reservation_attribute: Optional[TableAttribute] = TableAttribute.DEFAULT,
+    experience: Optional[Experience] = None,
+    dining_area_id: Optional[int] = None,
+    environment: Optional[EnvironmentType] = None,
+    use_production: bool = False,
+) -> SlotLockResponse:
+    """
+    Create a slot lock for a reservation at a specific restaurant.
+
+    Args:
+        bearer_token: OpenTable access token
+        restaurant_id: Restaurant ID
+        party_size: Number of people in the reservation party
+        date_time: Date and time of the reservation in ISO 8601 format
+        reservation_attribute: Type or attribute of the reservation (e.g., default)
+        experience: Details about the dining experience (Optional)
+        dining_area_id: Identifier for the dining area (Optional)
+        environment: Type of environment (e.g., Indoor, Outdoor) (Optional)
+        use_production: Whether to use production (True) or pre-production (False) environment
+
+    Returns:
+        SlotLockResponse object containing expires_at and reservation_token
+    """
+    # Construct API endpoint
+    api_function = f"/v2/booking/{restaurant_id}/slot_locks"
+
+    # Build request using SlotLockRequest model
+    request = SlotLockRequest(
+        party_size=party_size,
+        date_time=date_time,
+        reservation_attribute=reservation_attribute,
+        experience=experience,
+        dining_area_id=dining_area_id,
+        environment=environment,
+    )
+
+    # Convert to dictionary for API call
+    payload = request.model_dump(exclude_none=True, by_alias=True)
+
+    # Call the OpenTable API
+    response = connect_opentable_api(
+        http_method=HttpMethod.POST,
+        bearer_token=bearer_token,
+        api_function=api_function,
+        payload=payload,
+        use_production=use_production,
+    )
+
+    # Handle the response
+    if response.status != 200:
+        logger.error(
+            f"OpenTable API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
+
+    # Parse response body - ensure it's a dictionary
+    data = response.decoded_body
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode JSON response: {data}")
+            data = {}
+
+    if not isinstance(data, dict):
+        data = {}
+
+    # Return SlotLockResponse object
+    return SlotLockResponse(
+        expires_at=data.get("expires_at", ""),
+        reservation_token=data.get("reservation_token", ""),
+    )
