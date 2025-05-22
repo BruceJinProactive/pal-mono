@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 TIMEZONE = ZoneInfo("America/Los_Angeles")
 
@@ -292,6 +292,87 @@ class SlotLockResponse(BaseModel):
     )
     reservation_token: str = Field(
         description="A unique token required for the subsequent reservation creation request"
+    )
+
+
+# ---- Reservation API Models ----
+
+
+class PhoneObject(BaseModel):
+    """Phone information for the reservation"""
+
+    number: str = Field(description="The phone number of the guest")
+    country_code: str = Field(description="The country code for the number")
+    phone_type: str = Field(description="The type of phone (e.g., Mobile)")
+
+
+class CreditCardObject(BaseModel):
+    """Credit card details for the reservation"""
+
+    token: str = Field(description="A token representing the credit card")
+    last4: str = Field(description="The last four digits of the credit card")
+
+
+class ReservationRequest(BaseModel):
+    """Request parameters for creating a reservation"""
+
+    reservation_token: str = Field(
+        description="A unique token identifying the temporary hold on a table from a previous call"
+    )
+    first_name: str = Field(
+        description="The first name of the guest making the reservation"
+    )
+    last_name: str = Field(
+        description="The last name of the guest making the reservation"
+    )
+    email_address: EmailStr = Field(description="The email address of the guest")
+    phone: PhoneObject = Field(description="The guest's phone number")
+    reservation_attribute: TableAttribute = Field(
+        description="The seating option (default, hightop, bar, counter, outdoor)"
+    )
+    special_request: Optional[str] = Field(
+        None, description="Any special requests for the reservation"
+    )
+    credit_card: Optional[CreditCardObject] = Field(
+        None, description="Credit card details for the reservation"
+    )
+    login_name: Optional[str] = Field(
+        None, description="Used for concierge/referral details"
+    )
+    restaurant_email_marketing_opt_in: bool = Field(
+        description="If true, opts the guest into email marketing by the restaurant"
+    )
+    sms_notifications_opt_in: Optional[bool] = Field(
+        False, description="If true, the guest opts in to receive SMS notifications"
+    )
+    dining_area_id: int = Field(description="The unique identifier for the dining area")
+    environment: EnvironmentType = Field(
+        description="The environment for the dining experience (e.g., Indoor, Outdoor)"
+    )
+    experience: Optional[Experience] = Field(
+        None, description="Experience details for the reservation"
+    )
+
+
+class ReservationResponse(BaseModel):
+    """Response from the Reservation API"""
+
+    message: str = Field(description="Booking policy details for the reservation")
+    confirmation_number: int = Field(
+        description="Unique identifier for the confirmed reservation"
+    )
+    offer_confirmation_number: int = Field(
+        description="Unique identifier for any special offer linked to the reservation"
+    )
+    date_time: str = Field(
+        description="Date and time of the reservation in ISO 8601 format"
+    )
+    party_size: int = Field(description="Number of guests included in the reservation")
+    notes: Optional[str] = Field(
+        None, description="Special requests or notes provided during the reservation"
+    )
+    manage_reservation_url: str = Field(
+        description="URL to manage the confirmed reservation online"
     )
 
 
