@@ -56,6 +56,9 @@ class RawConfig:
 
             self.client_config = ClientConfig(data=client_data)
 
+            storage_config = self.agent.raw_config.get("storage_enabled", "True")
+            storage_enabled = storage_config.lower() != "false"
+
             return AgentConfig(
                 persona=self._get_agent_persona(),
                 model=self._get_agent_model_config(),
@@ -74,6 +77,7 @@ class RawConfig:
                     framework=AgentFramework.AGNO,
                 ),
                 client=self.client_config,
+                storage_enabled=storage_enabled,
                 additional_context=self._get_additional_context(),
             )
         except ValueError as e:

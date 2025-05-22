@@ -34,10 +34,15 @@ class ResponseModel(BaseModel):
 
 class AgnoAgent:
     def __init__(self, config: AgentConfig):
-        storage = PostgresAgentStorage(
-            table_name=f"{config.metadata.account_name}_storage_agno",
-            db_url=db.db_url,
-        )
+        if config.storage_enabled:
+            storage = PostgresAgentStorage(
+                table_name=f"{config.metadata.account_name}_storage_agno",
+                db_url=db.db_url,
+            )
+            logger.debug("Ango Storage has been enabled")
+        else:
+            logger.debug("Ango Storage has been disabled")
+            storage = None
 
         tools = [
             tool

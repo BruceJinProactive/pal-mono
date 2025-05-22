@@ -42,5 +42,8 @@ class AgentConfig(BaseModel):
 
     client: ClientConfig
     stream: bool = False
+    # Eventually we will remove agno storage.
+    # Therefore, we simply just add the switch to turn off agno storage now
+    storage_enabled: bool = True
     # Additional context added to the end of the system message.
     additional_context: Optional[str] = None
