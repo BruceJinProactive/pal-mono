@@ -7,27 +7,22 @@ from pythonjsonlogger import jsonlogger
 logging.getLogger("watchdog").setLevel(logging.WARNING)
 
 
-def build_logger(logger_name: str) -> logging.Logger:
-    # Get log level from environment variable, defaulting to INFO
+def configure_global_logger():
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level, logging.INFO))
 
-    # Create logger
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(getattr(logging, log_level, logging.INFO))
-    logger.propagate = False
+    # Remove any default handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
 
-    # Create formatter
+    handler = logging.StreamHandler()
     formatter = jsonlogger.JsonFormatter(
         fmt="%(asctime)s %(name)s %(levelname)s %(message)s"
     )
-
-    # Create handler
-    handler = logging.StreamHandler()
     handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    return logger
+    root_logger.addHandler(handler)
 
 
 # Usage
-logger = build_logger("pal-mono")
+logger = logging.getLogger("pal-mono")

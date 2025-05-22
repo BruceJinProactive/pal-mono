@@ -3,6 +3,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api.routes.v1_router import v1_router
 from api.settings import api_settings
+from utils.log import configure_global_logger
 
 
 def create_app() -> FastAPI:
@@ -36,6 +37,9 @@ def create_app() -> FastAPI:
 
     return app
 
+
+# Configure global logger
+configure_global_logger()
 
 # Create FastAPI app
 app = create_app()
