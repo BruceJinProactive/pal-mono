@@ -9,6 +9,7 @@ from tools.opentable_tool.classes import (
     AvailabilityMetadataResponse,
     AvailabilitySearchRequest,
     AvailabilitySearchResponse,
+    CancellationPolicyDetails,
     HttpMethod,
     OpenTableAccessToken,
 )
@@ -214,3 +215,56 @@ def get_availability_metadata(
 
     # Construct and return the AvailabilityMetadataResponse
     return AvailabilityMetadataResponse(**data)
+
+
+def get_cancellation_policy(
+    bearer_token: OpenTableAccessToken,
+    restaurant_id: int,
+    cancellation_id: str,
+    use_production: bool = False,
+) -> CancellationPolicyDetails:
+    """
+    Get cancellation policy details for a specific reservation.
+
+    Args:
+        bearer_token: OpenTable access token
+        restaurant_id: Restaurant ID
+        cancellation_id: Cancellation policy ID (obtained from the availability search response)
+        use_production: Whether to use production (True) or pre-production (False) environment
+
+    Returns:
+        CancellationPolicyDetails object or raises an exception if request fails
+    """
+    # Construct API endpoint
+    api_function = f"/v2/cancellation-policies/{restaurant_id}/{cancellation_id}"
+
+    # Call the OpenTable API
+    response = connect_opentable_api(
+        http_method=HttpMethod.GET,
+        bearer_token=bearer_token,
+        api_function=api_function,
+        use_production=use_production,
+    )
+
+    # Handle the response
+    if response.status != 200:
+        logger.error(
+            f"OpenTable API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
+
+    # Parse response body - ensure it's a dictionary
+    data = response.decoded_body
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode JSON response: {data}")
+            data = {}
+
+    if not isinstance(data, dict):
+        data = {}
+
+    # Construct and return the CancellationPolicyDetails
+    return CancellationPolicyDetails(**data)
