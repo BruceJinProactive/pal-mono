@@ -3,7 +3,9 @@ from typing import Optional
 
 from tools.olo_tool._apis._utils import connect_olo_order_hub
 from tools.olo_tool.classes import (
+    Address,
     BillingScheme,
+    DeliveryAddressValidationResponse,
     HttpMethod,
     OloAccessToken,
     OloBasket,
@@ -103,8 +105,53 @@ def get_online_ordering_status(
         )
 
 
-def validate_address():
-    pass
+def validate_address(
+    restaurant_id: int, address: Address, olo_token: OloAccessToken
+) -> DeliveryAddressValidationResponse:
+    """
+    Validates an address for a given restaurant ID.
+
+    Args:
+        restaurant_id (int): The restaurant ID
+        address (Address): The address to validate
+        olo_token (OloAccessToken): The Olo access token
+
+    Returns:
+        DeliveryAddressValidationResponse: A validated address response object from the API response
+    """
+    try:
+        request_body = {
+            "handoffmode": "delivery",  # Enum: "delivery" "dispatch". We only handle delivery for now.
+            "timewantedmode": "asap",  # Enum: "asap" "advance". We only handle ASAP for now.
+            "street": address.streetaddress,
+            "city": address.city,
+            "zipcode": address.zipcode,
+            # The time the user wants the order to be ready, formatted "yyyymmdd hh:mm". Only send if timewantedmode is "advance". We ONLY handle ASAP for now.
+            "timewantedutc": None,
+        }
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/restaurants/{restaurant_id}/checkdeliverycoverage",
+            query_params=None,
+            payload=request_body,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.validate_address] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return DeliveryAddressValidationResponse.model_validate_json(
+            response.decoded_body
+        )
+    else:
+        logger.error(
+            f"Failed to validate address for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to validate address for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
+        )
 
 
 def create_basket(

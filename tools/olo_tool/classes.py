@@ -102,6 +102,25 @@ class OrderDonation(BaseDonation):
     pass
 
 
+class DeliveryAddressValidationResponse(BaseModel):
+    candeliver: bool
+    message: Optional[str] = None
+
+
+class Address(BaseModel):
+    building: Optional[str] = None
+    streetaddress: str
+    city: str
+    zipcode: str
+
+
+class ResponseDeliveryAddress(Address):
+    id: int
+    phonenumber: str
+    specialinstructions: Optional[str] = None
+    isdefault: bool
+
+
 class OloBasket(BaseModel):
     allowsmsorderupdates: bool
     allowstip: bool
@@ -114,7 +133,7 @@ class OloBasket(BaseModel):
     coupons: list
     customerhandoffcharge: float
     customfields: list[CustomField]
-    deliveryaddress: Optional[dict] = None
+    deliveryaddress: Optional[ResponseDeliveryAddress] = None
     deliverymode: str
     discount: float
     discounts: list
@@ -420,17 +439,6 @@ class ArrivalStatus(str, Enum):
 class TaxExemption(BaseModel):
     taxexemptaccountid: str
     taxexemptaccountidentifier: str
-
-
-class ResponseDeliveryAddress(BaseModel):
-    id: int
-    building: Optional[str] = None
-    streetaddress: str
-    city: str
-    zipcode: str
-    phonenumber: str
-    specialinstructions: Optional[str] = None
-    isdefault: bool
 
 
 class DiscountType(str, Enum):
