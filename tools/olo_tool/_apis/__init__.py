@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 
-from tools.olo_tool._apis._utils import connect_olo_order_hub
+from tools.olo_tool._apis._utils import connect_olo_order_hub, handle_olo_response
 from tools.olo_tool.classes import (
     Address,
     BillingScheme,
@@ -39,20 +39,14 @@ def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
             query_params=None,
             payload=None,
         )
+        result = handle_olo_response(response, OloStore)
+        if not isinstance(result, OloStore):
+            raise ValueError(f"Expected OloStore but got {type(result)}")
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.get_store_info] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return OloStore.model_validate_json(response.decoded_body)
-    else:
-        logger.error(
-            f"Failed to get store info for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
-        )
         raise ValueError(
-            f"Failed to get store info for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to get store info for restaurant {restaurant_id}: {str(e)}"
+        ) from e
 
 
 def get_online_ordering_status(
@@ -79,26 +73,18 @@ def get_online_ordering_status(
             query_params=None,
             payload=request_body,
         )
-    except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.get_online_ordering_status] Error while calling Olo API: {str(e)}"
-        ) from e
 
-    if response.status == 200:
-        response_json = json.loads(response.decoded_body)
+        response_json = json.loads(handle_olo_response(response))
         if len(response_json["leadtimes"]) > 0:
             return response_json["leadtimes"][0]["totalminutes"]
         else:
             raise ValueError(
                 f"No leadtime data found for restaurant {restaurant_id}.\nMessage: {response_json['errors']}"
             )
-    else:
-        logger.error(
-            f"Failed to get online ordering status for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
-        )
+    except Exception as e:
         raise ValueError(
-            f"Failed to get online ordering status for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to get online ordering status for restaurant {restaurant_id}: {str(e)}"
+        ) from e
 
 
 def validate_address(
@@ -132,32 +118,26 @@ def validate_address(
             query_params=None,
             payload=request_body,
         )
+        result = handle_olo_response(response, DeliveryAddressValidationResponse)
+        if not isinstance(result, DeliveryAddressValidationResponse):
+            raise ValueError(
+                f"Expected DeliveryAddressValidationResponse but got {type(result)}"
+            )
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.validate_address] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return DeliveryAddressValidationResponse.model_validate_json(
-            response.decoded_body
-        )
-    else:
-        logger.error(
-            f"Failed to validate address for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
-        )
         raise ValueError(
-            f"Failed to validate address for restaurant {restaurant_id} with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to validate address for restaurant {restaurant_id}: {str(e)}"
+        ) from e
 
 
 def create_basket(
-    vendor_id: int, olo_token: OloAccessToken, auth_token: Optional[str] = None
+    restaurant_id: int, olo_token: OloAccessToken, auth_token: Optional[str] = None
 ) -> OloBasket:
     """
-    Creates a basket for a vendor.
+    Creates a basket for a restaurant.
 
     Args:
-        vendor_id (int): The vendor ID
+        restaurant_id (int): The restaurant ID
         olo_token (OloAccessToken): The Olo access token
         auth_token (Optional[str], optional): The auth token. Defaults to None.
 
@@ -166,7 +146,7 @@ def create_basket(
     """
     try:
         request_body = {
-            "vendorid": vendor_id,
+            "vendorid": restaurant_id,
             "authtoken": auth_token,
         }
         response = connect_olo_order_hub(
@@ -176,20 +156,14 @@ def create_basket(
             query_params=None,
             payload=request_body,
         )
+        result = handle_olo_response(response, OloBasket)
+        if not isinstance(result, OloBasket):
+            raise ValueError(f"Expected OloBasket but got {type(result)}")
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.create_basket] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return OloBasket.model_validate_json(response.decoded_body)
-    else:
-        logger.error(
-            f"Failed to create basket with status {response.status}: {response.decoded_body}"
-        )
         raise ValueError(
-            f"Failed to create basket with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to create basket for restaurant {restaurant_id}: {str(e)}"
+        ) from e
 
 
 def add_items_to_basket(
@@ -215,25 +189,11 @@ def add_items_to_basket(
             query_params=None,
             payload=request_body,
         )
-    except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.add_items_to_basket] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        response_json = json.loads(response.decoded_body)
-
-        # Validate the basket object
+        response_json = json.loads(handle_olo_response(response))
         response_json["basket"] = OloBasket.model_validate(response_json["basket"])
-
         return response_json
-    else:
-        logger.error(
-            f"Failed to add items to basket with status {response.status}: {response.decoded_body}"
-        )
-        raise ValueError(
-            f"Failed to add items to basket with status {response.status}: {response.decoded_body}"
-        )
+    except Exception as e:
+        raise ValueError(f"Failed to add items to basket {basket_id}: {str(e)}") from e
 
 
 def set_basket_handoff_mode(
@@ -261,20 +221,14 @@ def set_basket_handoff_mode(
             query_params=None,
             payload=request_body,
         )
+        result = handle_olo_response(response, OloBasket)
+        if not isinstance(result, OloBasket):
+            raise ValueError(f"Expected OloBasket but got {type(result)}")
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.set_basket_handoff_mode] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return OloBasket.model_validate_json(response.decoded_body)
-    else:
-        logger.error(
-            f"Failed to set basket handoff mode with status {response.status}: {response.decoded_body}"
-        )
         raise ValueError(
-            f"Failed to set basket handoff mode with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to set basket handoff mode for basket {basket_id}: {str(e)}"
+        ) from e
 
 
 def validate_basket(basket_id: str, olo_token: OloAccessToken) -> ValidatedBasketTotals:
@@ -287,6 +241,7 @@ def validate_basket(basket_id: str, olo_token: OloAccessToken) -> ValidatedBaske
 
     Returns:
         ValidatedBasketTotals: A validated basket totals object from the API response
+
     """
     try:
         response = connect_olo_order_hub(
@@ -294,20 +249,12 @@ def validate_basket(basket_id: str, olo_token: OloAccessToken) -> ValidatedBaske
             bearer_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/validate",
         )
+        result = handle_olo_response(response, ValidatedBasketTotals)
+        if not isinstance(result, ValidatedBasketTotals):
+            raise ValueError(f"Expected ValidatedBasketTotals but got {type(result)}")
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.validate_basket] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return ValidatedBasketTotals.model_validate_json(response.decoded_body)
-    else:
-        logger.error(
-            f"Failed to validate basket with status {response.status}: {response.decoded_body}"
-        )
-        raise ValueError(
-            f"Failed to validate basket with status {response.status}: {response.decoded_body}"
-        )
+        raise ValueError(f"Failed to validate basket {basket_id}: {str(e)}") from e
 
 
 def get_order_status(
@@ -321,7 +268,7 @@ def get_order_status(
         olo_token (OloAccessToken): The Olo access token
 
     Returns:
-        OloOrderSubmissionResponse: A validated order response object from the API response. See the `OloOrderSubmissionResponse.status` field for the order status.
+        OloOrderSubmissionResponse: A validated order response object from the API response
     """
     try:
         response = connect_olo_order_hub(
@@ -331,20 +278,16 @@ def get_order_status(
             query_params=None,
             payload=None,
         )
+        result = handle_olo_response(response, OloOrderSubmissionResponse)
+        if not isinstance(result, OloOrderSubmissionResponse):
+            raise ValueError(
+                f"Expected OloOrderSubmissionResponse but got {type(result)}"
+            )
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.get_order_status] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return OloOrderSubmissionResponse.model_validate_json(response.decoded_body)
-    else:
-        logger.error(
-            f"Failed to get order status with status {response.status}: {response.decoded_body}"
-        )
         raise ValueError(
-            f"Failed to get order status with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to get order status for order {order_id}: {str(e)}"
+        ) from e
 
 
 def request_ccsf_token(
@@ -357,6 +300,7 @@ def request_ccsf_token(
         basket_id (str): The basket ID
         olo_token (OloAccessToken): The Olo access token
         auth_token (Optional[str], optional): The auth token used to identify the user. Defaults to None.
+
     Returns:
         OloCCSFToken: A validated CCSF token object from the API response
     """
@@ -372,20 +316,14 @@ def request_ccsf_token(
             query_params=None,
             payload=request_body,
         )
+        result = handle_olo_response(response, OloCCSFToken)
+        if not isinstance(result, OloCCSFToken):
+            raise ValueError(f"Expected OloCCSFToken but got {type(result)}")
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.request_ccsf_token] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return OloCCSFToken.model_validate_json(response.decoded_body)
-    else:
-        logger.error(
-            f"Failed to request CCSF token with status {response.status}: {response.decoded_body}"
-        )
         raise ValueError(
-            f"Failed to request CCSF token with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to request CCSF token for basket {basket_id}: {str(e)}"
+        ) from e
 
 
 def submit_order(
@@ -398,6 +336,7 @@ def submit_order(
 
     Args:
         basket_id (str): The basket ID
+        olo_token (OloAccessToken): The Olo access token
         olo_order_submission_body (OloOrderSubmissionBody): The order submission body
 
     Returns:
@@ -411,20 +350,16 @@ def submit_order(
             query_params=None,
             payload=olo_order_submission_body.model_dump(exclude_none=True),
         )
+        result = handle_olo_response(response, OloOrderSubmissionResponse)
+        if not isinstance(result, OloOrderSubmissionResponse):
+            raise ValueError(
+                f"Expected OloOrderSubmissionResponse but got {type(result)}"
+            )
+        return result
     except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.submit_order] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
-        return OloOrderSubmissionResponse.model_validate_json(response.decoded_body)
-    else:
-        logger.error(
-            f"Failed to submit order with status {response.status}: {response.decoded_body}"
-        )
         raise ValueError(
-            f"Failed to submit order with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to submit order for basket {basket_id}: {str(e)}"
+        ) from e
 
 
 def get_billing_schemes_info(
@@ -446,22 +381,12 @@ def get_billing_schemes_info(
             bearer_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/billingschemes",
         )
-    except Exception as e:
-        raise Exception(
-            f"[OloTool._apis.get_billing_schemes_info] Error while calling Olo API: {str(e)}"
-        ) from e
-
-    if response.status == 200:
+        response_json = json.loads(handle_olo_response(response))
         return [
             BillingScheme.model_validate(billing_scheme)
-            for billing_scheme in json.loads(response.decoded_body).get(
-                "billingschemes", []
-            )
+            for billing_scheme in response_json.get("billingschemes", [])
         ]
-    else:
-        logger.error(
-            f"Failed to get billing schemes info with status {response.status}: {response.decoded_body}"
-        )
+    except Exception as e:
         raise ValueError(
-            f"Failed to get billing schemes info with status {response.status}: {response.decoded_body}"
-        )
+            f"Failed to get billing schemes info for basket {basket_id}: {str(e)}"
+        ) from e

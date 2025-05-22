@@ -1,11 +1,50 @@
 import http.client
 import json
 import urllib.parse
+from typing import Type, TypeVar, Union
 
 from tools.olo_tool.classes import HttpMethod, OloAccessToken, OloHubResponse
 from utils.log import logger
 
 BASE_URL = "ordering.api.olosandbox.com"
+
+T = TypeVar("T")
+
+
+def handle_olo_response(
+    response: OloHubResponse, response_type: Type[T] | None = None
+) -> Union[T, str]:
+    """
+    Handle Olo API response and convert to appropriate type.
+
+    Args:
+        response: The OloHubResponse object
+        response_type: Optional type to validate and convert the response to
+
+    Returns:
+        The converted response object or raw response string if no type specified
+
+    Raises:
+        ValueError: If the response status is not 200 or validation fails
+    """
+    if response.status != 200:
+        error_msg = (
+            f"API call failed with status {response.status}: {response.decoded_body}"
+        )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+    if response_type:
+        try:
+            return response_type.model_validate_json(response.decoded_body)  # type: ignore
+        except Exception as e:
+            error_msg = (
+                f"Failed to validate response as {response_type.__name__}: {str(e)}"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+    return response.decoded_body
 
 
 def connect_olo_order_hub(
@@ -16,7 +55,23 @@ def connect_olo_order_hub(
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
 ) -> OloHubResponse:
+    """
+    Make a request to the Olo Order Hub API.
 
+    Args:
+        http_method: The HTTP method to use
+        bearer_token: The Olo access token
+        api_function: The API endpoint to call
+        query_params: Optional query parameters
+        extra_headers: Optional additional headers
+        payload: Optional request payload
+
+    Returns:
+        OloHubResponse: The API response
+
+    Raises:
+        ValueError: If the HTTP method is invalid or the request fails
+    """
     logger.debug(
         f"[OloTool._apis._utils.connect_olo_order_hub] Calling Olo API: {http_method} {api_function} | "
         f"Query Params: {query_params} | "
