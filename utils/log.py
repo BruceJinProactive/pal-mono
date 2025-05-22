@@ -1,6 +1,7 @@
 import logging
 import os
 
+from agno.utils.log import LOGGER_NAME
 from pythonjsonlogger import jsonlogger
 
 # Exclude watchdog DEBUG and INFO logs
@@ -22,6 +23,12 @@ def configure_global_logger():
     )
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
+
+
+def patch_agno_logger_to_use_root():
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.handlers.clear()
+    logger.propagate = True
 
 
 # Usage

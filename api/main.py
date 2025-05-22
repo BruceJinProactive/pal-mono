@@ -3,7 +3,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api.routes.v1_router import v1_router
 from api.settings import api_settings
-from utils.log import configure_global_logger
+from utils.log import configure_global_logger, patch_agno_logger_to_use_root
 
 
 def create_app() -> FastAPI:
@@ -40,6 +40,7 @@ def create_app() -> FastAPI:
 
 # Configure global logger
 configure_global_logger()
+patch_agno_logger_to_use_root()
 
 # Create FastAPI app
 app = create_app()
