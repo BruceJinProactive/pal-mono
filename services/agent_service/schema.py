@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from api.schemas.admin.agent import AgentType
+from db.tables.agents import AgentType
 
 
 @dataclass

@@ -7,10 +7,7 @@ from sqlalchemy.orm import Session
 from api.routes.admin import UserContext
 from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import not_found_error
-from api.schemas.admin.campaign import (
-    CreateCampaignResponse,
-    ListCampaignsResponse,
-)
+from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from db.repositories.account_repository import AccountRepository
 from services import account_service, campaign_service
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest

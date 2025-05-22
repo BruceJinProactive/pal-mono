@@ -22,10 +22,7 @@ from api.schemas.admin.agent import (
     UpdateAgentRequest,
 )
 from api.schemas.admin.analytics import GetAllReportsResponse, GetReportResponse
-from api.schemas.admin.campaign import (
-    CreateCampaignResponse,
-    ListCampaignsResponse,
-)
+from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,

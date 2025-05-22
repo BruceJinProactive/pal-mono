@@ -112,7 +112,7 @@ def create_agent(
         raise ValueError(f"Account {account_name} does not exist")
     agent_repository = db.AgentRepository(session, auto_commit=False)
 
-    agent_params = _sync_agent_type(params)
+    agent_params = asdict(params)
 
     with change_log_context(
         session=session,
@@ -143,7 +143,7 @@ def update_agent(
 
     old_agent = copy.copy(existing_agent)
 
-    agent_params = _sync_agent_type(params)
+    agent_params = asdict(params)
 
     with change_log_context(
         session=session,
