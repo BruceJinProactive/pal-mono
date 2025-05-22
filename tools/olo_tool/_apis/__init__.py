@@ -3,6 +3,7 @@ from typing import Optional
 
 from tools.olo_tool._apis._utils import connect_olo_order_hub
 from tools.olo_tool.classes import (
+    BillingScheme,
     HttpMethod,
     OloAccessToken,
     OloBasket,
@@ -347,4 +348,44 @@ def submit_order(
         )
         raise ValueError(
             f"Failed to submit order with status {response.status}: {response.decoded_body}"
+        )
+
+
+def get_billing_schemes_info(
+    basket_id: str, olo_token: OloAccessToken
+) -> list[BillingScheme]:
+    """
+    Get the billing schemes info for a specified basket's restaurant.
+
+    Args:
+        basket_id (str): The basket ID
+        olo_token (OloAccessToken): The Olo access token
+
+    Returns:
+        list[BillingScheme]: A list of BillingScheme objects containing the `id` and the `type` of the billing scheme
+    """
+    try:
+        response = connect_olo_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=olo_token,
+            api_function=f"/v1.1/baskets/{basket_id}/billingschemes",
+        )
+    except Exception as e:
+        raise Exception(
+            f"[OloTool._apis.get_billing_schemes_info] Error while calling Olo API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        return [
+            BillingScheme.model_validate(billing_scheme)
+            for billing_scheme in json.loads(response.decoded_body).get(
+                "billingschemes", []
+            )
+        ]
+    else:
+        logger.error(
+            f"Failed to get billing schemes info with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Failed to get billing schemes info with status {response.status}: {response.decoded_body}"
         )

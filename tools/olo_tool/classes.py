@@ -324,7 +324,7 @@ class BillingMethod(str, Enum):
     billingaccount = "billingaccount"
     cash = "cash"
     payinstore = "payinstore"
-    storedvalue = "storedvalue"
+    storedvalue = "storedvalue"  # Gift card
     prepaid = "prepaid"
     paymentsession = "paymentsession"
     digitalwallet = "digitalwallet"
@@ -508,3 +508,10 @@ class OloOrderSubmissionResponse(BaseModel):
     authtoken: Optional[str] = None
     oloaccountcreated: Optional[ResponseOloAuthStatus] = None
     cateringaccountid: Optional[str] = None  # guid
+
+
+# Only the relevant fields are included in the class definition. For more details, see:
+# https://developer.olo.com/docs/load/ordering-api#operation/RetrieveAllBillingSchemesandAccounts
+class BillingScheme(BaseModel):
+    id: int
+    type: str  # This is not exactly the same as the BillingMethod enum, so I'm keeping it as a string
