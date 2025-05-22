@@ -10,10 +10,14 @@ from tools.opentable_tool.classes import (
     AvailabilitySearchRequest,
     AvailabilitySearchResponse,
     CancellationPolicyDetails,
+    CreditCardObject,
     EnvironmentType,
     Experience,
     HttpMethod,
     OpenTableAccessToken,
+    PhoneObject,
+    ReservationRequest,
+    ReservationResponse,
     SlotLockRequest,
     SlotLockResponse,
     TableAttribute,
@@ -352,4 +356,113 @@ def create_slot_lock(
     return SlotLockResponse(
         expires_at=data.get("expires_at", ""),
         reservation_token=data.get("reservation_token", ""),
+    )
+
+
+def make_reservation(
+    bearer_token: OpenTableAccessToken,
+    restaurant_id: int,
+    reservation_token: str,
+    first_name: str,
+    last_name: str,
+    email_address: str,
+    phone: PhoneObject,
+    dining_area_id: int,
+    environment: EnvironmentType,
+    reservation_attribute: TableAttribute = TableAttribute.DEFAULT,
+    special_request: Optional[str] = None,
+    restaurant_email_marketing_opt_in: bool = False,
+    sms_notifications_opt_in: Optional[bool] = None,
+    experience: Optional[Experience] = None,
+    credit_card: Optional[CreditCardObject] = None,
+    login_name: Optional[str] = None,
+    use_production: bool = False,
+) -> ReservationResponse:
+    """
+    Create a reservation at a specific restaurant.
+
+    Args:
+        bearer_token: OpenTable access token
+        restaurant_id: Restaurant ID
+        reservation_token: Token obtained from slot_lock API
+        first_name: First name of the guest
+        last_name: Last name of the guest
+        email_address: Email address of the guest
+        phone: Phone details of the guest (with number, country_code, and phone_type)
+        dining_area_id: ID of the dining area (required)
+        environment: Type of dining environment (e.g., Indoor, Outdoor) (required)
+        reservation_attribute: Type of table requested (default, hightop, bar, counter, outdoor)
+        special_request: Special requests for the reservation
+        restaurant_email_marketing_opt_in: Whether the guest opts in for restaurant marketing emails
+        sms_notifications_opt_in: Whether the guest opts in for SMS notifications
+        experience: Experience details for the reservation (id, version, party_size_per_price_type, add_ons)
+        credit_card: Credit card details (token and last4)
+        login_name: Used for concierge/referral details
+        use_production: Whether to use production (True) or pre-production (False) environment
+
+    Returns:
+        ReservationResponse object containing confirmation details
+    """
+    # Construct API endpoint
+    api_function = f"/v2/booking/{restaurant_id}/reservations"
+
+    # Build request using ReservationRequest model
+    request = ReservationRequest(
+        reservation_token=reservation_token,
+        first_name=first_name,
+        last_name=last_name,
+        email_address=email_address,
+        phone=phone,
+        reservation_attribute=reservation_attribute,
+        special_request=special_request,
+        restaurant_email_marketing_opt_in=restaurant_email_marketing_opt_in,
+        sms_notifications_opt_in=sms_notifications_opt_in,
+        dining_area_id=dining_area_id,
+        environment=environment,
+        experience=experience,
+        credit_card=credit_card,
+        login_name=login_name,
+    )
+
+    # Convert to dictionary for API call
+    payload = request.model_dump(exclude_none=True, by_alias=True)
+
+    # Call the OpenTable API
+    response = connect_opentable_api(
+        http_method=HttpMethod.POST,
+        bearer_token=bearer_token,
+        api_function=api_function,
+        payload=payload,
+        use_production=use_production,
+    )
+
+    # Handle the response
+    if response.status != 200:
+        logger.error(
+            f"OpenTable API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
+
+    # Parse response body - ensure it's a dictionary
+    data = response.decoded_body
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode JSON response: {data}")
+            data = {}
+
+    if not isinstance(data, dict):
+        data = {}
+
+    # Return ReservationResponse object
+    return ReservationResponse(
+        message=data.get("message", ""),
+        confirmation_number=data.get("confirmation_number", 0),
+        offer_confirmation_number=data.get("offer_confirmation_number", 0),
+        date_time=data.get("date_time", ""),
+        party_size=data.get("party_size", 0),
+        notes=data.get("notes"),  # Allow None as default
+        manage_reservation_url=data.get("manage_reservation_url", ""),
     )
