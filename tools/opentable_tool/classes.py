@@ -233,6 +233,68 @@ class AvailabilityMetadataResponse(BaseModel):
     data: AvailabilityMetadataData
 
 
+# ---- Slot Locks API Models ----
+
+
+class PriceSizeType(BaseModel):
+    """Price type for a specific party size"""
+
+    id: int = Field(description="Unique identifier for the price type")
+    count: int = Field(description="Count of items for the price type")
+
+
+class AddOn(BaseModel):
+    """Add-on item for an experience"""
+
+    item_id: str = Field(description="Unique identifier for the add-on item")
+    quantity: int = Field(description="Quantity of the add-on item")
+
+
+class Experience(BaseModel):
+    """Details about the dining experience"""
+
+    id: int = Field(description="Unique identifier for the experience")
+    version: int = Field(description="Version of the experience")
+    party_size_per_price_type: Optional[List[PriceSizeType]] = Field(
+        None, description="Array detailing the party size per price type"
+    )
+    add_ons: Optional[List[AddOn]] = Field(
+        None, description="Array of add-on items for the experience"
+    )
+
+
+class SlotLockRequest(BaseModel):
+    """Request parameters for creating a slot lock"""
+
+    party_size: int = Field(description="Number of people in the reservation party")
+    date_time: str = Field(
+        description="Date and time of the reservation in ISO 8601 format"
+    )
+    reservation_attribute: Optional[TableAttribute] = Field(
+        None, description="Type or attribute of the reservation (e.g., default)"
+    )
+    experience: Optional[Experience] = Field(
+        None, description="Details about the dining experience"
+    )
+    dining_area_id: Optional[int] = Field(
+        None, description="Identifier for the dining area"
+    )
+    environment: Optional[EnvironmentType] = Field(
+        None, description="Type of environment (e.g., Indoor, Outdoor)"
+    )
+
+
+class SlotLockResponse(BaseModel):
+    """Response from the Slot Lock API"""
+
+    expires_at: str = Field(
+        description="The expiration date and time of the slot lock in ISO 8601 format"
+    )
+    reservation_token: str = Field(
+        description="A unique token required for the subsequent reservation creation request"
+    )
+
+
 ######### OpenTable API CLASS END ############
 
 
