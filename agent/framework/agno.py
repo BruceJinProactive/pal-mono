@@ -39,9 +39,13 @@ class AgnoAgent:
                 table_name=f"{config.metadata.account_name}_storage_agno",
                 db_url=db.db_url,
             )
-            logger.debug("Ango Storage has been enabled")
+            logger.debug(
+                f"Agno Storage has been enabled for agent:{config.metadata.agent_id}"
+            )
         else:
-            logger.debug("Ango Storage has been disabled")
+            logger.debug(
+                f"Agno Storage has been disabled for agent:{config.metadata.agent_id}"
+            )
             storage = None
 
         tools = [
