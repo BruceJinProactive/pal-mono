@@ -7,7 +7,7 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.olo_tool._apis import get_store_info
+from tools.olo_tool._apis import get_online_ordering_status, get_store_info
 from tools.olo_tool.classes import OloAccessToken
 from utils.log import logger
 from utils.ordering._query_engine import create_query_engine
@@ -92,3 +92,34 @@ class OloTool(Toolkit):
         except Exception as e:
             logger.error(f"[OloTool.store_info] Error getting store info: {e}")
             return "Failed to get the store information, please try again."
+
+    @tool
+    def check_online_ordering_status(self) -> str:
+        """
+        Retrieves the current online ordering availability status of a specified restaurant.
+
+        Returns:
+            str: A string containing:
+            - The restaurant's online ordering availability status
+            - The estimated lead time if orders are being accepted
+        """
+        try:
+            if not self._olo_token:
+                return (
+                    "Failed to authenticate Olo ordering tool. "
+                    "Please reach out to our support team at help@palona.ai "
+                    "for assistance."
+                )
+
+            status = get_online_ordering_status(int(self.store_id), self._olo_token)
+
+            if not status:
+                return "The restaurant is not accepting online orders."
+
+            return f"The restaurant is accepting online orders. The estimated ASAP order lead time is {status} minutes."
+
+        except Exception as e:
+            logger.error(
+                f"[OloTool.check_online_ordering_status] Error checking online ordering status: {e}"
+            )
+            return "Failed to check the online ordering status, please try again."
