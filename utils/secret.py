@@ -6,11 +6,26 @@ from botocore.exceptions import ClientError
 
 AWS_REGION = os.getenv("AWS_REGION", "")
 AWS_CLIENT_SECRET_NAME = os.getenv("AWS_CLIENT_SECRET_NAME", "")
+AWS_SERVER_SECRET_NAME = os.getenv("AWS_SERVER_SECRET_NAME", "")
 
 """
 In AWS Secret Manager, each "secret" is a collection of key-value pairs.
 These can be added to or removed from a secret using the AWS Secrets Manager API.
 """
+
+
+def get_client_secret(secret_key: str) -> str:
+    """
+    Retrieves secret value stored in the client secret store.
+    """
+    return get_secret(secret_key, AWS_CLIENT_SECRET_NAME)
+
+
+def get_server_secret(secret_key: str) -> str:
+    """
+    Retrieves secret value stored in the server secret store.
+    """
+    return get_secret(secret_key, AWS_SERVER_SECRET_NAME)
 
 
 def get_client_secret_with_fallback(secret_key: str) -> str:
@@ -41,7 +56,7 @@ def get_client_secret_with_fallback(secret_key: str) -> str:
     return secret_value
 
 
-def get_client_secret(secret_key: str) -> str:
+def get_secret(secret_key: str, secret_store: str) -> str:
     """
     Retrieve a secret value from AWS Secrets Manager using a secret_key
     """
@@ -51,9 +66,7 @@ def get_client_secret(secret_key: str) -> str:
     client = session.client(service_name="secretsmanager", region_name=AWS_REGION)
 
     try:
-        get_secret_value_response = client.get_secret_value(
-            SecretId=AWS_CLIENT_SECRET_NAME
-        )
+        get_secret_value_response = client.get_secret_value(SecretId=secret_store)
     except ClientError as e:
         # For a list of exceptions thrown, see
         # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html

@@ -12,6 +12,7 @@ dependencies = [
   "python-multipart==0.0.19",
   "httpcore==1.0.9",
   "cryptography==44.0.2",
+  "stripe>=12,<13",
 
   # /db
   "alembic==1.13.2",
