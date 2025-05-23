@@ -43,6 +43,7 @@ dependencies = [
   "geopy==2.4.1",
   "boto3==1.37.34",
   "datadog==0.51.0",
+  "pydantic[email]==2.11.4",
 
   # DevOps
   "python-json-logger==2.0.7",
