@@ -7,8 +7,12 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.olo_tool._apis import get_online_ordering_status, get_store_info
-from tools.olo_tool.classes import OloAccessToken
+from tools.olo_tool._apis import (
+    get_online_ordering_status,
+    get_store_info,
+    validate_address,
+)
+from tools.olo_tool.classes import Address, OloAccessToken
 from utils.log import logger
 from utils.ordering._query_engine import create_query_engine
 
@@ -123,3 +127,51 @@ class OloTool(Toolkit):
                 f"[OloTool.check_online_ordering_status] Error checking online ordering status: {e}"
             )
             return "Failed to check the online ordering status, please try again."
+
+    @tool
+    def validate_address_tool(
+        self, street_address: str, city: str, zipcode: str
+    ) -> str:
+        """
+        Validates an address for delivery to determine if the restaurant can deliver to the specified location.
+
+        Args:
+            street_address: The street address of the location to validate.
+            city: The city of the location to validate.
+            zipcode: The zipcode of the location to validate.
+
+        Returns:
+            str: A message indicating whether the address is valid or not
+        """
+        try:
+            if not self._olo_token:
+                return (
+                    "Failed to authenticate Olo ordering tool. "
+                    "Please reach out to our support team at help@palona.ai "
+                    "for assistance."
+                )
+
+            # Remove any extra spaces in zipcode
+            zipcode = zipcode.replace(" ", "")
+
+            # Create address object
+            address_obj = Address(
+                streetaddress=street_address,
+                city=city,
+                zipcode=zipcode,
+            )
+
+            # Validate address
+            validated_address = validate_address(
+                int(self.store_id), address_obj, self._olo_token
+            )
+
+            if validated_address.candeliver:
+                return "The address is valid."
+            else:
+                return f"The address is invalid. {validated_address.message}"
+        except Exception as e:
+            logger.error(
+                f"[OloTool.validate_address_tool] Error validating address: {e}"
+            )
+            return "Failed to validate the address, please try again."
