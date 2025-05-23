@@ -379,6 +379,44 @@ class ReservationResponse(BaseModel):
 ######### OpenTable API CLASS END ############
 
 
+class ReservationExtractedData(BaseModel):
+    """Extracted reservation data from chat history"""
+
+    restaurant_name: Optional[str] = Field(
+        None, description="The restaurant name mentioned by the user"
+    )
+    party_size: Optional[int] = Field(
+        None, description="Number of guests for the reservation"
+    )
+    date_time: Optional[datetime] = Field(
+        None, description="Desired reservation date and time in ISO 8601 format"
+    )
+    first_name: Optional[str] = Field(None, description="Guest's first name")
+    last_name: Optional[str] = Field(None, description="Guest's last name")
+    email_address: Optional[EmailStr] = Field(None, description="Guest's email address")
+    phone: Optional[PhoneObject] = Field(None, description="Guest's phone information")
+    table_preference: Optional[TableAttribute] = Field(
+        None,
+        description="Preferred table type (default, hightop, bar, counter, outdoor)",
+    )
+    environment_preference: Optional[EnvironmentType] = Field(
+        None,
+        description="Preferred dining environment (Indoor, Outdoor)",
+    )
+    special_request: Optional[str] = Field(
+        None, description="Any special requests or notes"
+    )
+    restaurant_email_marketing_opt_in: Optional[bool] = Field(
+        False, description="Whether guest opts in for restaurant marketing emails"
+    )
+    sms_notifications_opt_in: Optional[bool] = Field(
+        False, description="Whether guest opts in for SMS notifications"
+    )
+
+    class Config:
+        extra = "forbid"
+
+
 class SubQueries(BaseModel):
     queries: list[str] = Field(
         description=(

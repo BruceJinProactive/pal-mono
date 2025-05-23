@@ -1,10 +1,20 @@
 import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from tools.opentable_tool._apis import create_slot_lock, search_availability
 from tools.opentable_tool.classes import (
+    AddOn,
     AvailabilityMetadataResponse,
+    AvailabilitySearchRequest,
     AvailabilitySearchResponse,
     CancellationPolicyDetails,
+    CreditCardObject,
+    EnvironmentType,
+    Experience,
+    OpenTableAccessToken,
+    PhoneObject,
+    PriceSizeType,
+    TableAttribute,
 )
 from utils.log import logger
 
@@ -631,8 +641,7 @@ def prepare_reservation_parameters(
     first_name: str,
     last_name: str,
     email_address: str,
-    phone_number: str,
-    phone_country_code: str,
+    phone: "PhoneObject",
     reservation_attribute: str = "default",
     dining_area_id: Optional[int] = None,
     environment: Optional[str] = None,
@@ -662,8 +671,7 @@ def prepare_reservation_parameters(
         first_name: Guest's first name
         last_name: Guest's last name
         email_address: Guest's email address
-        phone_number: Guest's phone number
-        phone_country_code: Country code for phone number
+        phone: Guest's phone object
         reservation_attribute: Seating option (default, hightop, bar, counter, outdoor)
         dining_area_id: ID of the dining area (optional)
         environment: Environment (e.g., Indoor, Outdoor) (optional)
@@ -683,18 +691,6 @@ def prepare_reservation_parameters(
         Dictionary with all parameters needed for the reservation API or
         error message if no exact time match is found
     """
-    from tools.opentable_tool._apis import create_slot_lock, search_availability
-    from tools.opentable_tool.classes import (
-        AddOn,
-        AvailabilitySearchRequest,
-        CreditCardObject,
-        EnvironmentType,
-        Experience,
-        OpenTableAccessToken,
-        PhoneObject,
-        PriceSizeType,
-        TableAttribute,
-    )
 
     # Convert string access token to OpenTableAccessToken object
     bearer_token = OpenTableAccessToken(
@@ -865,12 +861,7 @@ def prepare_reservation_parameters(
     reservation_token = slot_lock_result.reservation_token
 
     # Step 4: Prepare request payload for the reservation API
-    # Create phone object
-    phone = PhoneObject(
-        number=phone_number,
-        country_code=phone_country_code,
-        phone_type="Mobile",  # Default to Mobile
-    )
+    # Phone object is already passed as parameter, no need to recreate
 
     # Create credit card object if provided
     credit_card = None

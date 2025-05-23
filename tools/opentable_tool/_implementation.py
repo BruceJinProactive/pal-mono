@@ -1,35 +1,52 @@
+from datetime import datetime
 from functools import cached_property
+from typing import Optional
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
 
+from agent.tool import ToolMetadata
+from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.opentable_tool._apis import (
-    get_availability_metadata,
-    get_opentable_access_token,
-    search_availability,
+    get_availability_metadata as get_availability_metadata_api,
+)
+from tools.opentable_tool._apis import get_opentable_access_token, make_reservation
+from tools.opentable_tool._apis import search_availability as search_availability_api
+from tools.opentable_tool._prompt_constants import (
+    RESERVATION_EXTRACTOR_SYSTEM_PROMPT,
+    RESERVATION_EXTRACTOR_USER_PROMPT,
 )
 from tools.opentable_tool._utils import (
     extract_booking_url,
     format_availability_metadata,
     format_availability_results,
+    prepare_reservation_parameters,
     validate_search_parameters,
 )
 from tools.opentable_tool.classes import (
     AvailabilitySearchRequest,
+    EnvironmentType,
     OpenTableAccessToken,
+    ReservationExtractedData,
+    ReservationResponse,
     TableAttribute,
 )
 from utils.log import logger
+from utils.ordering import _llm
 
 
 class OpenTableTool(Toolkit):
+    # Default time window for availability search in minutes
+    DEFAULT_SEARCH_FORWARD_MINUTES = 60
+    DEFAULT_SEARCH_BACKWARD_MINUTES = 60
+
     def __init__(
         self,
         client_id: str,
         client_secret: str,
+        tool_metadata: ToolMetadata,
         use_production: bool = False,
-        tool_metadata=None,
     ):
         super().__init__(name="opentable_tool")
 
@@ -38,9 +55,13 @@ class OpenTableTool(Toolkit):
         self.use_production = use_production
         self.tool_metadata = tool_metadata
 
+        # Initialize QueryMessagesTool for chat history retrieval
+        self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
+
         # Register tools
         self.register(self.search_availability)
         self.register(self.get_availability_metadata)
+        self.register(self.make_reservation)
 
     @cached_property
     def _opentable_bearer_token(self) -> OpenTableAccessToken | None:
@@ -54,6 +75,62 @@ class OpenTableTool(Toolkit):
             if not bearer_token:
                 logger.error("Failed to obtain OpenTable access token")
             return bearer_token
+
+    def _validate_basic_parameters(
+        self, restaurant_id: int
+    ) -> tuple[Optional[str], Optional[OpenTableAccessToken]]:
+        """Validate bearer token and restaurant_id. Returns error message and bearer token."""
+        # Get bearer token
+        bearer_token = self._opentable_bearer_token
+        if not bearer_token:
+            return "Error: Unable to authenticate with OpenTable", None
+
+        # Validate required parameters
+        if not restaurant_id or not isinstance(restaurant_id, int):
+            return "Error: restaurant_id is required and must be a valid integer", None
+
+        return None, bearer_token
+
+    def _validate_required_fields(
+        self, reservation_data: ReservationExtractedData
+    ) -> Optional[str]:
+        """Validate all required reservation fields. Returns error message if any field is missing."""
+        required_checks = [
+            (reservation_data.party_size, "How many people will be dining?"),
+            (
+                reservation_data.date_time,
+                "What date and time would you like for your reservation?",
+            ),
+            (
+                reservation_data.first_name,
+                "I'll need your first name for the reservation.",
+            ),
+            (
+                reservation_data.phone and reservation_data.phone.number,
+                "I'll need your phone number for the reservation.",
+            ),
+            (
+                reservation_data.email_address,
+                "I'll need your email address to send you the reservation confirmation.",
+            ),
+        ]
+
+        for field_value, error_message in required_checks:
+            if not field_value:
+                return error_message
+
+        return None
+
+    def _extract_available_times(
+        self, availability_result, limit: int = 3
+    ) -> list[str]:
+        """Extract available times from availability result with optional limit."""
+        available_times = []
+        for time_slot in getattr(availability_result, "times_available", [])[:limit]:
+            time_str = getattr(time_slot, "time", "")
+            if time_str:
+                available_times.append(time_str)
+        return available_times
 
     @tool
     def search_availability(
@@ -92,14 +169,12 @@ class OpenTableTool(Toolkit):
         Returns:
             Formatted string of available reservation times and details
         """
-        # Get bearer token
-        bearer_token = self._opentable_bearer_token
-        if not bearer_token:
-            return "Error: Unable to authenticate with OpenTable"
+        # Validate basic parameters
+        error, bearer_token = self._validate_basic_parameters(restaurant_id)
+        if error:
+            return error
 
-        # Validate required parameters
-        if not restaurant_id or not isinstance(restaurant_id, int):
-            return "Error: restaurant_id is required and must be a valid integer"
+        # bearer_token is guaranteed to be valid after validation
 
         # Validate search parameters
         is_valid, error_message, validated_params = validate_search_parameters(
@@ -134,49 +209,48 @@ class OpenTableTool(Toolkit):
         try:
             # Search for availability
             with LLMObs.task(name="search_opentable_availability"):
-                result = search_availability(
-                    bearer_token=bearer_token,
+                result = search_availability_api(
+                    bearer_token=bearer_token,  # type: ignore[arg-type]
                     restaurant_id=restaurant_id,
                     search_params=search_params,
                     use_production=self.use_production,
                 )
-
-            # If no times available, provide a clear message
-            if not result.times and not result.times_available:
-                no_availability_reasons = result.no_availability_reasons or []
-                reasons = (
-                    ", ".join(reason.value for reason in no_availability_reasons)
-                    or "No available times"
-                )
-                return f"No availability found for restaurant ID {restaurant_id} (Party of {party_size}). Reason: {reasons}"
-
-            # Format the results in a human-readable way
-            formatted_result = format_availability_results(result)
-
-            # Add booking URLs if requested
-            if include_booking_urls and result.times_available:
-                booking_urls = []
-                for time_slot in result.times_available:
-                    time_str = getattr(time_slot, "time", "Unknown time")
-                    url = extract_booking_url(time_slot, is_affiliate)
-                    if url:
-                        booking_urls.append(f"• {time_str}: {url}")
-
-                if booking_urls:
-                    formatted_result += "\n\nBooking URLs (for direct reservation):\n"
-                    formatted_result += "\n".join(
-                        booking_urls[:5]
-                    )  # Limit to 5 URLs to avoid overloading
-                    if len(booking_urls) > 5:
-                        formatted_result += (
-                            "\n(More booking URLs available - showing first 5 only)"
-                        )
-
-            return formatted_result
-
         except Exception as e:
-            logger.error(f"Error searching OpenTable availability: {str(e)}")
-            return f"Error searching for restaurant availability: {str(e)}"
+            logger.error(f"Error searching availability: {str(e)}")
+            return f"Error searching availability for restaurant ID {restaurant_id}: {str(e)}"
+
+        # If no times available, provide a clear message
+        if not result.times and not result.times_available:
+            no_availability_reasons = result.no_availability_reasons or []
+            reasons = (
+                ", ".join(reason.value for reason in no_availability_reasons)
+                or "No available times"
+            )
+            return f"No availability found for restaurant ID {restaurant_id} (Party of {party_size}). Reason: {reasons}"
+
+        # Format the results in a human-readable way
+        formatted_result = format_availability_results(result)
+
+        # Add booking URLs if requested
+        if include_booking_urls and result.times_available:
+            booking_urls = []
+            for time_slot in result.times_available:
+                time_str = getattr(time_slot, "time", "Unknown time")
+                url = extract_booking_url(time_slot, is_affiliate)
+                if url:
+                    booking_urls.append(f"• {time_str}: {url}")
+
+            if booking_urls:
+                formatted_result += "\n\nBooking URLs (for direct reservation):\n"
+                formatted_result += "\n".join(
+                    booking_urls[:5]
+                )  # Limit to 5 URLs to avoid overloading
+                if len(booking_urls) > 5:
+                    formatted_result += (
+                        "\n(More booking URLs available - showing first 5 only)"
+                    )
+
+        return formatted_result
 
     @tool
     def get_availability_metadata(
@@ -193,28 +267,385 @@ class OpenTableTool(Toolkit):
         Returns:
             Formatted string with restaurant availability options and attributes
         """
-        # Get bearer token
-        bearer_token = self._opentable_bearer_token
-        if not bearer_token:
-            return "Error: Unable to authenticate with OpenTable"
+        # Validate basic parameters
+        error, bearer_token = self._validate_basic_parameters(restaurant_id)
+        if error:
+            return error
 
-        # Validate required parameters
-        if not restaurant_id or not isinstance(restaurant_id, int):
-            return "Error: restaurant_id is required and must be a valid integer"
+        # bearer_token is guaranteed to be valid after validation
 
         try:
             # Get availability metadata
             with LLMObs.task(name="get_opentable_availability_metadata"):
-                result = get_availability_metadata(
-                    bearer_token=bearer_token,
+                result = get_availability_metadata_api(
+                    bearer_token=bearer_token,  # type: ignore[arg-type]
                     restaurant_id=restaurant_id,
                     use_production=self.use_production,
                 )
+        except Exception as e:
+            logger.error(f"Error getting availability metadata: {str(e)}")
+            return f"Error retrieving availability options for restaurant ID {restaurant_id}: {str(e)}"
 
-            # Format the results in a human-readable way
-            formatted_result = format_availability_metadata(result)
-            return formatted_result
+        # Format the results in a human-readable way
+        return format_availability_metadata(result)
+
+    @tool
+    def make_reservation(self, latest_user_message: str, restaurant_id: int) -> str:
+        """
+        Creates a restaurant reservation by extracting structured reservation data from chat
+        history and using OpenTable tools to resolve the necessary information.
+        This function should be invoked when the user asks to make a reservation,
+        book a table, etc.
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
+            restaurant_id (int): The OpenTable restaurant ID (rid) for the restaurant.
+
+        Returns:
+            str: The reservation confirmation details including confirmation number and manage URL.
+        """
+        try:
+            # Step 1: Get bearer token and chat history with metadata
+            bearer_token, chat_history, metadata_context = (
+                self._get_chat_history_and_metadata(latest_user_message, restaurant_id)
+            )
+            if isinstance(bearer_token, str):  # Error message
+                return bearer_token
+
+            # Step 2: Extract and validate reservation data
+            reservation_data = self._extract_and_validate_reservation_data(
+                chat_history, metadata_context
+            )
+            if isinstance(reservation_data, str):  # Error message
+                return reservation_data
+
+            # Step 3: Search for availability and validate timing
+            dining_area_id, environment, datetime_iso = (
+                self._search_and_validate_availability(
+                    bearer_token, restaurant_id, reservation_data
+                )
+            )
+            if isinstance(dining_area_id, str):  # Error message
+                return dining_area_id
+
+            # Step 4: Create the reservation
+            reservation_result = self._create_reservation(
+                bearer_token,
+                restaurant_id,
+                reservation_data,
+                dining_area_id,
+                environment,
+                datetime_iso,
+            )
+            if isinstance(reservation_result, str):  # Error message
+                return reservation_result
+
+            # Step 5: Format and return the response
+            return self._format_reservation_response(
+                reservation_result, reservation_data
+            )
 
         except Exception as e:
-            logger.error(f"Error getting OpenTable availability metadata: {str(e)}")
-            return f"Error retrieving availability options for restaurant ID {restaurant_id}: {str(e)}"
+            logger.error(f"Error in make_reservation: {str(e)}")
+            return "Sorry, there was an error processing your reservation request. Please try again."
+
+    def _get_chat_history_and_metadata(
+        self, latest_user_message: str, restaurant_id: int
+    ) -> tuple[OpenTableAccessToken | str, str, str]:
+        """Get chat history and restaurant metadata for reservation context."""
+        # Get chat history using QueryMessagesTool
+        chat_history = str(self.query_messages_tool.query_messages(latest_user_message))  # type: ignore
+
+        # Get bearer token
+        bearer_token = self._opentable_bearer_token
+        if not bearer_token:
+            return "Error: Unable to authenticate with OpenTable", "", ""
+
+        # Get availability metadata for the restaurant to provide context
+        try:
+            metadata_result = get_availability_metadata_api(
+                bearer_token=bearer_token,
+                restaurant_id=restaurant_id,
+                use_production=self.use_production,
+            )
+            metadata_context = format_availability_metadata(metadata_result)
+        except Exception as e:
+            metadata_context = f"Could not retrieve restaurant metadata: {str(e)}"
+
+        return bearer_token, chat_history, metadata_context
+
+    def _extract_and_validate_reservation_data(
+        self, chat_history: str, metadata_context: str
+    ) -> ReservationExtractedData | str:
+        """Extract reservation details from chat history and validate required fields."""
+        # Extract reservation details using LLM
+        reservation_data = _llm.llm_call(
+            system_prompt=RESERVATION_EXTRACTOR_SYSTEM_PROMPT,
+            prompt=RESERVATION_EXTRACTOR_USER_PROMPT.format(
+                context=metadata_context, chat_history=chat_history
+            ),
+            response_format=ReservationExtractedData,
+            reasoning=False,
+        )
+
+        if not isinstance(reservation_data, ReservationExtractedData):
+            logger.error(
+                f"`reservation_data` object in type {type(reservation_data)} but expected type ReservationExtractedData.\n"
+                f"`reservation_data` object: {reservation_data}"
+            )
+            return "Failed to extract structured reservation data. Please try again."
+
+        # Validate required fields using helper method
+        error = self._validate_required_fields(reservation_data)
+        if error:
+            return error
+
+        return reservation_data
+
+    def _search_and_validate_availability(
+        self,
+        bearer_token: OpenTableAccessToken,
+        restaurant_id: int,
+        reservation_data: ReservationExtractedData,
+        forward_minutes: Optional[int] = None,
+        backward_minutes: Optional[int] = None,
+    ) -> tuple[int | str, Optional[EnvironmentType], str]:
+        """Search for availability and validate the requested time."""
+        # Defensive programming - ensure required fields are present
+        if not reservation_data.party_size or not reservation_data.date_time:
+            return (
+                f"Missing required reservation data: Party size: {reservation_data.party_size if reservation_data.party_size else 'None'}, Date time: {reservation_data.date_time if reservation_data.date_time else 'None'}",
+                None,
+                "",
+            )
+
+        # Convert user preferences to OpenTable enums
+        table_attribute = reservation_data.table_preference  # Already an enum
+        environment_type = reservation_data.environment_preference
+
+        # Convert datetime to ISO string for API calls
+        datetime_iso = reservation_data.date_time.isoformat()
+
+        # Search for availability to find appropriate dining areas and validate the time
+        try:
+            search_params = AvailabilitySearchRequest(
+                start_date_time=datetime_iso,
+                forward_minutes=forward_minutes or self.DEFAULT_SEARCH_FORWARD_MINUTES,
+                backward_minutes=backward_minutes
+                or self.DEFAULT_SEARCH_BACKWARD_MINUTES,
+                party_size=reservation_data.party_size,
+                require_attributes=table_attribute,
+                include_credit_card_results=None,
+                include_experiences=False,
+            )
+
+            availability_result = search_availability_api(
+                bearer_token=bearer_token,
+                restaurant_id=restaurant_id,
+                search_params=search_params,
+                use_production=self.use_production,
+            )
+
+            # Find the best matching time slot and dining area
+            dining_area_id, environment = self._find_best_dining_option(
+                availability_result, datetime_iso, environment_type
+            )
+
+            if not dining_area_id:
+                # Format available times for user
+                available_times = []
+                for time_slot in getattr(availability_result, "times_available", [])[
+                    :3
+                ]:
+                    time_str = getattr(time_slot, "time", "")
+                    if time_str:
+                        available_times.append(time_str)
+
+                if available_times:
+                    times_str = ", ".join(available_times)
+                    return (
+                        f"No availability found for your requested time {datetime_iso}. Available times near your request: {times_str}",
+                        None,
+                        "",
+                    )
+                else:
+                    return (
+                        f"No availability found for party of {reservation_data.party_size} around {datetime_iso}. Please try a different time or party size.",
+                        None,
+                        "",
+                    )
+
+            return dining_area_id, environment, datetime_iso
+
+        except Exception as e:
+            logger.error(f"Error searching availability: {str(e)}")
+            return f"Error checking availability: {str(e)}", None, ""
+
+    def _create_reservation(
+        self,
+        bearer_token: OpenTableAccessToken,
+        restaurant_id: int,
+        reservation_data: ReservationExtractedData,
+        dining_area_id: int,
+        environment: Optional[EnvironmentType],
+        datetime_iso: str,
+    ) -> ReservationResponse | str:
+        """Create the actual reservation using OpenTable APIs."""
+        # Validate required fields
+        error = self._validate_required_fields(reservation_data)
+        if error:
+            return error
+
+        # Set default values for missing optional fields
+        last_name = reservation_data.last_name or ""
+
+        try:
+            # Use the prepare_reservation_parameters utility function
+            reservation_params = prepare_reservation_parameters(
+                access_token=bearer_token.access_token,
+                restaurant_id=restaurant_id,
+                party_size=reservation_data.party_size,  # type: ignore[arg-type]
+                datetime_iso=datetime_iso,
+                first_name=reservation_data.first_name,  # type: ignore[arg-type]
+                last_name=last_name,
+                email_address=reservation_data.email_address,  # type: ignore[arg-type]
+                phone=reservation_data.phone,  # type: ignore[arg-type]
+                reservation_attribute=(
+                    reservation_data.table_preference.value
+                    if reservation_data.table_preference
+                    else "default"
+                ),
+                dining_area_id=dining_area_id,
+                environment=environment.value if environment else None,
+                special_request=reservation_data.special_request,
+                restaurant_email_marketing_opt_in=reservation_data.restaurant_email_marketing_opt_in
+                or False,
+                sms_notifications_opt_in=reservation_data.sms_notifications_opt_in
+                or False,
+                use_production=self.use_production,
+            )
+
+            # Check if prepare_reservation_parameters returned an error message
+            if isinstance(reservation_params, str):
+                return f"Unable to prepare reservation: {reservation_params}"
+
+            # Create the reservation using the make_reservation API
+            with LLMObs.task(name="make_opentable_reservation"):
+                reservation_result = make_reservation(**reservation_params)
+
+            return reservation_result
+
+        except Exception as e:
+            logger.error(f"Error creating reservation: {str(e)}")
+            return f"Error creating reservation: {str(e)}"
+
+    def _format_reservation_response(
+        self,
+        reservation_result: ReservationResponse,
+        reservation_data: ReservationExtractedData,
+    ) -> str:
+        """Format the successful reservation response for the user."""
+        last_name = reservation_data.last_name or ""
+
+        response = "🎉 Reservation confirmed!\n\n"
+        response += f"Confirmation Number: {reservation_result.confirmation_number}\n"
+        response += f"Date & Time: {reservation_result.date_time}\n"
+        response += f"Party Size: {reservation_result.party_size}\n"
+        response += f"Guest: {reservation_data.first_name} {last_name}\n"
+
+        if reservation_result.notes:
+            response += f"Notes: {reservation_result.notes}\n"
+
+        response += f"\nTo manage your reservation: {reservation_result.manage_reservation_url}\n"
+
+        if reservation_result.message:
+            response += f"\nImportant Information:\n{reservation_result.message}"
+
+        return response
+
+    def _convert_to_environment_type(
+        self, area_environment
+    ) -> Optional[EnvironmentType]:
+        """Convert area_environment to EnvironmentType, handling both string and enum inputs."""
+        if not area_environment:
+            return None
+
+        if isinstance(area_environment, EnvironmentType):
+            return area_environment
+
+        try:
+            return EnvironmentType(area_environment)
+        except ValueError:
+            return None
+
+    def _find_best_dining_option(
+        self,
+        availability_result,
+        requested_time: str,
+        preferred_environment: Optional[EnvironmentType],
+    ) -> tuple[Optional[int], Optional[EnvironmentType]]:
+        """Find the best dining area ID and environment from availability results"""
+        times_available = getattr(availability_result, "times_available", [])
+
+        # Parse the requested time once for comparison
+        try:
+            requested_datetime = datetime.fromisoformat(
+                requested_time.replace("Z", "+00:00")
+            )
+        except (ValueError, AttributeError):
+            logger.error(f"Invalid requested_time format: {requested_time}")
+            return None, None
+
+        # Track the first available option as fallback
+        fallback_option = None
+
+        for time_slot in times_available:
+            slot_time = getattr(time_slot, "time", "")
+            if not slot_time:
+                continue
+
+            try:
+                # Parse the slot time for comparison
+                slot_datetime = datetime.fromisoformat(slot_time.replace("Z", "+00:00"))
+
+                # Compare datetime objects instead of strings
+                if slot_datetime == requested_datetime:
+                    # Found exact time match, now find best dining area
+                    availability_types = getattr(time_slot, "availability_types", [])
+
+                    for avail_type in availability_types:
+                        dining_areas = getattr(avail_type, "dining_area", [])
+
+                        for area in dining_areas:
+                            area_id = getattr(area, "id", None)
+                            if not area_id:
+                                continue
+
+                            area_environment = getattr(area, "environment", None)
+                            area_env_enum = self._convert_to_environment_type(
+                                area_environment
+                            )
+
+                            # Store first valid option as fallback
+                            if fallback_option is None:
+                                fallback_option = (area_id, area_env_enum)
+
+                            # If user has environment preference and this area matches, return immediately
+                            if (
+                                preferred_environment
+                                and area_env_enum == preferred_environment
+                            ):
+                                return area_id, area_env_enum
+
+                    # If we've processed all areas for this time slot and have a preference but no match,
+                    # continue to check other availability types. If no preference, return fallback.
+                    if not preferred_environment and fallback_option:
+                        return fallback_option
+
+            except (ValueError, AttributeError):
+                # Skip slots with invalid time format
+                logger.warning(f"Invalid slot_time format: {slot_time}")
+                continue
+
+        # Return fallback option if no preferred environment match was found
+        return fallback_option or (None, None)
