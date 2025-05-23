@@ -3,10 +3,10 @@ import shutil
 import uuid
 from datetime import datetime
 
-import openai
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import TextNode
+from llama_index.embeddings.cohere import CohereEmbedding
 from pinecone import Index, Pinecone
 
 from services.knowledge_service.schema import KnowledgeFile
@@ -17,6 +17,14 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
 if not PINECONE_API_KEY:
     raise ValueError("Pinecone API key not found")
+
+
+def _get_cohere_api_key() -> str:
+    """Retrieve and validate Cohere API key."""
+    api_key = os.getenv("COHERE_API_KEY")
+    if not api_key:
+        raise ValueError("COHERE_API_KEY environment variable not set")
+    return api_key
 
 
 def list_knowledge_files(
@@ -60,17 +68,13 @@ def upload_knowledge_file(
     file_name: str,
     content: bytes,
 ):
-    # OpenAI client for embeddings
-    client = openai.OpenAI()
+    # Initialize Cohere embeddings
+    cohere_api_key = _get_cohere_api_key()
+    embed_model = CohereEmbedding(
+        api_key=cohere_api_key,
+        model_name="embed-english-v3.0",
+    )
     index = _get_index(index_name)
-
-    def get_openai_embeddings(text):
-        response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=text,
-            dimensions=1024,
-        )
-        return response.data[0].embedding
 
     tmp_dir = f"tmp_{uuid.uuid4()}"
     os.makedirs(tmp_dir, exist_ok=True)
@@ -90,7 +94,7 @@ def upload_knowledge_file(
         file_created_at = datetime.now().isoformat()
         for node in nodes:
             if isinstance(node, TextNode):
-                embedding = get_openai_embeddings(node.text)
+                embedding = embed_model.get_text_embedding(node.text)
             else:
                 raise TypeError("Expected TextNode, got something else.")
             node.embedding = embedding
