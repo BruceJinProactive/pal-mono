@@ -262,18 +262,12 @@ async def chat_completions_agno(
                             collected_content.append(content)
                             # Only log first chunk to avoid excessive logging
                             if chunk_count == 1:
-                                first_chunk_time = datetime.datetime.now(
-                                    datetime.timezone.utc
-                                )
-                                duration_ms = (
-                                    first_chunk_time - start_time
-                                ).total_seconds() * 1000
                                 logger.debug(
-                                    f"First stream chunk: {json.dumps(chunk_data)}, time to first chunk: {duration_ms:.2f}ms"
+                                    f"First stream chunk: {json.dumps(chunk_data)}"
                                 )
-                                dd_histogram_duration(
+                                send_dd_histogram_metrics(
                                     "chat_completions.first_chunk",
-                                    duration_ms,
+                                    start_time,
                                     ["path:agno"],
                                 )
 
@@ -393,6 +387,7 @@ async def chat_completions_oai(
 ):
     # Log the complete request as JSON
     logger.info(f"Chat completions request: {json.dumps(request.model_dump())}")
+    start_time = datetime.datetime.now(datetime.timezone.utc)
 
     try:
         # Get OpenAI API key from environment
@@ -483,8 +478,14 @@ async def chat_completions_oai(
 
                         # Only log first chunk to avoid excessive logging
                         if chunk_count == 1:
-                            logger.info(f"First stream chunk: {json.dumps(chunk_data)}")
-
+                            logger.debug(
+                                f"First stream chunk: {json.dumps(chunk_data)}"
+                            )
+                            send_dd_histogram_metrics(
+                                "chat_completions.first_chunk",
+                                start_time,
+                                ["path:oai"],
+                            )
                         yield f"data: {json.dumps(chunk_data)}\n\n"
 
                     # Log completion of stream
@@ -587,3 +588,15 @@ async def chat_completions_oai(
                 error_message="An unexpected error occurred while processing the request",
             ).model_dump(),
         )
+
+
+def send_dd_histogram_metrics(
+    metrics_name: str, start_time: datetime.datetime, tags: list[str]
+):
+    current_time = datetime.datetime.now(datetime.timezone.utc)
+    duration_ms = (current_time - start_time).total_seconds() * 1000
+    dd_histogram_duration(
+        metrics_name,
+        duration_ms,
+        tags,
+    )
