@@ -1,11 +1,12 @@
 import datetime
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from tools.opentable_tool.classes import (
     AvailabilityMetadataResponse,
     AvailabilitySearchResponse,
     CancellationPolicyDetails,
 )
+from utils.log import logger
 
 
 def format_availability_results(availability: AvailabilitySearchResponse) -> str:
@@ -61,7 +62,7 @@ def format_availability_results(availability: AvailabilitySearchResponse) -> str
                             )
 
                     # Get dining areas
-                    dining_areas = getattr(avail_type, "diningArea", [])
+                    dining_areas = getattr(avail_type, "dining_area", [])
                     for area in dining_areas:
                         area_attrs = ", ".join(getattr(area, "attributes", []))
                         env = getattr(area, "environment", "")
@@ -311,7 +312,7 @@ def extract_booking_url(time_slot: Any, is_affiliate: bool = True) -> Optional[s
     availability_types = getattr(time_slot, "availability_types", [])
     if availability_types:
         for avail_type in availability_types:
-            dining_areas = getattr(avail_type, "diningArea", [])
+            dining_areas = getattr(avail_type, "dining_area", [])
             if dining_areas:
                 for area in dining_areas:
                     # Use booking_url for affiliates, booking_restref_url for restaurants
@@ -620,3 +621,290 @@ def calculate_cancellation_fee(
         explanation = f"Unable to calculate cancellation fee for cutoff type: {cutoff.cutoff_type}"
 
     return fee_applies, fee_amount, explanation
+
+
+def prepare_reservation_parameters(
+    access_token: str,
+    restaurant_id: int,
+    party_size: int,
+    datetime_iso: str,
+    first_name: str,
+    last_name: str,
+    email_address: str,
+    phone_number: str,
+    phone_country_code: str,
+    reservation_attribute: str = "default",
+    dining_area_id: Optional[int] = None,
+    environment: Optional[str] = None,
+    special_request: Optional[str] = None,
+    credit_card_token: Optional[str] = None,
+    credit_card_last4: Optional[str] = None,
+    login_name: Optional[str] = None,
+    restaurant_email_marketing_opt_in: bool = False,
+    sms_notifications_opt_in: bool = False,
+    experience_id: Optional[int] = None,
+    experience_version: Optional[int] = None,
+    party_size_per_price_type: Optional[List[dict]] = None,
+    add_ons: Optional[List[dict]] = None,
+    use_production: bool = False,
+) -> Union[Dict, str]:
+    """
+    Prepare parameters for making a reservation by following the OpenTable reservation workflow:
+    1. Search for availability
+    2. Create a slot lock to get a reservation token
+    3. Collect and prepare all parameters for making a reservation
+
+    Args:
+        access_token: OpenTable API access token
+        restaurant_id: ID of the restaurant
+        party_size: Number of diners
+        datetime_iso: Reservation time in ISO format
+        first_name: Guest's first name
+        last_name: Guest's last name
+        email_address: Guest's email address
+        phone_number: Guest's phone number
+        phone_country_code: Country code for phone number
+        reservation_attribute: Seating option (default, hightop, bar, counter, outdoor)
+        dining_area_id: ID of the dining area (optional)
+        environment: Environment (e.g., Indoor, Outdoor) (optional)
+        special_request: Any special requests (optional)
+        credit_card_token: Credit card token (optional)
+        credit_card_last4: Last 4 digits of credit card (optional)
+        login_name: Concierge/referral login name (optional)
+        restaurant_email_marketing_opt_in: Email marketing opt-in (default: False)
+        sms_notifications_opt_in: SMS notifications opt-in (default: False)
+        experience_id: Experience ID (optional)
+        experience_version: Experience version (optional)
+        party_size_per_price_type: Party sizes for each price type (optional)
+        add_ons: Add-ons for the reservation (optional)
+        use_production: Whether to use production environment (default: False)
+
+    Returns:
+        Dictionary with all parameters needed for the reservation API or
+        error message if no exact time match is found
+    """
+    from tools.opentable_tool._apis import create_slot_lock, search_availability
+    from tools.opentable_tool.classes import (
+        AddOn,
+        AvailabilitySearchRequest,
+        CreditCardObject,
+        EnvironmentType,
+        Experience,
+        OpenTableAccessToken,
+        PhoneObject,
+        PriceSizeType,
+        TableAttribute,
+    )
+
+    # Convert string access token to OpenTableAccessToken object
+    bearer_token = OpenTableAccessToken(
+        access_token=access_token,
+        token_type="Bearer",
+        expires_in=0,  # We don't track this here
+        scope=None,
+    )
+
+    # Validate and convert reservation_attribute to TableAttribute enum
+    table_attribute = None
+    try:
+        # Check if reservation_attribute is a valid value for TableAttribute
+        valid_attributes = [attr.value for attr in TableAttribute]
+        if reservation_attribute.lower() in valid_attributes:
+            table_attribute = TableAttribute(reservation_attribute.lower())
+        else:
+            raise ValueError(
+                f"Invalid reservation_attribute: '{reservation_attribute}'. "
+                f"Must be one of: {', '.join(valid_attributes)}"
+            )
+    except ValueError as e:
+        raise ValueError(f"Invalid reservation_attribute: {str(e)}")
+
+    # Step 1: Search for availability
+    # Create search parameters object
+    search_params = AvailabilitySearchRequest(
+        start_date_time=datetime_iso,
+        forward_minutes=120,  # Default forward minutes
+        backward_minutes=120,  # Default backward minutes
+        party_size=party_size,
+        require_attributes=table_attribute,
+        include_credit_card_results=True if credit_card_token else None,
+        include_experiences=True if experience_id else False,
+    )
+
+    try:
+        availability_result = search_availability(
+            bearer_token=bearer_token,
+            restaurant_id=restaurant_id,
+            search_params=search_params,
+            use_production=use_production,
+        )
+    except Exception as e:
+        # Log and re-raise the error
+        raise Exception(f"Error searching for availability: {str(e)}") from e
+
+    # Step 2: Find the matching time slot and get dining information
+    target_slot = None
+    target_time = datetime_iso
+    error_message = None
+
+    # Safely access times_available with getattr
+    times_available = getattr(availability_result, "times_available", [])
+
+    for slot in times_available:
+        slot_time = getattr(slot, "time", "")
+        if slot_time == datetime_iso:
+            target_slot = slot
+            break
+
+    # If no exact match found, log and create error message
+    if not target_slot:
+        if times_available:
+            # Get the next few available times to include in the error message
+            next_times = []
+            for slot in times_available[:3]:  # Limit to first 3 available times
+                next_time = getattr(slot, "time", "")
+                if next_time:
+                    next_times.append(next_time)
+
+            next_times_str = ", ".join(next_times)
+            error_message = (
+                f"No exact match found for requested time {datetime_iso}. "
+                f"Next available times: {next_times_str}"
+            )
+            logger.debug(error_message)
+            return error_message
+        else:
+            error_message = f"No availability found for restaurant {restaurant_id} at {datetime_iso}"
+            logger.debug(error_message)
+            return error_message
+
+    # Extract dining area and environment if not provided
+    if target_slot and (not dining_area_id or not environment):
+        # The availability_types attribute name matches the model field name
+        availability_types = getattr(target_slot, "availability_types", [])
+
+        for avail_type in availability_types:
+            # The diningArea field is aliased as "diningArea" in the API but the
+            # model attribute is actually "dining_area"
+            dining_areas = getattr(avail_type, "dining_area", [])
+
+            for area in dining_areas:
+                if not dining_area_id:
+                    dining_area_id = getattr(area, "id", dining_area_id)
+                if not environment:
+                    environment = getattr(area, "environment", environment)
+
+                if dining_area_id and environment:
+                    break
+
+            if dining_area_id and environment:
+                break
+
+    # Convert environment to EnvironmentType enum value if it's provided
+    environment_type = None
+    if environment:
+        try:
+            # Normalize case (e.g., "indoor" -> "Indoor", "OUTDOOR" -> "Outdoor")
+            normalized_environment = environment.title()
+            environment_type = EnvironmentType(normalized_environment)
+        except ValueError:
+            valid_values = [e.value for e in EnvironmentType]
+            raise ValueError(
+                f"Invalid environment value: '{environment}'. "
+                f"Environment must be one of: {', '.join(valid_values)}."
+            )
+
+    # Create experience object if all required parameters are provided
+    experience_obj = None
+    if all(
+        [
+            experience_id is not None,
+            experience_version is not None,
+            party_size_per_price_type is not None,
+        ]
+    ):
+        # Convert party_size_per_price_type dicts to PriceSizeType objects
+        price_types = []
+        if party_size_per_price_type:  # Additional check to satisfy the linter
+            for pt in party_size_per_price_type:
+                price_types.append(PriceSizeType(**pt))
+
+        # Create add-ons list if provided
+        add_ons_list = None
+        if add_ons:
+            add_ons_list = [AddOn(**addon) for addon in add_ons]
+
+        # Ensure we have valid integers for id and version
+        if isinstance(experience_id, int) and isinstance(experience_version, int):
+            # Create the experience object
+            experience_obj = Experience(
+                id=experience_id,
+                version=experience_version,
+                party_size_per_price_type=price_types,
+                add_ons=add_ons_list,
+            )
+
+    # Step 3: Create a slot lock to get a reservation token
+    try:
+        slot_lock_result = create_slot_lock(
+            bearer_token=bearer_token,
+            restaurant_id=restaurant_id,
+            party_size=party_size,
+            date_time=target_time,
+            reservation_attribute=table_attribute,
+            experience=experience_obj,
+            dining_area_id=dining_area_id,
+            environment=environment_type,
+            use_production=use_production,
+        )
+    except Exception as e:
+        # Log and re-raise the error
+        raise Exception(f"Error creating slot lock: {str(e)}") from e
+
+    # Get reservation token from the slot lock response
+    reservation_token = slot_lock_result.reservation_token
+
+    # Step 4: Prepare request payload for the reservation API
+    # Create phone object
+    phone = PhoneObject(
+        number=phone_number,
+        country_code=phone_country_code,
+        phone_type="Mobile",  # Default to Mobile
+    )
+
+    # Create credit card object if provided
+    credit_card = None
+    if credit_card_token and credit_card_last4:
+        credit_card = CreditCardObject(token=credit_card_token, last4=credit_card_last4)
+
+    # Prepare final parameters for make_reservation call
+    reservation_params = {
+        "bearer_token": bearer_token,
+        "restaurant_id": restaurant_id,
+        "reservation_token": reservation_token,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email_address": email_address,
+        "phone": phone,
+        "dining_area_id": dining_area_id,
+        "environment": environment_type,
+        "reservation_attribute": table_attribute,
+        "restaurant_email_marketing_opt_in": restaurant_email_marketing_opt_in,
+        "sms_notifications_opt_in": sms_notifications_opt_in,
+        "use_production": use_production,
+    }
+
+    # Add optional parameters if provided
+    if special_request:
+        reservation_params["special_request"] = special_request
+
+    if login_name:
+        reservation_params["login_name"] = login_name
+
+    if credit_card:
+        reservation_params["credit_card"] = credit_card
+
+    if experience_obj:
+        reservation_params["experience"] = experience_obj
+
+    return reservation_params
