@@ -119,8 +119,12 @@ async def get_chat_response_async(
         logger.debug(f"Agent config: {config}")
         agent = Agent(config=config)
 
-        # Get Input
-        input = _utils.get_agent_input_from_message(message=message)
+        # Get Input with conversation history
+        input = await _utils.get_agent_input_from_message(
+            message=message,
+            session=session,
+            conversation_id=request_message.conversation_id,
+        )
         logger.debug(f"Input: {input}")
 
         # Get Output
@@ -285,9 +289,17 @@ async def get_chat_response_stream(
             agent = Agent(config=config)
 
             logger.debug(f"Agent config stream mode: {config}")
-            input = _utils.get_agent_input_from_message(message=message)
+
+            # Get Input with conversation history
+            input = await _utils.get_agent_input_from_message(
+                message=message,
+                session=session,
+                conversation_id=request_message.conversation_id,
+            )
             input.stream = True
-            logger.debug(f"Input stream mode: {input}")
+            logger.debug(
+                f"Input stream mode: {input} with {len(input.history_messages)} history messages"
+            )
 
             # Get streaming response
             response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore

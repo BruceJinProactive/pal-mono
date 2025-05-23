@@ -1,6 +1,20 @@
-from typing import Any
+from typing import Any, List
 
 from pydantic import BaseModel
+
+
+class Message(BaseModel):
+    """
+    A class used to represent a message in the conversation history.
+
+    role : str
+        The role of the message sender, either "user" or "assistant".
+    content : str
+        The content of the message.
+    """
+
+    role: str
+    content: str
 
 
 class Input(BaseModel):
@@ -24,6 +38,7 @@ class Input(BaseModel):
     channel: str = ""
     sender_identifier: str = ""
     stream: bool = False
+    history_messages: List[Message] = []
 
     def get_prompt(self):
         """

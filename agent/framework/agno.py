@@ -91,6 +91,15 @@ class AgnoAgent:
         self._agent = agent
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
+        """
+        Run the agent with the given input.
+
+        Args:
+            input: The input to process with optional history_messages
+
+        Returns:
+            Output or AsyncIterator[Output]: The agent's response
+        """
         # Handle streaming case
         if not input.stream:
             return await self._arun_with_workflow(input)
@@ -100,8 +109,17 @@ class AgnoAgent:
     @agent(name="AgnoAgent")
     async def _arun_with_workflow(self, input: Input) -> Output:
         with trace_block("Agno Core Agent Processing"):
-            result = await self._agent.arun(input.get_prompt(), stream=input.stream)
+            # Use history messages from input if provided
+            history = []
+            if input.history_messages:
+                # Convert from our Message format to the dict format Agno expects
+                history = [
+                    {"role": msg.role, "content": msg.content}
+                    for msg in input.history_messages
+                ]
+                logger.debug(f"Using {len(history)} messages from conversation history")
 
+            result = await self._agent.arun(input.get_prompt(), stream=input.stream)
             # Handle non-streaming case
             response_format = result.content
 
@@ -148,6 +166,18 @@ class AgnoAgent:
 
                 output_content = ""
                 with trace_block("Agno Core Agent Processing"):
+                    # Use history messages from input if provided
+                    history = []
+                    if input.history_messages:
+                        # Convert from our HistoryMessage format to the dict format Agno expects
+                        history = [
+                            {"role": msg.role, "content": msg.content}
+                            for msg in input.history_messages
+                        ]
+                        logger.debug(
+                            f"Using {len(history)} messages from conversation history for streaming"
+                        )
+
                     result = await self._agent.arun(
                         input.get_prompt(), stream=input.stream
                     )

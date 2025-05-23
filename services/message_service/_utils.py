@@ -1,8 +1,14 @@
 import json
 import re
+import uuid
 from typing import Any, List
 
-from agent.input_output import Input, Output
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import db
+from agent.input_output import Input
+from agent.input_output import Message as HistoryMessage
+from agent.input_output import Output
 from api.schemas.chat.message import (
     AuthorType,
     Channel,
@@ -153,23 +159,44 @@ def extract_image_links(response: str) -> list[tuple[str, str]]:
     return processed_parts
 
 
-def get_agent_input_from_message(message: Message) -> Input:
+async def get_agent_input_from_message(
+    message: Message, session: AsyncSession, conversation_id: uuid.UUID
+) -> Input:
     """
     Converts a Message object into an Input object for the Agent.
+    Optionally fetches and includes conversation history.
 
     Args:
         message (Message): The Message object to be converted.
+        session (AsyncSession, optional): Database session for fetching conversation history.
+        conversation_id (uuid.UUID, optional): Conversation ID to fetch history for.
 
     Returns:
-        Input: The Input object created from the Message.
+        Input: The Input object created from the Message, with history if available.
     """
     content = message.text.body if message.text else ""
-    return Input(
+    input_obj = Input(
         content=content,
         context=message.context,
         channel=message.channel,
         sender_identifier=message.sender_identifier,
     )
+
+    # Add conversation history if session and conversation_id are provided
+    if session and conversation_id:
+        try:
+            # Fetch conversation history
+            input_obj.history_messages = await get_conversation_history(
+                session=session, conversation_id=conversation_id
+            )
+
+            logger.info(
+                f"Added {len(input_obj.history_messages)} history messages to input"
+            )
+        except Exception as e:
+            logger.error(f"Error fetching conversation history: {e}")
+
+    return input_obj
 
 
 def get_messages_from_agent_output(
@@ -302,3 +329,37 @@ def get_messages_from_agent_output(
         response_messages.append(response_message)
 
     return response_messages
+
+
+async def get_conversation_history(
+    session: AsyncSession, conversation_id: uuid.UUID
+) -> List[HistoryMessage]:
+    """
+    Fetch the conversation history from our database and convert it to Agno format.
+
+    Args:
+        session: The database session
+        conversation_id: The ID of the conversation to fetch
+
+    Returns:
+        list: A list of messages in Agno format [{"role": "user"|"assistant", "content": "..."}]
+    """
+    message_repo = db.MessageRepositoryAsync(session)
+    try:
+        messages = await message_repo.get_messages_by_conversation(conversation_id)
+
+        # Convert our messages to Agno format
+        history_messages = []
+        for message in messages:
+            body = message.body
+            role = "user" if body.get("author_type") == "user" else "assistant"
+            content = body.get("text", {}).get("body", "")
+            history_messages.append(HistoryMessage(role=role, content=content))
+
+        logger.debug(
+            f"Fetched {len(history_messages)} messages from conversation {conversation_id} for Agno"
+        )
+        return history_messages
+    except Exception as e:
+        logger.error(f"Error fetching conversation history: {e}")
+        return []

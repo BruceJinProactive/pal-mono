@@ -118,6 +118,38 @@ class MessageRepositoryAsync:
 
         return message
 
+    async def get_messages_by_conversation(
+        self, conversation_id: uuid.UUID, limit: int = 20
+    ):
+        """
+        Retrieves the most recent "limit" number of messages associated with a specific conversation id.
+        Sorts them by creation timestamp so that the messages are in chronological order.
+
+        Args:
+            conversation_id (uuid.UUID): The unique identifier for the conversation.
+            limit (int): The number of messages.
+
+        Returns:
+            List[Message]: A list of messages, empty if an error occurs.
+        """
+        try:
+            result = await self.session.execute(
+                select(Message)
+                .filter(Message.conversation_id == conversation_id)
+                .order_by(
+                    # filter by created_at decending so messages are the latest ones
+                    Message.created_at.desc()
+                )
+                .limit(limit)
+            )
+            # reverse the list so the messages are in chronological order
+            messages = result.scalars().all()[::-1]
+            return messages
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving messages: {e}")
+            return []
+
 
 class MessageRepository:
     def __init__(self, session: Session):
