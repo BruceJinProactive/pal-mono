@@ -30,6 +30,11 @@ class AgentMetadata(BaseModel):
     framework: AgentFramework
 
 
+class StorageProvider(StrEnum):
+    AGNO = auto()
+    EXTERNAL = auto()
+
+
 class AgentConfig(BaseModel):
     persona: AgentPersona
 
@@ -37,13 +42,11 @@ class AgentConfig(BaseModel):
     memory: MemoryConfig
     knowledge: KnowledgeConfig
     tool: ToolConfig
+    storage_provider: StorageProvider = StorageProvider.AGNO
 
     metadata: AgentMetadata
 
     client: ClientConfig
     stream: bool = False
-    # Eventually we will remove agno storage.
-    # Therefore, we simply just add the switch to turn off agno storage now
-    storage_enabled: bool = True
     # Additional context added to the end of the system message.
     additional_context: Optional[str] = None

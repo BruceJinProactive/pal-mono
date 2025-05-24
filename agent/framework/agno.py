@@ -1,6 +1,7 @@
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 import agno.agent.agent
+from agno.models.message import Message
 from agno.models.openai.chat import OpenAIChat
 from agno.storage.agent.postgres import PostgresAgentStorage
 from ddtrace.llmobs import LLMObs
@@ -8,7 +9,7 @@ from ddtrace.llmobs.decorators import agent
 from pydantic import BaseModel, Field
 
 import db
-from agent.config import AgentConfig
+from agent.config import AgentConfig, StorageProvider
 from agent.input_output import Input, Output
 from agent.tool import get_tools
 from utils.dd import trace_block
@@ -34,19 +35,19 @@ class ResponseModel(BaseModel):
 
 class AgnoAgent:
     def __init__(self, config: AgentConfig):
-        if config.storage_enabled:
+        if config.storage_provider == StorageProvider.AGNO:
             storage = PostgresAgentStorage(
                 table_name=f"{config.metadata.account_name}_storage_agno",
                 db_url=db.db_url,
             )
-            logger.debug(
-                f"Agno Storage has been enabled for agent:{config.metadata.agent_id}"
-            )
-        else:
-            logger.debug(
-                f"Agno Storage has been disabled for agent:{config.metadata.agent_id}"
-            )
+            add_history_to_messages = True
+            logger.debug(f"Agent: {config.metadata.agent_id} is using Agno Storage")
+        elif config.storage_provider == StorageProvider.EXTERNAL:
+            logger.debug(f"Agent: {config.metadata.agent_id} is using External Storage")
             storage = None
+            add_history_to_messages = False
+        else:
+            raise ValueError(f"Storeage: {config.storage_provider} is invalid")
 
         tools = [
             tool
@@ -80,7 +81,7 @@ class AgnoAgent:
                 tools=tools,  # type: ignore
                 ### Storage ### # Note: To be replaced by our own session and message tables
                 storage=storage,
-                add_history_to_messages=True,
+                add_history_to_messages=add_history_to_messages,
                 num_history_responses=10,
                 response_model=(
                     ResponseModel if not config.stream else None
@@ -89,6 +90,7 @@ class AgnoAgent:
             )
 
         self._agent = agent
+        self._storage_provider = config.storage_provider
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -109,17 +111,13 @@ class AgnoAgent:
     @agent(name="AgnoAgent")
     async def _arun_with_workflow(self, input: Input) -> Output:
         with trace_block("Agno Core Agent Processing"):
-            # Use history messages from input if provided
-            history = []
-            if input.history_messages:
-                # Convert from our Message format to the dict format Agno expects
-                history = [
-                    {"role": msg.role, "content": msg.content}
-                    for msg in input.history_messages
-                ]
-                logger.debug(f"Using {len(history)} messages from conversation history")
 
-            result = await self._agent.arun(input.get_prompt(), stream=input.stream)
+            message, messages = self._build_model_inputs(input)
+            result = await self._agent.arun(
+                message,
+                messages=messages,
+                stream=input.stream,
+            )
             # Handle non-streaming case
             response_format = result.content
 
@@ -166,20 +164,11 @@ class AgnoAgent:
 
                 output_content = ""
                 with trace_block("Agno Core Agent Processing"):
-                    # Use history messages from input if provided
-                    history = []
-                    if input.history_messages:
-                        # Convert from our HistoryMessage format to the dict format Agno expects
-                        history = [
-                            {"role": msg.role, "content": msg.content}
-                            for msg in input.history_messages
-                        ]
-                        logger.debug(
-                            f"Using {len(history)} messages from conversation history for streaming"
-                        )
-
+                    message, messages = self._build_model_inputs(input)
                     result = await self._agent.arun(
-                        input.get_prompt(), stream=input.stream
+                        message,
+                        messages=messages,
+                        stream=input.stream,
                     )
                     try:
                         async for chunk in result:
@@ -223,3 +212,20 @@ class AgnoAgent:
                 logger.warning(f"Unknown provider {provider}, fallback to gpt-4o")
                 model = OpenAIChat(id="gpt-4o")
         return model
+
+    def _build_model_inputs(
+        self, input: Input
+    ) -> tuple[Optional[str], Optional[list[Message]]]:
+        if self._storage_provider != StorageProvider.EXTERNAL:
+            return input.get_prompt(), None
+
+        if len(input.history_messages) < 1:
+            raise ValueError("Message history should contain at least 1 message")
+        if input.history_messages[-1].content != input.get_prompt():
+            raise ValueError(
+                f"The latest message: {input.history_messages[-1].content} should be the current user input: {input.content}"
+            )
+        return None, [
+            Message(role=msg.role, content=msg.content)
+            for msg in input.history_messages
+        ]

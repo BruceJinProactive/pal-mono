@@ -21,6 +21,7 @@ from agent import (
     ToolIdentifier,
     ToolMetadata,
 )
+from agent.config import StorageProvider
 from agent.knowledge import KnowledgeConfigSettings
 from agent.model import ModelProvider
 from utils.log import logger
@@ -56,8 +57,9 @@ class RawConfig:
 
             self.client_config = ClientConfig(data=client_data)
 
-            storage_config = self.agent.raw_config.get("storage_enabled", "True")
-            storage_enabled = storage_config.lower() != "false"
+            storage_provider = self.agent.raw_config.get(
+                "storage_provider", StorageProvider.AGNO
+            )
 
             return AgentConfig(
                 persona=self._get_agent_persona(),
@@ -77,7 +79,7 @@ class RawConfig:
                     framework=AgentFramework.AGNO,
                 ),
                 client=self.client_config,
-                storage_enabled=storage_enabled,
+                storage_provider=storage_provider,
                 additional_context=self._get_additional_context(),
             )
         except ValueError as e:
