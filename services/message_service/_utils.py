@@ -357,14 +357,15 @@ async def get_conversation_history(
             context = body.get("context", "")
             channel = body.get("channel", "")
             sender_identifier = body.get("sender_identifier", "")
-            res = (
-                f"<content>{content}</content>\n\n"
-                + f"<context>{context}</context>\n\n"
-                + f"<channel>{channel}</channel>\n\n"
-                + f"<sender_identifier>{sender_identifier}</sender_identifier>\n\n"
+            history_messages.append(
+                HistoryMessage(
+                    role=role,
+                    content=content,
+                    context=context,
+                    channel=channel,
+                    sender_identifier=sender_identifier,
+                )
             )
-
-            history_messages.append(HistoryMessage(role=role, content=res))
 
         logger.debug(
             f"Fetched {len(history_messages)} messages from conversation {conversation_id} for Agno"

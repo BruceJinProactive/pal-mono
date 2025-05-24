@@ -221,11 +221,15 @@ class AgnoAgent:
 
         if len(input.history_messages) < 1:
             raise ValueError("Message history should contain at least 1 message")
-        if input.history_messages[-1].content != input.get_prompt():
+        if input.history_messages[-1].content != input.content:
             raise ValueError(
                 f"The latest message: {input.history_messages[-1].content} should be the current user input: {input.content}"
             )
-        return None, [
+
+        messages = [
             Message(role=msg.role, content=msg.content)
-            for msg in input.history_messages
+            for msg in input.history_messages[:-1]
         ]
+        messages.append(Message(role="user", content=input.get_prompt()))
+
+        return None, messages

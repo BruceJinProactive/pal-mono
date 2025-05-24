@@ -15,6 +15,9 @@ class Message(BaseModel):
 
     role: str
     content: str
+    context: str
+    channel: str
+    sender_identifier: str
 
 
 class Input(BaseModel):
