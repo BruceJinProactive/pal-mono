@@ -1,3 +1,4 @@
+import uuid
 from typing import AsyncIterator, Optional
 
 import agno.agent.agent
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field
 import db
 from agent.config import AgentConfig, StorageProvider
 from agent.input_output import Input, Output
+from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
 from utils.dd import trace_block
 from utils.log import logger
@@ -41,11 +43,18 @@ class AgnoAgent:
                 db_url=db.db_url,
             )
             add_history_to_messages = True
-            logger.debug(f"Agent: {config.metadata.agent_id} is using Agno Storage")
-        elif config.storage_provider == StorageProvider.EXTERNAL:
-            logger.debug(f"Agent: {config.metadata.agent_id} is using External Storage")
+            logger.debug(
+                f"Agent: {config.metadata.agent_id} is using {config.storage_provider} Storage"
+            )
+        elif config.storage_provider in [
+            StorageProvider.EXTERNAL,
+            StorageProvider.PALSTORAGE,
+        ]:
             storage = None
             add_history_to_messages = False
+            logger.debug(
+                f"Agent: {config.metadata.agent_id} is using {config.storage_provider} Storage"
+            )
         else:
             raise ValueError(f"Storeage: {config.storage_provider} is invalid")
 
@@ -91,6 +100,7 @@ class AgnoAgent:
 
         self._agent = agent
         self._storage_provider = config.storage_provider
+        self._session_id = uuid.UUID(config.metadata.session_id)
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -112,7 +122,7 @@ class AgnoAgent:
     async def _arun_with_workflow(self, input: Input) -> Output:
         with trace_block("Agno Core Agent Processing"):
 
-            message, messages = self._build_model_inputs(input)
+            message, messages = await self._build_model_inputs(input)
             result = await self._agent.arun(
                 message,
                 messages=messages,
@@ -164,7 +174,7 @@ class AgnoAgent:
 
                 output_content = ""
                 with trace_block("Agno Core Agent Processing"):
-                    message, messages = self._build_model_inputs(input)
+                    message, messages = await self._build_model_inputs(input)
                     result = await self._agent.arun(
                         message,
                         messages=messages,
@@ -213,23 +223,39 @@ class AgnoAgent:
                 model = OpenAIChat(id="gpt-4o")
         return model
 
-    def _build_model_inputs(
+    async def _build_model_inputs(
         self, input: Input
     ) -> tuple[Optional[str], Optional[list[Message]]]:
-        if self._storage_provider != StorageProvider.EXTERNAL:
+        if self._storage_provider == StorageProvider.AGNO:
             return input.get_prompt(), None
+        elif self._storage_provider in [
+            StorageProvider.EXTERNAL,
+            StorageProvider.PALSTORAGE,
+        ]:
+            messages = await self.get_history_messages(input)
+            return None, messages
+        else:
+            return None, None
 
-        if len(input.history_messages) < 1:
-            raise ValueError("Message history should contain at least 1 message")
-        if input.history_messages[-1].content != input.content:
+    async def get_history_messages(self, input: Input) -> list[Message]:
+        if self._storage_provider == StorageProvider.EXTERNAL:
+            history_messages = input.history_messages
+        elif self._storage_provider == StorageProvider.PALSTORAGE:
+            history_messages = await query_history_messages(self._session_id)
+        else:
             raise ValueError(
-                f"The latest message: {input.history_messages[-1].content} should be the current user input: {input.content}"
+                f"history_message doesn't apply to {self._storage_provider}"
+            )
+
+        if len(history_messages) < 1:
+            raise ValueError("Message history should contain at least 1 message")
+        if history_messages[-1].content != input.content:
+            raise ValueError(
+                f"The latest message: {history_messages[-1].content} should be the current user input: {input.content}"
             )
 
         messages = [
-            Message(role=msg.role, content=msg.content)
-            for msg in input.history_messages[:-1]
+            Message(role=msg.role, content=msg.content) for msg in history_messages[:-1]
         ]
         messages.append(Message(role="user", content=input.get_prompt()))
-
-        return None, messages
+        return messages
