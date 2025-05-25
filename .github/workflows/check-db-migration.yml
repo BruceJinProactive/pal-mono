@@ -31,14 +31,14 @@ jobs:
 
       - name: Set up Git
         run: |
-          git fetch origin main
+          git checkout main; git pull; git checkout -
 
       - name: Check if PR branch is behind main
         run: |
-          if git merge-base --is-ancestor origin/main HEAD; then
-            echo "✅ Branch is up to date with origin/main"
+          if git merge-base --is-ancestor main HEAD; then
+            echo "✅ Branch is up to date with main"
           else
-            echo "❌ Branch is NOT up to date with origin/main, please rebase!"
+            echo "❌ Branch is NOT up to date with main, please rebase!"
             exit 1
           fi
 

@@ -19,6 +19,7 @@ class Account(BaseModel):
     business_others: str | None
     projects: list[str] = []  # list of project uuids
     agents: list[str] = []  # list of agent uuids
+    status: str | None = None
 
 
 class AccountSummary(BaseModel):
@@ -29,6 +30,7 @@ class AccountSummary(BaseModel):
     display_name: str
     icon_url: str
     industry: str | None
+    status: str | None = None
 
 
 class ListAccountsResponse(BaseModel):

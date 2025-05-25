@@ -27,8 +27,9 @@ class BusinessIndustry(str, enum.Enum):
 
 
 class AccountStatus(str, enum.Enum):
-    active = "active"  # default status
-    pending = "pending"  # onboarding in progress
+    active = "active"  # account in operation
+    pending = "pending"  # account created but not activated
+    initializing = "initializing"  # activated but not fully onboarded
     disabled = "disabled"  # temporarily disabled account
     deleted = "deleted"  # soft deleting account
 
@@ -46,6 +47,9 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
     icon_uri: Mapped[str | None] = mapped_column(String, nullable=True)
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
 
     # Attributes that provide basic context for the business account
     industry: Mapped[BusinessIndustry | None] = mapped_column(String, nullable=True)

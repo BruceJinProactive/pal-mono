@@ -23,6 +23,7 @@ def build_account(account: db.Account) -> Account:
         business_others=account.business_others,
         projects=[str(project.id) for project in account.projects],
         agents=[str(agent.id) for agent in account.agents],
+        status=account.status.value,
     )
 
 
@@ -34,6 +35,7 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         display_name=account.display_name or account.name,
         icon_url=map_uri_to_s3_url(account.icon_uri),
         industry=account.industry,
+        status=account.status.value,
     )
 
 

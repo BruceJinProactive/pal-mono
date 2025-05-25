@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, Enum, String
+from sqlalchemy.types import DateTime, Enum, Float, String
 
 from .base import Base
 
@@ -47,6 +47,9 @@ class Agent(Base):
     agent_type: Mapped[AgentType] = mapped_column(
         Enum(AgentType), nullable=False, server_default=AgentType.general
     )
+    voice_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    greeting_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    voice_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # deprecated, use the explicit fields instead
     raw_config: Mapped[Dict] = mapped_column(

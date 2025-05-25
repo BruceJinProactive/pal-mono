@@ -39,6 +39,10 @@ class Project(Base):
     channel_identifiers: Mapped[Optional[list[str]]] = mapped_column(
         ARRAY(String), nullable=False, server_default="{}", index=True
     )
+    store_hours: Mapped[str | None] = mapped_column(String, nullable=True)
+    address: Mapped[str | None] = mapped_column(String, nullable=True)
+    menu_info: Mapped[str | None] = mapped_column(String, nullable=True)
+    service_instruction: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(
