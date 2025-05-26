@@ -1,4 +1,6 @@
 #### NOTE: Most of the logics in this file are borrowed from Adora. ####
+import datetime
+import os
 import re
 from typing import Any, Tuple
 
@@ -154,3 +156,81 @@ def add_lat_long_to_address(
     delivery_address.lat = geocoded_loc.latitude
     delivery_address.lng = geocoded_loc.longitude
     return (True, "Latitude and longitude added to delivery address.", delivery_address)
+
+
+def parse_menu(json_data: dict[str, Any], save_to_file: bool = False) -> dict:
+    """
+    Parse the menu JSON data and return a dictionary with item names as keys and formatted strings as values.
+    Args:
+        json_data (dict): The JSON data containing menu information returned from the Toast API.
+        save_to_file (bool): Whether to save the parsed menu to files.
+
+    Returns:
+        dict: A dictionary with item names as keys and formatted strings as values.
+    """
+    menu_data = {}
+
+    # Load modifier group and option references for easier lookup
+    modifier_groups = json_data.get("modifierGroupReferences", {})
+    modifier_options = json_data.get("modifierOptionReferences", {})
+
+    # Iterate through menus
+    for menu in json_data.get("menus", []):
+        for menu_group in menu.get("menuGroups", []):
+            item_group_guid = menu_group["guid"]
+            for item in menu_group.get("menuItems", []):
+                item_name = item["name"]
+                item_guid = item["guid"]
+                result_lines = []
+
+                result_lines.append(
+                    f"Item name: {item_name} (ItemGroup guid: {item_group_guid}, Item guid: {item_guid})"
+                )
+                # Check pricing strategy
+                pricing_strategy = item.get("pricingStrategy")
+                price = item.get("price")
+                if pricing_strategy == "BASE_PRICE" and price is not None:
+                    result_lines.append(
+                        f"{item_name} Base Price (for all sizes such as small, medium, large): {price}"
+                    )
+
+                # Process all modifier groups
+                modifier_refs = item.get("modifierGroupReferences", [])
+                if modifier_refs:
+                    for ref_id in modifier_refs:
+                        mod_group = modifier_groups.get(str(ref_id))
+                        if mod_group:
+                            mod_group_name = mod_group["name"]
+                            mod_group_guid = mod_group["guid"]
+                            result_lines.append(
+                                f"\n{item_name} Modifier's optionGroup name: {mod_group_name} (optionGroup guid: {mod_group_guid})"
+                            )
+
+                            # List all options in the modifier group
+                            for option_ref in mod_group.get(
+                                "modifierOptionReferences", []
+                            ):
+                                option = modifier_options.get(str(option_ref))
+                                if option:
+                                    option_name = option["name"]
+                                    option_price = option.get("price", 0.0)
+                                    option_guid = option["guid"]
+                                    result_lines.append(
+                                        f"  - Option: {option_name}, Price: {option_price} (Modifier item guid: {option_guid})"
+                                    )
+
+                menu_data[item_name] = "\n".join(result_lines)
+
+    if save_to_file:
+        dirname = (
+            f"tools/toast_tool/menus/{datetime.datetime.now().strftime('%Y-%m-%d')}"
+        )
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+        # Save each item's information to a separate file
+        for item_name, information in menu_data.items():
+            with open(f"{dirname}/{item_name}.txt", "w") as f:
+                f.write(information)
+
+    return menu_data
