@@ -13,12 +13,6 @@ from services.history_service import change_log_context
 from utils.log import logger
 
 
-def get_accounts(session: Session) -> List[db.Account]:
-    account_repository = db.AccountRepository(session)
-    accounts = account_repository.get_accounts()
-    return accounts
-
-
 def get_account(session: Session, account_name: str) -> Optional[db.Account]:
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name=account_name)

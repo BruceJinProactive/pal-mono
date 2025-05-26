@@ -44,6 +44,9 @@ async def create_agent(
         interaction_guidelines=create_request.interaction_guidelines,
         raw_config=create_request.raw_config,
         agent_type=create_request.agent_type,
+        voice_id=create_request.voice_id,
+        greeting_message=create_request.greeting_message,
+        speech_rate=create_request.speech_rate,
     )
     try:
         db_agent = agent_service.create_agent(
@@ -80,6 +83,9 @@ async def update_agent(
         interaction_guidelines=update_request.interaction_guidelines,
         raw_config=update_request.raw_config,
         agent_type=update_request.agent_type,
+        voice_id=update_request.voice_id,
+        greeting_message=update_request.greeting_message,
+        speech_rate=update_request.speech_rate,
     )
     try:
         db_agent = agent_service.update_agent(session, context, agent_id, agent_params)

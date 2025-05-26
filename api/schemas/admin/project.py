@@ -13,6 +13,10 @@ class Project(BaseModel):
     channel_identifiers: list[str]
     agent_id: uuid.UUID
     account_id: uuid.UUID
+    store_hours: str | None = None
+    address: str | None = None
+    product_info: str | None = None
+    service_instruction: str | None = None
 
 
 class ProjectSummary(BaseModel):
@@ -33,6 +37,10 @@ class CreateProjectRequest(BaseModel):
     display_name: str | None = None
     raw_config: dict | None = None
     channel_identifiers: list[str] | None = None
+    store_hours: str | None = None
+    address: str | None = None
+    product_info: str | None = None
+    service_instruction: str | None = None
 
 
 class UpdateProjectRequest(BaseModel):
@@ -43,3 +51,7 @@ class UpdateProjectRequest(BaseModel):
     display_name: str | None = None
     raw_config: dict | None = None
     channel_identifiers: list[str] | None = None
+    store_hours: str | None = None
+    address: str | None = None
+    product_info: str | None = None
+    service_instruction: str | None = None

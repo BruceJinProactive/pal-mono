@@ -254,6 +254,10 @@ async def create_project(
         agent_id=create_request.agent_id,
         raw_config=create_request.raw_config,
         channel_identifiers=create_request.channel_identifiers,
+        store_hours=create_request.store_hours,
+        address=create_request.address,
+        product_info=create_request.product_info,
+        service_instruction=create_request.service_instruction,
     )
     try:
         db_project = project_service.create_project(
@@ -291,6 +295,10 @@ async def update_project(
         agent_id=update_request.agent_id,
         raw_config=update_request.raw_config,
         channel_identifiers=update_request.channel_identifiers,
+        store_hours=update_request.store_hours,
+        address=update_request.address,
+        product_info=update_request.product_info,
+        service_instruction=update_request.service_instruction,
     )
     try:
         db_project = project_service.update_project(

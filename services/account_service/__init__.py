@@ -10,19 +10,6 @@ from . import _implementation
 from .schema import AccountParams
 
 
-def get_accounts(session: Session) -> List[db.Account]:
-    """
-    Retrieve a list of all Accounts.
-
-    Args:
-        session (Session): The database session.
-
-    Returns:
-        List[Account]: A list of all Accounts.
-    """
-    return _implementation.get_accounts(session)
-
-
 def get_account(session: Session, account_name: str) -> Optional[db.Account]:
     """
     Retrieve an Account by its name.
@@ -144,7 +131,6 @@ def filter_accounts_by_name(
 
 __all__ = [
     "AccountParams",
-    "get_accounts",
     "get_account",
     "mget_accounts",
     "filter_accounts_by_name",

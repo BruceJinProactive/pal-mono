@@ -9,3 +9,7 @@ class ProjectParams:
     agent_id: uuid.UUID | None = None
     raw_config: dict | None = None
     channel_identifiers: list[str] | None = None
+    store_hours: str | None = None
+    address: str | None = None
+    product_info: str | None = None
+    service_instruction: str | None = None

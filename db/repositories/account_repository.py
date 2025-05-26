@@ -5,6 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.tables import Account
+from db.tables.accounts import AccountStatus
 from utils.log import logger
 
 
@@ -12,15 +13,6 @@ class AccountRepository:
     def __init__(self, session: Session, auto_commit: bool = True):
         self.session = session
         self.auto_commit = auto_commit
-
-    def get_accounts(self, skip: int = 0, limit: int = 100) -> List[Account]:
-        """Retrieve a list of accounts with pagination."""
-        try:
-            return self.session.query(Account).offset(skip).limit(limit).all()
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error retrieving accounts: {e}")
-            return []
 
     def get_account(self, account_name: str) -> Account | None:
         accounts = self.get_accounts_by_names([account_name])
@@ -33,7 +25,12 @@ class AccountRepository:
         """Retrieve an account by its ID."""
 
         try:
-            return self.session.query(Account).filter(Account.id == account_id).first()
+            return (
+                self.session.query(Account)
+                .filter(Account.id == account_id)
+                .filter(Account.status != AccountStatus.deleted)
+                .first()
+            )
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving account by ID: {e}")
@@ -45,6 +42,7 @@ class AccountRepository:
             return (
                 self.session.query(Account)
                 .filter(Account.name.in_(account_names))
+                .filter(Account.status != AccountStatus.deleted)
                 .all()
             )
         except SQLAlchemyError as e:
@@ -60,7 +58,9 @@ class AccountRepository:
         If no keyword is provided, returns all accounts with a default limit of 20.
         """
         try:
-            query = self.session.query(Account)
+            query = self.session.query(Account).filter(
+                Account.status != AccountStatus.deleted
+            )
 
             if keyword:
                 query = query.filter(
@@ -78,7 +78,10 @@ class AccountRepository:
         """Update account details based on the account ID and provided fields."""
         try:
             db_account = (
-                self.session.query(Account).filter(Account.name == account_name).first()
+                self.session.query(Account)
+                .filter(Account.name == account_name)
+                .filter(Account.status != AccountStatus.deleted)
+                .first()
             )
             if not db_account:
                 return None
@@ -105,11 +108,12 @@ class AccountRepository:
                 self.session.query(Account).filter(Account.name == account_name).first()
             )
             if db_account:
-                self.session.delete(db_account)
+                db_account.status = AccountStatus.deleted
                 if self.auto_commit:
                     self.session.commit()
                 else:
                     self.session.flush()
+                self.session.refresh(db_account)
             return db_account
         except SQLAlchemyError as e:
             self.session.rollback()

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, Enum, Float, String
+from sqlalchemy.types import DateTime, Enum, String
 
 from .base import Base
 
@@ -26,6 +26,16 @@ class AgentType(str, enum.Enum):
     general = "general"
     ordering = "ordering"
     sales = "sales"
+
+
+class SpeechRate(str, enum.Enum):
+    """Speech Rate Enum"""
+
+    slowest = "slowest"
+    slower = "slower"
+    normal = "normal"
+    faster = "faster"
+    fastest = "fastest"
 
 
 class Agent(Base):
@@ -49,7 +59,9 @@ class Agent(Base):
     )
     voice_id: Mapped[str | None] = mapped_column(String, nullable=True)
     greeting_message: Mapped[str | None] = mapped_column(String, nullable=True)
-    voice_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speech_rate: Mapped[SpeechRate] = mapped_column(
+        Enum(SpeechRate), nullable=False, server_default=SpeechRate.normal
+    )
 
     # deprecated, use the explicit fields instead
     raw_config: Mapped[Dict] = mapped_column(

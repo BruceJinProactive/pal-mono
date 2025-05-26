@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from db.tables.accounts import AccountStatus
+
 
 class Account(BaseModel):
     """Account Model"""
@@ -10,6 +12,7 @@ class Account(BaseModel):
     id: str
     name: str
     display_name: str
+    status: AccountStatus
     icon_url: str
     industry: str | None
     business_description: str | None
@@ -19,7 +22,7 @@ class Account(BaseModel):
     business_others: str | None
     projects: list[str] = []  # list of project uuids
     agents: list[str] = []  # list of agent uuids
-    status: str | None = None
+    lead_id: UUID | None = None
 
 
 class AccountSummary(BaseModel):
@@ -28,9 +31,9 @@ class AccountSummary(BaseModel):
     id: UUID
     name: str
     display_name: str
+    status: AccountStatus
     icon_url: str
     industry: str | None
-    status: str | None = None
 
 
 class ListAccountsResponse(BaseModel):
@@ -43,6 +46,7 @@ class UpdateAccountRequest(BaseModel):
     """Update Account Request"""
 
     display_name: str | None = None
+    status: AccountStatus | None = None
     icon_uri: str | None = None
     industry: str | None = None
     business_description: str | None = None
@@ -50,6 +54,7 @@ class UpdateAccountRequest(BaseModel):
     business_promotions: str | None = None
     business_catalog: str | None = None
     business_others: str | None = None
+    lead_id: UUID | None = None
 
 
 class CreateAccountRequest(UpdateAccountRequest):

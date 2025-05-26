@@ -1,6 +1,7 @@
+import uuid
 from dataclasses import dataclass
 
-from db.tables.accounts import BusinessIndustry
+from db.tables.accounts import AccountStatus, BusinessIndustry
 
 
 @dataclass
@@ -13,3 +14,5 @@ class AccountParams:
     business_promotions: str | None
     business_catalog: str | None
     business_others: str | None
+    lead_id: uuid.UUID | None = None
+    status: AccountStatus | None = None

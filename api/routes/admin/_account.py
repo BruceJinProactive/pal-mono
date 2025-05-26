@@ -145,6 +145,7 @@ def _validate_and_parse_request(update: UpdateAccountRequest) -> AccountParams:
                 detail=f"Invalid industry value: {update.industry}",
                 headers={"Content-Type": "application/json"},
             )
+
     return account_service.AccountParams(
         display_name=update.display_name,
         icon_uri=update.icon_uri,
@@ -154,6 +155,8 @@ def _validate_and_parse_request(update: UpdateAccountRequest) -> AccountParams:
         business_promotions=update.business_promotions,
         business_catalog=update.business_catalog,
         business_others=update.business_others,
+        lead_id=update.lead_id,
+        status=update.status,
     )
 
 

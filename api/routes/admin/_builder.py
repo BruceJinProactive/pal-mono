@@ -23,7 +23,8 @@ def build_account(account: db.Account) -> Account:
         business_others=account.business_others,
         projects=[str(project.id) for project in account.projects],
         agents=[str(agent.id) for agent in account.agents],
-        status=account.status.value,
+        status=account.status,
+        lead_id=account.lead_id,
     )
 
 
@@ -35,7 +36,7 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         display_name=account.display_name or account.name,
         icon_url=map_uri_to_s3_url(account.icon_uri),
         industry=account.industry,
-        status=account.status.value,
+        status=account.status,
     )
 
 
@@ -52,6 +53,9 @@ def build_agent(agent: db.Agent) -> Agent:
         projects=[str(project.id) for project in agent.projects],
         account_id=agent.account_id,
         agent_type=get_agent_type(agent),
+        voice_id=agent.voice_id,
+        greeting_message=agent.greeting_message,
+        speech_rate=agent.speech_rate,
     )
 
 
@@ -72,6 +76,10 @@ def build_project(project: db.Project) -> Project:
         channel_identifiers=project.channel_identifiers or [],
         agent_id=project.agent_id,
         account_id=project.account_id,
+        store_hours=project.store_hours,
+        address=project.address,
+        product_info=project.product_info,
+        service_instruction=project.service_instruction,
     )
 
 

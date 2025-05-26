@@ -41,7 +41,7 @@ class Project(Base):
     )
     store_hours: Mapped[str | None] = mapped_column(String, nullable=True)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
-    menu_info: Mapped[str | None] = mapped_column(String, nullable=True)
+    product_info: Mapped[str | None] = mapped_column(String, nullable=True)
     service_instruction: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns

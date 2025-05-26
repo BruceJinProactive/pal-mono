@@ -2,7 +2,7 @@ import uuid
 
 from pydantic import BaseModel, Field
 
-from db.tables.agents import AgentType
+from db.tables.agents import AgentType, SpeechRate
 
 
 class Agent(BaseModel):
@@ -19,6 +19,9 @@ class Agent(BaseModel):
     projects: list[str]
     account_id: uuid.UUID
     agent_type: AgentType | None
+    voice_id: str | None = None
+    greeting_message: str | None = None
+    speech_rate: SpeechRate | None = None
 
 
 class AgentSummary(BaseModel):
@@ -39,6 +42,9 @@ class CreateAgentRequest(BaseModel):
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
     agent_type: AgentType = Field(default=AgentType.general)
+    voice_id: str | None = None
+    greeting_message: str | None = None
+    speech_rate: SpeechRate | None = None
 
 
 class UpdateAgentRequest(BaseModel):
@@ -50,3 +56,6 @@ class UpdateAgentRequest(BaseModel):
     interaction_guidelines: str | None = None
     raw_config: dict | None = None
     agent_type: AgentType | None = None
+    voice_id: str | None = None
+    greeting_message: str | None = None
+    speech_rate: SpeechRate | None = None
