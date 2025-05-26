@@ -52,8 +52,11 @@ async def api_vapi_server(request: Request, session: AsyncSession) -> JSONRespon
         logger.debug(
             "VAPI request received",
             extra={
-                "message_type": body.get("message", {}).get("type"),
-                # drop / hash phone numbers & transcripts
+                "message": {
+                    "type": body.get("message", {}).get("type"),
+                    "call_id": body.get("message", {}).get("call", {}).get("id"),
+                    "conversation": body.get("message", {}).get("conversation", {}),
+                },
             },
         )
         # Validate that the request is coming from VAPI
