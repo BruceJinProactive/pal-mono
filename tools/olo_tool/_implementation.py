@@ -1,5 +1,6 @@
 import os
 from functools import cached_property
+from typing import Optional
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -7,14 +8,34 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.olo_tool._apis import (
+from tools.olo_tool._apis import (  # TODO: Add request_ccsf_token
+    add_items_to_basket,
+    create_basket,
     get_online_ordering_status,
     get_store_info,
+    set_basket_handoff_mode,
+    submit_order,
     validate_address,
+    validate_basket,
 )
-from tools.olo_tool.classes import Address, OloAccessToken
+from tools.olo_tool.classes import (
+    Address,
+    BillingMethod,
+    OloAccessToken,
+    OloOrderSubmissionBody,
+    OloProductInput,
+    UserType,
+)
 from utils.log import logger
 from utils.ordering._query_engine import create_query_engine
+from utils.ordering._utils import construct_order, get_chat_history, get_relevant_docs
+from utils.ordering.classes import SubQueries
+
+from ._prompt_constants import (
+    EXTRACTOR_SYSTEM_PROMPT,
+    EXTRACTOR_USER_PROMPT,
+    RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+)
 
 
 class OloTool(Toolkit):
@@ -175,3 +196,117 @@ class OloTool(Toolkit):
                 f"[OloTool.validate_address_tool] Error validating address: {e}"
             )
             return "Failed to validate the address, please try again."
+
+    def _construct_order(
+        self, latest_user_message: Optional[str] = None
+    ) -> OloProductInput | str:
+        chat_history = get_chat_history(
+            self.query_messages_tool, latest_user_message if latest_user_message else ""
+        )
+        context = get_relevant_docs(
+            self.query_engine,
+            chat_history,
+            RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+            response_format=SubQueries,
+        )
+
+        return construct_order(
+            system_prompt=EXTRACTOR_SYSTEM_PROMPT,
+            user_prompt=EXTRACTOR_USER_PROMPT.format(
+                context=context, chat_history=chat_history
+            ),
+            response_format=OloProductInput,
+        )
+
+    @tool
+    def checkout_order(self, latest_user_message: Optional[str] = None) -> str:
+        """
+        Validates an order for checkout by extracting structured ordering data from chat
+        history. This function absolutely must be invoked when all the required information is collected and the user asks to checkout,
+        pay, place the order, etc.
+
+        Returns:
+            str: Order checkout confirmation details
+        """
+        # We need to first create a basket, then add items to the basket, then set the handoff mode to pickup. For credit card payment, we need to request a CCSF token, then submit the order; for pay in store, we need to submit the order.
+        # We focus on pay in store for now.
+        try:
+            # Create a basket
+            basket = create_basket(int(self.store_id), self._olo_token)
+
+            # Construct the order
+            order_input = self._construct_order(latest_user_message)
+            # If the order is a string, return it
+            if isinstance(order_input, str):
+                return order_input  # Failed to construct order
+
+            # Add items to the basket
+            add_items_to_basket(
+                basket.id, olo_product_input=order_input, olo_token=self._olo_token
+            )
+
+            # Set the handoff mode to pickup
+            set_basket_handoff_mode(
+                basket.id,
+                handoff_mode=order_input.handoffmode,
+                olo_token=self._olo_token,
+            )
+
+            # Validate the basket
+            validate_basket(basket.id, olo_token=self._olo_token)
+
+            #######
+            # Pay with credit card
+            #######
+            # Request a CCSF token
+            # This is the test case for paying with credit card
+            # credit_token = self.test_request_ccsf_token_success(
+            #     basket_id=basket_id
+            # ).accesstoken
+
+            # # Create order submission body
+            # order_submission = OloOrderSubmissionBody(
+            #     billingmethod=BillingMethod.creditcardtoken,
+            #     usertype=UserType.guest,
+            #     token=credit_token,
+            #     expiryyear=2025,
+            #     expirymonth=12,
+            #     cardtype="Visa",
+            #     cardlastfour="1234",
+            #     streetaddress="123 Main St",
+            #     city="Anytown",
+            #     state="CA",
+            #     zip="12345",
+            #     country="US",
+            #     saveonfile="false",
+            #     firstname="John",
+            #     lastname="Doe",
+            #     emailaddress="john.doe@example.com",
+            #     contactnumber="1234567890",
+            # )
+
+            #######
+            # Pay in store
+            #######
+            # Submit the order
+            order_submission = OloOrderSubmissionBody(
+                billingmethod=BillingMethod.payinstore,
+                usertype=UserType.guest,
+                billingschemeid=order_input.billingschemeid,
+                saveonfile="false",
+                firstname=order_input.firstname,
+                lastname=order_input.lastname,
+                emailaddress=order_input.emailaddress,
+                contactnumber=order_input.contactnumber,
+            )
+            order_response = submit_order(
+                basket_id=basket.id,
+                olo_token=self._olo_token,
+                olo_order_submission_body=order_submission,
+            )
+
+            return f"Order submitted successfully. The order ID is {order_response.id}. Total cost: {order_response.total}. Order contents: {order_response.products}. Your OLO ID is {order_response.oloid}. When reaching out to Olo about an order, please provide this id."
+
+        except Exception as e:
+            logger.error(f"[OloTool.checkout_order] Error checking out order: {e}")
+            return "Failed to check out the order, please try again."

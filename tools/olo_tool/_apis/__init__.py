@@ -181,7 +181,9 @@ def add_items_to_basket(
         dict: A dictionary containing the new basket (OloBasket) and a list of errors
     """
     try:
-        request_body = olo_product_input.model_dump(exclude_none=True)
+        request_body = olo_product_input.model_dump(
+            exclude_none=True,
+        )
         response = connect_olo_order_hub(
             http_method=HttpMethod.POST,
             bearer_token=olo_token,
@@ -191,6 +193,13 @@ def add_items_to_basket(
         )
         response_json = json.loads(handle_olo_response(response))
         response_json["basket"] = OloBasket.model_validate(response_json["basket"])
+
+        # Check for errors
+        if response_json.get("errors") and len(response_json["errors"]) > 0:
+            raise ValueError(
+                f"Failed to add items to basket {basket_id}: {response_json['errors']}"
+            )
+
         return response_json
     except Exception as e:
         raise ValueError(f"Failed to add items to basket {basket_id}: {str(e)}") from e

@@ -266,11 +266,6 @@ class ProductInput(BaseModel):
     isupsell: Optional[bool] = None
 
 
-class OloProductInput(BaseModel):
-    products: list[ProductInput]
-    replacebasketcontents: bool
-
-
 class OloBasketHandoffMode(str, Enum):
     delivery = "delivery"
     dispatch = "dispatch"
@@ -278,6 +273,17 @@ class OloBasketHandoffMode(str, Enum):
     pickup = "pickup"
     dinein = "dinein"
     drivethru = "drivethru"
+
+
+class OloProductInput(BaseModel):
+    products: list[ProductInput]
+    replacebasketcontents: bool
+    handoffmode: OloBasketHandoffMode
+    firstname: str
+    lastname: str
+    emailaddress: str
+    contactnumber: str
+    billingschemeid: str
 
 
 class UpsellImage(BaseModel):

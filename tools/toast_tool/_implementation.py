@@ -268,7 +268,7 @@ class ToastTool(Toolkit):
         error_indicators = [
             "Error in getting chat history",
             "Conversation history not found",
-            "Agent session ot found",
+            "Agent session not found",
         ]
         if any(indicator in chat_history for indicator in error_indicators):
             logger.warning(
