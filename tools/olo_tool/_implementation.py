@@ -18,6 +18,11 @@ from tools.olo_tool._apis import (  # TODO: Add request_ccsf_token
     validate_address,
     validate_basket,
 )
+from tools.olo_tool._prompt_constants import (
+    EXTRACTOR_SYSTEM_PROMPT,
+    EXTRACTOR_USER_PROMPT,
+    RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+)
 from tools.olo_tool.classes import (
     Address,
     BillingMethod,
@@ -30,12 +35,6 @@ from utils.log import logger
 from utils.ordering._query_engine import create_query_engine
 from utils.ordering._utils import construct_order, get_chat_history, get_relevant_docs
 from utils.ordering.classes import SubQueries
-
-from ._prompt_constants import (
-    EXTRACTOR_SYSTEM_PROMPT,
-    EXTRACTOR_USER_PROMPT,
-    RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
-)
 
 
 class OloTool(Toolkit):
