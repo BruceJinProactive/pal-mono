@@ -18,24 +18,6 @@ from . import _raw_config
 from .schema import AgentParams
 
 
-def _sync_agent_type(params: AgentParams) -> dict:
-    """Synchronize agent_type between the column and raw_config.
-
-    Args:
-        params: The agent parameters containing the agent_type
-
-    Returns:
-        dict: The updated parameters with agent_type synchronized
-    """
-    agent_params = asdict(params)
-    if params.agent_type is not None:
-        if agent_params.get("raw_config") is None:
-            agent_params["raw_config"] = {}
-        agent_params["raw_config"]["agent_type"] = params.agent_type
-        agent_params["agent_type"] = params.agent_type
-    return agent_params
-
-
 async def construct_agent_config(
     db_session: AsyncSession,
     agent_id: uuid.UUID,

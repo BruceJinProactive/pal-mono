@@ -84,7 +84,3 @@ class Agent(Base):
     )
     account: Mapped["Account"] = relationship("Account", back_populates="agents")
     projects: Mapped[List["Project"]] = relationship("Project", back_populates="agent")
-
-    @property
-    def agent_type_legacy(self):
-        return self.raw_config.get("agent_type")
