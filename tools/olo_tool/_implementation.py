@@ -11,6 +11,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.olo_tool._apis import (  # TODO: Add request_ccsf_token
     add_items_to_basket,
     create_basket,
+    get_billing_schemes_info,
     get_online_ordering_status,
     get_store_info,
     set_basket_handoff_mode,
@@ -26,6 +27,7 @@ from tools.olo_tool._prompt_constants import (
 from tools.olo_tool.classes import (
     Address,
     BillingMethod,
+    BillingScheme,
     OloAccessToken,
     OloOrderSubmissionBody,
     OloProductInput,
@@ -204,7 +206,9 @@ class OloTool(Toolkit):
             return "Failed to validate the address, please try again."
 
     def _construct_order(
-        self, latest_user_message: Optional[str] = None
+        self,
+        billing_schemes_info: list[BillingScheme],
+        latest_user_message: Optional[str] = None,
     ) -> OloProductInput | str:
         chat_history = get_chat_history(
             self.query_messages_tool, latest_user_message if latest_user_message else ""
@@ -215,6 +219,9 @@ class OloTool(Toolkit):
             RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
             response_format=SubQueries,
         )
+
+        # Add the billing schemes info to the context
+        context += f"\n\nThe billing schemes info is: {billing_schemes_info}. Choose the billing scheme id that is most appropriate for the order.\n"
 
         return construct_order(
             system_prompt=EXTRACTOR_SYSTEM_PROMPT,
@@ -240,8 +247,13 @@ class OloTool(Toolkit):
             # Create a basket
             basket = create_basket(int(self.store_id), self._olo_token)
 
+            # Get the billing schemes info
+            billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
+
             # Construct the order
-            order_input = self._construct_order(latest_user_message)
+            order_input = self._construct_order(
+                billing_schemes_info, latest_user_message
+            )
             # If the order is a string, return it
             if isinstance(order_input, str):
                 return order_input  # Failed to construct order

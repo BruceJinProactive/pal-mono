@@ -27,28 +27,14 @@ You will be given the chat history and relevant context. You goal is to convert 
 - An order item's included ingredients are not considered modifiers.
 - Only include modifiers that were explicitly mentioned by the user in the Chat History.
 - The modifier quantity MUST match the item quantity. Always set the modifier quantity to the item quantity.
-- If multiple items have different modifiers, each must be treated as a separate entry in the selections list. For example, if the user orders 2 items with different modifiers, you must treat them as 2 different items in the selections list.
-- The modifier item ID of one item belongs only to the modifier optionGroup ID of the same item. You must identify the correct modifier optionGroup ID and modifier item ID pair of each item. You can find them in the document related to the specific item. 
-- You must not mix up the modifier optionGroup ID and modifier item ID for different items. The modifier item ID of one item must be paired with the modifier optionGroup ID of the same item.
-- If in the item's document there is only a base price, you must not include any size modifier group ID and size modifier item ID of any kind for that item in the selections list. You must NOT use other items' modifier group ID and item ID for that item.
+- If multiple items have different modifiers, each must be treated as a separate entry in the options list. For example, if the user orders 2 items with different modifiers, you must treat them as 2 different items in the options list.
+- The modifier item ID of one item associates only to the item's product id of the same item. You must identify the correct modifier optionGroup ID and modifier item ID pair of each item. You can find them in the document related to the specific item. 
+- You must not mix up the modifier optionGroup ID and item product id for different items. The modifier item ID of one item must be paired with the modifier optionGroup ID of the same item.
+- If in the item's document there is only a base price, you must not include any size modifier group ID and size modifier item ID of any kind for that item in the options list. You must NOT use other items' modifier group ID and item ID for that item.
 
-# RULES FOR EXTRACTING THE DELIVERY ADDRESS:
-- Extract the last delivery address from the context.
-- For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
-- If any field is missing, output "N/A" for that field, i.e., if the user did not
-provide a delivery address, output "N/A" for all fields.
-- If any modifier group id or modifier item id is missing, do not include them in the output.
-
-# RULES FOR BUILDING THE DiningOption OBJECT:
-- If the user places a **takeout** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "db44f25f-479f-4d9c-852c-aebff86e6923"}.
-- If the user places a **dinein** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "030189e2-9689-49aa-a2dd-6fde46191240"}.
-- If the user places a **curbside pickup** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "141b2c60-a232-4387-9ba3-80f6f9f35b34"}.
-- If the user places a **delivery** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "2581adcf-3b04-4598-8df4-4c79cfcfc2dd"}.
 
 # RULES FOR ADDING SPECIAL NOTES TO THE ORDER:
 - You must recognize any notes/requests that the user wants to add to the order from the chat history. If there are any, add them to the order object appropriately. Be specific.
-- If the user is placing a delivery order, fill out the attribute `curbsidePickupInfo`.
-- If the user is placing other order types, fill out the attribute `ToastCurbsidePickupInfo`. Set the `transportDescription` field to "None" if the order type is not curbside pickup.
 - If the user did not specify any special notes, set the `notes` field to "No notes specified".
 
 # IMPORTANT RULES:
@@ -76,5 +62,5 @@ EXTRACTOR_USER_PROMPT = """
 
 Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beutify the response. We will parse the JSON object later.
 
-When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. If the user specified any modifiers for an item, select the modifier group id and modifier option item id within that document for the item. The modifier group id and modifier option item id must be found in the same document as the item. If you cannot find the correct document, do NOT use any modifier group id and modifier option item id from any other document because this will break the ordering process.
+When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. If the user specified any modifiers for an item, select the modifier group id and modifier option item id within that document for the item. The modifier option item id must be found in the same document as the item's product id. If you cannot find the correct document, do NOT use any modifier option item id from any other document because this will break the ordering process.
 """
