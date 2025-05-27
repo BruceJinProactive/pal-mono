@@ -54,6 +54,10 @@ class OloTool(Toolkit):
         self._cached_store_info: str | None = None
 
         # Register tools
+        self.register(self.get_store_info_tool)
+        self.register(self.check_online_ordering_status)
+        self.register(self.validate_address_tool)
+        self.register(self.checkout_order)
 
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
