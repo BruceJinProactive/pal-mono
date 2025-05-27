@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, Enum
+from sqlalchemy.types import DateTime, Enum, String
 
 from .base import Base
 
@@ -60,6 +60,9 @@ class Conversation(Base):
     status: Mapped[ConversationStatus] = mapped_column(
         Enum(ConversationStatus), default=ConversationStatus.ACTIVE, nullable=False
     )
+
+    # Vapi control URL for call transfer
+    vapi_control_url: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
     # Relationships
     user_id: Mapped[uuid.UUID] = mapped_column(
