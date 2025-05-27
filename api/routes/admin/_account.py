@@ -93,11 +93,19 @@ async def update_account(
 
 async def delete_account(
     account_name: str,
+    hard_delete: bool,
     context: UserContext,
     session: Session,
 ):
     authorize_user_account(context, account_name)
-    account_service.delete_account(session, account_name, context)
+    try:
+        account_service.delete_account(session, account_name, hard_delete, context)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
 
 
 async def get_account_statistics(

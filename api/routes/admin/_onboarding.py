@@ -2,7 +2,6 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.onboarding import OnboardingRequest
-from db.tables.accounts import BusinessIndustry
 from services import admin_service
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUser
@@ -27,25 +26,17 @@ async def create_onboarding(
     """
     authorize_user_account(context, request.account.name)
 
-    industry = None
-    if request.account.industry:
-        try:
-            industry = BusinessIndustry(request.account.industry)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid account industry: {request.account.industry}",
-                headers={"Content-Type": "application/json"},
-            )
     account_params = AccountParams(
         display_name=request.account.display_name,
         icon_uri=request.account.icon_uri,
-        industry=industry,
+        industry=request.account.industry,
         business_description=request.account.business_description,
         business_faq=request.account.business_faq,
         business_promotions=request.account.business_promotions,
         business_catalog=request.account.business_catalog,
         business_others=request.account.business_others,
+        lead_id=request.account.lead_id,
+        status=request.account.status,
     )
 
     agent_projects_data = []
@@ -56,6 +47,9 @@ async def create_onboarding(
             communication_style=ap.agent.communication_style,
             interaction_guidelines=ap.agent.interaction_guidelines,
             raw_config=None,
+            voice_id=ap.agent.voice_id,
+            greeting_message=ap.agent.greeting_message,
+            speech_rate=ap.agent.speech_rate,
         )
 
         projects_data = []
@@ -64,6 +58,10 @@ async def create_onboarding(
                 name=p.name,
                 display_name=p.display_name,
                 channel_identifiers=p.channel_identifiers,
+                store_hours=p.store_hours,
+                address=p.address,
+                product_info=p.product_info,
+                service_instruction=p.service_instruction,
             )
             projects_data.append(project_data)
 

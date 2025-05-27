@@ -157,13 +157,16 @@ async def update_account(
 @admin_router.delete("/accounts/{account_name}")
 async def delete_account(
     account_name: str,
+    hard_delete: bool = Query(
+        False, description="Whether to hard delete the account from the database"
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
     """
     Delete the account identified by name.
     """
-    await _account.delete_account(account_name, context, session)
+    await _account.delete_account(account_name, hard_delete, context, session)
 
 
 @admin_router.get("/accounts/{account_name}/agents")

@@ -101,24 +101,30 @@ class AccountRepository:
             logger.error(f"Error updating account: {e}")
             raise
 
-    def delete_account(self, account_name: str) -> Optional[Account]:
+    def delete_account(self, account_name: str, hard_delete: bool) -> Optional[Account]:
         """Delete an account by its name."""
         try:
             db_account = (
                 self.session.query(Account).filter(Account.name == account_name).first()
             )
             if db_account:
-                db_account.status = AccountStatus.deleted
+                if hard_delete:
+                    logger.warn(
+                        f"Hard deleting account {account_name} from the database!"
+                    )
+                    self.session.delete(db_account)
+                else:
+                    db_account.status = AccountStatus.deleted
+
                 if self.auto_commit:
                     self.session.commit()
                 else:
                     self.session.flush()
-                self.session.refresh(db_account)
             return db_account
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error deleting account: {e}")
-            return None
+            raise
 
     def create_account(self, account_name: str, **kwargs) -> Account:
         """Create a new account with a unique UUID."""

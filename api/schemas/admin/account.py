@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from db.tables.accounts import AccountStatus
+from db.tables.accounts import AccountStatus, BusinessIndustry
 
 
 class Account(BaseModel):
@@ -48,7 +48,7 @@ class UpdateAccountRequest(BaseModel):
     display_name: str | None = None
     status: AccountStatus | None = None
     icon_uri: str | None = None
-    industry: str | None = None
+    industry: BusinessIndustry | None = None
     business_description: str | None = None
     business_faq: str | None = None
     business_promotions: str | None = None

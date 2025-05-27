@@ -111,7 +111,9 @@ def update_account(
     return updated_account
 
 
-def delete_account(session: Session, account_name: str, context: UserContext):
+def delete_account(
+    session: Session, account_name: str, hard_delete: bool, context: UserContext
+):
     account_repository = db.AccountRepository(session, auto_commit=False)
 
     # Get the account before deleting
@@ -129,4 +131,4 @@ def delete_account(session: Session, account_name: str, context: UserContext):
         old_record=account,
     ):
         # Delete the account
-        account_repository.delete_account(account_name)
+        account_repository.delete_account(account_name, hard_delete)

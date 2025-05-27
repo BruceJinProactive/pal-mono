@@ -102,11 +102,13 @@ def update_account(
     return _implementation.update_account(session, account_name, params, context)
 
 
-def delete_account(session: Session, account_name: str, context: UserContext):
+def delete_account(
+    session: Session, account_name: str, hard_delete: bool, context: UserContext
+):
     """
     Delete the account identified by name.
     """
-    return _implementation.delete_account(session, account_name, context)
+    return _implementation.delete_account(session, account_name, hard_delete, context)
 
 
 def filter_accounts_by_name(
