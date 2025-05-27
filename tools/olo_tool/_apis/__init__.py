@@ -17,7 +17,6 @@ from tools.olo_tool.classes import (
     OloStore,
     ValidatedBasketTotals,
 )
-from utils.log import logger
 
 
 def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
@@ -51,7 +50,7 @@ def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
 
 def get_online_ordering_status(
     restaurant_id: int, olo_token: OloAccessToken
-) -> Optional[int]:
+) -> int | str:
     """
     Get the online ordering status for ONE given restaurant ID
 
@@ -60,7 +59,7 @@ def get_online_ordering_status(
         olo_token (OloAccessToken): The Olo access token
 
     Returns:
-        int | None: Current estimated ASAP order lead time in minutes. None if the restaurant is not accepting online orders.
+        int | str: Current estimated ASAP order lead time in minutes. If leadtime is not found, return a string indicating the restaurant is closed or not accepting online orders.
     """
     try:
         request_body = {
@@ -75,12 +74,22 @@ def get_online_ordering_status(
         )
 
         response_json = json.loads(handle_olo_response(response))
-        if len(response_json["leadtimes"]) > 0:
+        if (
+            response_json["leadtimes"][0]["totalminutes"] is not None
+        ):  # Explicitly check for None to avoid 0 leadtime being returned
             return response_json["leadtimes"][0]["totalminutes"]
         else:
-            raise ValueError(
-                f"No leadtime data found for restaurant {restaurant_id}.\nMessage: {response_json['errors']}"
-            )
+            # If no leadtime data is found, we need to check if the restaurant is open and accepting online orders
+            store_info = get_store_info(restaurant_id, olo_token)
+            if store_info.isavailable:
+                return "The restaurant is accepting online orders. The estimated ASAP order lead time is 0 minutes."
+            elif store_info.iscurrentlyopen:
+                return (
+                    "The restaurant is currently open but not accepting online orders."
+                )
+            else:
+                return "The restaurant closed and not accepting online orders."
+
     except Exception as e:
         raise ValueError(
             f"Failed to get online ordering status for restaurant {restaurant_id}: {str(e)}"

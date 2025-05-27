@@ -1,3 +1,4 @@
+import json
 from functools import cached_property
 from typing import Optional
 
@@ -106,9 +107,14 @@ class OloTool(Toolkit):
                 )
 
             # Get store info from Olo
-            store_info = get_store_info(
+            store_dict = get_store_info(
                 int(self.store_id), self._olo_token
-            ).model_dump_json()
+            ).model_dump()
+
+            # Remove isavailable and iscurrentlyopen from the store info since they should be most up to date and not stored in the cache
+            store_dict.pop("isavailable", None)
+            store_dict.pop("iscurrentlyopen", None)
+            store_info = json.dumps(store_dict)
 
             # Cache store info for future use
             self._cached_store_info = store_info
@@ -138,10 +144,10 @@ class OloTool(Toolkit):
 
             status = get_online_ordering_status(int(self.store_id), self._olo_token)
 
-            if not status:
-                return "The restaurant is not accepting online orders."
-
-            return f"The restaurant is accepting online orders. The estimated ASAP order lead time is {status} minutes."
+            if isinstance(status, int):
+                return f"The restaurant is accepting online orders. The estimated ASAP order lead time is {status} minutes."
+            else:
+                return status
 
         except Exception as e:
             logger.error(
