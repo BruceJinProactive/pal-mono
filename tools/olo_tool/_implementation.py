@@ -1,4 +1,3 @@
-import os
 from functools import cached_property
 from typing import Optional
 
@@ -35,6 +34,7 @@ from utils.log import logger
 from utils.ordering._query_engine import create_query_engine
 from utils.ordering._utils import construct_order, get_chat_history, get_relevant_docs
 from utils.ordering.classes import SubQueries
+from utils.secret import get_client_secret_with_fallback
 
 
 class OloTool(Toolkit):
@@ -77,10 +77,7 @@ class OloTool(Toolkit):
             ValueError: If the required environment variable is not set.
         """
         with LLMObs.task(name="get_olo_token"):
-            api_key = os.getenv("OLOSANDBOX_API_KEY")
-            if not api_key:
-                logger.error("OLOSANDBOX_API_KEY environment variable not set")
-                raise ValueError("Olo API key environment variable not set")
+            api_key = get_client_secret_with_fallback("OLOSANDBOX_API_KEY")
             bearer_token = OloAccessToken(
                 access_token=api_key,
                 token_type="OloKey",
