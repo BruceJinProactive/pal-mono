@@ -59,6 +59,10 @@ class Account(Base):
     business_catalog: Mapped[str | None] = mapped_column(String, nullable=True)
     business_others: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Stripe subscription info
+    stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
     # Metadata columns
     status: Mapped[AccountStatus] = mapped_column(
         Enum(AccountStatus), nullable=False, server_default=AccountStatus.active.value

@@ -32,3 +32,23 @@ def create_checkout_session(
     except Exception as e:
         logger.error(f"Failed to create checkout session with stripe due to error: {e}")
         return None
+
+
+def unpack_checkout_session(session_id: str):
+    stripe.api_key = secret.get_server_secret("STRIPE_API_KEY")
+
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        if not session:
+            return None
+        return {
+            "account_name": session.client_reference_id,
+            "customer_id": session.customer,
+            "subscription_id": session.subscription,
+            "customer_email": session.customer_email,
+        }
+    except Exception as e:
+        logger.error(
+            f"Failed to retrieve checkout session with stripe due to error: {e}"
+        )
+        return None

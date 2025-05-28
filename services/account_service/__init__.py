@@ -82,7 +82,10 @@ def create_account(
 
 
 def update_account(
-    session: Session, account_name: str, params: AccountParams, context: UserContext
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    params: AccountParams,
 ) -> db.Account:
     """
     Updates the account details with the provided parameters.

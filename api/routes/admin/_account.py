@@ -80,7 +80,7 @@ async def update_account(
     account_params = _validate_and_parse_request(update_request)
     try:
         db_account = account_service.update_account(
-            session, account_name, account_params, context
+            session, context, account_name, account_params
         )
     except ValueError as err:
         raise HTTPException(
