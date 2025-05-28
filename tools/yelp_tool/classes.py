@@ -89,6 +89,62 @@ class YelpBookingsOpeningsResponse(BaseModel):
     )
 
 
+class YelpBookingsHoldsRequest(BaseModel):
+    """Request parameters for Yelp Bookings holds endpoint"""
+
+    # Path parameter
+    business_id_or_alias: str = Field(
+        pattern=r"^(?:[A-Za-z0-9]{22}|[A-Za-z0-9-]{1,255})$",
+        description="Either a 22-char Yelp Business ID or a valid business alias.",
+    )
+
+    # Body parameters (sent as form data)
+    covers: int = Field(
+        description="How many people are attending the reservation (min. value is 1; max value is 10).",
+        ge=1,
+        le=10,
+    )
+    date: str = Field(
+        description="The date for the reservation, format is YYYY-mm-dd",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    time: str = Field(
+        description="The time of the requested reservation, format is HH:MM",
+        pattern=r"^\d{2}:\d{2}$",
+    )
+    unique_id: str = Field(
+        description="User's device id or unique user id to help tie together actions of the user on the API. Multiple requests to the Holds endpoint by the same user should use the same unique_id.",
+        max_length=300,
+    )
+
+
+class YelpBookingsHoldsResponse(BaseModel):
+    """Response from Yelp Bookings holds endpoint"""
+
+    cancellation_policy: str = Field(
+        description="The restaurant's cancellation policy text"
+    )
+    credit_card_hold: bool = Field(
+        description="Whether a credit card hold is required for this reservation"
+    )
+    expires_at: float = Field(
+        description="Unix timestamp when the hold expires (holds are valid for 5 minutes)"
+    )
+    hold_id: str = Field(
+        description="Unique identifier for this hold, required to place the actual reservation"
+    )
+    is_editable: bool = Field(
+        description="Whether the reservation can be edited after being placed"
+    )
+    last_cancellation_date: float = Field(
+        description="Unix timestamp of the last date/time the reservation can be cancelled"
+    )
+    notes: str = Field(description="Additional notes from the restaurant")
+    reserve_url: str = Field(
+        description="URL to complete the reservation on Yelp's platform"
+    )
+
+
 ######### YELP BOOKINGS API CLASSES END ############
 
 
