@@ -253,11 +253,13 @@ async def handle_status_update(message_data, session: AsyncSession):
 
         logger.debug(f"Call {call_id} status updated to: {status}")
 
-        raw_model_data = (
-            call_data.get("model", {}).get("model")
-            if isinstance(call_data.get("model"), dict)
-            else None
-        )
+        assistant_data = call_data.get("assistant", {})
+        model_block = assistant_data.get("model")
+
+        raw_model_data = None
+        if isinstance(model_block, dict):
+            raw_model_data = model_block.get("model")
+
         try:
             model_data = json.loads(raw_model_data) if raw_model_data else {}
         except (TypeError, json.JSONDecodeError):
