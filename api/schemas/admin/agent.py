@@ -3,6 +3,7 @@ import uuid
 from pydantic import BaseModel, Field
 
 from db.tables.agents import AgentType, SpeechRate
+from services.agent_service import AgentParams
 
 
 class Agent(BaseModel):
@@ -22,6 +23,7 @@ class Agent(BaseModel):
     voice_id: str | None = None
     greeting_message: str | None = None
     speech_rate: SpeechRate | None = None
+    background_noise: bool | None = None
 
 
 class AgentSummary(BaseModel):
@@ -30,21 +32,6 @@ class AgentSummary(BaseModel):
     id: uuid.UUID
     name: str
     agent_type: AgentType | None
-
-
-class CreateAgentRequest(BaseModel):
-    """Create Agent Request"""
-
-    name: str = Field(...)
-    account_name: str = Field(...)
-    description: str | None = None
-    communication_style: str | None = None
-    interaction_guidelines: str | None = None
-    raw_config: dict | None = None
-    agent_type: AgentType = Field(default=AgentType.general)
-    voice_id: str | None = None
-    greeting_message: str | None = None
-    speech_rate: SpeechRate | None = None
 
 
 class UpdateAgentRequest(BaseModel):
@@ -59,3 +46,24 @@ class UpdateAgentRequest(BaseModel):
     voice_id: str | None = None
     greeting_message: str | None = None
     speech_rate: SpeechRate | None = None
+    background_noise: bool | None = None
+
+    def to_agent_params(self) -> AgentParams:
+        return AgentParams(
+            name=self.name,
+            description=self.description,
+            communication_style=self.communication_style,
+            interaction_guidelines=self.interaction_guidelines,
+            raw_config=self.raw_config,
+            agent_type=self.agent_type,
+            voice_id=self.voice_id,
+            greeting_message=self.greeting_message,
+            speech_rate=self.speech_rate,
+            background_noise=self.background_noise,
+        )
+
+
+class CreateAgentRequest(UpdateAgentRequest):
+    """Create Agent Request"""
+
+    account_name: str = Field(...)

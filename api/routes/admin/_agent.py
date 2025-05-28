@@ -37,17 +37,7 @@ async def create_agent(
     session: Session,
 ) -> Agent:
     authorize_user_account(context, create_request.account_name)
-    agent_params = agent_service.AgentParams(
-        name=create_request.name,
-        description=create_request.description,
-        communication_style=create_request.communication_style,
-        interaction_guidelines=create_request.interaction_guidelines,
-        raw_config=create_request.raw_config,
-        agent_type=create_request.agent_type,
-        voice_id=create_request.voice_id,
-        greeting_message=create_request.greeting_message,
-        speech_rate=create_request.speech_rate,
-    )
+    agent_params = create_request.to_agent_params()
     try:
         db_agent = agent_service.create_agent(
             session, context, create_request.account_name, agent_params
@@ -76,17 +66,7 @@ async def update_agent(
         )
     authorize_user_account(context, agent.account.name)
 
-    agent_params = agent_service.AgentParams(
-        name=update_request.name,
-        description=update_request.description,
-        communication_style=update_request.communication_style,
-        interaction_guidelines=update_request.interaction_guidelines,
-        raw_config=update_request.raw_config,
-        agent_type=update_request.agent_type,
-        voice_id=update_request.voice_id,
-        greeting_message=update_request.greeting_message,
-        speech_rate=update_request.speech_rate,
-    )
+    agent_params = update_request.to_agent_params()
     try:
         db_agent = agent_service.update_agent(session, context, agent_id, agent_params)
     except ValueError as err:

@@ -12,9 +12,7 @@ from api.schemas.admin.account import (
 )
 from api.schemas.admin.agent import AgentSummary
 from db import ConversationStatus
-from db.tables.accounts import BusinessIndustry
 from services import account_service, admin_service, user_service
-from services.account_service import AccountParams
 
 from ._auth import authorize_user_account
 from ._builder import build_account, build_account_summary, build_agent_summary
@@ -56,7 +54,7 @@ async def create_account(
     session: Session,
 ) -> Account:
     authorize_user_account(context, create_request.name)
-    account_params = _validate_and_parse_request(create_request)
+    account_params = create_request.to_account_params()
     try:
         db_account = account_service.create_account(
             session, context, create_request.name, account_params
@@ -77,7 +75,7 @@ async def update_account(
     session: Session,
 ) -> Account:
     authorize_user_account(context, account_name)
-    account_params = _validate_and_parse_request(update_request)
+    account_params = update_request.to_account_params()
     try:
         db_account = account_service.update_account(
             session, context, account_name, account_params
@@ -139,32 +137,6 @@ async def get_account_statistics(
         total_sessions=total_sessions,
         active_sessions=active_sessions,
         escalated_sessions=escalated_sessions,
-    )
-
-
-def _validate_and_parse_request(update: UpdateAccountRequest) -> AccountParams:
-    business_industry = None
-    if update.industry:
-        try:
-            business_industry = BusinessIndustry(update.industry)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid industry value: {update.industry}",
-                headers={"Content-Type": "application/json"},
-            )
-
-    return account_service.AccountParams(
-        display_name=update.display_name,
-        icon_uri=update.icon_uri,
-        industry=business_industry,
-        business_description=update.business_description,
-        business_faq=update.business_faq,
-        business_promotions=update.business_promotions,
-        business_catalog=update.business_catalog,
-        business_others=update.business_others,
-        lead_id=update.lead_id,
-        status=update.status,
     )
 
 

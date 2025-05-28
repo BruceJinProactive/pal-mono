@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+from sqlalchemy import Boolean
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -61,6 +62,9 @@ class Agent(Base):
     greeting_message: Mapped[str | None] = mapped_column(String, nullable=True)
     speech_rate: Mapped[SpeechRate] = mapped_column(
         Enum(SpeechRate), nullable=False, server_default=SpeechRate.normal
+    )
+    background_noise: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )
 
     # deprecated, use the explicit fields instead

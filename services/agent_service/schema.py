@@ -14,3 +14,4 @@ class AgentParams:
     voice_id: str | None = None
     greeting_message: str | None = None
     speech_rate: SpeechRate | None = None
+    background_noise: bool | None = None

@@ -56,6 +56,7 @@ def build_agent(agent: db.Agent) -> Agent:
         voice_id=agent.voice_id,
         greeting_message=agent.greeting_message,
         speech_rate=agent.speech_rate,
+        background_noise=agent.background_noise,
     )
 
 

@@ -249,16 +249,7 @@ async def create_project(
     session: Session,
 ) -> Project:
     authorize_user_account(context, create_request.account_name)
-    project_params = project_service.ProjectParams(
-        display_name=create_request.display_name,
-        agent_id=create_request.agent_id,
-        raw_config=create_request.raw_config,
-        channel_identifiers=create_request.channel_identifiers,
-        store_hours=create_request.store_hours,
-        address=create_request.address,
-        product_info=create_request.product_info,
-        service_instruction=create_request.service_instruction,
-    )
+    project_params = create_request.to_project_params()
     try:
         db_project = project_service.create_project(
             session,
@@ -290,16 +281,7 @@ async def update_project(
             headers={"Content-Type": "application/json"},
         )
     authorize_user_account(context, project.account.name)
-    project_params = project_service.ProjectParams(
-        display_name=update_request.display_name,
-        agent_id=update_request.agent_id,
-        raw_config=update_request.raw_config,
-        channel_identifiers=update_request.channel_identifiers,
-        store_hours=update_request.store_hours,
-        address=update_request.address,
-        product_info=update_request.product_info,
-        service_instruction=update_request.service_instruction,
-    )
+    project_params = update_request.to_project_params()
     try:
         db_project = project_service.update_project(
             session, context, project_id, project_params

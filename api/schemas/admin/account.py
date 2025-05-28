@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from db.tables.accounts import AccountStatus, BusinessIndustry
+from services.account_service import AccountParams
 
 
 class Account(BaseModel):
@@ -55,6 +56,20 @@ class UpdateAccountRequest(BaseModel):
     business_catalog: str | None = None
     business_others: str | None = None
     lead_id: UUID | None = None
+
+    def to_account_params(self) -> AccountParams:
+        return AccountParams(
+            display_name=self.display_name,
+            status=self.status,
+            icon_uri=self.icon_uri,
+            industry=self.industry,
+            business_description=self.business_description,
+            business_faq=self.business_faq,
+            business_promotions=self.business_promotions,
+            business_catalog=self.business_catalog,
+            business_others=self.business_others,
+            lead_id=self.lead_id,
+        )
 
 
 class CreateAccountRequest(UpdateAccountRequest):
