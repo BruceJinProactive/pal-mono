@@ -2,6 +2,15 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+
+class YelpApiResponse(BaseModel):
+    """Class to handle Yelp API response data"""
+
+    status: int
+    reason: str
+    decoded_body: dict
+
+
 ######### YELP BOOKINGS API CLASSES START ############
 
 
@@ -10,7 +19,8 @@ class YelpBookingsOpeningsRequest(BaseModel):
 
     # Path parameter
     business_id_or_alias: str = Field(
-        description="A unique identifier for a Yelp Business. Can be either a 22-character Yelp Business ID, or a Yelp Business Alias."
+        pattern=r"^(?:[A-Za-z0-9]{22}|[A-Za-z0-9-]{1,255})$",
+        description="Either a 22-char Yelp Business ID or a valid business alias.",
     )
 
     # Query parameters
