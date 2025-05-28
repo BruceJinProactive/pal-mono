@@ -145,6 +145,63 @@ class YelpBookingsHoldsResponse(BaseModel):
     )
 
 
+class YelpBookingsReservationsRequest(BaseModel):
+    """Request parameters for Yelp Bookings reservations endpoint"""
+
+    # Path parameter
+    business_id_or_alias: str = Field(
+        pattern=r"^(?:[A-Za-z0-9]{22}|[A-Za-z0-9-]{1,255})$",
+        description="Either a 22-char Yelp Business ID or a valid business alias.",
+    )
+
+    # Body parameters (sent as form data)
+    covers: int = Field(
+        description="How many people are attending the reservation (min. value is 1; max value is 10).",
+        ge=1,
+        le=10,
+    )
+    date: str = Field(
+        description="The date for the reservation, format is YYYY-mm-dd",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    time: str = Field(
+        description="The time of the requested reservation, format is HH:MM",
+        pattern=r"^\d{2}:\d{2}$",
+    )
+    first_name: str = Field(
+        description="The first name of the person making the reservation."
+    )
+    last_name: str = Field(
+        description="The last name of the person making the reservation."
+    )
+    phone: str = Field(
+        description="The phone number to attach to the reservation.",
+        min_length=1,
+        max_length=32,
+    )
+    email: str = Field(description="The email to attach to the reservation.")
+    hold_id: str = Field(description="The Hold ID returned from the Holds endpoint.")
+    unique_id: str = Field(
+        description="User's device id or unique user id to help tie together actions of the user on the API. Multiple requests to the Holds endpoint by the same user should use the same unique_id.",
+        max_length=300,
+    )
+    notes: Optional[str] = Field(
+        default=None, description="The additional party notes for the reservation."
+    )
+
+
+class YelpBookingsReservationsResponse(BaseModel):
+    """Response from Yelp Bookings reservations endpoint"""
+
+    confirmation_url: str = Field(
+        description="URL to view the confirmed reservation on Yelp's platform"
+    )
+    notes: str = Field(description="Additional notes for the reservation")
+    reservation_id: str = Field(
+        description="Unique identifier for the confirmed reservation"
+    )
+
+
 ######### YELP BOOKINGS API CLASSES END ############
 
 
