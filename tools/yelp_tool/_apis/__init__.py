@@ -1,9 +1,11 @@
 from typing import Optional
 
-from tools.yelp_tool._apis._utils import connect_yelp_api, connect_yelp_partner_api_post
+from tools.yelp_tool._apis._utils import ApiHost, RequestType, connect_yelp_api
 from tools.yelp_tool.classes import (
     YelpAccessTokenRequest,
     YelpAccessTokenResponse,
+    YelpBookingsHoldsRequest,
+    YelpBookingsHoldsResponse,
     YelpBookingsOpeningsRequest,
     YelpBookingsOpeningsResponse,
 )
@@ -47,8 +49,10 @@ def get_openings(
 
     # Make the API call
     response = connect_yelp_api(
-        api_key=api_key,
         api_function=api_function,
+        request_type=RequestType.GET,
+        api_host=ApiHost.YELP_API,
+        api_key=api_key,
         query_params=query_params,
     )
 
@@ -101,8 +105,10 @@ def get_access_token(
         body_data["redirect_uri"] = request_params.redirect_uri
 
     # Make the API call
-    response = connect_yelp_partner_api_post(
+    response = connect_yelp_api(
         api_function=api_function,
+        request_type=RequestType.POST,
+        api_host=ApiHost.YELP_PARTNER_API,
         body_data=body_data,
     )
 
@@ -121,3 +127,63 @@ def get_access_token(
         logger.error(f"Failed to parse Yelp Partner API response: {str(e)}")
         logger.error(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp Partner API response: {str(e)}") from e
+
+
+def create_hold(
+    api_key: str,
+    request_params: YelpBookingsHoldsRequest,
+) -> YelpBookingsHoldsResponse:
+    """
+    Create a temporary hold on a reservation time slot using the Yelp Bookings API.
+
+    This endpoint places a temporary hold on the requested time slot so that the partner
+    can request all the required reservation information from the user. Holds are only
+    valid for 5 minutes and you must use the hold_id returned from this endpoint to
+    place the reservation or you will get a conflict.
+
+    Note: All parameters are sent as form data in the request body, not as query parameters.
+
+    Args:
+        api_key: Yelp API key for authentication
+        request_params: YelpBookingsHoldsRequest object containing the hold parameters
+
+    Returns:
+        YelpBookingsHoldsResponse object containing the hold information
+
+    Raises:
+        Exception: If the API request fails or returns an error
+    """
+    # Build the API endpoint with the business ID
+    api_function = f"/v3/bookings/{request_params.business_id_or_alias}/holds"
+
+    # Convert request parameters to form data
+    form_data = {
+        "covers": str(request_params.covers),
+        "date": request_params.date,
+        "time": request_params.time,
+        "unique_id": request_params.unique_id,
+    }
+
+    # Make the API call
+    response = connect_yelp_api(
+        api_function=api_function,
+        request_type=RequestType.POST,
+        api_host=ApiHost.YELP_API,
+        api_key=api_key,
+        body_data=form_data,
+        extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    # Handle the response
+    if response.status != 200:
+        logger.error(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"Yelp API error: {response.status} {response.reason}")
+
+    # Parse and validate the response using the response model
+    try:
+        return YelpBookingsHoldsResponse(**response.decoded_body)
+    except Exception as e:
+        logger.error(f"Failed to parse Yelp API response: {str(e)}")
+        logger.error(f"Response data: {response.decoded_body}")
+        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
