@@ -72,7 +72,7 @@ async def api_vapi_server(request: Request, session: AsyncSession) -> JSONRespon
             case "assistant-request":
                 response_data = await handle_assistant_request(message_data, session)
             case "status-update":
-                response_data = handle_status_update(message_data)
+                response_data = await handle_status_update(message_data, session)
             case "function-call":
                 response_data = handle_function_call(message_data)
             case "transcript-update":
@@ -233,13 +233,15 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         return {"error": str(e)}
 
 
-def handle_status_update(message_data):
+async def handle_status_update(message_data, session: AsyncSession):
     """
     Handle status-update message type.
     This is sent when a call's status changes (e.g., started, ended).
+    Extracts and persists the control URL when available.
 
     Args:
         message_data: The message data from the request
+        session: The database session
 
     Returns:
         dict: Response for VAPI
@@ -251,7 +253,85 @@ def handle_status_update(message_data):
 
         logger.debug(f"Call {call_id} status updated to: {status}")
 
-        # Just acknowledge status updates
+        raw_model_data = (
+            call_data.get("model", {}).get("model")
+            if isinstance(call_data.get("model"), dict)
+            else None
+        )
+        try:
+            model_data = json.loads(raw_model_data) if raw_model_data else {}
+        except (TypeError, json.JSONDecodeError):
+            logger.warning("Unable to decode model_data from VAPI payload")
+            model_data = {}
+
+        # Extract control URL from monitor data if available
+        monitor_data = call_data.get("monitor", {})
+        control_url = monitor_data.get("controlUrl")
+
+        if control_url and model_data:
+            customer_number = model_data.get("sender_identifier", "")
+            phone_number = model_data.get("recipient_identifier", "")
+
+            if customer_number and phone_number:
+                # Find the conversation using the same logic as handle_session_closure
+                channel_identifier = f"voice:{customer_number}"
+                project_channel_identifier = f"voice:{phone_number}"
+
+                project_repo = db.ProjectRepositoryAsync(session)
+                project = await project_repo.get_project_by_channel_identifier(
+                    project_channel_identifier
+                )
+                if not project:
+                    raise ValueError(
+                        f"Project not found for this message: {project_channel_identifier}"
+                    )
+                user_repo = db.UserRepositoryAsync(session)
+                user = await user_repo.get_user_by_channel_identifier(
+                    account_id=project.account_id,
+                    channel_identifier=channel_identifier,
+                )
+                if not user:
+                    raise ValueError(
+                        f"User not found for this message: account_id: {project.account_id}, channel_identifier:{channel_identifier}"
+                    )
+                conversation_repo = db.ConversationRepositoryAsync(session)
+                conversations = (
+                    await conversation_repo.get_open_conversations_by_user_id(user.id)
+                )
+                if not conversations:
+                    logger.warning(
+                        f"No matching active conversation found for call {call_id}"
+                    )
+                else:
+
+                    if len(conversations) > 1:
+                        logger.warning(
+                            f"There are more than one open conversations for user:{user.id}"
+                        )
+                    conversation = sorted(
+                        conversations, key=lambda c: c.created_at, reverse=True
+                    )[0]
+                    success = await conversation_repo.update_vapi_control_url(
+                        conversation.id, control_url
+                    )
+                    if success:
+                        logger.info(
+                            f"Updated conversation {conversation.id} with Vapi control URL: {control_url}"
+                        )
+                    else:
+                        logger.error(
+                            f"Failed to update conversation {conversation.id} with control URL"
+                        )
+            else:
+                logger.warning(
+                    f"Missing phone number data for customer_number: {customer_number} and phone_number: {phone_number}"
+                )
+        else:
+            logger.debug(
+                f"No control URL: {control_url} or model: {model_data} available for call {call_id}"
+            )
+
+        # Acknowledge status updates
         return {"status": "acknowledged"}
     except Exception as e:
         logger.error(f"Error in handle_status_update: {str(e)}")
