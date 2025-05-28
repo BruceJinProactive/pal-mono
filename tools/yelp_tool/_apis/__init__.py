@@ -8,6 +8,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsHoldsResponse,
     YelpBookingsOpeningsRequest,
     YelpBookingsOpeningsResponse,
+    YelpBookingsReservationsRequest,
+    YelpBookingsReservationsResponse,
 )
 from utils.log import logger
 
@@ -183,6 +185,80 @@ def create_hold(
     # Parse and validate the response using the response model
     try:
         return YelpBookingsHoldsResponse(**response.decoded_body)
+    except Exception as e:
+        logger.error(f"Failed to parse Yelp API response: {str(e)}")
+        logger.error(f"Response data: {response.decoded_body}")
+        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
+
+
+def create_reservation(
+    api_key: str,
+    request_params: YelpBookingsReservationsRequest,
+) -> YelpBookingsReservationsResponse:
+    """
+    Create a physical reservation at a restaurant using the Yelp Bookings API.
+
+    This endpoint places a physical reservation at a restaurant with all the information
+    provided. This endpoint will take an optional hold id if the partner previously
+    placed a hold. If the restaurant requires a credit card hold, you will not be able
+    to place a reservation and the API will return an error.
+
+    In this case, you should use the reserve_url provided in the hold endpoint or the
+    opening endpoint to prompt the user for a reservation.
+
+    Note: All parameters are sent as form data in the request body, not as query parameters.
+    Additionally, you will receive an error if you don't pass the exact same reservation
+    time, date and covers values as you supplied to the Holds endpoint.
+
+    Args:
+        api_key: Yelp API key for authentication
+        request_params: YelpBookingsReservationsRequest object containing the reservation parameters
+
+    Returns:
+        YelpBookingsReservationsResponse object containing the reservation confirmation
+
+    Raises:
+        Exception: If the API request fails or returns an error
+    """
+    # Build the API endpoint with the business ID
+    api_function = f"/v3/bookings/{request_params.business_id_or_alias}/reservations"
+
+    # Convert request parameters to form data
+    form_data = {
+        "covers": str(request_params.covers),
+        "date": request_params.date,
+        "time": request_params.time,
+        "first_name": request_params.first_name,
+        "last_name": request_params.last_name,
+        "phone": request_params.phone,
+        "email": request_params.email,
+        "hold_id": request_params.hold_id,
+        "unique_id": request_params.unique_id,
+    }
+
+    # Add optional notes if provided
+    if request_params.notes is not None:
+        form_data["notes"] = request_params.notes
+
+    # Make the API call
+    response = connect_yelp_api(
+        api_function=api_function,
+        request_type=RequestType.POST,
+        api_host=ApiHost.YELP_API,
+        api_key=api_key,
+        body_data=form_data,
+        extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    # Handle the response
+    if response.status != 200:
+        logger.error(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"Yelp API error: {response.status} {response.reason}")
+
+    # Parse and validate the response using the response model
+    try:
+        return YelpBookingsReservationsResponse(**response.decoded_body)
     except Exception as e:
         logger.error(f"Failed to parse Yelp API response: {str(e)}")
         logger.error(f"Response data: {response.decoded_body}")
