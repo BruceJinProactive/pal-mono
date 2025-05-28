@@ -1,7 +1,9 @@
 from typing import Optional
 
-from tools.yelp_tool._apis._utils import connect_yelp_api
+from tools.yelp_tool._apis._utils import connect_yelp_api, connect_yelp_partner_api_post
 from tools.yelp_tool.classes import (
+    YelpAccessTokenRequest,
+    YelpAccessTokenResponse,
     YelpBookingsOpeningsRequest,
     YelpBookingsOpeningsResponse,
 )
@@ -63,3 +65,59 @@ def get_openings(
         logger.error(f"Failed to parse Yelp API response: {str(e)}")
         logger.error(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
+
+
+def get_access_token(
+    request_params: YelpAccessTokenRequest,
+) -> YelpAccessTokenResponse:
+    """
+    Get an access token from the Yelp Partner API using an authorization code.
+
+    This endpoint exchanges an authorization code for an access token that can be used
+    to make authorized requests to Yelp APIs on behalf of a business user.
+
+    Args:
+        request_params: YelpAccessTokenRequest object containing the token request parameters
+
+    Returns:
+        YelpAccessTokenResponse object containing the access token and related information
+
+    Raises:
+        Exception: If the API request fails or returns an error
+    """
+    # API endpoint for getting access token
+    api_function = "/token/v1"
+
+    # Convert request parameters to body data
+    body_data = {
+        "client_id": request_params.client_id,
+        "client_secret": request_params.client_secret,
+        "code": request_params.code,
+        "grant_type": request_params.grant_type,
+    }
+
+    # Add optional redirect_uri if specified
+    if request_params.redirect_uri is not None:
+        body_data["redirect_uri"] = request_params.redirect_uri
+
+    # Make the API call
+    response = connect_yelp_partner_api_post(
+        api_function=api_function,
+        body_data=body_data,
+    )
+
+    # Handle the response
+    if response.status != 200:
+        logger.error(
+            f"Yelp Partner API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"Yelp Partner API error: {response.status} {response.reason}")
+
+    # Parse and validate the response using the response model
+    try:
+        return YelpAccessTokenResponse(**response.decoded_body)
+    except Exception as e:
+        logger.error(f"Failed to parse Yelp Partner API response: {str(e)}")
+        logger.error(f"Response data: {response.decoded_body}")
+        raise Exception(f"Failed to parse Yelp Partner API response: {str(e)}") from e
