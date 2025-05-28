@@ -11,6 +11,7 @@ from api.routes.endpoints import endpoints
 from api.schemas.admin.account import (
     Account,
     AccountStatisticsResponse,
+    AccountStatusResponse,
     CreateAccountRequest,
     ListAccountsResponse,
     UpdateAccountRequest,
@@ -221,6 +222,18 @@ async def get_account_statistics(
     return await _account.get_account_statistics(
         account_name, lookback, context, session
     )
+
+
+@admin_router.get("/accounts/{account_name}/status")
+def get_account_status(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> AccountStatusResponse:
+    """
+    Get account status information including id, name and status.
+    """
+    return _account.get_account_status(account_name, context, session)
 
 
 """

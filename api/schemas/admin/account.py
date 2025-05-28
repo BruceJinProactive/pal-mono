@@ -83,3 +83,12 @@ class AccountStatisticsResponse(BaseModel):
     total_sessions: int
     active_sessions: int
     escalated_sessions: int
+
+
+class AccountStatusResponse(BaseModel):
+    """Account Status Response"""
+
+    id: UUID
+    name: str
+    status: AccountStatus
+    display_name: str | None = None
