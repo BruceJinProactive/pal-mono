@@ -60,6 +60,7 @@ class VapiTool(Toolkit):
         transfer_payload = {
             "type": "transfer",
             "destination": {"type": "number", "number": self.destination_number},
+            "content": "I'll transfer you to our customer support. Just hang tight for a moment.",
         }
 
         try:
