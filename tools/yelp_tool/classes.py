@@ -287,6 +287,44 @@ class YelpAccessTokenResponse(BaseModel):
 ######### YELP PARTNER API CLASSES END ############
 
 
+######### YELP WAITLIST API CLASSES START ############
+
+
+class YelpWaitlistStatusRequest(BaseModel):
+    """Request parameters for Yelp Waitlist Status endpoint"""
+
+    # Path parameter
+    business_id: str = Field(description="Encrypted Yelp business identifier")
+
+
+class WaitEstimate(BaseModel):
+    """Wait time estimates for a specific party size range"""
+
+    est_wait: int = Field(description="Estimated wait time in minutes")
+    min_wait: int = Field(description="Minimum wait time in minutes")
+    wait_range: str = Field(description="Wait range as a string representation")
+    max_wait: Optional[int] = Field(
+        default=None,
+        description="Maximum wait time in minutes (not present for 7+ party size)",
+    )
+
+
+class YelpWaitlistStatusResponse(BaseModel):
+    """Response from Yelp Waitlist Status endpoint"""
+
+    business_id: str = Field(description="Yelp business identifier")
+    state: str = Field(description="Current state of the waitlist (e.g., 'ON_MY_WAY')")
+    closed_reason: Optional[str] = Field(
+        default=None, description="Reason why the waitlist is closed, if applicable"
+    )
+    wait_estimates: dict[str, WaitEstimate] = Field(
+        description="Wait time estimates for different party size ranges (e.g., '1-2', '3-4', '5-6', '7+')"
+    )
+
+
+######### YELP WAITLIST API CLASSES END ############
+
+
 ######### LLM EXTRACTION CLASSES START ############
 
 
