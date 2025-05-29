@@ -313,16 +313,21 @@ async def handle_status_update(message_data, session: AsyncSession):
                     conversation = sorted(
                         conversations, key=lambda c: c.created_at, reverse=True
                     )[0]
-                    success = await conversation_repo.update_vapi_control_url(
-                        conversation.id, control_url
+
+                    logger.debug(
+                        f"Found conversation: {conversation.id} with url: {conversation.vapi_control_url} for call {call_id}"
                     )
-                    if success:
-                        logger.info(
-                            f"Updated conversation {conversation.id} with Vapi control URL: {control_url}"
-                        )
-                    else:
-                        logger.error(
-                            f"Failed to update conversation {conversation.id} with control URL"
+                    if not conversation.vapi_control_url:
+                        conversation.vapi_control_url = control_url
+                        try:
+                            await session.commit()
+                            logger.debug(...)
+                        except Exception:
+                            await session.rollback()
+                            logger.error("Failed to update vapi_control_url")
+                            raise
+                        logger.debug(
+                            f"Add control url: {conversation.vapi_control_url} to conversation: {conversation.id} for call {call_id}"
                         )
             else:
                 logger.warning(
@@ -336,7 +341,9 @@ async def handle_status_update(message_data, session: AsyncSession):
         # Acknowledge status updates
         return {"status": "acknowledged"}
     except Exception as e:
-        logger.error(f"Error in handle_status_update: {str(e)}")
+        call_data = message_data.get("call", {})
+        call_id = call_data.get("id")
+        logger.error(f"Error in handle_status_update: {str(e)}, call: {call_id}")
         return {"error": str(e)}
 
 
