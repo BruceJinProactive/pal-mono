@@ -318,17 +318,15 @@ async def handle_status_update(message_data, session: AsyncSession):
                         f"Found conversation: {conversation.id} with url: {conversation.vapi_control_url} for call {call_id}"
                     )
                     if not conversation.vapi_control_url:
-                        conversation.vapi_control_url = control_url
-                        try:
-                            await session.commit()
-                            logger.debug(...)
-                        except Exception:
-                            await session.rollback()
-                            logger.error("Failed to update vapi_control_url")
-                            raise
-                        logger.debug(
-                            f"Add control url: {conversation.vapi_control_url} to conversation: {conversation.id} for call {call_id}"
+                        result = await conversation_repo.update_vapi_control_url(
+                            conversation.id, control_url
                         )
+                        if result:
+                            logger.debug(
+                                f"Successfully update vapi_control_url for conversation: {conversation.id}"
+                            )
+                        else:
+                            logger.error("Failed to update vapi_control_url")
             else:
                 logger.warning(
                     f"Missing phone number data for customer_number: {customer_number} and phone_number: {phone_number}"

@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -61,8 +62,11 @@ class ConversationRepositoryAsync:
             bool: True if the update was successful, False otherwise.
         """
         try:
-            conversation = await self.get_conversation_by_id(conversation_id)
-            conversation.vapi_control_url = vapi_control_url
+            await self.session.execute(
+                update(Conversation)
+                .where(Conversation.id == conversation_id)
+                .values(vapi_control_url=vapi_control_url)
+            )
             await self.session.commit()
             return True
         except Exception as e:
