@@ -1,6 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -44,6 +53,7 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
+from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
     CreateUserRequest,
     ListUsersResponse,
@@ -57,6 +67,7 @@ from . import (
     _account,
     _agent,
     _analytics,
+    _auth,
     _campaign,
     _conversation,
     _feedback,
@@ -65,7 +76,7 @@ from . import (
     _projects,
     _users,
 )
-from ._auth import authenticate_user, get_user_info
+from ._auth import authenticate_user
 from ._onboarding import create_onboarding
 from .legacy import legacy_router
 
@@ -95,7 +106,18 @@ def get_user(context: UserContext = Depends(authenticate_user)):
     """
     Retrieve information about the currently logged-in user.
     """
-    return get_user_info(context)
+    return _auth.get_user_info(context)
+
+
+@admin_router.post("/signup", status_code=status.HTTP_200_OK)
+async def signup(
+    request: SignUpRequest,
+    response: Response,
+):
+    """
+    Onboard a new account by creating the account and the first agent.
+    """
+    await _auth.user_signup(request, response)
 
 
 """

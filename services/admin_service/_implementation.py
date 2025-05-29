@@ -23,7 +23,11 @@ from services import (
 )
 from services.account_service import AccountParams
 from services.admin_service._utils import get_knowledge_settings
-from services.admin_service.schema import CognitoUser, UserSessionPreview
+from services.admin_service.schema import (
+    CognitoUser,
+    CognitoUserSession,
+    UserSessionPreview,
+)
 from services.agent_service import AgentParams
 from services.knowledge_service import KnowledgeFile
 from services.message_service import (
@@ -44,6 +48,7 @@ MOCK_USER_PREFIX = "mock-user"
 
 AWS_REGION = os.environ["AWS_REGION"]
 AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
+AWS_ADMIN_CONSOLE_APP_CLIENT_ID = os.environ["AWS_ADMIN_CONSOLE_APP_CLIENT_ID"]
 
 
 def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
@@ -1014,6 +1019,85 @@ def create_account_user(
             raise ValueError(
                 f"Failed to create Cognito user account for {user_email}: {e}"
             ) from e
+
+
+def signup_account_user(
+    account_name: str,
+    user_email: str,
+    user_name: str,
+    password: str,
+) -> CognitoUser:
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+    try:
+        # Step 1: Sign up the user
+        signup_response = cognito_client.sign_up(
+            ClientId=AWS_ADMIN_CONSOLE_APP_CLIENT_ID,
+            Username=user_email,
+            Password=password,
+            UserAttributes=[
+                {"Name": "email", "Value": user_email},
+                {"Name": "name", "Value": user_name},
+                {"Name": "custom:account_name", "Value": account_name},
+            ],
+        )
+        logger.info(
+            f"Created user account for {user_email} using SignUp",
+            extra={
+                "account_name": account_name,
+                "user_email": user_email,
+                "user_name": user_name,
+            },
+        )
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        if error_code == "UsernameExistsException":
+            logger.error(f"User with email {user_email} already exists: {e}")
+            raise ValueError(f"User with email {user_email} already exists") from e
+        elif error_code == "InvalidPasswordException":
+            logger.error(f"Invalid password for user {user_email}: {e}")
+            raise ValueError(e.response["Error"]["Message"]) from e
+        else:
+            logger.error(str(e))
+            raise ValueError(
+                f"Failed to create Cognito user account for {user_email}"
+            ) from e
+
+    try:
+        user_sub = signup_response["UserSub"]
+        # Step 2: Confirm user
+        cognito_client.admin_confirm_sign_up(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID, Username=user_email
+        )
+        # Step 3: Authenticate to get session tokens
+        auth_response = cognito_client.admin_initiate_auth(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            ClientId=AWS_ADMIN_CONSOLE_APP_CLIENT_ID,
+            AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+            AuthParameters={
+                "USERNAME": user_email,
+                "PASSWORD": password,
+            },
+        )
+
+        id_token = auth_response["AuthenticationResult"]["IdToken"]
+        access_token = auth_response["AuthenticationResult"]["AccessToken"]
+        refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
+        expires_in = auth_response["AuthenticationResult"]["ExpiresIn"]
+
+        return CognitoUser(
+            email=user_email,
+            name=user_name,
+            session=CognitoUserSession(
+                user_sub=user_sub,
+                id_token=id_token,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_in=expires_in,
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error auto-confirming and authenticating Cognito user: {e}")
+        raise ValueError(f"Failed to obtain user session for user {user_email}") from e
 
 
 def delete_account_user(account_name: str, user_email: str) -> None:

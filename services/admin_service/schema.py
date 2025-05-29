@@ -11,6 +11,16 @@ class UserSessionPreview:
 
 
 @dataclass
+class CognitoUserSession:
+    user_sub: str
+    access_token: str
+    refresh_token: str
+    id_token: str
+    expires_in: int
+
+
+@dataclass
 class CognitoUser:
     email: str
     name: str
+    session: CognitoUserSession | None = None

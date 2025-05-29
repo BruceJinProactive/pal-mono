@@ -507,6 +507,32 @@ def create_account_user(
     return _implementation.create_account_user(account_name, user_email, user_name)
 
 
+def signup_account_user(
+    account_name: str,
+    user_email: str,
+    user_name: str,
+    password: str,
+) -> CognitoUser:
+    """
+    Create Cognito user accounts for the provided list of users using AdminCreateUser.
+
+    Args:
+        account_name (str): The account name to associate the users with
+        user_email (str): User's email used for login
+        user_name (str): User's first name
+        password (str): User's password
+
+    Returns:
+        CognitoUser: Created user details
+
+    Raises:
+        ValueError: If there's an error creating a user account
+    """
+    return _implementation.signup_account_user(
+        account_name, user_email, user_name, password
+    )
+
+
 def delete_account_user(account_name: str, user_email: str) -> None:
     """
     Delete an admin user for a specific account.
@@ -543,5 +569,6 @@ __all__ = [
     "delete_knowledge_file",
     "list_account_users",
     "create_account_user",
+    "signup_account_user",
     "delete_account_user",
 ]
