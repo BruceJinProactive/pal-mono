@@ -45,7 +45,6 @@ def unpack_checkout_session(session_id: str):
             "account_name": session.client_reference_id,
             "customer_id": session.customer,
             "subscription_id": session.subscription,
-            "customer_email": session.customer_email,
         }
     except Exception as e:
         logger.error(

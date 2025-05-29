@@ -53,6 +53,7 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
+from api.schemas.admin.subscription import CheckoutParams
 from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
     CreateUserRequest,
@@ -74,6 +75,7 @@ from . import (
     _history,
     _knowledge,
     _projects,
+    _subscription,
     _users,
 )
 from ._auth import authenticate_user
@@ -910,3 +912,35 @@ async def onboard(
     Onboard a new account with agents and projects in a single transaction.
     """
     await create_onboarding(request, context, session)
+
+
+"""
+---------- Subscription Endpoints ----------
+------------------------------------------
+"""
+
+
+@admin_router.post("/subscriptions/checkout")
+async def create_checkout_url(
+    params: CheckoutParams,
+    context: UserContext = Depends(authenticate_user),
+):
+    """
+    Creates a Stripe checkout session for the account and redirect user
+    to the checkout page.
+    """
+    return _subscription.create_checkout_url(params, context)
+
+
+@admin_router.post("/subscriptions/callback", status_code=200)
+async def update_subscription_data(
+    checkout_session_id: str = Query(..., description="Checkout Session ID"),
+    context: UserContext = Depends(authenticate_user),
+    db_session: Session = Depends(db.get_db),
+):
+    """
+    Extracts metadata from stripe's checkout session and updates the account's subscription data.
+    """
+    return _subscription.update_account_subscription(
+        db_session, checkout_session_id, context
+    )

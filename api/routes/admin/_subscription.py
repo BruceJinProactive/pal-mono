@@ -2,14 +2,26 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
 
-from api.routes.admin._utils import create_guest_context
-from api.schemas.onboarding import CheckoutParams
+from api.routes.admin._auth import authorize_user_account
+from api.routes.admin._utils import UserContext
+from api.schemas.admin.subscription import CheckoutParams
 from services import account_service, payment_service
 from services.account_service import AccountParams
 from utils.log import logger
 
 
-def create_checkout_url(params: CheckoutParams):
+def create_checkout_url(params: CheckoutParams, context: UserContext):
+    """
+    Creates a Stripe checkout session for the account and redirect user
+    to the checkout page.
+
+    Args:
+        params: Checkout parameters including account name, email, etc.
+        context: User context for authentication
+    """
+    # Authorize user access to the account
+    authorize_user_account(context, params.account_name)
+
     session = payment_service.create_checkout_session(
         account_name=params.account_name,
         customer_email=str(params.customer_email),
@@ -33,19 +45,31 @@ def create_checkout_url(params: CheckoutParams):
 def update_account_subscription(
     db_session: Session,
     checkout_session_id: str,
+    context: UserContext,
 ):
+    """
+    Extracts metadata from stripe's checkout session and updates the account's subscription data.
+
+    Args:
+        db_session: Database session
+        checkout_session_id: Stripe checkout session ID
+        context: User context for authentication
+    """
     checkout_data = payment_service.unpack_checkout_session(checkout_session_id)
     if not checkout_data:
         raise ValueError("Failed to retrieve checkout session.")
+
     account_name = checkout_data["account_name"]
     customer_id = checkout_data["customer_id"]
-    customer_email = checkout_data["customer_email"]
     subscription_id = checkout_data["subscription_id"]
 
-    guest_context = create_guest_context(account_name, customer_email)
+    # Authorize user access to the account
+    authorize_user_account(context, account_name)
+
+    # Use the authenticated user context instead of creating a guest context
     account_service.update_account(
         db_session,
-        guest_context,
+        context,
         account_name,
         AccountParams(
             stripe_customer_id=customer_id,

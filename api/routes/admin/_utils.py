@@ -116,14 +116,3 @@ def verify_instagram_deauthorize_signature(
 def get_agent_type(agent: db.Agent) -> AgentType:
     """Get the agent type from the dedicated column."""
     return agent.agent_type
-
-
-def create_guest_context(account_name, email: str) -> UserContext:
-    return UserContext(
-        username=email,
-        email=email,
-        groups=[],
-        display_name=email.split("@")[0],
-        account_names=[account_name],
-        role=UserRole.AccountManager,
-    )
