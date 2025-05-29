@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -47,34 +46,6 @@ class ConversationRepositoryAsync:
             .limit(limit)
         )
         return result.scalars().all()
-
-    async def update_vapi_control_url(
-        self, conversation_id: uuid.UUID, vapi_control_url: str
-    ) -> bool:
-        """
-        Update the vapi_control_url for a specific conversation.
-
-        Args:
-            conversation_id (uuid.UUID): The ID of the conversation to update.
-            vapi_control_url (str): The Vapi control URL to store.
-
-        Returns:
-            bool: True if the update was successful, False otherwise.
-        """
-        try:
-            await self.session.execute(
-                update(Conversation)
-                .where(Conversation.id == conversation_id)
-                .values(vapi_control_url=vapi_control_url)
-            )
-            await self.session.commit()
-            return True
-        except Exception as e:
-            await self.session.rollback()
-            logger.error(
-                f"Error updating vapi_control_url for conversation {conversation_id}: {e}"
-            )
-            return False
 
 
 class ConversationRepository:
