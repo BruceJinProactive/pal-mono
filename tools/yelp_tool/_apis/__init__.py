@@ -15,6 +15,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsOpeningsResponse,
     YelpBookingsReservationsRequest,
     YelpBookingsReservationsResponse,
+    YelpWaitlistStatusRequest,
+    YelpWaitlistStatusResponse,
 )
 from utils.log import logger
 
@@ -60,15 +62,15 @@ def get_openings(
     )
 
     if response.status != 200:
-        logger.error(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.error(f"Response body: {response.decoded_body}")
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
     try:
         return YelpBookingsOpeningsResponse(**response.decoded_body)
     except Exception as e:
-        logger.error(f"Failed to parse Yelp API response: {str(e)}")
-        logger.error(f"Response data: {response.decoded_body}")
+        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
@@ -110,17 +112,17 @@ def get_yelp_bearer_token(
     )
 
     if response.status != 200:
-        logger.error(
+        logger.debug(
             f"Yelp Partner API returned error: {response.status} {response.reason}"
         )
-        logger.error(f"Response body: {response.decoded_body}")
+        logger.debug(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp Partner API error: {response.status} {response.reason}")
 
     try:
         return YelpAccessTokenResponse(**response.decoded_body)
     except Exception as e:
-        logger.error(f"Failed to parse Yelp Partner API response: {str(e)}")
-        logger.error(f"Response data: {response.decoded_body}")
+        logger.debug(f"Failed to parse Yelp Partner API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp Partner API response: {str(e)}") from e
 
 
@@ -167,15 +169,15 @@ def create_hold(
     )
 
     if response.status != 200:
-        logger.error(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.error(f"Response body: {response.decoded_body}")
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
     try:
         return YelpBookingsHoldsResponse(**response.decoded_body)
     except Exception as e:
-        logger.error(f"Failed to parse Yelp API response: {str(e)}")
-        logger.error(f"Response data: {response.decoded_body}")
+        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
@@ -235,13 +237,58 @@ def create_reservation(
     )
 
     if response.status != 200:
-        logger.error(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.error(f"Response body: {response.decoded_body}")
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
     try:
         return YelpBookingsReservationsResponse(**response.decoded_body)
     except Exception as e:
-        logger.error(f"Failed to parse Yelp API response: {str(e)}")
-        logger.error(f"Response data: {response.decoded_body}")
+        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
+        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
+
+
+def get_waitlist_status(
+    bearer_token: YelpAccessToken,
+    request_params: YelpWaitlistStatusRequest,
+) -> YelpWaitlistStatusResponse:
+    """
+    Get waitlist status for a business using the Yelp Waitlist API.
+
+    This endpoint returns waitlist status about a specific business including
+    wait estimates for each party size, the closed reason (if applicable),
+    and the current state of the waitlist.
+
+    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+
+    Args:
+        bearer_token: Yelp bearer token for authentication
+        request_params: YelpWaitlistStatusRequest object containing the business_id
+
+    Returns:
+        YelpWaitlistStatusResponse object containing waitlist status information
+
+    Raises:
+        Exception: If the API request fails or returns an error
+    """
+    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/status"
+
+    response = connect_yelp_api(
+        http_method="GET",
+        api_function=api_function,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
+    )
+
+    if response.status != 200:
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
+        raise Exception(f"Yelp API error: {response.status} {response.reason}")
+
+    try:
+        return YelpWaitlistStatusResponse(**response.decoded_body)
+    except Exception as e:
+        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
