@@ -1,7 +1,12 @@
 from typing import Optional
 
-from tools.yelp_tool._apis._utils import ApiHost, RequestType, connect_yelp_api
+from tools.yelp_tool._apis._utils import (
+    YELP_API_HOST,
+    YELP_PARTNER_API_HOST,
+    connect_yelp_api,
+)
 from tools.yelp_tool.classes import (
+    YelpAccessToken,
     YelpAccessTokenRequest,
     YelpAccessTokenResponse,
     YelpBookingsHoldsRequest,
@@ -15,7 +20,7 @@ from utils.log import logger
 
 
 def get_openings(
-    api_key: str,
+    bearer_token: YelpAccessToken,
     request_params: YelpBookingsOpeningsRequest,
 ) -> YelpBookingsOpeningsResponse:
     """
@@ -26,7 +31,7 @@ def get_openings(
     Currently, only openings with "credit_card_required": false are returned.
 
     Args:
-        api_key: Yelp API key for authentication
+        bearer_token: Yelp bearer token for authentication
         request_params: YelpBookingsOpeningsRequest object containing the search parameters
 
     Returns:
@@ -35,36 +40,30 @@ def get_openings(
     Raises:
         Exception: If the API request fails or returns an error
     """
-    # Build the API endpoint with the business ID
     api_function = f"/v3/bookings/{request_params.business_id_or_alias}/openings"
 
-    # Convert request parameters to query parameters
     query_params = {
         "covers": str(request_params.covers),
         "date": request_params.date,
         "time": request_params.time,
     }
 
-    # Add optional get_covers_range parameter if specified
     if request_params.get_covers_range is not None:
         query_params["get_covers_range"] = str(request_params.get_covers_range).lower()
 
-    # Make the API call
     response = connect_yelp_api(
+        http_method="GET",
         api_function=api_function,
-        request_type=RequestType.GET,
-        api_host=ApiHost.YELP_API,
-        api_key=api_key,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
         query_params=query_params,
     )
 
-    # Handle the response
     if response.status != 200:
         logger.error(f"Yelp API returned error: {response.status} {response.reason}")
         logger.error(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
-    # Parse and validate the response using the response model
     try:
         return YelpBookingsOpeningsResponse(**response.decoded_body)
     except Exception as e:
@@ -73,7 +72,7 @@ def get_openings(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
-def get_access_token(
+def get_yelp_bearer_token(
     request_params: YelpAccessTokenRequest,
 ) -> YelpAccessTokenResponse:
     """
@@ -91,30 +90,25 @@ def get_access_token(
     Raises:
         Exception: If the API request fails or returns an error
     """
-    # API endpoint for getting access token
     api_function = "/token/v1"
 
-    # Convert request parameters to body data
-    body_data = {
+    payload = {
         "client_id": request_params.client_id,
         "client_secret": request_params.client_secret,
         "code": request_params.code,
         "grant_type": request_params.grant_type,
     }
 
-    # Add optional redirect_uri if specified
     if request_params.redirect_uri is not None:
-        body_data["redirect_uri"] = request_params.redirect_uri
+        payload["redirect_uri"] = request_params.redirect_uri
 
-    # Make the API call
     response = connect_yelp_api(
+        http_method="POST",
         api_function=api_function,
-        request_type=RequestType.POST,
-        api_host=ApiHost.YELP_PARTNER_API,
-        body_data=body_data,
+        api_host=YELP_PARTNER_API_HOST,
+        payload=payload,
     )
 
-    # Handle the response
     if response.status != 200:
         logger.error(
             f"Yelp Partner API returned error: {response.status} {response.reason}"
@@ -122,7 +116,6 @@ def get_access_token(
         logger.error(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp Partner API error: {response.status} {response.reason}")
 
-    # Parse and validate the response using the response model
     try:
         return YelpAccessTokenResponse(**response.decoded_body)
     except Exception as e:
@@ -132,7 +125,7 @@ def get_access_token(
 
 
 def create_hold(
-    api_key: str,
+    bearer_token: YelpAccessToken,
     request_params: YelpBookingsHoldsRequest,
 ) -> YelpBookingsHoldsResponse:
     """
@@ -146,7 +139,7 @@ def create_hold(
     Note: All parameters are sent as form data in the request body, not as query parameters.
 
     Args:
-        api_key: Yelp API key for authentication
+        bearer_token: Yelp bearer token for authentication
         request_params: YelpBookingsHoldsRequest object containing the hold parameters
 
     Returns:
@@ -155,34 +148,29 @@ def create_hold(
     Raises:
         Exception: If the API request fails or returns an error
     """
-    # Build the API endpoint with the business ID
     api_function = f"/v3/bookings/{request_params.business_id_or_alias}/holds"
 
-    # Convert request parameters to form data
-    form_data = {
+    payload = {
         "covers": str(request_params.covers),
         "date": request_params.date,
         "time": request_params.time,
         "unique_id": request_params.unique_id,
     }
 
-    # Make the API call
     response = connect_yelp_api(
+        http_method="POST",
         api_function=api_function,
-        request_type=RequestType.POST,
-        api_host=ApiHost.YELP_API,
-        api_key=api_key,
-        body_data=form_data,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
+        payload=payload,
         extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
-    # Handle the response
     if response.status != 200:
         logger.error(f"Yelp API returned error: {response.status} {response.reason}")
         logger.error(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
-    # Parse and validate the response using the response model
     try:
         return YelpBookingsHoldsResponse(**response.decoded_body)
     except Exception as e:
@@ -192,7 +180,7 @@ def create_hold(
 
 
 def create_reservation(
-    api_key: str,
+    bearer_token: YelpAccessToken,
     request_params: YelpBookingsReservationsRequest,
 ) -> YelpBookingsReservationsResponse:
     """
@@ -211,7 +199,7 @@ def create_reservation(
     time, date and covers values as you supplied to the Holds endpoint.
 
     Args:
-        api_key: Yelp API key for authentication
+        bearer_token: Yelp bearer token for authentication
         request_params: YelpBookingsReservationsRequest object containing the reservation parameters
 
     Returns:
@@ -220,11 +208,9 @@ def create_reservation(
     Raises:
         Exception: If the API request fails or returns an error
     """
-    # Build the API endpoint with the business ID
     api_function = f"/v3/bookings/{request_params.business_id_or_alias}/reservations"
 
-    # Convert request parameters to form data
-    form_data = {
+    payload = {
         "covers": str(request_params.covers),
         "date": request_params.date,
         "time": request_params.time,
@@ -236,27 +222,23 @@ def create_reservation(
         "unique_id": request_params.unique_id,
     }
 
-    # Add optional notes if provided
     if request_params.notes is not None:
-        form_data["notes"] = request_params.notes
+        payload["notes"] = request_params.notes
 
-    # Make the API call
     response = connect_yelp_api(
+        http_method="POST",
         api_function=api_function,
-        request_type=RequestType.POST,
-        api_host=ApiHost.YELP_API,
-        api_key=api_key,
-        body_data=form_data,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
+        payload=payload,
         extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
-    # Handle the response
     if response.status != 200:
         logger.error(f"Yelp API returned error: {response.status} {response.reason}")
         logger.error(f"Response body: {response.decoded_body}")
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
-    # Parse and validate the response using the response model
     try:
         return YelpBookingsReservationsResponse(**response.decoded_body)
     except Exception as e:

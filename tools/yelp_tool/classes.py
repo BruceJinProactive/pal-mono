@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -9,6 +10,41 @@ class YelpApiResponse(BaseModel):
     status: int
     reason: str
     decoded_body: dict
+
+
+class YelpAccessToken(BaseModel):
+    """
+    This class represents an access token for Yelp API authentication.
+    It can be used for both simple API key tokens and OAuth access tokens.
+    """
+
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: Optional[int] = None
+    refresh_token: Optional[str] = None
+    scope: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    def is_expired(self) -> bool:
+        """
+        Checks if the token is expired.
+
+        Returns:
+            bool: True if the token is expired, False otherwise
+        """
+        if self.expires_in is None:
+            return False  # API keys don't expire
+
+        expiration_time = self.created_at + timedelta(seconds=self.expires_in)
+        return datetime.now() > expiration_time
+
+    def get_token_header_value(self) -> str:
+        """Returns the properly formatted token for use in headers"""
+        return f"{self.token_type} {self.access_token}"
+
+    def is_valid(self) -> bool:
+        """Basic check to see if token has required fields and is not expired"""
+        return bool(self.access_token and self.token_type and not self.is_expired())
 
 
 ######### YELP BOOKINGS API CLASSES START ############

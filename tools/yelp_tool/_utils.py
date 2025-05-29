@@ -76,7 +76,7 @@ def create_openings_request(
         return False, f"Failed to create request: {str(e)}", None
 
 
-def format_openings_for_display(openings_response: YelpBookingsOpeningsResponse) -> str:
+def format_openings_for_llm(openings_response: YelpBookingsOpeningsResponse) -> str:
     """
     Format the openings response into a human-readable string for display.
 
