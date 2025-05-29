@@ -285,3 +285,75 @@ class YelpAccessTokenResponse(BaseModel):
 
 
 ######### YELP PARTNER API CLASSES END ############
+
+
+######### LLM EXTRACTION CLASSES START ############
+
+
+class OpeningsQuery(BaseModel):
+    """Extracted parameters for searching restaurant openings - mirrors YelpBookingsOpeningsRequest with optional fields"""
+
+    covers: Optional[int] = Field(
+        default=None,
+        description="How many people are attending the reservation (min. value is 1; max value is 10).",
+        ge=1,
+        le=10,
+    )
+    date: Optional[str] = Field(
+        default=None,
+        description="The date for the reservation, format is YYYY-mm-dd",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    time: Optional[str] = Field(
+        default=None,
+        description="The time of the requested reservation, format is HH:MM",
+        pattern=r"^\d{2}:\d{2}$",
+    )
+    get_covers_range: Optional[bool] = Field(
+        default=False,
+        description="If true, include the covers_range dict in the response.",
+    )
+
+
+class ReservationQuery(BaseModel):
+    """Extracted parameters for making a restaurant reservation - mirrors YelpBookingsReservationsRequest with optional fields"""
+
+    covers: Optional[int] = Field(
+        default=None,
+        description="How many people are attending the reservation (min. value is 1; max value is 10).",
+        ge=1,
+        le=10,
+    )
+    date: Optional[str] = Field(
+        default=None,
+        description="The date for the reservation, format is YYYY-mm-dd",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    time: Optional[str] = Field(
+        default=None,
+        description="The time of the requested reservation, format is HH:MM",
+        pattern=r"^\d{2}:\d{2}$",
+    )
+    first_name: Optional[str] = Field(
+        default=None,
+        description="The first name of the person making the reservation.",
+    )
+    last_name: Optional[str] = Field(
+        default=None,
+        description="The last name of the person making the reservation.",
+    )
+    phone: Optional[str] = Field(
+        default=None,
+        description="The phone number to attach to the reservation.",
+        min_length=1,
+        max_length=32,
+    )
+    email: Optional[str] = Field(
+        default=None, description="The email to attach to the reservation."
+    )
+    notes: Optional[str] = Field(
+        default=None, description="The additional party notes for the reservation."
+    )
+
+
+######### LLM EXTRACTION CLASSES END ############
