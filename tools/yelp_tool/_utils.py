@@ -9,6 +9,7 @@ from tools.yelp_tool.classes import (
     YelpBookingsOpeningsResponse,
     YelpBookingsReservationsRequest,
     YelpBookingsReservationsResponse,
+    YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
 
@@ -543,6 +544,40 @@ def create_reservation_from_hold_response(
         unique_id=holds_request.unique_id,
         notes=notes,
     )
+
+
+def create_waitlist_status_request(
+    business_id_or_alias: str,
+) -> Tuple[bool, str, Optional[YelpWaitlistStatusRequest]]:
+    """
+    Create a waitlist status request for the Yelp Waitlist API.
+
+    Args:
+        business_id_or_alias: Yelp business ID or alias to get waitlist status for
+
+    Returns:
+        Tuple containing:
+        - bool: Success status
+        - str: Error message or success message
+        - Optional[YelpWaitlistStatusRequest]: Request object or None
+    """
+    errors = []
+
+    # Validate business_id_or_alias
+    errors.extend(_validate_business_id_or_alias(business_id_or_alias))
+
+    # Return early if validation fails
+    if errors:
+        return False, "; ".join(errors), None
+
+    # Create waitlist status request object
+    try:
+        request_obj = YelpWaitlistStatusRequest(
+            business_id=business_id_or_alias,
+        )
+        return True, "Waitlist status request created successfully", request_obj
+    except Exception as e:
+        return False, f"Failed to create waitlist status request: {str(e)}", None
 
 
 def format_waitlist_status_for_llm(

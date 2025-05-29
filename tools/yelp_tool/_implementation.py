@@ -12,6 +12,7 @@ from tools.yelp_tool._apis import (
     create_hold,
     create_reservation,
     get_openings,
+    get_waitlist_status,
     get_yelp_bearer_token,
 )
 from tools.yelp_tool._prompt_constants import (
@@ -24,8 +25,10 @@ from tools.yelp_tool._utils import (
     create_holds_request,
     create_openings_request,
     create_reservation_from_hold_response,
+    create_waitlist_status_request,
     format_openings_for_llm,
     format_reservation_response_for_llm,
+    format_waitlist_status_for_llm,
 )
 from tools.yelp_tool.classes import (
     OpeningsQuery,
@@ -55,6 +58,7 @@ class YelpTool(Toolkit):
 
         self.register(self.get_restaurant_openings)
         self.register(self.make_reservation)
+        self.register(self.get_waitlist_status)
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -390,3 +394,51 @@ class YelpTool(Toolkit):
             logger.debug(f"[YelpTool.make_reservation] Error making reservation: {e}")
             logger.debug(traceback.format_exc())
             return f"Failed to make reservation. Error: {str(e)}"
+
+    @tool
+    def get_waitlist_status(self) -> str:
+        """
+        Get waitlist status for a restaurant using the Yelp Waitlist API.
+
+        This function retrieves waitlist status information including current wait times
+        for different party sizes, the state of the waitlist, and any closure reason.
+
+        Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+
+        Returns:
+            str: Formatted string containing waitlist status information, or error message
+        """
+        try:
+            bearer_token = self._yelp_bearer_token
+
+            # Validate bearer token before proceeding
+            if not bearer_token:
+                logger.debug(
+                    "[YelpTool.get_waitlist_status] Failed to obtain Yelp bearer token"
+                )
+                return "Unable to authenticate with Yelp. Please try again later."
+
+            # Create waitlist status request
+            success, message, request_obj = create_waitlist_status_request(
+                business_id_or_alias=self.business_id_or_alias,
+            )
+
+            if not success or not request_obj:
+                return f"Invalid request parameters: {message}"
+
+            # Get waitlist status from Yelp API
+            response = get_waitlist_status(
+                bearer_token=bearer_token,
+                request_params=request_obj,
+            )
+
+            # Format and return the waitlist status information
+            formatted_response = format_waitlist_status_for_llm(response)
+            return formatted_response
+
+        except Exception as e:
+            logger.debug(
+                f"[YelpTool.get_waitlist_status] Error getting waitlist status: {e}"
+            )
+            logger.debug(traceback.format_exc())
+            return "Failed to get waitlist status. Please try again."
