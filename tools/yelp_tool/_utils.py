@@ -9,6 +9,7 @@ from tools.yelp_tool.classes import (
     YelpBookingsOpeningsResponse,
     YelpBookingsReservationsRequest,
     YelpBookingsReservationsResponse,
+    YelpWaitlistStatusResponse,
 )
 
 
@@ -542,3 +543,49 @@ def create_reservation_from_hold_response(
         unique_id=holds_request.unique_id,
         notes=notes,
     )
+
+
+def format_waitlist_status_for_llm(
+    waitlist_response: YelpWaitlistStatusResponse,
+) -> str:
+    """
+    Format the waitlist status response into a human-readable string for display.
+
+    Args:
+        waitlist_response: Parsed waitlist status response object
+
+    Returns:
+        str: Formatted string representation of the waitlist status
+    """
+    result_lines = ["Waitlist Status Information:"]
+
+    # Basic status information
+    result_lines.append(f"Business ID: {waitlist_response.business_id}")
+    result_lines.append(f"Waitlist State: {waitlist_response.state}")
+
+    # Closed reason if applicable
+    if waitlist_response.closed_reason:
+        result_lines.append(f"Closed Reason: {waitlist_response.closed_reason}")
+    else:
+        result_lines.append("Status: Accepting waitlist entries")
+
+    # Wait estimates
+    if waitlist_response.wait_estimates:
+        result_lines.append("\nWait Time Estimates by Party Size:")
+
+        for party_size, estimate in waitlist_response.wait_estimates.items():
+            if estimate.max_wait is not None:
+                wait_info = f"{estimate.min_wait}-{estimate.max_wait} minutes"
+            else:
+                wait_info = f"{estimate.est_wait} minutes"
+
+            result_lines.append(f"  {party_size} people: {wait_info}")
+
+            # Add additional detail if different from range
+            if estimate.wait_range and estimate.wait_range != str(estimate.est_wait):
+                result_lines.append(f"    (Range: {estimate.wait_range})")
+
+    else:
+        result_lines.append("\nNo wait time estimates available")
+
+    return "\n".join(result_lines)
