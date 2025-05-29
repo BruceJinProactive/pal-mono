@@ -65,7 +65,7 @@ class OloTool(Toolkit):
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
         self.query_engine = create_query_engine(
-            namespace=self.namespace, index_name=self.index_name
+            namespace=self.namespace, index_name=self.index_name, top_k=3
         )
 
     @cached_property

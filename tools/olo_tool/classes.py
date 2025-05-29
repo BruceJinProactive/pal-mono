@@ -252,7 +252,7 @@ class OloStore(BaseModel):
 
 class ChoiceInput(BaseModel):
     choiceid: int
-    quantity: int
+    quantity: Optional[int] = None
     customfields: Optional[list[CustomFieldInput]] = None
 
 
@@ -273,6 +273,15 @@ class OloBasketHandoffMode(str, Enum):
     pickup = "pickup"
     dinein = "dinein"
     drivethru = "drivethru"
+
+    @classmethod
+    def _missing_(cls, value):
+        """Handle case-insensitive enum lookup"""
+        if isinstance(value, str):
+            for member in cls:
+                if member.value.lower() == value.lower():
+                    return member
+        return None
 
 
 class OloProductInput(BaseModel):

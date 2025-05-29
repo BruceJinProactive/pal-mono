@@ -47,13 +47,16 @@ def _initialize_pinecone_index(api_key: str, index_name: str) -> PineconeIndex:
         raise
 
 
-def create_query_engine(namespace: str, index_name: str = "") -> BaseQueryEngine:
+def create_query_engine(
+    namespace: str, index_name: str = "", top_k: int = SIMILARITY_TOP_K
+) -> BaseQueryEngine:
     """Create and configure a query engine for the given namespace.
 
     Args:
         namespace (str): The namespace for the Pinecone vector store.
         index_name (str, optional): The Pinecone index name.
                                    If provided, overrides the default index name.
+        top_k (int, optional): Number of most-similar results to retrieve. Defaults to `SIMILARITY_TOP_K`.
 
     Returns:
         BaseQueryEngine: Configured query engine.
@@ -66,6 +69,10 @@ def create_query_engine(namespace: str, index_name: str = "") -> BaseQueryEngine
         # Validate namespace
         if not namespace or not isinstance(namespace, str):
             raise ValueError("Namespace must be a non-empty string")
+
+        # Validate top_k
+        if not isinstance(top_k, int) or top_k < 1:
+            raise ValueError("top_k must be a positive integer")
 
         # Use provided index_name or default
         index_name = (
@@ -104,7 +111,7 @@ def create_query_engine(namespace: str, index_name: str = "") -> BaseQueryEngine
 
         # Create query engine
         query_engine = index.as_query_engine(
-            similarity_top_k=SIMILARITY_TOP_K,
+            similarity_top_k=top_k,
             response_synthesizer=response_synthesizer,
         )
         logger.debug(f"Query engine created for namespace: {namespace}")
