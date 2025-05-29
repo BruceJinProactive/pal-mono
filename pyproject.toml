@@ -44,6 +44,9 @@ dependencies = [
   "boto3==1.37.34",
   "datadog==0.51.0",
   "pydantic[email]==2.11.4",
+  "vapi-server-sdk==1.5.0",
+  "twilio==9.3.2",
+
 
   # DevOps
   "python-json-logger==2.0.7",

@@ -7,6 +7,7 @@
 agno==1.0.8
 aiohappyeyeballs==2.6.1
 aiohttp==3.11.18
+aiohttp-retry==2.9.1
 aiosignal==1.3.2
 aiosqlite==0.21.0
 alembic==1.13.2
@@ -175,6 +176,7 @@ tokenizers==0.21.1
 tomli==2.2.1
 tqdm==4.67.1
 transformers==4.51.3
+twilio==9.3.2
 typer==0.15.4
 types-requests==2.32.0.20250515
 typing-extensions==4.13.2
@@ -184,6 +186,7 @@ tzdata==2025.2
 uritemplate==4.1.1
 urllib3==2.4.0
 uvicorn==0.30.6
+vapi-server-sdk==1.5.0
 wrapt==1.17.2
 xmltodict==0.14.2
 yarl==1.20.0
