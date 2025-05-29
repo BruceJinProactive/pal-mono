@@ -115,11 +115,13 @@ def get_user(context: UserContext = Depends(authenticate_user)):
 async def signup(
     request: SignUpRequest,
     response: Response,
-):
+    session: Session = Depends(db.get_db),
+) -> AccountStatusResponse:
     """
-    Onboard a new account by creating the account and the first agent.
+    Sign up a new user and create an account. Creates the account first, then the Cognito user.
+    If Cognito user creation fails, the account will be deleted.
     """
-    await _auth.user_signup(request, response)
+    return await _account.user_signup(request, response, session)
 
 
 """

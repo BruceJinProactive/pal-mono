@@ -3,13 +3,12 @@ from typing import Any
 
 import jwt
 import requests
-from fastapi import HTTPException, Request, Response, status
+from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin._utils import UserContext, UserRole
-from api.schemas.admin.user import SignUpRequest, User
-from services import admin_service
+from api.schemas.admin.user import User
 from services.account_service import get_account
 from utils.log import logger
 
@@ -354,70 +353,4 @@ def get_user_info(context: UserContext) -> User:
         email=context.email,
         display_name=context.display_name,
         account_name=context.account_names[0] if context.account_names else "",
-    )
-
-
-async def user_signup(request: SignUpRequest, response: Response):
-    """
-    Sign up a new user. This function is used to create a new user in the Cognito
-    user pool. The user's email and password are provided in the request body.
-    The function returns a SignUpResponse object containing the access token,
-    refresh token, expiration time, and ID token for the newly created user.
-
-    Args:
-        request: A SignUpRequest object containing the user's email and password.
-
-    Returns:
-        A SignUpResponse object containing the access token, refresh token,
-        expiration time, and ID token for the newly created user.
-    Raises:
-        HTTPException: If there is an error signing up the user.
-    """
-    try:
-        user = admin_service.signup_account_user(
-            account_name=request.account_name,
-            user_email=request.email,
-            user_name=request.name,
-            password=request.password,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-    if not user.session:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create user session",
-            headers={"Content-Type": "application/json"},
-        )
-    # Set cookies
-    client_id = AWS_ADMIN_CONSOLE_APP_CLIENT_ID
-    user_sub = user.session.user_sub
-    cookie_prefix = f"CognitoIdentityServiceProvider.{client_id}.{user_sub}"
-    cookie_configs = {
-        "httponly": False,
-        "secure": True,
-        "samesite": "lax",
-    }
-    signin_details = (
-        f"{{%22loginId%22:%22{user.email}%22%2C%22authFlowType%22:%22USER_SRP_AUTH%22}}"
-    )
-    response.set_cookie(
-        f"{cookie_prefix}.accessToken", user.session.access_token, **cookie_configs
-    )
-    response.set_cookie(
-        f"{cookie_prefix}.idToken", user.session.id_token, **cookie_configs
-    )
-    response.set_cookie(
-        f"{cookie_prefix}.refreshToken", user.session.refresh_token, **cookie_configs
-    )
-    response.set_cookie(
-        f"{cookie_prefix}.signinDetails", signin_details, **cookie_configs
-    )
-    response.set_cookie(
-        f"CognitoIdentityServiceProvider.{client_id}.LastAuthUser",
-        user_sub,
-        **cookie_configs,
     )

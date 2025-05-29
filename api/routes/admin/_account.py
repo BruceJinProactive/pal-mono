@@ -1,6 +1,7 @@
+import os
 from datetime import datetime, timedelta
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import (
@@ -12,12 +13,18 @@ from api.schemas.admin.account import (
     UpdateAccountRequest,
 )
 from api.schemas.admin.agent import AgentSummary
+from api.schemas.admin.user import SignUpRequest
 from db import ConversationStatus
 from services import account_service, admin_service, user_service
+from services.account_service import AccountParams
+from services.admin_service.schema import CognitoUserSession
+from utils.log import logger
 
 from ._auth import authorize_user_account
 from ._builder import build_account, build_account_summary, build_agent_summary
-from ._utils import UserContext, not_found_error
+from ._utils import UserContext, create_guest_context, not_found_error
+
+AWS_ADMIN_CONSOLE_APP_CLIENT_ID = os.environ["AWS_ADMIN_CONSOLE_APP_CLIENT_ID"]
 
 
 def list_accounts(
@@ -173,4 +180,102 @@ def get_account_status(
         name=account.name,
         status=account.status,
         display_name=account.display_name,
+    )
+
+
+async def user_signup(
+    request: SignUpRequest, response: Response, session: Session
+) -> AccountStatusResponse:
+    """
+    Sign up a new user and create an account. This function first creates an account
+    with the given account_name, then creates a Cognito user. If Cognito user creation
+    fails, the account is hard deleted to maintain consistency.
+
+    Args:
+        request: A SignUpRequest object containing the user's email, password, and account name.
+        response: FastAPI response object for setting cookies.
+        session: Database session for account operations.
+
+    Returns:
+        A SignUpResponse object containing the access token, refresh token,
+        expiration time, and ID token for the newly created user.
+    Raises:
+        HTTPException: If there is an error signing up the user or creating the account.
+    """
+    # Create a guest context for account creation (no authenticated user yet)
+    account_name = request.account_name
+    guest_context = create_guest_context(account_name, request.email)
+
+    try:
+        account_params = AccountParams(lead_id=request.lead_id)
+        account_service.create_account(
+            session=session,
+            context=guest_context,
+            account_name=account_name,
+            params=account_params,
+            auto_commit=False,  # Don't commit yet, in case Cognito creation fails
+        )
+        logger.info(f"Created account {account_name} for user signup")
+    except ValueError as e:
+        logger.error(f"Failed to create account {account_name}: {e}")
+        raise ValueError(f"Failed to create account {account_name}: {e}") from e
+
+    try:
+        user = admin_service.signup_account_user(
+            account_name=request.account_name,
+            user_email=request.email,
+            user_name=request.name,
+            password=request.password,
+        )
+    except ValueError as e:
+        # undo the account creation
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    if not user.session:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fully create user session",
+            headers={"Content-Type": "application/json"},
+        )
+    session.commit()
+    _set_user_session(response, user.email, user.session)
+    return get_account_status(account_name, guest_context, session)
+
+
+def _set_user_session(
+    response: Response, user_email: str, user_session: CognitoUserSession
+):
+    # Set cookies
+    client_id = AWS_ADMIN_CONSOLE_APP_CLIENT_ID
+    user_sub = user_session.user_sub
+    cookie_prefix = f"CognitoIdentityServiceProvider.{client_id}.{user_sub}"
+    cookie_configs = {
+        "httponly": False,
+        "secure": True,
+        "samesite": "lax",
+    }
+    signin_details = (
+        f"{{%22loginId%22:%22{user_email}%22%2C%22authFlowType%22:%22USER_SRP_AUTH%22}}"
+    )
+    response.set_cookie(
+        f"{cookie_prefix}.accessToken", user_session.access_token, **cookie_configs
+    )
+    response.set_cookie(
+        f"{cookie_prefix}.idToken", user_session.id_token, **cookie_configs
+    )
+    response.set_cookie(
+        f"{cookie_prefix}.refreshToken", user_session.refresh_token, **cookie_configs
+    )
+    response.set_cookie(
+        f"{cookie_prefix}.signinDetails", signin_details, **cookie_configs
+    )
+    response.set_cookie(
+        f"CognitoIdentityServiceProvider.{client_id}.LastAuthUser",
+        user_sub,
+        **cookie_configs,
     )

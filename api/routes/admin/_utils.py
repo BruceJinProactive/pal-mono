@@ -116,3 +116,25 @@ def verify_instagram_deauthorize_signature(
 def get_agent_type(agent: db.Agent) -> AgentType:
     """Get the agent type from the dedicated column."""
     return agent.agent_type
+
+
+def create_guest_context(account_name: str, user_email: str) -> UserContext:
+    """
+    Create a guest user context for operations that need to be performed
+    before a user is fully authenticated (e.g., during signup).
+
+    Args:
+        account_name: The account name being created
+        user_email: The email of the user being created
+
+    Returns:
+        UserContext: A guest context with minimal permissions
+    """
+    return UserContext(
+        username="guest",
+        email=user_email,
+        groups=[],
+        display_name="Guest User",
+        account_names=[account_name],
+        role=UserRole.AccountManager,
+    )

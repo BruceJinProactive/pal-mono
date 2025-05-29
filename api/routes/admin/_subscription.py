@@ -1,6 +1,5 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from starlette.responses import RedirectResponse
 
 from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import UserContext
@@ -39,7 +38,7 @@ def create_checkout_url(params: CheckoutParams, context: UserContext):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create checkout session!",
         )
-    return RedirectResponse(url=session.url, status_code=307)
+    return session.url
 
 
 def update_account_subscription(
