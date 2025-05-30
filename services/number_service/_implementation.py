@@ -79,9 +79,9 @@ class NumberService:
         """
         try:
             # Retrieve each secret via public API
-            twilio_account_sid = secret.get_client_secret("TWILIO_ACCOUNT_SID")
-            twilio_auth_token = secret.get_client_secret("TWILIO_AUTH_TOKEN")
-            vapi_token = secret.get_client_secret("VAPI_API_KEY")
+            twilio_account_sid = secret.get_server_secret("TWILIO_ACCOUNT_SID")
+            twilio_auth_token = secret.get_server_secret("TWILIO_AUTH_TOKEN")
+            vapi_token = secret.get_server_secret("VAPI_API_KEY")
 
             # Validate that none are empty or None
             missing = [
