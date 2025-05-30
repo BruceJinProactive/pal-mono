@@ -18,6 +18,7 @@ class ChangeResourceType(str, enum.Enum):
     Account = "Account"
     Agent = "Agent"
     Project = "Project"
+    OrderIntegration = "OrderIntegration"
 
 
 class ChangeAction(str, enum.Enum):

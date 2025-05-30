@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session, declarative_base
 import db
 from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
+from db.repositories import OrderIntegrationRepository
+from db.tables.order_integration import OrderIntegrationVendor, OrderProtocol
 from services import (
     account_service,
     agent_service,
@@ -1131,3 +1133,57 @@ def delete_account_user(account_name: str, user_email: str) -> None:
         else:
             logger.error(f"Error deleting Cognito user: {e}")
             raise ValueError(f"Failed to delete Cognito user: {str(e)}")
+
+
+def setup_project_order_integration(
+    session: Session,
+    context: UserContext,
+    project: db.Project,
+    protocol: OrderProtocol,
+    destination: str,
+    vendor: OrderIntegrationVendor | None = None,
+) -> db.OrderIntegration:
+    try:
+        # Step 1: Create the order integration
+        order_repo = OrderIntegrationRepository(session, auto_commit=False)
+        order_integration = order_repo.create_order_integration(
+            created_by=context.email,
+            account_id=project.account_id,
+            protocol=protocol,
+            destination=destination,
+            vendor=vendor,
+        )
+
+        # Step 2: Update the project to use the new order integration
+        project_params = ProjectParams(order_integration_id=order_integration.id)
+        project_service.update_project(
+            session=session,
+            context=context,
+            project_id=project.id,
+            params=project_params,
+            auto_commit=False,
+        )
+
+        # Step 5: Commit the transaction
+        session.commit()
+
+        logger.info(
+            f"Successfully setup order integration for project {project.id}",
+            extra={
+                "project_id": str(project.id),
+                "order_integration_id": str(order_integration.id),
+                "account_name": project.account.name,
+            },
+        )
+        return order_integration
+    except ValueError:
+        # Re-raise ValueError as-is (these are user errors)
+        session.rollback()
+        raise
+    except Exception as e:
+        # Convert other exceptions to RuntimeError
+        session.rollback()
+        logger.error(
+            f"Error setting up order integration for project {project.id}: {e}"
+        )
+        raise RuntimeError(f"Failed to setup order integration: {str(e)}") from e

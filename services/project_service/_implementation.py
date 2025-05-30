@@ -65,6 +65,7 @@ def update_project(
     context: UserContext,
     project_id: uuid.UUID,
     params: ProjectParams,
+    auto_commit: bool,
 ) -> db.Project:
     project_repository = db.ProjectRepository(session, auto_commit=False)
 
@@ -87,6 +88,7 @@ def update_project(
         account_id=existing_project.account.id,
         resource_id=str(project_id),
         old_record=old_project,
+        auto_commit=auto_commit,
     ) as ctx:
         updated_project = project_repository.update_project(
             project_id, **asdict(params)

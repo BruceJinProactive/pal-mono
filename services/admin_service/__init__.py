@@ -8,6 +8,7 @@ import db
 from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
 from db import ConversationStatus
+from db.tables.order_integration import OrderIntegrationVendor, OrderProtocol
 from services.account_service import AccountParams
 
 from ..agent_service import AgentParams
@@ -547,6 +548,38 @@ def delete_account_user(account_name: str, user_email: str) -> None:
     return _implementation.delete_account_user(account_name, user_email)
 
 
+def setup_project_order_integration(
+    session: Session,
+    context: UserContext,
+    project: db.Project,
+    protocol: OrderProtocol,
+    destination: str,
+    vendor: OrderIntegrationVendor | None = None,
+) -> db.OrderIntegration:
+    """
+    Setup order integration for a project. Always creates a new order integration,
+    then updates the project to use the new order integration.
+
+    Args:
+        session (Session): Database session
+        context (UserContext): User context for authorization
+        project (db.Project): The project to set up integration for
+        protocol (OrderProtocol): The order protocol (sms, pos, etc...)
+        destination (str): The destination for orders (phone number, store ID, etc.)
+        vendor (OrderIntegrationVendor | None): The vendor for the integration (olo, toast, etc...)
+
+    Returns:
+        db.OrderIntegration: The created order integration
+
+    Raises:
+        ValueError: If the project is not found or user doesn't have access
+        RuntimeError: If there's an error creating the integration or updating the project
+    """
+    return _implementation.setup_project_order_integration(
+        session, context, project, protocol, destination, vendor
+    )
+
+
 __all__ = [
     "list_user_sessions_in_account",
     "get_inbox_conversations",
@@ -571,4 +604,5 @@ __all__ = [
     "create_account_user",
     "signup_account_user",
     "delete_account_user",
+    "setup_project_order_integration",
 ]

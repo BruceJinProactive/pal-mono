@@ -7,5 +7,6 @@ from .conversations import Conversation, ConversationStatus
 from .feedback import Feedback
 from .lead import Lead
 from .messages import Message
+from .order_integration import OrderIntegration
 from .projects import Project
 from .users import User

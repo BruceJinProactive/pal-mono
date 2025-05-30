@@ -43,6 +43,9 @@ class Project(Base):
     address: Mapped[str | None] = mapped_column(String, nullable=True)
     product_info: Mapped[str | None] = mapped_column(String, nullable=True)
     service_instruction: Mapped[str | None] = mapped_column(String, nullable=True)
+    order_integration_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(

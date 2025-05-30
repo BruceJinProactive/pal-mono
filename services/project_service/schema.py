@@ -13,3 +13,4 @@ class ProjectParams:
     address: str | None = None
     product_info: str | None = None
     service_instruction: str | None = None
+    order_integration_id: uuid.UUID | None = None

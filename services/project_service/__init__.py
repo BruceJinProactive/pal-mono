@@ -44,6 +44,7 @@ def update_project(
     context: UserContext,
     project_id: uuid.UUID,
     params: ProjectParams,
+    auto_commit: bool = True,
 ) -> db.Project:
     """
     Update the specified project with the provided params.
@@ -53,11 +54,14 @@ def update_project(
         context (UserContext): Information for the current user
         project_id (uuid.UUID): The uuid of the project to update.
         params (ProjectParams): The detailed configs of the project to be updated.
+        auto_commit (bool): Changes will be committed automatically if True.
 
     Returns:
         Project: The updated project.
     """
-    return _implementation.update_project(session, context, project_id, params)
+    return _implementation.update_project(
+        session, context, project_id, params, auto_commit
+    )
 
 
 def get_project(session: Session, project_id: uuid.UUID):
