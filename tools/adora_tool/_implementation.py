@@ -967,3 +967,49 @@ class AdoraTool(Toolkit):
                 f"[AdoraTool.get_loyalty_info] Error validating loyalty status: {e}"
             )
             return error_message
+
+    @tool
+    def get_last_order_status(self, phone_number: str) -> str:
+        """
+        Retrieves the status of the customer's last order using their phone number.
+
+        This tool should be used when:
+        - A customer asks about their most recent order status
+        - A customer wants to track their latest order
+        - A customer provides their phone number to check order history
+
+        Args:
+            phone_number (str): The customer's phone number.
+
+        Returns:
+            str: Information about the customer's last order status including order details,
+                 current status, and any relevant tracking information. Returns an error message
+                 if the customer cannot be found or if there's an issue with the API.
+        """
+        error_message = (
+            "There was an error retrieving your order status. Please try again."
+        )
+
+        try:
+            phone_number = _utils.format_phone_number(phone_number)
+            if not phone_number:
+                return "Please confirm your phone number."
+
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
+                logger.debug("[AdoraTool.get_last_order_status] No bearer token found")
+                return error_message
+
+            # TODO: Implement API call to get last order status
+            # This will be implemented when the API endpoint is available
+            logger.debug(f"Getting last order status for phone number: {phone_number}")
+
+            # Placeholder return - to be replaced with actual API call
+            return "Order status retrieval is not yet implemented. Please contact the store directly for order status information."
+
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool.get_last_order_status] Error retrieving order status: {e}"
+            )
+            return error_message
