@@ -10,7 +10,6 @@ from db.tables.order_integration import (
     OrderIntegrationVendor,
     OrderProtocol,
 )
-from services.history_service import change_log_context
 from utils.log import logger
 
 
@@ -43,6 +42,9 @@ class OrderIntegrationRepository:
         Raises:
             SQLAlchemyError: If there's an error creating the order integration
         """
+
+        from services.history_service import change_log_context
+
         with change_log_context(
             session=self.session,
             resource_type=ChangeResourceType.OrderIntegration,
