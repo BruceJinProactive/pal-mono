@@ -198,6 +198,18 @@ async def delete_account(
     await _account.delete_account(account_name, hard_delete, context, session)
 
 
+@admin_router.post("/accounts/{account_name}/close")
+async def close_account(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Close the account by canceling the Stripe subscription and updating status to disabled.
+    """
+    return await _account.close_account(account_name, context, session)
+
+
 @admin_router.get("/accounts/{account_name}/agents")
 async def list_account_agents(
     account_name: str,

@@ -15,6 +15,7 @@ from api.schemas.admin.account import (
 from api.schemas.admin.agent import AgentSummary
 from api.schemas.admin.user import SignUpRequest
 from db import ConversationStatus
+from db.tables.accounts import AccountStatus
 from services import account_service, admin_service, user_service
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
@@ -279,3 +280,51 @@ def _set_user_session(
         user_sub,
         **cookie_configs,
     )
+
+
+async def close_account(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+):
+    authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if account.stripe_subscription_id:
+        try:
+            from services import payment_service
+
+            payment_service.cancel_subscription(account.stripe_subscription_id)
+            logger.info(f"Canceled Stripe subscription for account {account_name}")
+        except Exception as e:
+            logger.error(
+                f"Failed to cancel Stripe subscription for account {account_name}: {e}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to cancel subscription: {str(e)}",
+                headers={"Content-Type": "application/json"},
+            )
+    else:
+        logger.info(
+            f"No Stripe subscription found for account {account_name}, proceeding with status update"
+        )
+
+    try:
+        account_params = AccountParams(status=AccountStatus.disabled)
+        account_service.update_account(session, context, account_name, account_params)
+        logger.info(f"Successfully closed account {account_name}")
+        return {"message": f"Account {account_name} has been successfully closed"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update account status: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )

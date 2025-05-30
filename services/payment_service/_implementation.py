@@ -51,3 +51,18 @@ def unpack_checkout_session(session_id: str):
             f"Failed to retrieve checkout session with stripe due to error: {e}"
         )
         return None
+
+
+def cancel_subscription(subscription_id: str):
+    stripe.api_key = secret.get_server_secret("STRIPE_API_KEY")
+
+    try:
+        subscription = stripe.Subscription.retrieve(subscription_id)
+        canceled_subscription = subscription.delete()
+        logger.info(f"Successfully canceled Stripe subscription {subscription_id}")
+        return canceled_subscription
+    except Exception as e:
+        logger.error(
+            f"Failed to cancel Stripe subscription {subscription_id} due to error: {e}"
+        )
+        raise

@@ -22,3 +22,10 @@ def unpack_checkout_session(session_id: str):
     Returns a dictionary with the account name, customer id, and subscription id.
     """
     return _implementation.unpack_checkout_session(session_id)
+
+
+def cancel_subscription(subscription_id: str):
+    """
+    Cancels a Stripe subscription by subscription ID.
+    """
+    return _implementation.cancel_subscription(subscription_id)
