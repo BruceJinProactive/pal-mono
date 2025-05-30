@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
@@ -16,7 +16,7 @@ from vapi.types.server import Server
 import db
 from utils import secret
 
-from ._utils import AssistantConfig, NumberDetails
+from ._utils import AssistantConfig, NumberDetails, get_server_url
 
 
 class NumberService:
@@ -261,8 +261,8 @@ class NumberService:
         self,
         country_code: str,
         toll_free: bool,
-        assistant_config: AssistantConfig,
         project: db.Project,
+        assistant_config: Optional[AssistantConfig] = None,
     ) -> Tuple[NumberDetails, Assistant | None, PhoneNumbersCreateResponse]:
         """
         Complete flow to set up a number with a Vapi assistant.
@@ -287,30 +287,28 @@ class NumberService:
 
         Example:
             ```python
-            assistant_config = AssistantConfig(
-                merchant_name="My Business",
-                model_url="https://lat-api.palona.ai/v1/",
-                model_name="palona-voice-default",
-                server_url="https://example.com/webhook"  # Optional: if provided, assistant will use settings from this URL
-            )
             number_details, assistant, vapi_response = number_service.setup_number(
                 country_code="US",
                 toll_free=True,
-                assistant_config=assistant_config,
                 project=project
             )
             ```
         """
         # use the server_url to get settings from the server, if not provided, create a new assistant
-        if assistant_config["server_url"]:
-            assistant_id = None
-            server_url = assistant_config["server_url"]
-            assistant = None
+        if assistant_config:
+            if assistant_config["server_url"]:
+                assistant_id = None
+                server_url = assistant_config["server_url"]
+                assistant = None
+            else:
+                # Create the assistant
+                assistant = self._create_assistant(assistant_config)
+                assistant_id = assistant.id
+                server_url = None
         else:
-            # Create the assistant
-            assistant = self._create_assistant(assistant_config)
-            assistant_id = assistant.id
-            server_url = None
+            assistant_id = None
+            server_url = get_server_url()
+            assistant = None
 
         # Purchase number
         if toll_free:
@@ -328,7 +326,11 @@ class NumberService:
                 number=phone_number,
                 twilio_account_sid=self.twilio_client.username,  # type: ignore
                 twilio_auth_token=self.twilio_client.password,
-                name=assistant_config["merchant_name"],
+                name=(
+                    assistant_config["merchant_name"]
+                    if assistant_config
+                    else project.name
+                ),
                 assistant_id=assistant_id,
                 server=Server(url=server_url),
             ),
@@ -337,7 +339,9 @@ class NumberService:
         # Assign to project if needed
         number_details = NumberDetails(
             number=phone_number,
-            merchant_name=assistant_config["merchant_name"],
+            merchant_name=(
+                assistant_config["merchant_name"] if assistant_config else project.name
+            ),
             project_name=project.name,
             toll_free=toll_free,
             country_code=country_code,
