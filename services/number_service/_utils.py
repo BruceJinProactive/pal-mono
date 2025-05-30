@@ -1,14 +1,6 @@
 from typing import Optional, TypedDict
 
 
-class NumberConfig(TypedDict):
-    """Configuration for the number service."""
-
-    twilio_account_sid: str
-    twilio_auth_token: str
-    vapi_token: str
-
-
 class NumberDetails(TypedDict):
     """Details for a phone number."""
 

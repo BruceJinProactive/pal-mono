@@ -14,8 +14,9 @@ from vapi.types.custom_llm_model import CustomLlmModel
 from vapi.types.server import Server
 
 import db
+from utils import secret
 
-from ._utils import AssistantConfig, NumberConfig, NumberDetails
+from ._utils import AssistantConfig, NumberDetails
 
 
 class NumberService:
@@ -28,15 +29,16 @@ class NumberService:
     3. Importing numbers to Vapi
     4. Assigning numbers to projects
 
+    The service requires the following secrets to be configured:
+    - TWILIO_ACCOUNT_SID: Your Twilio account SID
+    - TWILIO_AUTH_TOKEN: Your Twilio auth token
+    - VAPI_API_KEY: Your Vapi API key
+
     Example:
         ```python
         # Initialize the service
-        config = NumberConfig(
-            twilio_account_sid="your_twilio_sid",
-            twilio_auth_token="your_twilio_token",
-            vapi_token="your_vapi_token"
-        )
-        number_service = NumberService(config)
+        # Initialize the service
+        number_service = NumberService()
 
         # Set up a number with an assistant
         assistant_config = AssistantConfig(
@@ -52,25 +54,54 @@ class NumberService:
             project=project
         )
         ```
+
+    Raises:
+        RuntimeError: If any required secrets are missing or invalid
     """
 
-    def __init__(self, config: NumberConfig):
+    def __init__(self):
         """
         Initialize the number service.
 
-        Args:
-            config (NumberConfig): Configuration containing Twilio and Vapi credentials.
-                Required fields:
-                - twilio_account_sid: Your Twilio account SID
-                - twilio_auth_token: Your Twilio auth token
-                - vapi_token: Your Vapi API token
-        """
-        self.twilio_client = Client(
-            config["twilio_account_sid"], config["twilio_auth_token"]
-        )
-        self.vapi_client = Vapi(token=config["vapi_token"])
+        This method:
+        1. Retrieves required secrets (Twilio and Vapi credentials)
+        2. Validates that all secrets are present
+        3. Initializes Twilio and Vapi clients
 
-    def purchase_number(self, country_code: str) -> IncomingPhoneNumberInstance:
+        Required secrets:
+        - TWILIO_ACCOUNT_SID: Your Twilio account SID
+        - TWILIO_AUTH_TOKEN: Your Twilio auth token
+        - VAPI_API_KEY: Your Vapi API key
+
+        Raises:
+            RuntimeError: If any required secrets are missing or invalid
+            KeyError: If any required secrets are not found
+        """
+        try:
+            # Retrieve each secret via public API
+            twilio_account_sid = secret.get_client_secret("TWILIO_ACCOUNT_SID")
+            twilio_auth_token = secret.get_client_secret("TWILIO_AUTH_TOKEN")
+            vapi_token = secret.get_client_secret("VAPI_API_KEY")
+
+            # Validate that none are empty or None
+            missing = [
+                name
+                for name, val in [
+                    ("TWILIO_ACCOUNT_SID", twilio_account_sid),
+                    ("TWILIO_AUTH_TOKEN", twilio_auth_token),
+                    ("VAPI_API_KEY", vapi_token),
+                ]
+                if not val
+            ]
+            if missing:
+                raise KeyError(f"Missing required secrets: {', '.join(missing)}")
+
+            self.twilio_client = Client(twilio_account_sid, twilio_auth_token)
+            self.vapi_client = Vapi(token=vapi_token)
+        except Exception as e:
+            raise RuntimeError(f"Failed to initialize NumberService: {e}") from e
+
+    def purchase_number(self, country_code: str) -> NumberDetails:
         """
         Purchase a new local phone number through Twilio.
 
@@ -112,8 +143,18 @@ class NumberService:
             )
 
         number = available_numbers[0]
-        return self.twilio_client.incoming_phone_numbers.create(
+        twilio_number = self.twilio_client.incoming_phone_numbers.create(
             phone_number=number.phone_number
+        )
+        if not twilio_number.phone_number:
+            raise ValueError("Failed to get phone number from Twilio")
+
+        return NumberDetails(
+            number=twilio_number.phone_number,
+            merchant_name="",
+            project_name=None,
+            country_code=country_code,
+            toll_free=False,
         )
 
     def purchase_toll_free_number(self, country_code: str) -> NumberDetails:
@@ -165,7 +206,7 @@ class NumberService:
             phone_number=number.phone_number
         )
         if not twilio_number.phone_number:
-            raise ValueError("Failed to get phone number from Twilio")
+            raise ValueError("Failed to get toll-free phone number from Twilio")
 
         number_details = NumberDetails(
             number=twilio_number.phone_number,
@@ -274,19 +315,17 @@ class NumberService:
         # Purchase number
         if toll_free:
             number_details = self.purchase_toll_free_number(country_code)
-            if not number_details["number"]:
-                raise ValueError("Failed to get phone number")
-            number = number_details["number"]
         else:
-            number = self.purchase_number(country_code)
-            if not number.phone_number:
-                raise ValueError("Failed to get phone number from Twilio")
-            number = number.phone_number
+            number_details = self.purchase_number(country_code)
+
+        if not number_details or not number_details["number"]:
+            raise ValueError("Failed to get phone number from Twilio")
+        phone_number = number_details["number"]
 
         # Import number to Vapi
         vapi_response = self.vapi_client.phone_numbers.create(
             request=CreateTwilioPhoneNumberDto(
-                number=number,
+                number=phone_number,
                 twilio_account_sid=self.twilio_client.username,  # type: ignore
                 twilio_auth_token=self.twilio_client.password,
                 name=assistant_config["merchant_name"],
@@ -297,20 +336,14 @@ class NumberService:
 
         # Assign to project if needed
         number_details = NumberDetails(
-            number=number,
+            number=phone_number,
             merchant_name=assistant_config["merchant_name"],
             project_name=project.name,
             toll_free=toll_free,
             country_code=country_code,
         )
-        # TODO: assign the number to the project
-        self._assign_to_project(number_details, project)
 
         return number_details, assistant, vapi_response
-
-    def _assign_to_project(self, details: NumberDetails, project: db.Project):
-        # TODO: assign the number to the project
-        return None
 
     def get_purchased_numbers(
         self, limit: int = 20
