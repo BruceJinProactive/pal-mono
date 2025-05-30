@@ -247,15 +247,20 @@ class AgnoAgent:
                 f"history_message doesn't apply to {self._storage_provider}"
             )
 
-        if len(history_messages) < 1:
-            raise ValueError("Message history should contain at least 1 message")
-        if history_messages[-1].content != input.content:
-            raise ValueError(
-                f"The latest message: {history_messages[-1].content} should be the current user input: {input.content}"
-            )
-
         messages = [
-            Message(role=msg.role, content=msg.content) for msg in history_messages[:-1]
+            Message(role=msg.role, content=msg.content) for msg in history_messages
         ]
+
+        if len(messages) < 1:
+            logger.error(
+                "[PalStorage] Message history should contain at least 1 message"
+            )
+        else:
+            if messages[-1].content != input.content:
+                logger.error(
+                    f"[PalStorage] The latest message: {messages[-1].content} should be the current user input: {input.content}"
+                )
+            else:
+                messages = messages[:-1]
         messages.append(Message(role="user", content=input.get_prompt()))
         return messages
