@@ -43,7 +43,7 @@ class AgentConfig(BaseModel):
     memory: MemoryConfig
     knowledge: KnowledgeConfig
     tool: ToolConfig
-    storage_provider: StorageProvider = StorageProvider.AGNO
+    storage_provider: StorageProvider
 
     metadata: AgentMetadata
 

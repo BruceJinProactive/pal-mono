@@ -58,7 +58,7 @@ class RawConfig:
             self.client_config = ClientConfig(data=client_data)
 
             storage_provider = self.agent.raw_config.get(
-                "storage_provider", StorageProvider.AGNO
+                "storage_provider", StorageProvider.PALSTORAGE
             )
 
             return AgentConfig(
