@@ -15,6 +15,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from tools.adora_tool.classes import (
     AdoraAccessToken,
+    AdoraLatestOrderResponse,
     AdoraOrderType,
     DeliveryAddress,
     LoyaltyNextOrderCredit,
@@ -79,6 +80,9 @@ class AdoraTool(Toolkit):
             self.register(self.validate_coupons)
         if self.loyalty_enabled:
             self.register(self.get_loyalty_info)
+
+        # Register order status tool
+        self.register(self.get_last_order_status)
 
         self.query_engine = _query_engine.create_query_engine(self.namespace)
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -1001,15 +1005,60 @@ class AdoraTool(Toolkit):
                 logger.debug("[AdoraTool.get_last_order_status] No bearer token found")
                 return error_message
 
-            # TODO: Implement API call to get last order status
-            # This will be implemented when the API endpoint is available
+            # Get customer's latest order
             logger.debug(f"Getting last order status for phone number: {phone_number}")
 
-            # Placeholder return - to be replaced with actual API call
-            return "Order status retrieval is not yet implemented. Please contact the store directly for order status information."
+            latest_order = _apis.get_customer_latest_order(
+                bearer_token,
+                phone_number,
+                qa_store=self.qa_store,
+            )
+
+            if latest_order is None:
+                return "No recent orders found for this phone number. Please double check your phone number and try again."
+
+            # Format the response based on the available information
+            return self._format_order_status(latest_order)
 
         except Exception as e:
             logger.error(
                 f"[AdoraTool.get_last_order_status] Error retrieving order status: {e}"
             )
             return error_message
+
+    def _format_order_status(self, latest_order: AdoraLatestOrderResponse) -> str:
+        """
+        Format the latest order response into a user-friendly string.
+
+        Args:
+            latest_order: AdoraLatestOrderResponse object containing order information
+
+        Returns:
+            str: Formatted order status information
+        """
+        try:
+            formatted_info = ""
+
+            # Extract process status from order detail
+            if latest_order.orderDetail and latest_order.orderDetail.processStatus:
+                formatted_info += (
+                    f"Order Status: {latest_order.orderDetail.processStatus}\n"
+                )
+            else:
+                formatted_info += "Order Status: Unknown\n"
+
+            # Add tracker URL if available
+            if latest_order.trackerURL:
+                formatted_info += (
+                    f"\nYou can track your order here:\n{latest_order.trackerURL}\n"
+                )
+            else:
+                formatted_info += "\nNo tracking information available.\n"
+
+            return formatted_info
+
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool._format_order_status] Error formatting order status: {e}"
+            )
+            return "Error formatting order status information."

@@ -5,6 +5,7 @@ from datetime import datetime
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraCustomerInfo,
+    AdoraLatestOrderResponse,
     AdoraOrderCalculationResult,
     AdoraSavedOrderResult,
     AdoraValidatedAddress,
@@ -438,5 +439,55 @@ def validate_coupon_code(
     else:
         logger.error(
             f"[AdoraTool._apis.validate_coupon_code] Failed to validate coupon with status {response.status}: {response.decoded_body}"
+        )
+        return None
+
+
+def get_customer_latest_order(
+    bearer_token: AdoraAccessToken,
+    phone_number: str,
+    qa_store: bool,
+) -> AdoraLatestOrderResponse | None:
+    """
+    Retrieve customer's latest order information using their phone number.
+    This will return the customer's last order status and tracking details.
+
+    Args:
+        bearer_token (AdoraAccessToken): The bearer token to authenticate with Adora POS.
+        phone_number (str): The customer's phone number.
+        qa_store (bool): True if the QA environment should be used.
+
+    Returns:
+        AdoraLatestOrderResponse | None: Latest order information if successful, None otherwise.
+    """
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "latest-order",
+        query_params={
+            "phone": phone_number,
+        },
+        extra_headers=None,
+        payload=None,
+        qa_store=qa_store,
+    )
+
+    if response.status == 200:
+        try:
+            return _utils.parse_json(AdoraLatestOrderResponse, response.decoded_body)
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool._apis.get_customer_latest_order] Error parsing response: {e}"
+            )
+            return None
+    elif response.status == 404:
+        # For 404 responses, return None - will be handled in the implementation layer
+        logger.debug(
+            "[AdoraTool._apis.get_customer_latest_order] Customer or order not found"
+        )
+        return None
+    else:
+        logger.debug(
+            f"[AdoraTool._apis.get_customer_latest_order] Internal error {response.status}: {response.decoded_body}"
         )
         return None

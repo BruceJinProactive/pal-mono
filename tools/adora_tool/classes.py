@@ -380,3 +380,22 @@ class AdoraCustomerInfo(BaseModel):
     customerOffers: Optional[AdoraCustomerOffers] = None
     customerNextOrderCredits: Optional[List[AdoraNextOrderCredit]] = None
     message: Optional[str] = None  # For error messages
+
+
+class AdoraLatestOrderResponse(BaseModel):
+    """
+    Represents the latest order response from the Adora API.
+    Only includes the fields we care about: trackerURL and processStatus.
+    """
+
+    trackerURL: Optional[str] = None
+    orderDetail: Optional["AdoraOrderDetail"] = None
+
+
+class AdoraOrderDetail(BaseModel):
+    """
+    Represents order detail information from the latest order response.
+    Only includes the processStatus field that we need.
+    """
+
+    processStatus: Optional[str] = None
