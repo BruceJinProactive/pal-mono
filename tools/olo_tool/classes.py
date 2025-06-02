@@ -14,19 +14,6 @@ class OloAccessToken(BaseModel):
         return f"{self.token_type} {self.access_token}"
 
 
-class HttpMethod(str, Enum):
-    GET = "GET"
-    POST = "POST"
-    PUT = "PUT"
-    DELETE = "DELETE"
-
-
-class OloHubResponse(BaseModel):
-    status: int
-    reason: str
-    decoded_body: str
-
-
 class BaseCustomField(BaseModel):
     id: int
     isrequired: bool

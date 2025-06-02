@@ -1,4 +1,31 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
+
+
+class ApiProvider(str, Enum):
+    """Enum for different API providers"""
+
+    OLO = "olo"
+    ADORA = "adora"
+    TOAST = "toast"
+
+
+class GenericHubResponse(BaseModel):
+    """Generic response class that matches all three API response formats"""
+
+    status: int
+    reason: str
+    decoded_body: str
+
+
+class HttpMethod(str, Enum):
+    """HTTP methods supported by the APIs"""
+
+    GET = "GET"
+    POST = "POST"
+    PUT = "PUT"
+    DELETE = "DELETE"
 
 
 class SubQueries(BaseModel):

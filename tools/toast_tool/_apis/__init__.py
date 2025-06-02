@@ -5,7 +5,6 @@ from typing import Optional
 from tools.toast_tool._apis._utils import connect_toast_order_hub
 from tools.toast_tool.classes import (
     DiningOption,
-    HttpMethod,
     Order,
     OrderInput,
     RestaurantInfo,
@@ -13,6 +12,7 @@ from tools.toast_tool.classes import (
     ToastAccessToken,
 )
 from utils.log import logger
+from utils.ordering.classes import HttpMethod
 
 BASE_URL = "ws-sandbox-api.eng.toasttab.com"
 

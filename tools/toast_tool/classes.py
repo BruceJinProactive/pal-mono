@@ -7,21 +7,6 @@ from pydantic.json_schema import SkipJsonSchema
 
 
 ######### TOAST API CLASS START ############
-class HttpMethod(str, Enum):
-    GET = "GET"
-    POST = "POST"
-    PUT = "PUT"
-    DELETE = "DELETE"
-
-
-class ToastHubResponse(BaseModel):
-    """Class to handle Toast API response data"""
-
-    status: int
-    reason: str
-    decoded_body: str
-
-
 class ToastAccessToken(BaseModel):
     """
     This class represents the response from the Toast Authentication API.

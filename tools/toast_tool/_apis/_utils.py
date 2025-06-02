@@ -1,11 +1,6 @@
-import http.client
-import json
-import urllib.parse
-
-from tools.toast_tool.classes import HttpMethod, ToastAccessToken, ToastHubResponse
-from utils.log import logger
-
-BASE_URL = "ws-sandbox-api.eng.toasttab.com"
+from tools.toast_tool.classes import ToastAccessToken
+from utils.ordering._utils import connect_order_hub
+from utils.ordering.classes import ApiProvider, GenericHubResponse, HttpMethod
 
 
 def connect_toast_order_hub(
@@ -16,73 +11,32 @@ def connect_toast_order_hub(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
-) -> ToastHubResponse:
+) -> GenericHubResponse:
+    """
+    Make a request to the Toast Order Hub API using the generic connect function.
 
-    logger.debug(
-        f"[ToastTool._apis._utils.connect_toast_order_hub] Calling Toast API: {http_method} {api_function} | "
-        f"Query Params: {query_params} | "
-        f"Extra Headers: {extra_headers} | "
-        f"Payload: {payload}"
+    Args:
+        http_method: The HTTP method to use
+        bearer_token: The Toast access token
+        api_function: The API endpoint to call
+        store_id: The store ID (required for Toast API)
+        query_params: Optional query parameters
+        extra_headers: Optional additional headers
+        payload: Optional request payload
+
+    Returns:
+        GenericHubResponse: The API response
+
+    Raises:
+        ValueError: If the HTTP method is invalid or the request fails
+    """
+    return connect_order_hub(
+        provider=ApiProvider.TOAST,
+        http_method=http_method,
+        bearer_token=bearer_token,
+        api_function=api_function,
+        query_params=query_params,
+        extra_headers=extra_headers,
+        payload=payload,
+        store_id=store_id,
     )
-
-    # Set up headers
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": bearer_token.get_token_header_value(),
-        "Toast-Restaurant-External-ID": store_id,
-    }
-
-    # Add any extra headers
-    if extra_headers:
-        headers.update(extra_headers)
-
-    # Prepare payload
-    request_body = ""
-    if payload is not None:
-        if isinstance(payload, dict):
-            request_body = json.dumps(payload)
-        else:
-            request_body = str(payload)
-
-    # Construct the full URL with query parameters
-    if query_params:
-        api_function += "?" + urllib.parse.urlencode(query_params)
-
-    try:
-        conn = http.client.HTTPSConnection(BASE_URL, timeout=30)
-        # We focus on GET and POST methods for now
-        # You can add more methods as needed
-        if http_method in [HttpMethod.GET, HttpMethod.POST]:
-            conn.request(http_method.value, api_function, request_body, headers=headers)
-        else:
-            raise ValueError(
-                f"[ToastTool._apis._utils.connect_toast_order_hub] Invalid HTTP method: {http_method}"
-            )
-
-        response = conn.getresponse()
-        response_data = response.read().decode("utf-8")
-
-        # If response status is not 200, raise an exception
-        if response.status != 200:
-            raise Exception(
-                f"Error: {response.status} - {response.reason} - {response_data}"
-            )
-
-        toast_response = ToastHubResponse(
-            status=response.status,
-            reason=response.reason,
-            decoded_body=response_data,
-        )
-        logger.debug(
-            f"[ToastTool._apis._utils.connect_toast_order_hub] ToastResponse: {toast_response}"
-        )
-        return toast_response
-
-    except Exception as e:
-        raise Exception(
-            f"[ToastTool._apis._utils.connect_toast_order_hub] Error while calling {http_method} {api_function}: {str(e)}"
-        ) from e
-    finally:
-        conn_var = locals().get("conn")
-        if conn_var:
-            conn_var.close()

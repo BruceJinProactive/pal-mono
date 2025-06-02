@@ -1,8 +1,10 @@
 import asyncio
+import http.client
 import json
 import re
 import textwrap
-from typing import TypeVar, Union
+import urllib.parse
+from typing import Any, Dict, Optional, TypeVar, Union
 
 from ddtrace.llmobs import LLMObs
 from pydantic import BaseModel, ValidationError
@@ -11,14 +13,36 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from utils.log import logger
 from utils.ordering._llm import llm_call
 from utils.ordering._query_engine import BaseQueryEngine
-from utils.ordering.classes import SubQueries
+from utils.ordering.classes import (
+    ApiProvider,
+    GenericHubResponse,
+    HttpMethod,
+    SubQueries,
+)
 
 T = TypeVar("T", bound=BaseModel)
 S = TypeVar("S", bound=SubQueries)
 
+# Constants for validation
 VALID_PHONE_PATTERN = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
 VALID_EMAIL_PATTERN = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 VALID_DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+
+# Base URL mapping for each API provider
+API_BASE_URLS: Dict[ApiProvider, Dict[str, str]] = {
+    ApiProvider.OLO: {
+        "production": "ordering.api.olosandbox.com",
+        "sandbox": "ordering.api.olosandbox.com",  # Using sandbox as default for now
+    },
+    ApiProvider.ADORA: {
+        "production": "public.api.adorapos.net",
+        "qa": "adora-qa-api-public.azurewebsites.net",
+    },
+    ApiProvider.TOAST: {
+        "production": "ws-sandbox-api.eng.toasttab.com",
+        "sandbox": "ws-sandbox-api.eng.toasttab.com",  # Using sandbox as default for now
+    },
+}
 
 
 # TODO: Do not pass latest_user_message as an argument. It is not needed.
@@ -225,3 +249,220 @@ def construct_order(
     except Exception as e:
         logger.error(e)
         return f"{error_prefix}: {e}"
+
+
+def _build_base_url(provider: ApiProvider, qa_store: bool) -> tuple[str, str]:
+    """
+    Build the base URL and path for the given provider.
+
+    Args:
+        provider: The API provider
+        qa_store: Whether to use QA environment (for Adora API)
+
+    Returns:
+        tuple[str, str]: (base_url, path_prefix)
+    """
+    if provider == ApiProvider.OLO:
+        base_url = API_BASE_URLS[provider]["sandbox"]  # or "production"
+        path_prefix = ""
+    elif provider == ApiProvider.ADORA:
+        environment = "qa" if qa_store else "production"
+        base_url = API_BASE_URLS[provider][environment]
+        path_prefix = "/api/v1/OrderHub/"
+    elif provider == ApiProvider.TOAST:
+        base_url = API_BASE_URLS[provider]["sandbox"]  # or "production"
+        path_prefix = ""
+    else:
+        raise ValueError(f"Unsupported API provider: {provider}")
+
+    return base_url, path_prefix
+
+
+def _build_headers(
+    provider: ApiProvider,
+    bearer_token: Any,
+    store_id: Optional[str],
+    extra_headers: Optional[Dict[str, str]],
+) -> Dict[str, str]:
+    """
+    Build headers for the API request.
+
+    Args:
+        provider: The API provider
+        bearer_token: The access token for the specific API
+        store_id: Store ID (required for Toast API)
+        extra_headers: Optional additional headers
+
+    Returns:
+        Dict[str, str]: Complete headers dictionary
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": bearer_token.get_token_header_value(),
+    }
+
+    # Add provider-specific headers
+    if provider == ApiProvider.TOAST:
+        if not store_id:
+            raise ValueError(
+                "store_id must be provided when calling Toast APIs (Toast-Restaurant-External-ID header)."
+            )
+        headers["Toast-Restaurant-External-ID"] = store_id
+
+    # Add any extra headers
+    if extra_headers:
+        headers.update(extra_headers)
+
+    return headers
+
+
+def _make_request(
+    conn: http.client.HTTPSConnection,
+    provider: ApiProvider,
+    method_str: str,
+    path: str,
+    body: str,
+    headers: Dict[str, str],
+) -> http.client.HTTPResponse:
+    """
+    Make the HTTP request with provider-specific method validation.
+
+    Args:
+        conn: The HTTPS connection object
+        provider: The API provider
+        method_str: The HTTP method as string
+        path: The request path
+        body: The request body
+        headers: The request headers
+
+    Returns:
+        http.client.HTTPResponse: The HTTP response
+
+    Raises:
+        ValueError: If the HTTP method is not supported by the provider
+    """
+    # Make the request based on provider-specific method support
+    if provider == ApiProvider.ADORA:
+        # Adora only supports GET and POST
+        if method_str in ["GET", "POST"]:
+            conn.request(method_str, path, body, headers)
+        else:
+            raise ValueError(f"Invalid HTTP method for Adora API: {method_str}")
+    else:
+        # Olo and Toast support GET, POST, PUT
+        if method_str in ["GET", "POST", "PUT"]:
+            conn.request(method_str, path, body, headers)
+        else:
+            raise ValueError(
+                f"Invalid HTTP method for {provider.upper()} API: {method_str}"
+            )
+
+    return conn.getresponse()
+
+
+def connect_order_hub(
+    provider: ApiProvider,
+    http_method: Union[HttpMethod, str],
+    bearer_token: Any,  # OloAccessToken, AdoraAccessToken, or ToastAccessToken
+    api_function: str,
+    query_params: Optional[Dict[str, Any]] = None,
+    extra_headers: Optional[Dict[str, str]] = None,
+    payload: Optional[Union[Dict[str, Any], str]] = None,
+    store_id: Optional[str] = None,  # Required for Toast API
+    qa_store: bool = False,  # Required for Adora API
+) -> GenericHubResponse:
+    """
+    Unified function to connect to different order hub APIs (Olo, Adora, Toast).
+
+    Args:
+        provider: The API provider (olo, adora, or toast)
+        http_method: The HTTP method to use
+        bearer_token: The access token for the specific API
+        api_function: The API endpoint to call
+        query_params: Optional query parameters
+        extra_headers: Optional additional headers
+        payload: Optional request payload
+        store_id: Store ID (required for Toast API)
+        qa_store: Whether to use QA environment (for Adora API)
+
+    Returns:
+        GenericHubResponse: The API response
+
+    Raises:
+        ValueError: If the provider is invalid or required parameters are missing
+        Exception: If the API request fails
+    """
+    logger.debug(
+        f"[OrderingUtils.connect_order_hub] Calling {provider.upper()} API: {http_method} {api_function} | "
+        f"Query Params: {query_params} | "
+        f"Extra Headers: {extra_headers} | "
+        f"Payload: {payload}"
+    )
+
+    # Build base URL and path
+    base_url, path_prefix = _build_base_url(provider, qa_store)
+    path = path_prefix + api_function
+
+    # Build headers
+    headers = _build_headers(provider, bearer_token, store_id, extra_headers)
+
+    # Prepare payload
+    request_body = ""
+    if payload is not None:
+        if isinstance(payload, dict):
+            request_body = json.dumps(payload)
+        else:
+            request_body = str(payload)
+
+    # Construct the full URL with query parameters
+    if query_params:
+        path += "?" + urllib.parse.urlencode(query_params)
+
+    # Convert http_method to string for comparison
+    if isinstance(http_method, HttpMethod):
+        method_str = http_method.value
+    elif isinstance(http_method, str):
+        method_str = http_method.upper()
+    else:
+        # Handle case where http_method might be another type
+        raise ValueError(f"Invalid HTTP method: {http_method}")
+
+    try:
+        conn = http.client.HTTPSConnection(base_url, timeout=30)
+
+        # Make the request
+        response = _make_request(
+            conn, provider, method_str, path, request_body, headers
+        )
+        response_data = response.read().decode("utf-8")
+
+        # Handle non-200 responses differently based on provider
+        if provider == ApiProvider.ADORA:
+            # Adora allows non-200 responses (like 404 for customer not found)
+            pass
+        else:
+            # Olo and Toast require 200 status
+            if response.status != 200:
+                raise Exception(
+                    f"Error: {response.status} - {response.reason} - {response_data}"
+                )
+
+        hub_response = GenericHubResponse(
+            status=response.status,
+            reason=response.reason,
+            decoded_body=response_data,
+        )
+
+        logger.debug(
+            f"[OrderingUtils.connect_order_hub] {provider.upper()} Response: {hub_response}"
+        )
+        return hub_response
+
+    except Exception as e:
+        raise Exception(
+            f"[OrderingUtils.connect_order_hub] Error while calling {method_str} {api_function} for {provider.upper()}: {str(e)}"
+        ) from e
+    finally:
+        conn_var = locals().get("conn")
+        if conn_var:
+            conn_var.close()

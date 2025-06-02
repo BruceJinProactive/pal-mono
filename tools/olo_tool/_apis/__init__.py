@@ -6,7 +6,6 @@ from tools.olo_tool.classes import (
     Address,
     BillingScheme,
     DeliveryAddressValidationResponse,
-    HttpMethod,
     OloAccessToken,
     OloBasket,
     OloBasketHandoffMode,
@@ -17,6 +16,7 @@ from tools.olo_tool.classes import (
     OloStore,
     ValidatedBasketTotals,
 )
+from utils.ordering.classes import HttpMethod
 
 
 def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
