@@ -224,6 +224,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                     "voiceId": (
                         voice_id if voice_id else "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
                     ),  # Default to Jimmy's voice id
+                    "model": "sonic-multilingual",
                 },
                 "backgroundSound": "off",
                 "backgroundDenoisingEnabled": True,
