@@ -226,6 +226,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                     ),  # Default to Jimmy's voice id
                 },
                 "backgroundSound": "off",
+                "backgroundDenoisingEnabled": True,
             }
         }
     except Exception as e:
