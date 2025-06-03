@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from vapi.types.cartesia_experimental_controls import CartesiaExperimentalControls
 
 import db
 from api.schemas.chat.message import (
@@ -262,7 +263,11 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         if dynamic_vapi_config and config.voice_config.speech_rate != SpeechRate.normal:
             speech_rate = map_speech_rate(config.voice_config.speech_rate)
-            vapi_config["assistant"]["voice"]["speed"] = speech_rate
+            vapi_config["assistant"]["voice"]["experimental_controls"] = (
+                CartesiaExperimentalControls(
+                    speed=speech_rate,
+                )
+            )
 
         if dynamic_vapi_config:
             if config.voice_config.background_noise:
@@ -576,9 +581,9 @@ async def handle_session_closure(message_data, session: AsyncSession):
         return {"error": str(e)}
 
 
-def map_speech_rate(speech_rate: SpeechRate) -> float:
+def map_speech_rate(speech_rate: SpeechRate) -> str:
     """
-    Map the speech rate to a speed value where 1.0 is the normal speed.
+    Map the speech rate to a speed string expected by vapi.
 
     Args:
         speech_rate: The speech rate enum
@@ -587,12 +592,12 @@ def map_speech_rate(speech_rate: SpeechRate) -> float:
         float: The speed value
     """
     if speech_rate == SpeechRate.slowest:
-        return 0.8
+        return "slowest"
     elif speech_rate == SpeechRate.slower:
-        return 0.9
+        return "slow"
     elif speech_rate == SpeechRate.faster:
-        return 1.1
+        return "fast"
     elif speech_rate == SpeechRate.fastest:
-        return 1.2
+        return "fastest"
     else:
-        return 1.0
+        return "normal"
