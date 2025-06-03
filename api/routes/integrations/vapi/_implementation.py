@@ -213,8 +213,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             voice_id = config.voice_config.voice_id
         else:
             voice_id = config.persona.voice_id
-        # Default to Jimmy's voice id
-        voice_id = voice_id or SPORTSMAN_VOICE_ID
 
         multilingual = config.persona.multilingual
 
@@ -225,16 +223,16 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 "model": "gemini-2.0-flash",
             }
             voice = {
-                "provider": "cartesia",
-                "voiceId": voice_id,
-                "model": "sonic-multilingual",
+                "provider": "11labs",
+                "voiceId": voice_id or "kdVjFjOXaqExaDvXZECX",  # Default Burt in 11labs
+                "model": "eleven_multilingual_v2",
             }
 
         else:
             transcriber = {"provider": "deepgram"}
             voice = {
                 "provider": "cartesia",
-                "voiceId": voice_id,
+                "voiceId": voice_id or SPORTSMAN_VOICE_ID,
                 "model": "sonic",
             }
 
