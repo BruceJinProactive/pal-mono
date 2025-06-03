@@ -24,6 +24,7 @@ from agent import (
 from agent.config import StorageProvider, VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.model import ModelProvider
+from db.tables.agents import AgentType
 from utils.log import logger
 
 
@@ -99,6 +100,7 @@ class RawConfig:
     def _get_agent_persona(self) -> AgentPersona:
         # Extract the persona section of the raw config
         raw_persona = self.agent.raw_config.get("persona", {})
+        dynamic_prompt = self.agent.raw_config.get("dynamic_prompt_enabled", False)
 
         if not raw_persona:
             logger.info(
@@ -109,9 +111,15 @@ class RawConfig:
             )
 
         # Use the name, role, system_prompt from the persona section
-        name = raw_persona.get("name") or self.agent.name or ""
-        role = raw_persona.get("role") or self.agent.agent_type or ""
-        system_prompt = raw_persona.get("system_prompt") or self._build_agent_prompt()
+        name = (self.agent.name if dynamic_prompt else raw_persona.get("name")) or ""
+        role = (
+            self.agent.agent_type if dynamic_prompt else raw_persona.get("role")
+        ) or ""
+        system_prompt = (
+            self._build_agent_prompt()
+            if dynamic_prompt
+            else raw_persona.get("system_prompt")
+        )
         voice_id = raw_persona.get("voice_id") or None
         multilingual = raw_persona.get("multilingual") or False
 
@@ -225,11 +233,34 @@ class RawConfig:
             ("## Communication Style", self.agent.communication_style),
             ("## Interaction Guidelines", self.agent.interaction_guidelines),
         ]
+        store_info_list = [
+            ("## Store Address", self.project.address),
+            ("## Store Hours", self.project.store_hours),
+            (
+                "## Service Instruction",
+                self.project.service_instruction
+                or self._get_default_service_instruction(),
+            ),
+            ("## Store Product & Menu", self.project.product_info),
+        ]
 
         sections = []
         sections.extend(build_section("# Brand Information", brand_info_list))
         sections.extend(build_section("# Agent Information", agent_info_list))
+        sections.extend(build_section("# Store Information", store_info_list))
         return "\n".join(sections)
+
+    def _get_default_service_instruction(self) -> str:
+        agent_type = self.agent.agent_type
+        if agent_type == AgentType.ordering:
+            return (
+                "Help with answering customer questions as well as taking orders "
+                "for pick up only, delivery is not supported."
+            )
+        return (
+            "Help with answering customer questions as much as possible "
+            "but don't take any orders."
+        )
 
     def _get_additional_context(self) -> str:
         additional_context = ""
