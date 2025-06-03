@@ -225,7 +225,10 @@ async def list_account_projects(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
-    return [build_project_summary(project) for project in account.projects]
+    return [
+        build_project_summary(project)
+        for project in sorted(account.projects, key=lambda p: p.created_at)
+    ]
 
 
 def get_project(

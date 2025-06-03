@@ -160,7 +160,10 @@ async def list_account_agents(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
-    return [build_agent_summary(agent) for agent in account.agents]
+    return [
+        build_agent_summary(agent)
+        for agent in sorted(account.agents, key=lambda a: a.created_at)
+    ]
 
 
 def get_account_status(
