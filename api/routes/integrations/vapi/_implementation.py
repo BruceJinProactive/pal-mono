@@ -224,7 +224,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             }
             voice = {
                 "provider": "11labs",
-                "voiceId": voice_id or "kdVjFjOXaqExaDvXZECX",  # Default Burt in 11labs
                 "model": "eleven_multilingual_v2",
             }
 
