@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from vapi.types.cartesia_experimental_controls import CartesiaExperimentalControls
 
 import db
 from api.schemas.chat.message import (
@@ -210,8 +209,15 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         }
 
         # Get voice_id from config
-        voice_id = config.persona.voice_id
+        if dynamic_vapi_config and config.voice_config.voice_id:
+            voice_id = config.voice_config.voice_id
+        else:
+            voice_id = config.persona.voice_id
+        # Default to Jimmy's voice id
+        voice_id = voice_id or SPORTSMAN_VOICE_ID
+
         multilingual = config.persona.multilingual
+
         if multilingual:
             transcriber = {
                 "provider": "google",
@@ -220,9 +226,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             }
             voice = {
                 "provider": "cartesia",
-                "voiceId": (
-                    voice_id if voice_id else SPORTSMAN_VOICE_ID
-                ),  # Default to Jimmy's voice id
+                "voiceId": voice_id,
                 "model": "sonic-multilingual",
             }
 
@@ -230,20 +234,20 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             transcriber = {"provider": "deepgram"}
             voice = {
                 "provider": "cartesia",
-                "voiceId": (
-                    voice_id if voice_id else SPORTSMAN_VOICE_ID
-                ),  # Default to Jimmy's voice id
+                "voiceId": voice_id,
                 "model": "sonic",
             }
 
-        if dynamic_vapi_config and config.voice_config.voice_id:
-            voice_id = config.voice_config.voice_id
+        if dynamic_vapi_config and config.voice_config.background_noise:
+            background_sound = "office"
+        else:
+            background_sound = "off"
 
         # Return a transient assistant configuration
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
         # Document the expected format using a comment
         # Model field format: {sender_identifier: string, recipient_identifier: string, call_id?: string}
-        vapi_config = {
+        return {
             "assistant": {
                 "firstMessage": greeting,
                 "transcriber": transcriber,
@@ -256,24 +260,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                     ],
                 },
                 "voice": voice,
-                "backgroundSound": "off",
+                "backgroundSound": background_sound,
                 "backgroundDenoisingEnabled": True,
             }
         }
-
-        if dynamic_vapi_config and config.voice_config.speech_rate != SpeechRate.normal:
-            speech_rate = map_speech_rate(config.voice_config.speech_rate)
-            vapi_config["assistant"]["voice"]["experimental_controls"] = (
-                CartesiaExperimentalControls(
-                    speed=speech_rate,
-                )
-            )
-
-        if dynamic_vapi_config:
-            if config.voice_config.background_noise:
-                vapi_config["assistant"]["backgroundSound"] = "office"
-
-        return vapi_config
     except Exception as e:
         logger.error(f"Error in handle_assistant_request: {str(e)}")
         return {"error": str(e)}
