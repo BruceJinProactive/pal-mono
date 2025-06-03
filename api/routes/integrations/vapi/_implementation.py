@@ -228,7 +228,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
         # Document the expected format using a comment
         # Model field format: {sender_identifier: string, recipient_identifier: string, call_id?: string}
-        return {
+        vapi_config = {
             "assistant": {
                 "firstMessage": greeting,
                 "transcriber": {"provider": "deepgram"},
@@ -246,12 +246,15 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                         voice_id if voice_id else SPORTSMAN_VOICE_ID
                     ),  # Default to Jimmy's voice id
                     "model": "sonic-multilingual",
-                    "rate": speech_rate,
                 },
                 "backgroundSound": background_noise,
                 "backgroundDenoisingEnabled": True,
             }
         }
+        if speech_rate != 1.0:
+            vapi_config["assistant"]["voice"]["speed"] = speech_rate
+
+        return vapi_config
     except Exception as e:
         logger.error(f"Error in handle_assistant_request: {str(e)}")
         return {"error": str(e)}
