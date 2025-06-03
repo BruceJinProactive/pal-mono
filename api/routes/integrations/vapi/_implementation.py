@@ -224,6 +224,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             }
             voice = {
                 "provider": "11labs",
+                "voiceId": voice_id or "KXXOmXxuR8GU074WrDGj",
                 "model": "eleven_multilingual_v2",
             }
 
