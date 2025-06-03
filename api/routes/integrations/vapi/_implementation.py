@@ -216,14 +216,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         if dynamic_vapi_config and config.voice_config.voice_id:
             voice_id = config.voice_config.voice_id
 
-        speech_rate = 1.0
-        if dynamic_vapi_config:
-            speech_rate = map_speech_rate(config.voice_config.speech_rate)
-
-        background_noise = "off"
-        if dynamic_vapi_config:
-            background_noise = "on" if config.voice_config.background_noise else "off"
-
         # Return a transient assistant configuration
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
         # Document the expected format using a comment
@@ -247,12 +239,17 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                     ),  # Default to Jimmy's voice id
                     "model": "sonic-multilingual",
                 },
-                "backgroundSound": background_noise,
                 "backgroundDenoisingEnabled": True,
             }
         }
-        if speech_rate != 1.0:
+
+        if dynamic_vapi_config:
+            speech_rate = map_speech_rate(config.voice_config.speech_rate)
             vapi_config["assistant"]["voice"]["speed"] = speech_rate
+
+        if dynamic_vapi_config:
+            if not config.voice_config.background_noise:
+                vapi_config["assistant"]["backgroundSound"] = "off"
 
         return vapi_config
     except Exception as e:
@@ -562,7 +559,7 @@ async def handle_session_closure(message_data, session: AsyncSession):
         return {"error": str(e)}
 
 
-def map_speech_rate(speech_rate: SpeechRate) -> float:
+def map_speech_rate(speech_rate: SpeechRate) -> str:
     """
     Map the speech rate to a speed value where 1.0 is the normal speed.
 
@@ -573,12 +570,12 @@ def map_speech_rate(speech_rate: SpeechRate) -> float:
         float: The speed value
     """
     if speech_rate == SpeechRate.slowest:
-        return 0.8
+        return "slowest"
     elif speech_rate == SpeechRate.slower:
-        return 0.9
+        return "slow"
     elif speech_rate == SpeechRate.faster:
-        return 1.1
+        return "fast"
     elif speech_rate == SpeechRate.fastest:
-        return 1.2
+        return "faster"
     else:
-        return 1.0
+        return "normal"
