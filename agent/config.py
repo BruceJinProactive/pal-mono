@@ -38,6 +38,7 @@ class StorageProvider(StrEnum):
 
 
 class VoiceConfig(BaseModel):
+    enabled: bool = False
     greeting_message: str | None
     voice_id: str | None
     speech_rate: SpeechRate

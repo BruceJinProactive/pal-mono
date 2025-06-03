@@ -82,6 +82,8 @@ class RawConfig:
                 storage_provider=storage_provider,
                 additional_context=self._get_additional_context(),
                 voice_config=VoiceConfig(
+                    enabled=self.agent.raw_config.get("vapi_voice_config_enabled")
+                    == "true",
                     greeting_message=self.agent.greeting_message,
                     voice_id=self.agent.voice_id,
                     speech_rate=self.agent.speech_rate,

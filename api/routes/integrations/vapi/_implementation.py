@@ -180,10 +180,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         if not account_display_name:
             account_display_name = project.account.name
 
-        dynamic_vapi_config = (
-            project.raw_config.get("dynamic_vapi_config_enabled") == "true"
-        )
-
         # ================= Step 2: Construct agent and generate output =================
         agent_id = project.agent_id
         if not agent_id:
@@ -197,6 +193,8 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             project_id=project.id,
             conversation_id=request_message.conversation_id,
         )
+
+        dynamic_vapi_config = config.voice_config.enabled
 
         greeting = f"Hi this is {config.persona.name} from {account_display_name}. How can I help you today?"
 
