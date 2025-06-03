@@ -112,12 +112,14 @@ class RawConfig:
         role = raw_persona.get("role") or self.agent.agent_type or ""
         system_prompt = raw_persona.get("system_prompt") or self._build_agent_prompt()
         voice_id = raw_persona.get("voice_id") or None
+        multilingual = raw_persona.get("multilingual") or False
 
         return AgentPersona(
             name=name,
             role=role,
             description=system_prompt,
             voice_id=voice_id,
+            multilingual=multilingual,
         )
 
     def _get_agent_knowledge(self) -> KnowledgeConfig:

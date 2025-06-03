@@ -210,6 +210,30 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         # Get voice_id from config
         voice_id = config.persona.voice_id
+        multilingual = config.persona.multilingual
+        if multilingual:
+            transcriber = {
+                "provider": "google",
+                "language": "Multilingual",
+                "model": "gemini-2.0-flash",
+            }
+            voice = {
+                "provider": "cartesia",
+                "voiceId": (
+                    voice_id if voice_id else SPORTSMAN_VOICE_ID
+                ),  # Default to Jimmy's voice id
+                "model": "sonic-multilingual",
+            }
+
+        else:
+            transcriber = {"provider": "deepgram"}
+            voice = {
+                "provider": "cartesia",
+                "voiceId": (
+                    voice_id if voice_id else SPORTSMAN_VOICE_ID
+                ),  # Default to Jimmy's voice id
+                "model": "sonic",
+            }
 
         if dynamic_vapi_config and config.voice_config.voice_id:
             voice_id = config.voice_config.voice_id
@@ -221,7 +245,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         vapi_config = {
             "assistant": {
                 "firstMessage": greeting,
-                "transcriber": {"provider": "deepgram"},
+                "transcriber": transcriber,
                 "model": {
                     "provider": "custom-llm",
                     "url": f"{api_url}/v1",
@@ -230,13 +254,8 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                         {"role": "system", "content": config.persona.description}
                     ],
                 },
-                "voice": {
-                    "provider": "cartesia",
-                    "voiceId": (
-                        voice_id if voice_id else SPORTSMAN_VOICE_ID
-                    ),  # Default to Jimmy's voice id
-                    "model": "sonic-multilingual",
-                },
+                "voice": voice,
+                "backgroundSound": "off",
                 "backgroundDenoisingEnabled": True,
             }
         }
@@ -246,8 +265,8 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             vapi_config["assistant"]["voice"]["speed"] = speech_rate
 
         if dynamic_vapi_config:
-            if not config.voice_config.background_noise:
-                vapi_config["assistant"]["backgroundSound"] = "off"
+            if config.voice_config.background_noise:
+                vapi_config["assistant"]["backgroundSound"] = "office"
 
         return vapi_config
     except Exception as e:

@@ -21,6 +21,7 @@ class AgentPersona(BaseModel):
     role: str
     description: Optional[str] = None
     voice_id: Optional[str] = None
+    multilingual: bool = False
 
 
 class AgentMetadata(BaseModel):
