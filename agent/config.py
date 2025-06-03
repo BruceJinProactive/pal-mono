@@ -8,6 +8,7 @@ from agent.knowledge import KnowledgeConfig
 from agent.memory import MemoryConfig
 from agent.model import ModelConfig
 from agent.tool import ToolConfig
+from db.tables.agents import SpeechRate
 
 
 class AgentFramework(StrEnum):
@@ -36,6 +37,13 @@ class StorageProvider(StrEnum):
     PALSTORAGE = auto()
 
 
+class VoiceConfig(BaseModel):
+    greeting_message: str | None
+    voice_id: str | None
+    speech_rate: SpeechRate
+    background_noise: bool
+
+
 class AgentConfig(BaseModel):
     persona: AgentPersona
 
@@ -44,6 +52,7 @@ class AgentConfig(BaseModel):
     knowledge: KnowledgeConfig
     tool: ToolConfig
     storage_provider: StorageProvider
+    voice_config: VoiceConfig
 
     metadata: AgentMetadata
 

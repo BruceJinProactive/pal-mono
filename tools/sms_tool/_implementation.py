@@ -10,12 +10,12 @@ from api.schemas.chat.message import (
     Broker,
     Channel,
     Extras,
+)
+from api.schemas.chat.message import Message as RelayMessage
+from api.schemas.chat.message import (
     Metadata,
     TextObject,
     Type,
-)
-from api.schemas.chat.message import (
-    Message as RelayMessage,
 )
 from services.relay_service import send_message as relay_send_message
 from tools.sms_tool._llm import generate_order_summary

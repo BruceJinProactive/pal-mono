@@ -17,10 +17,13 @@ from api.schemas.chat.message import (
     TextObject,
     Type,
 )
+from db.tables.agents import SpeechRate
 from services import agent_service, project_service, user_service
 from utils.log import logger
 
 from ._utils import validate_vapi_request
+
+SPORTSMAN_VOICE_ID = "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
 
 
 async def api_vapi_server(request: Request, session: AsyncSession) -> JSONResponse:
@@ -177,6 +180,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         if not account_display_name:
             account_display_name = project.account.name
 
+        dynamic_vapi_config = (
+            project.raw_config.get("dynamic_vapi_config_enabled") == "true"
+        )
+
         # ================= Step 2: Construct agent and generate output =================
         agent_id = project.agent_id
         if not agent_id:
@@ -193,6 +200,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         greeting = f"Hi this is {config.persona.name} from {account_display_name}. How can I help you today?"
 
+        if dynamic_vapi_config and config.voice_config.greeting_message:
+            greeting = config.voice_config.greeting_message
+
         # Create caller_info with required fields for message routing
         caller_info = {
             "sender_identifier": customer_number,
@@ -202,6 +212,17 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         # Get voice_id from config
         voice_id = config.persona.voice_id
+
+        if dynamic_vapi_config and config.voice_config.voice_id:
+            voice_id = config.voice_config.voice_id
+
+        speech_rate = 1.0
+        if dynamic_vapi_config:
+            speech_rate = map_speech_rate(config.voice_config.speech_rate)
+
+        background_noise = "off"
+        if dynamic_vapi_config:
+            background_noise = "on" if config.voice_config.background_noise else "off"
 
         # Return a transient assistant configuration
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
@@ -222,11 +243,12 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 "voice": {
                     "provider": "cartesia",
                     "voiceId": (
-                        voice_id if voice_id else "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
+                        voice_id if voice_id else SPORTSMAN_VOICE_ID
                     ),  # Default to Jimmy's voice id
                     "model": "sonic-multilingual",
+                    "rate": speech_rate,
                 },
-                "backgroundSound": "off",
+                "backgroundSound": background_noise,
                 "backgroundDenoisingEnabled": True,
             }
         }
@@ -535,3 +557,25 @@ async def handle_session_closure(message_data, session: AsyncSession):
     except Exception as e:
         logger.error(f"Error in handle_session_closure: {str(e)}")
         return {"error": str(e)}
+
+
+def map_speech_rate(speech_rate: SpeechRate) -> float:
+    """
+    Map the speech rate to a speed value where 1.0 is the normal speed.
+
+    Args:
+        speech_rate: The speech rate enum
+
+    Returns:
+        float: The speed value
+    """
+    if speech_rate == SpeechRate.slowest:
+        return 0.8
+    elif speech_rate == SpeechRate.slower:
+        return 0.9
+    elif speech_rate == SpeechRate.faster:
+        return 1.1
+    elif speech_rate == SpeechRate.fastest:
+        return 1.2
+    else:
+        return 1.0

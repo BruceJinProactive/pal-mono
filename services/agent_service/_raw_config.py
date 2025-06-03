@@ -21,7 +21,7 @@ from agent import (
     ToolIdentifier,
     ToolMetadata,
 )
-from agent.config import StorageProvider
+from agent.config import StorageProvider, VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.model import ModelProvider
 from utils.log import logger
@@ -81,6 +81,12 @@ class RawConfig:
                 client=self.client_config,
                 storage_provider=storage_provider,
                 additional_context=self._get_additional_context(),
+                voice_config=VoiceConfig(
+                    greeting_message=self.agent.greeting_message,
+                    voice_id=self.agent.voice_id,
+                    speech_rate=self.agent.speech_rate,
+                    background_noise=self.agent.background_noise,
+                ),
             )
         except ValueError as e:
             raise ValueError(f"Invalid RawConfig: {e}") from e
