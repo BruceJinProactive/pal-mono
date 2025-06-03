@@ -260,7 +260,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             }
         }
 
-        if dynamic_vapi_config:
+        if dynamic_vapi_config and config.voice_config.speech_rate != SpeechRate.normal:
             speech_rate = map_speech_rate(config.voice_config.speech_rate)
             vapi_config["assistant"]["voice"]["speed"] = speech_rate
 
@@ -576,7 +576,7 @@ async def handle_session_closure(message_data, session: AsyncSession):
         return {"error": str(e)}
 
 
-def map_speech_rate(speech_rate: SpeechRate) -> str:
+def map_speech_rate(speech_rate: SpeechRate) -> float:
     """
     Map the speech rate to a speed value where 1.0 is the normal speed.
 
@@ -587,12 +587,12 @@ def map_speech_rate(speech_rate: SpeechRate) -> str:
         float: The speed value
     """
     if speech_rate == SpeechRate.slowest:
-        return "slowest"
+        return 0.8
     elif speech_rate == SpeechRate.slower:
-        return "slow"
+        return 0.9
     elif speech_rate == SpeechRate.faster:
-        return "fast"
+        return 1.1
     elif speech_rate == SpeechRate.fastest:
-        return "faster"
+        return 1.2
     else:
-        return "normal"
+        return 1.0
