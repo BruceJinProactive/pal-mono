@@ -1,0 +1,88 @@
+import json
+
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+from utils.log import logger
+
+from .schemas import AdoraWebhookRequest, AdoraWebhookResponse
+
+
+async def api_adora_webhook(request: Request) -> JSONResponse:
+    """
+    Process incoming webhook requests from Palona for order status updates.
+    Authentication and validation are handled by AWS API Gateway.
+
+    Args:
+        request: The FastAPI request object
+
+    Returns:
+        JSONResponse: The response to send back to Palona
+
+    Raises:
+        HTTPException: If there's an error processing the request
+    """
+    try:
+        # Extract body from request
+        body = await request.json()
+
+        # Validate request format
+        if not isinstance(body, dict):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "Invalid request format"},
+            )
+
+        # Log the incoming request for debugging
+        logger.debug(
+            "Adora webhook request received",
+            extra={
+                "event": body.get("event"),
+                "store_id": body.get("storeId"),
+                "order_number": body.get("orderNumber"),
+            },
+        )
+
+        # Validate request body against schema
+        try:
+            webhook_request = AdoraWebhookRequest(**body)
+        except ValidationError as e:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": f"Invalid request body: {str(e)}"},
+            )
+
+        # TODO: Process the order status update
+        # This is where you would:
+        # 1. Update order status in your database
+        # 2. Trigger any necessary notifications
+        # 3. Handle specific business logic based on the event type
+
+        # For now, just log the event
+        logger.info(
+            f"Order status update received - Order: {webhook_request.orderNumber}, Event: {webhook_request.event}",
+            extra={
+                "store_id": webhook_request.storeId,
+                "transaction_id": webhook_request.transactionId,
+                "phone_number": webhook_request.PhoneNumber,
+                "tracking_link": webhook_request.trackingLink,
+                "order_date": webhook_request.orderDate,
+            },
+        )
+
+        # Return success response
+        return JSONResponse(content=AdoraWebhookResponse().model_dump())
+
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON in request body")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Invalid JSON in request body"},
+        )
+    except Exception as e:
+        logger.error(f"Error processing Adora webhook request: {str(e)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": "Internal server error"},
+        )

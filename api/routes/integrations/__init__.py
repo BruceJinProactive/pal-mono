@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.endpoints import endpoints
+from api.routes.integrations.adora import adora_router
 from api.routes.integrations.shopify import _implementation
 from api.routes.integrations.vapi import vapi_router
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
@@ -15,6 +16,9 @@ integrations_router = APIRouter(prefix=endpoints.INTEGRATIONS, tags=["Integratio
 
 # Include the VAPI router
 integrations_router.include_router(vapi_router)
+
+# Include the Adora router
+integrations_router.include_router(adora_router)
 
 
 @integrations_router.get("/shopify/{app_name}/install", status_code=status.HTTP_200_OK)
