@@ -26,11 +26,11 @@ def get_server_url():
     if runtime_env is None:
         raise ValueError("RUNTIME_ENV environment variable is not set")
     if runtime_env == "lat":
-        server_url = "https://lat-api.proactiveailb.com/v1/integrations/vapi/"
+        server_url = "https://lat-api.proactiveailab.com/v1/integrations/vapi/"
     elif runtime_env == "stg":
-        server_url = "https://stg-api.proactiveailb.com/v1/integrations/vapi/"
+        server_url = "https://stg-api.proactiveailab.com/v1/integrations/vapi/"
     elif runtime_env == "prd":
-        server_url = "https://api.proactiveailb.com/v1/integrations/vapi/"
+        server_url = "https://api.proactiveailab.com/v1/integrations/vapi/"
     else:
         raise ValueError(f"Invalid runtime environment: {runtime_env}")
     return server_url
