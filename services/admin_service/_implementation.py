@@ -28,6 +28,7 @@ from services.admin_service._utils import get_knowledge_settings
 from services.admin_service.schema import (
     CognitoUser,
     CognitoUserSession,
+    ProjectSetup,
     UserSessionPreview,
 )
 from services.agent_service import AgentParams
@@ -36,6 +37,7 @@ from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
 )
+from services.number_service import NumberService
 from services.project_service import (
     ProjectParams,
     get_project,
@@ -803,18 +805,21 @@ def onboard_new_account(
     context: UserContext,
     account_name: str,
     account_params: AccountParams,
-    agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
+    agent_projects: list[tuple[AgentParams, list[ProjectSetup]]],
     users: list[CognitoUser] | None,
-):
+) -> str:
     try:
         # Create the account
         account_service.create_account(
             session, context, account_name, account_params, auto_commit=False
         )
 
+        # Track projects that need phone numbers for later processing
+        projects_needing_phone_numbers = []
+
         for agent_project in agent_projects:
             agent_param = agent_project[0]
-            projects_param = agent_project[1]
+            project_setups = agent_project[1]
             agent = agent_service.create_agent(
                 session=session,
                 context=context,
@@ -823,10 +828,20 @@ def onboard_new_account(
                 auto_commit=False,
             )
 
-            for project_param in projects_param:
-                # set the agent id before creating project
+            for project_setup in project_setups:
+                # Set the agent id before creating project
+                project_param = project_setup.params
                 project_param.agent_id = agent.id
-                project_service.create_project(
+
+                # Add API channel with project name as identifier
+                channels = project_param.channel_identifiers or []
+                if project_setup.enable_web_widget:
+                    channels.append(f"api:{project_param.name}")
+                if channels:
+                    project_param.channel_identifiers = channels
+
+                # Create project
+                project = project_service.create_project(
                     session=session,
                     context=context,
                     account_name=account_name,
@@ -834,6 +849,10 @@ def onboard_new_account(
                     params=project_param,
                     auto_commit=False,
                 )
+
+                # Store projects that need phone numbers for later processing
+                if project_setup.enable_voice or project_setup.enable_sms:
+                    projects_needing_phone_numbers.append((project, project_setup))
 
         # create cognito user accounts
         for user in users or []:
@@ -846,6 +865,71 @@ def onboard_new_account(
         session.rollback()
         logger.warn(f"Error creating resources for onboarding: {e}")
         raise ValueError(f"Failed to onboarding account. {e}")
+
+    # Finally let's set up the phone numbers for projects
+    return reserve_phone_numbers_for_projects(
+        session, context, projects_needing_phone_numbers
+    )
+
+
+def reserve_phone_numbers_for_projects(
+    session: Session,
+    context: UserContext,
+    projects_needing_phone_numbers: list[tuple[db.Project, ProjectSetup]],
+) -> str:
+    # Now that all database objects are created successfully, reserve phone numbers
+    # and update project channel identifiers
+    errors = []
+    number_service = NumberService()
+    for project, project_setup in projects_needing_phone_numbers:
+        try:
+            number_details, assistant, vapi_response = number_service.setup_number(
+                country_code="US",
+                toll_free=True,
+                project=project,
+                assistant_config=None,
+            )
+
+            phone_number = number_details["number"]
+            additional_channels = []
+
+            if project_setup.enable_voice:
+                additional_channels.append(f"voice:{phone_number}")
+
+            if project_setup.enable_sms:
+                additional_channels.append(f"sms:{phone_number}")
+
+            # Update project channel identifiers using the project update method
+            if additional_channels:
+                current_channels = project.channel_identifiers or []
+                updated_channels = current_channels + additional_channels
+
+                # Use project service to update channel identifiers
+                project_params = ProjectParams(channel_identifiers=updated_channels)
+                project_service.update_project(
+                    session=session,
+                    context=context,
+                    project_id=project.id,
+                    params=project_params,
+                    auto_commit=True,
+                )
+                logger.info(
+                    f"Successfully reserved phone number {phone_number} for project {project.name}",
+                    extra={
+                        "project_id": str(project.id),
+                        "project_name": project.name,
+                        "phone_number": phone_number,
+                        "channels": additional_channels,
+                    },
+                )
+        except Exception as e:
+            message = f"Failed to setup phone number for project {project.name}: {e}"
+            logger.error(message)
+            errors.append(message)
+    if errors:
+        return "\n".join(errors)
+    else:
+        return ""
 
 
 def upload_project_knowledge(

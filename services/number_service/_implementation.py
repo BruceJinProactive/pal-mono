@@ -16,7 +16,12 @@ from vapi.types.server import Server
 import db
 from utils import secret
 
-from ._utils import AssistantConfig, NumberDetails, get_server_url
+from ._utils import (
+    AssistantConfig,
+    NumberDetails,
+    get_server_url,
+    get_twilio_friendly_name,
+)
 
 
 class NumberService:
@@ -101,7 +106,7 @@ class NumberService:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize NumberService: {e}") from e
 
-    def purchase_number(self, country_code: str) -> NumberDetails:
+    def purchase_number(self, country_code: str, friendly_name: str) -> NumberDetails:
         """
         Purchase a new local phone number through Twilio.
 
@@ -115,7 +120,8 @@ class NumberService:
                 Common values:
                 - "US" for United States
                 - "CA" for Canada
-                - "GB" for United Kingdom
+                - "GB" for the United Kingdom
+            friendly_name (str): The display name of the purchased phone number
 
         Returns:
             IncomingPhoneNumberInstance: The purchased phone number instance.
@@ -144,7 +150,8 @@ class NumberService:
 
         number = available_numbers[0]
         twilio_number = self.twilio_client.incoming_phone_numbers.create(
-            phone_number=number.phone_number
+            phone_number=number.phone_number,
+            friendly_name=friendly_name,
         )
         if not twilio_number.phone_number:
             raise ValueError("Failed to get phone number from Twilio")
@@ -157,7 +164,9 @@ class NumberService:
             toll_free=False,
         )
 
-    def purchase_toll_free_number(self, country_code: str) -> NumberDetails:
+    def purchase_toll_free_number(
+        self, country_code: str, friendly_name: str
+    ) -> NumberDetails:
         """
         Purchase a new toll-free phone number through Twilio.
 
@@ -171,7 +180,8 @@ class NumberService:
                 Common values:
                 - "US" for United States
                 - "CA" for Canada
-                - "GB" for United Kingdom
+                - "GB" for the United Kingdom
+            friendly_name (str): The display name of the purchased phone number
 
         Returns:
             NumberDetails: The purchased phone number details.
@@ -203,7 +213,8 @@ class NumberService:
 
         number = available_numbers[0]
         twilio_number = self.twilio_client.incoming_phone_numbers.create(
-            phone_number=number.phone_number
+            phone_number=number.phone_number,
+            friendly_name=friendly_name,
         )
         if not twilio_number.phone_number:
             raise ValueError("Failed to get toll-free phone number from Twilio")
@@ -311,10 +322,11 @@ class NumberService:
             assistant = None
 
         # Purchase number
+        friendly_name = get_twilio_friendly_name(project.name)
         if toll_free:
-            number_details = self.purchase_toll_free_number(country_code)
+            number_details = self.purchase_toll_free_number(country_code, friendly_name)
         else:
-            number_details = self.purchase_number(country_code)
+            number_details = self.purchase_number(country_code, friendly_name)
 
         if not number_details or not number_details["number"]:
             raise ValueError("Failed to get phone number from Twilio")

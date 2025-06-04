@@ -1,6 +1,15 @@
 from dataclasses import dataclass
 
 import db
+from services.project_service import ProjectParams
+
+
+@dataclass
+class ProjectSetup:
+    params: ProjectParams
+    enable_web_widget: bool
+    enable_voice: bool
+    enable_sms: bool
 
 
 @dataclass

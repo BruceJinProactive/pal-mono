@@ -60,6 +60,9 @@ class CreateProjectRequest(UpdateProjectRequest):
 
     account_name: str = Field(...)
     name: str
+    enable_web_widget: bool = False
+    enable_voice: bool = False
+    enable_sms: bool = False
 
     def to_project_params(self):
         params = super().to_project_params()

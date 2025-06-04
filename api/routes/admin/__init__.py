@@ -943,7 +943,7 @@ async def onboard(
     """
     Onboard a new account with agents and projects in a single transaction.
     """
-    await create_onboarding(request, context, session)
+    return await create_onboarding(request, context, session)
 
 
 """

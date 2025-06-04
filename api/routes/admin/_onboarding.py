@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from api.schemas.admin.onboarding import OnboardingRequest
 from services import admin_service
+from services.admin_service import ProjectSetup
 from services.admin_service.schema import CognitoUser
 
 from ._auth import authorize_user_account
@@ -13,7 +14,7 @@ async def create_onboarding(
     request: OnboardingRequest,
     context: UserContext,
     session: Session,
-):
+) -> str:
     """
     Create a new account, agents, and projects in a single transaction.
 
@@ -29,14 +30,24 @@ async def create_onboarding(
     for ap in request.agent_projects:
         agent_data = ap.agent.to_agent_params()
 
-        projects_data = [p.to_project_params() for p in ap.projects]
+        projects_data = []
+        for proj in ap.projects:
+            params = proj.to_project_params()
+            projects_data.append(
+                ProjectSetup(
+                    params=params,
+                    enable_web_widget=proj.enable_web_widget,
+                    enable_voice=proj.enable_voice,
+                    enable_sms=proj.enable_sms,
+                )
+            )
         agent_projects_data.append((agent_data, projects_data))
 
     cognito_users = [
         CognitoUser(email=user.email, name=user.name) for user in request.users
     ]
     try:
-        admin_service.onboard_new_account(
+        return admin_service.onboard_new_account(
             session,
             context,
             request.account.name,

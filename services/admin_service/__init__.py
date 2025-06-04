@@ -15,7 +15,7 @@ from ..agent_service import AgentParams
 from ..knowledge_service import KnowledgeFile
 from ..project_service import ProjectParams
 from . import _implementation
-from .schema import CognitoUser, UserSessionPreview
+from .schema import CognitoUser, ProjectSetup, UserSessionPreview
 
 
 def list_user_sessions_in_account(
@@ -360,9 +360,9 @@ def onboard_new_account(
     context: UserContext,
     account_name: str,
     account_params: AccountParams,
-    agent_projects: list[tuple[AgentParams, list[ProjectParams]]],
+    agent_projects: list[tuple[AgentParams, list[ProjectSetup]]],
     users: list[CognitoUser] | None = None,
-):
+) -> str:
     """
     Creates an account, agents, and projects in a single transaction.
 
@@ -371,7 +371,7 @@ def onboard_new_account(
         context (UserContext): Information for the current user
         account_name (str): Name of the account to create
         account_params (AccountParams): Account parameters
-        agent_projects (list[tuple[AgentParams, list[ProjectParams]]]):
+        agent_projects (list[tuple[AgentParams, list[ProjectSetup]]]):
          List of agent and project configurations
             Each item should contain:
             - agent: Agent parameters

@@ -34,3 +34,9 @@ def get_server_url():
     else:
         raise ValueError(f"Invalid runtime environment: {runtime_env}")
     return server_url
+
+
+def get_twilio_friendly_name(project_name: str):
+    runtime_env = os.getenv("RUNTIME_ENV")
+    runtime_env = runtime_env or "dev"
+    return f"{runtime_env}:{project_name}"
