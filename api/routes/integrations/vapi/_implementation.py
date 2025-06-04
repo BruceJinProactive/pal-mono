@@ -214,18 +214,16 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         else:
             voice_id = config.persona.voice_id
 
-        multilingual = config.persona.multilingual
-
-        if multilingual:
+        if config.persona.multilingual:
             transcriber = {
                 "provider": "google",
                 "language": "Multilingual",
                 "model": "gemini-2.0-flash",
             }
             voice = {
-                "provider": "11labs",
-                "voiceId": voice_id or "KXXOmXxuR8GU074WrDGj",
-                "model": "eleven_multilingual_v2",
+                "provider": "cartesia",
+                "voiceId": voice_id or SPORTSMAN_VOICE_ID,
+                "model": "sonic-multilingual",
             }
 
         else:
