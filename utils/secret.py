@@ -80,7 +80,18 @@ def get_secret(secret_key: str, secret_store: str) -> str:
 
     # Parse the secret string as JSON and extract the value for the given key
     secret_dict = json.loads(secret)
-    return secret_dict[secret_key]
+
+    try:
+        return secret_dict[secret_key]
+    except KeyError:
+        runtime_env = os.getenv("RUNTIME_ENV", "")
+        if runtime_env == "" or runtime_env == "dev":
+            secret_value = os.getenv(secret_key, "")
+
+            if secret_value:
+                return secret_value
+
+        raise KeyError(f"Secret not found in AWS Secrets Manager for key: {secret_key}")
 
 
 def add_client_secret(secret_key: str, secret_value: str) -> dict:
