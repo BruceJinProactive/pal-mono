@@ -258,6 +258,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 "voice": voice,
                 "backgroundSound": background_sound,
                 "backgroundDenoisingEnabled": True,
+                "silenceTimeoutSeconds": 60,
             }
         }
     except Exception as e:
