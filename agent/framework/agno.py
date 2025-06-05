@@ -241,7 +241,7 @@ class AgnoAgent:
         if self._storage_provider == StorageProvider.EXTERNAL:
             history_messages = input.history_messages
         elif self._storage_provider == StorageProvider.PALSTORAGE:
-            history_messages = await query_history_messages(self._session_id)
+            history_messages = await query_history_messages(self._session_id, limit=100)
         else:
             raise ValueError(
                 f"history_message doesn't apply to {self._storage_provider}"
