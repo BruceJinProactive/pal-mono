@@ -1,15 +1,36 @@
 import os
 from typing import Optional, TypedDict
 
+from pydantic import BaseModel, Field
 
-class NumberDetails(TypedDict):
-    """Details for a phone number."""
 
-    number: str
-    merchant_name: str
-    project_name: Optional[str]
-    toll_free: bool
-    country_code: str
+class NumberCreateRequest(BaseModel):
+    """Request model for creating a new phone number."""
+
+    country_code: str = Field(
+        ..., description="Country code for the phone number (e.g., 'US')"
+    )
+    toll_free: bool = Field(False, description="Whether to create a toll-free number")
+    project_id: Optional[str] = Field(
+        None, description="Optional project ID to associate with the number"
+    )
+    assistant_config: Optional[dict] = Field(
+        None, description="Optional assistant configuration for the number"
+    )
+
+
+class NumberResponse(BaseModel):
+    """Response model for phone number details."""
+
+    number: str = Field(..., description="The phone number in E.164 format")
+    merchant_name: str = Field(..., description="The name associated with the number")
+    toll_free: bool = Field(..., description="Whether this is a toll-free number")
+    country_code: str = Field(..., description="Country code for the phone number")
+
+    class Config:
+        """Pydantic model configuration."""
+
+        from_attributes = True  # Allow ORM model conversion
 
 
 class AssistantConfig(TypedDict):

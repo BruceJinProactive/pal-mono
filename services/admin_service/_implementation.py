@@ -883,14 +883,14 @@ def reserve_phone_numbers_for_projects(
     number_service = NumberService()
     for project, project_setup in projects_needing_phone_numbers:
         try:
-            number_details, assistant, vapi_response = number_service.setup_number(
+            number_response = number_service.setup_number(
                 country_code="US",
                 toll_free=True,
-                project=project,
+                merchant_name=project.name,
                 assistant_config=None,
             )
 
-            phone_number = number_details["number"]
+            phone_number = number_response.number
             additional_channels = []
 
             if project_setup.enable_voice:
