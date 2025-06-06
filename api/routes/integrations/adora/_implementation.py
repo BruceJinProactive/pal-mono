@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from utils.log import logger
 
+from ._utils import is_dev_mode
 from .schemas import AdoraWebhookRequest, AdoraWebhookResponse
 
 
@@ -24,6 +25,9 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
         HTTPException: If there's an error processing the request
     """
     try:
+        # Check if dev mode is enabled
+        dev_mode = is_dev_mode(request)
+
         # Extract body from request
         body = await request.json()
 
@@ -54,10 +58,12 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
             )
 
         # TODO: Process the order status update
-        # This is where you would:
-        # 1. Update order status in your database
-        # 2. Trigger any necessary notifications
-        # 3. Handle specific business logic based on the event type
+        if dev_mode:
+            # This is where we:
+            # 1. Update order status in your database
+            # 2. Trigger any necessary notifications through sms, etc
+            # 3. Handle specific business logic based on the event type
+            pass
 
         # For now, just log the event
         logger.info(
