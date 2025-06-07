@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import os
 from contextlib import asynccontextmanager, contextmanager
 from functools import wraps
@@ -93,3 +94,15 @@ def dd_histogram_duration(name: str, duration_ms: float, tags: list):
     base_tags = [f"env:{env}"]
     base_tags.extend(tags)
     statsd.histogram(name, duration_ms, tags=base_tags)
+
+
+def send_dd_histogram_metrics(
+    metrics_name: str, start_time: datetime.datetime, tags: list[str]
+):
+    current_time = datetime.datetime.now(datetime.timezone.utc)
+    duration_ms = (current_time - start_time).total_seconds() * 1000
+    dd_histogram_duration(
+        metrics_name,
+        duration_ms,
+        tags,
+    )

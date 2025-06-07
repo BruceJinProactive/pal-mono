@@ -25,8 +25,9 @@ from api.schemas.chat.message import (
 from api.schemas.error.error import ErrorResponse
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_message
-from utils.dd import dd_histogram_duration
+from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
+from utils.request_context import RequestContext
 
 
 # Define message types that match the OpenAI API
@@ -59,15 +60,16 @@ class ChatCompletionRequest(BaseModel):
 async def chat_completions(
     request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
 ):
+    request_context = RequestContext()
     # If request.model is "default", use gpt-4o, otherwise just print the model
     if request.model == "default":
         model = "gpt-4o"
         logger.info(f"Using default model: {model}")
-        return await chat_completions_oai(request, session)
+        return await chat_completions_oai(request, request_context, session)
     else:
         logger.info(f"Requested model: {request.model}")
         model = request.model
-        return await chat_completions_agno(request, model, session)
+        return await chat_completions_agno(request, model, request_context, session)
 
 
 def _extract_content_from_request(request: ChatCompletionRequest) -> str:
@@ -201,11 +203,11 @@ def _create_response_data(model: str, content: str) -> dict:
 async def chat_completions_agno(
     request: ChatCompletionRequest,
     model: str,
+    request_context: RequestContext,
     session: AsyncSession = Depends(db.get_db_async),
 ):
     # Log the request
     logger.info(f"Agno chat completions request: {json.dumps(request.model_dump())}")
-    start_time = datetime.datetime.now(datetime.timezone.utc)
     try:
         # Extract content from request
         content = _extract_content_from_request(request)
@@ -267,8 +269,8 @@ async def chat_completions_agno(
                                 )
                                 send_dd_histogram_metrics(
                                     "chat_completions.first_chunk",
-                                    start_time,
-                                    ["path:agno"],
+                                    request_context.request_time,
+                                    ["path:agno", "streaming:true"],
                                 )
 
                             filtered_content = url_filter.filter_content(content)
@@ -310,6 +312,12 @@ async def chat_completions_agno(
                             logger.debug(f"Relay service result: {send_result}")
 
                         yield "data: [DONE]\n\n"
+                        send_dd_histogram_metrics(
+                            "chat_completions.complete_response",
+                            request_context.request_time,
+                            ["path:agno", "streaming:true"],
+                        )
+
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
                     error_data = {
@@ -360,6 +368,11 @@ async def chat_completions_agno(
 
         # Log the response
         logger.info(f"Agno chat completions response: {json.dumps(response_data)}")
+        send_dd_histogram_metrics(
+            "chat_completions.complete_response",
+            request_context.request_time,
+            ["path:agno", "streaming:false"],
+        )
 
         return response_data
 
@@ -383,11 +396,12 @@ async def chat_completions_agno(
 
 
 async def chat_completions_oai(
-    request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
+    request: ChatCompletionRequest,
+    request_context: RequestContext,
+    session: AsyncSession = Depends(db.get_db_async),
 ):
     # Log the complete request as JSON
     logger.info(f"Chat completions request: {json.dumps(request.model_dump())}")
-    start_time = datetime.datetime.now(datetime.timezone.utc)
 
     try:
         # Get OpenAI API key from environment
@@ -483,8 +497,8 @@ async def chat_completions_oai(
                             )
                             send_dd_histogram_metrics(
                                 "chat_completions.first_chunk",
-                                start_time,
-                                ["path:oai"],
+                                request_context.request_time,
+                                ["path:oai", "streaming:true"],
                             )
                         yield f"data: {json.dumps(chunk_data)}\n\n"
 
@@ -493,6 +507,12 @@ async def chat_completions_oai(
                         f"Completed streaming response after {chunk_count} chunks"
                     )
                     yield "data: [DONE]\n\n"
+                    send_dd_histogram_metrics(
+                        "chat_completions.complete_response",
+                        request_context.request_time,
+                        ["path:oai", "streaming:true"],
+                    )
+
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
                     error_data = {
@@ -568,6 +588,11 @@ async def chat_completions_oai(
 
         # Log the complete response as JSON
         logger.info(f"Chat completions response: {json.dumps(response_data)}")
+        send_dd_histogram_metrics(
+            "chat_completions.complete_response",
+            request_context.request_time,
+            ["path:oai", "streaming:false"],
+        )
 
         return response_data
 
@@ -588,15 +613,3 @@ async def chat_completions_oai(
                 error_message="An unexpected error occurred while processing the request",
             ).model_dump(),
         )
-
-
-def send_dd_histogram_metrics(
-    metrics_name: str, start_time: datetime.datetime, tags: list[str]
-):
-    current_time = datetime.datetime.now(datetime.timezone.utc)
-    duration_ms = (current_time - start_time).total_seconds() * 1000
-    dd_histogram_duration(
-        metrics_name,
-        duration_ms,
-        tags,
-    )
