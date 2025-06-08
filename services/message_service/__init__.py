@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import db
 from api.schemas.chat.message import Message
 from utils.dd import traced
+from utils.request_context import RequestContext
 
 from . import _implementation
 
@@ -19,7 +20,7 @@ def get_filler_message(message: Message) -> Message:
 
 @traced("Message Service Async Processing")
 async def get_chat_response_async(
-    session: AsyncSession, message: Message
+    session: AsyncSession, message: Message, request_context: RequestContext
 ) -> list[Message]:
     """
     Processes an incoming message and generates a response from the appropriate agent.
@@ -35,12 +36,14 @@ async def get_chat_response_async(
         ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
         ValueError: If the response type from the agent is unexpected.
     """
-    return await _implementation.get_chat_response_async(session, message)
+    return await _implementation.get_chat_response_async(
+        session, message, request_context
+    )
 
 
 # Cannot trace iterator consumption here
 async def get_chat_response_stream(
-    session: AsyncSession, message: Message
+    session: AsyncSession, message: Message, request_context: RequestContext
 ) -> AsyncIterator[ChatCompletionChunk]:
     """
      Get a stream of chat responses for a given message.
@@ -52,6 +55,7 @@ async def get_chat_response_stream(
      Args:
          session (AsyncSession): The asynchronous database session to use for the query.
          message (Message): The message object containing the details of the user's message.
+         request_context (RequestContext): The request context containing metadata about the request.
 
      Returns:
         AsyncIterator[Message]: A stream of response messages from the agent.
@@ -60,7 +64,7 @@ async def get_chat_response_stream(
         ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
         ValueError: If the response type from the agent is unexpected.
     """
-    return _implementation.get_chat_response_stream(session, message)
+    return _implementation.get_chat_response_stream(session, message, request_context)
 
 
 def get_chat_response(session: Session, message: Message) -> Message:

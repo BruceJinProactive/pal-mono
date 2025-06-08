@@ -24,8 +24,9 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from services import agent_service, analytics_service, project_service, user_service
-from utils.dd import trace_async_block
+from utils.dd import send_dd_histogram_metrics, trace_async_block
 from utils.log import logger
+from utils.request_context import RequestContext
 
 from . import _utils
 
@@ -56,9 +57,14 @@ def get_filler_message(message: Message) -> Message:
 
 
 async def get_chat_response_async(
-    session: AsyncSession, message: Message
+    session: AsyncSession, message: Message, request_context: RequestContext
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
+    send_dd_histogram_metrics(
+        "message_service.received_message",
+        request_context.request_time,
+        ["streaming:false"],
+    )
 
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
@@ -217,9 +223,14 @@ async def get_chat_response_async(
 
 
 async def get_chat_response_stream(
-    session: AsyncSession, message: Message
+    session: AsyncSession, message: Message, request_context: RequestContext
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
+    send_dd_histogram_metrics(
+        "message_servide.received_message",
+        request_context.request_time,
+        ["streaming:true"],
+    )
 
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)

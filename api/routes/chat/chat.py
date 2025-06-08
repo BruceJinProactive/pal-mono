@@ -22,6 +22,7 @@ from services.message_service import (
 )
 from services.relay_service import send_messages
 from utils.log import logger
+from utils.request_context import RequestContext
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
 DEFAULT_ACCOUNT_ICON = "images/accounts/palona_icon.png"
@@ -46,6 +47,8 @@ def categorize_chat_request(request: ChatRequest) -> str:
 )
 async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_async)):
     try:
+
+        request_context = RequestContext()
         # Process the message
         logger.info(
             f"Received message: {request.message}",
@@ -67,7 +70,9 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
             async def generate() -> AsyncIterator[str]:
                 try:
                     response_stream = await get_chat_response_stream(
-                        session=session, message=request.message
+                        session=session,
+                        message=request.message,
+                        request_context=request_context,
                     )
 
                     if response_stream:
@@ -123,7 +128,9 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                         filler_message_task = None
                     # Get the actual response
                     response_messages = await get_chat_response_async(
-                        session=new_session, message=request.message
+                        session=new_session,
+                        message=request.message,
+                        request_context=request_context,
                     )
                     # Cancel the filler message task if it hasn't triggered yet
                     if filler_message_task:
@@ -143,6 +150,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
         response_messages = await get_chat_response_async(
             session=session,
             message=request.message,
+            request_context=request_context,
         )
 
         # Create and return the ChatResponse with the messages

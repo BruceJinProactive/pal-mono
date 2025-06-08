@@ -236,7 +236,9 @@ async def chat_completions_agno(
                         # Log stream start
                         logger.info(f"Starting streaming response for model={model}")
                         response_stream = await get_chat_response_stream(
-                            session=session, message=message
+                            session=session,
+                            message=message,
+                            request_context=request_context,
                         )
                     except Exception as es:
                         # Log the error and create a fallback response
@@ -343,7 +345,7 @@ async def chat_completions_agno(
         try:
             # Non-streaming response
             response_messages = await get_chat_response_async(
-                session=session, message=message
+                session=session, message=message, request_context=request_context
             )
 
             if not response_messages:
