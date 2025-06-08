@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from typing import AsyncIterator, Optional
 
@@ -247,7 +248,13 @@ class AgnoAgent:
             StorageProvider.EXTERNAL,
             StorageProvider.PALSTORAGE,
         ]:
+            current_time = datetime.datetime.now(datetime.timezone.utc)
             messages = await self.get_history_messages(input)
+            send_dd_histogram_metrics(
+                "framework_agent.query_history_messages_time_spent",
+                current_time,
+                [f"streaming:{input.stream}"],
+            )
             return None, messages
         else:
             return None, None
