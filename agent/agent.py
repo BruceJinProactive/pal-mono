@@ -62,11 +62,7 @@ class Agent:
             If input.stream is True, returns an AsyncIterator[Output].
             If input.stream is False, returns a single Output.
         """
-        send_dd_histogram_metrics(
-            "agent.arun_start",
-            input.request_context.request_time,
-            [f"streaming:{input.stream}"],
-        )
+
         # For non-streaming case, use the standard workflow decorator
         if not input.stream:
             return await self._arun_with_workflow(input)
@@ -158,10 +154,22 @@ class Agent:
                     # Process each chunk within the same workflow span
                     chunk_count = 0
                     output_content = ""
+                    send_dd_histogram_metrics(
+                        "agent.waiting_first_chunk",
+                        input.request_context.request_time,
+                        ["streaming:true"],
+                    )
+
                     async for chunk in output_stream:
                         chunk_count += 1
                         if chunk_count == 1:
                             LLMObs.annotate(tags={"first_chunk_received": True})
+                            send_dd_histogram_metrics(
+                                "agent.received_first_chunk",
+                                input.request_context.request_time,
+                                ["streaming:true"],
+                            )
+
                         output_content += chunk.content
                         yield chunk
 

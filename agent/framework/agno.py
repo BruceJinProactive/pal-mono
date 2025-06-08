@@ -14,7 +14,7 @@ from agent.config import AgentConfig, StorageProvider
 from agent.input_output import Input, Output
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
-from utils.dd import trace_block
+from utils.dd import send_dd_histogram_metrics, trace_block
 from utils.log import logger
 
 MODEL_PROVIDER_MAP = {
@@ -181,7 +181,22 @@ class AgnoAgent:
                         stream=input.stream,
                     )
                     try:
+                        send_dd_histogram_metrics(
+                            "framework_agent.waiting_first_chunk",
+                            input.request_context.request_time,
+                            ["streaming:true"],
+                        )
+
+                        index = 0
                         async for chunk in result:
+                            index += 1
+                            if index == 1:
+                                send_dd_histogram_metrics(
+                                    "framework_agent.received_first_chunk",
+                                    input.request_context.request_time,
+                                    ["streaming:true"],
+                                )
+
                             output_content += chunk.content
                             yield Output(
                                 content=(

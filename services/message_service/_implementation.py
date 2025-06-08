@@ -60,11 +60,6 @@ async def get_chat_response_async(
     session: AsyncSession, message: Message, request_context: RequestContext
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
-    send_dd_histogram_metrics(
-        "message_service.received_message",
-        request_context.request_time,
-        ["streaming:false"],
-    )
 
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
@@ -227,7 +222,7 @@ async def get_chat_response_stream(
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
     send_dd_histogram_metrics(
-        "message_servide.received_message",
+        "message_service.received_message",
         request_context.request_time,
         ["streaming:true"],
     )
@@ -319,7 +314,20 @@ async def get_chat_response_stream(
             if response_stream:
                 async with trace_async_block("Message Service Streaming"):
                     index = 0
+                    send_dd_histogram_metrics(
+                        "message_service.waiting_first_chunk",
+                        request_context.request_time,
+                        ["streaming:true"],
+                    )
+
                     async for chunk in response_stream:
+                        if index == 0:
+                            send_dd_histogram_metrics(
+                                "message_service.received_first_chunk",
+                                request_context.request_time,
+                                ["streaming:true"],
+                            )
+
                         async with trace_async_block(
                             "Process Stream Chunk",
                             tags={

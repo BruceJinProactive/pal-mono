@@ -235,6 +235,12 @@ async def chat_completions_agno(
                     try:
                         # Log stream start
                         logger.info(f"Starting streaming response for model={model}")
+                        send_dd_histogram_metrics(
+                            "chat_completions.start_streaming",
+                            request_context.request_time,
+                            ["path:agno", "streaming:true"],
+                        )
+
                         response_stream = await get_chat_response_stream(
                             session=session,
                             message=message,
@@ -254,6 +260,12 @@ async def chat_completions_agno(
                     if response_stream:
                         chunk_count = 0
                         url_filter = create_url_filter()
+                        send_dd_histogram_metrics(
+                            "chat_completions.waiting_first_chunk",
+                            request_context.request_time,
+                            ["path:agno", "streaming:true"],
+                        )
+
                         async for chunk in response_stream:
                             chunk_count += 1
                             chunk_data = _convert_chunk_to_dict(chunk)
@@ -270,7 +282,7 @@ async def chat_completions_agno(
                                     f"First stream chunk: {json.dumps(chunk_data)}"
                                 )
                                 send_dd_histogram_metrics(
-                                    "chat_completions.first_chunk",
+                                    "chat_completions.received_first_chunk",
                                     request_context.request_time,
                                     ["path:agno", "streaming:true"],
                                 )
@@ -314,11 +326,6 @@ async def chat_completions_agno(
                             logger.debug(f"Relay service result: {send_result}")
 
                         yield "data: [DONE]\n\n"
-                        send_dd_histogram_metrics(
-                            "chat_completions.complete_response",
-                            request_context.request_time,
-                            ["path:agno", "streaming:true"],
-                        )
 
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
@@ -370,11 +377,6 @@ async def chat_completions_agno(
 
         # Log the response
         logger.info(f"Agno chat completions response: {json.dumps(response_data)}")
-        send_dd_histogram_metrics(
-            "chat_completions.complete_response",
-            request_context.request_time,
-            ["path:agno", "streaming:false"],
-        )
 
         return response_data
 
@@ -441,6 +443,12 @@ async def chat_completions_oai(
 
             async def generate_stream():
                 try:
+                    send_dd_histogram_metrics(
+                        "chat_completions.start_streaming",
+                        request_context.request_time,
+                        ["path:oai", "streaming:true"],
+                    )
+
                     # Call OpenAI API with streaming
                     # Use type: ignore to bypass type checking issues with OpenAI SDK
                     stream = openai_client.chat.completions.create(  # type: ignore
@@ -457,6 +465,11 @@ async def chat_completions_oai(
 
                     # Log stream start
                     logger.info(f"Starting streaming response for model={model}")
+                    send_dd_histogram_metrics(
+                        "chat_completions.waiting_first_chunk",
+                        request_context.request_time,
+                        ["path:oai", "streaming:true"],
+                    )
 
                     # Stream the results
                     chunk_count = 0
@@ -498,7 +511,7 @@ async def chat_completions_oai(
                                 f"First stream chunk: {json.dumps(chunk_data)}"
                             )
                             send_dd_histogram_metrics(
-                                "chat_completions.first_chunk",
+                                "chat_completions.received_first_chunk",
                                 request_context.request_time,
                                 ["path:oai", "streaming:true"],
                             )
@@ -509,12 +522,6 @@ async def chat_completions_oai(
                         f"Completed streaming response after {chunk_count} chunks"
                     )
                     yield "data: [DONE]\n\n"
-                    send_dd_histogram_metrics(
-                        "chat_completions.complete_response",
-                        request_context.request_time,
-                        ["path:oai", "streaming:true"],
-                    )
-
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
                     error_data = {
@@ -590,12 +597,6 @@ async def chat_completions_oai(
 
         # Log the complete response as JSON
         logger.info(f"Chat completions response: {json.dumps(response_data)}")
-        send_dd_histogram_metrics(
-            "chat_completions.complete_response",
-            request_context.request_time,
-            ["path:oai", "streaming:false"],
-        )
-
         return response_data
 
     except ValueError as ve:
