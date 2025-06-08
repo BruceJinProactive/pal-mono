@@ -1,9 +1,6 @@
 import json
 import re
-import uuid
 from typing import Any, List
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from agent.input_output import Input, Output
 from api.schemas.chat.message import (
@@ -17,6 +14,7 @@ from api.schemas.chat.message import (
     Type,
 )
 from utils.log import logger
+from utils.request_context import RequestContext
 
 
 def strip_markdown_content(agent_message: Any) -> Any | str:
@@ -157,7 +155,9 @@ def extract_image_links(response: str) -> list[tuple[str, str]]:
 
 
 async def get_agent_input_from_message(
-    message: Message, session: AsyncSession, conversation_id: uuid.UUID
+    message: Message,
+    stream: bool,
+    request_context: RequestContext,
 ) -> Input:
     """
     Converts a Message object into an Input object for the Agent.
@@ -165,8 +165,8 @@ async def get_agent_input_from_message(
 
     Args:
         message (Message): The Message object to be converted.
-        session (AsyncSession, optional): Database session for fetching conversation history.
-        conversation_id (uuid.UUID, optional): Conversation ID to fetch history for.
+        stream (bool): Whether the request is for streaming mode.
+        request_context (RequestContext): The request context containing metadata about the request.
 
     Returns:
         Input: The Input object created from the Message, with history if available.
@@ -177,6 +177,8 @@ async def get_agent_input_from_message(
         context=message.context,
         channel=message.channel,
         sender_identifier=message.sender_identifier,
+        stream=stream,
+        request_context=request_context,
     )
 
     return input_obj
@@ -192,16 +194,13 @@ def get_messages_from_agent_output(
 
     Args:
         output (Output): The Output object to be converted.
+        input_message (Message): The original input message to derive response message properties from.
+        metadata (Metadata): The metadata to attach to the response message(s).
 
     Returns:
         List[Message]: The Message object created from the Output.
     """
     msg_text = f"{output.content}"
-    # if output.documents:
-    #     msg_text += f"\n\nDocuments:\n{output.documents}"
-    # if output.images:
-    #     msg_text += f"\n\nImages:\n{output.images}"
-
     response_messages = []
 
     # Check if metadata exists in the input message, if not log an error

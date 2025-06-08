@@ -128,8 +128,8 @@ async def get_chat_response_async(
         # Get Input with conversation history
         input = await _utils.get_agent_input_from_message(
             message=message,
-            session=session,
-            conversation_id=request_message.conversation_id,
+            stream=False,
+            request_context=request_context,
         )
         logger.debug(f"Input: {input}")
 
@@ -304,10 +304,9 @@ async def get_chat_response_stream(
             # Get Input with conversation history
             input = await _utils.get_agent_input_from_message(
                 message=message,
-                session=session,
-                conversation_id=request_message.conversation_id,
+                stream=True,
+                request_context=request_context,
             )
-            input.stream = True
             logger.debug(
                 f"Input stream mode: {input} with {len(input.history_messages)} history messages"
             )

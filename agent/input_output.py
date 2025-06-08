@@ -2,6 +2,8 @@ from typing import Any, List
 
 from pydantic import BaseModel
 
+from utils.request_context import RequestContext
+
 
 class Message(BaseModel):
     """
@@ -42,6 +44,7 @@ class Input(BaseModel):
     sender_identifier: str = ""
     stream: bool = False
     history_messages: List[Message] = []
+    request_context: RequestContext
 
     def get_prompt(self):
         """

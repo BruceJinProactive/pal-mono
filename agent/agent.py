@@ -13,7 +13,7 @@ from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
-from utils.dd import traced
+from utils.dd import send_dd_histogram_metrics, traced
 
 
 class Agent:
@@ -62,6 +62,11 @@ class Agent:
             If input.stream is True, returns an AsyncIterator[Output].
             If input.stream is False, returns a single Output.
         """
+        send_dd_histogram_metrics(
+            "agent.arun_start",
+            input.request_context.request_time,
+            [f"streaming:{input.stream}"],
+        )
         # For non-streaming case, use the standard workflow decorator
         if not input.stream:
             return await self._arun_with_workflow(input)
