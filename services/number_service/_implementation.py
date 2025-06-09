@@ -4,6 +4,7 @@ from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
 )
+from vapi import Vapi
 
 from utils import secret
 
@@ -57,7 +58,6 @@ class NumberService:
             KeyError: If required environment variables are missing
         """
         try:
-            from vapi import Vapi
 
             # Retrieve each secret via public API
             twilio_account_sid = secret.get_server_secret("TWILIO_ACCOUNT_SID")
