@@ -953,9 +953,6 @@ async def onboard(
     return await create_onboarding(request, context, session)
 
 
-number_service = NumberService()
-
-
 @admin_router.post("/phone_numbers/{project_id}", response_model=NumberResponse)
 async def create_phone_number(
     project_id: uuid.UUID,
@@ -981,6 +978,8 @@ async def create_phone_number(
             raise HTTPException(
                 status_code=400, detail="Invalid assistant_config format"
             )
+
+    number_service = NumberService()
     number_response = number_service.setup_number(
         country_code=request.country_code,
         toll_free=request.toll_free,
@@ -1011,6 +1010,8 @@ async def release_phone_number(
     """
     Release the specified phone number.
     """
+
+    number_service = NumberService()
     project = _projects.get_project(project_id, context, session)
     if project is None:
         raise HTTPException(
