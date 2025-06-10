@@ -4,9 +4,6 @@ from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
 )
-from vapi.types.create_twilio_phone_number_dto import CreateTwilioPhoneNumberDto
-from vapi.types.custom_llm_model import CustomLlmModel
-from vapi.types.server import Server
 
 from utils import secret
 
@@ -176,6 +173,7 @@ class NumberService:
         Returns:
             Assistant instance configured with the specified model
         """
+        from vapi.types.custom_llm_model import CustomLlmModel
 
         return self.vapi_client.assistants.create(
             name=config["merchant_name"],
@@ -210,6 +208,9 @@ class NumberService:
             ValueError: If number setup or integration fails
         """
         # use the server_url to get settings from the server, if not provided, create a new assistant
+
+        from vapi.types.create_twilio_phone_number_dto import CreateTwilioPhoneNumberDto
+        from vapi.types.server import Server
 
         if assistant_config:
             if assistant_config["server_url"]:
