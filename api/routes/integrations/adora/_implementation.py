@@ -3,10 +3,12 @@ import json
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
+from db.session import AsyncSessionLocal
 from utils.log import logger
 
-from ._utils import is_dev_mode
+from ._utils import is_dev_mode, update_order_status
 from .schemas import AdoraWebhookRequest, AdoraWebhookResponse
 
 
@@ -57,13 +59,17 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                 content={"error": f"Invalid request body: {str(e)}"},
             )
 
-        # TODO: Process the order status update
-        if dev_mode:
-            # This is where we:
-            # 1. Update order status in your database
-            # 2. Trigger any necessary notifications through sms, etc
-            # 3. Handle specific business logic based on the event type
-            pass
+        if dev_mode:  # TODO: remove this once we're done testing
+            # Initialize database session
+            async with AsyncSessionLocal() as session:
+                try:
+                    await update_order_status(session, webhook_request)
+                except (SQLAlchemyError, ValueError) as e:
+                    logger.error(f"Failed to update order: {str(e)}")
+                    return JSONResponse(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        content={"error": f"Failed to update order: {str(e)}"},
+                    )
 
         # For now, just log the event
         logger.info(
