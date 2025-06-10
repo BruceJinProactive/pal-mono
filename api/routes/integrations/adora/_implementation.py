@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.session import AsyncSessionLocal
 from utils.log import logger
 
-from ._utils import is_dev_mode, update_order_status
+from ._utils import is_dev_mode, send_order_notification, update_order_status
 from .schemas import AdoraWebhookRequest, AdoraWebhookResponse
 
 
@@ -63,8 +63,13 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
             # Initialize database session
             async with AsyncSessionLocal() as session:
                 try:
-                    await update_order_status(session, webhook_request)
-                except (SQLAlchemyError, ValueError) as e:
+                    # Update order status and get order object
+                    order = await update_order_status(session, webhook_request)
+
+                    # Attempt to send notification
+                    await send_order_notification(order)
+
+                except (SQLAlchemyError, ValueError, RuntimeError) as e:
                     logger.error(f"Failed to update order: {str(e)}")
                     return JSONResponse(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
