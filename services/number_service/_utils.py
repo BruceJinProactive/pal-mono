@@ -1,4 +1,6 @@
+import gc
 import os
+import sys
 from typing import Optional, TypedDict
 
 from pydantic import BaseModel, Field
@@ -61,3 +63,27 @@ def get_twilio_friendly_name(project_name: str):
     runtime_env = os.getenv("RUNTIME_ENV")
     runtime_env = runtime_env or "dev"
     return f"{runtime_env}:{project_name}"
+
+
+class DynamicModuleImportManager:
+    """Context manager to track and cleanup dynamically imported modules."""
+
+    def __init__(self):
+        self.modules_before = set()
+        self.modules_to_cleanup = set()
+
+    def __enter__(self):
+        self.modules_before = set(sys.modules.keys())
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        modules_after = set(sys.modules.keys())
+        self.modules_to_cleanup = modules_after - self.modules_before
+
+        # Remove newly imported modules
+        for module in self.modules_to_cleanup:
+            if module in sys.modules:
+                del sys.modules[module]
+
+        # Force garbage collection
+        gc.collect()
