@@ -234,7 +234,7 @@ async def list_account_projects(
     account_name: str,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> list[ProjectSummary]:
+) -> list[Project]:
     """
     Retrieve a list of projects associated with the given account name.
     """

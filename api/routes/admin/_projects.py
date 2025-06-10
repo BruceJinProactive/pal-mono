@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
-    ProjectSummary,
     UpdateProjectRequest,
 )
 from services import account_service, project_service
@@ -22,7 +21,7 @@ from services.admin_service import (
 
 from . import UserContext, _auth, _utils
 from ._auth import authorize_user_account
-from ._builder import build_project, build_project_summary
+from ._builder import build_project
 from ._utils import not_found_error
 
 
@@ -218,7 +217,7 @@ async def list_account_projects(
     account_name: str,
     context: UserContext,
     session: Session,
-) -> list[ProjectSummary]:
+) -> list[Project]:
     authorize_user_account(context, account_name)
 
     account = account_service.get_account(session, account_name)
@@ -226,7 +225,7 @@ async def list_account_projects(
         raise not_found_error(f"Account {account_name} not found")
 
     return [
-        build_project_summary(project)
+        build_project(project)
         for project in sorted(account.projects, key=lambda p: p.created_at)
     ]
 

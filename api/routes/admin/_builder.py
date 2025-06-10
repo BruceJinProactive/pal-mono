@@ -81,6 +81,8 @@ def build_project(project: db.Project) -> Project:
         address=project.address,
         product_info=project.product_info,
         service_instruction=project.service_instruction,
+        created_at=int(project.created_at.timestamp()),
+        updated_at=int(project.updated_at.timestamp() if project.updated_at else 0),
     )
 
 
@@ -90,6 +92,8 @@ def build_project_summary(project: db.Project) -> ProjectSummary:
         name=project.name,
         display_name=project.display_name,
         channel_identifiers=project.channel_identifiers,
+        created_at=int(project.created_at.timestamp()),
+        updated_at=int(project.updated_at.timestamp() if project.updated_at else 0),
     )
 
 

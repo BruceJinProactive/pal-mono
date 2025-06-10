@@ -5,24 +5,12 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from api.schemas.chat.message import (
-    AuthorType,
-    Broker,
-    Channel,
-    Extras,
-)
+from api.schemas.chat.message import AuthorType, Broker, Channel, Extras
 from api.schemas.chat.message import Message as RelayMessage
-from api.schemas.chat.message import (
-    Metadata,
-    TextObject,
-    Type,
-)
+from api.schemas.chat.message import Metadata, TextObject, Type
 from services.relay_service import send_message as relay_send_message
 from tools.sms_tool._llm import generate_order_summary
-from tools.sms_tool.classes import (
-    Message,
-    MessageType,
-)
+from tools.sms_tool.classes import Message, MessageType
 from utils.dttm import current_utc
 from utils.log import logger
 

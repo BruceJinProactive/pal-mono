@@ -19,6 +19,8 @@ class Project(BaseModel):
     address: str | None = None
     product_info: str | None = None
     service_instruction: str | None = None
+    created_at: int  # timestamp in seconds and UTC tz
+    updated_at: int  # timestamp in seconds and UTC tz
 
 
 class ProjectSummary(BaseModel):
@@ -28,6 +30,8 @@ class ProjectSummary(BaseModel):
     name: str
     display_name: str | None
     channel_identifiers: list[str] | None
+    created_at: int  # timestamp in seconds and UTC tz
+    updated_at: int  # timestamp in seconds and UTC tz
 
 
 class UpdateProjectRequest(BaseModel):
