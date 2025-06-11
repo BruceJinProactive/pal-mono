@@ -34,7 +34,6 @@ class AgentMetadata(BaseModel):
 
 class StorageProvider(StrEnum):
     AGNO = auto()
-    EXTERNAL = auto()
     PALSTORAGE = auto()
 
 

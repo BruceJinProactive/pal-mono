@@ -297,9 +297,7 @@ async def get_chat_response_stream(
                 stream=True,
                 request_context=request_context,
             )
-            logger.debug(
-                f"Input stream mode: {input} with {len(input.history_messages)} history messages"
-            )
+            logger.debug(f"Input stream mode: {input}")
 
             # Get streaming response
             response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore

@@ -47,10 +47,7 @@ class AgnoAgent:
             logger.debug(
                 f"Agent: {config.metadata.agent_id} is using {config.storage_provider} Storage"
             )
-        elif config.storage_provider in [
-            StorageProvider.EXTERNAL,
-            StorageProvider.PALSTORAGE,
-        ]:
+        elif config.storage_provider == StorageProvider.PALSTORAGE:
             storage = None
             add_history_to_messages = False
             logger.debug(
@@ -244,10 +241,7 @@ class AgnoAgent:
     ) -> tuple[Optional[str], Optional[list[Message]]]:
         if self._storage_provider == StorageProvider.AGNO:
             return input.get_prompt(), None
-        elif self._storage_provider in [
-            StorageProvider.EXTERNAL,
-            StorageProvider.PALSTORAGE,
-        ]:
+        elif self._storage_provider == StorageProvider.PALSTORAGE:
             current_time = datetime.datetime.now(datetime.timezone.utc)
             messages = await self.get_history_messages(input)
             send_dd_histogram_metrics(
@@ -260,9 +254,7 @@ class AgnoAgent:
             return None, None
 
     async def get_history_messages(self, input: Input) -> list[Message]:
-        if self._storage_provider == StorageProvider.EXTERNAL:
-            history_messages = input.history_messages
-        elif self._storage_provider == StorageProvider.PALSTORAGE:
+        if self._storage_provider == StorageProvider.PALSTORAGE:
             history_messages = await query_history_messages(self._session_id, limit=100)
         else:
             raise ValueError(

@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -43,7 +43,6 @@ class Input(BaseModel):
     channel: str = ""
     sender_identifier: str = ""
     stream: bool = False
-    history_messages: List[Message] = []
     request_context: RequestContext = Field(exclude=True)
 
     class Config:
