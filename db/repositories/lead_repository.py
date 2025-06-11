@@ -130,26 +130,23 @@ class LeadRepository:
 
             self.session.refresh(db_lead)
             return db_lead
-
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error updating lead: {e}")
             raise
 
-    def delete_lead(self, lead_id: uuid.UUID) -> bool:
+    def delete_lead(self, lead_id: uuid.UUID):
         """Delete a lead by its ID."""
         try:
             db_lead = self.get_lead_by_id(lead_id)
-            if db_lead:
-                self.session.delete(db_lead)
+            if not db_lead:
+                return
+            self.session.delete(db_lead)
 
-                if self.auto_commit:
-                    self.session.commit()
-                else:
-                    self.session.flush()
-                return True
-            return False
-
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error deleting lead: {e}")

@@ -40,13 +40,14 @@ class CognitoUser:
 class LeadParams:
     """Parameters for creating or updating a lead"""
 
-    business_name: str
+    business_name: str | None = None
     business_address: str | None = None
     logo_uri: str | None = None
     segment: BusinessSegment | None = None
     tier: TargetTier | None = None
     owner: str | None = None
     hubspot_record_id: str | None = None
+    status: LeadStatus | None = None
     notes: str | None = None
 
 

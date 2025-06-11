@@ -4,6 +4,7 @@ import re
 import time
 import uuid
 from collections import defaultdict
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
 import boto3
@@ -1342,6 +1343,9 @@ def create_lead(
         The created Lead object
     """
     try:
+        if not params.business_name:
+            raise ValueError("business_name is required for creating a lead")
+
         lead_repo = db.LeadRepository(session)
 
         lead = lead_repo.create_lead(
@@ -1352,6 +1356,7 @@ def create_lead(
             tier=params.tier,
             owner=params.owner,
             hubspot_record_id=params.hubspot_record_id,
+            status=params.status,
             notes=params.notes,
         )
 
@@ -1367,3 +1372,90 @@ def create_lead(
     except Exception as e:
         logger.error(f"Error creating lead: {e}")
         raise
+
+
+def update_lead(
+    session: Session,
+    context: UserContext,
+    lead_id: uuid.UUID,
+    params: LeadParams,
+) -> db.Lead | None:
+    """
+    Update an existing lead.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        lead_id: ID of the lead to update
+        params: Lead parameters to update
+
+    Returns:
+        The updated Lead object, or None if not found
+    """
+    try:
+        lead_repo = db.LeadRepository(session)
+
+        param_dict = asdict(params)
+        lead = lead_repo.update_lead(lead_id, **param_dict)
+        if lead:
+            logger.info(
+                f"Updated lead: {lead.id}",
+                extra={
+                    "lead_id": str(lead.id),
+                    "updated_by": context.email,
+                    "fields": param_dict,
+                },
+            )
+        return lead
+    except Exception as e:
+        logger.error(f"Error updating lead: {e}")
+        raise
+
+
+def delete_lead(
+    session: Session,
+    context: UserContext,
+    lead_id: uuid.UUID,
+):
+    """
+    Delete a lead by ID.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        lead_id: ID of the lead to delete
+
+    Returns:
+        True if the lead was deleted, False if not found
+    """
+    lead_repo = db.LeadRepository(session)
+
+    lead_repo.delete_lead(lead_id)
+    logger.info(
+        f"Deleted lead: {lead_id}",
+        extra={
+            "lead_id": str(lead_id),
+            "deleted_by": context.email,
+        },
+    )
+
+
+def get_lead(
+    session: Session,
+    context: UserContext,
+    lead_id: uuid.UUID,
+) -> db.Lead | None:
+    """
+    Get a lead by ID.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        lead_id: ID of the lead to retrieve
+
+    Returns:
+        The Lead object, or None if not found
+    """
+    lead_repo = db.LeadRepository(session)
+    lead = lead_repo.get_lead_by_id(lead_id)
+    return lead

@@ -640,6 +640,65 @@ def create_lead(
     return _implementation.create_lead(session, context, params)
 
 
+def update_lead(
+    session: Session,
+    context: UserContext,
+    lead_id: uuid.UUID,
+    params: LeadParams,
+) -> db.Lead | None:
+    """
+    Update an existing lead.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        lead_id: ID of the lead to update
+        params: Lead parameters to update
+
+    Returns:
+        The updated Lead object, or None if not found
+    """
+    return _implementation.update_lead(session, context, lead_id, params)
+
+
+def delete_lead(
+    session: Session,
+    context: UserContext,
+    lead_id: uuid.UUID,
+):
+    """
+    Delete a lead by ID.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        lead_id: ID of the lead to delete
+
+    Returns:
+        True if the lead was deleted, False if not found
+    """
+    return _implementation.delete_lead(session, context, lead_id)
+
+
+def get_lead(
+    session: Session,
+    context: UserContext,
+    lead_id: uuid.UUID,
+) -> db.Lead | None:
+    """
+    Get a lead by ID.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        lead_id: ID of the lead to retrieve
+
+    Returns:
+        The Lead object, or None if not found
+    """
+    return _implementation.get_lead(session, context, lead_id)
+
+
 __all__ = [
     "list_user_sessions_in_account",
     "get_inbox_conversations",
@@ -668,4 +727,7 @@ __all__ = [
     "update_conversation_escalation",
     "list_leads",
     "create_lead",
+    "update_lead",
+    "delete_lead",
+    "get_lead",
 ]

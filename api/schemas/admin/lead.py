@@ -21,6 +21,20 @@ class CreateLeadRequest(BaseModel):
     notes: str | None = None
 
 
+class UpdateLeadRequest(BaseModel):
+    """Update Lead Request"""
+
+    business_name: str | None = None
+    business_address: str | None = None
+    logo_uri: str | None = None
+    segment: BusinessSegment | None = None
+    tier: TargetTier | None = None
+    owner: str | None = None
+    hubspot_record_id: str | None = None
+    status: LeadStatus | None = None
+    notes: str | None = None
+
+
 class LeadSummary(BaseModel):
     """Lead Summary Model for List Responses"""
 

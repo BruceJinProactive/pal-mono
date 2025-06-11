@@ -49,7 +49,12 @@ from api.schemas.admin.feedback import (
 )
 from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
 from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
-from api.schemas.admin.lead import CreateLeadRequest, Lead, ListLeadsResponse
+from api.schemas.admin.lead import (
+    CreateLeadRequest,
+    Lead,
+    ListLeadsResponse,
+    UpdateLeadRequest,
+)
 from api.schemas.admin.onboarding import OnboardingRequest
 from api.schemas.admin.order_integration import CreateOrderIntegrationRequest
 from api.schemas.admin.project import (
@@ -1014,6 +1019,56 @@ async def get_leads(
         segment=segment,
         tier=tier,
         keyword=keyword,
+    )
+
+
+@admin_router.get("/leads/{lead_id}")
+async def get_lead(
+    lead_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Lead:
+    """
+    Get a lead by ID.
+    """
+    return await _lead.get_lead(
+        lead_id=lead_id,
+        context=context,
+        session=session,
+    )
+
+
+@admin_router.patch("/leads/{lead_id}")
+async def update_lead(
+    lead_id: uuid.UUID,
+    lead: UpdateLeadRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Lead:
+    """
+    Update an existing lead by ID.
+    """
+    return await _lead.update_lead(
+        lead_id=lead_id,
+        lead_request=lead,
+        context=context,
+        session=session,
+    )
+
+
+@admin_router.delete("/leads/{lead_id}")
+async def delete_lead(
+    lead_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete a lead by ID.
+    """
+    await _lead.delete_lead(
+        lead_id=lead_id,
+        context=context,
+        session=session,
     )
 
 
