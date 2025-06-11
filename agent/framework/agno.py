@@ -247,7 +247,10 @@ class AgnoAgent:
             send_dd_histogram_metrics(
                 "framework_agent.query_history_messages_time_spent",
                 current_time,
-                [f"streaming:{input.stream}"],
+                [
+                    f"streaming:{str(input.stream).lower()}",
+                    f"conversation_id:{self._session_id}",
+                ],
             )
             return None, messages
         else:
