@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Dict, Optional
 
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.schema import ForeignKey
+from sqlalchemy.schema import ForeignKey, Index
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime
@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        Index("idx_messages_conversation_created_at", "conversation_id", "created_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
