@@ -166,7 +166,7 @@ class NumberService:
             toll_free=True,
         )
 
-    def _create_assistant(self, config: AssistantConfig):
+    def _create_assistant_and_get_id(self, config: AssistantConfig) -> str:
         """Create a new Vapi assistant with custom model configuration.
 
         Args:
@@ -180,12 +180,13 @@ class NumberService:
             from vapi.types.custom_llm_model import CustomLlmModel
 
             vapi_client = Vapi(token=self.vapi_token)
-            return vapi_client.assistants.create(
+            assistant = vapi_client.assistants.create(
                 name=config["merchant_name"],
                 model=CustomLlmModel(
                     url=config["model_url"], model=config["model_name"]
                 ),
             )
+            return assistant.id
 
     def setup_number(
         self,
@@ -220,16 +221,13 @@ class NumberService:
             if assistant_config["server_url"]:
                 assistant_id = None
                 server_url = assistant_config["server_url"]
-                assistant = None
             else:
                 # Create the assistant
-                assistant = self._create_assistant(assistant_config)
-                assistant_id = assistant.id
+                assistant_id = self._create_assistant_and_get_id(assistant_config)
                 server_url = None
         else:
             assistant_id = None
             server_url = get_server_url()
-            assistant = None
 
         merchant_name = (
             assistant_config["merchant_name"] if assistant_config else merchant_name
