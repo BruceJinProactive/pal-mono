@@ -65,3 +65,11 @@ class ListConversationMessagesResponse(BaseModel):
     messages: list[Message]
     total_pages: int
     total_messages: int
+
+
+class UpdateSessionRequest(BaseModel):
+    is_escalated: bool
+
+
+class UpdateSessionResponse(BaseModel):
+    is_escalated: bool

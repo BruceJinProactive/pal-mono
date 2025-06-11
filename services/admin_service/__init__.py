@@ -583,6 +583,27 @@ def setup_project_order_integration(
     )
 
 
+def update_conversation_escalation(
+    session: Session,
+    conversation_id: uuid.UUID,
+    is_escalated: bool,
+) -> db.Conversation | None:
+    """
+    Update the escalation status of a conversation.
+
+    Args:
+        session (Session): The database session used to perform queries.
+        conversation_id (uuid.UUID): The unique identifier of the conversation to update.
+        is_escalated (bool): The new escalation status.
+
+    Returns:
+        db.Conversation | None: The updated conversation or none if id does not exist.
+    """
+    return _implementation.update_conversation_escalation(
+        session, conversation_id, is_escalated
+    )
+
+
 def list_leads(
     session: Session,
     filter_params: LeadFilters,
@@ -644,6 +665,7 @@ __all__ = [
     "signup_account_user",
     "delete_account_user",
     "setup_project_order_integration",
+    "update_conversation_escalation",
     "list_leads",
     "create_lead",
 ]

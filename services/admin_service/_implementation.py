@@ -16,6 +16,7 @@ from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
 from db.repositories import LeadFilter as RepoLeadFilter
 from db.repositories import OrderIntegrationRepository
+from db.repositories.conversation_repository import ConversationUpdate
 from db.tables.order_integration import OrderIntegrationVendor, OrderProtocol
 from services import (
     account_service,
@@ -1274,6 +1275,18 @@ def setup_project_order_integration(
             f"Error setting up order integration for project {project.id}: {e}"
         )
         raise RuntimeError(f"Failed to setup order integration: {str(e)}") from e
+
+
+def update_conversation_escalation(
+    session: Session,
+    conversation_id: uuid.UUID,
+    is_escalated: bool,
+) -> db.Conversation | None:
+    conversation_repository = db.ConversationRepository(session)
+    update_data = ConversationUpdate(is_escalated=is_escalated)
+    return conversation_repository.update_conversation(
+        conversation_id=conversation_id, update_data=update_data
+    )
 
 
 def list_leads(

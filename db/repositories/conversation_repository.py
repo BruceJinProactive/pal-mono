@@ -1,6 +1,9 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
+from pydantic import BaseModel
+from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -8,6 +11,13 @@ from sqlalchemy.orm import Session
 
 from db.tables import Conversation, ConversationStatus
 from utils.log import logger
+
+
+class ConversationUpdate(BaseModel):
+    """Model for updating conversation fields."""
+
+    status: Optional[ConversationStatus] = None
+    is_escalated: Optional[bool] = None
 
 
 class ConversationRepositoryAsync:
@@ -242,3 +252,40 @@ class ConversationRepository:
             self.session.rollback()
             logger.error(f"Error retrieving sessions: {e}")
             return 0, []
+
+    def update_conversation(
+        self, conversation_id: uuid.UUID, update_data: ConversationUpdate
+    ) -> Conversation | None:
+        """
+        Update a conversation with the given fields.
+
+        Args:
+            conversation_id (uuid.UUID): The ID of the conversation to update.
+            update_data (ConversationUpdate): The fields to update and their new values.
+
+        Returns:
+            Conversation | None: The updated conversation if successful, None if the conversation doesn't exist.
+
+        Raises:
+            SQLAlchemyError: If there is an error updating the conversation.
+        """
+        try:
+            conversation = self.get_conversation_by_id(conversation_id)
+            if not conversation:
+                return None
+
+            mapper_cols = {c.key for c in inspect(Conversation).mapper.column_attrs} - {
+                "id"
+            }
+
+            for field, value in update_data.model_dump(exclude_unset=True).items():
+                if field in mapper_cols:
+                    setattr(conversation, field, value)
+
+            self.session.commit()
+            self.session.refresh(conversation)
+            return conversation
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating conversation: {e}")
+            raise

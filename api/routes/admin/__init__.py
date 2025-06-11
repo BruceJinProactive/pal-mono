@@ -37,6 +37,8 @@ from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResp
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
+    UpdateSessionRequest,
+    UpdateSessionResponse,
 )
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
@@ -505,6 +507,21 @@ async def list_session_messages(
     """
     return await _conversation.list_conversation_messages(
         session_id, page, page_size, sort_order, context, session
+    )
+
+
+@admin_router.patch("/sessions/{session_id}")
+async def update_session(
+    session_id: uuid.UUID,
+    session_request: UpdateSessionRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> UpdateSessionResponse:
+    """
+    Update the session with the given id.
+    """
+    return await _conversation.update_session(
+        session_id, session_request, context, session
     )
 
 

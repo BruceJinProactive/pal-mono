@@ -2,11 +2,14 @@ import datetime
 import math
 import uuid
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
+    UpdateSessionRequest,
+    UpdateSessionResponse,
     UserSessionSearchFilters,
 )
 from api.schemas.chat.message import Channel
@@ -99,3 +102,48 @@ async def list_conversation_messages(
         total_pages=total_pages,
         total_messages=total_messages,
     )
+
+
+async def update_session(
+    session_id: uuid.UUID,
+    session_request: UpdateSessionRequest,
+    context: UserContext,
+    session: Session,
+) -> UpdateSessionResponse:
+    """Update session escalation status.
+
+    Args:
+        session_id: The ID of the session to update
+        session_request: The update request containing is_escalated flag
+        context: The authenticated user context
+        session: The database session
+
+    Returns:
+        UpdateSessionResponse: The response containing the updated escalation status
+
+    Raises:
+        HTTPException: If the session is not found or user is not authorized
+    """
+    # Fetch first to validate ownership
+    conversation = admin_service.get_conversation_by_id(session, session_id)
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found",
+        )
+
+    # Authorize user has access to this account
+    authorize_user_account(context, conversation.user.account.name)
+
+    # Safe to mutate after successful auth
+    conversation = admin_service.update_conversation_escalation(
+        session, session_id, session_request.is_escalated
+    )
+
+    if conversation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Failed to update session {session_id}",
+        )
+
+    return UpdateSessionResponse(is_escalated=conversation.is_escalated)
