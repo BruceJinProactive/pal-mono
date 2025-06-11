@@ -4,12 +4,12 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from api.routes.admin import _builder
 from api.routes.admin._auth import authorize_admin
 from api.routes.admin._utils import UserContext, not_found_error
 from api.schemas.admin.lead import (
     CreateLeadRequest,
     Lead,
-    LeadSummary,
     ListLeadsResponse,
     UpdateLeadRequest,
 )
@@ -53,7 +53,7 @@ async def create_lead(
         params=params,
     )
 
-    return Lead.from_db(lead)
+    return _builder.build_lead(lead)
 
 
 async def list_leads(
@@ -100,10 +100,10 @@ async def list_leads(
 
     total_pages = math.ceil(total_count / page_size)
 
-    lead_summaries = [LeadSummary.from_db(lead) for lead in leads]
+    leads_list = [_builder.build_lead(lead) for lead in leads]
 
     return ListLeadsResponse(
-        leads=lead_summaries,
+        leads=leads_list,
         total_leads=total_count,
         total_pages=total_pages,
     )
@@ -155,7 +155,7 @@ async def update_lead(
     if not lead:
         raise not_found_error(f"Lead with ID {lead_id} not found")
 
-    return Lead.from_db(lead)
+    return _builder.build_lead(lead)
 
 
 async def delete_lead(
@@ -210,4 +210,4 @@ async def get_lead(
     if not lead:
         raise ValueError(f"Lead with ID {lead_id} not found")
 
-    return Lead.from_db(lead)
+    return _builder.build_lead(lead)

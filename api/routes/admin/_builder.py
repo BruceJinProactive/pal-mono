@@ -6,6 +6,7 @@ from api.schemas.admin.agent import Agent, AgentSummary
 from api.schemas.admin.conversation import Message, UserSession
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
+from api.schemas.admin.lead import Lead
 from api.schemas.admin.project import Project, ProjectSummary
 
 
@@ -178,4 +179,21 @@ def build_change_log_details(
     return ChangeLogDetails(
         info=build_change_log_summary(change_log),
         fields=fields,
+    )
+
+
+def build_lead(lead: db.Lead) -> Lead:
+    return Lead(
+        id=lead.id,
+        business_name=lead.business_name,
+        business_address=lead.business_address,
+        logo_uri=map_uri_to_s3_url(lead.logo_uri),
+        segment=lead.segment,
+        tier=lead.tier,
+        owner=lead.owner,
+        hubspot_record_id=lead.hubspot_record_id,
+        status=lead.status,
+        notes=lead.notes,
+        created_at=lead.created_at,
+        updated_at=lead.updated_at,
     )
