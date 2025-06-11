@@ -62,6 +62,7 @@ class YelpTool(Toolkit):
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
+        logger.debug(f"YelpTool instance created: business id={business_id_or_alias}")
 
     @cached_property
     def _yelp_bearer_token(self) -> YelpAccessToken:
@@ -128,8 +129,7 @@ class YelpTool(Toolkit):
         """
         Get available reservation times for a restaurant using the Yelp Bookings API.
 
-        This function extracts reservation search parameters from the conversation history
-        and returns available reservation times around the requested timeslot.
+        Use when: User wants to check availability or see time options before booking.
 
         Args:
             latest_user_message (str): The latest user message in the chat history.
@@ -203,9 +203,8 @@ class YelpTool(Toolkit):
         """
         Make a reservation for a restaurant using the Yelp Bookings API.
 
-        This function extracts complete reservation details from the conversation history,
-        creates a hold first, then immediately makes the reservation.
-        The entire process is handled in a single tool call for user convenience.
+        Use when: User explicitly wants to book a reservation with all required details.
+        Do NOT use for: Checking availability (use get_restaurant_openings instead).
 
         Args:
             latest_user_message (str): The latest user message in the chat history.
@@ -400,10 +399,8 @@ class YelpTool(Toolkit):
         """
         Get waitlist status for a restaurant using the Yelp Waitlist API.
 
-        This function retrieves waitlist status information including current wait times
-        for different party sizes, the state of the waitlist, and any closure reason.
-
-        Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+        Use when: User asks about wait times or walk-in availability.
+        Do NOT use for: Making reservations or checking reservation times.
 
         Returns:
             str: Formatted string containing waitlist status information, or error message
