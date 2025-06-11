@@ -13,9 +13,14 @@ from services.account_service import AccountParams
 
 from ..agent_service import AgentParams
 from ..knowledge_service import KnowledgeFile
-from ..project_service import ProjectParams
 from . import _implementation
-from .schema import CognitoUser, ProjectSetup, UserSessionPreview
+from .schema import (
+    CognitoUser,
+    LeadFilters,
+    LeadParams,
+    ProjectSetup,
+    UserSessionPreview,
+)
 
 
 def list_user_sessions_in_account(
@@ -557,27 +562,61 @@ def setup_project_order_integration(
     vendor: OrderIntegrationVendor | None = None,
 ) -> db.OrderIntegration:
     """
-    Setup order integration for a project. Always creates a new order integration,
-    then updates the project to use the new order integration.
+    Creates or updates the order integration for the specified project.
 
     Args:
-        session (Session): Database session
-        context (UserContext): User context for authorization
-        project (db.Project): The project to set up integration for
-        protocol (OrderProtocol): The order protocol (sms, pos, etc...)
-        destination (str): The destination for orders (phone number, store ID, etc.)
-        vendor (OrderIntegrationVendor | None): The vendor for the integration (olo, toast, etc...)
+        session (Session): The database session to use.
+        context (UserContext): The user context for the authenticated user.
+        project (db.Project): The project to create the order integration for.
+        protocol (OrderProtocol): The protocol to use for order placement.
+        destination (str): The destination address to send orders to.
+        vendor (OrderIntegrationVendor): The vendor to use for order processing.
 
     Returns:
-        db.OrderIntegration: The created order integration
+        db.OrderIntegration: The created or updated order integration.
 
     Raises:
-        ValueError: If the project is not found or user doesn't have access
-        RuntimeError: If there's an error creating the integration or updating the project
+        Exception: If there's an error creating or updating the order integration.
     """
     return _implementation.setup_project_order_integration(
         session, context, project, protocol, destination, vendor
     )
+
+
+def list_leads(
+    session: Session,
+    filter_params: LeadFilters,
+) -> tuple[list[db.Lead], int]:
+    """
+    Retrieve a paginated list of leads with optional filters.
+
+    Args:
+        session: Database session
+        filter_params: Filter parameters including pagination and search criteria
+
+    Returns:
+        Tuple of (leads list, total count)
+    """
+    return _implementation.list_leads(session, filter_params)
+
+
+def create_lead(
+    session: Session,
+    context: UserContext,
+    params: LeadParams,
+) -> db.Lead:
+    """
+    Create a new lead.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        params: Lead parameters including business_name (required) and other optional fields
+
+    Returns:
+        The created Lead object
+    """
+    return _implementation.create_lead(session, context, params)
 
 
 __all__ = [
@@ -605,4 +644,6 @@ __all__ = [
     "signup_account_user",
     "delete_account_user",
     "setup_project_order_integration",
+    "list_leads",
+    "create_lead",
 ]

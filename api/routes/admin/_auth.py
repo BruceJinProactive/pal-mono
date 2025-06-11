@@ -347,6 +347,15 @@ def authorize_user_account(context: UserContext, account_name: str):
     )
 
 
+def authorize_admin(context: UserContext):
+    if context.role != UserRole.Admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have permission for the requested resource",
+            headers={"Content-Type": "application/json"},
+        )
+
+
 def get_user_info(context: UserContext) -> User:
     return User(
         id=context.username,

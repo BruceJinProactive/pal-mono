@@ -47,6 +47,7 @@ from api.schemas.admin.feedback import (
 )
 from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
 from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
+from api.schemas.admin.lead import CreateLeadRequest, Lead, ListLeadsResponse
 from api.schemas.admin.onboarding import OnboardingRequest
 from api.schemas.admin.order_integration import CreateOrderIntegrationRequest
 from api.schemas.admin.project import (
@@ -64,6 +65,7 @@ from api.schemas.admin.user_management import (
 )
 from api.schemas.chat.message import Channel
 from db.tables.change_log import ChangeResourceType
+from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 from services.number_service._implementation import NumberService
 from services.number_service._utils import (
@@ -82,6 +84,7 @@ from . import (
     _feedback,
     _history,
     _knowledge,
+    _lead,
     _order_integration,
     _projects,
     _subscription,
@@ -933,6 +936,68 @@ def get_report(
     report_data = _analytics.get_report(request, report_name, session) or {}
 
     return GetReportResponse(report_data=report_data)
+
+
+"""
+----------- Lead Management -----------
+---------------------------------------
+"""
+
+
+@admin_router.put("/leads", status_code=status.HTTP_201_CREATED)
+async def create_lead(
+    lead: CreateLeadRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Lead:
+    """
+    Create a new lead. Business name is required.
+    """
+    return await _lead.create_lead(
+        lead_request=lead,
+        context=context,
+        session=session,
+    )
+
+
+@admin_router.get("/leads")
+async def get_leads(
+    page: int = Query(1, gt=0, description="Page number"),
+    page_size: int = Query(20, gt=0, le=100, description="Number of items per page"),
+    status: list[LeadStatus] | None = Query(
+        None, description="Optional list of statuses to filter leads by"
+    ),
+    segment: list[BusinessSegment] | None = Query(
+        None, description="Optional list of segments to filter leads by"
+    ),
+    tier: list[TargetTier] | None = Query(
+        None, description="Optional list of tiers to filter leads by"
+    ),
+    keyword: str | None = Query(
+        None, description="Optional keyword to search in business_name and owner fields"
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListLeadsResponse:
+    """
+    Retrieve a paginated list of leads with optional filters.
+    Supports filtering by multiple statuses, segments, tiers, and keyword search.
+
+    Example usage:
+    - Filter by multiple statuses: ?status=pending&status=converted
+    - Filter by multiple segments: ?segment=smb&segment=mm
+    - Combine filters: ?status=pending&segment=smb&tier=standard&keyword=restaurant
+    """
+    return await _lead.list_leads(
+        context=context,
+        session=session,
+        page=page,
+        page_size=page_size,
+        status=status,
+        segment=segment,
+        tier=tier,
+        keyword=keyword,
+    )
 
 
 """

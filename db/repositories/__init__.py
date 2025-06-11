@@ -3,6 +3,7 @@ from .agent_repository import AgentRepository, AgentRepositoryAsync
 from .change_log_repository import ChangeLogRepository
 from .conversation_repository import ConversationRepository, ConversationRepositoryAsync
 from .feedback_repository import FeedbackRepository
+from .lead_repository import LeadFilter, LeadRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync
 from .order_integration_repository import OrderIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, declarative_base
 import db
 from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
+from db.repositories import LeadFilter as RepoLeadFilter
 from db.repositories import OrderIntegrationRepository
 from db.tables.order_integration import OrderIntegrationVendor, OrderProtocol
 from services import (
@@ -28,6 +29,8 @@ from services.admin_service._utils import get_knowledge_settings
 from services.admin_service.schema import (
     CognitoUser,
     CognitoUserSession,
+    LeadFilters,
+    LeadParams,
     ProjectSetup,
     UserSessionPreview,
 )
@@ -1271,3 +1274,83 @@ def setup_project_order_integration(
             f"Error setting up order integration for project {project.id}: {e}"
         )
         raise RuntimeError(f"Failed to setup order integration: {str(e)}") from e
+
+
+def list_leads(
+    session: Session,
+    filter_params: LeadFilters,
+) -> tuple[list[db.Lead], int]:
+    """
+    Retrieve a paginated list of leads with optional filters.
+
+    Args:
+        session: Database session
+        filter_params: Filter parameters including pagination and search criteria
+
+    Returns:
+        Tuple of (leads list, total count)
+    """
+    try:
+        lead_repo = db.LeadRepository(session)
+
+        # Convert service filter to repository filter
+        repo_filter = RepoLeadFilter(
+            page=filter_params.page,
+            page_size=filter_params.page_size,
+            status_filter=filter_params.status_filter,
+            segment_filter=filter_params.segment_filter,
+            tier_filter=filter_params.tier_filter,
+            keyword=filter_params.keyword,
+        )
+
+        leads, total_count = lead_repo.list_leads_paginated(repo_filter)
+
+        return leads, total_count
+
+    except Exception as e:
+        logger.error(f"Error listing leads: {e}")
+        raise
+
+
+def create_lead(
+    session: Session,
+    context: UserContext,
+    params: LeadParams,
+) -> db.Lead:
+    """
+    Create a new lead.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        params: Lead parameters including business_name (required) and other optional fields
+
+    Returns:
+        The created Lead object
+    """
+    try:
+        lead_repo = db.LeadRepository(session)
+
+        lead = lead_repo.create_lead(
+            business_name=params.business_name,
+            business_address=params.business_address,
+            logo_uri=params.logo_uri,
+            segment=params.segment,
+            tier=params.tier,
+            owner=params.owner,
+            hubspot_record_id=params.hubspot_record_id,
+            notes=params.notes,
+        )
+
+        logger.info(
+            f"Created lead: {lead.id} for business: {params.business_name}",
+            extra={
+                "lead_id": str(lead.id),
+                "business_name": params.business_name,
+                "created_by": context.email,
+            },
+        )
+        return lead
+    except Exception as e:
+        logger.error(f"Error creating lead: {e}")
+        raise
