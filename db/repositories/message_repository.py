@@ -148,9 +148,7 @@ class MessageRepositoryAsync:
             send_dd_histogram_metrics(
                 "message_repo.execute_query_time_spent",
                 start_time,
-                [
-                    f"conversation_id:{conversation_id}",
-                ],
+                [f"conversation_id:{conversation_id}", "mode:async"],
             )
 
             # reverse the list so the messages are in chronological order
@@ -251,6 +249,8 @@ class MessageRepository:
             List[Message]: A list of messages, empty if an error occurs.
         """
         try:
+
+            start_time = datetime.datetime.now(datetime.timezone.utc)
             messages = (
                 self.session.query(Message)
                 .filter(Message.conversation_id == conversation_id)
@@ -259,6 +259,15 @@ class MessageRepository:
                     Message.created_at.asc()
                 )
                 .all()
+            )
+
+            send_dd_histogram_metrics(
+                "message_repo.execute_query_time_spent",
+                start_time,
+                [
+                    f"conversation_id:{conversation_id}",
+                    "mode:sync",
+                ],
             )
 
             return messages

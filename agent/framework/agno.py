@@ -120,7 +120,7 @@ class AgnoAgent:
     async def _arun_with_workflow(self, input: Input) -> Output:
         with trace_block("Agno Core Agent Processing"):
 
-            message, messages = await self._build_model_inputs(input)
+            message, messages = self._build_model_inputs(input)
             result = await self._agent.arun(
                 message,
                 messages=messages,
@@ -172,7 +172,7 @@ class AgnoAgent:
 
                 output_content = ""
                 with trace_block("Agno Core Agent Processing"):
-                    message, messages = await self._build_model_inputs(input)
+                    message, messages = self._build_model_inputs(input)
                     result = await self._agent.arun(
                         message,
                         messages=messages,
@@ -236,14 +236,14 @@ class AgnoAgent:
                 model = OpenAIChat(id="gpt-4o")
         return model
 
-    async def _build_model_inputs(
+    def _build_model_inputs(
         self, input: Input
     ) -> tuple[Optional[str], Optional[list[Message]]]:
         if self._storage_provider == StorageProvider.AGNO:
             return input.get_prompt(), None
         elif self._storage_provider == StorageProvider.PALSTORAGE:
             current_time = datetime.datetime.now(datetime.timezone.utc)
-            messages = await self.get_history_messages(input)
+            messages = self.get_history_messages(input)
             send_dd_histogram_metrics(
                 "framework_agent.query_history_messages_time_spent",
                 current_time,
@@ -256,9 +256,9 @@ class AgnoAgent:
         else:
             return None, None
 
-    async def get_history_messages(self, input: Input) -> list[Message]:
+    def get_history_messages(self, input: Input) -> list[Message]:
         if self._storage_provider == StorageProvider.PALSTORAGE:
-            history_messages = await query_history_messages(self._session_id, limit=100)
+            history_messages = query_history_messages(self._session_id, limit=100)
         else:
             raise ValueError(
                 f"history_message doesn't apply to {self._storage_provider}"
