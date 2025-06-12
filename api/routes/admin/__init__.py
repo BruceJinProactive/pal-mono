@@ -256,13 +256,28 @@ async def list_account_projects(
 @admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
 def get_account_reports(
     account_name: str,
+    start_date: datetime | None = Query(
+        default=None,
+        description="Start date for the report data. If not provided, defaults to 7 days before end_date.",
+    ),
+    end_date: datetime | None = Query(
+        default=None,
+        description="End date for the report data. If not provided, defaults to current time.",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> GetAllReportsResponse:
     """
     Retrieve all available report data for this account.
+    Data is filtered by the specified date range (default: last 7 days).
     """
-    return GetAllReportsResponse(reports=_analytics.get_all_reports(account_name))
+    # Set default dates if not provided
+    end_date = end_date or datetime.now(UTC)
+    start_date = start_date or (end_date - timedelta(seconds=DEFAULT_STATS_AGE))
+
+    return GetAllReportsResponse(
+        reports=_analytics.get_all_reports(account_name, start_date, end_date)
+    )
 
 
 @admin_router.get("/accounts/{account_name}/stat")
@@ -962,11 +977,21 @@ def get_report(
     report_name: str = Query(..., description="Report Name"),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
+    start_date: datetime = Query(
+        default=None,
+        description="Start date for the report data. If not provided, defaults to 7 days before end_date.",
+    ),
+    end_date: datetime = Query(
+        default=None,
+        description="End date for the report data. If not provided, defaults to current time.",
+    ),
 ) -> GetReportResponse:
     """
     Retrieve report data for the specified report name.
     """
-    report_data = _analytics.get_report(request, report_name, session) or {}
+    report_data = (
+        _analytics.get_report(request, report_name, session, start_date, end_date) or {}
+    )
 
     return GetReportResponse(report_data=report_data)
 

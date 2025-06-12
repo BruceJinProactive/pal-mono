@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime
 
 import requests
 from mixpanel import Mixpanel
@@ -27,7 +28,9 @@ MIXPANEL_REPORTS = [
 ]
 
 
-def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None:
+def get_report_from_mixpanel(
+    report_name: str, account_name: str, start_date: datetime, end_date: datetime
+) -> dict | None:
     """Fetches report data from Mixpanel for a given report name and account name.
 
     Args:
@@ -43,10 +46,15 @@ def get_report_from_mixpanel(report_name: str, account_name: str) -> dict | None
         raise ValueError(
             f"Environment variable MIXPANEL_{report_name}_BOOKMARK_ID is not set."
         )
-    return get_report_by_id(bookmark_id, account_name)
+    return get_report_by_id(bookmark_id, account_name, start_date, end_date)
 
 
-def get_report_by_id(bookmark_id, account_name: str) -> dict | None:
+def get_report_by_id(
+    bookmark_id,
+    account_name: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> dict | None:
     mixpanel_api_secret = os.getenv("MIXPANEL_API_SECRET")
 
     if not mixpanel_api_secret:
@@ -56,6 +64,8 @@ def get_report_by_id(bookmark_id, account_name: str) -> dict | None:
         "project_id": MIXPANEL_PROJECT_ID,
         "workspace_id": MIXPANEL_WORKSPACE_ID,
         "bookmark_id": bookmark_id,
+        "from_date": start_date.strftime("%Y-%m-%d"),
+        "to_date": end_date.strftime("%Y-%m-%d"),
     }
     headers = {"Accept": "application/json"}
 
@@ -85,10 +95,16 @@ def get_report_by_id(bookmark_id, account_name: str) -> dict | None:
         return None
 
 
-def get_all_reports_from_mixpanel(account_name: str) -> list[tuple[str, dict]]:
+def get_all_reports_from_mixpanel(
+    account_name: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> list[tuple[str, dict]]:
     results = []
     for bookmark_id, report_name in MIXPANEL_REPORTS:
-        report_data = get_report_by_id(bookmark_id, account_name)
+        report_data = get_report_by_id(
+            str(bookmark_id), account_name, start_date, end_date
+        )
         if not report_data:
             continue
         results.append((report_name, report_data))

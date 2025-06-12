@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import Request
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,8 @@ def get_report(
     request: Request,
     report_name: str,
     session: Session,
+    start_date: datetime,
+    end_date: datetime,
 ) -> dict | None:
     """
     Fetches insights data from Mixpanel for a given report name and account.
@@ -26,11 +30,13 @@ def get_report(
     """
     account = _auth.get_account_from_id_token(request, session)
     account_name = account.name
-    return get_report_from_mixpanel(report_name, account_name)
+    return get_report_from_mixpanel(report_name, account_name, start_date, end_date)
 
 
 def get_all_reports(
     account_name: str,
+    start_date: datetime,
+    end_date: datetime,
 ) -> list[PerformanceReport]:
     """
     Fetches all insights data from Mixpanel for all reports defined in BOOKMARK_ID_MAPPING.
@@ -41,5 +47,7 @@ def get_all_reports(
     Returns:
         list[PerformanceReport]: A list of reports
     """
-    reports = analytics_service.get_all_reports_from_mixpanel(account_name)
+    reports = analytics_service.get_all_reports_from_mixpanel(
+        account_name, start_date, end_date
+    )
     return [PerformanceReport(name=name, data=data) for name, data in reports]
