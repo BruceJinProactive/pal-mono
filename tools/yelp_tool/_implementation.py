@@ -45,15 +45,11 @@ class YelpTool(Toolkit):
     def __init__(
         self,
         business_id_or_alias: str,
-        namespace: str,
-        index_name: str,
         tool_metadata: ToolMetadata,
     ):
         super().__init__(name="yelp_tool")
 
         self.business_id_or_alias = business_id_or_alias
-        self.namespace = namespace
-        self.index_name = index_name
         self.tool_metadata = tool_metadata
 
         self.register(self.get_restaurant_openings)
