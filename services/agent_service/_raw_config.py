@@ -274,8 +274,9 @@ class RawConfig:
                 try:
                     tz = ZoneInfo(timezone)
                     time = datetime.now(tz)
+                    formatted_time = time.strftime("%A, %Y-%m-%d %H:%M:%S %Z")
 
-                    additional_context += f"The current time is {time}."
+                    additional_context += f"The current time is {formatted_time}."
                 except Exception:
                     raise ValueError(f"Timezone '{timezone}' is invalid.")
 
