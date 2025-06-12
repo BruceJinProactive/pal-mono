@@ -1362,6 +1362,9 @@ def create_lead(
             hubspot_record_id=params.hubspot_record_id,
             status=params.status,
             notes=params.notes,
+            pos=params.pos,
+            channels=params.channels,
+            contract_signed=params.contract_signed,
         )
 
         logger.info(

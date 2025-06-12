@@ -194,6 +194,9 @@ def build_lead(lead: db.Lead) -> Lead:
         hubspot_record_id=lead.hubspot_record_id,
         status=lead.status,
         notes=lead.notes,
+        pos=lead.pos,
+        channels=lead.channels,
+        contract_signed=lead.contract_signed,
         created_at=lead.created_at,
         updated_at=lead.updated_at,
     )

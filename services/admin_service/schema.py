@@ -13,6 +13,15 @@ class ProjectSetup:
     enable_sms: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ChannelInfo:
+    handle: str
+    name: str
+
+    def __str__(self) -> str:  # keep the nice printable form
+        return f"{self.name}: {self.handle}"
+
+
 @dataclass
 class UserSessionPreview:
     user_session: db.Conversation
@@ -49,6 +58,9 @@ class LeadParams:
     hubspot_record_id: str | None = None
     status: LeadStatus | None = None
     notes: str | None = None
+    pos: str | None = None
+    channels: list[str] | None = None
+    contract_signed: bool | None = None
 
 
 @dataclass

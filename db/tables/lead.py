@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Enum, func
+from sqlalchemy import ARRAY, Boolean, Enum, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
@@ -16,7 +16,11 @@ from .base import Base
 
 class LeadStatus(str, enum.Enum):
     pending = "pending"  # lead just got created and no actions are taken yet
-    converted = "converted"  # account created
+    account_created = "account_created"  # account created
+    integration_ready = (
+        "integration_ready"  # account created & pos integration complete
+    )
+    in_operation = "in_operation"  # agent serving real customers
 
 
 class BusinessSegment(str, enum.Enum):
@@ -26,8 +30,8 @@ class BusinessSegment(str, enum.Enum):
 
 
 class TargetTier(str, enum.Enum):
-    standard = "standard"
-    premium = "premium"
+    t1 = "t1"
+    t2 = "t2"
     enterprise = "enterprise"
 
 
@@ -49,7 +53,11 @@ class Lead(Base):
         Enum(BusinessSegment), nullable=True
     )
     tier: Mapped[TargetTier | None] = mapped_column(Enum(TargetTier), nullable=True)
-
+    pos: Mapped[str | None] = mapped_column(String)
+    channels: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String),
+        nullable=True,
+    )
     # operational fields
     account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     owner: Mapped[str | None] = mapped_column(String)
@@ -57,7 +65,14 @@ class Lead(Base):
     status: Mapped[LeadStatus] = mapped_column(
         Enum(LeadStatus), nullable=False, server_default=LeadStatus.pending.value
     )
+    contract_signed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, index=True, server_default=text("false")
+    )
     notes: Mapped[str | None] = mapped_column(String)
+
+    deleted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, index=True, server_default=text("false")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )

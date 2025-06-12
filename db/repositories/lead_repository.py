@@ -30,7 +30,11 @@ class LeadRepository:
     def get_lead_by_id(self, lead_id: uuid.UUID) -> Lead | None:
         """Retrieve a lead by its ID."""
         try:
-            return self.session.query(Lead).filter(Lead.id == lead_id).first()
+            return (
+                self.session.query(Lead)
+                .filter(Lead.id == lead_id, Lead.deleted.is_not(True))
+                .first()
+            )
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving lead by ID: {e}")
@@ -51,7 +55,7 @@ class LeadRepository:
         """
         try:
             # Build the query
-            query = self.session.query(Lead)
+            query = self.session.query(Lead).filter(Lead.deleted.is_not(True))
 
             # Apply filters
             if lead_filter.status_filter:
@@ -141,7 +145,8 @@ class LeadRepository:
             db_lead = self.get_lead_by_id(lead_id)
             if not db_lead:
                 return
-            self.session.delete(db_lead)
+
+            db_lead.deleted = True
 
             if self.auto_commit:
                 self.session.commit()

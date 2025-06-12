@@ -18,6 +18,9 @@ class CreateLeadRequest(BaseModel):
     owner: str | None = None
     hubspot_record_id: str | None = None
     notes: str | None = None
+    pos: str | None = None
+    channels: list[str] | None = None
+    contract_signed: bool | None = None
 
 
 class UpdateLeadRequest(BaseModel):
@@ -32,6 +35,9 @@ class UpdateLeadRequest(BaseModel):
     hubspot_record_id: str | None = None
     status: LeadStatus | None = None
     notes: str | None = None
+    pos: str | None = None
+    channels: list[str] | None = None
+    contract_signed: bool | None = None
 
 
 class Lead(BaseModel):
@@ -47,6 +53,9 @@ class Lead(BaseModel):
     hubspot_record_id: str | None
     status: LeadStatus
     notes: str | None
+    pos: str | None
+    channels: list[str] | None
+    contract_signed: bool
     created_at: datetime
     updated_at: datetime | None
 

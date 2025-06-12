@@ -45,6 +45,9 @@ async def create_lead(
         owner=lead_request.owner,
         hubspot_record_id=lead_request.hubspot_record_id,
         notes=lead_request.notes,
+        pos=lead_request.pos,
+        channels=lead_request.channels,
+        contract_signed=lead_request.contract_signed,
     )
 
     lead = admin_service.create_lead(
@@ -143,6 +146,9 @@ async def update_lead(
         hubspot_record_id=lead_request.hubspot_record_id,
         status=lead_request.status,
         notes=lead_request.notes,
+        pos=lead_request.pos,
+        channels=lead_request.channels,
+        contract_signed=lead_request.contract_signed,
     )
 
     lead = admin_service.update_lead(
