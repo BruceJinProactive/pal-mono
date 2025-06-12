@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.functions import coalesce
 
 from db.tables import Conversation, ConversationStatus, Message, User
+from utils.dd import send_dd_histogram_metrics
 from utils.dttm import current_utc
 from utils.log import logger
 
@@ -133,6 +134,8 @@ class MessageRepositoryAsync:
             List[Message]: A list of messages, empty if an error occurs.
         """
         try:
+
+            start_time = datetime.datetime.now(datetime.timezone.utc)
             result = await self.session.execute(
                 select(Message)
                 .filter(Message.conversation_id == conversation_id)
@@ -142,6 +145,14 @@ class MessageRepositoryAsync:
                 )
                 .limit(limit)
             )
+            send_dd_histogram_metrics(
+                "message_repo.execute_query_time_spent",
+                start_time,
+                [
+                    f"conversation_id:{conversation_id}",
+                ],
+            )
+
             # reverse the list so the messages are in chronological order
             messages = result.scalars().all()[::-1]
             return messages
