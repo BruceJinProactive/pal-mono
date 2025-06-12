@@ -149,15 +149,22 @@ class ConversationRepository:
             return [], 0
 
     def get_conversation_ids_by_user_ids(
-        self, user_ids: list[uuid.UUID], min_created_at: datetime | None = None
+        self,
+        user_ids: list[uuid.UUID],
+        start_date: datetime,
+        end_date: datetime,
     ) -> list[uuid.UUID]:
         try:
-            stmt = select(Conversation.id).filter(
-                Conversation.user_id.in_(user_ids),
-                Conversation.created_at >= (min_created_at or datetime.min),
-            )
-            conversation_ids = self.session.execute(stmt).scalars().all()
-            return list(conversation_ids)
+            return [
+                id
+                for id, in self.session.query(Conversation.id)
+                .filter(
+                    Conversation.user_id.in_(user_ids),
+                    Conversation.created_at >= start_date,
+                    Conversation.created_at <= end_date,
+                )
+                .all()
+            ]
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving conversation ids: {e}")
@@ -198,17 +205,19 @@ class ConversationRepository:
     def get_session_count_by_user_and_status(
         self,
         user_ids: list[uuid.UUID],
-        min_create_time: datetime | None = None,
+        start_date: datetime,
+        end_date: datetime,
         status: ConversationStatus | None = None,
     ) -> int:
         """
-        Returns all sessions that belong to the given list of user ids as well as having the
-        specified status.
+        Returns the count of sessions that belong to the given list of user ids
+        and have the specified status, within the given date range.
         """
         try:
             query = self.session.query(Conversation).filter(
                 Conversation.user_id.in_(user_ids),
-                Conversation.created_at >= (min_create_time or datetime.min),
+                Conversation.created_at >= start_date,
+                Conversation.created_at <= end_date,
             )
             if status:
                 query = query.filter(Conversation.status == status)

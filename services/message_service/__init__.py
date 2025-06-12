@@ -152,12 +152,17 @@ def get_conversations_by_user(
 
 
 def get_session_ids_by_users(
-    session: Session, user_ids: list[uuid.UUID]
+    session: Session,
+    user_ids: list[uuid.UUID],
+    start_date: datetime.datetime,
+    end_date: datetime.datetime,
 ) -> list[uuid.UUID]:
     """
     Returns an id list for the sessions that have the given user ids.
     """
-    return _implementation.get_session_ids_by_users(session, user_ids)
+    return _implementation.get_session_ids_by_users(
+        session, user_ids, start_date, end_date
+    )
 
 
 def get_conversations_by_users(

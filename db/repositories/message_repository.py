@@ -377,19 +377,23 @@ class MessageRepository:
             return []
 
     def get_escalated_conversation_count(
-        self, conversation_ids: list[uuid.UUID]
+        self,
+        conversation_ids: list[uuid.UUID],
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
     ) -> int:
         try:
-            # Using distinct() to avoid duplicate conversation IDs
             return (
                 self.session.query(Message.conversation_id.distinct())
                 .filter(Message.conversation_id.in_(conversation_ids))
                 .filter(Message.body["extras"]["escalated"].astext == "true")
+                .filter(Message.created_at >= start_date)
+                .filter(Message.created_at <= end_date)
                 .count()
             )
         except SQLAlchemyError as e:
             self.session.rollback()
-            logger.error(f"Error retrieving escalated conversation IDs: {e}")
+            logger.error(f"Error retrieving escalated conversation count: {e}")
             return 0
 
     def filter_sessions_by_keyword(

@@ -1,6 +1,5 @@
-import datetime
 import uuid
-from typing import Union
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -27,7 +26,8 @@ def list_user_sessions_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
-    min_create_time: datetime.datetime | None,
+    start_date: datetime,
+    end_date: datetime,
     page: int,
     page_size: int,
     escalated: bool,
@@ -38,7 +38,8 @@ def list_user_sessions_in_account(
         account_id,
         keyword,
         channel,
-        min_create_time,
+        start_date,
+        end_date,
         page,
         page_size,
         escalated,
@@ -337,26 +338,28 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
 def get_session_count_by_user_and_status(
     session: Session,
     user_ids: list[uuid.UUID],
-    min_create_time: datetime.datetime,
+    start_date: datetime,
+    end_date: datetime,
     status: ConversationStatus | None = None,
 ) -> int:
     """
-    Returns the number of sessions or the given user ids that match
-    the given status. If status is not given, it will not filter by
-    status.
+    Returns the number of sessions for the given user ids that match
+    the given status within the specified date range. If status is not given,
+    it will not filter by status.
     """
     return _implementation.get_session_count_by_user_and_status(
-        session, user_ids, min_create_time, status
+        session, user_ids, start_date, end_date, status
     )
 
 
 def get_escalated_session_count_by_users(
     session: Session,
     user_ids: list[uuid.UUID],
-    min_create_time: datetime.datetime,
+    start_date: datetime,
+    end_date: datetime,
 ) -> int:
     return _implementation.get_escalated_session_count_by_users(
-        session, user_ids, min_create_time
+        session, user_ids, start_date, end_date
     )
 
 

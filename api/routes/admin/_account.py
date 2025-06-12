@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
@@ -117,7 +117,8 @@ async def delete_account(
 
 async def get_account_statistics(
     account_name: str,
-    lookback: int,
+    start_date: datetime,
+    end_date: datetime,
     context: UserContext,
     session: Session,
 ):
@@ -125,21 +126,17 @@ async def get_account_statistics(
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found.")
-    if lookback:
-        min_create_time = datetime.now() - timedelta(seconds=lookback)
-    else:
-        min_create_time = datetime.min
 
-    users = user_service.get_users_by_account_id(session, account.id, min_create_time)
+    users = user_service.get_users_by_account_id(session, account.id, start_date)
     user_ids = [user.id for user in users]
     escalated_sessions = admin_service.get_escalated_session_count_by_users(
-        session, user_ids, min_create_time
+        session, user_ids, start_date, end_date
     )
     total_sessions = admin_service.get_session_count_by_user_and_status(
-        session, user_ids, min_create_time
+        session, user_ids, start_date, end_date
     )
     active_sessions = admin_service.get_session_count_by_user_and_status(
-        session, user_ids, min_create_time, ConversationStatus.ACTIVE
+        session, user_ids, start_date, end_date, ConversationStatus.ACTIVE
     )
     return AccountStatisticsResponse(
         total_users=len(user_ids),

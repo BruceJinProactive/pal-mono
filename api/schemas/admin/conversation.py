@@ -3,6 +3,8 @@ import uuid
 
 from pydantic import BaseModel, Field
 
+DEFAULT_STATS_AGE = 3600 * 24 * 7  # 7 days in seconds
+
 
 class Message(BaseModel):
     """Message Model"""

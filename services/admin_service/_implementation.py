@@ -92,7 +92,8 @@ def list_user_sessions_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
-    min_create_time: datetime | None,
+    start_date: datetime,
+    end_date: datetime,
     page: int,
     page_size: int,
     escalated: bool,
@@ -106,7 +107,7 @@ def list_user_sessions_in_account(
     account_users = user_service.get_users_by_account_id(db_session, account_id)
     account_users_ids = [user.id for user in account_users]
     all_session_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        account_users_ids, min_create_time
+        account_users_ids, start_date, end_date
     )
     filtered_session_ids = message_repository.filter_sessions_by_keyword(
         all_session_ids, keyword, channel, escalated, hide_testing_sessions
@@ -779,28 +780,31 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
 def get_session_count_by_user_and_status(
     session: Session,
     user_ids: list[uuid.UUID],
-    min_created_at: datetime,
+    start_date: datetime,
+    end_date: datetime,
     status: db.ConversationStatus | None = None,
 ) -> int:
     conversation_repository = db.ConversationRepository(session)
     return conversation_repository.get_session_count_by_user_and_status(
-        user_ids, min_created_at, status
+        user_ids=user_ids, start_date=start_date, end_date=end_date, status=status
     )
 
 
 def get_escalated_session_count_by_users(
     session: Session,
     user_ids: list[uuid.UUID],
-    min_created_at: datetime,
+    start_date: datetime,
+    end_date: datetime,
 ) -> int:
     conversation_repository = db.ConversationRepository(session)
     message_repository = db.MessageRepository(session)
 
     conversation_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        user_ids, min_created_at
+        user_ids=user_ids, start_date=start_date, end_date=end_date
     )
+
     escalated_conversation_count = message_repository.get_escalated_conversation_count(
-        conversation_ids
+        conversation_ids=conversation_ids, start_date=start_date, end_date=end_date
     )
     return escalated_conversation_count
 

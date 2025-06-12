@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import (
     APIRouter,
@@ -35,6 +36,7 @@ from api.schemas.admin.agent import (
 from api.schemas.admin.analytics import GetAllReportsResponse, GetReportResponse
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
+    DEFAULT_STATS_AGE,
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
     UpdateSessionRequest,
@@ -266,18 +268,27 @@ def get_account_reports(
 @admin_router.get("/accounts/{account_name}/stat")
 async def get_account_statistics(
     account_name: str,
-    lookback: int = Query(
-        0,
-        description="Number of seconds to search back in time for stat, e.g. if 60, it will only return stat for sessions created in the last 60 seconds.",
+    start_date: datetime | None = Query(
+        default=None,
+        description="Start date for statistics (inclusive). If not provided, defaults to 7 days ago.",
+    ),
+    end_date: datetime | None = Query(
+        default=None,
+        description="End date for statistics (inclusive). If not provided, defaults to now.",
     ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> AccountStatisticsResponse:
     """
     Return basic account statistics such as total unique users and active sessions.
+    Statistics are calculated based on the specified date range. If no dates are provided,
+    defaults to the last 7 days.
     """
+    end_date = end_date or datetime.now(UTC)
+    start_date = start_date or (end_date - timedelta(seconds=DEFAULT_STATS_AGE))
+
     return await _account.get_account_statistics(
-        account_name, lookback, context, session
+        account_name, start_date, end_date, context, session
     )
 
 
