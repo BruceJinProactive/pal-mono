@@ -11,6 +11,7 @@ from api.routes.admin import UserContext
 from api.schemas.chat.message import Message
 from db.tables.change_log import ChangeResourceType
 from services.history_service import change_log_context
+from services.number_service import NumberService
 
 from .. import account_service, agent_service
 from .schema import ProjectParams
@@ -136,10 +137,24 @@ def delete_project(
     project_id: uuid.UUID,
 ) -> None:
     project_repository = db.ProjectRepository(session, auto_commit=False)
+    number_service = NumberService()
 
     existing_project = project_repository.get_project(project_id)
     if not existing_project:
         return
+
+    unique_numbers = set()
+    for identifier in existing_project.channel_identifiers or []:
+        if identifier.startswith(("sms:", "voice:", "phone:")):
+            number = identifier.split(":", 1)[1]
+            unique_numbers.add(number)
+
+    if unique_numbers:
+        for number in unique_numbers:
+            try:
+                number_service.release_number(number)
+            except Exception as e:
+                raise ValueError(f"Failed to release phone number {number}: {str(e)}")
 
     with change_log_context(
         session=session,
