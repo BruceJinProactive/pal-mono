@@ -274,13 +274,6 @@ class YelpTool(Toolkit):
                 return f"To make a reservation, I need the following information: {', '.join(missing_display)}. Please provide these details."
 
             # At this point, all required fields are validated to be non-None
-            assert reservation_query.covers is not None
-            assert reservation_query.date is not None
-            assert reservation_query.time is not None
-            assert reservation_query.first_name is not None
-            assert reservation_query.last_name is not None
-            assert reservation_query.phone is not None
-            assert reservation_query.email is not None
 
             # Step 1: Create a hold
             logger.debug(
@@ -289,9 +282,9 @@ class YelpTool(Toolkit):
 
             hold_success, hold_message, hold_request = create_holds_request(
                 business_id_or_alias=self.business_id_or_alias,
-                covers=reservation_query.covers,
-                date=reservation_query.date,
-                time=reservation_query.time,
+                covers=reservation_query.covers,  # type: ignore
+                date=reservation_query.date,  # type: ignore
+                time=reservation_query.time,  # type: ignore
                 unique_id=unique_id,
             )
 
@@ -330,10 +323,10 @@ class YelpTool(Toolkit):
                 create_reservation_from_hold_response(
                     holds_response=hold_response,
                     holds_request=hold_request,
-                    first_name=reservation_query.first_name,
-                    last_name=reservation_query.last_name,
-                    phone=reservation_query.phone,
-                    email=reservation_query.email,
+                    first_name=reservation_query.first_name,  # type: ignore
+                    last_name=reservation_query.last_name,  # type: ignore
+                    phone=reservation_query.phone,  # type: ignore
+                    email=reservation_query.email,  # type: ignore
                     notes=reservation_query.notes,
                 )
             )
