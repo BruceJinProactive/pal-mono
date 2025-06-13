@@ -84,12 +84,7 @@ class Agent:
         )
 
         # Update memory with the user's input
-        asyncio.create_task(
-            update_memory(
-                user_id=self._metadata.user_id,  # type: ignore
-                content=input.content,  # type: ignore
-            )  # type: ignore
-        )
+        self._update_memory(input.content)
 
         if os.getenv("AWS_BEDROCK_GUARDRAIL_ID", ""):
             safe = check_input_bedrock(prompt=input.content)
@@ -132,12 +127,7 @@ class Agent:
                 )
 
                 # Update memory with the user's input
-                asyncio.create_task(
-                    update_memory(
-                        user_id=self._metadata.user_id,  # type: ignore
-                        content=input.content,  # type: ignore
-                    )  # type: ignore
-                )
+                self._update_memory(input.content)
 
                 try:
                     output_stream = await self._agent.arun(input)  # type: ignore
@@ -186,3 +176,17 @@ class Agent:
 
         # Return the wrapped streaming iterator
         return stream_wrapper()
+
+    def _update_memory(self, content: str):
+        def run_detached(coro):
+            def runner():
+                asyncio.run(coro)
+
+            asyncio.get_running_loop().run_in_executor(None, runner)
+
+        run_detached(
+            update_memory(
+                user_id=self._metadata.user_id,  # type: ignore
+                content=content,  # type: ignore
+            )
+        )
