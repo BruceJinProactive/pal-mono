@@ -1,4 +1,5 @@
 import datetime
+import os
 import uuid
 
 from sqlalchemy import Boolean, cast, distinct, not_, or_
@@ -148,9 +149,7 @@ class MessageRepositoryAsync:
             send_dd_histogram_metrics(
                 "message_repo.execute_query_time_spent",
                 start_time,
-                [
-                    f"conversation_id:{conversation_id}",
-                ],
+                [f"conversation_id:{conversation_id}", f"pid:{os.getpid()}"],
             )
 
             # reverse the list so the messages are in chronological order
