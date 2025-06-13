@@ -51,17 +51,29 @@ def create_account(
     context: UserContext,
     account_name: str,
     params: AccountParams,
+    lead_id: uuid.UUID | None,
     auto_commit: bool,
 ) -> db.Account:
     """
     Create an account with the supplied params but without creating default project or agent.
     """
     account_repository = db.AccountRepository(session, auto_commit=False)
+    lead_repository = db.LeadRepository(session, auto_commit=auto_commit)
 
     # Check if the account exists
     found_account = get_account(session, account_name)
     if found_account:
         raise ValueError(f"Account {account_name} already exists.")
+
+    # Check if lead exists
+    if lead_id:
+        lead = lead_repository.get_lead_by_id(lead_id)
+        if not lead:
+            raise ValueError(f"Lead id {lead_id} not found.")
+        if lead.account_id:
+            logger.warn(
+                f"Lead is already linked to the account: {lead.account_id}, it will be unlinked."
+            )
 
     with change_log_context(
         session=session,
@@ -74,6 +86,9 @@ def create_account(
         ctx.account_id = account.id
         ctx.resource_id = str(account.id)
         ctx.new_record = account
+
+    if lead_id:
+        lead_repository.update_lead(lead_id=lead_id, account_id=account.id)
 
     return account
 

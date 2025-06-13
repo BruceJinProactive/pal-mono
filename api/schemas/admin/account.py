@@ -68,7 +68,6 @@ class UpdateAccountRequest(BaseModel):
             business_promotions=self.business_promotions,
             business_catalog=self.business_catalog,
             business_others=self.business_others,
-            lead_id=self.lead_id,
         )
 
 

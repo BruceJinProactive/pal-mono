@@ -66,7 +66,11 @@ async def create_account(
     account_params = create_request.to_account_params()
     try:
         db_account = account_service.create_account(
-            session, context, create_request.name, account_params
+            session=session,
+            context=context,
+            account_name=create_request.name,
+            params=account_params,
+            lead_id=create_request.lead_id,
         )
     except ValueError as err:
         raise HTTPException(
@@ -208,12 +212,12 @@ async def user_signup(
     guest_context = create_guest_context(account_name, request.email)
 
     try:
-        account_params = AccountParams(lead_id=request.lead_id)
         account_service.create_account(
             session=session,
             context=guest_context,
             account_name=account_name,
-            params=account_params,
+            params=AccountParams(),
+            lead_id=request.lead_id,
             auto_commit=False,  # Don't commit yet, in case Cognito creation fails
         )
         logger.info(f"Created account {account_name} for user signup")

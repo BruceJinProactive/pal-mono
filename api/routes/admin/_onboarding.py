@@ -52,6 +52,7 @@ async def create_onboarding(
             context,
             request.account.name,
             account_params,
+            request.account.lead_id,
             agent_projects_data,
             users=cognito_users,
         )

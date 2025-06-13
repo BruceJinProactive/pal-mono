@@ -57,6 +57,7 @@ def create_account(
     context: UserContext,
     account_name: str,
     params: AccountParams,
+    lead_id: uuid.UUID | None,
     auto_commit: bool = True,
 ) -> db.Account:
     """
@@ -69,6 +70,7 @@ def create_account(
         account_name (str): The name of the account to be created.
         params (AccountParams): The parameters containing details for the account
         to be created.
+        lead_id (uuid.UUID): The ID of the lead that led to the creation of this account.
         auto_commit (bool): New account will be committed automatically if True.
 
     Returns:
@@ -77,7 +79,7 @@ def create_account(
         ValueError: If the account name already exists in the database.
     """
     return _implementation.create_account(
-        session, context, account_name, params, auto_commit
+        session, context, account_name, params, lead_id, auto_commit
     )
 
 

@@ -814,13 +814,19 @@ def onboard_new_account(
     context: UserContext,
     account_name: str,
     account_params: AccountParams,
+    lead_id: uuid.UUID | None,
     agent_projects: list[tuple[AgentParams, list[ProjectSetup]]],
     users: list[CognitoUser] | None,
 ) -> str:
     try:
         # Create the account
         account_service.create_account(
-            session, context, account_name, account_params, auto_commit=False
+            session=session,
+            context=context,
+            account_name=account_name,
+            params=account_params,
+            lead_id=lead_id,
+            auto_commit=False,
         )
 
         # Track projects that need phone numbers for later processing

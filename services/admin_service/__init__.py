@@ -368,6 +368,7 @@ def onboard_new_account(
     context: UserContext,
     account_name: str,
     account_params: AccountParams,
+    lead_id: uuid.UUID | None,
     agent_projects: list[tuple[AgentParams, list[ProjectSetup]]],
     users: list[CognitoUser] | None = None,
 ) -> str:
@@ -379,6 +380,7 @@ def onboard_new_account(
         context (UserContext): Information for the current user
         account_name (str): Name of the account to create
         account_params (AccountParams): Account parameters
+        lead_id (uuid.UUID): ID of the lead that led to the onboarding
         agent_projects (list[tuple[AgentParams, list[ProjectSetup]]]):
          List of agent and project configurations
             Each item should contain:
@@ -390,7 +392,7 @@ def onboard_new_account(
         ValueError: If there's an error creating any of the entities
     """
     return _implementation.onboard_new_account(
-        session, context, account_name, account_params, agent_projects, users
+        session, context, account_name, account_params, lead_id, agent_projects, users
     )
 
 
