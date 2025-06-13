@@ -17,12 +17,12 @@ from api.routes.chat.chat import chat_router
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
-    Channel,
     Message,
     Metadata,
     TextObject,
 )
 from api.schemas.error.error import ErrorResponse
+from db.tables.types import Channel
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_message
 from utils.dd import send_dd_histogram_metrics

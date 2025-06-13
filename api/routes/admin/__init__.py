@@ -72,9 +72,9 @@ from api.schemas.admin.user_management import (
     ListUsersResponse,
     UserInfo,
 )
-from api.schemas.chat.message import Channel
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
+from db.tables.types import Channel
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 from services.number_service._implementation import NumberService
 from services.number_service._utils import (
@@ -394,6 +394,9 @@ async def get_agent_config(
     project_id: uuid.UUID = Query(
         ..., description="Project ID to build the agent config for"
     ),
+    channel: Channel = Query(
+        Channel.VOICE, description="The channel to build the agent config for"
+    ),
     context: UserContext = Depends(authenticate_user),
     sync_session: Session = Depends(db.get_db),
     async_session: AsyncSession = Depends(db.get_db_async),
@@ -405,12 +408,13 @@ async def get_agent_config(
     Args:
         agent_id (uuid.UUID): The ID of the agent.
         project_id (uuid.UUID): The ID of the project to build the agent config for.
+        channel (Channel): The channel to build config for
 
     Returns:
         AgentConfig: The complete agent configuration.
     """
     return await _agent.get_agent_config(
-        agent_id, project_id, context, sync_session, async_session
+        agent_id, project_id, channel, context, sync_session, async_session
     )
 
 

@@ -6,13 +6,13 @@ import services.relay_service as relay_service
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
-    Channel,
     Extras,
     Message,
     Metadata,
     TextObject,
 )
 from db.tables.orders import Order
+from db.tables.types import Channel
 from utils.log import logger
 
 from .schemas import AdoraWebhookRequest

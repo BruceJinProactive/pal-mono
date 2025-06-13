@@ -15,18 +15,11 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Enum, String
 
 from .base import Base
+from .types import AgentType
 
 if TYPE_CHECKING:
     from .accounts import Account
     from .projects import Project
-
-
-class AgentType(str, enum.Enum):
-    """Agent Type Enum"""
-
-    general = "general"
-    ordering = "ordering"
-    sales = "sales"
 
 
 class SpeechRate(str, enum.Enum):

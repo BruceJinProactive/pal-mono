@@ -8,7 +8,6 @@ from api.routes.admin import UserContext
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
-    Channel,
     Extras,
     Message,
     Metadata,
@@ -24,6 +23,7 @@ from db.tables.campaigns import (
     CampaignMessage,
     CampaignMessageStatus,
 )
+from db.tables.types import Channel
 from services import relay_service
 from services.campaign_service.schema import (
     DEFAULT_CAMPAIGN_STAT,

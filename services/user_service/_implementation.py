@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db as db
-from api.schemas.chat.message import Channel, Message
+from api.schemas.chat.message import Message
+from db.tables.types import Channel
 from utils.log import logger
 
 

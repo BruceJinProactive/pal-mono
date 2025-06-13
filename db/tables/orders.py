@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -14,12 +13,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
-
-
-class OrderIntegrationVendor(str, enum.Enum):
-    OLO = "olo"
-    TOAST = "toast"
-    ADORA = "adora"
+from .types import OrderIntegrationVendor
 
 
 class Order(Base):

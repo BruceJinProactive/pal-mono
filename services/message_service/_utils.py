@@ -5,7 +5,6 @@ from typing import Any, List
 from agent.input_output import Input, Output
 from api.schemas.chat.message import (
     AuthorType,
-    Channel,
     Extras,
     MediaObject,
     Message,
@@ -13,6 +12,7 @@ from api.schemas.chat.message import (
     TextObject,
     Type,
 )
+from db.tables.types import Channel
 from utils.log import logger
 from utils.request_context import RequestContext
 

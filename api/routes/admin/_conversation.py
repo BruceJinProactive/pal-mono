@@ -12,7 +12,7 @@ from api.schemas.admin.conversation import (
     UpdateSessionResponse,
     UserSessionSearchFilters,
 )
-from api.schemas.chat.message import Channel
+from db.tables.types import Channel
 from services import account_service, admin_service
 
 from . import _builder

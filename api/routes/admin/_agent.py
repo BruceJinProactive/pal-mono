@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from agent import AgentConfig
 from api.schemas.admin.agent import Agent, CreateAgentRequest, UpdateAgentRequest
 from api.schemas.admin.project import ProjectSummary
+from db.tables.types import Channel
 from services import agent_service, project_service
 
 from ._auth import authorize_user_account
@@ -105,6 +106,7 @@ async def list_agent_projects(
 async def get_agent_config(
     agent_id: uuid.UUID,
     project_id: uuid.UUID,
+    channel: Channel,
     context: UserContext,
     sync_session: Session,
     async_session: AsyncSession,
@@ -115,6 +117,7 @@ async def get_agent_config(
     Args:
         agent_id (uuid.UUID): The ID of the agent.
         project_id (uuid.UUID): The project ID to build the agent config for.
+        channel (Channel): The channel to build config for
         context (UserContext): The authenticated user context.
         sync_session (Session): Sync db connection used for authorization checks
         async_session (AsyncSession): Async db connection for downstream to use
@@ -148,6 +151,7 @@ async def get_agent_config(
             user_id=EMPTY_UUID,
             project_id=project_id,
             conversation_id=EMPTY_UUID,
+            channel=channel,
         )
     except ValueError as err:
         raise HTTPException(

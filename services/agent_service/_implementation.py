@@ -10,6 +10,7 @@ import db
 from agent import AgentConfig
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
+from db.tables.types import Channel
 from services import account_service
 from services.history_service import change_log_context
 from utils.log import logger
@@ -24,6 +25,7 @@ async def construct_agent_config(
     user_id: uuid.UUID,
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
+    channel: Channel,
 ) -> AgentConfig:
     """
     Builds an Agent Config based on the Raw Config.
@@ -34,6 +36,7 @@ async def construct_agent_config(
         user_id (uuid.UUID): The user id.
         project_id (uuid.UUID): The project id.
         conversation_id (uuid.UUID): The conversation (session) id of the user-agent interaction.
+        channel (Channel): For which comm channel should this agent config build for, e.g. sms, voice
 
     Raises:
         ValueError: If the agent_id or project_id is invalid.
@@ -60,6 +63,7 @@ async def construct_agent_config(
         account=db_agent.account,
         user_id=user_id,
         conversation_id=conversation_id,
+        channel=channel,
     )
 
     # Convert blueprint to agent config

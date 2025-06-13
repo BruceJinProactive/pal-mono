@@ -12,6 +12,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
+from .types import TargetTier
 
 
 class LeadStatus(str, enum.Enum):
@@ -27,12 +28,6 @@ class BusinessSegment(str, enum.Enum):
     smb = "smb"  # small & medium business
     mm = "mm"  # mid-market
     ent = "ent"  # enterprise
-
-
-class TargetTier(str, enum.Enum):
-    t1 = "t1"
-    t2 = "t2"
-    enterprise = "enterprise"
 
 
 class Lead(Base):

@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from db.tables.types import Channel
+
 
 class TextObject(BaseModel):
     body: str = Field(..., max_length=4096)
@@ -20,15 +22,6 @@ class AuthorType(str, Enum):
     USER = "user"
     AGENT = "agent"
     SYSTEM = "system"
-
-
-class Channel(str, Enum):
-    API = "api"
-    INSTAGRAM = "instagram"
-    INTERNAL_APP = "internal_app"
-    SMS = "sms"
-    VOICE = "voice"
-    WHATSAPP = "whatsapp"
 
 
 class Broker(str, Enum):

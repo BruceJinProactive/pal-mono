@@ -17,12 +17,12 @@ from api.schemas.admin.analytics import Event as AnalyticsEvent
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
-    Channel,
     Extras,
     Message,
     Metadata,
     TextObject,
 )
+from db.tables.types import Channel
 from services import agent_service, analytics_service, project_service, user_service
 from utils.dd import send_dd_histogram_metrics, trace_async_block
 from utils.log import logger
@@ -115,6 +115,7 @@ async def get_chat_response_async(
             user_id=user.id,
             project_id=project.id,
             conversation_id=request_message.conversation_id,
+            channel=message.channel,
         )
 
         logger.debug(f"Agent config: {config}")
@@ -283,6 +284,7 @@ async def get_chat_response_stream(
                 user_id=user.id,
                 project_id=project.id,
                 conversation_id=request_message.conversation_id,
+                channel=message.channel,
             )
             config.stream = True
 

@@ -24,7 +24,8 @@ from agent import (
 from agent.config import StorageProvider, VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.model import ModelProvider
-from db.tables.agents import AgentType
+from db.tables.types import AgentType, Channel, TargetTier
+from services.agent_service.prompts import prompt_factory
 from utils.log import logger
 
 
@@ -37,6 +38,7 @@ class RawConfig:
         account: db.Account,
         user_id: UUID,
         conversation_id: UUID,
+        channel: Channel,
         client_config: ClientConfig | None = None,
     ):
         self.agent = agent
@@ -45,6 +47,7 @@ class RawConfig:
         self.user_id = user_id
         self.conversation_id = conversation_id
         self.client_config = client_config
+        self.channel = channel
 
     def build(self) -> AgentConfig:
         try:
@@ -63,7 +66,7 @@ class RawConfig:
             )
 
             return AgentConfig(
-                persona=self._get_agent_persona(),
+                persona=self._get_agent_persona(self.channel, self.agent.agent_type),
                 model=self._get_agent_model_config(),
                 memory=MemoryConfig(
                     enabled=True,
@@ -97,7 +100,9 @@ class RawConfig:
         except Exception as e:
             raise ValueError(f"Failed to convert to AgentConfig: {e}") from e
 
-    def _get_agent_persona(self) -> AgentPersona:
+    def _get_agent_persona(
+        self, channel: Channel, agent_type: AgentType
+    ) -> AgentPersona:
         # Extract the persona section of the raw config
         raw_persona = self.agent.raw_config.get("persona", {})
         dynamic_prompt = self.agent.raw_config.get("dynamic_prompt_enabled", False)
@@ -116,7 +121,7 @@ class RawConfig:
             self.agent.agent_type if dynamic_prompt else raw_persona.get("role")
         ) or ""
         system_prompt = (
-            self._build_agent_prompt()
+            self._build_agent_prompt(channel, agent_type)
             if dynamic_prompt
             else raw_persona.get("system_prompt")
         )
@@ -208,7 +213,7 @@ class RawConfig:
 
         return ModelConfig(provider=provider, identifier=identifier)
 
-    def _build_agent_prompt(self) -> str:
+    def _build_agent_prompt(self, channel: Channel, agent_type: AgentType) -> str:
         def build_section(title, info_list) -> list[str]:
             blocks = [title]
             for header, content in info_list:
@@ -228,11 +233,8 @@ class RawConfig:
             ("## Current Promotions", self.account.business_promotions),
             ("## Others", self.account.business_others),
         ]
-        agent_info_list = [
-            ("## Description", self.agent.description),
-            ("## Communication Style", self.agent.communication_style),
-            ("## Interaction Guidelines", self.agent.interaction_guidelines),
-        ]
+        # default to premium tier for now.
+        agent_info_list = prompt_factory.build(channel, agent_type, TargetTier.t2)
         store_info_list = [
             ("## Store Address", self.project.address),
             ("## Store Hours", self.project.store_hours),

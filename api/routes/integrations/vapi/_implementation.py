@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from api.schemas.chat.message import (
     AuthorType,
-    Channel,
     Extras,
     Message,
     Metadata,
@@ -18,6 +17,7 @@ from api.schemas.chat.message import (
     Type,
 )
 from db.tables.agents import SpeechRate
+from db.tables.types import Channel
 from services import agent_service, project_service, user_service
 from utils.log import logger
 
@@ -192,6 +192,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             user_id=user.id,
             project_id=project.id,
             conversation_id=request_message.conversation_id,
+            channel=message.channel,
         )
 
         dynamic_vapi_config = config.voice_config.enabled

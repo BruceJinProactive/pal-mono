@@ -12,8 +12,8 @@ import db
 from api.routes.endpoints import endpoints
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
-from api.schemas.chat.message import Channel
 from api.schemas.error.error import ErrorResponse
+from db.tables.types import Channel
 from services import project_service
 from services.message_service import (
     get_chat_response_async,

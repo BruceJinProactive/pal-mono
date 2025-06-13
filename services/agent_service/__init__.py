@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import db
 from agent import AgentConfig
 from api.routes.admin import UserContext
+from db.tables.types import Channel
 from utils.dd import traced
 
 from . import _implementation
@@ -20,6 +21,7 @@ async def construct_agent_config(
     user_id: uuid.UUID,
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
+    channel: Channel,
 ) -> AgentConfig:
     return await _implementation.construct_agent_config(
         session,
@@ -27,6 +29,7 @@ async def construct_agent_config(
         user_id,
         project_id,
         conversation_id,
+        channel,
     )
 
 
