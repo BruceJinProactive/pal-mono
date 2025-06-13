@@ -9,10 +9,19 @@ from utils.log import logger
 
 
 class VapiTool(Toolkit):
-    def __init__(self, tool_metadata: ToolMetadata, destination_number: str):
+    def __init__(
+        self,
+        tool_metadata: ToolMetadata,
+        destination_number: str,
+        transfer_message: str | None = None,
+    ):
         super().__init__(name="vapi_tool")
         self.tool_metadata = tool_metadata
         self.destination_number = destination_number
+        self.transfer_message = (
+            transfer_message
+            or "I'll transfer you to our customer support. Just hang tight for a moment."
+        )
         self.register(self.call_transfer)
 
     @tool
@@ -60,7 +69,7 @@ class VapiTool(Toolkit):
         transfer_payload = {
             "type": "transfer",
             "destination": {"type": "number", "number": self.destination_number},
-            "content": "I'll transfer you to our customer support. Just hang tight for a moment.",
+            "content": self.transfer_message,
         }
 
         try:
@@ -71,7 +80,7 @@ class VapiTool(Toolkit):
             logger.info(
                 f"[VapiTool.call_transfer] Successfully initiated call transfer to {self.destination_number}"
             )
-            return "Call is being transfered to our customer representitive"
+            return "Call has been transfered"
 
         except httpx.RequestError as e:
             error_msg = f"Network error occurred while transferring call: {e}"
