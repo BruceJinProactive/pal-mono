@@ -32,6 +32,8 @@ from . import _apis, _llm, _query_engine, _utils
 ADORA_QA_STORE = "UQ5ZT"
 ADORA_QA_STORE_2 = "LE5AR"
 
+PIZZAGUYS_STORE_IDS = ["UGDX4"]
+
 
 class AdoraTool(Toolkit):
     def __init__(
@@ -134,6 +136,11 @@ class AdoraTool(Toolkit):
             elif self.store_id == ADORA_QA_STORE_2:
                 api_key = get_client_secret_with_fallback("ADORA_2_API_KEY")
                 api_secret = get_client_secret_with_fallback("ADORA_2_API_SECRET")
+            elif self.store_id in PIZZAGUYS_STORE_IDS:
+                api_key = get_client_secret_with_fallback("PIZZAGUYS_ADORA_API_KEY")
+                api_secret = get_client_secret_with_fallback(
+                    "PIZZAGUYS_ADORA_API_SECRET"
+                )
             else:
                 api_key = get_client_secret_with_fallback("PIZZAMYHEART_ADORA_API_KEY")
                 api_secret = get_client_secret_with_fallback(
