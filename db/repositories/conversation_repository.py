@@ -3,13 +3,13 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import inspect
+from sqlalchemy import func, inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
-from db.tables import Conversation, ConversationStatus
+from db.tables import Conversation, ConversationStatus, Message
 from utils.log import logger
 
 
@@ -283,10 +283,23 @@ class ConversationRepository:
             if not conversation:
                 return None
 
+            if "is_escalated" in update_data.model_dump(exclude_unset=True):
+                self.session.query(Message).filter(
+                    Message.conversation_id == conversation_id
+                ).update(
+                    {
+                        Message.body: func.jsonb_set(
+                            func.coalesce(Message.body, "{}"),
+                            "{extras,escalated}",
+                            func.to_jsonb(str(update_data.is_escalated).lower()),
+                        )
+                    },
+                    synchronize_session=False,
+                )
+
             mapper_cols = {c.key for c in inspect(Conversation).mapper.column_attrs} - {
                 "id"
             }
-
             for field, value in update_data.model_dump(exclude_unset=True).items():
                 if field in mapper_cols:
                     setattr(conversation, field, value)
