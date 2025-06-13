@@ -15,7 +15,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Enum, String
 
 from .base import Base
-from .types import AgentType
+from .types import AgentType, Language
 
 if TYPE_CHECKING:
     from .accounts import Account
@@ -58,6 +58,9 @@ class Agent(Base):
     )
     background_noise: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
+    )
+    language: Mapped[Language] = mapped_column(
+        Enum(Language), nullable=False, server_default=Language.english
     )
 
     # deprecated, use the explicit fields instead

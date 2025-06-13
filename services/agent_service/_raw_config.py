@@ -93,6 +93,7 @@ class RawConfig:
                     voice_id=self.agent.voice_id,
                     speech_rate=self.agent.speech_rate,
                     background_noise=self.agent.background_noise,
+                    language=self.agent.language,
                 ),
             )
         except ValueError as e:

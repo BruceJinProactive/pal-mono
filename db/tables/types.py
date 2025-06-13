@@ -28,3 +28,8 @@ class OrderIntegrationVendor(str, enum.Enum):
     olo = "olo"
     toast = "toast"
     adora = "adora"
+
+
+class Language(str, enum.Enum):
+    english = "english"
+    multilingual = "multilingual"

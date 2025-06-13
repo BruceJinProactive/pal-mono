@@ -2,7 +2,7 @@ import uuid
 
 from pydantic import BaseModel, Field
 
-from db.tables.agents import AgentType, SpeechRate
+from db.tables.agents import AgentType, Language, SpeechRate
 from services.agent_service import AgentParams
 
 
@@ -24,6 +24,7 @@ class Agent(BaseModel):
     greeting_message: str | None = None
     speech_rate: SpeechRate | None = None
     background_noise: bool | None = None
+    language: Language | None = None
 
 
 class AgentSummary(BaseModel):
@@ -32,6 +33,7 @@ class AgentSummary(BaseModel):
     id: uuid.UUID
     name: str
     agent_type: AgentType | None
+    language: Language | None
 
 
 class UpdateAgentRequest(BaseModel):
@@ -47,6 +49,7 @@ class UpdateAgentRequest(BaseModel):
     greeting_message: str | None = None
     speech_rate: SpeechRate | None = None
     background_noise: bool | None = None
+    language: Language | None = None
 
     def to_agent_params(self) -> AgentParams:
         return AgentParams(
@@ -60,6 +63,7 @@ class UpdateAgentRequest(BaseModel):
             greeting_message=self.greeting_message,
             speech_rate=self.speech_rate,
             background_noise=self.background_noise,
+            language=self.language,
         )
 
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from db.tables.agents import AgentType, SpeechRate
+from db.tables.agents import AgentType, Language, SpeechRate
 
 
 @dataclass
@@ -15,3 +15,4 @@ class AgentParams:
     greeting_message: str | None = None
     speech_rate: SpeechRate | None = None
     background_noise: bool | None = None
+    language: Language | None = None

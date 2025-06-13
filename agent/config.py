@@ -8,7 +8,7 @@ from agent.knowledge import KnowledgeConfig
 from agent.memory import MemoryConfig
 from agent.model import ModelConfig
 from agent.tool import ToolConfig
-from db.tables.agents import SpeechRate
+from db.tables.agents import Language, SpeechRate
 
 
 class AgentFramework(StrEnum):
@@ -43,6 +43,7 @@ class VoiceConfig(BaseModel):
     voice_id: str | None
     speech_rate: SpeechRate
     background_noise: bool
+    language: Language
 
 
 class AgentConfig(BaseModel):

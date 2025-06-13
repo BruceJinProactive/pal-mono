@@ -58,6 +58,7 @@ def build_agent(agent: db.Agent) -> Agent:
         greeting_message=agent.greeting_message,
         speech_rate=agent.speech_rate,
         background_noise=agent.background_noise,
+        language=agent.language,
     )
 
 
@@ -66,6 +67,7 @@ def build_agent_summary(agent: db.Agent) -> AgentSummary:
         id=agent.id,
         name=agent.name,
         agent_type=get_agent_type(agent),
+        language=agent.language,
     )
 
 
