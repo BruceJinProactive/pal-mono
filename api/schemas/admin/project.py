@@ -19,6 +19,7 @@ class Project(BaseModel):
     address: str | None = None
     product_info: str | None = None
     service_instruction: str | None = None
+    timezone: str | None = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -30,6 +31,7 @@ class ProjectSummary(BaseModel):
     name: str
     display_name: str | None
     channel_identifiers: list[str] | None
+    timezone: str | None = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -45,6 +47,7 @@ class UpdateProjectRequest(BaseModel):
     address: str | None = None
     product_info: str | None = None
     service_instruction: str | None = None
+    timezone: str | None = None
 
     def to_project_params(self):
         return ProjectParams(
@@ -56,6 +59,7 @@ class UpdateProjectRequest(BaseModel):
             address=self.address,
             product_info=self.product_info,
             service_instruction=self.service_instruction,
+            timezone=self.timezone,
         )
 
 

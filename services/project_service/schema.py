@@ -14,3 +14,4 @@ class ProjectParams:
     product_info: str | None = None
     service_instruction: str | None = None
     order_integration_id: uuid.UUID | None = None
+    timezone: str | None = None

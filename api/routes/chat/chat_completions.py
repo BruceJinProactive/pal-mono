@@ -14,13 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from api.routes.chat._utils import create_url_filter
 from api.routes.chat.chat import chat_router
-from api.schemas.chat.message import (
-    AuthorType,
-    Broker,
-    Message,
-    Metadata,
-    TextObject,
-)
+from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
 from services.message_service import get_chat_response_async, get_chat_response_stream

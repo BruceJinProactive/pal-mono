@@ -46,6 +46,9 @@ class Project(Base):
     order_integration_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    timezone: Mapped[str | None] = mapped_column(
+        String, nullable=True, server_default="America/Los_Angeles"
+    )
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(
