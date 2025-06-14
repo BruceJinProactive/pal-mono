@@ -1,3 +1,4 @@
+import uuid
 from typing import List
 from uuid import UUID
 
@@ -55,7 +56,6 @@ class UpdateAccountRequest(BaseModel):
     business_promotions: str | None = None
     business_catalog: str | None = None
     business_others: str | None = None
-    lead_id: UUID | None = None
 
     def to_account_params(self) -> AccountParams:
         return AccountParams(
@@ -75,6 +75,7 @@ class CreateAccountRequest(UpdateAccountRequest):
     """Create Account Request"""
 
     name: str = Field(...)
+    lead_id: uuid.UUID | None = None
 
 
 class AccountStatisticsResponse(BaseModel):

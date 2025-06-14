@@ -25,7 +25,6 @@ def build_account(account: db.Account) -> Account:
         projects=[str(project.id) for project in account.projects],
         agents=[str(agent.id) for agent in account.agents],
         status=account.status,
-        lead_id=account.lead_id,
     )
 
 
