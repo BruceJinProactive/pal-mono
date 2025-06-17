@@ -66,7 +66,7 @@ class RawConfig:
             )
 
             return AgentConfig(
-                persona=self._get_agent_persona(self.channel, self.agent.agent_type),
+                persona=self._get_agent_persona(self.channel),
                 model=self._get_agent_model_config(),
                 memory=MemoryConfig(
                     enabled=True,
@@ -101,9 +101,7 @@ class RawConfig:
         except Exception as e:
             raise ValueError(f"Failed to convert to AgentConfig: {e}") from e
 
-    def _get_agent_persona(
-        self, channel: Channel, agent_type: AgentType
-    ) -> AgentPersona:
+    def _get_agent_persona(self, channel: Channel) -> AgentPersona:
         # Extract the persona section of the raw config
         raw_persona = self.agent.raw_config.get("persona", {})
         dynamic_prompt = self.agent.raw_config.get("dynamic_prompt_enabled", False)
@@ -122,7 +120,7 @@ class RawConfig:
             self.agent.agent_type if dynamic_prompt else raw_persona.get("role")
         ) or ""
         system_prompt = (
-            self._build_agent_prompt(channel, agent_type)
+            self._build_agent_prompt(channel)
             if dynamic_prompt
             else raw_persona.get("system_prompt")
         )
@@ -214,7 +212,7 @@ class RawConfig:
 
         return ModelConfig(provider=provider, identifier=identifier)
 
-    def _build_agent_prompt(self, channel: Channel, agent_type: AgentType) -> str:
+    def _build_agent_prompt(self, channel: Channel) -> str:
         def build_section(title, info_list) -> list[str]:
             blocks = [title]
             for header, content in info_list:
@@ -227,31 +225,49 @@ class RawConfig:
                 blocks = []
             return blocks
 
-        brand_info_list = [
-            ("## Description", self.account.business_description),
-            ("## F.A.Q.", self.account.business_faq),
-            ("## Catalog", self.account.business_catalog),
-            ("## Current Promotions", self.account.business_promotions),
-            ("## Others", self.account.business_others),
-        ]
-        # default to premium tier for now.
-        agent_info_list = prompt_factory.build(channel, agent_type, TargetTier.t2)
-        store_info_list = [
-            ("## Store Address", self.project.address),
-            ("## Store Hours", self.project.store_hours),
-            (
-                "## Service Instruction",
-                self.project.service_instruction
-                or self._get_default_service_instruction(),
-            ),
-            ("## Store Product & Menu", self.project.product_info),
-        ]
+        brand_info_list = self._get_brand_info()
+        agent_info_list = self._get_agent_info(channel)
+        store_info_list = self._get_store_info()
 
         sections = []
         sections.extend(build_section("# Brand Information", brand_info_list))
         sections.extend(build_section("# Agent Information", agent_info_list))
         sections.extend(build_section("# Store Information", store_info_list))
         return "\n".join(sections)
+
+    def _get_brand_info(self):
+        return [
+            ("## Description", self.account.business_description),
+            ("## F.A.Q.", self.account.business_faq),
+            ("## Catalog", self.account.business_catalog),
+            ("## Current Promotions", self.account.business_promotions),
+            ("## Others", self.account.business_others),
+        ]
+
+    def _get_agent_info(self, channel: Channel):
+        # default to premium tier for now.
+        info_list = prompt_factory.build(channel, self.agent.agent_type, TargetTier.t2)
+        if self.agent.communication_style:
+            info_list.append(
+                ("## Custom Communication Style", self.agent.communication_style)
+            )
+        if self.agent.interaction_guidelines:
+            info_list.append(
+                ("## Custom Interaction Guideline", self.agent.interaction_guidelines)
+            )
+        return info_list
+
+    def _get_store_info(self):
+        return [
+            ("## Store Address", self.project.address),
+            ("## Store Hours", self.project.store_hours),
+            (
+                "## Custom Service Instruction",
+                self.project.service_instruction
+                or self._get_default_service_instruction(),
+            ),
+            ("## Store Product & Menu", self.project.product_info),
+        ]
 
     def _get_default_service_instruction(self) -> str:
         agent_type = self.agent.agent_type
