@@ -831,16 +831,26 @@ class AdoraTool(Toolkit):
                 logger.error("Customer phone number is missing.")
                 return "We'll need your phone number."
 
-            order.customer.last_name = (
+            # Set user's last name
+            # If the account name is "pizzamyheart", append "(via Jimmy)" to the last name; otherwise, append "(via PalonaAI)"
+            via_text = (
                 "(via Jimmy)"
-                if not order.customer.last_name
-                else f"{order.customer.last_name} (via Jimmy)"
+                if self.tool_metadata.account_name == "pizzamyheart"
+                else "(via PalonaAI)"
             )
+            last_name_parts = []
+            if order.customer.last_name:
+                last_name_parts.append(order.customer.last_name)
+            last_name_parts.append(via_text)
+            order.customer.last_name = " ".join(last_name_parts)
 
             # Set email to default if empty or if it is not valid
             email = order.customer.email
             if not email or not _utils.is_valid_email(email):
-                order.customer.email = "jimmythesurfer@palona.ai"
+                if self.tool_metadata.account_name == "pizzamyheart":
+                    order.customer.email = "jimmythesurfer@palona.ai"
+                else:
+                    order.customer.email = "orderingagent@palona.ai"
 
             # If order comment is None, set it to an empty string
             order.order_comment = "" if not order.order_comment else order.order_comment
