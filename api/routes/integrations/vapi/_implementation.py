@@ -218,7 +218,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         if config.persona.multilingual:
             transcriber = {
                 "provider": "deepgram",
-                "model": "nova-3",
                 "codeSwitchingEnabled": True,
             }
             voice = {
