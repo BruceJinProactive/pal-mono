@@ -657,3 +657,32 @@ class CatalogListResponse(BaseModel):
     updated_at: Optional[datetime] = None
     cursor: Optional[str] = None
     errors: Optional[List[Any]] = None
+
+
+# Input models for tool integration
+class ListCatalogInput(BaseModel):
+    """Input model for listing catalog objects"""
+
+    cursor: Optional[str] = Field(
+        None, description="Pagination cursor returned in a previous response"
+    )
+    types: Optional[str] = Field(
+        None,
+        description="Comma-separated list of object types to retrieve (e.g., 'ITEM,CATEGORY')",
+    )
+    catalog_version: Optional[int] = Field(
+        None, description="Specific version of the catalog to retrieve"
+    )
+    use_production: bool = Field(
+        False,
+        description="Whether to use production (True) or sandbox (False) environment",
+    )
+
+
+class SquareAccessToken(BaseModel):
+    """Access token model for Square API authentication"""
+
+    access_token: str = Field(..., description="The Square API access token")
+    token_type: str = Field(
+        default="Bearer", description="Token type (typically 'Bearer')"
+    )

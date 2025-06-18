@@ -2,6 +2,7 @@ import http.client
 import json
 from typing import Type, TypeVar, Union
 
+from tools.square_tool.classes import SquareAccessToken
 from utils.log import logger
 from utils.ordering.classes import GenericHubResponse, HttpMethod
 
@@ -44,7 +45,7 @@ def handle_square_response(
 
 def connect_square_api(
     http_method: HttpMethod,
-    bearer_token: str,
+    access_token: SquareAccessToken,
     api_function: str,
     query_params: dict | None = None,
     extra_headers: dict | None = None,
@@ -57,7 +58,7 @@ def connect_square_api(
 
     Args:
         http_method: The HTTP method to use (GET, POST, PUT, DELETE)
-        bearer_token: The Square access token
+        access_token: The Square access token model containing the token and type
         api_function: The API endpoint to call (e.g., "/v2/catalog/search")
         query_params: Optional query parameters
         extra_headers: Optional additional headers
@@ -79,7 +80,7 @@ def connect_square_api(
     # Build headers
     headers = {
         "Square-Version": square_version,
-        "Authorization": f"Bearer {bearer_token}",
+        "Authorization": f"{access_token.token_type} {access_token.access_token}",
         "Content-Type": "application/json",
     }
 
