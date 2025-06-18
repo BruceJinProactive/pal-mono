@@ -2,56 +2,56 @@ import json
 from typing import Optional, Union
 
 from tools.square_tool._apis._utils import connect_square_api, handle_square_response
-from tools.square_tool.classes import SquareAccessToken
+from tools.square_tool.classes import (
+    CatalogListResponse,
+    ListCatalogInput,
+    SquareAccessToken,
+)
 from utils.ordering.classes import HttpMethod
 
 
 def list_catalog(
     access_token: SquareAccessToken,
-    cursor: Optional[str] = None,
-    types: Optional[str] = None,
-    catalog_version: Optional[int] = None,
-    use_production: bool = False,
-) -> Union[dict, list]:
+    input_data: ListCatalogInput,
+) -> CatalogListResponse:
     """
     List catalog objects from Square's catalog API.
 
     Args:
         access_token (SquareAccessToken): The Square access token model containing the token and type
-        cursor (Optional[str]): The pagination cursor returned in a previous response
-        types (Optional[str]): Comma-separated list of object types to retrieve (e.g., "ITEM,CATEGORY")
-        catalog_version (Optional[int]): The specific version of the catalog to retrieve
-        use_production (bool): Whether to use production (True) or sandbox (False) environment
+        input_data (ListCatalogInput): Pydantic model containing all input parameters
 
     Returns:
-        Union[dict, list]: The catalog list response from Square API
+        CatalogListResponse: Pydantic model containing the structured catalog response
 
     Raises:
         ValueError: If the API call fails
     """
     try:
-        # Build query parameters
+        # Build query parameters from input model
         query_params = {}
-        if cursor:
-            query_params["cursor"] = cursor
-        if types:
-            query_params["types"] = types
-        if catalog_version:
-            query_params["catalog_version"] = catalog_version
+        if input_data.cursor:
+            query_params["cursor"] = input_data.cursor
+        if input_data.types:
+            query_params["types"] = input_data.types
+        if input_data.catalog_version:
+            query_params["catalog_version"] = input_data.catalog_version
 
         response = connect_square_api(
             http_method=HttpMethod.GET,
             access_token=access_token,
             api_function="/v2/catalog/list",
             query_params=query_params if query_params else None,
-            use_production=use_production,
+            use_production=input_data.use_production,
         )
 
-        # Return raw response as dict since we don't have specific response models yet
+        # Handle response and parse with Pydantic
         result = handle_square_response(response)
         if isinstance(result, str):
-            return json.loads(result)
-        return result
+            result = json.loads(result)
+
+        # Return structured response using Pydantic model
+        return CatalogListResponse(**result)
 
     except Exception as e:
         raise ValueError(f"Failed to list catalog: {str(e)}") from e
