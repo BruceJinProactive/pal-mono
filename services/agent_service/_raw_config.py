@@ -283,21 +283,22 @@ class RawConfig:
 
     def _get_additional_context(self) -> str:
         additional_context = ""
-        # Add timezone datetime information
-        if self.project.raw_config:
+
+        timezone = self.project.timezone
+        if not timezone and self.project.raw_config:
             timezone = self.project.raw_config.get("timezone")
 
-            if timezone:
-                # TODO: Once timezone PR is merged on Agno's side we can remove this
-                # logic and use add_datetime_to_instructions + timezone_identifier instead
-                try:
-                    tz = ZoneInfo(timezone)
-                    time = datetime.now(tz)
-                    formatted_time = time.strftime("%A, %Y-%m-%d %H:%M:%S %Z")
+        if timezone:
+            # TODO: Once timezone PR is merged on Agno's side we can remove this
+            # logic and use add_datetime_to_instructions + timezone_identifier instead
+            try:
+                tz = ZoneInfo(timezone)
+                time = datetime.now(tz)
+                formatted_time = time.strftime("%A, %Y-%m-%d %H:%M:%S %Z")
 
-                    additional_context += f"The current time is {formatted_time}."
-                except Exception:
-                    raise ValueError(f"Timezone '{timezone}' is invalid.")
+                additional_context += f"The current time is {formatted_time}."
+            except Exception:
+                raise ValueError(f"Timezone '{timezone}' is invalid.")
 
         raw_knowledge = self.agent.raw_config.get("knowledge")
         if raw_knowledge:
