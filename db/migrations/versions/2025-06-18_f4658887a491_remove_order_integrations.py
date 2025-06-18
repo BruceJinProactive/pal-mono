@@ -1,7 +1,7 @@
 """remove_order_integrations
 
 Revision ID: f4658887a491
-Revises: f3e2846498ee
+Revises: 02b3bdabb2e9
 Create Date: 2025-06-18 23:02:07.700104
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "f4658887a491"
-down_revision: Union[str, None] = "f3e2846498ee"
+down_revision: Union[str, None] = "02b3bdabb2e9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
