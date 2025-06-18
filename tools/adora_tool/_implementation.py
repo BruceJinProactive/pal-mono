@@ -14,9 +14,13 @@ from mixpanel import Mixpanel
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
+from db.session import SyncSessionLocal
+from db.tables.orders import Order as DBOrder
+from db.tables.types import OrderIntegrationVendor
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraLatestOrderResponse,
+    AdoraOrderCalculationResult,
     AdoraOrderType,
     DeliveryAddress,
     LoyaltyNextOrderCredit,
@@ -398,6 +402,56 @@ class AdoraTool(Toolkit):
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
         return context
 
+    @task(name="_save_order_to_db")
+    def _save_order_to_db(
+        self, order: Order, validated_order: AdoraOrderCalculationResult
+    ) -> None:
+        """
+        Save order information to the database.
+
+        Args:
+            order: The order object containing order details
+            validated_order: The validated order response from Adora API
+
+        Raises:
+            Exception: If there is an error saving the order to the database
+        """
+        # Create a new database session using the project's session factory
+        session = SyncSessionLocal()
+        try:
+            # Get customer phone number safely
+            user_phone = ""
+            if order.customer and order.customer.phone_number:
+                user_phone = order.customer.phone_number
+
+            # Create a new order record
+            db_order = DBOrder(
+                user_phone_number=user_phone,
+                store_phone_number="PLACE_HOLDER",
+                order_number=str(validated_order.key) if validated_order.key else "",
+                transaction_id=(
+                    str(validated_order.key) if validated_order.key else ""
+                ),  # Using order key as transaction_id
+                store_id=self.store_id,
+                tracking_link=None,  # Tracking link will be updated later when available
+                status="pending",
+                vendor=OrderIntegrationVendor.adora,
+                order_date=datetime.now(),
+            )
+
+            # Add and commit the order
+            session.add(db_order)
+            session.commit()
+            logger.debug(
+                f"[AdoraTool._save_order_to_db] Saved order to database: {db_order.id}"
+            )
+        except Exception as e:
+            session.rollback()
+            logger.error("[AdoraTool._save_order_to_db] Error saving order", exc_info=e)
+            raise  # Re-raise the exception to be handled by the caller
+        finally:
+            session.close()
+
     @task(name="_fulfill_order [via Adora API]")
     def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
         payload = order.model_dump_json(by_alias=True)
@@ -423,6 +477,15 @@ class AdoraTool(Toolkit):
 
         if not validated_order or not validated_order.key:
             return "Failed to validate order. Please try again."
+
+        # Attempt to save order to database
+        try:
+            self._save_order_to_db(order, validated_order)
+        except Exception as e:
+            logger.error(
+                "[AdoraTool._fulfill_order] Failed to save order to database, continuing with order fulfillment despite DB save failure",
+                exc_info=e,
+            )
 
         text_payment_url = validated_order.paymentUrl
 
