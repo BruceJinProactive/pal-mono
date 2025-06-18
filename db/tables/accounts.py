@@ -17,6 +17,7 @@ from .base import Base
 if TYPE_CHECKING:
     from .agents import Agent
     from .projects import Project
+    from .subscriptions import AccountSubscription
     from .users import User
 
 
@@ -77,3 +78,6 @@ class Account(Base):
     )
     agents: Mapped[List["Agent"]] = relationship("Agent", back_populates="account")
     users: Mapped[List["User"]] = relationship("User", back_populates="account")
+    subscriptions: Mapped[List["AccountSubscription"]] = relationship(
+        "AccountSubscription", back_populates="account"
+    )
