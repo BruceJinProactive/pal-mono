@@ -24,6 +24,19 @@ class TargetTier(str, enum.Enum):
     enterprise = "enterprise"
 
 
+class SubscriptionType(str, enum.Enum):
+    trial = "trial"
+    monthly = "monthly"
+    contract = "contract"
+
+
+class SubscriptionStatus(str, enum.Enum):
+    pending = "pending"
+    active = "active"
+    expired = "expired"
+    cancelled = "cancelled"
+
+
 class OrderIntegrationVendor(str, enum.Enum):
     olo = "olo"
     toast = "toast"
