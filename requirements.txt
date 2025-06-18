@@ -129,7 +129,7 @@ portalocker==2.10.1
 posthog==3.25.0
 propcache==0.3.1
 proto-plus==1.26.1
-protobuf==5.29.4
+protobuf==5.29.5
 psycopg[binary]==3.2.1
 psycopg-binary==3.2.1
 pyactiveresource==2.2.2
@@ -154,7 +154,7 @@ pytz==2024.2
 pyyaml==6.0.2
 qdrant-client==1.14.2
 regex==2024.11.6
-requests==2.32.3
+requests==2.32.4
 rich==13.9.4
 rsa==4.9.1
 s3transfer==0.11.5
