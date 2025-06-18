@@ -59,6 +59,7 @@ from api.schemas.admin.lead import (
 )
 from api.schemas.admin.onboarding import OnboardingRequest
 from api.schemas.admin.order_integration import CreateOrderIntegrationRequest
+from api.schemas.admin.pos_integration import CreatePOSIntegrationRequest
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
@@ -95,6 +96,7 @@ from . import (
     _knowledge,
     _lead,
     _order_integration,
+    _pos_integration,
     _projects,
     _subscription,
     _users,
@@ -795,6 +797,22 @@ async def set_project_order_integration(
     an existing integration, it will be replaced.
     """
     return await _order_integration.set_project_order_integration(
+        context, session, project_id, request
+    )
+
+
+@admin_router.put("/projects/{project_id}/pos_integrations")
+async def set_project_pos_integration(
+    project_id: uuid.UUID,
+    request: CreatePOSIntegrationRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Creates a new POS integration for a project, if the project already has
+    an existing integration, it will be replaced.
+    """
+    return await _pos_integration.set_project_pos_integration(
         context, session, project_id, request
     )
 

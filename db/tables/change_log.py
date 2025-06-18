@@ -19,6 +19,7 @@ class ChangeResourceType(str, enum.Enum):
     Agent = "Agent"
     Project = "Project"
     OrderIntegration = "OrderIntegration"
+    POSIntegration = "POSIntegration"
 
 
 class ChangeAction(str, enum.Enum):
