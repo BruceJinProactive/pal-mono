@@ -1,0 +1,24 @@
+# Adora menu fetcher configuration
+
+# The Adora store ID (e.g., UGDX4).
+store_id: 'YOUR_STORE_ID'
+
+# The directory name for the store in the 'menu' folder (e.g., pizza_guys).
+store_menu_dir: 'YOUR_STORE_MENU_DIR'
+
+# Set to "true" to use the QA environment. Leave empty for production.
+use_qa_store: ''
+
+# Optional: Specify a custom base URL for the token endpoint.
+# If not set, the script will use the default production or QA URL.
+token_api_endpoint: 'YOUR_TOKEN_API_ENDPOINT' # e.g., 'identity.adorapos.net'
+
+# Optional: Specify a custom base URL for the menu endpoint.
+# If not set, the script will use the default production or QA URL.
+general_api_endpoint: 'YOUR_GENERAL_API_ENDPOINT' # e.g., 'public.api.adorapos.net'
+
+# The Adora client ID.
+client_id: 'YOUR_CLIENT_ID'
+
+# The Adora client secret.
+client_secret: 'YOUR_CLIENT_SECRET' 

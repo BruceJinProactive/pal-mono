@@ -152,3 +152,4 @@ cython_debug/
 .vscode/
 
 **/.claude/settings.local.json
+scripts/adora/config.yml
