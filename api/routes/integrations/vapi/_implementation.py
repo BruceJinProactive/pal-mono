@@ -220,7 +220,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 "provider": "deepgram",
                 "model": "nova-3",
                 "language": "multi",
-                "codeSwitchingEnabled": True,
             }
             voice = {
                 "provider": "cartesia",
