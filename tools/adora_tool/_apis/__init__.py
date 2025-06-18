@@ -1,5 +1,6 @@
 import http.client
 import json
+import urllib.parse
 from datetime import datetime
 
 from tools.adora_tool.classes import (
@@ -18,7 +19,7 @@ from . import _utils
 
 
 def get_adora_pos_auth_token(
-    key: str, secret: str, qa_store: bool
+    key: str, secret: str, qa_store: bool, token_api_endpoint: str | None
 ) -> AdoraAccessToken | None:
     """
     Retrieve an Adora POS authentication token using the provided key and secret.
@@ -38,10 +39,20 @@ def get_adora_pos_auth_token(
     )
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-    if qa_store:
-        conn = http.client.HTTPSConnection("identityqa.adorapos.com")
+    if token_api_endpoint:
+        # Validate custom endpoint if provided
+        try:
+            parsed = urllib.parse.urlparse(f"https://{token_api_endpoint}")
+            if not parsed.netloc or parsed.scheme != "https":
+                raise ValueError("Invalid endpoint format")
+        except Exception as e:
+            raise ValueError(f"Invalid token_api_endpoint: {token_api_endpoint}") from e
+        conn = http.client.HTTPSConnection(token_api_endpoint)
     else:
-        conn = http.client.HTTPSConnection("identity.adorapos.net")
+        if qa_store:
+            conn = http.client.HTTPSConnection("identityqa.adorapos.com")
+        else:
+            conn = http.client.HTTPSConnection("identity.adorapos.net")
 
     conn.request("POST", "/connect/token", payload, headers)
     res = conn.getresponse()
@@ -213,6 +224,7 @@ def get_customer_info(
     phone_number: str,
     qa_store: bool,
     reformat: bool = True,
+    general_api_endpoint: str | None = None,
 ) -> str | AdoraCustomerInfo | None:
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -225,6 +237,7 @@ def get_customer_info(
         extra_headers=None,
         payload=None,
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
 
     if response.status == 200:
@@ -251,7 +264,10 @@ def get_customer_info(
 
 
 def get_online_ordering_status(
-    bearer_token: AdoraAccessToken, store_id: str, qa_store: bool
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+    qa_store: bool,
+    general_api_endpoint: str | None,
 ) -> str | None:
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -261,6 +277,7 @@ def get_online_ordering_status(
         extra_headers=None,
         payload=None,
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
     status_info = json.loads(response.decoded_body)
     status = "active" if status_info["Online"] else "inactive"
@@ -272,7 +289,11 @@ def get_online_ordering_status(
 
 
 def get_store_info(
-    bearer_token: AdoraAccessToken, store_id: str, date: str, qa_store: bool
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+    date: str,
+    qa_store: bool,
+    general_api_endpoint: str | None,
 ) -> str | None:
     response = _utils.connect_adora_order_hub(
         "GET",
@@ -285,6 +306,7 @@ def get_store_info(
         extra_headers=None,
         payload=None,
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
 
     if response.status == 200:
@@ -294,7 +316,10 @@ def get_store_info(
 
 
 def validate_order(
-    bearer_token: AdoraAccessToken, payload: str, qa_store: bool
+    bearer_token: AdoraAccessToken,
+    payload: str,
+    qa_store: bool,
+    general_api_endpoint: str | None,
 ) -> AdoraOrderCalculationResult | None:
     logger.debug(f"[AdoraTool._apis.validate_order] Payload: {payload}")
 
@@ -306,6 +331,7 @@ def validate_order(
         extra_headers=None,
         payload=payload,
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
 
     if response.status == 200:
@@ -321,6 +347,7 @@ def save_validated_order(
     bearer_token: AdoraAccessToken,
     order_key: str,
     qa_store: bool,
+    general_api_endpoint: str | None,
 ) -> AdoraSavedOrderResult | None:
     """
     Save a customer's validated order in the system using the key from the validate_order response.
@@ -342,6 +369,7 @@ def save_validated_order(
             "orderKey": order_key,
         },
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
 
     if response.status == 200:
@@ -354,6 +382,7 @@ def validate_address(
     bearer_token: AdoraAccessToken,
     payload: ValidateAddressPayload,
     qa_store: bool,
+    general_api_endpoint: str | None,
 ) -> tuple[bool, list[AdoraValidatedAddress] | str]:
     """
     Validate an address (latitude + longitude) with Adora POS.
@@ -376,6 +405,7 @@ def validate_address(
         extra_headers=None,
         payload=json.dumps(payload.model_dump(by_alias=True, exclude_defaults=True)),
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
 
     if response.status == 200:
@@ -399,6 +429,7 @@ def validate_coupon_code(
     store_id: str,
     coupon_code: str,
     qa_store: bool,
+    general_api_endpoint: str | None,
     culture_code: str = "en-US",
 ) -> dict | None:
     """
@@ -432,6 +463,7 @@ def validate_coupon_code(
         extra_headers=None,
         payload=None,
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
 
     if response.status == 200:
@@ -447,6 +479,7 @@ def get_customer_latest_order(
     bearer_token: AdoraAccessToken,
     phone_number: str,
     qa_store: bool,
+    general_api_endpoint: str | None,
 ) -> AdoraLatestOrderResponse | None:
     """
     Retrieve customer's latest order information using their phone number.
@@ -470,6 +503,7 @@ def get_customer_latest_order(
         extra_headers=None,
         payload=None,
         qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
     )
 
     if response.status == 200:

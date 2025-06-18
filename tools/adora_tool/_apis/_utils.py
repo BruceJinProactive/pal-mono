@@ -30,8 +30,19 @@ def connect_adora_order_hub(
     extra_headers: dict | None = None,
     payload: str | None = "",
     qa_store: bool = False,
+    general_api_endpoint: str | None = None,
 ) -> AdoraHubResponse:
     """Utility function to connect to Adora Order Hub API"""
+    # Validate custom endpoint if provided
+    if general_api_endpoint:
+        try:
+            parsed = urllib.parse.urlparse(f"https://{general_api_endpoint}")
+            if not parsed.netloc or parsed.scheme != "https":
+                raise ValueError("Invalid endpoint format")
+        except Exception as e:
+            raise ValueError(
+                f"Invalid general_api_endpoint: {general_api_endpoint}"
+            ) from e
 
     logger.debug(
         f"[AdoraTool._apis._utils.connect_adora_order_hub] Calling Adora API: {http_method} {api_function} | "
@@ -40,10 +51,13 @@ def connect_adora_order_hub(
         f"Payload: {payload}"
     )
 
-    if qa_store:
-        conn = http.client.HTTPSConnection("adora-qa-api-public.azurewebsites.net")
+    if general_api_endpoint:
+        conn = http.client.HTTPSConnection(general_api_endpoint)
     else:
-        conn = http.client.HTTPSConnection("public.api.adorapos.net")
+        if qa_store:
+            conn = http.client.HTTPSConnection("adora-qa-api-public.azurewebsites.net")
+        else:
+            conn = http.client.HTTPSConnection("public.api.adorapos.net")
 
     headers = {
         "Content-Type": "application/json",

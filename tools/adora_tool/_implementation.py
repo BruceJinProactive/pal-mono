@@ -47,6 +47,8 @@ class AdoraTool(Toolkit):
         loyalty_enabled: bool = False,
         coupons_enabled: bool = False,
         default_coupon_id: int | None = None,
+        token_api_endpoint: str | None = None,
+        general_api_endpoint: str | None = None,
     ):
         super().__init__(name="adora_tool")
 
@@ -62,6 +64,8 @@ class AdoraTool(Toolkit):
         self.default_coupon_id = default_coupon_id
         self.loyalty_enabled = loyalty_enabled
         self.coupons_enabled = coupons_enabled
+        self.token_api_endpoint = token_api_endpoint
+        self.general_api_endpoint = general_api_endpoint
         if self.store_id in [ADORA_QA_STORE, ADORA_QA_STORE_2]:  # QA store
             self.qa_store = True
         else:
@@ -154,7 +158,10 @@ class AdoraTool(Toolkit):
                 )
 
             bearer_token = _apis.get_adora_pos_auth_token(
-                api_key, api_secret, qa_store=self.qa_store
+                api_key,
+                api_secret,
+                qa_store=self.qa_store,
+                token_api_endpoint=self.token_api_endpoint,
             )
             return bearer_token
         except Exception as e:
@@ -183,7 +190,10 @@ class AdoraTool(Toolkit):
                 )
 
             status = _apis.get_online_ordering_status(
-                bearer_token, self.store_id, qa_store=self.qa_store
+                bearer_token,
+                self.store_id,
+                qa_store=self.qa_store,
+                general_api_endpoint=self.general_api_endpoint,
             )
 
             if not status:
@@ -239,7 +249,11 @@ class AdoraTool(Toolkit):
                 )
 
             store_info = _apis.get_store_info(
-                bearer_token, self.store_id, date, qa_store=self.qa_store
+                bearer_token,
+                self.store_id,
+                date,
+                qa_store=self.qa_store,
+                general_api_endpoint=self.general_api_endpoint,
             )
 
             if not store_info:
@@ -335,7 +349,10 @@ class AdoraTool(Toolkit):
 
         # Validate the address
         validated_address_success, validated_address = _apis.validate_address(
-            bearer_token, payload, qa_store=self.qa_store
+            bearer_token,
+            payload,
+            qa_store=self.qa_store,
+            general_api_endpoint=self.general_api_endpoint,
         )
         logger.debug(f"Validated address: {validated_address}")
 
@@ -470,7 +487,10 @@ class AdoraTool(Toolkit):
             payload = json.dumps(json_payload)
 
         validated_order = _apis.validate_order(
-            bearer_token=bearer_token, payload=payload, qa_store=self.qa_store
+            bearer_token=bearer_token,
+            payload=payload,
+            qa_store=self.qa_store,
+            general_api_endpoint=self.general_api_endpoint,
         )
 
         logger.debug(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
@@ -567,6 +587,7 @@ class AdoraTool(Toolkit):
                 order.customer.phone_number,
                 qa_store=self.qa_store,
                 reformat=False,  # Do not reformat the customer info, return the raw pydantic object
+                general_api_endpoint=self.general_api_endpoint,
             )
 
             if not customer_loyalty_info:
@@ -854,6 +875,7 @@ class AdoraTool(Toolkit):
                         self.store_id,
                         code,
                         qa_store=self.qa_store,
+                        general_api_endpoint=self.general_api_endpoint,
                     )
                     if result and result.get("isValid", False) and "couponId" in result:
                         if order.coupon_ids:
@@ -973,7 +995,11 @@ class AdoraTool(Toolkit):
 
             for code in codes:
                 result = _apis.validate_coupon_code(
-                    bearer_token, self.store_id, code, qa_store=self.qa_store
+                    bearer_token,
+                    self.store_id,
+                    code,
+                    qa_store=self.qa_store,
+                    general_api_endpoint=self.general_api_endpoint,
                 )
 
                 if not result:
@@ -1037,6 +1063,7 @@ class AdoraTool(Toolkit):
                 self.store_id,
                 phone_number,
                 qa_store=self.qa_store,
+                general_api_endpoint=self.general_api_endpoint,
             )
 
             if customer_info is None:
@@ -1094,6 +1121,7 @@ class AdoraTool(Toolkit):
                 bearer_token,
                 phone_number,
                 qa_store=self.qa_store,
+                general_api_endpoint=self.general_api_endpoint,
             )
 
             if latest_order is None:
