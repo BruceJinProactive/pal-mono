@@ -1,7 +1,7 @@
 """added plan and subscription tables
 
 Revision ID: f3e2846498ee
-Revises: d54854c09821
+Revises: abcfc2079f4a
 Create Date: 2025-06-18 12:17:31.750500
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "f3e2846498ee"
-down_revision: Union[str, None] = "d54854c09821"
+down_revision: Union[str, None] = "abcfc2079f4a"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

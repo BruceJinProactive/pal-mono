@@ -2,7 +2,7 @@
 
 
 Revision ID: abcfc2079f4a
-Revises: 9d73050fbd63
+Revises: d54854c09821
 Create Date: 2025-06-17 16:07:44.421919
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "abcfc2079f4a"
-down_revision: Union[str, None] = "9d73050fbd63"
+down_revision: Union[str, None] = "d54854c09821"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
