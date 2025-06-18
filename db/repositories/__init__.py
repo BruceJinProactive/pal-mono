@@ -5,7 +5,6 @@ from .conversation_repository import ConversationRepository, ConversationReposit
 from .feedback_repository import FeedbackRepository
 from .lead_repository import LeadFilter, LeadRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync
-from .order_integration_repository import OrderIntegrationRepository
 from .pos_integration_repository import POSIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
 from .subscription_repository import SubscriptionRepository

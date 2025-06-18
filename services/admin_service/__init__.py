@@ -7,7 +7,6 @@ import db
 from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
 from db import ConversationStatus
-from db.tables.order_integration import OrderIntegrationVendor, OrderProtocol
 from services.account_service import AccountParams
 
 from ..agent_service import AgentParams
@@ -558,36 +557,6 @@ def delete_account_user(account_name: str, user_email: str) -> None:
     return _implementation.delete_account_user(account_name, user_email)
 
 
-def setup_project_order_integration(
-    session: Session,
-    context: UserContext,
-    project: db.Project,
-    protocol: OrderProtocol,
-    destination: str,
-    vendor: OrderIntegrationVendor | None = None,
-) -> db.OrderIntegration:
-    """
-    Creates or updates the order integration for the specified project.
-
-    Args:
-        session (Session): The database session to use.
-        context (UserContext): The user context for the authenticated user.
-        project (db.Project): The project to create the order integration for.
-        protocol (OrderProtocol): The protocol to use for order placement.
-        destination (str): The destination address to send orders to.
-        vendor (OrderIntegrationVendor): The vendor to use for order processing.
-
-    Returns:
-        db.OrderIntegration: The created or updated order integration.
-
-    Raises:
-        Exception: If there's an error creating or updating the order integration.
-    """
-    return _implementation.setup_project_order_integration(
-        session, context, project, protocol, destination, vendor
-    )
-
-
 def update_conversation_escalation(
     session: Session,
     conversation_id: uuid.UUID,
@@ -728,7 +697,6 @@ __all__ = [
     "create_account_user",
     "signup_account_user",
     "delete_account_user",
-    "setup_project_order_integration",
     "update_conversation_escalation",
     "list_leads",
     "create_lead",
