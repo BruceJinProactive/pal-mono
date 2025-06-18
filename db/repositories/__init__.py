@@ -8,4 +8,5 @@ from .message_repository import MessageRepository, MessageRepositoryAsync
 from .order_integration_repository import OrderIntegrationRepository
 from .pos_integration_repository import POSIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
+from .subscription_repository import SubscriptionRepository
 from .user_repository import UserRepository, UserRepositoryAsync

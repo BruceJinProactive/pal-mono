@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -66,7 +67,11 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
-from api.schemas.admin.subscription import CheckoutParams
+from api.schemas.admin.subscription import (
+    CheckoutParams,
+    CreateSubscriptionPlanRequest,
+    CreateSubscriptionRequest,
+)
 from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
     CreateUserRequest,
@@ -1231,9 +1236,40 @@ async def release_phone_number(
 
 
 """
+---------- Subscription Plan Endpoints ----------
+-----------------------------------------------
+"""
+
+
+@admin_router.put("/plans")
+async def create_subscription_plan(
+    request: CreateSubscriptionPlanRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Creates a new subscription plan.
+    """
+    return _subscription.create_subscription_plan(context, session, request)
+
+
+"""
 ---------- Subscription Endpoints ----------
 ------------------------------------------
 """
+
+
+@admin_router.put("/accounts/{account_name}/subscriptions")
+async def create_account_subscription(
+    account_name: str,
+    request: CreateSubscriptionRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Creates a new subscription for an account.
+    """
+    return _subscription.create_subscription(context, session, account_name, request)
 
 
 @admin_router.post("/subscriptions/checkout")

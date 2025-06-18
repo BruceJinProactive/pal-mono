@@ -8,6 +8,7 @@ from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
 from api.schemas.admin.lead import Lead
 from api.schemas.admin.project import Project, ProjectSummary
+from api.schemas.admin.subscription import Subscription, SubscriptionPlan
 
 
 def build_account(account: db.Account) -> Account:
@@ -202,4 +203,44 @@ def build_lead(lead: db.Lead) -> Lead:
         contract_signed=lead.contract_signed,
         created_at=lead.created_at,
         updated_at=lead.updated_at,
+    )
+
+
+def build_subscription_plan(plan: db.SubscriptionPlan) -> SubscriptionPlan:
+    return SubscriptionPlan(
+        id=plan.id,
+        name=plan.name,
+        description=plan.description,
+        tier=plan.tier,
+        features_included=plan.features_included or [],
+        features_excluded=plan.features_excluded or [],
+        call_quota=plan.call_quota,
+        order_quota=plan.order_quota,
+        call_overage_charge=plan.call_overage_charge,
+        order_overage_charge=plan.order_overage_charge,
+        free_trial_days=plan.free_trial_days,
+        monthly_fee=plan.monthly_fee,
+        stripe_price_id=plan.stripe_price_id,
+        active=plan.active,
+        sort_id=plan.sort_id,
+        created_at=plan.created_at,
+        updated_at=plan.updated_at,
+    )
+
+
+def build_subscription(subscription: db.AccountSubscription) -> Subscription:
+    return Subscription(
+        id=subscription.id,
+        account_id=subscription.account_id,
+        subscription_plan_id=subscription.subscription_plan_id,
+        status=subscription.status,
+        start_date=subscription.start_date,
+        end_date=subscription.end_date,
+        call_quota=subscription.call_quota or 0,
+        order_quota=subscription.order_quota or 0,
+        call_overage_charge=subscription.call_overage_charge or 0,
+        order_overage_charge=subscription.order_overage_charge or 0,
+        monthly_fee=subscription.monthly_fee or 0,
+        created_at=subscription.created_at,
+        updated_at=subscription.updated_at,
     )
