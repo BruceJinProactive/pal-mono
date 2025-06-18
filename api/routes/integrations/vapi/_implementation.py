@@ -217,9 +217,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         if config.persona.multilingual:
             transcriber = {
-                "provider": "google",
-                "language": "Multilingual",
-                "model": "gemini-2.0-flash",
+                "provider": "deepgram",
+                "model": "nova-3",
+                "codeSwitchingEnabled": True,
             }
             voice = {
                 "provider": "cartesia",
@@ -228,7 +228,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             }
 
         else:
-            transcriber = {"provider": "deepgram"}
+            transcriber = {
+                "provider": "deepgram",
+                "model": "nova-3",
+            }
             voice = {
                 "provider": "cartesia",
                 "voiceId": voice_id or SPORTSMAN_VOICE_ID,
