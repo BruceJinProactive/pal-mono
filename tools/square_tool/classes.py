@@ -686,3 +686,56 @@ class SquareAccessToken(BaseModel):
     token_type: str = Field(
         default="Bearer", description="Token type (typically 'Bearer')"
     )
+
+
+# ------------------- Search Models -------------------
+
+
+class TextQuery(BaseModel):
+    """Text query for catalog search"""
+
+    keywords: List[str] = Field(
+        ..., min_length=1, description="List of keywords to search for"
+    )
+
+
+class CatalogQuery(BaseModel):
+    """Query object for catalog search"""
+
+    text_query: Optional[TextQuery] = Field(
+        None, description="Text query with keywords"
+    )
+
+
+class SearchCatalogInput(BaseModel):
+    """Input model for searching catalog objects"""
+
+    query: CatalogQuery = Field(
+        ..., description="The query object containing search parameters"
+    )
+    object_types: Optional[List[str]] = Field(
+        None,
+        description="List of object types to search (e.g., ['ITEM', 'CATEGORY', 'MODIFIER'])",
+    )
+    include_related_objects: Optional[bool] = Field(
+        True, description="Whether to include related objects in the response"
+    )
+    include_category_path_to_root: Optional[bool] = Field(
+        False, description="Whether to include the full category path for categories"
+    )
+    limit: Optional[int] = Field(
+        10, ge=1, le=1000, description="Maximum number of results to return (1-1000)"
+    )
+    use_production: bool = Field(
+        default=False, description="Whether to use production environment"
+    )
+
+
+class CatalogSearchResponse(BaseModel):
+    """Response model for the Square catalog search API"""
+
+    objects: Optional[List[CatalogObject]] = None
+    related_objects: Optional[List[CatalogObject]] = None
+    latest_time: Optional[datetime] = None
+    cursor: Optional[str] = None
+    errors: Optional[List[Any]] = None
