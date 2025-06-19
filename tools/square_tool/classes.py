@@ -656,7 +656,7 @@ class CatalogListResponse(BaseModel):
     objects: Optional[List[CatalogObject]] = None
     updated_at: Optional[datetime] = None
     cursor: Optional[str] = None
-    errors: Optional[List[Any]] = None
+    errors: Optional[List["Error"]] = None
 
 
 # Input models for tool integration
@@ -738,4 +738,698 @@ class CatalogSearchResponse(BaseModel):
     related_objects: Optional[List[CatalogObject]] = None
     latest_time: Optional[datetime] = None
     cursor: Optional[str] = None
-    errors: Optional[List[Any]] = None
+    errors: Optional[List["Error"]] = None
+
+
+# ------------------- Order Models -------------------
+
+
+class OrderState(str, Enum):
+    """Enum for order states"""
+
+    OPEN = "OPEN"
+    COMPLETED = "COMPLETED"
+    CANCELED = "CANCELED"
+    DRAFT = "DRAFT"
+
+
+class OrderSource(BaseModel):
+    """The origination details of the order"""
+
+    name: Optional[str] = None
+
+
+class OrderQuantityUnit(BaseModel):
+    """The measurement unit and decimal precision for quantity"""
+
+    measurement_unit: Optional[MeasurementUnit] = None
+    precision: Optional[int] = Field(None, ge=0, le=5)
+    catalog_object_id: Optional[str] = None
+    catalog_version: Optional[int] = None
+
+
+class OrderLineItemItemType(str, Enum):
+    """Enum for line item types"""
+
+    ITEM = "ITEM"
+    CUSTOM_AMOUNT = "CUSTOM_AMOUNT"
+    GIFT_CARD = "GIFT_CARD"
+
+
+class OrderLineItemDiscountType(str, Enum):
+    """Enum for discount types"""
+
+    UNKNOWN_DISCOUNT = "UNKNOWN_DISCOUNT"
+    FIXED_PERCENTAGE = "FIXED_PERCENTAGE"
+    FIXED_AMOUNT = "FIXED_AMOUNT"
+    VARIABLE_PERCENTAGE = "VARIABLE_PERCENTAGE"
+    VARIABLE_AMOUNT = "VARIABLE_AMOUNT"
+
+
+class OrderScope(str, Enum):
+    """Enum for order-level vs line-item level scope"""
+
+    ORDER = "ORDER"
+    LINE_ITEM = "LINE_ITEM"
+
+
+class OrderLineItemTaxType(str, Enum):
+    """Enum for tax types"""
+
+    UNKNOWN_TAX = "UNKNOWN_TAX"
+    ADDITIVE = "ADDITIVE"
+    INCLUSIVE = "INCLUSIVE"
+
+
+# Aliases for backward compatibility and clarity
+OrderLineItemDiscountScope = OrderScope
+OrderLineItemTaxScope = OrderScope
+
+
+class OrderServiceChargeCalculationPhase(str, Enum):
+    """Enum for service charge calculation phase"""
+
+    SUBTOTAL_PHASE = "SUBTOTAL_PHASE"
+    TOTAL_PHASE = "TOTAL_PHASE"
+
+
+class OrderServiceChargeType(str, Enum):
+    """Enum for service charge type"""
+
+    AUTO_GRATUITY = "AUTO_GRATUITY"
+    CUSTOM = "CUSTOM"
+
+
+class OrderServiceChargeTreatmentType(str, Enum):
+    """Enum for service charge treatment type"""
+
+    LINE_ITEM_TREATMENT = "LINE_ITEM_TREATMENT"
+    APPORTIONED_TREATMENT = "APPORTIONED_TREATMENT"
+
+
+# Reuse the consolidated scope enum
+OrderServiceChargeScope = OrderScope
+
+
+class FulfillmentType(str, Enum):
+    """Enum for fulfillment types"""
+
+    PICKUP = "PICKUP"
+    SHIPMENT = "SHIPMENT"
+    DELIVERY = "DELIVERY"
+
+
+class FulfillmentState(str, Enum):
+    """Enum for fulfillment states"""
+
+    PROPOSED = "PROPOSED"
+    RESERVED = "RESERVED"
+    PREPARED = "PREPARED"
+    COMPLETED = "COMPLETED"
+    CANCELED = "CANCELED"
+    FAILED = "FAILED"
+
+
+class FulfillmentLineItemApplication(str, Enum):
+    """Enum for fulfillment line item application"""
+
+    ALL = "ALL"
+    ENTRY_LIST = "ENTRY_LIST"
+
+
+class TenderType(str, Enum):
+    """Enum for tender types"""
+
+    CARD = "CARD"
+    CASH = "CASH"
+    THIRD_PARTY_CARD = "THIRD_PARTY_CARD"
+    SQUARE_GIFT_CARD = "SQUARE_GIFT_CARD"
+    NO_SALE = "NO_SALE"
+    BANK_ACCOUNT = "BANK_ACCOUNT"
+    WALLET = "WALLET"
+    BUY_NOW_PAY_LATER = "BUY_NOW_PAY_LATER"
+    SQUARE_ACCOUNT = "SQUARE_ACCOUNT"
+    OTHER = "OTHER"
+
+
+class RefundStatus(str, Enum):
+    """Enum for refund status"""
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    FAILED = "FAILED"
+
+
+class ErrorCategory(str, Enum):
+    """Enum for error categories"""
+
+    API_ERROR = "API_ERROR"
+    AUTHENTICATION_ERROR = "AUTHENTICATION_ERROR"
+    INVALID_REQUEST_ERROR = "INVALID_REQUEST_ERROR"
+    RATE_LIMIT_ERROR = "RATE_LIMIT_ERROR"
+    PAYMENT_METHOD_ERROR = "PAYMENT_METHOD_ERROR"
+    REFUND_ERROR = "REFUND_ERROR"
+
+
+# Supporting models
+
+
+class Address(BaseModel):
+    """Address information"""
+
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    address_line_3: Optional[str] = None
+    locality: Optional[str] = None
+    sublocality: Optional[str] = None
+    sublocality_2: Optional[str] = None
+    sublocality_3: Optional[str] = None
+    administrative_district_level_1: Optional[str] = None
+    administrative_district_level_2: Optional[str] = None
+    administrative_district_level_3: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+class OrderLineItemAppliedTax(BaseModel):
+    """Applied tax reference for line items"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    tax_uid: str = Field(..., min_length=1, max_length=60)
+    applied_money: Optional[Money] = None
+
+
+class OrderLineItemAppliedDiscount(BaseModel):
+    """Applied discount reference for line items"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    discount_uid: str = Field(..., min_length=1, max_length=60)
+    applied_money: Optional[Money] = None
+
+
+class OrderLineItemAppliedServiceCharge(BaseModel):
+    """Applied service charge reference for line items"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    service_charge_uid: str = Field(..., min_length=1, max_length=60)
+    applied_money: Optional[Money] = None
+
+
+class OrderLineItemPricingBlocklistsBlockedDiscount(BaseModel):
+    """Blocked discount for line item pricing"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    discount_uid: Optional[str] = Field(None, max_length=60)
+    discount_catalog_object_id: Optional[str] = Field(None, max_length=192)
+
+
+class OrderLineItemPricingBlocklistsBlockedTax(BaseModel):
+    """Blocked tax for line item pricing"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    tax_uid: Optional[str] = Field(None, max_length=60)
+    tax_catalog_object_id: Optional[str] = Field(None, max_length=192)
+
+
+class OrderLineItemPricingBlocklists(BaseModel):
+    """Pricing blocklists for line items"""
+
+    blocked_discounts: Optional[List[OrderLineItemPricingBlocklistsBlockedDiscount]] = (
+        None
+    )
+    blocked_taxes: Optional[List[OrderLineItemPricingBlocklistsBlockedTax]] = None
+
+
+class OrderLineItemModifier(BaseModel):
+    """Modifier applied to a line item"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    catalog_object_id: Optional[str] = Field(None, max_length=192)
+    catalog_version: Optional[int] = None
+    name: Optional[str] = Field(None, max_length=255)
+    quantity: Optional[str] = None
+    base_price_money: Optional[Money] = None
+    total_price_money: Optional[Money] = None
+    metadata: Optional[Dict[str, str]] = None
+
+
+class OrderLineItemTax(BaseModel):
+    """Tax applied to an order"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    catalog_object_id: Optional[str] = Field(None, max_length=192)
+    catalog_version: Optional[int] = None
+    name: Optional[str] = Field(None, max_length=255)
+    type: Optional[OrderLineItemTaxType] = None
+    percentage: Optional[str] = Field(None, max_length=10)
+    metadata: Optional[Dict[str, str]] = None
+    applied_money: Optional[Money] = None
+    scope: Optional[OrderLineItemTaxScope] = None
+    auto_applied: Optional[bool] = None
+
+
+class OrderLineItemDiscount(BaseModel):
+    """Discount applied to an order"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    catalog_object_id: Optional[str] = Field(None, max_length=192)
+    catalog_version: Optional[int] = None
+    name: Optional[str] = Field(None, max_length=255)
+    type: Optional[OrderLineItemDiscountType] = None
+    percentage: Optional[str] = Field(None, max_length=10)
+    amount_money: Optional[Money] = None
+    applied_money: Optional[Money] = None
+    metadata: Optional[Dict[str, str]] = None
+    scope: Optional[OrderLineItemDiscountScope] = None
+    reward_ids: Optional[List[str]] = None
+    pricing_rule_id: Optional[str] = None
+
+
+class OrderLineItem(BaseModel):
+    """Line item in an order"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    name: Optional[str] = Field(None, max_length=512)
+    quantity: str = Field(..., min_length=1, max_length=12)
+    quantity_unit: Optional[OrderQuantityUnit] = None
+    note: Optional[str] = Field(None, max_length=2000)
+    catalog_object_id: Optional[str] = Field(None, max_length=192)
+    catalog_version: Optional[int] = None
+    variation_name: Optional[str] = Field(None, max_length=400)
+    item_type: Optional[OrderLineItemItemType] = None
+    metadata: Optional[Dict[str, str]] = None
+    modifiers: Optional[List[OrderLineItemModifier]] = None
+    applied_taxes: Optional[List[OrderLineItemAppliedTax]] = None
+    applied_discounts: Optional[List[OrderLineItemAppliedDiscount]] = None
+    applied_service_charges: Optional[List[OrderLineItemAppliedServiceCharge]] = None
+    base_price_money: Optional[Money] = None
+    variation_total_price_money: Optional[Money] = None
+    gross_sales_money: Optional[Money] = None
+    total_tax_money: Optional[Money] = None
+    total_discount_money: Optional[Money] = None
+    total_money: Optional[Money] = None
+    pricing_blocklists: Optional[OrderLineItemPricingBlocklists] = None
+    total_service_charge_money: Optional[Money] = None
+
+
+class OrderServiceCharge(BaseModel):
+    """Service charge applied to an order"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    name: Optional[str] = Field(None, max_length=512)
+    catalog_object_id: Optional[str] = Field(None, max_length=192)
+    catalog_version: Optional[int] = None
+    percentage: Optional[str] = Field(None, max_length=10)
+    amount_money: Optional[Money] = None
+    applied_money: Optional[Money] = None
+    total_money: Optional[Money] = None
+    total_tax_money: Optional[Money] = None
+    calculation_phase: Optional[OrderServiceChargeCalculationPhase] = None
+    taxable: Optional[bool] = None
+    applied_taxes: Optional[List[OrderLineItemAppliedTax]] = None
+    metadata: Optional[Dict[str, str]] = None
+    type: Optional[OrderServiceChargeType] = None
+    treatment_type: Optional[OrderServiceChargeTreatmentType] = None
+    scope: Optional[OrderServiceChargeScope] = None
+
+
+class FulfillmentRecipient(BaseModel):
+    """Recipient information for fulfillment"""
+
+    customer_id: Optional[str] = None
+    display_name: Optional[str] = None
+    email_address: Optional[str] = None
+    phone_number: Optional[str] = None
+    address: Optional[Address] = None
+
+
+class FulfillmentPickupDetails(BaseModel):
+    """Pickup details for fulfillment"""
+
+    recipient: Optional[FulfillmentRecipient] = None
+    expires_at: Optional[str] = None
+    auto_complete_duration: Optional[str] = None
+    schedule_type: Optional[str] = None
+    pickup_at: Optional[str] = None
+    pickup_window_duration: Optional[str] = None
+    prep_time_duration: Optional[str] = None
+    note: Optional[str] = None
+    placed_at: Optional[str] = None
+    accepted_at: Optional[str] = None
+    rejected_at: Optional[str] = None
+    ready_at: Optional[str] = None
+    expired_at: Optional[str] = None
+    picked_up_at: Optional[str] = None
+    canceled_at: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    is_curbside_pickup: Optional[bool] = None
+    curbside_pickup_details: Optional[Dict[str, Any]] = None
+
+
+class FulfillmentShipmentDetails(BaseModel):
+    """Shipment details for fulfillment"""
+
+    recipient: Optional[FulfillmentRecipient] = None
+    carrier: Optional[str] = None
+    shipping_note: Optional[str] = None
+    shipping_type: Optional[str] = None
+    tracking_number: Optional[str] = None
+    tracking_url: Optional[str] = None
+    placed_at: Optional[str] = None
+    in_progress_at: Optional[str] = None
+    packaged_at: Optional[str] = None
+    expected_shipped_at: Optional[str] = None
+    shipped_at: Optional[str] = None
+    canceled_at: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    failed_at: Optional[str] = None
+    failure_reason: Optional[str] = None
+
+
+class FulfillmentDeliveryDetails(BaseModel):
+    """Delivery details for fulfillment"""
+
+    recipient: Optional[FulfillmentRecipient] = None
+    schedule_type: Optional[str] = None
+    placed_at: Optional[str] = None
+    deliver_at: Optional[str] = None
+    prep_time_duration: Optional[str] = None
+    delivery_window_duration: Optional[str] = None
+    note: Optional[str] = None
+    completed_at: Optional[str] = None
+    in_progress_at: Optional[str] = None
+    rejected_at: Optional[str] = None
+    ready_at: Optional[str] = None
+    delivered_at: Optional[str] = None
+    canceled_at: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    courier_pickup_at: Optional[str] = None
+    courier_pickup_window_duration: Optional[str] = None
+    is_no_contact_delivery: Optional[bool] = None
+    dropoff_notes: Optional[str] = None
+    courier_provider_name: Optional[str] = None
+    courier_support_phone_number: Optional[str] = None
+    square_delivery_id: Optional[str] = None
+    external_delivery_id: Optional[str] = None
+    managed_delivery: Optional[bool] = None
+
+
+class FulfillmentFulfillmentEntry(BaseModel):
+    """Fulfillment entry for specific line items"""
+
+    uid: Optional[str] = None
+    line_item_uid: str
+    quantity: str
+    metadata: Optional[Dict[str, str]] = None
+
+
+class Fulfillment(BaseModel):
+    """Order fulfillment details"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    type: Optional[FulfillmentType] = None
+    state: Optional[FulfillmentState] = None
+    line_item_application: Optional[FulfillmentLineItemApplication] = None
+    entries: Optional[List[FulfillmentFulfillmentEntry]] = None
+    metadata: Optional[Dict[str, str]] = None
+    pickup_details: Optional[FulfillmentPickupDetails] = None
+    shipment_details: Optional[FulfillmentShipmentDetails] = None
+    delivery_details: Optional[FulfillmentDeliveryDetails] = None
+
+
+class OrderRoundingAdjustment(BaseModel):
+    """Rounding adjustment for an order"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    name: Optional[str] = None
+    amount_money: Optional[Money] = None
+
+
+class OrderMoneyAmounts(BaseModel):
+    """Money amounts rollup"""
+
+    total_money: Optional[Money] = None
+    tax_money: Optional[Money] = None
+    discount_money: Optional[Money] = None
+    tip_money: Optional[Money] = None
+    service_charge_money: Optional[Money] = None
+
+
+class OrderReturnLineItem(BaseModel):
+    """Line item being returned"""
+
+    uid: Optional[str] = None
+    source_line_item_uid: Optional[str] = None
+    name: Optional[str] = None
+    quantity: str
+    quantity_unit: Optional[OrderQuantityUnit] = None
+    note: Optional[str] = None
+    catalog_object_id: Optional[str] = None
+    catalog_version: Optional[int] = None
+    variation_name: Optional[str] = None
+    item_type: Optional[OrderLineItemItemType] = None
+    return_modifiers: Optional[List[OrderLineItemModifier]] = None
+    applied_taxes: Optional[List[OrderLineItemAppliedTax]] = None
+    applied_discounts: Optional[List[OrderLineItemAppliedDiscount]] = None
+    base_price_money: Optional[Money] = None
+    variation_total_price_money: Optional[Money] = None
+    gross_return_money: Optional[Money] = None
+    total_tax_money: Optional[Money] = None
+    total_discount_money: Optional[Money] = None
+    total_money: Optional[Money] = None
+    applied_service_charges: Optional[List[OrderLineItemAppliedServiceCharge]] = None
+    total_service_charge_money: Optional[Money] = None
+
+
+class OrderReturnServiceCharge(BaseModel):
+    """Service charge being returned"""
+
+    uid: Optional[str] = None
+    source_service_charge_uid: Optional[str] = None
+    name: Optional[str] = None
+    catalog_object_id: Optional[str] = None
+    catalog_version: Optional[int] = None
+    percentage: Optional[str] = None
+    amount_money: Optional[Money] = None
+    applied_money: Optional[Money] = None
+    total_money: Optional[Money] = None
+    total_tax_money: Optional[Money] = None
+    calculation_phase: Optional[OrderServiceChargeCalculationPhase] = None
+    taxable: Optional[bool] = None
+    applied_taxes: Optional[List[OrderLineItemAppliedTax]] = None
+
+
+class OrderReturnTax(BaseModel):
+    """Tax being returned"""
+
+    uid: Optional[str] = None
+    source_tax_uid: Optional[str] = None
+    catalog_object_id: Optional[str] = None
+    catalog_version: Optional[int] = None
+    name: Optional[str] = None
+    type: Optional[OrderLineItemTaxType] = None
+    percentage: Optional[str] = None
+    applied_money: Optional[Money] = None
+    scope: Optional[OrderLineItemTaxScope] = None
+
+
+class OrderReturnDiscount(BaseModel):
+    """Discount being returned"""
+
+    uid: Optional[str] = None
+    source_discount_uid: Optional[str] = None
+    catalog_object_id: Optional[str] = None
+    catalog_version: Optional[int] = None
+    name: Optional[str] = None
+    type: Optional[OrderLineItemDiscountType] = None
+    percentage: Optional[str] = None
+    amount_money: Optional[Money] = None
+    applied_money: Optional[Money] = None
+    scope: Optional[OrderLineItemDiscountScope] = None
+
+
+class OrderReturnTip(BaseModel):
+    """Tip being returned"""
+
+    uid: Optional[str] = None
+    applied_money: Optional[Money] = None
+    source_tender_uid: Optional[str] = None
+    source_tender_id: Optional[str] = None
+
+
+class OrderReturn(BaseModel):
+    """Order return details"""
+
+    uid: Optional[str] = Field(None, max_length=60)
+    source_order_id: Optional[str] = None
+    return_line_items: Optional[List[OrderReturnLineItem]] = None
+    return_service_charges: Optional[List[OrderReturnServiceCharge]] = None
+    return_taxes: Optional[List[OrderReturnTax]] = None
+    return_discounts: Optional[List[OrderReturnDiscount]] = None
+    return_tips: Optional[List[OrderReturnTip]] = None
+    rounding_adjustment: Optional[OrderRoundingAdjustment] = None
+    return_amounts: Optional[OrderMoneyAmounts] = None
+
+
+class AdditionalRecipient(BaseModel):
+    """Additional recipient for payments"""
+
+    location_id: str
+    description: str
+    amount_money: Money
+    receivable_id: Optional[str] = None
+
+
+class TenderCardDetails(BaseModel):
+    """Card tender details"""
+
+    status: Optional[str] = None
+    card: Optional[Dict[str, Any]] = None
+    entry_method: Optional[str] = None
+
+
+class TenderCashDetails(BaseModel):
+    """Cash tender details"""
+
+    buyer_tendered_money: Optional[Money] = None
+    change_back_money: Optional[Money] = None
+
+
+class TenderBankAccountDetails(BaseModel):
+    """Bank account tender details"""
+
+    status: Optional[str] = None
+
+
+class TenderBuyNowPayLaterDetails(BaseModel):
+    """Buy now pay later tender details"""
+
+    buy_now_pay_later_brand: Optional[str] = None
+    status: Optional[str] = None
+
+
+class TenderSquareAccountDetails(BaseModel):
+    """Square account tender details"""
+
+    status: Optional[str] = None
+
+
+class Tender(BaseModel):
+    """Payment tender"""
+
+    id: Optional[str] = Field(None, max_length=192)
+    location_id: Optional[str] = Field(None, max_length=50)
+    transaction_id: Optional[str] = Field(None, max_length=192)
+    created_at: Optional[str] = Field(None, max_length=32)
+    note: Optional[str] = Field(None, max_length=500)
+    amount_money: Optional[Money] = None
+    tip_money: Optional[Money] = None
+    processing_fee_money: Optional[Money] = None
+    customer_id: Optional[str] = Field(None, max_length=191)
+    type: TenderType
+    card_details: Optional[TenderCardDetails] = None
+    cash_details: Optional[TenderCashDetails] = None
+    bank_account_details: Optional[TenderBankAccountDetails] = None
+    buy_now_pay_later_details: Optional[TenderBuyNowPayLaterDetails] = None
+    square_account_details: Optional[TenderSquareAccountDetails] = None
+    additional_recipients: Optional[List[AdditionalRecipient]] = None
+    payment_id: Optional[str] = Field(None, max_length=192)
+
+
+class Refund(BaseModel):
+    """Order refund"""
+
+    id: str = Field(..., max_length=255)
+    location_id: str = Field(..., max_length=50)
+    transaction_id: Optional[str] = Field(None, max_length=192)
+    tender_id: str = Field(..., max_length=192)
+    created_at: Optional[str] = Field(None, max_length=32)
+    reason: str = Field(..., max_length=192)
+    amount_money: Money
+    status: RefundStatus
+    processing_fee_money: Optional[Money] = None
+    additional_recipients: Optional[List[AdditionalRecipient]] = None
+
+
+class OrderPricingOptions(BaseModel):
+    """Pricing options for an order"""
+
+    auto_apply_discounts: Optional[bool] = None
+    auto_apply_taxes: Optional[bool] = None
+
+
+class OrderReward(BaseModel):
+    """Reward applied to an order"""
+
+    id: str = Field(..., min_length=1)
+    reward_tier_id: str = Field(..., min_length=1)
+
+
+class Order(BaseModel):
+    """Square order object"""
+
+    id: Optional[str] = None
+    location_id: str = Field(..., min_length=1)
+    reference_id: Optional[str] = Field(None, max_length=40)
+    source: Optional[OrderSource] = None
+    customer_id: Optional[str] = Field(None, max_length=191)
+    line_items: Optional[List[OrderLineItem]] = None
+    taxes: Optional[List[OrderLineItemTax]] = None
+    discounts: Optional[List[OrderLineItemDiscount]] = None
+    service_charges: Optional[List[OrderServiceCharge]] = None
+    fulfillments: Optional[List[Fulfillment]] = None
+    returns: Optional[List[OrderReturn]] = None
+    return_amounts: Optional[OrderMoneyAmounts] = None
+    net_amounts: Optional[OrderMoneyAmounts] = None
+    rounding_adjustment: Optional[OrderRoundingAdjustment] = None
+    tenders: Optional[List[Tender]] = None
+    refunds: Optional[List[Refund]] = None
+    metadata: Optional[Dict[str, str]] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    closed_at: Optional[str] = None
+    state: Optional[OrderState] = None
+    version: Optional[int] = None
+    total_money: Optional[Money] = None
+    total_tax_money: Optional[Money] = None
+    total_discount_money: Optional[Money] = None
+    total_tip_money: Optional[Money] = None
+    total_service_charge_money: Optional[Money] = None
+    ticket_name: Optional[str] = Field(None, max_length=30)
+    pricing_options: Optional[OrderPricingOptions] = None
+    rewards: Optional[List[OrderReward]] = None
+    net_amount_due_money: Optional[Money] = None
+
+
+class Error(BaseModel):
+    """Error object"""
+
+    category: ErrorCategory
+    code: Optional[str] = None
+    detail: Optional[str] = None
+    field: Optional[str] = None
+
+
+# Input and Output models for Create Order API
+
+
+class CreateOrderInput(BaseModel):
+    """Input model for creating an order"""
+
+    order: Order = Field(..., description="The order to create")
+    idempotency_key: Optional[str] = Field(
+        None, max_length=192, description="Idempotency key for the request"
+    )
+    use_production: bool = Field(
+        default=False, description="Whether to use production environment"
+    )
+
+
+class CreateOrderResponse(BaseModel):
+    """Response model for the Square create order API"""
+
+    order: Optional[Order] = None
+    errors: Optional[List[Error]] = None
