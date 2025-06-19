@@ -1639,3 +1639,21 @@ class CreatePaymentLinkResponse(BaseModel):
     payment_link: Optional[PaymentLink] = Field(
         None, description="The created payment link"
     )
+
+
+class SquareFoodItem(BaseModel):
+    """Food item extracted from chat history for Square ordering"""
+
+    item_name: str = Field(
+        ...,
+        description="Complete item name including modifications, size, and customizations from the menu",
+    )
+    quantity: int = Field(default=1, gt=0, description="Quantity of this item")
+
+
+class SquareFoodItemList(BaseModel):
+    """List of food items extracted from chat history"""
+
+    items: List[SquareFoodItem] = Field(
+        ..., description="List of food items the customer wants to order"
+    )
