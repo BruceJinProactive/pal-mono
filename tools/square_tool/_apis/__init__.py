@@ -5,6 +5,8 @@ from tools.square_tool._apis._utils import connect_square_api, handle_square_res
 from tools.square_tool.classes import (
     CatalogListResponse,
     CatalogSearchResponse,
+    CreateOrderInput,
+    CreateOrderResponse,
     ListCatalogInput,
     SearchCatalogInput,
     SquareAccessToken,
@@ -113,3 +115,51 @@ def search_catalog(
 
     except Exception as e:
         raise ValueError(f"Failed to search catalog: {str(e)}") from e
+
+
+def create_order(
+    access_token: SquareAccessToken,
+    input_data: CreateOrderInput,
+) -> CreateOrderResponse:
+    """
+    Create a new order using Square's Orders API.
+
+    Args:
+        access_token (SquareAccessToken): The Square access token model containing the token and type
+        input_data (CreateOrderInput): Pydantic model containing the order data and optional idempotency key
+
+    Returns:
+        CreateOrderResponse: Pydantic model containing the created order response
+
+    Raises:
+        ValueError: If the API call fails
+    """
+    try:
+        # Build request payload from input model
+        payload = {}
+
+        # Add order (required)
+        payload["order"] = input_data.order.model_dump(exclude_none=True)
+
+        # Add idempotency key if provided
+        if input_data.idempotency_key:
+            payload["idempotency_key"] = input_data.idempotency_key
+
+        response = connect_square_api(
+            http_method=HttpMethod.POST,
+            access_token=access_token,
+            api_function="/v2/orders",
+            payload=payload,
+            use_production=input_data.use_production,
+        )
+
+        # Handle response and parse with Pydantic
+        result = handle_square_response(response)
+        if isinstance(result, str):
+            result = json.loads(result)
+
+        # Return structured response using Pydantic model
+        return CreateOrderResponse(**result)
+
+    except Exception as e:
+        raise ValueError(f"Failed to create order: {str(e)}") from e
