@@ -8,6 +8,7 @@ from tools.adora_tool import AdoraTool
 from tools.booking_tool import BookingTool
 from tools.calculator_tool import CalculatorTool
 from tools.olo_tool import OloTool
+from tools.square_tool import SquareTool
 from tools.toast_tool import ToastTool
 from tools.vapi_tool import VapiTool
 from tools.yelp_tool import YelpTool
@@ -30,6 +31,7 @@ class ToolRegistry:
             "olo_tool": OloTool,
             "vapi_tool": VapiTool,
             "yelp_tool": YelpTool,
+            "square_tool": SquareTool,
         }
         # Log instance creation with built-in id
         instance_id = id(self)
