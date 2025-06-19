@@ -101,7 +101,7 @@ def update_subscription_plan(
         session=session,
         resource_type=ChangeResourceType.SubscriptionPlan,
         author=context.email,
-        account_id=uuid.uuid4(),
+        account_id=existing_plan.account_id,
         resource_id=str(plan_id),
         old_record=old_plan,
         auto_commit=True,
@@ -112,6 +112,49 @@ def update_subscription_plan(
         )
         ctx.new_record = updated_plan
         return updated_plan
+
+
+def delete_subscription_plan(
+    session: Session,
+    context: UserContext,
+    plan_id: uuid.UUID,
+):
+    """
+    Delete a subscription plan by ID.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        plan_id: Plan ID to delete
+
+    Raises:
+        ValueError: If plan cannot be deleted due to business rules
+    """
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+
+    existing_plan = subscription_repository.get_subscription_plan_by_id(plan_id)
+    if not existing_plan:
+        raise ValueError(f"Subscription plan {plan_id} does not exist.")
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.SubscriptionPlan,
+        author=context.email,
+        account_id=existing_plan.account_id,
+        resource_id=str(plan_id),
+        old_record=existing_plan,
+        auto_commit=True,
+    ):
+        subscription_repository.delete_subscription_plan(plan_id)
+
+        logger.info(
+            f"Deleted subscription plan: {existing_plan.name}",
+            extra={
+                "plan_id": str(plan_id),
+                "plan_name": existing_plan.name,
+                "author": context.email,
+            },
+        )
 
 
 def get_subscription_plans(

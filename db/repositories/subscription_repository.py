@@ -110,6 +110,22 @@ class SubscriptionRepository:
             logger.error(f"Error updating subscription plan: {e}")
             raise
 
+    def delete_subscription_plan(self, plan_id: uuid.UUID) -> None:
+        """Delete a subscription plan."""
+        try:
+            plan = self.get_subscription_plan_by_id(plan_id)
+            if not plan:
+                raise PlanNotFoundError(f"Subscription plan {plan_id} not found")
+            self.session.delete(plan)
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error deleting subscription plan: {e}")
+            raise
+
     def get_last_trial_subscription(
         self, account_id: uuid.UUID
     ) -> Optional[AccountSubscription]:

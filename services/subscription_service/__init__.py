@@ -48,3 +48,11 @@ def update_subscription_plan(
     params: SubscriptionPlanParams,
 ):
     return _implementation.update_subscription_plan(session, context, plan_id, params)
+
+
+def delete_subscription_plan(
+    session: Session,
+    context: UserContext,
+    plan_id: uuid.UUID,
+):
+    return _implementation.delete_subscription_plan(session, context, plan_id)
