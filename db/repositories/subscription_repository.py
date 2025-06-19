@@ -36,6 +36,19 @@ class SubscriptionRepository:
             logger.error(f"Error retrieving subscription plan: {e}")
             return None
 
+    def get_subscription_plans(self) -> List[SubscriptionPlan]:
+        """Get all subscription plans."""
+        try:
+            return (
+                self.session.query(SubscriptionPlan)
+                .order_by(SubscriptionPlan.created_at.desc())
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving subscription plans: {e}")
+            return []
+
     def create_subscription_plan(
         self,
         name: str,

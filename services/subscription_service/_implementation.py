@@ -80,6 +80,16 @@ def create_subscription_plan(
     return plan
 
 
+def get_subscription_plans(
+    session: Session,
+):
+    """
+    Get all subscription plans.
+    """
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+    return subscription_repository.get_subscription_plans()
+
+
 def get_subscription_plan_by_id(
     session: Session,
     plan_id: uuid.UUID,

@@ -26,6 +26,12 @@ def create_subscription_plan(
     return _implementation.create_subscription_plan(session, context, params)
 
 
+def get_subscription_plans(
+    session: Session,
+):
+    return _implementation.get_subscription_plans(session)
+
+
 def get_subscription_plan_by_id(
     session: Session,
     plan_id,

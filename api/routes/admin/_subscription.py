@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.routes.admin._auth import authorize_user_account
+from api.routes.admin._auth import authorize_admin, authorize_user_account
 from api.routes.admin._builder import build_subscription, build_subscription_plan
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.subscription import (
@@ -23,6 +23,7 @@ def create_subscription_plan(
     """
     Creates a new subscription plan.
     """
+    authorize_admin(context)
     plan_params = SubscriptionPlanParams(
         name=request.name,
         description=request.description,
@@ -62,6 +63,18 @@ def create_subscription_plan(
     return build_subscription_plan(db_plan)
 
 
+def list_subscription_plans(
+    context: UserContext,
+    session: Session,
+):
+    """
+    Lists all subscription plans.
+    """
+    authorize_admin(context)
+    plans = subscription_service.get_subscription_plans(session)
+    return [build_subscription_plan(plan) for plan in plans]
+
+
 def create_subscription(
     context: UserContext,
     session: Session,
@@ -71,8 +84,7 @@ def create_subscription(
     """
     Creates a new subscription for an account.
     """
-    # Authorize user access to the account
-    authorize_user_account(context, account_name)
+    authorize_admin(context)
     subscription_params = request.to_subscription_params()
     try:
         db_subscription = subscription_service.create_subscription(

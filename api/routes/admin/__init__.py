@@ -1234,6 +1234,17 @@ async def create_subscription_plan(
     return _subscription.create_subscription_plan(context, session, request)
 
 
+@admin_router.get("/plans")
+async def list_subscription_plans(
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Retrieves all subscription plans.
+    """
+    return _subscription.list_subscription_plans(context, session)
+
+
 """
 ---------- Subscription Endpoints ----------
 ------------------------------------------
