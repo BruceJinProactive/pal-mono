@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from db.tables.subscriptions import (
     AccountSubscription,
@@ -14,6 +14,12 @@ from db.tables.subscriptions import (
 )
 from db.tables.types import TargetTier
 from utils.log import logger
+
+
+class PlanNotFoundError(Exception):
+    """Raised when a subscription plan is not found."""
+
+    pass
 
 
 class SubscriptionRepository:
@@ -50,41 +56,20 @@ class SubscriptionRepository:
             return []
 
     def create_subscription_plan(
-        self,
-        name: str,
-        tier: TargetTier,
-        description: Optional[str] = None,
-        features_included: Optional[List[str]] = None,
-        features_excluded: Optional[List[str]] = None,
-        call_quota: Optional[int] = None,
-        order_quota: Optional[int] = None,
-        call_overage_charge: Optional[int] = None,
-        order_overage_charge: Optional[int] = None,
-        free_trial_days: Optional[int] = None,
-        monthly_fee: Optional[int] = None,
-        stripe_price_id: Optional[str] = None,
-        active: bool = True,
-        sort_id: Optional[int] = None,
+        self, name: str, tier: TargetTier, **kwargs
     ) -> SubscriptionPlan:
         """Create a new subscription plan."""
         try:
-            plan = SubscriptionPlan(
-                id=uuid.uuid4(),
-                name=name,
-                description=description,
-                tier=tier,
-                features_included=features_included or [],
-                features_excluded=features_excluded or [],
-                call_quota=call_quota,
-                order_quota=order_quota,
-                call_overage_charge=call_overage_charge,
-                order_overage_charge=order_overage_charge,
-                free_trial_days=free_trial_days,
-                monthly_fee=monthly_fee,
-                stripe_price_id=stripe_price_id,
-                active=active,
-                sort_id=sort_id,
-            )
+            plan = SubscriptionPlan(id=uuid.uuid4(), name=name, tier=tier)
+
+            for key, value in kwargs.items():
+                if value is not None and hasattr(plan, key):
+                    setattr(plan, key, value)
+
+            if not hasattr(plan, "features_included") or plan.features_included is None:
+                plan.features_included = []
+            if not hasattr(plan, "features_excluded") or plan.features_excluded is None:
+                plan.features_excluded = []
 
             self.session.add(plan)
 
@@ -98,6 +83,31 @@ class SubscriptionRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error creating subscription plan: {e}")
+            raise
+
+    def update_subscription_plan(
+        self, plan_id: uuid.UUID, **kwargs
+    ) -> SubscriptionPlan | None:
+        """Update a subscription plan."""
+        try:
+            plan = self.get_subscription_plan_by_id(plan_id)
+            if not plan:
+                raise PlanNotFoundError(f"Subscription plan {plan_id} not found")
+
+            for key, value in kwargs.items():
+                if value is not None and hasattr(plan, key):
+                    setattr(plan, key, value)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(plan)
+            return plan
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating subscription plan: {e}")
             raise
 
     def get_last_trial_subscription(
@@ -168,12 +178,7 @@ class SubscriptionRepository:
         subscription_type: SubscriptionType,
         start_date: datetime,
         end_date: datetime,
-        call_quota: Optional[int] = None,
-        order_quota: Optional[int] = None,
-        call_overage_charge: Optional[int] = None,
-        order_overage_charge: Optional[int] = None,
-        monthly_fee: Optional[int] = None,
-        stripe_subscription_id: Optional[str] = None,
+        **kwargs,
     ) -> AccountSubscription:
         """Create a new account subscription."""
         try:
@@ -184,14 +189,12 @@ class SubscriptionRepository:
                 subscription_type=subscription_type,
                 start_date=start_date,
                 end_date=end_date,
-                call_quota=call_quota,
-                order_quota=order_quota,
-                call_overage_charge=call_overage_charge,
-                order_overage_charge=order_overage_charge,
-                monthly_fee=monthly_fee,
-                stripe_subscription_id=stripe_subscription_id,
                 status=SubscriptionStatus.active,
             )
+
+            for key, value in kwargs.items():
+                if value is not None and hasattr(subscription, key):
+                    setattr(subscription, key, value)
 
             self.session.add(subscription)
 
@@ -200,13 +203,7 @@ class SubscriptionRepository:
             else:
                 self.session.flush()
 
-            subscription = (
-                self.session.query(AccountSubscription)
-                .options(selectinload(AccountSubscription.subscription_plan))
-                .filter(AccountSubscription.id == subscription.id)
-                .first()
-            )
-
+            self.session.refresh(subscription)
             return subscription
         except SQLAlchemyError as e:
             self.session.rollback()

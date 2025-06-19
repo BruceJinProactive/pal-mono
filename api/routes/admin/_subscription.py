@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,7 @@ from api.schemas.admin.subscription import (
     CheckoutParams,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    UpdateSubscriptionPlanRequest,
 )
 from services import account_service, payment_service, subscription_service
 from services.account_service import AccountParams
@@ -73,6 +76,40 @@ def list_subscription_plans(
     authorize_admin(context)
     plans = subscription_service.get_subscription_plans(session)
     return [build_subscription_plan(plan) for plan in plans]
+
+
+def update_subscription_plan(
+    plan_id: uuid.UUID,
+    request: UpdateSubscriptionPlanRequest,
+    context: UserContext,
+    session: Session,
+):
+    """
+    Updates a subscription plan by ID.
+    """
+    authorize_admin(context)
+
+    plan = subscription_service.get_subscription_plan_by_id(session, plan_id)
+    if not plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Subscription plan {plan_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    plan_params = request.to_subscription_plan_params()
+    try:
+        db_plan = subscription_service.update_subscription_plan(
+            session, context, plan_id, plan_params
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+
+    return build_subscription_plan(db_plan)
 
 
 def create_subscription(

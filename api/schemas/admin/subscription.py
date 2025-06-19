@@ -9,6 +9,7 @@ from db.tables.types import TargetTier
 from services.subscription_service.schema import (
     SubscriptionOverride,
     SubscriptionParams,
+    SubscriptionPlanParams,
     SubscriptionType,
 )
 
@@ -54,6 +55,59 @@ class CreateSubscriptionPlanRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("Plan name cannot be empty")
         return v.strip()
+
+    @field_validator("call_overage_charge", "order_overage_charge", "monthly_fee")
+    def validate_positive_amounts(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Charges and fees must be non-negative")
+        return v
+
+    @field_validator("call_quota", "order_quota", "free_trial_days")
+    def validate_positive_numbers(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("Quotas and trial days must be positive")
+        return v
+
+
+class UpdateSubscriptionPlanRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    tier: Optional[TargetTier] = None
+    features_included: Optional[list[str]] = None
+    features_excluded: Optional[list[str]] = None
+    call_quota: Optional[int] = None
+    order_quota: Optional[int] = None
+    call_overage_charge: Optional[int] = None
+    order_overage_charge: Optional[int] = None
+    free_trial_days: Optional[int] = None
+    monthly_fee: Optional[int] = None
+    stripe_price_id: Optional[str] = None
+    active: Optional[bool] = None
+    sort_id: Optional[int] = None
+
+    def to_subscription_plan_params(self) -> SubscriptionPlanParams:
+        return SubscriptionPlanParams(
+            name=self.name or "",
+            description=self.description or "",
+            tier=self.tier or TargetTier.t1,
+            features_included=self.features_included or [],
+            features_excluded=self.features_excluded or [],
+            call_quota=self.call_quota,
+            order_quota=self.order_quota,
+            call_overage_charge=self.call_overage_charge,
+            order_overage_charge=self.order_overage_charge,
+            free_trial_days=self.free_trial_days,
+            monthly_fee=self.monthly_fee,
+            stripe_price_id=self.stripe_price_id,
+            active=self.active or True,
+            sort_id=self.sort_id,
+        )
+
+    @field_validator("name")
+    def validate_name(cls, v):
+        if v is not None and (not v or not v.strip()):
+            raise ValueError("Plan name cannot be empty")
+        return v.strip() if v else v
 
     @field_validator("call_overage_charge", "order_overage_charge", "monthly_fee")
     def validate_positive_amounts(cls, v):

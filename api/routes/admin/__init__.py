@@ -69,6 +69,7 @@ from api.schemas.admin.subscription import (
     CheckoutParams,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    UpdateSubscriptionPlanRequest,
 )
 from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
@@ -1257,6 +1258,19 @@ async def list_subscription_plans(
     Retrieves all subscription plans.
     """
     return _subscription.list_subscription_plans(context, session)
+
+
+@admin_router.patch("/plans/{plan_id}")
+async def update_subscription_plan(
+    plan_id: uuid.UUID,
+    request: UpdateSubscriptionPlanRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Updates a subscription plan by ID.
+    """
+    return _subscription.update_subscription_plan(plan_id, request, context, session)
 
 
 """

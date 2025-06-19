@@ -1,4 +1,6 @@
+import copy
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
@@ -49,18 +51,7 @@ def create_subscription_plan(
         plan = subscription_repository.create_subscription_plan(
             name=params.name.strip(),
             tier=params.tier,
-            description=params.description,
-            features_included=params.features_included,
-            features_excluded=params.features_excluded,
-            call_quota=params.call_quota,
-            order_quota=params.order_quota,
-            call_overage_charge=params.call_overage_charge,
-            order_overage_charge=params.order_overage_charge,
-            free_trial_days=params.free_trial_days,
-            monthly_fee=params.monthly_fee,
-            stripe_price_id=params.stripe_price_id,
-            active=params.active,
-            sort_id=params.sort_id,
+            **{k: v for k, v in asdict(params).items() if v is not None},
         )
 
         ctx.resource_id = str(plan.id)
@@ -78,6 +69,49 @@ def create_subscription_plan(
         )
 
     return plan
+
+
+def update_subscription_plan(
+    session: Session,
+    context: UserContext,
+    plan_id: uuid.UUID,
+    params: SubscriptionPlanParams,
+) -> db.SubscriptionPlan:
+    """
+    Update an existing subscription plan.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        plan_id: Plan ID to update
+        params: Updated subscription plan parameters
+
+    Returns:
+        Updated subscription plan
+    """
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+
+    existing_plan = subscription_repository.get_subscription_plan_by_id(plan_id)
+    if not existing_plan:
+        raise ValueError(f"Subscription plan {plan_id} does not exist.")
+
+    old_plan = copy.copy(existing_plan)
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.SubscriptionPlan,
+        author=context.email,
+        account_id=uuid.uuid4(),
+        resource_id=str(plan_id),
+        old_record=old_plan,
+        auto_commit=True,
+    ) as ctx:
+        updated_plan = subscription_repository.update_subscription_plan(
+            plan_id,
+            **{k: v for k, v in asdict(params).items() if v is not None},
+        )
+        ctx.new_record = updated_plan
+        return updated_plan
 
 
 def get_subscription_plans(

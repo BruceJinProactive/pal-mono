@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy.orm import Session
 
 from api.routes.admin import UserContext
@@ -37,3 +39,12 @@ def get_subscription_plan_by_id(
     plan_id,
 ):
     return _implementation.get_subscription_plan_by_id(session, plan_id)
+
+
+def update_subscription_plan(
+    session: Session,
+    context: UserContext,
+    plan_id: uuid.UUID,
+    params: SubscriptionPlanParams,
+):
+    return _implementation.update_subscription_plan(session, context, plan_id, params)
