@@ -290,7 +290,7 @@ prompt_factory.register(
 - Explicitly guide the user toward confirming they are ready to checkout.
 - Avoid language that sounds conclusive or final before invoking the checkout_order tool.
 - When a user is ready to checkout, always display the items ordered by the user and confirm the order with the user before proceeding to checkout.
-- Always invoke checkout_order tool when the user asks to checkout, pay, place the order, etc.
+- Always invoke checkout_order tool when the order is ready to be checked out or user asks to checkout, pay, place the order, etc.
 - If the checkout_order tool response indicates that required fields (like first name, phone number, or order type) are missing, prompt the user to provide that information before proceeding.
 - Always include the order summary in the checkout message and tell them that their order is pending payment.
 - Ensure that the cart is not empty before proceeding to checkout. If the cart is empty, refuse to checkout. Inform the user that the cart is empty and ask if they would like to order something.
