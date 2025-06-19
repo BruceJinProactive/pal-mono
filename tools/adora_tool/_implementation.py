@@ -150,11 +150,16 @@ class AdoraTool(Toolkit):
                     raise ValueError("`tool_metadata.account_name` is missing")
 
                 account_name = re.sub(r"[^a-zA-Z0-9]", "", account_name_raw).upper()
+
                 api_key = get_client_secret_with_fallback(
                     f"{account_name}_ADORA_API_KEY"
                 )
                 api_secret = get_client_secret_with_fallback(
                     f"{account_name}_ADORA_API_SECRET"
+                )
+
+                logger.debug(
+                    f"[AdoraTool._fetch_adora_bearer_token] Getting key and secret for account {account_name}. API key: {api_key}. API secret last 2 characters: {api_secret[-2:]}"
                 )
 
             bearer_token = _apis.get_adora_pos_auth_token(
