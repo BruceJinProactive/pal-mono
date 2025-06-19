@@ -1433,3 +1433,209 @@ class CreateOrderResponse(BaseModel):
 
     order: Optional[Order] = None
     errors: Optional[List[Error]] = None
+
+
+# ------------------- Payment Link Models -------------------
+
+
+class QuickPay(BaseModel):
+    """Describes an ad hoc item and price for which to generate a quick pay checkout link"""
+
+    name: str = Field(
+        ..., min_length=1, max_length=255, description="The ad hoc item name"
+    )
+    price_money: Money = Field(..., description="The price of the item")
+    location_id: str = Field(
+        ..., min_length=1, description="The ID of the business location"
+    )
+
+
+class CustomField(BaseModel):
+    """Custom field requesting information from the buyer"""
+
+    title: str = Field(
+        ..., min_length=1, max_length=50, description="The title of the custom field"
+    )
+
+
+class AcceptedPaymentMethods(BaseModel):
+    """The methods allowed for buyers during checkout"""
+
+    apple_pay: Optional[bool] = Field(
+        None, description="Whether Apple Pay is accepted at checkout"
+    )
+    google_pay: Optional[bool] = Field(
+        None, description="Whether Google Pay is accepted at checkout"
+    )
+    cash_app_pay: Optional[bool] = Field(
+        None, description="Whether Cash App Pay is accepted at checkout"
+    )
+    afterpay_clearpay: Optional[bool] = Field(
+        None, description="Whether Afterpay/Clearpay is accepted at checkout"
+    )
+
+
+class ShippingFee(BaseModel):
+    """The fee associated with shipping to be applied to the Order as a service charge"""
+
+    name: Optional[str] = Field(None, description="The name for the shipping fee")
+    charge: Money = Field(
+        ..., description="The amount and currency for the shipping fee"
+    )
+
+
+class CheckoutOptions(BaseModel):
+    """Describes optional fields to add to the resulting checkout page"""
+
+    allow_tipping: Optional[bool] = Field(
+        None, description="Indicates whether the payment allows tipping"
+    )
+    custom_fields: Optional[List[CustomField]] = Field(
+        None,
+        max_length=2,
+        description="The custom fields requesting information from the buyer",
+    )
+    subscription_plan_id: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="The ID of the subscription plan for the buyer",
+    )
+    redirect_url: Optional[str] = Field(
+        None,
+        max_length=2048,
+        description="The confirmation page URL to redirect the buyer to",
+    )
+    merchant_support_email: Optional[str] = Field(
+        None,
+        max_length=256,
+        description="The email address that buyers can use to contact the seller",
+    )
+    ask_for_shipping_address: Optional[bool] = Field(
+        None,
+        description="Indicates whether to include the address fields in the payment form",
+    )
+    accepted_payment_methods: Optional[AcceptedPaymentMethods] = Field(
+        None, description="The methods allowed for buyers during checkout"
+    )
+    app_fee_money: Optional[Money] = Field(
+        None, description="The amount of money that the developer is taking as a fee"
+    )
+    shipping_fee: Optional[ShippingFee] = Field(
+        None, description="The fee associated with shipping"
+    )
+    enable_coupon: Optional[bool] = Field(
+        None, description="Indicates whether to include the Add coupon section"
+    )
+    enable_loyalty: Optional[bool] = Field(
+        None, description="Indicates whether to include the REWARDS section"
+    )
+
+
+class PrePopulatedData(BaseModel):
+    """Describes buyer data to prepopulate on the checkout page"""
+
+    buyer_email: Optional[str] = Field(
+        None, max_length=256, description="The buyer email to prepopulate"
+    )
+    buyer_phone_number: Optional[str] = Field(
+        None, max_length=17, description="The buyer phone number to prepopulate"
+    )
+    buyer_address: Optional[Address] = Field(
+        None, description="The buyer address to prepopulate"
+    )
+
+
+class PaymentLinkRelatedResources(BaseModel):
+    """The list of related objects"""
+
+    orders: Optional[List[Order]] = Field(
+        None, description="The order associated with the payment link"
+    )
+    subscription_plans: Optional[List[CatalogObject]] = Field(
+        None, description="The subscription plan associated with the payment link"
+    )
+
+
+class PaymentLink(BaseModel):
+    """The created payment link"""
+
+    id: Optional[str] = Field(
+        None, description="The Square-assigned ID of the payment link"
+    )
+    version: int = Field(
+        ..., le=65535, description="The Square-assigned version number"
+    )
+    description: Optional[str] = Field(
+        None,
+        max_length=4096,
+        description="The optional description of the payment_link object",
+    )
+    order_id: Optional[str] = Field(
+        None,
+        max_length=192,
+        description="The ID of the order associated with the payment link",
+    )
+    checkout_options: Optional[CheckoutOptions] = Field(
+        None, description="The checkout options configured for the payment link"
+    )
+    url: Optional[str] = Field(
+        None, max_length=255, description="The shortened URL of the payment link"
+    )
+    long_url: Optional[str] = Field(
+        None, max_length=255, description="The long URL of the payment link"
+    )
+    created_at: Optional[str] = Field(
+        None, description="The timestamp when the payment link was created"
+    )
+    updated_at: Optional[str] = Field(
+        None, description="The timestamp when the payment link was last updated"
+    )
+    payment_note: Optional[str] = Field(
+        None, max_length=500, description="An optional note"
+    )
+    related_resources: Optional[PaymentLinkRelatedResources] = Field(
+        None, description="The list of related objects"
+    )
+
+
+class CreatePaymentLinkInput(BaseModel):
+    """Input model for creating a payment link"""
+
+    idempotency_key: Optional[str] = Field(
+        None, max_length=192, description="A unique string that identifies this request"
+    )
+    description: Optional[str] = Field(
+        None, max_length=4096, description="A description of the payment link"
+    )
+    quick_pay: Optional[QuickPay] = Field(
+        None, description="Describes an ad hoc item and price for quick pay checkout"
+    )
+    location_id: Optional[str] = Field(
+        None, min_length=1, description="The ID of the business location"
+    )
+    order: Optional[Order] = Field(
+        None, description="Describes the Order for which to create a checkout link"
+    )
+    checkout_options: Optional[CheckoutOptions] = Field(
+        None, description="Optional fields to add to the resulting checkout page"
+    )
+    pre_populated_data: Optional[PrePopulatedData] = Field(
+        None, description="Fields to prepopulate in the resulting checkout page"
+    )
+    payment_note: Optional[str] = Field(
+        None, max_length=500, description="A note for the payment"
+    )
+    use_production: bool = Field(
+        default=False, description="Whether to use production environment"
+    )
+
+
+class CreatePaymentLinkResponse(BaseModel):
+    """Response model for the Square create payment link API"""
+
+    errors: Optional[List[Error]] = Field(
+        None, description="Any errors that occurred during the request"
+    )
+    payment_link: Optional[PaymentLink] = Field(
+        None, description="The created payment link"
+    )
