@@ -191,22 +191,32 @@ class SquareTool(Toolkit):
             )
             return None
 
-    def _find_catalog_variations(self, food_items: List[tuple]) -> List[tuple]:
-        """Find catalog variation IDs for food items with quantities."""
+    def _find_catalog_variations(
+        self, food_items: List[tuple]
+    ) -> tuple[List[tuple], List[tuple]]:
+        """Find catalog variation IDs for food items with quantities.
+
+        Returns:
+            tuple: (variation_items, matched_food_items) where:
+                - variation_items: List of (variation_id, quantity) tuples
+                - matched_food_items: List of (item_name, quantity) tuples that were successfully found
+        """
         variation_items = []
+        matched_food_items = []
 
         for item_name, quantity in food_items:
             variation_id = self._find_first_variation_for_item(item_name)
 
             if variation_id:
                 variation_items.append((variation_id, quantity))
+                matched_food_items.append((item_name, quantity))
                 logger.info(
                     f"[SquareTool] Found variation {variation_id} for {item_name} (qty: {quantity})"
                 )
             else:
                 logger.warning(f"[SquareTool] No variation found for: {item_name}")
 
-        return variation_items
+        return variation_items, matched_food_items
 
     def _create_square_order(self, variation_items: List[tuple]) -> Optional[Order]:
         """Create Square order and return the full Order object."""
@@ -375,12 +385,21 @@ class SquareTool(Toolkit):
 
             # Step 2: Find catalog variations
             logger.info("[SquareTool] Step 2: Finding catalog variations")
-            variation_items = self._find_catalog_variations(food_items)
+            variation_items, matched_food_items = self._find_catalog_variations(
+                food_items
+            )
 
             if not variation_items:
                 return (
                     "Could not find any of the requested items in the Square catalog."
                 )
+
+            # Check if some items weren't found
+            missing_items = []
+            matched_item_names = {item_name for item_name, _ in matched_food_items}
+            for item_name, _ in food_items:
+                if item_name not in matched_item_names:
+                    missing_items.append(item_name)
 
             # Step 3: Create order
             logger.info("[SquareTool] Step 3: Creating Square order")
@@ -391,17 +410,32 @@ class SquareTool(Toolkit):
 
             # Step 4: Create payment link
             logger.info("[SquareTool] Step 4: Creating payment link")
-            payment_url = self._create_payment_link(created_order, len(variation_items))
+            total_quantity = sum(quantity for _, quantity in variation_items)
+            payment_url = self._create_payment_link(created_order, total_quantity)
 
             if not payment_url:
                 return f"Order created (ID: {created_order.id}) but failed to create payment link."
 
-            # Format success response
-            return f"""Order created successfully!
+            # Format success response with item details
+            item_details = []
+            for item_name, quantity in matched_food_items:
+                item_details.append(f"{quantity}x {item_name}")
+
+            items_text = ", ".join(item_details)
+
+            # Create the success message
+            success_message = f"""Order created successfully!
 Order ID: {created_order.id}
 Location: {self.location_id}
-Items: {len(variation_items)} items
+Items: {items_text} ({total_quantity} items total)
 Payment Link: {payment_url}"""
+
+            # Add warning about missing items if any
+            if missing_items:
+                missing_text = ", ".join(missing_items)
+                success_message += f"\n\nNote: The following items could not be found in the catalog and were not added to the order: {missing_text}"
+
+            return success_message
 
         except Exception as e:
             logger.error(f"[SquareTool.create_order_and_payment_link] Error: {e}")
