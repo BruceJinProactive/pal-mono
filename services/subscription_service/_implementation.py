@@ -41,7 +41,7 @@ def create_subscription_plan(
 
     with change_log_context(
         session=session,
-        resource_type=ChangeResourceType.Account,
+        resource_type=ChangeResourceType.SubscriptionPlan,
         author=context.email,
         account_id=uuid.uuid4(),
         auto_commit=True,
@@ -219,7 +219,7 @@ def create_subscription(
 
     with change_log_context(
         session=session,
-        resource_type=ChangeResourceType.Account,
+        resource_type=ChangeResourceType.Subscription,
         author=context.email,
         account_id=account.id,
         auto_commit=True,

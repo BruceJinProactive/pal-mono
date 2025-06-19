@@ -20,6 +20,8 @@ class ChangeResourceType(str, enum.Enum):
     Project = "Project"
     OrderIntegration = "OrderIntegration"
     POSIntegration = "POSIntegration"
+    SubscriptionPlan = "SubscriptionPlan"
+    Subscription = "Subscription"
 
 
 class ChangeAction(str, enum.Enum):
