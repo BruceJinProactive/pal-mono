@@ -58,7 +58,7 @@ from api.schemas.admin.lead import (
     UpdateLeadRequest,
 )
 from api.schemas.admin.onboarding import OnboardingRequest
-from api.schemas.admin.pos_integration import CreatePOSIntegrationRequest
+from api.schemas.admin.pos_integration import POSIntegrationRequest
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
@@ -790,7 +790,7 @@ async def get_project_instagram_username(
 @admin_router.put("/projects/{project_id}/pos_integrations")
 async def set_project_pos_integration(
     project_id: uuid.UUID,
-    request: CreatePOSIntegrationRequest,
+    request: POSIntegrationRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
@@ -800,6 +800,20 @@ async def set_project_pos_integration(
     """
     return await _pos_integration.set_project_pos_integration(
         context, session, project_id, request
+    )
+
+
+@admin_router.get("/projects/{project_id}/pos_integrations")
+async def get_project_pos_integration(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Get the POS integration for a project.
+    """
+    return await _pos_integration.get_project_pos_integration(
+        context, session, project_id
     )
 
 

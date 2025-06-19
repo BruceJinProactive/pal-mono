@@ -4,7 +4,7 @@ from fastapi import Response, status
 from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext, not_found_error
-from api.schemas.admin.pos_integration import CreatePOSIntegrationRequest
+from api.schemas.admin.pos_integration import POSIntegrationRequest
 from services import project_service
 from services.integration_service import pos_integration
 
@@ -15,7 +15,7 @@ async def set_project_pos_integration(
     context: UserContext,
     session: Session,
     project_id: uuid.UUID,
-    request: CreatePOSIntegrationRequest,
+    request: POSIntegrationRequest,
 ):
     project = project_service.get_project(session, project_id)
     if not project:
@@ -28,6 +28,21 @@ async def set_project_pos_integration(
         project=project,
         store_identifier=request.store_identifier,
         provider=request.provider,
+        client_key=request.client_key,
+        client_secret=request.client_secret.get_secret_value(),
         state=request.state,
     )
     return Response(status_code=status.HTTP_200_OK)
+
+
+async def get_project_pos_integration(
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
+):
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} not found")
+    authorize_user_account(context, project.account.name)
+
+    return pos_integration.get_project_pos_integration(session, project_id)
