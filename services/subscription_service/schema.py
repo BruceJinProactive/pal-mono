@@ -4,12 +4,12 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from db.tables.subscriptions import SubscriptionType
-from db.tables.types import TargetTier
+from db.tables.types import PlanTier
 
 
 class SubscriptionPlanParams(BaseModel):
     name: str
-    tier: TargetTier
+    tier: PlanTier
     description: Optional[str] = None
     features_included: List[str] = []
     features_excluded: List[str] = []

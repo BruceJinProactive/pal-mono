@@ -60,7 +60,9 @@ class Agent(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     language: Mapped[Language] = mapped_column(
-        Enum(Language), nullable=False, server_default=Language.english
+        Enum(Language, name="agent_language"),
+        nullable=False,
+        server_default=Language.english,
     )
 
     # deprecated, use the explicit fields instead

@@ -2,7 +2,8 @@ import uuid
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
-from db.tables.pos_integration import POSProvider, POSState
+from db.tables.pos_integration import POSState
+from db.tables.types import POSProvider
 
 
 class POSIntegrationRequest(BaseModel):

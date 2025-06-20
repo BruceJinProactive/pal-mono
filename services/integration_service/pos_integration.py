@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin import UserContext
 from db.repositories.pos_integration_repository import POSIntegrationRepository
-from db.tables.pos_integration import POSIntegration, POSProvider, POSState
+from db.tables.pos_integration import POSIntegration, POSState
 from db.tables.projects import Project
+from db.tables.types import POSProvider
 from services.integration_service.pos_integration_token_exchange import (
     store_pos_credentials,
 )

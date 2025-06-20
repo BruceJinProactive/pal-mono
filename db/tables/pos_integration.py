@@ -11,14 +11,7 @@ from sqlalchemy.sql import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
-
-
-class POSProvider(str, enum.Enum):
-    YELP = "yelp"
-    TOAST = "toast"
-    OLO = "olo"
-    ADORA = "adora"
-    SQUARE = "square"
+from .types import POSProvider
 
 
 class POSState(str, enum.Enum):

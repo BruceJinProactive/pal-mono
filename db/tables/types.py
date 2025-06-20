@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 
 
@@ -18,6 +20,13 @@ class AgentType(str, enum.Enum):
     sales = "sales"
 
 
+class PlanTier(str, enum.Enum):
+    t1 = "t1"
+    t2 = "t2"
+    enterprise = "enterprise"
+
+
+# to be deleted, bad name
 class TargetTier(str, enum.Enum):
     t1 = "t1"
     t2 = "t2"
@@ -46,3 +55,11 @@ class OrderIntegrationVendor(str, enum.Enum):
 class Language(str, enum.Enum):
     english = "english"
     multilingual = "multilingual"
+
+
+class POSProvider(str, enum.Enum):
+    yelp = "yelp"
+    toast = "toast"
+    olo = "olo"
+    adora = "adora"
+    square = "square"

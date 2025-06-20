@@ -12,7 +12,7 @@ from db.tables.subscriptions import (
     SubscriptionStatus,
     SubscriptionType,
 )
-from db.tables.types import TargetTier
+from db.tables.types import PlanTier
 from utils.log import logger
 
 
@@ -56,7 +56,7 @@ class SubscriptionRepository:
             return []
 
     def create_subscription_plan(
-        self, name: str, tier: TargetTier, **kwargs
+        self, name: str, tier: PlanTier, **kwargs
     ) -> SubscriptionPlan:
         """Create a new subscription plan."""
         try:

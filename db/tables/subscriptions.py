@@ -11,7 +11,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import Boolean, DateTime, Enum, Integer, String
 
 from .base import Base
-from .types import SubscriptionStatus, SubscriptionType, TargetTier
+from .types import PlanTier, SubscriptionStatus, SubscriptionType
 
 if TYPE_CHECKING:
     from .accounts import Account
@@ -29,9 +29,7 @@ class SubscriptionPlan(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    tier: Mapped[TargetTier] = mapped_column(
-        Enum(TargetTier, name="targettier", native_enum=False), nullable=False
-    )
+    tier: Mapped[PlanTier] = mapped_column(Enum(PlanTier), nullable=False)
     features_included: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=True, server_default=text("'{}'")
     )
@@ -87,7 +85,7 @@ class AccountSubscription(Base):
         index=True,
     )
     subscription_type: Mapped[SubscriptionType] = mapped_column(
-        Enum(SubscriptionType, name="subscriptiontype", native_enum=False),
+        Enum(SubscriptionType, name="subscriptiontype"),
         nullable=False,
     )
     start_date: Mapped[datetime] = mapped_column(
@@ -103,7 +101,7 @@ class AccountSubscription(Base):
         String, nullable=True, index=True
     )
     status: Mapped[SubscriptionStatus] = mapped_column(
-        Enum(SubscriptionStatus, name="subscriptionstatus", native_enum=False),
+        Enum(SubscriptionStatus, name="subscriptionstatus"),
         nullable=False,
     )
 

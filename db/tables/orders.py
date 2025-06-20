@@ -13,7 +13,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
-from .types import OrderIntegrationVendor
+from .types import POSProvider
 
 
 class Order(Base):
@@ -37,8 +37,11 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(), nullable=False)
 
     # Integration details
-    vendor: Mapped[OrderIntegrationVendor | None] = mapped_column(
-        Enum(OrderIntegrationVendor, name="order_integration_vendor"), nullable=True
+    vendor: Mapped[POSProvider | None] = mapped_column(
+        Enum(
+            POSProvider,
+        ),
+        nullable=True,
     )
 
     # Timestamps
@@ -55,5 +58,4 @@ class Order(Base):
     __table_args__ = (
         # Ensure order_number is unique per store
         UniqueConstraint("store_id", "order_number", name="uq_store_order"),
-        {"schema": "public"},
     )

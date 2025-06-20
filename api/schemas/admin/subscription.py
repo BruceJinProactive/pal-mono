@@ -5,7 +5,7 @@ from typing import Optional
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, PositiveInt, field_validator
 
 from db.tables.subscriptions import SubscriptionStatus
-from db.tables.types import TargetTier
+from db.tables.types import PlanTier
 from services.subscription_service.schema import (
     SubscriptionOverride,
     SubscriptionParams,
@@ -18,7 +18,7 @@ class SubscriptionPlan(BaseModel):
     id: uuid.UUID
     name: str
     description: Optional[str]
-    tier: TargetTier
+    tier: PlanTier
     features_included: list[str]
     features_excluded: list[str]
     call_quota: Optional[int]
@@ -37,7 +37,7 @@ class SubscriptionPlan(BaseModel):
 class CreateSubscriptionPlanRequest(BaseModel):
     name: str
     description: Optional[str] = None
-    tier: TargetTier
+    tier: PlanTier
     features_included: list[str] = []
     features_excluded: list[str] = []
     call_quota: Optional[int] = None
@@ -72,7 +72,7 @@ class CreateSubscriptionPlanRequest(BaseModel):
 class UpdateSubscriptionPlanRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    tier: Optional[TargetTier] = None
+    tier: Optional[PlanTier] = None
     features_included: Optional[list[str]] = None
     features_excluded: Optional[list[str]] = None
     call_quota: Optional[int] = None
@@ -89,7 +89,7 @@ class UpdateSubscriptionPlanRequest(BaseModel):
         return SubscriptionPlanParams(
             name=self.name or "",
             description=self.description or "",
-            tier=self.tier or TargetTier.t1,
+            tier=self.tier or PlanTier.t1,
             features_included=self.features_included or [],
             features_excluded=self.features_excluded or [],
             call_quota=self.call_quota,

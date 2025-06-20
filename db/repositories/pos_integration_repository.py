@@ -5,7 +5,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.tables.change_log import ChangeResourceType
-from db.tables.pos_integration import POSIntegration, POSProvider, POSState
+from db.tables.pos_integration import POSIntegration, POSState
+from db.tables.types import POSProvider
 from utils.log import logger
 
 

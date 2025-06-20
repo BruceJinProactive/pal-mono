@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from db.tables.pos_integration import POSProvider
+from db.tables.types import POSProvider
 
 # Import POS token exchange functions from each tool
 from tools.adora_tool._apis import get_adora_pos_auth_token
@@ -129,15 +129,15 @@ def get_pos_access_token(
 
     try:
         # Provider-specific token retrieval
-        if provider == POSProvider.ADORA:
+        if provider == POSProvider.adora:
             access_token = _get_adora_token(client_key, client_secret, config)
-        elif provider == POSProvider.TOAST:
+        elif provider == POSProvider.toast:
             access_token = _get_toast_token(client_key, client_secret)
-        elif provider == POSProvider.OLO:
+        elif provider == POSProvider.olo:
             access_token = _get_olo_token(client_key)
-        elif provider == POSProvider.SQUARE:
+        elif provider == POSProvider.square:
             access_token = _get_square_token(client_key)
-        elif provider == POSProvider.YELP:
+        elif provider == POSProvider.yelp:
             access_token = _get_yelp_token()
         elif provider == POSProvider.OPENTABLE:
             access_token = _get_opentable_token(client_key, client_secret, config)
