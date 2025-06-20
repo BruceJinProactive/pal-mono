@@ -1273,16 +1273,16 @@ async def update_subscription_plan(
     return _subscription.update_subscription_plan(plan_id, request, context, session)
 
 
-@admin_router.delete("/plans/{plan_id}")
-async def delete_subscription_plan(
+@admin_router.patch("/plans/{plan_id}/expire")
+async def expire_subscription_plan(
     plan_id: uuid.UUID,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
     """
-    Deletes a subscription plan by ID.
+    Expires a subscription plan by ID.
     """
-    return _subscription.delete_subscription_plan(plan_id, context, session)
+    return _subscription.expire_subscription_plan(plan_id, context, session)
 
 
 """

@@ -112,23 +112,27 @@ def update_subscription_plan(
     return build_subscription_plan(db_plan)
 
 
-def delete_subscription_plan(
+def expire_subscription_plan(
     plan_id: uuid.UUID,
     context: UserContext,
     session: Session,
 ):
     """
-    Deletes a subscription plan by ID.
+    Expires a subscription plan by ID.
     """
     authorize_admin(context)
     try:
-        subscription_service.delete_subscription_plan(session, context, plan_id)
+        expired_plan = subscription_service.expire_subscription_plan(
+            session, context, plan_id
+        )
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
             headers={"Content-Type": "application/json"},
         )
+
+    return build_subscription_plan(expired_plan)
 
 
 def create_subscription(

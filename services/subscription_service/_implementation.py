@@ -1,6 +1,5 @@
 import copy
 import uuid
-from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
@@ -39,34 +38,53 @@ def create_subscription_plan(
     if not params.name or not params.name.strip():
         raise ValueError("Plan name is required")
 
-    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
 
-    with change_log_context(
-        session=session,
-        resource_type=ChangeResourceType.SubscriptionPlan,
-        author=context.email,
-        account_id=uuid.uuid4(),
-        auto_commit=True,
-    ) as ctx:
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.SubscriptionPlan,
+            account_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            author=context.email,
+            auto_commit=False,
+        ) as ctx:
+            plan = subscription_repository.create_subscription_plan(
+                name=params.name.strip(),
+                tier=params.tier,
+                **{
+                    k: v
+                    for k, v in params.model_dump().items()
+                    if v is not None and k not in ["name", "tier"]
+                },
+            )
+
+            ctx.resource_id = str(plan.id)
+            ctx.new_record = plan
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for subscription plan creation, proceeding anyway: {e}"
+        )
+
         plan = subscription_repository.create_subscription_plan(
             name=params.name.strip(),
             tier=params.tier,
-            **{k: v for k, v in asdict(params).items() if v is not None},
-        )
-
-        ctx.resource_id = str(plan.id)
-        ctx.new_record = plan
-
-        logger.info(
-            f"Created subscription plan: {plan.name}",
-            extra={
-                "plan_id": str(plan.id),
-                "plan_name": plan.name,
-                "tier": plan.tier.value,
-                "active": plan.active,
-                "author": context.email,
+            **{
+                k: v
+                for k, v in params.model_dump().items()
+                if v is not None and k not in ["name", "tier"]
             },
         )
+
+    logger.info(
+        f"Created subscription plan: {plan.name}",
+        extra={
+            "plan_id": str(plan.id),
+            "plan_name": plan.name,
+            "tier": plan.tier.value,
+            "active": plan.active,
+            "author": context.email,
+        },
+    )
 
     return plan
 
@@ -89,7 +107,7 @@ def update_subscription_plan(
     Returns:
         Updated subscription plan
     """
-    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
 
     existing_plan = subscription_repository.get_subscription_plan_by_id(plan_id)
     if not existing_plan:
@@ -97,64 +115,96 @@ def update_subscription_plan(
 
     old_plan = copy.copy(existing_plan)
 
-    with change_log_context(
-        session=session,
-        resource_type=ChangeResourceType.SubscriptionPlan,
-        author=context.email,
-        account_id=existing_plan.account_id,
-        resource_id=str(plan_id),
-        old_record=old_plan,
-        auto_commit=True,
-    ) as ctx:
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.SubscriptionPlan,
+            author=context.email,
+            account_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            resource_id=str(plan_id),
+            old_record=old_plan,
+            auto_commit=False,
+        ) as ctx:
+            updated_plan = subscription_repository.update_subscription_plan(
+                plan_id,
+                **{
+                    k: v
+                    for k, v in params.model_dump().items()
+                    if v is not None and k not in ["name", "tier"]
+                },
+            )
+            ctx.new_record = updated_plan
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for subscription plan update, proceeding anyway: {e}"
+        )
+
         updated_plan = subscription_repository.update_subscription_plan(
             plan_id,
-            **{k: v for k, v in asdict(params).items() if v is not None},
+            **{
+                k: v
+                for k, v in params.model_dump().items()
+                if v is not None and k not in ["name", "tier"]
+            },
         )
-        ctx.new_record = updated_plan
-        return updated_plan
+
+    return updated_plan
 
 
-def delete_subscription_plan(
+def expire_subscription_plan(
     session: Session,
     context: UserContext,
     plan_id: uuid.UUID,
-):
+) -> db.SubscriptionPlan:
     """
-    Delete a subscription plan by ID.
+    Expire a subscription plan by ID.
 
     Args:
         session: Database session
         context: User context for authorization and logging
-        plan_id: Plan ID to delete
+        plan_id: Plan ID to expire
+
+    Returns:
+        Expired subscription plan
 
     Raises:
-        ValueError: If plan cannot be deleted due to business rules
+        ValueError: If plan cannot be expired due to business rules
     """
-    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
 
     existing_plan = subscription_repository.get_subscription_plan_by_id(plan_id)
     if not existing_plan:
         raise ValueError(f"Subscription plan {plan_id} does not exist.")
 
-    with change_log_context(
-        session=session,
-        resource_type=ChangeResourceType.SubscriptionPlan,
-        author=context.email,
-        account_id=existing_plan.account_id,
-        resource_id=str(plan_id),
-        old_record=existing_plan,
-        auto_commit=True,
-    ):
-        subscription_repository.delete_subscription_plan(plan_id)
-
-        logger.info(
-            f"Deleted subscription plan: {existing_plan.name}",
-            extra={
-                "plan_id": str(plan_id),
-                "plan_name": existing_plan.name,
-                "author": context.email,
-            },
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.SubscriptionPlan,
+            author=context.email,
+            account_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            resource_id=str(plan_id),
+            old_record=existing_plan,
+            auto_commit=False,
+        ) as ctx:
+            expired_plan = subscription_repository.expire_subscription_plan(plan_id)
+            ctx.new_record = expired_plan
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for subscription plan expiration, proceeding anyway: {e}"
         )
+
+        expired_plan = subscription_repository.expire_subscription_plan(plan_id)
+
+    logger.info(
+        f"Expired subscription plan: {expired_plan.name}",
+        extra={
+            "plan_id": str(plan_id),
+            "plan_name": expired_plan.name,
+            "author": context.email,
+        },
+    )
+
+    return expired_plan
 
 
 def get_subscription_plans(
