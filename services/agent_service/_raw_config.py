@@ -23,6 +23,7 @@ from agent import (
 )
 from agent.config import StorageProvider, VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
+from agent.memory import MemoryProvider
 from agent.model import ModelProvider
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
@@ -66,11 +67,16 @@ class RawConfig:
                 "storage_provider", StorageProvider.PALSTORAGE
             )
 
+            memory_provider = self.agent.raw_config.get(
+                "memory_provider", MemoryProvider.DEFAULT
+            )
+
             return AgentConfig(
                 persona=self._get_agent_persona(self.channel),
                 model=self._get_agent_model_config(),
                 memory=MemoryConfig(
                     enabled=True,
+                    provider=memory_provider,
                     identifier=self.account.name,
                     instruction="Don't remember the user's gender.",
                 ),
