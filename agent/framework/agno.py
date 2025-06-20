@@ -261,7 +261,7 @@ class AgnoAgent:
                 )
                 if mem_content:
                     mem_message = Message(role="developer", content=mem_content)
-                    messages = messages.append(mem_message)
+                    messages.append(mem_message)
                     logger.debug(
                         f"[PalMemory]: Find user info from memory: {mem_content}"
                     )
