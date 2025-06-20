@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 class MemoryProvider(StrEnum):
     DEFAULT = auto()
+    PROMPT = auto()
 
 
 class MemoryConfig(BaseModel):

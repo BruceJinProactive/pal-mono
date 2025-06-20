@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import uuid
 from typing import AsyncIterator, Optional
@@ -13,6 +14,8 @@ from pydantic import BaseModel, Field
 import db
 from agent.config import AgentConfig, StorageProvider
 from agent.input_output import Input, Output
+from agent.memory import MemoryProvider
+from agent.memory._implementation import get_all_memories
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
 from utils.dd import send_dd_histogram_metrics, trace_block
@@ -98,6 +101,8 @@ class AgnoAgent:
 
         self._agent = agent
         self._storage_provider = config.storage_provider
+        self._memory_config = config.memory
+        self._user_id = config.metadata.user_id
         self._session_id = uuid.UUID(config.metadata.session_id)
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
@@ -121,6 +126,7 @@ class AgnoAgent:
         with trace_block("Agno Core Agent Processing"):
 
             message, messages = await self._build_model_inputs(input)
+
             result = await self._agent.arun(
                 message,
                 messages=messages,
@@ -243,7 +249,29 @@ class AgnoAgent:
             return input.get_prompt(), None
         elif self._storage_provider == StorageProvider.PALSTORAGE:
             current_time = datetime.datetime.now(datetime.timezone.utc)
-            messages = await self.get_history_messages(input)
+
+            if (
+                self._memory_config.enabled
+                and self._memory_config.provider == MemoryProvider.PROMPT
+            ):
+                # Run both operations concurrently - memory operation in thread pool to avoid blocking
+                messages, mem_content = await asyncio.gather(
+                    self.get_history_messages(input),
+                    asyncio.to_thread(lambda: asyncio.run(get_all_memories(self._user_id))),  # type: ignore
+                )
+                if mem_content:
+                    mem_message = Message(role="developer", content=mem_content)
+                    messages = messages.append(mem_message)
+                    logger.debug(
+                        f"[PalMemory]: Find user info from memory: {mem_content}"
+                    )
+                else:
+                    logger.debug(
+                        f"[PalMemory]: No user info from memory for user: {self._user_id}"
+                    )
+            else:
+                messages = await self.get_history_messages(input)
+
             send_dd_histogram_metrics(
                 "framework_agent.query_history_messages_time_spent",
                 current_time,
@@ -252,7 +280,9 @@ class AgnoAgent:
                     f"conversation_id:{self._session_id}",
                 ],
             )
+
             return None, messages
+
         else:
             return None, None
 
