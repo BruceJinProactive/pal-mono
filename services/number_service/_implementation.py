@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 
 from twilio.rest import Client
@@ -110,7 +111,7 @@ class NumberService:
         try:
             twilio_number = self.twilio_client.incoming_phone_numbers.create(
                 phone_number=number.phone_number,
-                friendly_name=merchant_name,
+                friendly_name=self._get_friendly_name(merchant_name),
             )
             if not twilio_number.phone_number:
                 raise ValueError("Failed to get phone number from Twilio")
@@ -259,7 +260,7 @@ class NumberService:
                         number=phone_number,
                         twilio_account_sid=self.twilio_client.username,  # type: ignore
                         twilio_auth_token=self.twilio_client.password,
-                        name=merchant_name,
+                        name=self._get_friendly_name(merchant_name),
                         assistant_id=assistant_id,
                         server=Server(url=server_url),
                     ),
@@ -361,3 +362,10 @@ class NumberService:
         """
         self._release_number_from_vapi(number)
         self._release_number_from_twilio(number)
+
+    def _get_friendly_name(self, business_name: str) -> str:
+        stage = os.environ.get("RUNTIME_ENV") or "dev"
+        if stage == "prd":
+            return business_name
+        else:
+            return f"{stage}:{business_name}"
