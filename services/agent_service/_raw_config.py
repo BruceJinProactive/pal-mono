@@ -24,6 +24,7 @@ from agent import (
 from agent.config import StorageProvider, VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.model import ModelProvider
+from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
 from services.agent_service.prompts import prompt_factory
 from utils.log import logger
@@ -229,11 +230,21 @@ class RawConfig:
         agent_info_list = self._get_agent_info(channel)
         store_info_list = self._get_store_info()
 
-        sections = []
+        sections = [self._build_agent_introduction()]
         sections.extend(build_section("# Brand Information", brand_info_list))
         sections.extend(build_section("# Agent Information", agent_info_list))
         sections.extend(build_section("# Store Information", store_info_list))
         return "\n".join(sections)
+
+    def _build_agent_introduction(self):
+        agent_name = self.agent.name or "an AI agent"
+        account_name = self.account.display_name or "the business"
+
+        if self.account.industry == BusinessIndustry.FOOD_BEVERAGE:
+            intro = "Your job is to help the customer with questions about the restaurant and menu."
+        else:
+            intro = "Your job is to help the customer with questions about the business and product & services we offer."
+        return f"You are {agent_name} from {account_name}. {intro}"
 
     def _get_brand_info(self):
         return [
