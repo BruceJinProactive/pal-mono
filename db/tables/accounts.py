@@ -28,9 +28,16 @@ class BusinessIndustry(str, enum.Enum):
 
 
 class AccountStatus(str, enum.Enum):
-    active = "active"  # account in operation
-    pending = "pending"  # account created but not activated
-    initializing = "initializing"  # activated but not fully onboarded
+    pending = "pending"  # initial status, account created but not configured
+    initializing = "initializing"  # self-serve onboarding initialization phase
+    initialized = "initialized"  # account initialized with basic info
+    integration_complete = (
+        "integration_complete"  # pos and other third party integration complete
+    )
+    evaluation_complete = (
+        "evaluation_complete"  # agent performance evaluated and ready for production
+    )
+    active = "active"  # account ready and running in production
     disabled = "disabled"  # temporarily disabled account
     deleted = "deleted"  # soft deleting account
 
