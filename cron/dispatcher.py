@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from . import test_job
+from cron import test_job
 
 
 async def main():
