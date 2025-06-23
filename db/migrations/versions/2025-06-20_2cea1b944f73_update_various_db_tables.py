@@ -25,7 +25,14 @@ def upgrade() -> None:
     plan_tier_enum = sa.Enum("t1", "t2", "enterprise", name="plantier")
     plan_tier_enum.create(op.get_bind(), checkfirst=True)
 
-    # column alter
+    # rename existing enum
+    op.execute("ALTER TYPE posprovider RENAME 'ADORA' to 'adora'")
+    op.execute("ALTER TYPE posprovider RENAME 'YELP' to 'yelp'")
+    op.execute("ALTER TYPE posprovider RENAME 'TOAST' to 'toast'")
+    op.execute("ALTER TYPE posprovider RENAME 'SQUARE' to 'square'")
+    op.execute("ALTER TYPE posprovider RENAME 'OLO' to 'olo'")
+
+    # alter columns
     op.drop_index("ix_accounts_lead_id", table_name="accounts")
     op.drop_column("accounts", "lead_id")
     op.create_index(op.f("ix_orders_id"), "orders", ["id"], unique=False)
@@ -58,4 +65,10 @@ def downgrade() -> None:
     )
     op.create_index("ix_accounts_lead_id", "accounts", ["lead_id"], unique=False)
     op.execute("DROP TYPE IF EXISTS plantier")
+
+    op.execute("ALTER TYPE posprovider RENAME 'adora' to 'ADORA'")
+    op.execute("ALTER TYPE posprovider RENAME 'yelp' to 'YELP'")
+    op.execute("ALTER TYPE posprovider RENAME 'toast' to 'TOAST'")
+    op.execute("ALTER TYPE posprovider RENAME 'square' to 'SQUARE'")
+    op.execute("ALTER TYPE posprovider RENAME 'olo' to 'OLO'")
     # ### end Alembic commands ###
