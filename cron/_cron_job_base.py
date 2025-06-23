@@ -35,7 +35,9 @@ class CronJobBase(ABC):
 
     def should_execute(self) -> bool:
         schedule_type = os.environ.get("CRONJOB_SCHEDULE_TYPE")
-        return self.schedule_type == schedule_type
+        if not schedule_type:
+            return False
+        return self.schedule_type.lower() == schedule_type.lower()
 
     @final
     async def execute(self) -> None:
