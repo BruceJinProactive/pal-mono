@@ -26,11 +26,11 @@ def upgrade() -> None:
     plan_tier_enum.create(op.get_bind(), checkfirst=True)
 
     # rename existing enum
-    op.execute("ALTER TYPE posprovider RENAME 'ADORA' to 'adora'")
-    op.execute("ALTER TYPE posprovider RENAME 'YELP' to 'yelp'")
-    op.execute("ALTER TYPE posprovider RENAME 'TOAST' to 'toast'")
-    op.execute("ALTER TYPE posprovider RENAME 'SQUARE' to 'square'")
-    op.execute("ALTER TYPE posprovider RENAME 'OLO' to 'olo'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'ADORA' TO 'adora'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'YELP' TO 'yelp'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'TOAST' TO 'toast'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'SQUARE' TO 'square'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'OLO' TO 'olo'")
 
     # alter columns
     op.drop_index("ix_accounts_lead_id", table_name="accounts")
@@ -66,9 +66,9 @@ def downgrade() -> None:
     op.create_index("ix_accounts_lead_id", "accounts", ["lead_id"], unique=False)
     op.execute("DROP TYPE IF EXISTS plantier")
 
-    op.execute("ALTER TYPE posprovider RENAME 'adora' to 'ADORA'")
-    op.execute("ALTER TYPE posprovider RENAME 'yelp' to 'YELP'")
-    op.execute("ALTER TYPE posprovider RENAME 'toast' to 'TOAST'")
-    op.execute("ALTER TYPE posprovider RENAME 'square' to 'SQUARE'")
-    op.execute("ALTER TYPE posprovider RENAME 'olo' to 'OLO'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'adora' TO 'ADORA'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'yelp' TO 'YELP'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'toast' TO 'TOAST'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'square' TO 'SQUARE'")
+    op.execute("ALTER TYPE posprovider RENAME VALUE 'olo' TO 'OLO'")
     # ### end Alembic commands ###
