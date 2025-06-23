@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
-from db.tables.subscriptions import SubscriptionType
-from services import account_service
+from db.tables.subscriptions import SubscriptionStatus, SubscriptionType
+from services import account_service, payment_service
 from services.history_service import change_log_context
 from services.subscription_service.schema import (
     SubscriptionParams,
@@ -155,26 +155,27 @@ def expire_subscription_plan(
     session: Session,
     context: UserContext,
     plan_id: uuid.UUID,
-) -> db.SubscriptionPlan:
+    hard_delete: bool = False,
+) -> Optional[db.SubscriptionPlan]:
     """
-    Expire a subscription plan by ID.
+    Expire or hard delete a subscription plan.
 
     Args:
         session: Database session
         context: User context for authorization and logging
-        plan_id: Plan ID to expire
+        plan_id: Plan ID to expire or delete
+        hard_delete: Whether to hard delete the plan from the database
 
     Returns:
-        Expired subscription plan
-
-    Raises:
-        ValueError: If plan cannot be expired due to business rules
+        Expired plan (if soft delete) or None (if hard delete)
     """
     subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
 
     existing_plan = subscription_repository.get_subscription_plan_by_id(plan_id)
     if not existing_plan:
         raise ValueError(f"Subscription plan {plan_id} does not exist.")
+
+    old_plan = copy.copy(existing_plan)
 
     try:
         with change_log_context(
@@ -183,26 +184,24 @@ def expire_subscription_plan(
             author=context.email,
             account_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
             resource_id=str(plan_id),
-            old_record=existing_plan,
+            old_record=old_plan,
             auto_commit=False,
         ) as ctx:
-            expired_plan = subscription_repository.expire_subscription_plan(plan_id)
-            ctx.new_record = expired_plan
+            expired_plan = subscription_repository.expire_subscription_plan(
+                plan_id, hard_delete
+            )
+            if hard_delete:
+                ctx.new_record = None  # Record was deleted
+            else:
+                ctx.new_record = expired_plan
     except Exception as e:
         logger.warning(
-            f"Change log failed for subscription plan expiration, proceeding anyway: {e}"
+            f"Change log failed for subscription plan {'deletion' if hard_delete else 'expiration'}, proceeding anyway: {e}"
         )
 
-        expired_plan = subscription_repository.expire_subscription_plan(plan_id)
-
-    logger.info(
-        f"Expired subscription plan: {expired_plan.name}",
-        extra={
-            "plan_id": str(plan_id),
-            "plan_name": expired_plan.name,
-            "author": context.email,
-        },
-    )
+        expired_plan = subscription_repository.expire_subscription_plan(
+            plan_id, hard_delete
+        )
 
     return expired_plan
 
@@ -441,3 +440,308 @@ def _get_param_value(override, field_name: str, plan_value):
         if override_value is not None:
             return override_value
     return plan_value
+
+
+def get_account_subscriptions(
+    session: Session,
+    account_name: str,
+) -> tuple[Optional[db.AccountSubscription], list[db.AccountSubscription]]:
+    """
+    Get all active subscriptions for an account, separated into current and scheduled.
+
+    Args:
+        session: Database session
+        account_name: Account name to get subscriptions for
+
+    Returns:
+        Tuple of (current_subscription, scheduled_subscriptions)
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+    subscriptions = subscription_repository.get_account_subscriptions(account.id)
+
+    now = datetime.now(UTC)
+    current_subscription = None
+    scheduled_subscriptions = []
+
+    for subscription in subscriptions:
+        if subscription.start_date <= now <= subscription.end_date:
+            current_subscription = subscription
+        elif subscription.start_date > now:
+            scheduled_subscriptions.append(subscription)
+
+    scheduled_subscriptions.sort(key=lambda s: s.start_date)
+
+    return current_subscription, scheduled_subscriptions
+
+
+def update_account_subscription(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    request_data: dict,
+    force_update: bool = False,
+) -> db.AccountSubscription:
+    """
+    Update an account subscription by creating a new version.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        account_name: Account name for authorization
+        external_id: External ID of the subscription to update
+        request_data: Fields to update
+        force_update: Whether to allow updates on non-active subscriptions
+
+    Returns:
+        New version of the account subscription
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
+
+    current_subscription = (
+        subscription_repository.get_account_subscription_by_external_id(external_id)
+    )
+    if not current_subscription:
+        raise ValueError(f"Subscription with external_id {external_id} does not exist")
+
+    if current_subscription.account_id != account.id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to account {account_name}"
+        )
+
+    if current_subscription.status != SubscriptionStatus.active and not force_update:
+        raise ValueError(
+            f"Cannot update subscription with status {current_subscription.status.value}. Use force_update=true to override."
+        )
+
+    old_subscription = copy.copy(current_subscription)
+
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            new_subscription = subscription_repository.create_subscription_version(
+                current_subscription, **request_data
+            )
+            ctx.new_record = new_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for account subscription update, proceeding anyway: {e}"
+        )
+
+        new_subscription = subscription_repository.create_subscription_version(
+            current_subscription, **request_data
+        )
+
+    return new_subscription
+
+
+def update_account_subscription_status(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    new_status: SubscriptionStatus,
+) -> db.AccountSubscription:
+    """
+    Update the status of an account subscription.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        account_name: Account name for authorization
+        external_id: External ID of the subscription to update
+        new_status: New status to set
+
+    Returns:
+        Updated account subscription
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
+
+    current_subscription = (
+        subscription_repository.get_account_subscription_by_external_id(external_id)
+    )
+    if not current_subscription:
+        raise ValueError(f"Subscription with external_id {external_id} does not exist")
+
+    if current_subscription.account_id != account.id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to account {account_name}"
+        )
+
+    old_subscription = copy.copy(current_subscription)
+
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            updated_subscription = (
+                subscription_repository.update_account_subscription_status(
+                    external_id, new_status
+                )
+            )
+            ctx.new_record = updated_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for account subscription status update, proceeding anyway: {e}"
+        )
+
+        updated_subscription = (
+            subscription_repository.update_account_subscription_status(
+                external_id, new_status
+            )
+        )
+
+    return updated_subscription
+
+
+def cancel_account_subscription(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    hard_delete: bool = False,
+) -> Optional[db.AccountSubscription]:
+    """
+    Cancel an account subscription.
+
+    Business Rules:
+    - Cannot cancel free trial if there's a paid subscription in place
+    - Can cancel paid subscription while keeping free trial
+    - For paid subscriptions, must cancel Stripe subscription first
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        account_name: Account name for authorization
+        external_id: External ID of the subscription to cancel
+        hard_delete: Whether to permanently delete the subscription from the database
+
+    Returns:
+        Cancelled account subscription (if soft delete) or None (if hard delete)
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
+
+    subscription_to_cancel = (
+        subscription_repository.get_account_subscription_by_external_id(external_id)
+    )
+    if not subscription_to_cancel:
+        raise ValueError(f"Subscription with external_id {external_id} does not exist")
+
+    if subscription_to_cancel.account_id != account.id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to account {account_name}"
+        )
+
+    if subscription_to_cancel.status not in [
+        SubscriptionStatus.active,
+        SubscriptionStatus.pending,
+    ]:
+        raise ValueError(
+            f"Cannot cancel subscription with status {subscription_to_cancel.status.value}"
+        )
+
+    active_subscriptions = subscription_repository.get_account_active_subscriptions(
+        account.id
+    )
+
+    if subscription_to_cancel.subscription_type == SubscriptionType.trial:
+        paid_subscriptions = [
+            sub
+            for sub in active_subscriptions
+            if sub.subscription_type
+            in [SubscriptionType.monthly, SubscriptionType.contract]
+            and sub.external_id != external_id
+        ]
+
+        if paid_subscriptions:
+            raise ValueError(
+                "Cannot cancel free trial while paid subscription is active"
+            )
+
+    if (
+        subscription_to_cancel.subscription_type
+        in [SubscriptionType.monthly, SubscriptionType.contract]
+        and subscription_to_cancel.stripe_subscription_id
+    ):
+        try:
+            payment_service.cancel_subscription(
+                subscription_to_cancel.stripe_subscription_id
+            )
+            logger.info(
+                f"Cancelled Stripe subscription {subscription_to_cancel.stripe_subscription_id}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to cancel Stripe subscription: {e}")
+            raise ValueError(f"Failed to cancel Stripe subscription: {str(e)}")
+
+    old_subscription = copy.copy(subscription_to_cancel)
+
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            cancelled_subscription = (
+                subscription_repository.cancel_account_subscription(
+                    external_id, hard_delete
+                )
+            )
+            if hard_delete:
+                ctx.new_record = None
+            else:
+                ctx.new_record = cancelled_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for account subscription {'deletion' if hard_delete else 'cancellation'}, proceeding anyway: {e}"
+        )
+
+        cancelled_subscription = subscription_repository.cancel_account_subscription(
+            external_id, hard_delete
+        )
+
+    logger.info(
+        f"{'Deleted' if hard_delete else 'Cancelled'} subscription for account {account_name}",
+        extra={
+            "account_id": str(account.id),
+            "subscription_external_id": str(external_id),
+            "subscription_type": subscription_to_cancel.subscription_type.value,
+            "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
+            "hard_delete": hard_delete,
+        },
+    )
+
+    return cancelled_subscription
