@@ -5,7 +5,6 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
-    HTTPException,
     Query,
     Request,
     Response,
@@ -58,6 +57,10 @@ from api.schemas.admin.lead import (
     UpdateLeadRequest,
 )
 from api.schemas.admin.onboarding import OnboardingRequest
+from api.schemas.admin.phone_number import (
+    ReleaseProjectNumberRequest,
+    ReserveProjectNumberRequest,
+)
 from api.schemas.admin.pos_integration import POSIntegrationRequest
 from api.schemas.admin.project import (
     CreateProjectRequest,
@@ -81,12 +84,6 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
-from services.number_service._implementation import NumberService
-from services.number_service._utils import (
-    AssistantConfig,
-    NumberCreateRequest,
-    NumberResponse,
-)
 
 from . import (
     _account,
@@ -99,6 +96,7 @@ from . import (
     _history,
     _knowledge,
     _lead,
+    _phone_number,
     _pos_integration,
     _projects,
     _subscription,
@@ -704,6 +702,36 @@ async def delete_project(
     await _projects.delete_project(project_id, context, session)
 
 
+@admin_router.post(
+    "/projects/{project_id}/reserve_number", status_code=status.HTTP_200_OK
+)
+async def reserve_number_for_project(
+    project_id: uuid.UUID,
+    request: ReserveProjectNumberRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Create a new phone number, optionally bind to assistant and project.
+    """
+    await _phone_number.reserve_phone_number(project_id, request, context, session)
+
+
+@admin_router.post(
+    "/projects/{project_id}/release_number", status_code=status.HTTP_200_OK
+)
+async def release_phone_number(
+    project_id: uuid.UUID,
+    request: ReleaseProjectNumberRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Release the specified phone number.
+    """
+    await _phone_number.release_phone_number(project_id, request, context, session)
+
+
 @admin_router.delete(
     "/instagram/deauthorize/{ig_user_id}", status_code=status.HTTP_200_OK
 )
@@ -1147,88 +1175,6 @@ async def onboard(
     Onboard a new account with agents and projects in a single transaction.
     """
     return await create_onboarding(request, context, session)
-
-
-@admin_router.post("/phone_numbers/{project_id}", response_model=NumberResponse)
-async def create_phone_number(
-    project_id: uuid.UUID,
-    request: NumberCreateRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-):
-    """
-    Create a new phone number, optionally bind to assistant and project.
-    """
-
-    project = _projects.get_project(project_id, context, session)
-    if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
-    assistant_config = None
-    if request.assistant_config:
-        try:
-            assistant_config = AssistantConfig(**request.assistant_config)
-        except Exception:
-            raise HTTPException(
-                status_code=400, detail="Invalid assistant_config format"
-            )
-
-    number_service = NumberService()
-    number_response = number_service.setup_number(
-        country_code=request.country_code,
-        toll_free=request.toll_free,
-        merchant_name=project.name,
-        assistant_config=assistant_config,
-    )
-    try:
-        phone_channel_identifier = f"phone:{number_response.number}"  # type: ignore
-        if project.channel_identifiers is None:
-            project.channel_identifiers = []
-        project.channel_identifiers.append(phone_channel_identifier)
-        session.commit()
-    except Exception:
-        number_service.release_number(number_response.number)
-        raise HTTPException(
-            status_code=400,
-            detail="Failed to update project. The purchased number has been released.",
-        )
-    return number_response
-
-
-@admin_router.delete("/phone_numbers/{project_id}")
-async def release_phone_number(
-    project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-):
-    """
-    Release the specified phone number.
-    """
-
-    number_service = NumberService()
-    project = _projects.get_project(project_id, context, session)
-    if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id {project_id} not found",
-        )
-    try:
-        phone_number = [
-            channel_identifier.split(":")[1]
-            for channel_identifier in project.channel_identifiers
-            if channel_identifier.startswith("phone:")
-        ]
-        if len(phone_number) == 0:
-            raise Exception("No phone number found")
-        number_service.release_number(phone_number[0])
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Failed to release phone number. Please try again later.",
-        )
-    return {"success": True}
 
 
 """

@@ -1,24 +1,9 @@
 import gc
 import os
 import sys
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 from pydantic import BaseModel, Field
-
-
-class NumberCreateRequest(BaseModel):
-    """Request model for creating a new phone number."""
-
-    country_code: str = Field(
-        ..., description="Country code for the phone number (e.g., 'US')"
-    )
-    toll_free: bool = Field(False, description="Whether to create a toll-free number")
-    project_id: Optional[str] = Field(
-        None, description="Optional project ID to associate with the number"
-    )
-    assistant_config: Optional[dict] = Field(
-        None, description="Optional assistant configuration for the number"
-    )
 
 
 class NumberResponse(BaseModel):
@@ -48,7 +33,7 @@ def get_server_url():
     runtime_env = os.getenv("RUNTIME_ENV")
     if runtime_env is None:
         raise ValueError("RUNTIME_ENV environment variable is not set")
-    if runtime_env == "lat":
+    if runtime_env in ["lat", "dev"]:
         server_url = "https://lat-api.proactiveailab.com/v1/integrations/vapi/"
     elif runtime_env == "stg":
         server_url = "https://stg-api.proactiveailab.com/v1/integrations/vapi/"

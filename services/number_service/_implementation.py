@@ -6,7 +6,7 @@ from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
 )
 
-from utils import secret
+from utils.log import logger
 
 from ._utils import (
     AssistantConfig,
@@ -64,9 +64,9 @@ class NumberService:
         """
         try:
             # Retrieve each secret via public API
-            twilio_account_sid = secret.get_server_secret("TWILIO_ACCOUNT_SID")
-            twilio_auth_token = secret.get_server_secret("TWILIO_AUTH_TOKEN")
-            self.vapi_token = secret.get_server_secret("VAPI_API_KEY")
+            twilio_account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+            twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+            self.vapi_token = os.environ.get("VAPI_API_KEY", "")
 
             # Validate that none are empty or None
             missing = [
@@ -153,7 +153,7 @@ class NumberService:
         try:
             twilio_number = self.twilio_client.incoming_phone_numbers.create(
                 phone_number=number.phone_number,
-                friendly_name=merchant_name,
+                friendly_name=self._get_friendly_name(merchant_name),
             )
             if not twilio_number.phone_number:
                 raise ValueError("Failed to get toll-free phone number from Twilio")
@@ -162,7 +162,7 @@ class NumberService:
 
         return NumberResponse(
             number=twilio_number.phone_number,
-            merchant_name=merchant_name,
+            merchant_name=twilio_number.friendly_name or "",
             country_code=country_code,
             toll_free=True,
         )
@@ -339,7 +339,8 @@ class NumberService:
                 phone_number=number
             )
             if not numbers:
-                raise ValueError(f"Phone number {number} not found in Twilio account.")
+                logger.warn("Phone number does not exist in twilio, skipping deletion.")
+                return
             for n in numbers:
                 if n.phone_number == number:
                     n.delete()

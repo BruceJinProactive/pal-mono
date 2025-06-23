@@ -12,6 +12,7 @@ from api.schemas.chat.message import Message
 from db.tables.change_log import ChangeResourceType
 from services.history_service import change_log_context
 from services.number_service import NumberService
+from utils.log import logger
 
 from .. import account_service, agent_service
 from .schema import ProjectParams
@@ -151,6 +152,13 @@ def delete_project(
 
     if unique_numbers:
         for number in unique_numbers:
+            logger.info(
+                "Releasing phone number from project.",
+                extra={
+                    "project_id": project_id,
+                    "phone_number": number,
+                },
+            )
             try:
                 number_service.release_number(number)
             except Exception as e:
