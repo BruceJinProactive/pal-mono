@@ -1,6 +1,6 @@
 import uuid
 from functools import cached_property
-from typing import List, Optional
+from typing import Optional
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -8,26 +8,26 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.square_tool._apis import create_order, create_payment_link, search_catalog
-from tools.square_tool._prompt_constants import (
-    SQUARE_FOOD_EXTRACTION_SYSTEM_PROMPT,
-    SQUARE_FOOD_EXTRACTION_USER_PROMPT,
+from tools.square_tool._apis import create_payment_link, search_catalog
+from tools.square_tool._utils import (
+    create_comprehensive_menu,
+    create_square_order_with_modifiers,
+    extract_items_with_modifiers_from_chat,
+    format_order_success_message,
+    match_items_to_catalog_with_modifiers,
 )
 from tools.square_tool.classes import (
     CatalogItemObject,
     CatalogQuery,
     CheckoutOptions,
-    CreateOrderInput,
     CreatePaymentLinkInput,
     Order,
-    OrderLineItem,
     SearchCatalogInput,
     SquareAccessToken,
-    SquareFoodItemList,
     TextQuery,
 )
 from utils.log import logger
-from utils.ordering._utils import construct_order, get_chat_history
+from utils.ordering._utils import get_chat_history
 
 
 class SquareTool(Toolkit):
@@ -77,8 +77,6 @@ class SquareTool(Toolkit):
     def _get_menu_info(self) -> str:
         """Get customer menu information for extraction prompt."""
         try:
-            from tools.square_tool._utils import create_comprehensive_menu
-
             # Use the comprehensive menu for extraction context
             return create_comprehensive_menu(
                 access_token=self._square_token,
@@ -90,42 +88,6 @@ class SquareTool(Toolkit):
         except Exception as e:
             logger.error(f"[SquareTool._get_menu_info] Error: {e}")
             return "Menu information not available"
-
-    def _extract_food_items(self, chat_history: str) -> List[tuple]:
-        """Extract food items from chat history using menu context."""
-        try:
-            menu_info = self._get_menu_info()
-
-            system_prompt = SQUARE_FOOD_EXTRACTION_SYSTEM_PROMPT.format(
-                menu_info=menu_info
-            )
-            user_prompt = SQUARE_FOOD_EXTRACTION_USER_PROMPT.format(
-                chat_history=chat_history
-            )
-
-            food_items_result = construct_order(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                response_format=SquareFoodItemList,
-                error_prefix="Failed to extract food items",
-            )
-
-            if isinstance(food_items_result, str):
-                logger.error(
-                    f"[SquareTool._extract_food_items] Error: {food_items_result}"
-                )
-                return []
-
-            # Return list of (item_name, quantity) tuples
-            food_items = []
-            for item in food_items_result.items:
-                food_items.append((item.item_name, item.quantity))
-
-            return food_items
-
-        except Exception as e:
-            logger.error(f"[SquareTool._extract_food_items] Error: {e}")
-            return []
 
     def _find_first_variation_for_item(self, item_name: str) -> Optional[str]:
         """Find the first valid variation ID for a given item name."""
@@ -180,69 +142,6 @@ class SquareTool(Toolkit):
             )
             return None
 
-    def _find_catalog_variations(
-        self, food_items: List[tuple]
-    ) -> tuple[List[tuple], List[tuple]]:
-        """Find catalog variation IDs for food items with quantities.
-
-        Returns:
-            tuple: (variation_items, matched_food_items) where:
-                - variation_items: List of (variation_id, quantity) tuples
-                - matched_food_items: List of (item_name, quantity) tuples that were successfully found
-        """
-        variation_items = []
-        matched_food_items = []
-
-        for item_name, quantity in food_items:
-            variation_id = self._find_first_variation_for_item(item_name)
-
-            if variation_id:
-                variation_items.append((variation_id, quantity))
-                matched_food_items.append((item_name, quantity))
-                logger.info(
-                    f"[SquareTool] Found variation {variation_id} for {item_name} (qty: {quantity})"
-                )
-            else:
-                logger.warning(f"[SquareTool] No variation found for: {item_name}")
-
-        return variation_items, matched_food_items
-
-    def _create_square_order(self, variation_items: List[tuple]) -> Optional[Order]:
-        """Create Square order and return the full Order object."""
-        try:
-            line_items = [
-                OrderLineItem(quantity=str(quantity), catalog_object_id=variation_id)  # type: ignore
-                for variation_id, quantity in variation_items
-            ]
-
-            order_response = create_order(
-                self._square_token,
-                CreateOrderInput(
-                    order=Order(location_id=self.location_id, line_items=line_items),  # type: ignore
-                    idempotency_key=str(uuid.uuid4()),
-                    use_production=self.use_production,
-                ),
-            )
-
-            if order_response.errors:
-                logger.error(
-                    f"[SquareTool._create_square_order] Errors: {order_response.errors}"
-                )
-                return None
-
-            if not order_response.order:
-                logger.error("[SquareTool._create_square_order] No order returned")
-                return None
-
-            logger.info(
-                f"[SquareTool] Order created successfully: {order_response.order.id}"
-            )
-            return order_response.order  # Return full Order object
-
-        except Exception as e:
-            logger.error(f"[SquareTool._create_square_order] Error: {e}")
-            return None
-
     def _create_payment_link(
         self, order: Order, total_item_count: int
     ) -> Optional[str]:
@@ -260,7 +159,7 @@ class SquareTool(Toolkit):
                         enable_coupon=False,
                         enable_loyalty=False,
                     ),
-                    payment_note="Square order payment",
+                    payment_note="Palona AI testing - Square order payment",
                     use_production=self.use_production,
                 ),
             )
@@ -300,8 +199,6 @@ class SquareTool(Toolkit):
             str: Customer-friendly food catalog information
         """
         try:
-            from tools.square_tool._utils import create_comprehensive_menu
-
             # Use the comprehensive menu creation utility function
             return create_comprehensive_menu(
                 access_token=self._square_token,
@@ -318,7 +215,9 @@ class SquareTool(Toolkit):
 
     @tool
     def create_order_and_payment_link(
-        self, latest_user_message: Optional[str] = None
+        self,
+        latest_user_message: Optional[str] = None,
+        chat_history: Optional[str] = None,
     ) -> str:
         """
         **WHEN TO USE THIS TOOL:**
@@ -347,75 +246,66 @@ class SquareTool(Toolkit):
                 )
 
             # Get chat history
-            chat_history = get_chat_history(
-                self.query_messages_tool,
-                latest_user_message if latest_user_message else "",
+            if chat_history is None:
+                chat_history = get_chat_history(
+                    self.query_messages_tool,
+                    latest_user_message if latest_user_message else "",
+                )
+
+            # Step 1: Extract items with modifiers from chat history
+            logger.info(
+                "[SquareTool] Step 1: Extracting items with modifiers from chat history"
             )
+            items_with_modifiers = extract_items_with_modifiers_from_chat(chat_history)
 
-            # Step 1: Extract food items from chat history
-            logger.info("[SquareTool] Step 1: Extracting food items from chat history")
-            food_items = self._extract_food_items(chat_history)
-
-            if not food_items:
+            if not items_with_modifiers:
                 return "No food items found in the conversation history."
 
             logger.info(
-                f"[SquareTool] Found {len(food_items)} items to order: {food_items}"
+                f"[SquareTool] Found {len(items_with_modifiers)} items to order"
             )
 
-            # Step 2: Find catalog variations
-            logger.info("[SquareTool] Step 2: Finding catalog variations")
-            variation_items, matched_food_items = self._find_catalog_variations(
-                food_items
-            )
+            # Step 2: Match items to catalog with exact names
+            logger.info("[SquareTool] Step 2: Matching items to catalog")
+            matched_items = match_items_to_catalog_with_modifiers(items_with_modifiers)
 
-            if not variation_items:
+            if not matched_items:
                 return (
                     "Could not find any of the requested items in the Square catalog."
                 )
 
             # Check if some items weren't found
             missing_items = []
-            matched_item_names = {item_name for item_name, _ in matched_food_items}
-            for item_name, _ in food_items:
-                if item_name not in matched_item_names:
-                    missing_items.append(item_name)
+            matched_item_names = {item["item_name"] for item in matched_items}
+            for item_dict in items_with_modifiers:
+                if item_dict["item_name"] not in matched_item_names:
+                    missing_items.append(item_dict["item_name"])
 
-            # Step 3: Create order
-            logger.info("[SquareTool] Step 3: Creating Square order")
-            created_order = self._create_square_order(variation_items)
+            # Step 3: Create order with modifiers
+            logger.info("[SquareTool] Step 3: Creating Square order with modifiers")
+            created_order = create_square_order_with_modifiers(
+                self._square_token, self.location_id, matched_items, self.use_production
+            )
 
             if not created_order:
                 return "Failed to create order."
 
             # Step 4: Create payment link
             logger.info("[SquareTool] Step 4: Creating payment link")
-            total_quantity = sum(quantity for _, quantity in variation_items)
+            total_quantity = sum(item["quantity"] for item in matched_items)
             payment_url = self._create_payment_link(created_order, total_quantity)
 
             if not payment_url:
                 return f"Order created (ID: {created_order.id}) but failed to create payment link."
 
-            # Format success response with item details
-            item_details = []
-            for item_name, quantity in matched_food_items:
-                item_details.append(f"{quantity}x {item_name}")
-
-            items_text = ", ".join(item_details)
-
-            # Create the success message
-            success_message = f"""Order created successfully!
-Order ID: {created_order.id}
-Location: {self.location_id}
-Items: {items_text} ({total_quantity} items total)
-Payment Link: {payment_url}"""
-
-            # Add warning about missing items if any
-            if missing_items:
-                missing_text = ", ".join(missing_items)
-                success_message += f"\n\nNote: The following items could not be found in the catalog and were not added to the order: {missing_text}"
-
-            return success_message
+            # Format success response using utility function
+            return format_order_success_message(
+                created_order=created_order,
+                location_id=self.location_id,
+                matched_items=matched_items,
+                payment_url=payment_url,
+                missing_items=missing_items if missing_items else None,
+            )
 
         except Exception as e:
             logger.error(f"[SquareTool.create_order_and_payment_link] Error: {e}")

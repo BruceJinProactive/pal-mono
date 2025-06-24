@@ -1690,3 +1690,35 @@ class GetCatalogObjectResponse(BaseModel):
     errors: Optional[List[Error]] = Field(
         None, description="Any errors that occurred during the request"
     )
+
+
+class ItemModifierExtraction(BaseModel):
+    """Extracted modifier information from chat history"""
+
+    modifier_name: str = Field(..., description="Exact modifier name from menu")
+    modifier_list_name: str = Field(
+        ..., description="Name of the modifier list this modifier belongs to"
+    )
+
+
+class ExtractedItemWithModifiers(BaseModel):
+    """Extracted item with modifiers from chat history"""
+
+    item_name: str = Field(
+        ..., description="Complete item name exactly as it appears in the menu"
+    )
+    quantity: int = Field(default=1, gt=0, description="Quantity of this item")
+    modifiers: List[ItemModifierExtraction] = Field(
+        default=[], description="List of modifiers for this item"
+    )
+    special_notes: Optional[str] = Field(
+        None, description="Any special requests or notes"
+    )
+
+
+class ExtractedOrderWithModifiers(BaseModel):
+    """Extracted order with items and modifiers from chat history"""
+
+    items: List[ExtractedItemWithModifiers] = Field(
+        ..., description="List of items with their modifiers"
+    )

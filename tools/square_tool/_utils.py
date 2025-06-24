@@ -1,7 +1,26 @@
-from typing import Any, Dict, List
+import uuid
+from typing import Any, Dict, List, Optional
 
-from tools.square_tool.classes import CatalogItemObject, CatalogListResponse
+from tools.square_tool._apis import create_order, get_catalog_object, list_catalog
+from tools.square_tool._prompt_constants import (
+    MENU_ID,
+    SQUARE_EXTRACTOR_SYSTEM_PROMPT,
+    SQUARE_EXTRACTOR_USER_PROMPT,
+)
+from tools.square_tool.classes import (
+    CatalogItemObject,
+    CatalogListResponse,
+    CreateOrderInput,
+    ExtractedOrderWithModifiers,
+    GetCatalogObjectInput,
+    ListCatalogInput,
+    Order,
+    OrderLineItem,
+    OrderLineItemModifier,
+    SquareAccessToken,
+)
 from utils.log import logger
+from utils.ordering._utils import construct_order
 
 
 def _format_item_price(var_data) -> str:
@@ -114,9 +133,6 @@ def get_all_catalog_objects(access_token, use_production: bool):
     Returns:
         List of all catalog objects
     """
-    from tools.square_tool._apis import list_catalog
-    from tools.square_tool.classes import ListCatalogInput
-
     all_catalog_objects = []
     cursor = None
 
@@ -259,9 +275,6 @@ def get_detailed_catalog_object(access_token, object_id: str, use_production: bo
         Detailed catalog object response or None
     """
     try:
-        from tools.square_tool._apis import get_catalog_object
-        from tools.square_tool.classes import GetCatalogObjectInput
-
         get_input = GetCatalogObjectInput(
             object_id=object_id,
             catalog_version=None,
@@ -548,3 +561,458 @@ def create_comprehensive_menu(
     except Exception as e:
         logger.error(f"[create_comprehensive_menu] Error: {e}")
         return "Failed to create menu. Please try again."
+
+
+def create_catalog_context_for_extraction() -> str:
+    """Create catalog context string from menu_id for AI extraction."""
+    context_lines = []
+    context_lines.append("Available menu items and their modifiers:\n")
+
+    for item_name, item_data in MENU_ID.items():
+        context_lines.append(f"Item: {item_name}")
+
+        if item_data.get("modifiers"):
+            context_lines.append("  Modifier Lists:")
+            for modifier_list, modifiers in item_data["modifiers"].items():
+                context_lines.append(f"    {modifier_list}:")
+                for modifier in modifiers:
+                    context_lines.append(f"      - {modifier['name']}")
+        context_lines.append("")
+
+    return "\n".join(context_lines)
+
+
+def extract_items_with_modifiers_from_chat(chat_history: str) -> List[Dict[str, Any]]:
+    """Extract food items with modifiers from chat history using exact menu names."""
+    try:
+        # Create catalog context from menu_id
+        catalog_context = create_catalog_context_for_extraction()
+
+        system_prompt = SQUARE_EXTRACTOR_SYSTEM_PROMPT
+        user_prompt = SQUARE_EXTRACTOR_USER_PROMPT.format(
+            catalog_context=catalog_context, chat_history=chat_history
+        )
+
+        # Use existing SquareFoodItemList but extend the extraction with modifiers
+
+        extracted_result = construct_order(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_format=ExtractedOrderWithModifiers,
+            error_prefix="Failed to extract items with modifiers",
+        )
+
+        if isinstance(extracted_result, str):
+            logger.error(
+                f"[extract_items_with_modifiers_from_chat] Error: {extracted_result}"
+            )
+            return []
+
+        # Convert to list of dictionaries
+        items_with_modifiers = []
+        for item in extracted_result.items:
+            item_dict = {
+                "item_name": item.item_name,
+                "quantity": item.quantity,
+                "modifiers": [
+                    {
+                        "modifier_name": mod.modifier_name,
+                        "modifier_list": mod.modifier_list_name,
+                    }
+                    for mod in item.modifiers
+                ],
+                "special_notes": item.special_notes,
+            }
+            items_with_modifiers.append(item_dict)
+
+        logger.info(
+            f"[extract_items_with_modifiers_from_chat] Extracted {len(items_with_modifiers)} items with modifiers"
+        )
+        return items_with_modifiers
+
+    except Exception as e:
+        logger.error(f"[extract_items_with_modifiers_from_chat] Error: {e}")
+        return []
+
+
+def _match_modifier_to_catalog(
+    modifier: Dict[str, Any], catalog_item: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """Match a single modifier to catalog data."""
+    modifier_name = modifier["modifier_name"]
+    modifier_list = modifier["modifier_list"]
+
+    if modifier_list not in catalog_item.get("modifiers", {}):
+        logger.warning(
+            f"Modifier list '{modifier_list}' not found for item '{catalog_item.get('item_name')}'"
+        )
+        return None
+
+    for catalog_modifier in catalog_item["modifiers"][modifier_list]:
+        if catalog_modifier["name"] == modifier_name:
+            return {
+                "modifier_id": catalog_modifier["modifier_id"],
+                "name": catalog_modifier["name"],
+                "list_name": modifier_list,
+            }
+
+    logger.warning(f"Modifier '{modifier_name}' not found in list '{modifier_list}'")
+    return None
+
+
+def match_items_to_catalog_with_modifiers(
+    items_with_modifiers: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Match extracted items to catalog data with exact name matching."""
+    matched_items = []
+
+    for item_dict in items_with_modifiers:
+        item_name = item_dict["item_name"]
+
+        if item_name not in MENU_ID:
+            logger.warning(f"Item '{item_name}' not found in menu catalog")
+            continue
+
+        catalog_item = MENU_ID[item_name]
+
+        # Match modifiers using helper function
+        matched_modifiers = []
+        for modifier in item_dict["modifiers"]:
+            matched_mod = _match_modifier_to_catalog(modifier, catalog_item)
+            if matched_mod:
+                matched_modifiers.append(matched_mod)
+
+        matched_items.append(
+            {
+                "item_name": item_name,
+                "item_id": catalog_item["item_id"],
+                "quantity": item_dict["quantity"],
+                "modifiers": matched_modifiers,
+                "special_notes": item_dict.get("special_notes"),
+            }
+        )
+
+        logger.info(f"Matched '{item_name}' with {len(matched_modifiers)} modifiers")
+
+    return matched_items
+
+
+def get_item_variation_id(
+    access_token: SquareAccessToken, item_id: str, use_production: bool
+) -> Optional[str]:
+    """Get the first variation ID for an item."""
+    try:
+        get_input = GetCatalogObjectInput(
+            object_id=item_id,
+            catalog_version=None,
+            include_related_objects=True,
+            include_category_path_to_root=True,
+            use_production=use_production,
+        )
+
+        response = get_catalog_object(access_token, get_input)
+
+        if not response or not response.object:
+            logger.error(
+                f"[get_item_variation_id] Could not fetch item details for {item_id}"
+            )
+            return None
+
+        item_obj = response.object
+
+        # Check if it's an item object
+        if not isinstance(item_obj, CatalogItemObject) or not item_obj.item_data:
+            logger.error(
+                f"[get_item_variation_id] Object {item_id} is not a valid item"
+            )
+            return None
+
+        # Get variation (use first one)
+        if not item_obj.item_data.variations:
+            logger.error(f"[get_item_variation_id] Item {item_id} has no variations")
+            return None
+
+        variation = item_obj.item_data.variations[0]
+        return variation.id
+
+    except Exception as e:
+        logger.error(
+            f"[get_item_variation_id] Error getting variation for item {item_id}: {e}"
+        )
+        return None
+
+
+def _create_line_item_modifiers(
+    modifiers: List[Dict[str, Any]],
+) -> List[OrderLineItemModifier]:
+    """Create line item modifiers from modifier data."""
+    line_item_modifiers = []
+    for modifier in modifiers:
+        modifier_obj = OrderLineItemModifier(
+            uid=str(uuid.uuid4())[:8],
+            catalog_object_id=modifier["modifier_id"],
+            name=modifier["name"],
+            quantity="1",
+        )
+        line_item_modifiers.append(modifier_obj)
+    return line_item_modifiers
+
+
+def _create_order_line_item(
+    item_name: str,
+    quantity: int,
+    variation_id: str,
+    modifiers: List[Dict[str, Any]],
+    special_notes: Optional[str],
+) -> OrderLineItem:
+    """Create a single order line item."""
+    line_item_modifiers = _create_line_item_modifiers(modifiers)
+
+    palona_note = "Palona AI testing - Order created via automated system"
+    combined_note = f"{palona_note} | {special_notes}" if special_notes else palona_note
+
+    return OrderLineItem(
+        uid=str(uuid.uuid4())[:8],
+        catalog_object_id=variation_id,
+        name=item_name,
+        quantity=str(quantity),
+        note=combined_note,
+        variation_name=None,
+        modifiers=line_item_modifiers if line_item_modifiers else None,
+    )
+
+
+def create_square_order_with_modifiers(
+    access_token: SquareAccessToken,
+    location_id: str,
+    matched_items: List[Dict[str, Any]],
+    use_production: bool,
+) -> Optional[Order]:
+    """Create Square order with modifiers support."""
+    try:
+        line_items = []
+
+        for item_dict in matched_items:
+            variation_id = MENU_ID.get(item_dict["item_name"], {}).get("variation_id")
+
+            if not variation_id:
+                logger.error(
+                    f"[create_square_order_with_modifiers] Could not get variation ID for {item_dict['item_name']}"
+                )
+                continue
+
+            line_item = _create_order_line_item(
+                item_dict["item_name"],
+                item_dict["quantity"],
+                variation_id,
+                item_dict["modifiers"],
+                item_dict.get("special_notes"),
+            )
+
+            line_items.append(line_item)
+            logger.info(
+                f"[create_square_order_with_modifiers] Created line item for {item_dict['item_name']} with {len(item_dict['modifiers'])} modifiers"
+            )
+
+        if not line_items:
+            logger.error(
+                "[create_square_order_with_modifiers] No valid line items created"
+            )
+            return None
+
+        # Create order
+        order = Order(
+            location_id=location_id,
+            reference_id=None,
+            customer_id=None,
+            ticket_name=None,
+            line_items=line_items,
+            metadata={"palona_testing": "Order created via Palona AI automated system"},
+        )
+
+        # Generate unique idempotency key
+        idempotency_key = str(uuid.uuid4())
+
+        create_order_input = CreateOrderInput(
+            order=order,
+            idempotency_key=idempotency_key,
+            use_production=use_production,
+        )
+
+        # Create the order
+        order_response = create_order(access_token, create_order_input)
+
+        if order_response.errors:
+            logger.error(
+                f"[create_square_order_with_modifiers] Order creation failed: {order_response.errors}"
+            )
+            return None
+
+        if not order_response.order:
+            logger.error(
+                "[create_square_order_with_modifiers] No order returned from Square API"
+            )
+            return None
+
+        logger.info(
+            f"[create_square_order_with_modifiers] Order created successfully: {order_response.order.id}"
+        )
+        return order_response.order
+
+    except Exception as e:
+        logger.error(f"[create_square_order_with_modifiers] Error: {e}")
+        return None
+
+
+def format_money(money_obj) -> str:
+    """Format money object to readable string"""
+    if not money_obj or not hasattr(money_obj, "amount"):
+        return "$0.00"
+    amount_cents = money_obj.amount
+    return f"${amount_cents/100:.2f}"
+
+
+def get_line_item_pricing(line_item, item_name: str) -> tuple[str, List[str]]:
+    """Extract pricing information from a line item.
+
+    Returns:
+        tuple: (line_item_price, modifier_details_list)
+    """
+    line_item_price = "$0.00"
+    modifier_details = []
+
+    if line_item.name != item_name:
+        return line_item_price, modifier_details
+
+    # Get total price for the line item
+    if hasattr(line_item, "total_money") and line_item.total_money:
+        line_item_price = format_money(line_item.total_money)
+
+    # Get modifier details with prices
+    if line_item.modifiers:
+        for line_mod in line_item.modifiers:
+            mod_price = "$0.00"
+            if hasattr(line_mod, "total_price_money") and line_mod.total_price_money:
+                mod_price = format_money(line_mod.total_price_money)
+            elif hasattr(line_mod, "base_price_money") and line_mod.base_price_money:
+                mod_price = format_money(line_mod.base_price_money)
+
+            price_display = f" (+{mod_price})" if mod_price != "$0.00" else ""
+            modifier_details.append(f"{line_mod.name}{price_display}")
+
+    return line_item_price, modifier_details
+
+
+def format_item_details(
+    matched_items: List[Dict[str, Any]], created_order
+) -> List[str]:
+    """Format item details with pricing for order success message.
+
+    Args:
+        matched_items: List of matched items from catalog
+        created_order: The created Square order object
+
+    Returns:
+        List of formatted item detail strings
+    """
+    item_details = []
+
+    for item in matched_items:
+        item_name = item["item_name"]
+        quantity = item["quantity"]
+
+        # Find corresponding line item for pricing
+        line_item_price = "$0.00"
+        modifier_details = []
+
+        if created_order.line_items:
+            for line_item in created_order.line_items:
+                if line_item.name == item_name:
+                    line_item_price, modifier_details = get_line_item_pricing(
+                        line_item, item_name
+                    )
+                    break
+
+        # Format item text with pricing
+        item_text = f"• {quantity}x {item_name} - {line_item_price}"
+        if modifier_details:
+            item_text += f"\n  Modifiers: {', '.join(modifier_details)}"
+
+        item_details.append(item_text)
+
+    return item_details
+
+
+def format_order_totals(created_order) -> str:
+    """Format order total information including tax.
+
+    Args:
+        created_order: The created Square order object
+
+    Returns:
+        Formatted order totals string
+    """
+    order_total_text = ""
+
+    if hasattr(created_order, "total_money") and created_order.total_money:
+        order_total = format_money(created_order.total_money)
+        order_total_text = f"\nOrder Total: {order_total}"
+
+        # Add tax information if available
+        if (
+            hasattr(created_order, "total_tax_money")
+            and created_order.total_tax_money
+            and created_order.total_tax_money.amount > 0
+        ):
+            tax_amount = format_money(created_order.total_tax_money)
+            order_total_text += f"\nTax: {tax_amount}"
+
+    return order_total_text
+
+
+def format_order_success_message(
+    created_order,
+    location_id: str,
+    matched_items: List[Dict[str, Any]],
+    payment_url: str,
+    missing_items: Optional[List[str]] = None,
+) -> str:
+    """Format the complete order success message.
+
+    Args:
+        created_order: The created Square order object
+        location_id: Square location ID
+        matched_items: List of matched items from catalog
+        payment_url: Payment link URL
+        missing_items: List of items that couldn't be found (optional)
+
+    Returns:
+        Formatted success message string
+    """
+    # Calculate total quantity
+    total_quantity = sum(item["quantity"] for item in matched_items)
+
+    # Format item details
+    item_details = format_item_details(matched_items, created_order)
+    items_text = "\n".join(item_details)
+
+    # Format order totals
+    order_total_text = format_order_totals(created_order)
+
+    # Create the main success message
+    success_message = f"""Order created successfully!
+Order ID: {created_order.id}
+Location: {location_id}
+
+Items ({total_quantity} items total):
+{items_text}{order_total_text}
+
+Payment Link: {payment_url}
+Status: Ready for payment"""
+
+    # Add warning about missing items if any
+    if missing_items:
+        missing_text = ", ".join(missing_items)
+        success_message += f"\n\nNote: The following items could not be found in the catalog and were not added to the order: {missing_text}"
+
+    return success_message
