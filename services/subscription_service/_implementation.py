@@ -479,6 +479,76 @@ def get_account_subscriptions(
     return current_subscription, scheduled_subscriptions
 
 
+def update_account_subscription(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    request_data: dict,
+    force_update: bool = False,
+) -> db.AccountSubscription:
+    """
+    Update an account subscription by creating a new version.
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        account_name: Account name for authorization
+        external_id: External ID of the subscription to update
+        request_data: Fields to update
+        force_update: Whether to allow updates on non-active subscriptions
+    Returns:
+        New version of the account subscription
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
+
+    current_subscription = (
+        subscription_repository.get_account_subscription_by_external_id(external_id)
+    )
+    if not current_subscription:
+        raise ValueError(f"Subscription with external_id {external_id} does not exist")
+
+    if current_subscription.account_id != account.id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to account {account_name}"
+        )
+
+    if current_subscription.status != SubscriptionStatus.active and not force_update:
+        raise ValueError(
+            f"Cannot update subscription with status {current_subscription.status.value}. Use force_update=true to override."
+        )
+
+    old_subscription = copy.copy(current_subscription)
+
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            new_subscription = subscription_repository.create_subscription_version(
+                current_subscription, **request_data
+            )
+            ctx.new_record = new_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for account subscription update, proceeding anyway: {e}"
+        )
+
+        new_subscription = subscription_repository.create_subscription_version(
+            current_subscription, **request_data
+        )
+
+    return new_subscription
+
+
 def update_account_subscription_status(
     session: Session,
     context: UserContext,

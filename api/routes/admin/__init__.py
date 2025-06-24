@@ -73,6 +73,8 @@ from api.schemas.admin.subscription import (
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
+    Subscription,
+    UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
     UpdateSubscriptionPlanRequest,
@@ -1295,6 +1297,27 @@ def list_account_subscriptions(
     Scheduled subscriptions are sorted by start_date if there are multiple.
     """
     return _subscription.list_account_subscriptions(context, session, account_name)
+
+
+@admin_router.patch("/accounts/{account_name}/subscriptions/{external_id}")
+def update_account_subscription(
+    account_name: str,
+    external_id: uuid.UUID,
+    request: UpdateAccountSubscriptionRequest,
+    force_update: bool = Query(
+        False, description="Whether to allow updates on non-active subscriptions"
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Subscription:
+    """
+    Modifies the account_subscription configuration referenced by the external id.
+    If the status of the latest version is not active, no edit can be made unless force_update is true.
+    This creates a new version with incremented version number.
+    """
+    return _subscription.update_subscription(
+        context, session, account_name, external_id, request, force_update
+    )
 
 
 @admin_router.patch("/accounts/{account_name}/subscriptions/{external_id}/status")

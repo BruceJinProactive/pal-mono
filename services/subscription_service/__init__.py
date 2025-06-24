@@ -28,6 +28,19 @@ def get_account_subscriptions(
     return _implementation.get_account_subscriptions(session, account_name)
 
 
+def update_account_subscription(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    request: dict,
+    force_update: bool = False,
+):
+    return _implementation.update_account_subscription(
+        session, context, account_name, external_id, request, force_update
+    )
+
+
 def create_subscription_plan(
     session: Session,
     context: UserContext,

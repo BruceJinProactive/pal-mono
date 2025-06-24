@@ -11,6 +11,8 @@ from api.schemas.admin.subscription import (
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
+    Subscription,
+    UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
     UpdateSubscriptionPlanRequest,
@@ -267,6 +269,54 @@ def list_account_subscriptions(
         )
     except Exception as err:
         logger.error(f"Error retrieving account subscriptions: {err}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        )
+
+
+def update_subscription(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    external_id: uuid.UUID,
+    request: UpdateAccountSubscriptionRequest,
+    force_update: bool = False,
+) -> Subscription:
+    """Update an account subscription by external_id, creating a new version."""
+    authorize_admin(context)
+
+    if not request.model_dump():
+        raise HTTPException(
+            status_code=400,
+            detail="No fields provided for update",
+        )
+
+    update_data = request.model_dump()
+
+    try:
+        new_subscription = subscription_service.update_account_subscription(
+            session,
+            context,
+            account_name,
+            external_id,
+            update_data,
+            force_update,
+        )
+        return build_subscription(new_subscription)
+    except ValueError as err:
+        if "does not exist" in str(err):
+            raise HTTPException(
+                status_code=404,
+                detail=str(err),
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=str(err),
+            )
+    except Exception as err:
+        logger.error(f"Error updating account subscription: {err}")
         raise HTTPException(
             status_code=500,
             detail="Internal server error",

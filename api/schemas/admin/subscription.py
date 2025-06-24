@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List, Optional
 
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, PositiveInt, field_validator
@@ -170,6 +170,61 @@ class CheckoutParams(BaseModel):
 class ListAccountSubscriptionsResponse(BaseModel):
     current: Optional[Subscription] = None
     scheduled: List[Subscription] = []
+
+
+class UpdateAccountSubscriptionRequest(BaseModel):
+    """Request to update an account subscription."""
+
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    call_quota: Optional[int] = None
+    order_quota: Optional[int] = None
+    call_overage_charge: Optional[int] = None
+    order_overage_charge: Optional[int] = None
+    monthly_fee: Optional[int] = None
+    stripe_subscription_id: Optional[str] = None
+
+    @field_validator("call_overage_charge", "order_overage_charge", "monthly_fee")
+    def validate_positive_amounts(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Charges and fees must be non-negative")
+        return v
+
+    @field_validator("call_quota", "order_quota")
+    def validate_positive_numbers(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("Quotas must be positive")
+        return v
+
+    @field_validator("end_date")
+    def validate_end_date(cls, v, info):
+        if v is None:
+            return v
+
+        if (
+            "start_date" in info.data
+            and info.data["start_date"] is not None
+            and v <= info.data["start_date"]
+        ):
+            raise ValueError("End date must be after start date")
+
+        now = datetime.now(UTC)
+
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=UTC)
+
+        if v <= now:
+            raise ValueError("End date cannot be in the past")
+
+        return v
+
+
+class UpdateAccountSubscriptionResponse(BaseModel):
+    """Response for updating an account subscription."""
+
+    external_id: uuid.UUID
+    version: int
+    status: SubscriptionStatus
 
 
 class UpdateAccountSubscriptionStatusRequest(BaseModel):
