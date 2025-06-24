@@ -1657,3 +1657,36 @@ class SquareFoodItemList(BaseModel):
     items: List[SquareFoodItem] = Field(
         ..., description="List of food items the customer wants to order"
     )
+
+
+class GetCatalogObjectInput(BaseModel):
+    """Input model for retrieving a catalog object"""
+
+    object_id: str = Field(..., description="The ID of the catalog object to retrieve")
+    catalog_version: Optional[int] = Field(
+        None, description="Specific version of the catalog object to retrieve"
+    )
+    include_category_path_to_root: Optional[bool] = Field(
+        False, description="Whether to include the full category path for categories"
+    )
+    include_related_objects: Optional[bool] = Field(
+        True, description="Whether to include related objects in the response"
+    )
+    use_production: bool = Field(
+        default=True,
+        description="Whether to use production API (True) or sandbox (False)",
+    )
+
+
+class GetCatalogObjectResponse(BaseModel):
+    """Response model for the Square get catalog object API"""
+
+    object: Optional[CatalogObject] = Field(
+        None, description="The requested catalog object"
+    )
+    related_objects: Optional[List[CatalogObject]] = Field(
+        None, description="Related objects included in the response"
+    )
+    errors: Optional[List[Error]] = Field(
+        None, description="Any errors that occurred during the request"
+    )
