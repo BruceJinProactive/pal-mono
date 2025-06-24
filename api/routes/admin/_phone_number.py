@@ -1,6 +1,8 @@
 import uuid
 
-from fastapi import HTTPException
+from fastapi import (
+    HTTPException,
+)
 from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext, not_found_error

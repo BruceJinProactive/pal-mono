@@ -1,10 +1,10 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from db.tables.subscriptions import (
     AccountSubscription,
@@ -110,37 +110,22 @@ class SubscriptionRepository:
             logger.error(f"Error updating subscription plan: {e}")
             raise
 
-    def expire_subscription_plan(
-        self, plan_id: uuid.UUID, hard_delete: bool = False
-    ) -> Optional[SubscriptionPlan]:
-        """Expire or hard delete a subscription plan by ID."""
+    def expire_subscription_plan(self, plan_id: uuid.UUID) -> SubscriptionPlan:
+        """Expire a subscription plan."""
         try:
-            plan = (
-                self.session.query(SubscriptionPlan)
-                .filter(SubscriptionPlan.id == plan_id)
-                .first()
-            )
-
+            plan = self.get_subscription_plan_by_id(plan_id)
             if not plan:
-                return None
-
-            if hard_delete:
-                self.session.delete(plan)
-            else:
-                plan.active = False
-
+                raise PlanNotFoundError(f"Subscription plan {plan_id} not found")
+            plan.active = False
             if self.auto_commit:
                 self.session.commit()
             else:
                 self.session.flush()
-
-            if not hard_delete:
-                self.session.refresh(plan)
-
+            self.session.refresh(plan)
             return plan
         except SQLAlchemyError as e:
             self.session.rollback()
-            logger.error(f"Error expiring/deleting subscription plan: {e}")
+            logger.error(f"Error expiring subscription plan: {e}")
             raise
 
     def get_last_trial_subscription(
@@ -242,259 +227,3 @@ class SubscriptionRepository:
             self.session.rollback()
             logger.error(f"Error creating account subscription: {e}")
             raise
-
-    def get_account_subscriptions(
-        self, account_id: uuid.UUID
-    ) -> List[AccountSubscription]:
-        """Get all active subscriptions for an account."""
-        try:
-            return (
-                self.session.query(AccountSubscription)
-                .options(selectinload(AccountSubscription.subscription_plan))
-                .filter(
-                    and_(
-                        AccountSubscription.account_id == account_id,
-                        AccountSubscription.status == SubscriptionStatus.active,
-                    )
-                )
-                .order_by(AccountSubscription.start_date)
-                .all()
-            )
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error retrieving account subscriptions: {e}")
-            return []
-
-    def get_account_subscription_by_id(
-        self, subscription_id: uuid.UUID
-    ) -> Optional[AccountSubscription]:
-        """Get an account subscription by ID."""
-        try:
-            return (
-                self.session.query(AccountSubscription)
-                .options(selectinload(AccountSubscription.subscription_plan))
-                .filter(AccountSubscription.id == subscription_id)
-                .first()
-            )
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error retrieving account subscription: {e}")
-            return None
-
-    def get_account_subscription_by_external_id(
-        self, external_id: uuid.UUID
-    ) -> Optional[AccountSubscription]:
-        """Get the latest version of an account subscription by external_id."""
-        try:
-            return (
-                self.session.query(AccountSubscription)
-                .options(selectinload(AccountSubscription.subscription_plan))
-                .filter(AccountSubscription.external_id == external_id)
-                .order_by(AccountSubscription.version.desc())
-                .first()
-            )
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error retrieving account subscription by external_id: {e}")
-            return None
-
-    def create_subscription_version(
-        self, current_subscription: AccountSubscription, **update_fields
-    ) -> AccountSubscription:
-        """Create a new version of an existing subscription with updated fields."""
-        try:
-            now = datetime.now(UTC)
-            start_date = update_fields.get(
-                "start_date", current_subscription.start_date
-            )
-            end_date = update_fields.get("end_date", current_subscription.end_date)
-
-            if start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=UTC)
-            if end_date.tzinfo is None:
-                end_date = end_date.replace(tzinfo=UTC)
-
-            if start_date <= now <= end_date:
-                new_status = SubscriptionStatus.active
-            elif start_date > now:
-                new_status = SubscriptionStatus.pending
-            else:
-                new_status = SubscriptionStatus.expired
-
-            new_subscription = AccountSubscription(
-                external_id=current_subscription.external_id,
-                version=(current_subscription.version or 1) + 1,
-                account_id=current_subscription.account_id,
-                subscription_plan_id=current_subscription.subscription_plan_id,
-                subscription_type=current_subscription.subscription_type,
-                start_date=start_date,
-                end_date=end_date,
-                call_quota=update_fields.get(
-                    "call_quota", current_subscription.call_quota
-                ),
-                order_quota=update_fields.get(
-                    "order_quota", current_subscription.order_quota
-                ),
-                call_overage_charge=update_fields.get(
-                    "call_overage_charge", current_subscription.call_overage_charge
-                ),
-                order_overage_charge=update_fields.get(
-                    "order_overage_charge", current_subscription.order_overage_charge
-                ),
-                monthly_fee=update_fields.get(
-                    "monthly_fee", current_subscription.monthly_fee
-                ),
-                stripe_subscription_id=update_fields.get(
-                    "stripe_subscription_id",
-                    current_subscription.stripe_subscription_id,
-                ),
-                status=new_status,
-            )
-
-            self.session.add(new_subscription)
-
-            if self.auto_commit:
-                self.session.commit()
-            else:
-                self.session.flush()
-
-            self.session.refresh(new_subscription)
-            return new_subscription
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error creating subscription version: {e}")
-            raise
-
-    def update_account_subscription(
-        self, subscription_id: uuid.UUID, **kwargs
-    ) -> AccountSubscription:
-        """Update an existing account subscription."""
-        try:
-            subscription = (
-                self.session.query(AccountSubscription)
-                .filter(AccountSubscription.id == subscription_id)
-                .first()
-            )
-
-            if not subscription:
-                raise ValueError(f"Account subscription {subscription_id} not found")
-
-            for key, value in kwargs.items():
-                if value is not None and hasattr(subscription, key):
-                    setattr(subscription, key, value)
-
-            if self.auto_commit:
-                self.session.commit()
-            else:
-                self.session.flush()
-
-            self.session.refresh(subscription)
-            return subscription
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error updating account subscription: {e}")
-            raise
-
-    def update_account_subscription_status(
-        self, external_id: uuid.UUID, new_status: SubscriptionStatus
-    ) -> Optional[AccountSubscription]:
-        """Update only the status of the latest version of an account subscription."""
-        try:
-            subscription = (
-                self.session.query(AccountSubscription)
-                .filter(AccountSubscription.external_id == external_id)
-                .order_by(AccountSubscription.version.desc())
-                .first()
-            )
-
-            if not subscription:
-                return None
-
-            if subscription.status not in [
-                SubscriptionStatus.active,
-                SubscriptionStatus.pending,
-            ]:
-                raise ValueError(
-                    f"Cannot update status from {subscription.status.value}. Only active and pending subscriptions can be updated."
-                )
-
-            subscription.status = new_status
-
-            if self.auto_commit:
-                self.session.commit()
-            else:
-                self.session.flush()
-
-            self.session.refresh(subscription)
-            return subscription
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error updating account subscription status: {e}")
-            raise
-
-    def cancel_account_subscription(
-        self, external_id: uuid.UUID, hard_delete: bool = False
-    ) -> Optional[AccountSubscription]:
-        """Cancel an account subscription by setting status to cancelled or permanently deleting it."""
-        try:
-            subscription = (
-                self.session.query(AccountSubscription)
-                .filter(AccountSubscription.external_id == external_id)
-                .order_by(AccountSubscription.version.desc())
-                .first()
-            )
-
-            if not subscription:
-                return None
-
-            if hard_delete:
-                self.session.query(AccountSubscription).filter(
-                    AccountSubscription.external_id == external_id
-                ).delete()
-
-                if self.auto_commit:
-                    self.session.commit()
-                else:
-                    self.session.flush()
-
-                return None
-            else:
-                subscription.status = SubscriptionStatus.cancelled
-
-                if self.auto_commit:
-                    self.session.commit()
-                else:
-                    self.session.flush()
-
-                self.session.refresh(subscription)
-                return subscription
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(
-                f"Error {'deleting' if hard_delete else 'cancelling'} account subscription: {e}"
-            )
-            raise
-
-    def get_account_active_subscriptions(
-        self, account_id: uuid.UUID
-    ) -> List[AccountSubscription]:
-        """Get all active subscriptions for an account (including pending)."""
-        try:
-            return (
-                self.session.query(AccountSubscription)
-                .options(selectinload(AccountSubscription.subscription_plan))
-                .filter(
-                    and_(
-                        AccountSubscription.account_id == account_id,
-                        AccountSubscription.status.in_(
-                            [SubscriptionStatus.active, SubscriptionStatus.pending]
-                        ),
-                    )
-                )
-                .order_by(AccountSubscription.start_date)
-                .all()
-            )
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error retrieving account active subscriptions: {e}")
-            return []

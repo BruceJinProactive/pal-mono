@@ -72,10 +72,6 @@ from api.schemas.admin.subscription import (
     CheckoutParams,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
-    ListAccountSubscriptionsResponse,
-    UpdateAccountSubscriptionRequest,
-    UpdateAccountSubscriptionResponse,
-    UpdateAccountSubscriptionStatusRequest,
     UpdateSubscriptionPlanRequest,
 )
 from api.schemas.admin.user import SignUpRequest
@@ -1226,18 +1222,13 @@ async def update_subscription_plan(
 @admin_router.patch("/plans/{plan_id}/expire")
 async def expire_subscription_plan(
     plan_id: uuid.UUID,
-    hard_delete: bool = Query(
-        False, description="Whether to permanently delete the plan from the database"
-    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
     """
-    Expires a subscription plan by ID. If hard_delete is True, permanently deletes it from the database.
+    Expires a subscription plan by ID.
     """
-    return _subscription.expire_subscription_plan(
-        plan_id, context, session, hard_delete
-    )
+    return _subscription.expire_subscription_plan(plan_id, context, session)
 
 
 """
@@ -1282,82 +1273,4 @@ async def update_subscription_data(
     """
     return _subscription.update_account_subscription(
         db_session, checkout_session_id, context
-    )
-
-
-@admin_router.get("/accounts/{account_name}/subscriptions")
-def list_account_subscriptions(
-    account_name: str,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> ListAccountSubscriptionsResponse:
-    """
-    Retrieves all active subscriptions for the given account.
-    Scheduled subscriptions are sorted by start_date if there are multiple.
-    """
-    return _subscription.list_account_subscriptions(context, session, account_name)
-
-
-@admin_router.patch("/accounts/{account_name}/subscriptions/{external_id}")
-def update_account_subscription(
-    account_name: str,
-    external_id: uuid.UUID,
-    request: UpdateAccountSubscriptionRequest,
-    force_update: bool = Query(
-        False, description="Whether to allow updates on non-active subscriptions"
-    ),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> UpdateAccountSubscriptionResponse:
-    """
-    Modifies the account_subscription configuration referenced by the external id.
-    If the status of the latest version is not active, no edit can be made unless force_update is true.
-    This creates a new version with incremented version number.
-    """
-    return _subscription.update_subscription(
-        context, session, account_name, external_id, request, force_update
-    )
-
-
-@admin_router.patch("/accounts/{account_name}/subscriptions/{external_id}/status")
-def update_account_subscription_status(
-    account_name: str,
-    external_id: uuid.UUID,
-    request: UpdateAccountSubscriptionStatusRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> dict:
-    """
-    Updates the status of the referenced account_subscription.
-    Only active subscriptions can be updated to active or pending status.
-    This API can be used to cancel a subscription.
-    """
-    return _subscription.update_subscription_status(
-        context, session, account_name, external_id, request
-    )
-
-
-@admin_router.post("/accounts/{account_name}/subscriptions/{external_id}/cancel")
-def cancel_account_subscription(
-    account_name: str,
-    external_id: uuid.UUID,
-    hard_delete: bool = Query(
-        False,
-        description="Whether to permanently delete the subscription from the database",
-    ),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> dict:
-    """
-    Cancels a subscription for the given account. If hard_delete is True, permanently deletes it from the database.
-
-    Business Rules:
-    - Cannot cancel free trial if there's a paid subscription in place
-    - Can cancel paid subscription while keeping free trial in place
-    - For paid subscriptions, cancels Stripe subscription first
-
-    This operation cannot be reverted unless they sign up again.
-    """
-    return _subscription.cancel_subscription(
-        context, session, account_name, external_id, hard_delete
     )

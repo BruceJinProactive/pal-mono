@@ -3,7 +3,6 @@ import uuid
 from sqlalchemy.orm import Session
 
 from api.routes.admin import UserContext
-from db.tables.subscriptions import SubscriptionStatus
 from services.subscription_service.schema import (
     SubscriptionParams,
     SubscriptionPlanParams,
@@ -19,50 +18,6 @@ def create_subscription(
     params: SubscriptionParams,
 ):
     return _implementation.create_subscription(session, context, account_name, params)
-
-
-def get_account_subscriptions(
-    session: Session,
-    account_name: str,
-):
-    return _implementation.get_account_subscriptions(session, account_name)
-
-
-def update_account_subscription(
-    session: Session,
-    context: UserContext,
-    account_name: str,
-    external_id: uuid.UUID,
-    request: dict,
-    force_update: bool = False,
-):
-    return _implementation.update_account_subscription(
-        session, context, account_name, external_id, request, force_update
-    )
-
-
-def update_account_subscription_status(
-    session: Session,
-    context: UserContext,
-    account_name: str,
-    external_id: uuid.UUID,
-    status: SubscriptionStatus,
-):
-    return _implementation.update_account_subscription_status(
-        session, context, account_name, external_id, status
-    )
-
-
-def cancel_account_subscription(
-    session: Session,
-    context: UserContext,
-    account_name: str,
-    external_id: uuid.UUID,
-    hard_delete: bool = False,
-):
-    return _implementation.cancel_account_subscription(
-        session, context, account_name, external_id, hard_delete
-    )
 
 
 def create_subscription_plan(
@@ -99,8 +54,5 @@ def expire_subscription_plan(
     session: Session,
     context: UserContext,
     plan_id: uuid.UUID,
-    hard_delete: bool = False,
 ):
-    return _implementation.expire_subscription_plan(
-        session, context, plan_id, hard_delete
-    )
+    return _implementation.expire_subscription_plan(session, context, plan_id)
