@@ -69,7 +69,6 @@ class AccountSubscription(Base):
     external_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
-        unique=True,
         index=True,
     )
     version: Mapped[Optional[int]] = mapped_column(

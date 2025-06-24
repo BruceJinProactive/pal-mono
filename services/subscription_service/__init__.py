@@ -20,6 +20,13 @@ def create_subscription(
     return _implementation.create_subscription(session, context, account_name, params)
 
 
+def get_account_subscriptions(
+    session: Session,
+    account_name: str,
+):
+    return _implementation.get_account_subscriptions(session, account_name)
+
+
 def create_subscription_plan(
     session: Session,
     context: UserContext,

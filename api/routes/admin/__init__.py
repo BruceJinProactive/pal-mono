@@ -72,6 +72,7 @@ from api.schemas.admin.subscription import (
     CheckoutParams,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    ListAccountSubscriptionsResponse,
     UpdateSubscriptionPlanRequest,
 )
 from api.schemas.admin.user import SignUpRequest
@@ -1274,3 +1275,16 @@ async def update_subscription_data(
     return _subscription.update_account_subscription(
         db_session, checkout_session_id, context
     )
+
+
+@admin_router.get("/accounts/{account_name}/subscriptions")
+def list_account_subscriptions(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListAccountSubscriptionsResponse:
+    """
+    Retrieves all active subscriptions for the given account.
+    Scheduled subscriptions are sorted by start_date if there are multiple.
+    """
+    return _subscription.list_account_subscriptions(context, session, account_name)

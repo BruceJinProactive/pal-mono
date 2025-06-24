@@ -441,3 +441,37 @@ def _get_param_value(override, field_name: str, plan_value):
         if override_value is not None:
             return override_value
     return plan_value
+
+
+def get_account_subscriptions(
+    session: Session,
+    account_name: str,
+) -> tuple[Optional[db.AccountSubscription], list[db.AccountSubscription]]:
+    """
+    Get all active subscriptions for an account, separated into current and scheduled.
+    Args:
+        session: Database session
+        account_name: Account name to get subscriptions for
+    Returns:
+        Tuple of (current_subscription, scheduled_subscriptions)
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=False)
+    subscriptions = subscription_repository.get_account_subscriptions(account.id)
+
+    now = datetime.now(UTC)
+    current_subscription = None
+    scheduled_subscriptions = []
+
+    for subscription in subscriptions:
+        if subscription.start_date <= now <= subscription.end_date:
+            current_subscription = subscription
+        elif subscription.start_date > now:
+            scheduled_subscriptions.append(subscription)
+
+    scheduled_subscriptions.sort(key=lambda s: s.start_date)
+
+    return current_subscription, scheduled_subscriptions

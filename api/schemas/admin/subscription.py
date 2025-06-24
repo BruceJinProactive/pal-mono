@@ -1,16 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, PositiveInt, field_validator
 
-from db.tables.subscriptions import SubscriptionStatus
-from db.tables.types import PlanTier
+from db.tables.types import PlanTier, SubscriptionStatus, SubscriptionType
 from services.subscription_service.schema import (
     SubscriptionOverride,
     SubscriptionParams,
     SubscriptionPlanParams,
-    SubscriptionType,
 )
 
 
@@ -124,18 +122,22 @@ class UpdateSubscriptionPlanRequest(BaseModel):
 
 class Subscription(BaseModel):
     id: uuid.UUID
+    external_id: uuid.UUID
+    version: Optional[int] = None
     account_id: uuid.UUID
     subscription_plan_id: uuid.UUID
-    status: SubscriptionStatus
+    subscription_type: SubscriptionType
     start_date: datetime
     end_date: datetime
-    call_quota: int
-    order_quota: int
-    call_overage_charge: int
-    order_overage_charge: int
-    monthly_fee: int
+    call_quota: Optional[int] = None
+    order_quota: Optional[int] = None
+    call_overage_charge: Optional[int] = None
+    order_overage_charge: Optional[int] = None
+    monthly_fee: Optional[int] = None
+    stripe_subscription_id: Optional[str] = None
+    status: SubscriptionStatus
     created_at: datetime
-    updated_at: Optional[datetime]
+    updated_at: Optional[datetime] = None
 
 
 class CreateSubscriptionRequest(BaseModel):
@@ -163,3 +165,8 @@ class CheckoutParams(BaseModel):
         if not v.startswith("price_"):
             raise ValueError('Price ID must start with "price_"')
         return v
+
+
+class ListAccountSubscriptionsResponse(BaseModel):
+    current: Optional[Subscription] = None
+    scheduled: List[Subscription] = []

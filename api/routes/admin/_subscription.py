@@ -10,6 +10,7 @@ from api.schemas.admin.subscription import (
     CheckoutParams,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    ListAccountSubscriptionsResponse,
     UpdateSubscriptionPlanRequest,
 )
 from services import account_service, payment_service, subscription_service
@@ -233,3 +234,32 @@ def update_account_subscription(
             stripe_subscription_id=subscription_id,
         ),
     )
+
+
+def list_account_subscriptions(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+) -> ListAccountSubscriptionsResponse:
+    """Get all active subscriptions for an account."""
+    authorize_admin(context)
+    try:
+        current, scheduled = subscription_service.get_account_subscriptions(
+            session, account_name
+        )
+
+        return ListAccountSubscriptionsResponse(
+            current=build_subscription(current) if current else None,
+            scheduled=[build_subscription(sub) for sub in scheduled],
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Account not found: {err}",
+        )
+    except Exception as err:
+        logger.error(f"Error retrieving account subscriptions: {err}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        )

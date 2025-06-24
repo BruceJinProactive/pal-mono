@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from db.tables.subscriptions import (
     AccountSubscription,
@@ -227,3 +227,28 @@ class SubscriptionRepository:
             self.session.rollback()
             logger.error(f"Error creating account subscription: {e}")
             raise
+
+    def get_account_subscriptions(
+        self, account_id: uuid.UUID
+    ) -> List[AccountSubscription]:
+        """Get all active subscriptions for an account."""
+        try:
+            return (
+                self.session.query(AccountSubscription)
+                .options(selectinload(AccountSubscription.subscription_plan))
+                .filter(
+                    and_(
+                        AccountSubscription.account_id == account_id,
+                        or_(
+                            AccountSubscription.status == SubscriptionStatus.active,
+                            AccountSubscription.status == SubscriptionStatus.pending,
+                        ),
+                    )
+                )
+                .order_by(AccountSubscription.start_date)
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving account subscriptions: {e}")
+            return []
