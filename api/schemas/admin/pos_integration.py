@@ -12,7 +12,7 @@ class POSIntegrationRequest(BaseModel):
     project_id: uuid.UUID
     store_identifier: str
     provider: POSProvider
-    state: POSState = POSState.ACTIVATE
+    state: POSState = POSState.active
     client_key: str = Field(..., repr=False, min_length=1)
     client_secret: SecretStr = Field(..., repr=False)
 

@@ -22,7 +22,7 @@ def setup_project_pos_integration(
     provider: POSProvider,
     client_key: str,
     client_secret: str,
-    state: POSState = POSState.ACTIVATE,
+    state: POSState = POSState.active,
 ) -> POSIntegration:
     """
     Creates or updates the POS integration for the specified project.

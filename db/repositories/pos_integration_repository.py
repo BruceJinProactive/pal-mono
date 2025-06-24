@@ -21,7 +21,7 @@ class POSIntegrationRepository:
         project_id: uuid.UUID,
         store_identifier: str,
         provider: POSProvider,
-        state: POSState = POSState.ACTIVATE,
+        state: POSState = POSState.active,
     ) -> POSIntegration:
         """
         Create a new POS integration.

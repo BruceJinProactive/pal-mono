@@ -15,8 +15,8 @@ from .types import POSProvider
 
 
 class POSState(str, enum.Enum):
-    ACTIVATE = "activate"
-    INACTIVATE = "inactivate"
+    active = "active"
+    inactive = "inactive"
 
 
 class POSIntegration(Base):
