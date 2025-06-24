@@ -252,3 +252,57 @@ class SubscriptionRepository:
             self.session.rollback()
             logger.error(f"Error retrieving account subscriptions: {e}")
             return []
+
+    def get_account_subscription_by_external_id(
+        self, external_id: uuid.UUID
+    ) -> Optional[AccountSubscription]:
+        """Get the latest version of an account subscription by external_id."""
+        try:
+            return (
+                self.session.query(AccountSubscription)
+                .options(selectinload(AccountSubscription.subscription_plan))
+                .filter(AccountSubscription.external_id == external_id)
+                .order_by(AccountSubscription.version.desc())
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving account subscription by external_id: {e}")
+            return None
+
+    def update_account_subscription_status(
+        self, external_id: uuid.UUID, new_status: SubscriptionStatus
+    ) -> Optional[AccountSubscription]:
+        """Update only the status of the latest version of an account subscription."""
+        try:
+            subscription = (
+                self.session.query(AccountSubscription)
+                .filter(AccountSubscription.external_id == external_id)
+                .order_by(AccountSubscription.version.desc())
+                .first()
+            )
+
+            if not subscription:
+                return None
+
+            if subscription.status not in [
+                SubscriptionStatus.active,
+                SubscriptionStatus.pending,
+            ]:
+                raise ValueError(
+                    f"Cannot update status from {subscription.status.value}. Only active and pending subscriptions can be updated."
+                )
+
+            subscription.status = new_status
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(subscription)
+            return subscription
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating account subscription status: {e}")
+            raise

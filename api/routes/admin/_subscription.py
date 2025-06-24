@@ -11,6 +11,8 @@ from api.schemas.admin.subscription import (
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
+    UpdateAccountSubscriptionStatusRequest,
+    UpdateAccountSubscriptionStatusResponse,
     UpdateSubscriptionPlanRequest,
 )
 from services import account_service, payment_service, subscription_service
@@ -259,6 +261,58 @@ def list_account_subscriptions(
         )
     except Exception as err:
         logger.error(f"Error retrieving account subscriptions: {err}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        )
+
+
+def update_subscription_status(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    external_id: uuid.UUID,
+    request: UpdateAccountSubscriptionStatusRequest,
+) -> UpdateAccountSubscriptionStatusResponse:
+    """Update the status of an account subscription."""
+    authorize_admin(context)
+
+    try:
+        updated_subscription = subscription_service.update_account_subscription_status(
+            session,
+            context,
+            account_name,
+            external_id,
+            request.status,
+        )
+        if updated_subscription is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Subscription not found",
+            )
+        return UpdateAccountSubscriptionStatusResponse(
+            message="Subscription status updated successfully",
+            external_id=updated_subscription.external_id,
+            status=updated_subscription.status.value,
+        )
+    except ValueError as err:
+        if "does not exist" in str(err):
+            raise HTTPException(
+                status_code=404,
+                detail=str(err),
+            )
+        elif "Cannot update status" in str(err):
+            raise HTTPException(
+                status_code=400,
+                detail=str(err),
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=str(err),
+            )
+    except Exception as err:
+        logger.error(f"Error updating account subscription status: {err}")
         raise HTTPException(
             status_code=500,
             detail="Internal server error",

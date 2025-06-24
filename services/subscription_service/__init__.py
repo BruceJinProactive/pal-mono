@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from api.routes.admin import UserContext
+from db.tables.subscriptions import SubscriptionStatus
 from services.subscription_service.schema import (
     SubscriptionParams,
     SubscriptionPlanParams,
@@ -33,6 +34,18 @@ def create_subscription_plan(
     params: SubscriptionPlanParams,
 ):
     return _implementation.create_subscription_plan(session, context, params)
+
+
+def update_account_subscription_status(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    status: SubscriptionStatus,
+):
+    return _implementation.update_account_subscription_status(
+        session, context, account_name, external_id, status
+    )
 
 
 def get_subscription_plans(

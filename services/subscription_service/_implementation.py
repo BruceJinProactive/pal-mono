@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
-from db.tables.subscriptions import SubscriptionType
+from db.tables.subscriptions import SubscriptionStatus, SubscriptionType
 from services import account_service
 from services.history_service import change_log_context
 from services.subscription_service.schema import (
@@ -475,3 +475,71 @@ def get_account_subscriptions(
     scheduled_subscriptions.sort(key=lambda s: s.start_date)
 
     return current_subscription, scheduled_subscriptions
+
+
+def update_account_subscription_status(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    new_status: SubscriptionStatus,
+) -> db.AccountSubscription:
+    """
+    Update the status of an account subscription.
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        account_name: Account name for authorization
+        external_id: External ID of the subscription to update
+        new_status: New status to set
+    Returns:
+        Updated account subscription
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
+
+    current_subscription = (
+        subscription_repository.get_account_subscription_by_external_id(external_id)
+    )
+
+    if not current_subscription:
+        raise ValueError(f"Subscription with external_id {external_id} does not exist")
+
+    if current_subscription.account_id != account.id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to account {account_name}"
+        )
+
+    old_subscription = copy.copy(current_subscription)
+
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            updated_subscription = (
+                subscription_repository.update_account_subscription_status(
+                    external_id, new_status
+                )
+            )
+            ctx.new_record = updated_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for account subscription status update, proceeding anyway: {e}"
+        )
+
+        updated_subscription = (
+            subscription_repository.update_account_subscription_status(
+                external_id, new_status
+            )
+        )
+
+    return updated_subscription

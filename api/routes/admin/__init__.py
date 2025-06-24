@@ -73,6 +73,8 @@ from api.schemas.admin.subscription import (
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
+    UpdateAccountSubscriptionStatusRequest,
+    UpdateAccountSubscriptionStatusResponse,
     UpdateSubscriptionPlanRequest,
 )
 from api.schemas.admin.user import SignUpRequest
@@ -1288,3 +1290,21 @@ def list_account_subscriptions(
     Scheduled subscriptions are sorted by start_date if there are multiple.
     """
     return _subscription.list_account_subscriptions(context, session, account_name)
+
+
+@admin_router.patch("/accounts/{account_name}/subscriptions/{external_id}/status")
+def update_account_subscription_status(
+    account_name: str,
+    external_id: uuid.UUID,
+    request: UpdateAccountSubscriptionStatusRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> UpdateAccountSubscriptionStatusResponse:
+    """
+    Updates the status of the referenced account_subscription.
+    Only active subscriptions can be updated to active or pending status.
+    This API can be used to cancel a subscription.
+    """
+    return _subscription.update_subscription_status(
+        context, session, account_name, external_id, request
+    )

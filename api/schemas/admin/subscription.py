@@ -170,3 +170,22 @@ class CheckoutParams(BaseModel):
 class ListAccountSubscriptionsResponse(BaseModel):
     current: Optional[Subscription] = None
     scheduled: List[Subscription] = []
+
+
+class UpdateAccountSubscriptionStatusRequest(BaseModel):
+    status: SubscriptionStatus
+
+    @field_validator("status")
+    def validate_status(cls, v):
+        allowed_statuses = [SubscriptionStatus.active, SubscriptionStatus.pending]
+        if v not in allowed_statuses:
+            raise ValueError(
+                f"Status must be one of: {[s.value for s in allowed_statuses]}"
+            )
+        return v
+
+
+class UpdateAccountSubscriptionStatusResponse(BaseModel):
+    message: str
+    external_id: uuid.UUID
+    status: str
