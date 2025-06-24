@@ -9,7 +9,7 @@ import db
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus, SubscriptionType
-from services import account_service
+from services import account_service, payment_service
 from services.history_service import change_log_context
 from services.subscription_service.schema import (
     SubscriptionParams,
@@ -543,3 +543,129 @@ def update_account_subscription_status(
         )
 
     return updated_subscription
+
+
+def cancel_account_subscription(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    hard_delete: bool = False,
+) -> Optional[db.AccountSubscription]:
+    """
+    Cancel an account subscription.
+    Business Rules:
+    - Cannot cancel free trial if there's a paid subscription in place
+    - Can cancel paid subscription while keeping free trial
+    - For paid subscriptions, must cancel Stripe subscription first
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        account_name: Account name for authorization
+        external_id: External ID of the subscription to cancel
+        hard_delete: Whether to permanently delete the subscription from the database
+    Returns:
+        Cancelled account subscription (if soft delete) or None (if hard delete)
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
+
+    subscription_to_cancel = (
+        subscription_repository.get_account_subscription_by_external_id(external_id)
+    )
+    if not subscription_to_cancel:
+        raise ValueError(f"Subscription with external_id {external_id} does not exist")
+
+    if subscription_to_cancel.account_id != account.id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to account {account_name}"
+        )
+
+    if not hard_delete and subscription_to_cancel.status not in [
+        SubscriptionStatus.active,
+        SubscriptionStatus.pending,
+    ]:
+        raise ValueError(
+            f"Cannot cancel subscription with status {subscription_to_cancel.status.value}"
+        )
+
+    if not hard_delete:
+        active_subscriptions = subscription_repository.get_account_active_subscriptions(
+            account.id
+        )
+
+        if subscription_to_cancel.subscription_type == SubscriptionType.trial:
+            paid_subscriptions = [
+                sub
+                for sub in active_subscriptions
+                if sub.subscription_type
+                in [SubscriptionType.monthly, SubscriptionType.contract]
+                and sub.external_id != external_id
+            ]
+
+            if paid_subscriptions:
+                raise ValueError(
+                    "Cannot cancel free trial while paid subscription is active"
+                )
+
+    if (
+        subscription_to_cancel.subscription_type
+        in [SubscriptionType.monthly, SubscriptionType.contract]
+        and subscription_to_cancel.stripe_subscription_id
+    ):
+        try:
+            payment_service.cancel_subscription(
+                subscription_to_cancel.stripe_subscription_id
+            )
+            logger.info(
+                f"Cancelled Stripe subscription {subscription_to_cancel.stripe_subscription_id}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to cancel Stripe subscription: {e}")
+            raise ValueError(f"Failed to cancel Stripe subscription: {str(e)}")
+
+    old_subscription = copy.copy(subscription_to_cancel)
+
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            cancelled_subscription = (
+                subscription_repository.cancel_account_subscription(
+                    external_id, hard_delete
+                )
+            )
+            if hard_delete:
+                ctx.new_record = None
+            else:
+                ctx.new_record = cancelled_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for account subscription {'deletion' if hard_delete else 'cancellation'}, proceeding anyway: {e}"
+        )
+
+        cancelled_subscription = subscription_repository.cancel_account_subscription(
+            external_id, hard_delete
+        )
+
+    logger.info(
+        f"{'Deleted' if hard_delete else 'Cancelled'} subscription for account {account_name}",
+        extra={
+            "account_id": str(account.id),
+            "subscription_external_id": str(external_id),
+            "subscription_type": subscription_to_cancel.subscription_type.value,
+            "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
+            "hard_delete": hard_delete,
+        },
+    )
+
+    return cancelled_subscription

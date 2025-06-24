@@ -1308,3 +1308,27 @@ def update_account_subscription_status(
     return _subscription.update_subscription_status(
         context, session, account_name, external_id, request
     )
+
+
+@admin_router.post("/accounts/{account_name}/subscriptions/{external_id}/cancel")
+def cancel_account_subscription(
+    account_name: str,
+    external_id: uuid.UUID,
+    hard_delete: bool = Query(
+        False,
+        description="Whether to permanently delete the subscription from the database",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Cancels a subscription for the given account. If hard_delete is True, permanently deletes it from the database.
+    Business Rules:
+    - Cannot cancel free trial if there's a paid subscription in place
+    - Can cancel paid subscription while keeping free trial in place
+    - For paid subscriptions, cancels Stripe subscription first
+    This operation cannot be reverted unless they sign up again.
+    """
+    return _subscription.cancel_subscription(
+        context, session, account_name, external_id, hard_delete
+    )

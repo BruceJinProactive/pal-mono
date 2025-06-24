@@ -317,3 +317,59 @@ def update_subscription_status(
             status_code=500,
             detail="Internal server error",
         )
+
+
+def cancel_subscription(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    external_id: uuid.UUID,
+    hard_delete: bool = False,
+) -> dict:
+    """Cancel an account subscription."""
+    authorize_admin(context)
+
+    try:
+        cancelled_subscription = subscription_service.cancel_account_subscription(
+            session, context, account_name, external_id, hard_delete
+        )
+
+        if hard_delete:
+            return {
+                "message": f"Subscription {external_id} has been permanently deleted"
+            }
+
+        if cancelled_subscription is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Subscription not found",
+            )
+        return {"message": "Subscription cancelled successfully"}
+    except ValueError as err:
+        if "does not exist" in str(err):
+            raise HTTPException(
+                status_code=404,
+                detail=str(err),
+            )
+        if any(
+            phrase in str(err)
+            for phrase in [
+                "Cannot cancel",
+                "Failed to cancel Stripe",
+                "Cannot cancel subscription with status",
+            ]
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=str(err),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=str(err),
+        )
+    except Exception as err:
+        logger.error(f"Error cancelling account subscription: {err}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error",
+        )

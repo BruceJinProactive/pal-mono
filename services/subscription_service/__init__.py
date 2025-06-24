@@ -54,6 +54,18 @@ def get_subscription_plans(
     return _implementation.get_subscription_plans(session)
 
 
+def cancel_account_subscription(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    external_id: uuid.UUID,
+    hard_delete: bool = False,
+):
+    return _implementation.cancel_account_subscription(
+        session, context, account_name, external_id, hard_delete
+    )
+
+
 def get_subscription_plan_by_id(
     session: Session,
     plan_id,

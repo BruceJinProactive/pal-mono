@@ -306,3 +306,70 @@ class SubscriptionRepository:
             self.session.rollback()
             logger.error(f"Error updating account subscription status: {e}")
             raise
+
+    def cancel_account_subscription(
+        self, external_id: uuid.UUID, hard_delete: bool = False
+    ) -> Optional[AccountSubscription]:
+        """Cancel an account subscription by setting status to cancelled or permanently deleting it."""
+        try:
+            subscription = (
+                self.session.query(AccountSubscription)
+                .filter(AccountSubscription.external_id == external_id)
+                .order_by(AccountSubscription.version.desc())
+                .first()
+            )
+
+            if not subscription:
+                return None
+
+            if hard_delete:
+                self.session.query(AccountSubscription).filter(
+                    AccountSubscription.external_id == external_id
+                ).delete()
+
+                if self.auto_commit:
+                    self.session.commit()
+                else:
+                    self.session.flush()
+
+                return None
+
+            subscription.status = SubscriptionStatus.cancelled
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(subscription)
+            return subscription
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(
+                f"Error {'deleting' if hard_delete else 'cancelling'} account subscription: {e}"
+            )
+            raise
+
+    def get_account_active_subscriptions(
+        self, account_id: uuid.UUID
+    ) -> List[AccountSubscription]:
+        """Get all active subscriptions for an account (including pending)."""
+        try:
+            return (
+                self.session.query(AccountSubscription)
+                .options(selectinload(AccountSubscription.subscription_plan))
+                .filter(
+                    and_(
+                        AccountSubscription.account_id == account_id,
+                        AccountSubscription.status.in_(
+                            [SubscriptionStatus.active, SubscriptionStatus.pending]
+                        ),
+                    )
+                )
+                .order_by(AccountSubscription.start_date)
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving account active subscriptions: {e}")
+            return []
