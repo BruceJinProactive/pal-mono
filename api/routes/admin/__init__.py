@@ -1225,13 +1225,18 @@ async def update_subscription_plan(
 @admin_router.patch("/plans/{plan_id}/expire")
 async def expire_subscription_plan(
     plan_id: uuid.UUID,
+    hard_delete: bool = Query(
+        False, description="Whether to permanently delete the plan from the database"
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
     """
-    Expires a subscription plan by ID.
+    Expires a subscription plan by ID. If hard_delete is True, permanently deletes it from the database.
     """
-    return _subscription.expire_subscription_plan(plan_id, context, session)
+    return _subscription.expire_subscription_plan(
+        plan_id, context, session, hard_delete
+    )
 
 
 """

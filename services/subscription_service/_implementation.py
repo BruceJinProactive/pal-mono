@@ -155,17 +155,19 @@ def expire_subscription_plan(
     session: Session,
     context: UserContext,
     plan_id: uuid.UUID,
-) -> db.SubscriptionPlan:
+    hard_delete: bool = False,
+) -> Optional[db.SubscriptionPlan]:
     """
-    Expire a subscription plan by ID.
+    Expire or hard delete a subscription plan by ID.
 
     Args:
         session: Database session
         context: User context for authorization and logging
-        plan_id: Plan ID to expire
+        plan_id: Plan ID to expire or hard delete
+        hard_delete: Whether to permanently delete the plan from the database
 
     Returns:
-        Expired subscription plan
+        Expired subscription plan or None if hard delete is True
 
     Raises:
         ValueError: If plan cannot be expired due to business rules
@@ -176,6 +178,8 @@ def expire_subscription_plan(
     if not existing_plan:
         raise ValueError(f"Subscription plan {plan_id} does not exist.")
 
+    old_plan = copy.copy(existing_plan)
+
     try:
         with change_log_context(
             session=session,
@@ -183,26 +187,24 @@ def expire_subscription_plan(
             author=context.email,
             account_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
             resource_id=str(plan_id),
-            old_record=existing_plan,
+            old_record=old_plan,
             auto_commit=False,
         ) as ctx:
-            expired_plan = subscription_repository.expire_subscription_plan(plan_id)
-            ctx.new_record = expired_plan
+            expired_plan = subscription_repository.expire_subscription_plan(
+                plan_id, hard_delete
+            )
+            if hard_delete:
+                ctx.new_record = None
+            else:
+                ctx.new_record = expired_plan
     except Exception as e:
         logger.warning(
-            f"Change log failed for subscription plan expiration, proceeding anyway: {e}"
+            f"Change log failed for subscription plan {'deletion' if hard_delete else 'expiration'}, proceeding anyway: {e}"
         )
 
-        expired_plan = subscription_repository.expire_subscription_plan(plan_id)
-
-    logger.info(
-        f"Expired subscription plan: {expired_plan.name}",
-        extra={
-            "plan_id": str(plan_id),
-            "plan_name": expired_plan.name,
-            "author": context.email,
-        },
-    )
+        expired_plan = subscription_repository.expire_subscription_plan(
+            plan_id, hard_delete
+        )
 
     return expired_plan
 

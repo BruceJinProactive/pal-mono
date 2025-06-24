@@ -119,23 +119,29 @@ def expire_subscription_plan(
     plan_id: uuid.UUID,
     context: UserContext,
     session: Session,
+    hard_delete: bool = False,
 ):
     """
-    Expires a subscription plan by ID.
+    Expires or hard deletes a subscription plan by ID.
     """
     authorize_admin(context)
     try:
         expired_plan = subscription_service.expire_subscription_plan(
-            session, context, plan_id
+            session, context, plan_id, hard_delete
         )
+
+        if hard_delete:
+            return {
+                "message": f"Subscription plan {plan_id} has been permanently deleted"
+            }
+        else:
+            return build_subscription_plan(expired_plan)
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
             headers={"Content-Type": "application/json"},
         )
-
-    return build_subscription_plan(expired_plan)
 
 
 def create_subscription(

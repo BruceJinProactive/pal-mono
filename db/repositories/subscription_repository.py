@@ -110,22 +110,33 @@ class SubscriptionRepository:
             logger.error(f"Error updating subscription plan: {e}")
             raise
 
-    def expire_subscription_plan(self, plan_id: uuid.UUID) -> SubscriptionPlan:
-        """Expire a subscription plan."""
+    def expire_subscription_plan(
+        self, plan_id: uuid.UUID, hard_delete: bool = False
+    ) -> Optional[SubscriptionPlan]:
+        """Expire or hard delete a subscription plan."""
         try:
-            plan = self.get_subscription_plan_by_id(plan_id)
+            plan = (
+                self.session.query(SubscriptionPlan)
+                .filter(SubscriptionPlan.id == plan_id)
+                .first()
+            )
             if not plan:
                 raise PlanNotFoundError(f"Subscription plan {plan_id} not found")
-            plan.active = False
+            if hard_delete:
+                self.session.delete(plan)
+            else:
+                plan.active = False
+
             if self.auto_commit:
                 self.session.commit()
             else:
                 self.session.flush()
-            self.session.refresh(plan)
+            if not hard_delete:
+                self.session.refresh(plan)
             return plan
         except SQLAlchemyError as e:
             self.session.rollback()
-            logger.error(f"Error expiring subscription plan: {e}")
+            logger.error(f"Error expiring/hard deleting subscription plan: {e}")
             raise
 
     def get_last_trial_subscription(

@@ -86,5 +86,8 @@ def expire_subscription_plan(
     session: Session,
     context: UserContext,
     plan_id: uuid.UUID,
+    hard_delete: bool = False,
 ):
-    return _implementation.expire_subscription_plan(session, context, plan_id)
+    return _implementation.expire_subscription_plan(
+        session, context, plan_id, hard_delete
+    )
