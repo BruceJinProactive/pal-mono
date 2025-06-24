@@ -9,6 +9,8 @@ from tools.square_tool.classes import (
     CreateOrderResponse,
     CreatePaymentLinkInput,
     CreatePaymentLinkResponse,
+    GetCatalogObjectInput,
+    GetCatalogObjectResponse,
     ListCatalogInput,
     SearchCatalogInput,
     SquareAccessToken,
@@ -287,3 +289,52 @@ def create_payment_link(
 
     except Exception as e:
         raise ValueError(f"Failed to create payment link: {str(e)}") from e
+
+
+def get_catalog_object(
+    access_token: SquareAccessToken,
+    input_data: GetCatalogObjectInput,
+) -> GetCatalogObjectResponse:
+    """
+    Retrieve a single catalog object from Square's catalog API.
+
+    Args:
+        access_token (SquareAccessToken): The Square access token model containing the token and type
+        input_data (GetCatalogObjectInput): Pydantic model containing the object ID and optional parameters
+
+    Returns:
+        GetCatalogObjectResponse: Pydantic model containing the catalog object and related objects
+
+    Raises:
+        ValueError: If the API call fails
+    """
+    try:
+        # Build query parameters from input model
+        query_params = {}
+        if input_data.catalog_version:
+            query_params["catalog_version"] = input_data.catalog_version
+        if input_data.include_category_path_to_root is not None:
+            query_params["include_category_path_to_root"] = (
+                input_data.include_category_path_to_root
+            )
+        if input_data.include_related_objects is not None:
+            query_params["include_related_objects"] = input_data.include_related_objects
+
+        response = connect_square_api(
+            http_method=HttpMethod.GET,
+            access_token=access_token,
+            api_function=f"/v2/catalog/object/{input_data.object_id}",
+            query_params=query_params if query_params else None,
+            use_production=input_data.use_production,
+        )
+
+        # Handle response and parse with Pydantic
+        result = handle_square_response(response)
+        if isinstance(result, str):
+            result = json.loads(result)
+
+        # Return structured response using Pydantic model
+        return GetCatalogObjectResponse(**result)
+
+    except Exception as e:
+        raise ValueError(f"Failed to get catalog object: {str(e)}") from e
