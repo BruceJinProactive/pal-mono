@@ -89,10 +89,10 @@ class AdoraTool(Toolkit):
             self.register(self.validate_coupons)
         if self.loyalty_enabled:
             self.register(self.get_loyalty_info)
-
-        # Register order status tool
         self.register(self.get_last_order_status)
+        self.register(self.get_menu_item_info)
 
+        # Create query engine and query messages tool
         self.query_engine = _query_engine.create_query_engine(self.namespace)
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
 
@@ -1177,3 +1177,40 @@ class AdoraTool(Toolkit):
                 f"[AdoraTool._format_order_status] Error formatting order status: {e}"
             )
             return "Error formatting order status information."
+
+    @tool
+    def get_menu_item_info(self, menu_item: str) -> str:
+        """
+        Get details about a menu item
+        This tool should be used when:
+        - A customer asks about a specific menu item
+        - A customer wants to add additional modifiers or toppings to a menu item
+
+        Do not use this tool if the customer is asking about the menu in general or when user checks out.
+
+        Args:
+            menu_item (str): The name of the menu item to get information about
+
+        Returns:
+            str: Information about the menu item
+        """
+        if not menu_item or not menu_item.strip():
+            return "Please specify a menu item to get information about."
+
+        try:
+            logger.debug(f"Getting menu item info for: {menu_item}")
+            menu_item_info = self.query_engine.query(menu_item.strip())
+            context = []
+            for node in menu_item_info.source_nodes:
+                if node.metadata:
+                    context.append(node.text)
+
+            if not context:
+                return f"No information found for menu item: {menu_item}"
+
+            return "----\n".join(context)
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool.get_menu_item_info] Error getting menu item info: {e}"
+            )
+            return "Failed to retrieve menu item information. Please try again."
