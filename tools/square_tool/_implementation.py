@@ -8,24 +8,17 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.square_tool._apis import (
-    create_order,
-    create_payment_link,
-    list_catalog,
-    search_catalog,
-)
+from tools.square_tool._apis import create_order, create_payment_link, search_catalog
 from tools.square_tool._prompt_constants import (
     SQUARE_FOOD_EXTRACTION_SYSTEM_PROMPT,
     SQUARE_FOOD_EXTRACTION_USER_PROMPT,
 )
-from tools.square_tool._utils import extract_customer_menu
 from tools.square_tool.classes import (
     CatalogItemObject,
     CatalogQuery,
     CheckoutOptions,
     CreateOrderInput,
     CreatePaymentLinkInput,
-    ListCatalogInput,
     Order,
     OrderLineItem,
     SearchCatalogInput,
@@ -84,19 +77,15 @@ class SquareTool(Toolkit):
     def _get_menu_info(self) -> str:
         """Get customer menu information for extraction prompt."""
         try:
-            input_data = ListCatalogInput(
-                cursor=None,
-                types=None,
-                catalog_version=None,
-                use_production=self.use_production,
-            )
+            from tools.square_tool._utils import create_comprehensive_menu
 
-            catalog_response = list_catalog(
+            # Use the comprehensive menu for extraction context
+            return create_comprehensive_menu(
                 access_token=self._square_token,
-                input_data=input_data,
+                location_id=self.location_id,
+                use_production=self.use_production,
+                display_id=False,  # Don't show IDs in extraction context
             )
-
-            return extract_customer_menu(catalog_response)
 
         except Exception as e:
             logger.error(f"[SquareTool._get_menu_info] Error: {e}")
@@ -298,37 +287,28 @@ class SquareTool(Toolkit):
             return None
 
     @tool
-    def list_catalog_customer_menu(
-        self,
-    ) -> str:
+    def list_catalog_customer_menu(self, display_id: bool = False) -> str:
         """
         Get a customer-friendly menu from Square catalog.
 
         Use this tool to show customers available menu items, prices, and dietary information.
 
+        Args:
+            display_id: Whether to display item and modifier IDs (default: False)
+
         Returns:
             str: Customer-friendly food catalog information
         """
         try:
-            # Ensure we can get the token
-            token = self._square_token
+            from tools.square_tool._utils import create_comprehensive_menu
 
-            # Create input model for validation
-            input_data = ListCatalogInput(
-                cursor=None,
-                types=None,
-                catalog_version=None,
+            # Use the comprehensive menu creation utility function
+            return create_comprehensive_menu(
+                access_token=self._square_token,
+                location_id=self.location_id,
                 use_production=self.use_production,
+                display_id=display_id,
             )
-
-            # Call the API function
-            catalog_response = list_catalog(
-                access_token=token,
-                input_data=input_data,
-            )
-
-            # Return simple customer menu
-            return extract_customer_menu(catalog_response)
 
         except Exception as e:
             logger.error(

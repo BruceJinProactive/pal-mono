@@ -1,4 +1,7 @@
+from typing import Any, Dict, List
+
 from tools.square_tool.classes import CatalogItemObject, CatalogListResponse
+from utils.log import logger
 
 
 def _format_item_price(var_data) -> str:
@@ -98,3 +101,450 @@ def extract_customer_menu(catalog_response: CatalogListResponse) -> str:
     menu_lines.append(f"Total items: {item_count}")
 
     return "\n".join(menu_lines)
+
+
+def get_all_catalog_objects(access_token, use_production: bool):
+    """
+    Get all catalog objects using pagination.
+
+    Args:
+        access_token: Square API access token
+        use_production: Whether to use production environment
+
+    Returns:
+        List of all catalog objects
+    """
+    from tools.square_tool._apis import list_catalog
+    from tools.square_tool.classes import ListCatalogInput
+
+    all_catalog_objects = []
+    cursor = None
+
+    try:
+        while True:
+            input_data = ListCatalogInput(
+                cursor=cursor,
+                types=None,
+                catalog_version=None,
+                use_production=use_production,
+            )
+
+            catalog_response = list_catalog(
+                access_token=access_token,
+                input_data=input_data,
+            )
+
+            if catalog_response.objects:
+                all_catalog_objects.extend(catalog_response.objects)
+
+            # Check if there are more pages
+            if hasattr(catalog_response, "cursor") and catalog_response.cursor:
+                cursor = catalog_response.cursor
+            else:
+                break
+
+        return all_catalog_objects
+
+    except Exception as e:
+        logger.error(f"[get_all_catalog_objects] Error: {e}")
+        return []
+
+
+def filter_location_available_items(
+    catalog_objects: List[Any], location_id: str
+) -> List[Dict[str, Any]]:
+    """
+    Filter catalog objects to get items available at the specified location.
+
+    Args:
+        catalog_objects: List of catalog objects from Square API
+        location_id: Target location ID
+
+    Returns:
+        List of dictionaries containing item information
+    """
+    all_items = []
+
+    for obj in catalog_objects:
+        if obj.type == "ITEM" and isinstance(obj, CatalogItemObject):
+            # Check if this item is available at our location
+            present_at_all_locations = getattr(obj, "present_at_all_locations", False)
+            present_at_location_ids = getattr(obj, "present_at_location_ids", []) or []
+            absent_at_location_ids = getattr(obj, "absent_at_location_ids", []) or []
+
+            # Apply location availability logic
+            is_item_available = (
+                present_at_all_locations and location_id not in absent_at_location_ids
+            ) or location_id in present_at_location_ids
+
+            if is_item_available:
+                # Check if item should be excluded
+                item_name = obj.item_data.name or ""
+                is_curbside_item = "curbside pickup" in item_name.lower()
+                has_ume_tag = "[ume]" in item_name.lower()
+
+                if not is_curbside_item and not has_ume_tag:
+                    # Get item price information
+                    price_info = get_item_price_info(obj, location_id)
+
+                    all_items.append(
+                        {
+                            "id": obj.id,
+                            "name": obj.item_data.name or "Unnamed Item",
+                            "description": getattr(obj.item_data, "description", None),
+                            "price": price_info,
+                        }
+                    )
+
+    return all_items
+
+
+def get_item_price_info(item_obj: CatalogItemObject, location_id: str) -> str:
+    """
+    Extract price information for an item, including location-specific overrides.
+
+    Args:
+        item_obj: CatalogItemObject from Square API
+        location_id: Target location ID
+
+    Returns:
+        Formatted price string
+    """
+    price_info = ""
+
+    if hasattr(item_obj.item_data, "variations") and item_obj.item_data.variations:
+        first_variation = item_obj.item_data.variations[0]
+        if (
+            hasattr(first_variation, "item_variation_data")
+            and first_variation.item_variation_data
+        ):
+            var_data = first_variation.item_variation_data
+
+            # First check for location-specific price overrides
+            location_overrides = getattr(var_data, "location_overrides", []) or []
+            location_price_found = False
+
+            for override in location_overrides:
+                if getattr(override, "location_id", None) == location_id:
+                    if hasattr(override, "price_money") and override.price_money:
+                        price = override.price_money.amount / 100
+                        currency = getattr(override.price_money, "currency", "USD")
+                        price_info = f"${price:.2f} {currency}"
+                        location_price_found = True
+                        break
+
+            # If no location override found, use default price
+            if (
+                not location_price_found
+                and hasattr(var_data, "price_money")
+                and var_data.price_money
+            ):
+                price = var_data.price_money.amount / 100
+                currency = getattr(var_data.price_money, "currency", "USD")
+                price_info = f"${price:.2f} {currency}"
+
+    return price_info
+
+
+def get_detailed_catalog_object(access_token, object_id: str, use_production: bool):
+    """
+    Get detailed information about a specific catalog object.
+
+    Args:
+        access_token: Square API access token
+        object_id: ID of the catalog object to retrieve
+        use_production: Whether to use production environment
+
+    Returns:
+        Detailed catalog object response or None
+    """
+    try:
+        from tools.square_tool._apis import get_catalog_object
+        from tools.square_tool.classes import GetCatalogObjectInput
+
+        get_input = GetCatalogObjectInput(
+            object_id=object_id,
+            catalog_version=None,
+            include_related_objects=True,
+            include_category_path_to_root=True,
+            use_production=use_production,
+        )
+
+        object_response = get_catalog_object(access_token, get_input)
+        return object_response
+
+    except Exception as e:
+        logger.error(
+            f"[get_detailed_catalog_object] Error fetching object {object_id}: {e}"
+        )
+        return None
+
+
+def _is_modifier_available_at_location(modifier_obj, location_id: str) -> bool:
+    """Check if a modifier is available at the specified location."""
+    present_at_all_locations = getattr(modifier_obj, "present_at_all_locations", False)
+    present_at_location_ids = getattr(modifier_obj, "present_at_location_ids", []) or []
+    absent_at_location_ids = getattr(modifier_obj, "absent_at_location_ids", []) or []
+
+    return (
+        present_at_all_locations and location_id not in absent_at_location_ids
+    ) or location_id in present_at_location_ids
+
+
+def _format_modifier_price(price_money) -> str:
+    """Format modifier price information."""
+    if not price_money:
+        return ""
+
+    price = price_money.amount / 100
+    currency = getattr(price_money, "currency", "USD")
+
+    if price > 0:
+        return f" (+{currency} ${price:.2f})"
+    elif price < 0:
+        return f" (-{currency} ${abs(price):.2f})"
+    return ""
+
+
+def _find_modifier_list(related_objects, modifier_list_id: str):
+    """Find a modifier list by ID in the related objects."""
+    if not related_objects:
+        return None
+
+    for related_obj in related_objects:
+        if related_obj.type == "MODIFIER_LIST" and related_obj.id == modifier_list_id:
+            return getattr(related_obj, "modifier_list_data", None)
+
+    return None
+
+
+def _extract_location_modifiers(mod_list_data, location_id: str) -> Dict[str, Any]:
+    """Extract modifiers from a modifier list that are available at the specified location."""
+    if not mod_list_data:
+        return {}
+
+    modifiers = getattr(mod_list_data, "modifiers", None)
+    if not modifiers or not isinstance(modifiers, (list, tuple)):
+        return {}
+
+    modifiers_info = []
+
+    for modifier_obj in modifiers:
+        if _is_modifier_available_at_location(modifier_obj, location_id):
+            mod_data = getattr(modifier_obj, "modifier_data", None)
+            if mod_data:
+                price_info = _format_modifier_price(mod_data.price_money)
+
+                modifiers_info.append(
+                    {
+                        "id": modifier_obj.id,
+                        "name": mod_data.name,
+                        "price_info": price_info,
+                    }
+                )
+
+    # Only return modifier list info if there are available modifiers
+    return (
+        {
+            "list_name": mod_list_data.name,
+            "modifiers": modifiers_info,
+        }
+        if modifiers_info
+        else {}
+    )
+
+
+def get_item_modifiers(detailed_response, location_id: str) -> List[Dict[str, Any]]:
+    """
+    Extract modifier information for an item, filtered by location availability.
+
+    Args:
+        detailed_response: Detailed catalog object response from Square API
+        location_id: Target location ID
+
+    Returns:
+        List of modifier list dictionaries
+    """
+    if not detailed_response or not detailed_response.object:
+        return []
+
+    item_obj = detailed_response.object
+
+    # Early return if not an item with modifier list info
+    if (
+        item_obj.type != "ITEM"
+        or not isinstance(item_obj, CatalogItemObject)
+        or not item_obj.item_data
+        or not getattr(item_obj.item_data, "modifier_list_info", None)
+    ):
+        return []
+
+    location_modifiers_for_item = []
+
+    # Process each modifier list
+    for mod_list_ref in item_obj.item_data.modifier_list_info:  # type: ignore
+        modifier_list = _find_modifier_list(
+            detailed_response.related_objects, mod_list_ref.modifier_list_id
+        )
+
+        if modifier_list:
+            modifiers_info = _extract_location_modifiers(modifier_list, location_id)
+
+            if modifiers_info:
+                location_modifiers_for_item.append(modifiers_info)
+
+    return location_modifiers_for_item
+
+
+def _format_item_header(item_index: int, item: Dict[str, Any]) -> str:
+    """Format the main item header line."""
+    price_part = f" ({item['price']})" if item["price"] else ""
+    return f"{item_index}. {item['name']}{price_part}"
+
+
+def _format_item_details(item: Dict[str, Any], display_id: bool) -> List[str]:
+    """Format item description and ID lines."""
+    lines = []
+
+    if item.get("description"):
+        lines.append(f"*Description: {item['description']}")
+
+    if display_id and item.get("id"):
+        lines.append(f"*Item ID: {item['id']}")
+
+    return lines
+
+
+def _format_modifiers_section(
+    modifiers: List[Dict[str, Any]], display_id: bool
+) -> List[str]:
+    """Format the modifiers section for an item."""
+    if not modifiers:
+        return ["*No modifiers available for this item"]
+
+    lines = ["*Available Modifiers:"]
+
+    for mod_list in modifiers:
+        if mod_list.get("list_name") and mod_list.get("modifiers"):
+            lines.append(f"**{mod_list['list_name']}:")
+
+            for modifier in mod_list["modifiers"]:
+                modifier_name = modifier.get("name", "Unknown Modifier")
+                modifier_price = modifier.get("price_info", "")
+                lines.append(f"***{modifier_name}{modifier_price}")
+
+                if display_id and modifier.get("id"):
+                    lines.append(f"****Modifier ID: {modifier['id']}")
+
+    return lines
+
+
+def _format_menu_header(item_count: int) -> List[str]:
+    """Format the menu header section."""
+    return ["COMPLETE MENU", "=" * 50, f"Available Items: {item_count}", ""]
+
+
+def _format_menu_footer(menu_items: List[Dict[str, Any]]) -> List[str]:
+    """Format the menu footer with summary statistics."""
+    # Count total modifiers
+    total_modifiers = 0
+    for item in menu_items:
+        for mod_list in item.get("location_modifiers", []):
+            total_modifiers += len(mod_list.get("modifiers", []))
+
+    return [
+        "=" * 50,
+        f"Total Menu Items: {len(menu_items)}",
+        f"Total Available Modifiers: {total_modifiers}",
+        "=" * 50,
+    ]
+
+
+def format_customer_menu(
+    menu_items: List[Dict[str, Any]], display_id: bool = False
+) -> str:
+    """
+    Format the final menu for customer display with complete information.
+
+    Args:
+        menu_items: List of menu item dictionaries with details
+        display_id: Whether to display item and modifier IDs (default: False)
+
+    Returns:
+        Formatted menu string with complete information and asterisk-based hierarchy
+    """
+    if not menu_items:
+        return "No menu items are currently available at this location."
+
+    menu_content = []
+
+    # Add header
+    menu_content.extend(_format_menu_header(len(menu_items)))
+
+    # Format each menu item
+    for item_index, item in enumerate(menu_items, 1):
+        # Format item header
+        menu_content.append(_format_item_header(item_index, item))
+
+        # Format item details
+        menu_content.extend(_format_item_details(item, display_id))
+
+        # Format modifiers
+        modifiers = item.get("location_modifiers", [])
+        menu_content.extend(_format_modifiers_section(modifiers, display_id))
+
+        # Add separator between items
+        menu_content.append("")
+
+    # Add footer
+    menu_content.extend(_format_menu_footer(menu_items))
+
+    return "\n".join(menu_content)
+
+
+def create_comprehensive_menu(
+    access_token, location_id: str, use_production: bool, display_id: bool = False
+) -> str:
+    """
+    Create a comprehensive customer menu using all the utility functions.
+
+    Args:
+        access_token: Square API access token
+        location_id: Target location ID
+        use_production: Whether to use production environment
+        display_id: Whether to display item and modifier IDs (default: False)
+
+    Returns:
+        Formatted comprehensive menu string
+    """
+    try:
+        # Step 1: Get all catalog objects
+        all_catalog_objects = get_all_catalog_objects(access_token, use_production)
+        if not all_catalog_objects:
+            return "Unable to retrieve catalog information."
+
+        # Step 2: Filter items available at this location
+        available_items = filter_location_available_items(
+            all_catalog_objects, location_id
+        )
+        if not available_items:
+            return "No menu items are currently available at this location."
+
+        # Step 3: Get detailed information and modifiers for each item
+        final_menu = []
+        for item in available_items:
+            detailed_response = get_detailed_catalog_object(
+                access_token, item["id"], use_production
+            )
+            location_modifiers = get_item_modifiers(detailed_response, location_id)
+
+            # Add modifiers to item
+            item["location_modifiers"] = location_modifiers
+            final_menu.append(item)
+
+        # Step 4: Format the menu for display
+        return format_customer_menu(final_menu, display_id=display_id)
+
+    except Exception as e:
+        logger.error(f"[create_comprehensive_menu] Error: {e}")
+        return "Failed to create menu. Please try again."
