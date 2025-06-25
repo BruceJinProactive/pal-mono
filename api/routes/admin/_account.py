@@ -301,26 +301,6 @@ async def close_account(
             headers={"Content-Type": "application/json"},
         )
 
-    if account.stripe_subscription_id:
-        try:
-            from services import payment_service
-
-            payment_service.cancel_subscription(account.stripe_subscription_id)
-            logger.info(f"Canceled Stripe subscription for account {account_name}")
-        except Exception as e:
-            logger.error(
-                f"Failed to cancel Stripe subscription for account {account_name}: {e}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to cancel subscription: {str(e)}",
-                headers={"Content-Type": "application/json"},
-            )
-    else:
-        logger.info(
-            f"No Stripe subscription found for account {account_name}, proceeding with status update"
-        )
-
     try:
         account_params = AccountParams(status=AccountStatus.disabled)
         account_service.update_account(session, context, account_name, account_params)

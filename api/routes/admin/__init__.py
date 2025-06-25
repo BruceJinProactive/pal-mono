@@ -1260,32 +1260,6 @@ async def create_account_subscription(
     return _subscription.create_subscription(context, session, account_name, request)
 
 
-@admin_router.post("/subscriptions/checkout")
-async def create_checkout_url(
-    params: CheckoutParams,
-    context: UserContext = Depends(authenticate_user),
-):
-    """
-    Creates a Stripe checkout session for the account and redirect user
-    to the checkout page.
-    """
-    return _subscription.create_checkout_url(params, context)
-
-
-@admin_router.post("/subscriptions/callback", status_code=200)
-async def update_subscription_data(
-    checkout_session_id: str = Query(..., description="Checkout Session ID"),
-    context: UserContext = Depends(authenticate_user),
-    db_session: Session = Depends(db.get_db),
-):
-    """
-    Extracts metadata from stripe's checkout session and updates the account's subscription data.
-    """
-    return _subscription.update_account_subscription(
-        db_session, checkout_session_id, context
-    )
-
-
 @admin_router.get("/accounts/{account_name}/subscriptions")
 def list_account_subscriptions(
     account_name: str,

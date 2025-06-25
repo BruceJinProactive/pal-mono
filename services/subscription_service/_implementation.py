@@ -9,7 +9,7 @@ import db
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus, SubscriptionType
-from services import account_service, payment_service
+from services import account_service
 from services.history_service import change_log_context
 from services.subscription_service.schema import (
     SubscriptionParams,
@@ -682,23 +682,6 @@ def cancel_account_subscription(
                 raise ValueError(
                     "Cannot cancel free trial while paid subscription is active"
                 )
-
-    if (
-        subscription_to_cancel.subscription_type
-        in [SubscriptionType.monthly, SubscriptionType.contract]
-        and subscription_to_cancel.stripe_subscription_id
-    ):
-        try:
-            payment_service.cancel_subscription(
-                subscription_to_cancel.stripe_subscription_id
-            )
-            logger.info(
-                f"Cancelled Stripe subscription {subscription_to_cancel.stripe_subscription_id}"
-            )
-        except Exception as e:
-            logger.error(f"Failed to cancel Stripe subscription: {e}")
-            raise ValueError(f"Failed to cancel Stripe subscription: {str(e)}")
-
     old_subscription = copy.copy(subscription_to_cancel)
 
     try:
