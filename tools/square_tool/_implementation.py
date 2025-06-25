@@ -56,7 +56,6 @@ class SquareTool(Toolkit):
             self.query_messages_tool = None
 
         # Register tools
-        self.register(self.list_catalog_customer_menu)
         self.register(self.create_order_and_payment_link)
 
     @cached_property
