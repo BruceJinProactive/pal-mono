@@ -46,6 +46,7 @@ class SubscriptionStatus(str, enum.Enum):
     cancelled = "cancelled"
 
 
+# Do not use this, it is deprecated
 class OrderIntegrationVendor(str, enum.Enum):
     olo = "olo"
     toast = "toast"
@@ -63,3 +64,16 @@ class POSProvider(str, enum.Enum):
     olo = "olo"
     adora = "adora"
     square = "square"
+
+
+class IntegrationType(str, enum.Enum):
+    pos = "pos"
+    loyalty = "loyalty"
+    reservation = "reservation"
+
+
+class AuthType(str, enum.Enum):
+    oauth = "oauth"
+    client_secret = "client_secret"
+    api_key = "api_key"
+    basic_auth = "basic_auth"

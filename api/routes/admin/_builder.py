@@ -6,6 +6,12 @@ from api.schemas.admin.agent import Agent, AgentSummary
 from api.schemas.admin.conversation import Message, UserSession
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
+from api.schemas.admin.integration import (
+    IntegrationResponse,
+    IntegrationSummaryResponse,
+    ProjectIntegrationResponse,
+    ProjectIntegrationSummaryResponse,
+)
 from api.schemas.admin.lead import Lead
 from api.schemas.admin.project import Project, ProjectSummary
 from api.schemas.admin.subscription import Subscription, SubscriptionPlan
@@ -247,4 +253,63 @@ def build_subscription(subscription: db.AccountSubscription) -> Subscription:
         monthly_fee=subscription.monthly_fee,
         created_at=subscription.created_at,
         updated_at=subscription.updated_at,
+    )
+
+
+def build_integration(integration: db.Integration) -> IntegrationResponse:
+    """Build an integration response with actual token values."""
+    return IntegrationResponse(
+        id=integration.id,
+        account_id=integration.account_id,
+        provider=integration.provider,
+        integration_type=integration.integration_type,
+        auth_type=integration.auth_type,
+        business_id=integration.business_id,
+        raw_config=integration.raw_config or {},
+        access_token=integration.access_token,
+        refresh_token=integration.refresh_token,
+        client_id=integration.client_id,
+        client_secret=integration.client_secret,
+        api_key=integration.api_key,
+        created_at=integration.created_at,
+        updated_at=integration.updated_at,
+    )
+
+
+def build_integration_summary(
+    integration: db.Integration,
+) -> IntegrationSummaryResponse:
+    """Build an integration summary response."""
+    return IntegrationSummaryResponse(
+        id=integration.id,
+        provider=integration.provider,
+        integration_type=integration.integration_type,
+        auth_type=integration.auth_type,
+        business_id=integration.business_id,
+        created_at=integration.created_at,
+    )
+
+
+def build_project_integration(
+    project_integration: db.ProjectIntegration,
+) -> ProjectIntegrationResponse:
+    """Build a project integration response."""
+    return ProjectIntegrationResponse(
+        id=project_integration.id,
+        project_id=project_integration.project_id,
+        integration_id=project_integration.integration_id,
+        store_identifier=project_integration.store_identifier,
+        created_at=project_integration.created_at,
+    )
+
+
+def build_project_integration_summary(
+    project_integration: db.ProjectIntegration,
+) -> ProjectIntegrationSummaryResponse:
+    """Build a project integration summary response."""
+    return ProjectIntegrationSummaryResponse(
+        id=project_integration.id,
+        integration_id=project_integration.integration_id,
+        store_identifier=project_integration.store_identifier,
+        created_at=project_integration.created_at,
     )

@@ -49,6 +49,16 @@ from api.schemas.admin.feedback import (
     UpdateFeedbackRequest,
 )
 from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
+from api.schemas.admin.integration import (
+    CreateIntegrationRequest,
+    CreateProjectIntegrationRequest,
+    IntegrationResponse,
+    ListIntegrationsResponse,
+    ListProjectIntegrationsResponse,
+    ProjectIntegrationResponse,
+    UpdateIntegrationRequest,
+    UpdateProjectIntegrationRequest,
+)
 from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
 from api.schemas.admin.lead import (
     CreateLeadRequest,
@@ -69,7 +79,6 @@ from api.schemas.admin.project import (
     UpdateProjectRequest,
 )
 from api.schemas.admin.subscription import (
-    CheckoutParams,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
@@ -99,6 +108,7 @@ from . import (
     _conversation,
     _feedback,
     _history,
+    _integration,
     _knowledge,
     _lead,
     _phone_number,
@@ -322,9 +332,163 @@ def get_account_status(
     session: Session = Depends(db.get_db),
 ) -> AccountStatusResponse:
     """
-    Get account status information including id, name and status.
+    Retrieve account status by account name.
     """
     return _account.get_account_status(account_name, context, session)
+
+
+"""
+---------- Integrations Endpoints ----------
+--------------------------------------------
+"""
+
+
+@admin_router.get("/accounts/{account_name}/integrations")
+def list_integrations(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListIntegrationsResponse:
+    """
+    Retrieve a list of integrations for the specified account.
+    """
+    return _integration.list_integrations(account_name, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/integrations/{integration_id}")
+def get_integration(
+    account_name: str,
+    integration_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> IntegrationResponse:
+    """
+    Retrieve integration details by integration ID.
+    """
+    return _integration.get_integration(account_name, integration_id, context, session)
+
+
+@admin_router.put(
+    "/accounts/{account_name}/integrations", status_code=status.HTTP_201_CREATED
+)
+async def create_integration(
+    account_name: str,
+    integration: CreateIntegrationRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> IntegrationResponse:
+    """
+    Create a new integration for the specified account.
+    """
+    return await _integration.create_integration(
+        account_name, integration, context, session
+    )
+
+
+@admin_router.patch("/accounts/{account_name}/integrations/{integration_id}")
+async def update_integration(
+    account_name: str,
+    integration_id: uuid.UUID,
+    integration: UpdateIntegrationRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> IntegrationResponse:
+    """
+    Update an existing integration.
+    """
+    return await _integration.update_integration(
+        account_name, integration_id, integration, context, session
+    )
+
+
+@admin_router.delete("/accounts/{account_name}/integrations/{integration_id}")
+async def delete_integration(
+    account_name: str,
+    integration_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete an integration.
+    """
+    return await _integration.delete_integration(
+        account_name, integration_id, context, session
+    )
+
+
+@admin_router.get("/projects/{project_id}/integrations")
+def list_project_integrations(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListProjectIntegrationsResponse:
+    """
+    Retrieve a list of integrations for the specified project.
+    """
+    return _integration.list_project_integrations(project_id, context, session)
+
+
+@admin_router.get("/projects/{project_id}/integrations/{project_integration_id}")
+def get_project_integration(
+    project_id: uuid.UUID,
+    project_integration_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ProjectIntegrationResponse:
+    """
+    Retrieve project integration details by project integration ID.
+    """
+    return _integration.get_project_integration(
+        project_id, project_integration_id, context, session
+    )
+
+
+@admin_router.put(
+    "/projects/{project_id}/integrations", status_code=status.HTTP_201_CREATED
+)
+async def create_project_integration(
+    project_id: uuid.UUID,
+    project_integration: CreateProjectIntegrationRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ProjectIntegrationResponse:
+    """
+    Create a new project integration.
+    """
+    return await _integration.create_project_integration(
+        project_id, project_integration, context, session
+    )
+
+
+@admin_router.patch("/projects/{project_id}/integrations/{project_integration_id}")
+async def update_project_integration(
+    project_id: uuid.UUID,
+    project_integration_id: uuid.UUID,
+    project_integration: UpdateProjectIntegrationRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ProjectIntegrationResponse:
+    """
+    Update an existing project integration.
+    """
+    return await _integration.update_project_integration(
+        project_id, project_integration_id, project_integration, context, session
+    )
+
+
+@admin_router.delete("/projects/{project_id}/integrations/{project_integration_id}")
+async def delete_project_integration(
+    project_id: uuid.UUID,
+    project_integration_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete a project integration.
+    """
+    return await _integration.delete_project_integration(
+        project_id, project_integration_id, context, session
+    )
 
 
 """
