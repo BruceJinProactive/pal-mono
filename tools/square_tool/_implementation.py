@@ -8,7 +8,7 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.square_tool._apis import create_payment_link, search_catalog
+from tools.square_tool._apis import create_payment_link
 from tools.square_tool._utils import (
     create_comprehensive_menu,
     create_square_order_with_modifiers,
@@ -17,17 +17,13 @@ from tools.square_tool._utils import (
     match_items_to_catalog_with_modifiers,
 )
 from tools.square_tool.classes import (
-    CatalogItemObject,
-    CatalogQuery,
     CheckoutOptions,
     CreatePaymentLinkInput,
     Order,
-    SearchCatalogInput,
     SquareAccessToken,
-    TextQuery,
 )
-from utils.log import logger
 from tools.utils.ordering._utils import get_chat_history
+from utils.log import logger
 
 
 class SquareTool(Toolkit):
@@ -87,59 +83,6 @@ class SquareTool(Toolkit):
         except Exception as e:
             logger.error(f"[SquareTool._get_menu_info] Error: {e}")
             return "Menu information not available"
-
-    def _find_first_variation_for_item(self, item_name: str) -> Optional[str]:
-        """Find the first valid variation ID for a given item name."""
-        try:
-            search_response = search_catalog(
-                self._square_token,
-                SearchCatalogInput(
-                    query=CatalogQuery(text_query=TextQuery(keywords=[item_name])),
-                    object_types=["ITEM"],
-                    include_related_objects=False,  # type: ignore
-                    include_category_path_to_root=False,  # type: ignore
-                    limit=1,  # Only need the first match
-                    use_production=self.use_production,
-                ),
-            )
-
-            items = search_response.objects or []
-            if not items:
-                return None
-
-            # Take the first item found
-            first_item = items[0]
-            if first_item.type != "ITEM" or not isinstance(
-                first_item, CatalogItemObject
-            ):
-                return None
-
-            # Check if item has variations
-            if (
-                not hasattr(first_item.item_data, "variations")
-                or not first_item.item_data.variations
-            ):
-                return None
-
-            # Take the first variation with price
-            first_variation = first_item.item_data.variations[0]
-            if (
-                not hasattr(first_variation, "item_variation_data")
-                or not first_variation.item_variation_data
-            ):
-                return None
-
-            var_data = first_variation.item_variation_data
-            if not hasattr(var_data, "price_money") or not var_data.price_money:
-                return None
-
-            return first_variation.id
-
-        except Exception as e:
-            logger.error(
-                f"[SquareTool._find_first_variation_for_item] Error finding variation for {item_name}: {e}"
-            )
-            return None
 
     def _create_payment_link(
         self, order: Order, total_item_count: int
