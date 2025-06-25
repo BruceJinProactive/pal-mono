@@ -804,9 +804,7 @@ class AdoraTool(Toolkit):
     @tool
     def checkout_order(self, latest_user_message: str) -> str:
         """
-        Validates an order for checkout by extracting structured ordering data from chat
-        history. This function absolutely must be invoked when the user asks to checkout,
-        pay, place the order, etc.
+        Validates an order for checkout by extracting structured ordering data from chat history. This function absolutely must be invoked  either when the order is ready to be placed or when the user asks to checkout, pay, place the order, etc.
 
         Args:
             latest_user_message (str): The latest user message in the chat history.
