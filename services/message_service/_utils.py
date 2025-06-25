@@ -195,7 +195,10 @@ async def process_output_for_url_updates(content: str, store_phone_number: str) 
         content (str): The output content to search for URLs
         store_phone_number (str): The store phone number to update in the database
     """
-    url_match = re.search(r"(https?://[^\s]+)", content)
+    url_match = re.search(
+        r"(https://[^.\s]+\.[^/\s]+/OnlineOrdering/OrderHubPayment/\?storeKey=[^&\s]+&orderKey=[a-f0-9-]+)",
+        content,
+    )
     if url_match:
         await _update_store_phone_number_from_url(
             url_match.group(1), store_phone_number
