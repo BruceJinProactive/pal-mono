@@ -1696,8 +1696,8 @@ class ItemModifierExtraction(BaseModel):
     """Extracted modifier information from chat history"""
 
     modifier_name: str = Field(..., description="Exact modifier name from menu")
-    modifier_list_name: str = Field(
-        ..., description="Name of the modifier list this modifier belongs to"
+    modifier_id: Optional[str] = Field(
+        None, description="Square modifier ID extracted from catalog documents"
     )
 
 
@@ -1706,6 +1706,12 @@ class ExtractedItemWithModifiers(BaseModel):
 
     item_name: str = Field(
         ..., description="Complete item name exactly as it appears in the menu"
+    )
+    item_id: Optional[str] = Field(
+        None, description="Square item ID extracted from catalog documents"
+    )
+    variation_id: Optional[str] = Field(
+        None, description="Square variation ID extracted from catalog documents"
     )
     quantity: int = Field(default=1, gt=0, description="Quantity of this item")
     modifiers: List[ItemModifierExtraction] = Field(

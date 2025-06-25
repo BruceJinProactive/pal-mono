@@ -2,16 +2,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from tools.square_tool._apis import create_order, get_catalog_object, list_catalog
-from tools.square_tool._prompt_constants import (
-    MENU_ID,
-    SQUARE_EXTRACTOR_SYSTEM_PROMPT,
-    SQUARE_EXTRACTOR_USER_PROMPT,
-)
 from tools.square_tool.classes import (
     CatalogItemObject,
     CatalogListResponse,
     CreateOrderInput,
-    ExtractedOrderWithModifiers,
     GetCatalogObjectInput,
     ListCatalogInput,
     Order,
@@ -20,7 +14,6 @@ from tools.square_tool.classes import (
     SquareAccessToken,
 )
 from utils.log import logger
-from tools.utils.ordering._utils import construct_order
 
 
 def _format_item_price(var_data) -> str:
@@ -563,140 +556,6 @@ def create_comprehensive_menu(
         return "Failed to create menu. Please try again."
 
 
-def create_catalog_context_for_extraction() -> str:
-    """Create catalog context string from menu_id for AI extraction."""
-    context_lines = []
-    context_lines.append("Available menu items and their modifiers:\n")
-
-    for item_name, item_data in MENU_ID.items():
-        context_lines.append(f"Item: {item_name}")
-
-        if item_data.get("modifiers"):
-            context_lines.append("  Modifier Lists:")
-            for modifier_list, modifiers in item_data["modifiers"].items():
-                context_lines.append(f"    {modifier_list}:")
-                for modifier in modifiers:
-                    context_lines.append(f"      - {modifier['name']}")
-        context_lines.append("")
-
-    return "\n".join(context_lines)
-
-
-def extract_items_with_modifiers_from_chat(chat_history: str) -> List[Dict[str, Any]]:
-    """Extract food items with modifiers from chat history using exact menu names."""
-    try:
-        # Create catalog context from menu_id
-        catalog_context = create_catalog_context_for_extraction()
-
-        system_prompt = SQUARE_EXTRACTOR_SYSTEM_PROMPT
-        user_prompt = SQUARE_EXTRACTOR_USER_PROMPT.format(
-            catalog_context=catalog_context, chat_history=chat_history
-        )
-
-        # Use existing SquareFoodItemList but extend the extraction with modifiers
-
-        extracted_result = construct_order(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            response_format=ExtractedOrderWithModifiers,
-            error_prefix="Failed to extract items with modifiers",
-        )
-
-        if isinstance(extracted_result, str):
-            logger.error(
-                f"[extract_items_with_modifiers_from_chat] Error: {extracted_result}"
-            )
-            return []
-
-        # Convert to list of dictionaries
-        items_with_modifiers = []
-        for item in extracted_result.items:
-            item_dict = {
-                "item_name": item.item_name,
-                "quantity": item.quantity,
-                "modifiers": [
-                    {
-                        "modifier_name": mod.modifier_name,
-                        "modifier_list": mod.modifier_list_name,
-                    }
-                    for mod in item.modifiers
-                ],
-                "special_notes": item.special_notes,
-            }
-            items_with_modifiers.append(item_dict)
-
-        logger.info(
-            f"[extract_items_with_modifiers_from_chat] Extracted {len(items_with_modifiers)} items with modifiers"
-        )
-        return items_with_modifiers
-
-    except Exception as e:
-        logger.error(f"[extract_items_with_modifiers_from_chat] Error: {e}")
-        return []
-
-
-def _match_modifier_to_catalog(
-    modifier: Dict[str, Any], catalog_item: Dict[str, Any]
-) -> Optional[Dict[str, Any]]:
-    """Match a single modifier to catalog data."""
-    modifier_name = modifier["modifier_name"]
-    modifier_list = modifier["modifier_list"]
-
-    if modifier_list not in catalog_item.get("modifiers", {}):
-        logger.warning(
-            f"Modifier list '{modifier_list}' not found for item '{catalog_item.get('item_name')}'"
-        )
-        return None
-
-    for catalog_modifier in catalog_item["modifiers"][modifier_list]:
-        if catalog_modifier["name"] == modifier_name:
-            return {
-                "modifier_id": catalog_modifier["modifier_id"],
-                "name": catalog_modifier["name"],
-                "list_name": modifier_list,
-            }
-
-    logger.warning(f"Modifier '{modifier_name}' not found in list '{modifier_list}'")
-    return None
-
-
-def match_items_to_catalog_with_modifiers(
-    items_with_modifiers: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Match extracted items to catalog data with exact name matching."""
-    matched_items = []
-
-    for item_dict in items_with_modifiers:
-        item_name = item_dict["item_name"]
-
-        if item_name not in MENU_ID:
-            logger.warning(f"Item '{item_name}' not found in menu catalog")
-            continue
-
-        catalog_item = MENU_ID[item_name]
-
-        # Match modifiers using helper function
-        matched_modifiers = []
-        for modifier in item_dict["modifiers"]:
-            matched_mod = _match_modifier_to_catalog(modifier, catalog_item)
-            if matched_mod:
-                matched_modifiers.append(matched_mod)
-
-        matched_items.append(
-            {
-                "item_name": item_name,
-                "item_id": catalog_item["item_id"],
-                "quantity": item_dict["quantity"],
-                "modifiers": matched_modifiers,
-                "special_notes": item_dict.get("special_notes"),
-            }
-        )
-
-        logger.info(f"Matched '{item_name}' with {len(matched_modifiers)} modifiers")
-
-    return matched_items
-
-
 def get_item_variation_id(
     access_token: SquareAccessToken, item_id: str, use_production: bool
 ) -> Optional[str]:
@@ -751,7 +610,7 @@ def _create_line_item_modifiers(
         modifier_obj = OrderLineItemModifier(
             uid=str(uuid.uuid4())[:8],
             catalog_object_id=modifier["modifier_id"],
-            name=modifier["name"],
+            name=modifier["modifier_name"],
             quantity="1",
         )
         line_item_modifiers.append(modifier_obj)
@@ -793,25 +652,17 @@ def create_square_order_with_modifiers(
         line_items = []
 
         for item_dict in matched_items:
-            variation_id = MENU_ID.get(item_dict["item_name"], {}).get("variation_id")
-
-            if not variation_id:
-                logger.error(
-                    f"[create_square_order_with_modifiers] Could not get variation ID for {item_dict['item_name']}"
-                )
-                continue
-
             line_item = _create_order_line_item(
                 item_dict["item_name"],
                 item_dict["quantity"],
-                variation_id,
+                item_dict["variation_id"],
                 item_dict["modifiers"],
                 item_dict.get("special_notes"),
             )
 
             line_items.append(line_item)
             logger.info(
-                f"[create_square_order_with_modifiers] Created line item for {item_dict['item_name']} with {len(item_dict['modifiers'])} modifiers"
+                f"[create_square_order_with_modifiers] Created line item for {item_dict['item_name']} "
             )
 
         if not line_items:
