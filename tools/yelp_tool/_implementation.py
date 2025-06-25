@@ -37,7 +37,7 @@ from tools.yelp_tool.classes import (
     YelpAccessTokenRequest,
 )
 from utils.log import logger
-from utils.ordering._llm import llm_call
+from tools.utils.ordering._llm import llm_call
 from utils.secret import get_client_secret_with_fallback
 
 

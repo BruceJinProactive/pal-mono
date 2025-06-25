@@ -20,7 +20,7 @@ from tools.square_tool.classes import (
     SquareAccessToken,
 )
 from utils.log import logger
-from utils.ordering._utils import construct_order
+from tools.utils.ordering._utils import construct_order
 
 
 def _format_item_price(var_data) -> str:

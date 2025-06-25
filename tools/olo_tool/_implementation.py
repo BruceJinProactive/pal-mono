@@ -33,10 +33,14 @@ from tools.olo_tool.classes import (
     OloProductInput,
     UserType,
 )
+from tools.utils.ordering._query_engine import create_query_engine
+from tools.utils.ordering._utils import (
+    construct_order,
+    get_chat_history,
+    get_relevant_docs,
+)
+from tools.utils.ordering.classes import SubQueries
 from utils.log import logger
-from utils.ordering._query_engine import create_query_engine
-from utils.ordering._utils import construct_order, get_chat_history, get_relevant_docs
-from utils.ordering.classes import SubQueries
 from utils.secret import get_client_secret_with_fallback
 
 

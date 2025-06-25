@@ -32,7 +32,7 @@ from tools.opentable_tool.classes import (
     TableAttribute,
 )
 from utils.log import logger
-from utils.ordering import _llm
+from tools.utils.ordering import _llm
 
 
 class OpenTableTool(Toolkit):

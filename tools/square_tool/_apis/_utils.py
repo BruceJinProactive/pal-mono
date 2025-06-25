@@ -4,7 +4,7 @@ from typing import Type, TypeVar, Union
 
 from tools.square_tool.classes import SquareAccessToken
 from utils.log import logger
-from utils.ordering.classes import GenericHubResponse, HttpMethod
+from tools.utils.ordering.classes import GenericHubResponse, HttpMethod
 
 T = TypeVar("T")
 

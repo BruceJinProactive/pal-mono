@@ -27,7 +27,7 @@ from tools.square_tool.classes import (
     TextQuery,
 )
 from utils.log import logger
-from utils.ordering._utils import get_chat_history
+from tools.utils.ordering._utils import get_chat_history
 
 
 class SquareTool(Toolkit):

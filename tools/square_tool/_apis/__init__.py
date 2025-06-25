@@ -15,7 +15,7 @@ from tools.square_tool.classes import (
     SearchCatalogInput,
     SquareAccessToken,
 )
-from utils.ordering.classes import HttpMethod
+from tools.utils.ordering.classes import HttpMethod
 
 
 def list_catalog(

@@ -33,9 +33,9 @@ from tools.toast_tool.classes import (
     ToastAccessToken,
 )
 from utils.log import logger
-from utils.ordering._llm import llm_call
-from utils.ordering._query_engine import create_query_engine
-from utils.ordering._utils import (
+from tools.utils.ordering._llm import llm_call
+from tools.utils.ordering._query_engine import create_query_engine
+from tools.utils.ordering._utils import (
     format_phone_number,
     is_valid_email,
     is_valid_phone_number,

@@ -1,6 +1,6 @@
 from tools.toast_tool.classes import ToastAccessToken
-from utils.ordering._utils import connect_order_hub
-from utils.ordering.classes import ApiProvider, GenericHubResponse, HttpMethod
+from tools.utils.ordering._utils import connect_order_hub
+from tools.utils.ordering.classes import ApiProvider, GenericHubResponse, HttpMethod
 
 
 def connect_toast_order_hub(

@@ -12,7 +12,7 @@ from tools.toast_tool.classes import (
     ToastAccessToken,
 )
 from utils.log import logger
-from utils.ordering.classes import HttpMethod
+from tools.utils.ordering.classes import HttpMethod
 
 BASE_URL = "ws-sandbox-api.eng.toasttab.com"
 
