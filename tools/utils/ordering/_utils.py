@@ -10,7 +10,6 @@ from ddtrace.llmobs import LLMObs
 from pydantic import BaseModel, ValidationError
 
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from utils.log import logger
 from tools.utils.ordering._llm import llm_call
 from tools.utils.ordering._query_engine import BaseQueryEngine
 from tools.utils.ordering.classes import (
@@ -19,6 +18,7 @@ from tools.utils.ordering.classes import (
     HttpMethod,
     SubQueries,
 )
+from utils.log import logger
 
 T = TypeVar("T", bound=BaseModel)
 S = TypeVar("S", bound=SubQueries)

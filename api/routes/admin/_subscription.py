@@ -81,6 +81,26 @@ def list_subscription_plans(
     return [build_subscription_plan(plan) for plan in plans]
 
 
+def get_subscription_plan(
+    context: UserContext,
+    session: Session,
+    plan_id: uuid.UUID,
+):
+    """
+    Retrieves a subscription plan by ID.
+    """
+    authorize_admin(context)
+    plan = subscription_service.get_subscription_plan_by_id(session, plan_id)
+    if not plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Subscription plan {plan_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return build_subscription_plan(plan)
+
+
 def update_subscription_plan(
     plan_id: uuid.UUID,
     request: UpdateSubscriptionPlanRequest,

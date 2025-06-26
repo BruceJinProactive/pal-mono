@@ -3,8 +3,8 @@ import json
 from typing import Type, TypeVar, Union
 
 from tools.square_tool.classes import SquareAccessToken
-from utils.log import logger
 from tools.utils.ordering.classes import GenericHubResponse, HttpMethod
+from utils.log import logger
 
 T = TypeVar("T")
 

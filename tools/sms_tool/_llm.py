@@ -1,7 +1,7 @@
 from typing import Optional
 
-from utils.log import logger
 from tools.utils.ordering._llm import llm_call
+from utils.log import logger
 
 # System prompt for generating order summaries
 ORDER_SUMMARY_SYSTEM_PROMPT = """You are a helpful assistant that summarizes order details into clear, concise summaries.

@@ -1375,6 +1375,18 @@ async def list_subscription_plans(
     return _subscription.list_subscription_plans(context, session)
 
 
+@admin_router.get("/plans/{plan_id}")
+async def get_subscription_plan(
+    plan_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Retrieves a subscription plan by ID.
+    """
+    return _subscription.get_subscription_plan(context, session, plan_id)
+
+
 @admin_router.patch("/plans/{plan_id}")
 async def update_subscription_plan(
     plan_id: uuid.UUID,

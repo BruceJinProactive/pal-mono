@@ -11,8 +11,8 @@ from tools.toast_tool.classes import (
     RestaurantOrderingStatus,
     ToastAccessToken,
 )
-from utils.log import logger
 from tools.utils.ordering.classes import HttpMethod
+from utils.log import logger
 
 BASE_URL = "ws-sandbox-api.eng.toasttab.com"
 

@@ -9,10 +9,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.opentable_tool._apis import (
     get_availability_metadata as get_availability_metadata_api,
 )
-from tools.opentable_tool._apis import (
-    get_opentable_access_token,
-    make_reservation,
-)
+from tools.opentable_tool._apis import get_opentable_access_token, make_reservation
 from tools.opentable_tool._apis import search_availability as search_availability_api
 from tools.opentable_tool._prompt_constants import (
     RESERVATION_EXTRACTOR_SYSTEM_PROMPT,
@@ -31,8 +28,8 @@ from tools.opentable_tool.classes import (
     ReservationExtractedData,
     TableAttribute,
 )
-from utils.log import logger
 from tools.utils.ordering import _llm
+from utils.log import logger
 
 
 class OpenTableTool(Toolkit):

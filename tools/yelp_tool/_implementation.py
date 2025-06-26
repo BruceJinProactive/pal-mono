@@ -8,6 +8,7 @@ from ddtrace.llmobs.decorators import retrieval, tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from tools.utils.ordering._llm import llm_call
 from tools.yelp_tool._apis import (
     create_hold,
     create_reservation,
@@ -37,7 +38,6 @@ from tools.yelp_tool.classes import (
     YelpAccessTokenRequest,
 )
 from utils.log import logger
-from tools.utils.ordering._llm import llm_call
 from utils.secret import get_client_secret_with_fallback
 
 

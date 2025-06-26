@@ -32,7 +32,6 @@ from tools.toast_tool.classes import (
     SubQueries,
     ToastAccessToken,
 )
-from utils.log import logger
 from tools.utils.ordering._llm import llm_call
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import (
@@ -40,6 +39,7 @@ from tools.utils.ordering._utils import (
     is_valid_email,
     is_valid_phone_number,
 )
+from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
 

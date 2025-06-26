@@ -1,9 +1,9 @@
 from typing import Type, TypeVar, Union
 
 from tools.olo_tool.classes import OloAccessToken
-from utils.log import logger
 from tools.utils.ordering._utils import connect_order_hub
 from tools.utils.ordering.classes import ApiProvider, GenericHubResponse, HttpMethod
+from utils.log import logger
 
 T = TypeVar("T")
 
