@@ -50,7 +50,7 @@ You will be given the chat history and relevant context. You goal is to convert 
   If a single name is provided (without clarification), always treat it as the first name.
 - For phone numbers, only extract if a complete number is provided
 - For addresses, only extract if all required components are present
-- You must ALWAYS extract the `item_id` and `size_id` for an item. Use the relevant context to identify the CORRECT `item_id` and `size_id` for each item.
+- You must ALWAYS extract the `item_id` and `size_id` for an item. Use the relevant context to identify the CORRECT `item_id` and `size_id` for each item. If there is only one `size_id` for the item, you MUST use that one.
 
 If unsure about any field, leave it empty rather than guessing.
 """
