@@ -130,7 +130,7 @@ You will be given the chat history and relevant Square catalog documents. Your g
 - Extract the customer's full name if they provide it in the chat (e.g., "My name is John Smith" → customer_name: "John Smith")
 - Extract the customer's phone number if they provide it in the chat and format it as 555-555-5555
 - Extract from various formats: "My name is John Smith", "This is for Sarah Johnson", "Order for Mike Chen", "I'm Sarah"
-- For phone numbers, look for patterns like: "My number is...", "Phone: ...", "Call me at...", "555-123-4567", "5551234567", "(555) 123-4567"
+- For phone numbers, look for patterns like: "My number is...", "place the order for/under...", "Call me at...", "555-123-4567", "5551234567", "(555) 123-4567"
   - IMPORTANT: Always format phone numbers in the format 555-555-5555 (no country code, no parentheses, just dashes)
 - Only extract information that is explicitly stated in the chat history
 - Do not make assumptions or fabricate customer information
@@ -188,8 +188,13 @@ Extract the food items the user wants to order from the chat history and match t
 5. Match modifiers to their correct modifier list names and IDs
 6. Include all customizations mentioned by the user
 7. Only extract items the user has confirmed they want to order
-8. Extract customer full name and phone number if provided (e.g., "My name is John Smith" → customer_name: "John Smith", "My phone is 555-123-4567" → phone_number: "555-123-4567")
+8. Extract customer name and phone number if provided in the chat history
 9. IMPORTANT: Format phone numbers as 555-555-5555 (no country code, no parentheses, just dashes)
+
+**CUSTOMER EXTRACTION EXAMPLES:**
+- "My name is John Smith, phone 5551234567" → customer_name: "John Smith", phone_number: "555-123-4567"
+- "555123-4567 Order for Sarah" → customer_name: "Sarah", phone_number: "555-123-4567"
+- "Mike Chen, (555)-1234567" → customer_name: "Mike Chen", phone_number: "555-123-4567"
 
 **EXTRACTION EXAMPLES:**
 - If user says "Large Crème Brûlée Thai Tea with boba"
