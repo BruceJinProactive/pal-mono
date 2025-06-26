@@ -6,6 +6,11 @@ from tools.square_tool.classes import (
     CatalogItemObject,
     CatalogListResponse,
     CreateOrderInput,
+    Fulfillment,
+    FulfillmentPickupDetails,
+    FulfillmentRecipient,
+    FulfillmentState,
+    FulfillmentType,
     GetCatalogObjectInput,
     ListCatalogInput,
     Order,
@@ -646,6 +651,8 @@ def create_square_order_with_modifiers(
     location_id: str,
     matched_items: List[Dict[str, Any]],
     use_production: bool,
+    customer_name: Optional[str] = None,
+    phone_number: Optional[str] = None,
 ) -> Optional[Order]:
     """Create Square order with modifiers support."""
     try:
@@ -671,6 +678,39 @@ def create_square_order_with_modifiers(
             )
             return None
 
+        # Create fulfillment with customer name and phone if provided
+        fulfillments = None
+        # Add +1 country code to phone number for fulfillment (phone_number should be in 555-555-5555 format from extraction)
+        if phone_number:
+            # Add +1 country code if not already present
+            if not phone_number.startswith("+"):
+                phone_number = f"+1{phone_number}"
+
+        # Create recipient with customer name and formatted phone number
+        recipient = FulfillmentRecipient(
+            display_name=customer_name, phone_number=phone_number
+        )
+
+        # Create pickup details with recipient
+        pickup_details = FulfillmentPickupDetails(
+            recipient=recipient,
+            schedule_type="ASAP",
+            note=f"Order for {customer_name}",
+        )
+
+        # Create fulfillment - only set non-read-only fields
+        fulfillment = Fulfillment(
+            uid=str(uuid.uuid4())[:8],
+            type=FulfillmentType.PICKUP,
+            state=FulfillmentState.PROPOSED,
+            pickup_details=pickup_details,
+        )
+
+        fulfillments = [fulfillment]
+        logger.info(
+            f"[create_square_order_with_modifiers] Created fulfillment for customer: {customer_name}"
+        )
+
         # Create order
         order = Order(
             location_id=location_id,
@@ -678,6 +718,7 @@ def create_square_order_with_modifiers(
             customer_id=None,
             ticket_name=None,
             line_items=line_items,
+            fulfillments=fulfillments,
             metadata={"palona_testing": "Order created via Palona AI automated system"},
         )
 
@@ -850,10 +891,27 @@ def format_order_success_message(
     # Format order totals
     order_total_text = format_order_totals(created_order)
 
+    # Extract customer name and phone from fulfillment if available
+    customer_info = ""
+    if created_order.fulfillments:
+        for fulfillment in created_order.fulfillments:
+            if (
+                fulfillment.pickup_details
+                and fulfillment.pickup_details.recipient
+                and fulfillment.pickup_details.recipient.display_name
+            ):
+                customer_name = fulfillment.pickup_details.recipient.display_name
+                phone_number = fulfillment.pickup_details.recipient.phone_number
+
+                customer_info = f"\nCustomer: {customer_name}"
+                if phone_number:
+                    customer_info += f"\nPhone: {phone_number}"
+                break
+
     # Create the main success message
     success_message = f"""Order created successfully!
 Order ID: {created_order.id}
-Location: {location_id}
+Location: {location_id}{customer_info}
 
 Items ({total_quantity} items total):
 {items_text}{order_total_text}

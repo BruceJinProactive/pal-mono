@@ -1728,3 +1728,10 @@ class ExtractedOrderWithModifiers(BaseModel):
     items: List[ExtractedItemWithModifiers] = Field(
         ..., description="List of items with their modifiers"
     )
+    customer_name: Optional[str] = Field(
+        None, description="Customer's full name if provided in chat"
+    )
+    phone_number: Optional[str] = Field(
+        None,
+        description="Customer's phone number in 555-555-5555 format if provided in chat (no country code, no spaces, no parentheses, just dashes)",
+    )

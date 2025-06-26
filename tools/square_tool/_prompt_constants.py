@@ -114,7 +114,8 @@ You will be given the chat history and relevant Square catalog documents. Your g
 2. Verify that the quantities for each item are accurate based on what the user explicitly requested.
 3. Map the identified items from natural language to the correct Square catalog items using the provided documents.
 4. Extract the EXACT item_id, variation_id, and modifier_id values from the catalog documents.
-5. Include any special notes or requests the user mentioned.
+5. Extract customer name if provided in the chat history.
+6. Include any special notes or requests the user mentioned.
 
 # RULES FOR EXTRACTING ORDER ITEMS:
 - Match user-requested items to the exact Square catalog items from the provided documents.
@@ -124,6 +125,16 @@ You will be given the chat history and relevant Square catalog documents. Your g
 - Default quantity to 1 if not explicitly specified.
 - When multiple items have different customizations, treat each as a separate line item.
 - Only extract items that the user has confirmed they want to order.
+
+# RULES FOR EXTRACTING CUSTOMER INFORMATION:
+- Extract the customer's full name if they provide it in the chat (e.g., "My name is John Smith" → customer_name: "John Smith")
+- Extract the customer's phone number if they provide it in the chat and format it as 555-555-5555
+- Extract from various formats: "My name is John Smith", "This is for Sarah Johnson", "Order for Mike Chen", "I'm Sarah"
+- For phone numbers, look for patterns like: "My number is...", "Phone: ...", "Call me at...", "555-123-4567", "5551234567", "(555) 123-4567"
+  - IMPORTANT: Always format phone numbers in the format 555-555-5555 (no country code, no parentheses, just dashes)
+- Only extract information that is explicitly stated in the chat history
+- Do not make assumptions or fabricate customer information
+- Leave customer_name and phone_number as None/null if information is not mentioned
 
 # RULES FOR EXTRACTING MODIFIERS:
 - Only include modifiers that were explicitly mentioned by the user in the chat history.
@@ -177,6 +188,8 @@ Extract the food items the user wants to order from the chat history and match t
 5. Match modifiers to their correct modifier list names and IDs
 6. Include all customizations mentioned by the user
 7. Only extract items the user has confirmed they want to order
+8. Extract customer full name and phone number if provided (e.g., "My name is John Smith" → customer_name: "John Smith", "My phone is 555-123-4567" → phone_number: "555-123-4567")
+9. IMPORTANT: Format phone numbers as 555-555-5555 (no country code, no parentheses, just dashes)
 
 **EXTRACTION EXAMPLES:**
 - If user says "Large Crème Brûlée Thai Tea with boba"
@@ -188,5 +201,5 @@ Extract the food items the user wants to order from the chat history and match t
 
 When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. Extract the exact IDs as they appear in the documents. If you cannot find the correct document or ID, do NOT use any ID from other documents.
 
-Return the extracted information with exact item names, IDs, and modifier IDs that match the catalog documents.
+Return the extracted information with exact item names, IDs, modifier IDs, and customer first/last names (if provided) that match the catalog documents.
 """

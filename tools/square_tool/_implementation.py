@@ -347,12 +347,21 @@ class SquareTool(Toolkit):
         - When the customer says things like: "checkout", "pay now", "place order", "complete order", "finalize order"
         - When the customer has finished adding items and is ready to pay
         - When all required ordering information has been collected through the conversation
+        - IMPORTANT: Before using this tool, make sure to ask for the customer's name for order pickup
+
+        **ORDERING PROCESS REQUIREMENTS:**
+        1. Customer selects items from the menu
+        2. Customer confirms their order items, modifiers if any, and quantities
+        3. Ask for customer name and phone number (e.g., "Can I get your name and phone number for the order?" or "What's your name and phone number?"), do not ask if they are already provided in the chat history
+        4. Customer confirms they want to proceed with payment
+        5. THEN use this tool to create the order and payment link
 
         **DO NOT USE THIS TOOL WHEN:**
         - Customer is just browsing the menu or asking questions
         - Customer is still deciding what to order
         - Customer hasn't confirmed they want to proceed with payment
         - Customer is just asking about prices or availability
+        - You haven't asked for the customer's name and phone number yet
 
         Args:
             latest_user_message: The latest message from the user to include in chat history
@@ -405,11 +414,18 @@ class SquareTool(Toolkit):
 
             # Step 3: Create order with modifiers
             logger.info("[SquareTool] Step 3: Creating Square order with modifiers")
+
+            # Get customer name and phone number
+            customer_name = extracted_order.customer_name
+            phone_number = extracted_order.phone_number
+
             created_order = create_square_order_with_modifiers(
                 self._square_token,
                 self.location_id,
                 converted_items,
                 self.use_production,
+                customer_name=customer_name,
+                phone_number=phone_number,
             )
 
             if not created_order:
