@@ -173,18 +173,13 @@ class SquareTool(Toolkit):
 
         Args:
             latest_user_message (str): The latest user message.
-            provided_chat_history (str, optional): Pre-formatted chat history to use instead of retrieving.
 
         Returns:
             ExtractedOrderWithModifiers | str: Extracted order or error message.
         """
         # Use provided chat history or get it from the standardized functions
-        if provided_chat_history:
-            chat_history = provided_chat_history
-        else:
-            chat_history = get_chat_history(
-                self.query_messages_tool, latest_user_message
-            )
+
+        chat_history = get_chat_history(self.query_messages_tool, latest_user_message)
 
         context = get_relevant_docs(
             self.query_engine,
@@ -338,8 +333,7 @@ class SquareTool(Toolkit):
     @tool
     def create_order_and_payment_link(
         self,
-        latest_user_message: Optional[str] = None,
-        chat_history: Optional[str] = None,
+        latest_user_message: str,
     ) -> str:
         """
         **WHEN TO USE THIS TOOL:**
@@ -365,7 +359,6 @@ class SquareTool(Toolkit):
 
         Args:
             latest_user_message: The latest message from the user to include in chat history
-            chat_history: Optional pre-provided chat history
 
         Returns:
             str: Payment link URL and order details, or error message
@@ -377,21 +370,11 @@ class SquareTool(Toolkit):
                     "Chat history access not available. Please provide tool metadata."
                 )
 
-            # Use provided chat history or get it from the tool
-            if chat_history is None:
-                if latest_user_message is None:
-                    return (
-                        "Either latest_user_message or chat_history must be provided."
-                    )
-                # We'll use the _get_chat_history method in _construct_order
-
             # Step 1: Extract items with modifiers from chat history using Pinecone retrieval
             logger.info(
                 "[SquareTool] Step 1: Extracting items with modifiers from chat history using Pinecone retrieval"
             )
-            extracted_order = self._construct_order(
-                latest_user_message or "", chat_history
-            )
+            extracted_order = self._construct_order(latest_user_message)
 
             if isinstance(extracted_order, str):
                 return extracted_order  # Return error message
