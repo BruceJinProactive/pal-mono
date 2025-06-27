@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import List, Optional
 
@@ -39,3 +40,17 @@ class SubscriptionParams(BaseModel):
     subscription_plan_id: str
     subscription_type: SubscriptionType
     override: SubscriptionOverride | None = None
+
+
+class StripeSubscriptionDetails(BaseModel):
+    subscription_id: str
+    status: str
+    collection_method: str
+    billing_cycle_anchor: datetime
+    current_period_charge: int
+    included_project_ids: list[uuid.UUID]
+
+
+class StripeCheckoutResponse(BaseModel):
+    customer_id: str
+    subscription_id: str

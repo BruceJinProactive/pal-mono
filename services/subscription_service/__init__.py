@@ -10,6 +10,7 @@ from services.subscription_service.schema import (
 )
 
 from . import _implementation
+from ._stripe import create_checkout_session
 
 
 def create_subscription(
@@ -104,3 +105,18 @@ def expire_subscription_plan(
     return _implementation.expire_subscription_plan(
         session, context, plan_id, hard_delete
     )
+
+
+__all__ = [
+    "create_subscription",
+    "get_account_subscriptions",
+    "update_account_subscription",
+    "create_subscription_plan",
+    "update_account_subscription_status",
+    "get_subscription_plans",
+    "cancel_account_subscription",
+    "get_subscription_plan_by_id",
+    "update_subscription_plan",
+    "expire_subscription_plan",
+    "create_checkout_session",
+]
