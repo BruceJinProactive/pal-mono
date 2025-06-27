@@ -51,6 +51,8 @@ async def update_order_status(
         ValueError: If the order is not found or has invalid store phone number
     """
     # Find the existing order using store_id and order_number
+
+    logger.debug(f"[AdoraWebhook]Update order status: {webhook_request.orderNumber}")
     order_query = select(Order).where(
         Order.store_id == webhook_request.storeId,
         Order.order_number == webhook_request.orderNumber,
@@ -108,8 +110,7 @@ async def send_order_notification(
     Args:
         order: The order object from the database
 
-    Raises:
-        RuntimeError: If the notification fails to send due to status error or any other exception
+    Raises: RuntimeError: If the notification fails to send due to status error or any other exception
         ValueError: If phone numbers are invalid
     """
     # Validate phone numbers before sending notification
@@ -135,6 +136,14 @@ async def send_order_notification(
 
     try:
         response = relay_service.send_message(notification_message)
+        logger.debug(
+            "[AdoraWebhook]Send order status update message",
+            extra={
+                "order_number": order.order_number,
+                "from": order.store_phone_number,
+                "to": order.user_phone_number,
+            },
+        )
         if response.get("status") != "scheduled":
             error_msg = response.get("error_message", "Unknown error")
             logger.error(f"Failed to send notification: {error_msg}")
