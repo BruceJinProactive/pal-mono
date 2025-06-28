@@ -3,7 +3,6 @@ import os
 import re
 import time
 import uuid
-from collections import defaultdict
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
@@ -334,45 +333,6 @@ def get_conversation_ids_by_message_ids(
         result[message_id] = str(conversation_id)
 
     return result
-
-
-def get_messages_by_conversation_id(
-    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> list[db.Message]:
-    conversation_repository = db.ConversationRepository(session)
-    user_repository = db.UserRepository(session)
-    feedback_repository = db.FeedbackRepository(session)
-
-    # Get the Account ID associated with the Conversation ID
-    conversation = conversation_repository.get_conversation_by_id(conversation_id)
-
-    if not conversation:
-        raise ValueError("Conversation not found.")
-
-    user = user_repository.get_user_by_id(conversation.user_id)
-
-    if not user:
-        raise ValueError("User not found.")
-
-    # If the Account IDs do not match, the Admin does not have access to this Conversation
-    if user.account_id != account_id:
-        raise ValueError(
-            "Account ID of Conversation and requesting Account do not match."
-        )
-
-    messages = get_messages_by_conversation(session, conversation_id=conversation_id)
-
-    message_ids = [message.id for message in messages]
-    feedback_for_messages = feedback_repository.get_feedback_by_message_ids(message_ids)
-
-    message_id_to_feedback = defaultdict(list)
-    for feedback in feedback_for_messages:
-        message_id_to_feedback[feedback.message_id].append(feedback)
-
-    for message in messages:
-        message.feedback = message_id_to_feedback[message.id]
-
-    return messages
 
 
 def get_knowledge_base(session: Session, account_name: str) -> list:

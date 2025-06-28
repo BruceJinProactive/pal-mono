@@ -119,7 +119,6 @@ from . import (
 )
 from ._auth import authenticate_user
 from ._onboarding import create_onboarding
-from .legacy import legacy_router
 
 """
 ######################################################
@@ -139,7 +138,6 @@ if they are self explanatory.
 """
 
 admin_router = APIRouter(prefix=endpoints.ADMIN, tags=["Admin"])
-admin_router.include_router(legacy_router)
 
 
 @admin_router.get("/me")

@@ -34,13 +34,6 @@ class CreateFeedbackRequest(UpdateFeedbackRequest):
     message_id: UUID
 
 
-class CreateFeedbackResponse(BaseModel):
-    """Create Feedback Response Model"""
-
-    feedback_id: str
-    submitted_at: str
-
-
 class Feedback(BaseModel):
     """Feedback Model"""
 

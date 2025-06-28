@@ -150,26 +150,6 @@ def get_conversation_ids_by_message_ids(
     return _implementation.get_conversation_ids_by_message_ids(session, message_ids)
 
 
-def get_messages_by_conversation_id(
-    session: Session, account_id: uuid.UUID, conversation_id: uuid.UUID
-) -> list[db.Message]:
-    """
-    Verifies that the requester has access to the conversation, then returns all messages
-    in the conversation alongside feedback for each.
-
-    Args:
-        session (Session): The database session.
-        account_id (uuid.UUID): The unique identifier of the incoming request's Account.
-        conversation_id (uuid.UUID): The unique identifier of the requested Conversation.
-
-    Returns:
-        list[Message]: A list of Message objects including associated feedback
-    """
-    return _implementation.get_messages_by_conversation_id(
-        session, account_id, conversation_id
-    )
-
-
 def get_knowledge_base(session: Session, account_name: str) -> list[dict]:
     """
     Retrieves the knowledge base content, formatted as a list of key value pairs.
