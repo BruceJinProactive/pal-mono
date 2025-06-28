@@ -80,6 +80,42 @@ def _get_loyalty_status(customer_info: dict) -> bool:
     return is_loyalty_member
 
 
+def _get_reward_info(customer_info: dict) -> str:
+    """
+    Extract reward information from customer info.
+    Args:
+        customer_info: Dictionary containing customer information
+    Returns:
+        str: Formatted reward information
+    """
+    rewards_info = ""
+
+    if "customerRewards" in customer_info and customer_info["customerRewards"]:
+        rewards_info = "Customer Rewards:\n\n"
+        for reward in customer_info["customerRewards"]:
+            reward_date = reward.get("earnedDate", "")
+            formatted_date = reward_date
+            if reward_date:
+                try:
+                    date_obj = datetime.fromisoformat(
+                        reward_date.replace("Z", "+00:00")
+                    )
+                    formatted_date = date_obj.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    logger.error(f"Error formatting reward date: {e}")
+                    formatted_date = reward_date
+
+            rewards_info += (
+                f"Reward ID: {reward.get('rewardId', '')}\n"
+                f"Earned Date: {formatted_date}\n"
+                f"Coupon ID: {reward.get('couponId', '')}\n"
+                f"Coupon Name: {reward.get('couponName', '')}\n"
+                f"Reward Name: {reward.get('rewardName', '')}\n\n"
+            )
+
+    return rewards_info
+
+
 def _get_offer_info(customer_info: dict) -> str:
     """
     Extract offer information from customer info.
@@ -166,8 +202,8 @@ def _format_customer_info(customer_info: AdoraCustomerInfo) -> str:
     )
 
     # Add reward information
-    if rewards := info_dict.get("customerRewards", []):
-        formatted_info += f"Rewards: {rewards}\n"
+    if "customerRewards" in info_dict and info_dict["customerRewards"]:
+        formatted_info += _get_reward_info(info_dict)
 
     # Add offer information
     if "customerOffers" in info_dict and info_dict["customerOffers"]:
