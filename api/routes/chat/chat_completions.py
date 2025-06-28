@@ -245,16 +245,22 @@ def _send_urls_via_sms(
             openai_client = _create_openai_client()
 
             # Create a prompt for summarization
-            prompt = f"""Please create a short SMS-friendly summary (max 160 characters) of the following content. The summary must include the URL.
+            prompt = f"""
+Please create a short, SMS-friendly summary of the following content. The summary must include the URL.
 
-Content: {full_content}
+Content:
+{full_content}
 
 URL: {first_url}
 
 Requirements:
-- Keep it under 160 characters
-- Include the URL
-- Provide a brief summary of the main point"""
+- Keep the summary under 160 characters if possible
+- Always include the URL
+- If the message is about an order, include order status, item(s), total amount, and payment info
+- If it's not about an order, briefly summarize the main point in a clear and concise sentence
+- Do not omit important numbers, prices, or instructions
+- Output a single-line SMS message only
+"""
 
             response = openai_client.chat.completions.create(
                 model="gpt-4o",
