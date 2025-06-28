@@ -809,17 +809,6 @@ async def delete_feedback(
 """
 
 
-@admin_router.get("/projects")
-async def list_projects(
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-):
-    """
-    List all projects associated with the account.
-    """
-    return await _projects.list_projects(context, session)
-
-
 @admin_router.put("/projects", status_code=status.HTTP_201_CREATED)
 async def create_project(
     project: CreateProjectRequest,

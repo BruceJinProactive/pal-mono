@@ -1,8 +1,6 @@
 import uuid
 
 from fastapi import HTTPException, Request, status
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.project import (
@@ -202,17 +200,6 @@ async def handle_instagram_deauthorization(
     return {"message": "Instagram account deauthorized"}
 
 
-async def list_projects(
-    context: UserContext,
-    session: Session,
-):
-    if context.account_names:
-        account = account_service.get_account(session, context.account_names[0])
-        if account:
-            return JSONResponse(jsonable_encoder(account.projects))
-    return JSONResponse(jsonable_encoder([]))
-
-
 async def list_account_projects(
     account_name: str,
     context: UserContext,
@@ -224,10 +211,8 @@ async def list_account_projects(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
-    return [
-        build_project(project)
-        for project in sorted(account.projects, key=lambda p: p.created_at)
-    ]
+    projects = project_service.get_projects_by_account_id(session, account.id)
+    return [build_project(project) for project in projects]
 
 
 def get_project(

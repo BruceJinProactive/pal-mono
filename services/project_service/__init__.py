@@ -94,6 +94,22 @@ def get_project_by_name(session: Session, project_name: str) -> db.Project | Non
     return _implementation.get_project_by_name(session, project_name)
 
 
+def get_projects_by_account_id(
+    session: Session, account_id: uuid.UUID
+) -> List[db.Project]:
+    """
+    Gets all projects belonging to a specific account.
+
+    Args:
+        session (Session): The database connection.
+        account_id (uuid.UUID): The unique identifier of the account.
+
+    Returns:
+        List[Project]: A list of projects belonging to the account.
+    """
+    return _implementation.get_projects_by_account_id(session, account_id)
+
+
 def replace_project_channel_identifiers(
     session: Session, project_id: uuid.UUID, channel_identifiers: List[str]
 ) -> None:
@@ -202,6 +218,7 @@ __all__ = [
     "update_project",
     "get_project",
     "get_project_by_name",
+    "get_projects_by_account_id",
     "replace_project_channel_identifiers",
     "update_project_config",
     "replace_project_config",

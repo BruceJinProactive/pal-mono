@@ -287,3 +287,21 @@ class ProjectRepository:
             self.session.rollback()
             logger.error(f"Error deleting project: {e}")
             raise
+
+    def get_projects_by_account_id(self, account_id: uuid.UUID) -> List[Project]:
+        """
+        Retrieve all projects belonging to a specific account.
+
+        Args:
+            account_id (uuid.UUID): The unique identifier of the account.
+
+        Returns:
+            List[Project]: A list of projects belonging to the account, sorted by created_at in ascending order.
+        """
+        projects = (
+            self.session.query(Project)
+            .filter(Project.account_id == account_id)
+            .order_by(Project.created_at)
+            .all()
+        )
+        return projects

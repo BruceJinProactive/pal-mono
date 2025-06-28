@@ -109,6 +109,21 @@ def get_project_by_name(session: Session, project_name: str):
     return project_repository.get_project_by_name(project_name)
 
 
+def get_projects_by_account_id(session: Session, account_id: uuid.UUID):
+    """
+    Gets all projects belonging to a specific account.
+
+    Args:
+        session (Session): The database connection.
+        account_id (uuid.UUID): The unique identifier of the account.
+
+    Returns:
+        List[Project]: A list of projects belonging to the account.
+    """
+    project_repository = db.ProjectRepository(session)
+    return project_repository.get_projects_by_account_id(account_id)
+
+
 def update_project_config(
     session: Session, project_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:
