@@ -87,6 +87,7 @@ class AdoraTool(Toolkit):
         self.register(self.check_address)
         if self.coupons_enabled:
             self.register(self.validate_coupons)
+            self.register(self.get_available_coupons)
         if self.loyalty_enabled:
             self.register(self.get_loyalty_info)
         self.register(self.get_last_order_status)
@@ -1212,3 +1213,46 @@ class AdoraTool(Toolkit):
                 f"[AdoraTool.get_menu_item_info] Error getting menu item info: {e}"
             )
             return "Failed to retrieve menu item information. Please try again."
+
+    @tool
+    def get_available_coupons(self) -> str:
+        """
+        Retrieves all currently available coupons from the Adora API.
+
+        This tool should be used when:
+        - A customer asks about available promotions or discounts
+        - A customer wants to see what coupons are currently valid
+        - A customer asks about current deals or specials
+
+        Returns:
+            str: A list of all available coupons with their details including coupon codes,
+                 descriptions, and validity information. Returns an error message if the
+                 coupons cannot be retrieved.
+        """
+        try:
+            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            bearer_token = self._get_adora_bearer_token()
+            if not bearer_token:
+                return (
+                    "Failed to authenticate ordering tool. "
+                    "Please reach out to our support team at help@palona.ai "
+                    "for assistance."
+                )
+
+            available_coupons = _apis.get_available_coupons(
+                bearer_token,
+                self.store_id,
+                qa_store=self.qa_store,
+                general_api_endpoint=self.general_api_endpoint,
+            )
+
+            if not available_coupons:
+                return "No coupons are currently available."
+
+            return available_coupons
+
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool.get_available_coupons] Error retrieving available coupons: {e}"
+            )
+            return "There was an error retrieving available coupons. Please try again."

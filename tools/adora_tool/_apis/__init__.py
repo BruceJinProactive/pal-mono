@@ -80,44 +80,6 @@ def _get_loyalty_status(customer_info: dict) -> bool:
     return is_loyalty_member
 
 
-def _get_reward_info(customer_info: dict) -> str:
-    """
-    Extract reward information from customer info.
-
-    Args:
-        customer_info: Dictionary containing customer information
-
-    Returns:
-        str: Formatted reward information
-    """
-    rewards_info = ""
-
-    if "customerRewards" in customer_info and customer_info["customerRewards"]:
-        rewards_info = "Customer Rewards:\n\n"
-        for reward in customer_info["customerRewards"]:
-            reward_date = reward.get("earnedDate", "")
-            formatted_date = reward_date
-            if reward_date:
-                try:
-                    date_obj = datetime.fromisoformat(
-                        reward_date.replace("Z", "+00:00")
-                    )
-                    formatted_date = date_obj.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception as e:
-                    logger.error(f"Error formatting reward date: {e}")
-                    formatted_date = reward_date
-
-            rewards_info += (
-                f"Reward ID: {reward.get('rewardId', '')}\n"
-                f"Earned Date: {formatted_date}\n"
-                f"Coupon ID: {reward.get('couponId', '')}\n"
-                f"Coupon Name: {reward.get('couponName', '')}\n"
-                f"Reward Name: {reward.get('rewardName', '')}\n\n"
-            )
-
-    return rewards_info
-
-
 def _get_offer_info(customer_info: dict) -> str:
     """
     Extract offer information from customer info.
@@ -430,7 +392,6 @@ def validate_coupon_code(
     coupon_code: str,
     qa_store: bool,
     general_api_endpoint: str | None,
-    culture_code: str = "en-US",
 ) -> dict | None:
     """
     Validate a coupon code for a specific store.
@@ -440,7 +401,6 @@ def validate_coupon_code(
         store_id (str): The ID of the store.
         coupon_code (str): The coupon code to validate.
         qa_store (bool): True if the QA environment should be used.
-        culture_code (str, optional): The culture code. Defaults to "en-US".
 
     Returns:
         dict | None: A dictionary containing validation results if successful, None otherwise.
@@ -458,10 +418,7 @@ def validate_coupon_code(
         query_params={
             "sid": store_id,
             "couponCode": coupon_code,
-            "clCode": culture_code,
         },
-        extra_headers=None,
-        payload=None,
         qa_store=qa_store,
         general_api_endpoint=general_api_endpoint,
     )
@@ -523,5 +480,75 @@ def get_customer_latest_order(
     else:
         logger.debug(
             f"[AdoraTool._apis.get_customer_latest_order] Internal error {response.status}: {response.decoded_body}"
+        )
+        return None
+
+
+def get_available_coupons(
+    bearer_token: AdoraAccessToken,
+    store_id: str,
+    qa_store: bool,
+    general_api_endpoint: str | None,
+) -> str | None:
+    """
+    Retrieve all available coupons for a specific store.
+
+    Args:
+        bearer_token (AdoraAccessToken): The bearer token to authenticate with Adora POS.
+        store_id (str): The ID of the store.
+        qa_store (bool): True if the QA environment should be used.
+        general_api_endpoint (str | None): Custom API endpoint if provided.
+
+    Returns:
+        str | None: A formatted string containing all available coupons if successful, None otherwise.
+    """
+    response = _utils.connect_adora_order_hub(
+        "GET",
+        bearer_token,
+        "coupons",
+        query_params={
+            "sid": store_id,
+        },
+        qa_store=qa_store,
+        general_api_endpoint=general_api_endpoint,
+    )
+
+    if response.status == 200:
+        try:
+            coupons_data = json.loads(response.decoded_body)
+
+            if not coupons_data or not isinstance(coupons_data, list):
+                return "No coupons are currently available."
+
+            formatted_coupons = "Available Coupons:\n\n"
+
+            for coupon in coupons_data:
+                if isinstance(coupon, dict):
+                    coupon_name = coupon.get("name", "Unnamed Coupon")
+                    coupon_code = coupon.get("couponCode", "")
+                    coupon_description = coupon.get(
+                        "description", "No description available"
+                    )
+                    coupon_id = coupon.get("couponId", "")
+
+                    formatted_coupons += f"• {coupon_name}\n"
+                    if coupon_code:
+                        formatted_coupons += f"  Code: {coupon_code}\n"
+                    if coupon_description:
+                        formatted_coupons += f"  Description: {coupon_description}\n"
+                    if coupon_id:
+                        formatted_coupons += f"  ID: {coupon_id}\n"
+                    formatted_coupons += "\n"
+
+            return formatted_coupons.strip()
+
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool._apis.get_available_coupons] Error parsing coupons response: {e}"
+            )
+            return None
+    else:
+        logger.error(
+            f"[AdoraTool._apis.get_available_coupons] Failed to retrieve coupons with status {response.status}: {response.decoded_body}"
         )
         return None
