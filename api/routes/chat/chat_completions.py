@@ -253,13 +253,18 @@ Content:
 
 URL: {first_url}
 
-Requirements:
-- Keep the summary under 160 characters if possible
-- Always include the URL
-- If the message is about an order, include order status, item(s), total amount, and payment info
-- If it's not about an order, briefly summarize the main point in a clear and concise sentence
-- Do not omit important numbers, prices, or instructions
-- Output a single-line SMS message only
+Instructions:
+- If the content is an order message:
+  - Start with a sentence stating the order status (e.g., "Your order is pending")
+  - Include the title: "Order Summary:"
+  - List each ordered item on a new line, prefixed with a dash (-) and using the exact item name
+  - Include a breakdown: Subtotal, Sales Tax, Discount, and Order Total, each on its own line
+  - End with a call to action including the URL (e.g., "Pay here: <URL>")
+- If the content is not about an order:
+  - Provide a clear, short summary of the main point
+  - Include the URL
+- Keep it concise and SMS-friendly
+- Use line breaks for clarity
 """
 
             response = openai_client.chat.completions.create(
