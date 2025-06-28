@@ -560,20 +560,38 @@ def get_available_coupons(
 
             for coupon in coupons_data:
                 if isinstance(coupon, dict):
+                    coupon_id = coupon.get("id", "")
                     coupon_name = coupon.get("name", "Unnamed Coupon")
-                    coupon_code = coupon.get("couponCode", "")
                     coupon_description = coupon.get(
                         "description", "No description available"
                     )
-                    coupon_id = coupon.get("couponId", "")
+                    is_ai_offer = coupon.get("isAIOffer", False)
+                    qualified_items = coupon.get("qualifiedItems", [])
 
-                    formatted_coupons += f"• {coupon_name}\n"
-                    if coupon_code:
-                        formatted_coupons += f"  Code: {coupon_code}\n"
-                    if coupon_description:
-                        formatted_coupons += f"  Description: {coupon_description}\n"
+                    formatted_coupons += f" {coupon_name}\n"
                     if coupon_id:
                         formatted_coupons += f"  ID: {coupon_id}\n"
+                    if coupon_description:
+                        formatted_coupons += f"  Description: {coupon_description}\n"
+                    formatted_coupons += (
+                        f"  AI Offer: {'Yes' if is_ai_offer else 'No'}\n"
+                    )
+
+                    if qualified_items:
+                        formatted_coupons += (
+                            f"  Qualified Items ({len(qualified_items)}):\n"
+                        )
+                        item_names = set()
+                        for item in qualified_items:
+                            if isinstance(item, dict):
+                                item_name = item.get("name", "Unknown Item")
+                                item_names.add(item_name)
+
+                        for item_name in sorted(item_names):
+                            formatted_coupons += f"    - {item_name}\n"
+                    else:
+                        formatted_coupons += "  Qualified Items: None specified\n"
+
                     formatted_coupons += "\n"
 
             return formatted_coupons.strip()
