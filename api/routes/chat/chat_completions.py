@@ -1,7 +1,6 @@
 import datetime
 import json
 import os
-import re
 import uuid
 from typing import Any, Dict, List, Literal, Optional
 
@@ -10,6 +9,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from urlextract import URLExtract
 
 import db
 from api.routes.chat._utils import create_url_filter
@@ -169,6 +169,16 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
     }
 
 
+def _create_openai_client() -> openai.OpenAI:
+    """Create and return an OpenAI client with API key validation."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        logger.error("OPENAI_API_KEY environment variable not found")
+        raise ValueError("OPENAI_API_KEY environment variable is required")
+
+    return openai.OpenAI(api_key=api_key)
+
+
 def _create_response_data(model: str, content: str) -> dict:
     """Create a standard response data object."""
     return {
@@ -192,6 +202,94 @@ def _create_response_data(model: str, content: str) -> dict:
             "total_tokens": 0,
         },
     }
+
+
+def _send_urls_via_sms(
+    collected_content: List[str],
+    sender_identifier: str,
+    recipient_identifier: str,
+) -> None:
+    """
+    Extract URLs from collected content and send them via SMS if found.
+    Uses OpenAI to generate a short summary that includes the URLs.
+
+    Args:
+        collected_content: List of content strings to search for URLs
+        sender_identifier: The sender identifier for the relay message
+        recipient_identifier: The recipient identifier for the relay message
+    """
+    if not sender_identifier or not recipient_identifier:
+        logger.error("Invalid sender or recipient identifier provided")
+        return
+
+    # Check for URLs in the collected content
+    full_content = "".join(collected_content)
+
+    # Use URLExtract to find URLs
+    extractor = URLExtract()
+    urls = extractor.find_urls(full_content)
+
+    if urls:
+        logger.debug(f"Found URLs in response: {urls}")
+
+        # Check for multiple URLs and log error if found
+        if len(urls) > 1:
+            logger.error(
+                f"Multiple URLs found in content: {urls}. Only using the first URL: {urls[0]}"
+            )
+
+        first_url = urls[0]
+
+        try:
+            # Use OpenAI to generate a short summary with URLs
+            openai_client = _create_openai_client()
+
+            # Create a prompt for summarization
+            prompt = f"""Please create a short SMS-friendly summary (max 160 characters) of the following content. The summary must include the URL.
+
+Content: {full_content}
+
+URL: {first_url}
+
+Requirements:
+- Keep it under 160 characters
+- Include the URL
+- Provide a brief summary of the main point"""
+
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=100,
+            )
+
+            summary_content = response.choices[0].message.content
+            logger.debug(
+                f"Generated SMS summary: {summary_content} from original content {full_content}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating SMS summary with OpenAI: {str(e)}")
+            # Fall back to original content if OpenAI fails
+            summary_content = full_content
+
+        if not summary_content:
+            logger.error(
+                f"The summarized content is empty from original content {full_content}"
+            )
+        else:
+            # Create a Message object and send it via relay service
+            relay_message = Message(
+                author_type=AuthorType.AGENT,
+                sender_identifier=recipient_identifier,
+                recipient_identifier=sender_identifier,
+                channel=Channel.SMS,
+                broker=Broker.TWILIO,
+                text=TextObject(body=summary_content),
+                metadata=Metadata(testing=False),
+            )
+            send_result = send_message(relay_message)
+            logger.debug(f"Relay service result: {send_result}")
 
 
 async def chat_completions_agno(
@@ -299,25 +397,10 @@ async def chat_completions_agno(
                             f"Completed streaming response after {chunk_count} chunks."
                         )
 
-                        # Check for URLs in the collected content
-                        full_content = "".join(collected_content)
-                        url_pattern = r"https?://[^\s\)]+"
-                        urls = re.findall(url_pattern, full_content)
-
-                        if urls:
-                            logger.debug(f"Found URLs in response: {urls}")
-                            # Create a Message object and send it via relay service
-                            relay_message = Message(
-                                author_type=AuthorType.AGENT,
-                                sender_identifier=recipient_identifier,
-                                recipient_identifier=sender_identifier,
-                                channel=Channel.SMS,
-                                broker=Broker.TWILIO,
-                                text=TextObject(body=full_content),
-                                metadata=Metadata(testing=False),
-                            )
-                            send_result = send_message(relay_message)
-                            logger.debug(f"Relay service result: {send_result}")
+                        # Send URLs via SMS if any are found in the collected content
+                        _send_urls_via_sms(
+                            collected_content, sender_identifier, recipient_identifier
+                        )
 
                         yield "data: [DONE]\n\n"
 
@@ -402,13 +485,7 @@ async def chat_completions_oai(
     logger.info(f"Chat completions request: {json.dumps(request.model_dump())}")
 
     try:
-        # Get OpenAI API key from environment
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            logger.error("OPENAI_API_KEY environment variable not found")
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-
-        openai_client = openai.OpenAI(api_key=api_key)
+        openai_client = _create_openai_client()
 
         # Convert request format to proper OpenAI format using structured types
         if request.messages:
