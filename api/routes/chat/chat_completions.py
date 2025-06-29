@@ -246,7 +246,7 @@ def _send_urls_via_sms(
 
             # Create a prompt for summarization
             prompt = f"""
-Please create a short, SMS-friendly summary of the following content. The summary must include the URL.
+Please create a short, SMS-friendly summary of the following content. The summary must include the exact URL.
 
 Content:
 {full_content}
