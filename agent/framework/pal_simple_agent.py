@@ -54,6 +54,7 @@ class PalSimpleAgent:
         self.primary_llm = CoreLLM(config.model.identifier, client)
         self._session_id = uuid.UUID(config.metadata.session_id)
         self._agent_id = config.metadata.agent_id
+        self._account_name = config.metadata.account_name
         logger.debug("[PalSimpleAgent] initialized")
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
@@ -132,6 +133,7 @@ class PalSimpleAgent:
                 f"conversation_id:{self._session_id}",
                 "agent:pal_simple",
                 f"agent_id:{self._agent_id}",
+                f"account_name:{self._account_name}",
             ],
         )
 
@@ -224,6 +226,7 @@ class PalSimpleAgent:
                     "streaming:true",
                     "agent:pal_simple",
                     f"agent_id:{self._agent_id}",
+                    f"account_name:{self._account_name}",
                 ],
             )
 
@@ -238,6 +241,7 @@ class PalSimpleAgent:
                             "streaming:true",
                             "agent:pal_simple",
                             f"agent_id:{self._agent_id}",
+                            f"account_name:{self._account_name}",
                         ],
                     )
 
