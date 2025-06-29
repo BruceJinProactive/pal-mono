@@ -246,24 +246,22 @@ def _send_urls_via_sms(
 
             # Create a prompt for summarization
             prompt = f"""
-Please create a short, SMS-friendly summary of the following content. The summary must include the exact URL.
+Please create a short, SMS-friendly summary of the following content. DO NOT write out or paraphrase the full URL. Instead, insert the placeholder [INSERT_URL_HERE] where the link should go.
 
 Content:
 {full_content}
 
-URL: {first_url}
-
 Instructions:
-- If the content is an order message:
+- If the content is about a pending-payment order:
   - Start with a sentence stating the order status (e.g., "Your order is pending")
   - Include the title: "Order Summary:"
   - List each ordered item on a new line, prefixed with a dash (-) and using the exact item name
   - Include a breakdown: Subtotal, Sales Tax, Discount, and Order Total, each on its own line
-  - End with a call to action including the URL (e.g., "Pay here: <URL>")
-- If the content is not about an order:
+  - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay here: [INSERT_URL_HERE]")
+- If the content is not about a pending-payment order:
   - Provide a clear, short summary of the main point
-  - Include the URL
-- Keep it concise and SMS-friendly
+  - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Order here: [INSERT_URL_HERE]")
+- Do not write the actual URL
 - Use line breaks for clarity
 """
 
@@ -289,6 +287,11 @@ Instructions:
                 f"The summarized content is empty from original content {full_content}"
             )
         else:
+            summary_content = summary_content.replace(
+                "[INSERT_URL_HERE]", str(first_url)
+            )
+            logger.debug(f"Post processed SMS summary to {summary_content}")
+
             # Create a Message object and send it via relay service
             relay_message = Message(
                 author_type=AuthorType.AGENT,
