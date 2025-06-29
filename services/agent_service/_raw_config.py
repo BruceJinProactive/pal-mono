@@ -87,7 +87,9 @@ class RawConfig:
                     agent_id=str(self.agent.id),
                     user_id=str(self.user_id),
                     session_id=str(self.conversation_id),
-                    framework=AgentFramework.AGNO,
+                    framework=self.agent.raw_config.get(
+                        "agent_framework", AgentFramework.AGNO
+                    ),
                 ),
                 client=self.client_config,
                 storage_provider=storage_provider,

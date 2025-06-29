@@ -188,7 +188,7 @@ class AgnoAgent:
                         send_dd_histogram_metrics(
                             "framework_agent.waiting_first_chunk",
                             input.request_context.request_time,
-                            ["streaming:true"],
+                            ["streaming:true", "agent:agno"],
                         )
 
                         index = 0
@@ -198,7 +198,7 @@ class AgnoAgent:
                                 send_dd_histogram_metrics(
                                     "framework_agent.received_first_chunk",
                                     input.request_context.request_time,
-                                    ["streaming:true"],
+                                    ["streaming:true", "agent:agno"],
                                 )
 
                             output_content += chunk.content
@@ -278,6 +278,7 @@ class AgnoAgent:
                 [
                     f"streaming:{str(input.stream).lower()}",
                     f"conversation_id:{self._session_id}",
+                    "agent:agno",
                 ],
             )
 

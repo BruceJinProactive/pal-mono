@@ -10,6 +10,7 @@ from ddtrace.llmobs.decorators import workflow
 
 from agent.config import AgentConfig, AgentFramework
 from agent.framework import AgnoAgent
+from agent.framework.pal_simple_agent import PalSimpleAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
@@ -39,9 +40,13 @@ class Agent:
             if isinstance(config.metadata.framework, AgentFramework)
             else AgentFramework.AGNO
         )
-        if framework != AgentFramework.AGNO:
-            raise ValueError(f"Unsupported framework: {framework}")
-        self._agent = AgnoAgent(config)
+
+        match framework:
+            case AgentFramework.AGNO:
+                self._agent = AgnoAgent(config)
+            case AgentFramework.PAL_SIMPLE:
+                self._agent = PalSimpleAgent(config)
+
         self._metadata = config.metadata
 
         # Set up Datadog LLM Observability

@@ -13,7 +13,7 @@ from db.tables.agents import Language, SpeechRate
 
 class AgentFramework(StrEnum):
     AGNO = auto()
-    CREWAI = auto()
+    PAL_SIMPLE = auto()
 
 
 class AgentPersona(BaseModel):
