@@ -104,7 +104,7 @@ class AgnoAgent:
         self._memory_config = config.memory
         self._user_id = config.metadata.user_id
         self._session_id = uuid.UUID(config.metadata.session_id)
-        self._account_name = config.metadata.account_name
+        self._agent_id = config.metadata.agent_id
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -192,7 +192,7 @@ class AgnoAgent:
                             [
                                 "streaming:true",
                                 "agent:agno",
-                                f"account_name:{self._account_name}",
+                                f"agent_id:{self._agent_id}",
                             ],
                         )
 
@@ -206,7 +206,7 @@ class AgnoAgent:
                                     [
                                         "streaming:true",
                                         "agent:agno",
-                                        f"account_name:{self._account_name}",
+                                        f"agent_id:{self._agent_id}",
                                     ],
                                 )
 
@@ -288,7 +288,7 @@ class AgnoAgent:
                     f"streaming:{str(input.stream).lower()}",
                     f"conversation_id:{self._session_id}",
                     "agent:agno",
-                    f"account_name:{self._account_name}",
+                    f"agent_id:{self._agent_id}",
                 ],
             )
 
