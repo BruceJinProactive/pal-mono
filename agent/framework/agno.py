@@ -104,6 +104,7 @@ class AgnoAgent:
         self._memory_config = config.memory
         self._user_id = config.metadata.user_id
         self._session_id = uuid.UUID(config.metadata.session_id)
+        self._account_name = config.metadata.account_name
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -188,7 +189,11 @@ class AgnoAgent:
                         send_dd_histogram_metrics(
                             "framework_agent.waiting_first_chunk",
                             input.request_context.request_time,
-                            ["streaming:true", "agent:agno"],
+                            [
+                                "streaming:true",
+                                "agent:agno",
+                                f"account_name:{self._account_name}",
+                            ],
                         )
 
                         index = 0
@@ -198,7 +203,11 @@ class AgnoAgent:
                                 send_dd_histogram_metrics(
                                     "framework_agent.received_first_chunk",
                                     input.request_context.request_time,
-                                    ["streaming:true", "agent:agno"],
+                                    [
+                                        "streaming:true",
+                                        "agent:agno",
+                                        f"account_name:{self._account_name}",
+                                    ],
                                 )
 
                             output_content += chunk.content
@@ -279,6 +288,7 @@ class AgnoAgent:
                     f"streaming:{str(input.stream).lower()}",
                     f"conversation_id:{self._session_id}",
                     "agent:agno",
+                    f"account_name:{self._account_name}",
                 ],
             )
 

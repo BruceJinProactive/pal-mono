@@ -53,6 +53,7 @@ class PalSimpleAgent:
         client = AsyncOpenAI(api_key=api_key)
         self.primary_llm = CoreLLM(config.model.identifier, client)
         self._session_id = uuid.UUID(config.metadata.session_id)
+        self._account_name = config.metadata.account_name
         logger.debug("[PalSimpleAgent] initialized")
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
@@ -130,6 +131,7 @@ class PalSimpleAgent:
                 f"streaming:{str(input.stream).lower()}",
                 f"conversation_id:{self._session_id}",
                 "agent:pal_simple",
+                f"account_name:{self._account_name}",
             ],
         )
 
@@ -218,7 +220,11 @@ class PalSimpleAgent:
             send_dd_histogram_metrics(
                 "framework_agent.waiting_first_chunk",
                 input.request_context.request_time,
-                ["streaming:true", "agent:pal_simple"],
+                [
+                    "streaming:true",
+                    "agent:pal_simple",
+                    f"account_name:{self._account_name}",
+                ],
             )
 
             index = 0
@@ -228,7 +234,11 @@ class PalSimpleAgent:
                     send_dd_histogram_metrics(
                         "framework_agent.received_first_chunk",
                         input.request_context.request_time,
-                        ["streaming:true", "agent:pal_simple"],
+                        [
+                            "streaming:true",
+                            "agent:pal_simple",
+                            f"account_name:{self._account_name}",
+                        ],
                     )
 
                 if chunk.choices and len(chunk.choices) > 0:
