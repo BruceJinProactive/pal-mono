@@ -11,6 +11,7 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus, SubscriptionType
 from services import account_service
 from services.history_service import change_log_context
+from services.subscription_service import _stripe
 from services.subscription_service.schema import (
     SubscriptionParams,
     SubscriptionPlanParams,
@@ -724,3 +725,61 @@ def cancel_account_subscription(
     )
 
     return cancelled_subscription
+
+
+def get_account_subscription_by_external_id(
+    session: Session,
+    external_id: uuid.UUID,
+) -> db.AccountSubscription | None:
+    subscription_repository = db.SubscriptionRepository(session, auto_commit=True)
+    return subscription_repository.get_account_subscription_by_external_id(external_id)
+
+
+def create_checkout_url(
+    session: Session,
+    account_id: uuid.UUID,
+    external_id: uuid.UUID,
+    project_ids: list[uuid.UUID],
+    customer_email: str | None,
+    redirect_url_prefix: str,
+) -> str | None:
+    # Can't bill a subscription that has 0 projects
+    if not project_ids:
+        raise ValueError("Account has no projects to associate with the subscription")
+
+    # Get subscription by external_id
+    subscription = get_account_subscription_by_external_id(session, external_id)
+
+    if not subscription or subscription.account_id != account_id:
+        return None
+
+    # Validate subscription is active
+    if subscription.status != SubscriptionStatus.active:
+        raise ValueError(
+            f"Subscription status must be active, but is {subscription.status}"
+        )
+
+    # Validate subscription doesn't already have a Stripe subscription ID
+    if subscription.stripe_subscription_id:
+        raise ValueError("Subscription already has a Stripe subscription ID")
+
+    # Get subscription plan to get the price_id
+    plan = subscription.subscription_plan
+    if not plan or not plan.stripe_price_id:
+        raise RuntimeError(
+            "Subscription plan does not have a Stripe price ID configured"
+        )
+
+    # Create checkout session
+    checkout_session = _stripe.create_checkout_session(
+        account_id=account_id,
+        project_ids=project_ids,
+        customer_email=customer_email,
+        price_id=plan.stripe_price_id,
+        redirect_url_prefix=redirect_url_prefix,
+    )
+
+    if not checkout_session or not checkout_session.url:
+        raise RuntimeError("Failed to create checkout session")
+
+    return checkout_session.url

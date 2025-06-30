@@ -10,7 +10,7 @@ from services.subscription_service.schema import (
 )
 
 from . import _implementation
-from ._stripe import create_checkout_session
+from ._implementation import create_checkout_url
 
 
 def create_subscription(
@@ -118,5 +118,5 @@ __all__ = [
     "get_subscription_plan_by_id",
     "update_subscription_plan",
     "expire_subscription_plan",
-    "create_checkout_session",
+    "create_checkout_url",
 ]

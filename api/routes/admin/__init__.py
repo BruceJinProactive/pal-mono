@@ -79,6 +79,8 @@ from api.schemas.admin.project import (
     UpdateProjectRequest,
 )
 from api.schemas.admin.subscription import (
+    CheckoutSessionResponse,
+    CreateCheckoutSessionRequest,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
@@ -1541,4 +1543,21 @@ def cancel_account_subscription(
     """
     return _subscription.cancel_subscription(
         context, session, account_name, external_id, hard_delete
+    )
+
+
+@admin_router.post("/accounts/{account_name}/subscriptions/{external_id}/checkout")
+def create_subscription_checkout_session(
+    account_name: str,
+    external_id: uuid.UUID,
+    request: CreateCheckoutSessionRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> CheckoutSessionResponse:
+    """
+    Creates a Stripe checkout session for a subscription.
+    The subscription must be active and not have a stripe_subscription_id.
+    """
+    return _subscription.create_checkout_session(
+        context, session, account_name, external_id, request
     )

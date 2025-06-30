@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin._auth import authorize_admin
 from api.routes.admin._builder import build_subscription, build_subscription_plan
-from api.routes.admin._utils import UserContext
+from api.routes.admin._utils import UserContext, not_found_error
 from api.schemas.admin.subscription import (
+    CheckoutSessionResponse,
+    CreateCheckoutSessionRequest,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
@@ -16,7 +18,11 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionStatusResponse,
     UpdateSubscriptionPlanRequest,
 )
-from services import subscription_service
+from services import (
+    account_service,
+    project_service,
+    subscription_service,
+)
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger
 
@@ -379,3 +385,50 @@ def cancel_subscription(
             status_code=500,
             detail="Internal server error",
         )
+
+
+def create_checkout_session(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    external_id: uuid.UUID,
+    request: CreateCheckoutSessionRequest,
+) -> CheckoutSessionResponse:
+    """Create a Stripe checkout session for a subscription."""
+    authorize_admin(context)
+
+    # Get account to validate it exists
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found")
+
+    projects = project_service.get_projects_by_account_id(session, account.id)
+    project_ids = [p.id for p in projects]
+
+    try:
+        checkout_url = subscription_service.create_checkout_url(
+            session=session,
+            account_id=account.id,
+            external_id=external_id,
+            project_ids=project_ids,
+            customer_email=str(request.customer_email),
+            redirect_url_prefix=str(request.redirect_url_prefix),
+        )
+    except RuntimeError as err:
+        logger.exception(str(err))
+        raise HTTPException(
+            status_code=500,
+            detail=str(err),
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=400,
+            detail=str(err),
+        )
+
+    if not checkout_url:
+        raise not_found_error(
+            f"Subscription {external_id} not found in account: {account_name}"
+        )
+
+    return CheckoutSessionResponse(checkout_url=checkout_url)

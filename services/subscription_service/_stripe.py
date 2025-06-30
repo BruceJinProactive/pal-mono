@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 import stripe
+from stripe.checkout import Session
 
 from services.subscription_service.schema import (
     StripeCheckoutResponse,
@@ -16,17 +17,22 @@ stripe.api_key = os.environ.get("STRIPE_API_KEY")
 
 
 def create_checkout_session(
-    account_name: str,
+    account_id: uuid.UUID,
     project_ids: list[uuid.UUID],
-    customer_email: str,
+    customer_email: str | None,
     price_id: str,
     redirect_url_prefix: str,
-):
+) -> Session:
     """
     Creates a new checkout session that allows user to subscribe to our product and
     automatically get charged the monthly fee by stripe.
     """
     redirect_url_prefix = redirect_url_prefix.rstrip("/")
+
+    kwargs = {}
+    if customer_email:
+        kwargs["customer_email"] = customer_email
+
     try:
         return stripe.checkout.Session.create(
             mode="subscription",
@@ -37,14 +43,14 @@ def create_checkout_session(
                 }
             ],
             metadata={"project_ids": json.dumps([str(pid) for pid in project_ids])},
-            client_reference_id=account_name,
-            customer_email=customer_email,
+            client_reference_id=str(account_id),
             success_url=f"{redirect_url_prefix}/success?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{redirect_url_prefix}/cancel",
+            **kwargs,
         )
     except Exception as e:
         logger.error(f"Failed to create checkout session with stripe due to error: {e}")
-        return None
+        raise e
 
 
 def handle_checkout_success(
@@ -87,7 +93,7 @@ def handle_checkout_success(
             "Mismatch between number of projects and number of subscription items!",
             extra={
                 "session_id": session_id,
-                "account_name": session.client_reference_id,
+                "account_id": session.client_reference_id,
                 "project_ids": project_ids,
                 "num_items": len(items),
             },

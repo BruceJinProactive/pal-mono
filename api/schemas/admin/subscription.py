@@ -244,3 +244,12 @@ class UpdateAccountSubscriptionStatusResponse(BaseModel):
     message: str
     external_id: uuid.UUID
     status: str
+
+
+class CreateCheckoutSessionRequest(BaseModel):
+    customer_email: EmailStr
+    redirect_url_prefix: AnyHttpUrl
+
+
+class CheckoutSessionResponse(BaseModel):
+    checkout_url: str
