@@ -392,6 +392,17 @@ async def chat_completions_agno(
                                     request_context.request_time,
                                     ["path:agno", "streaming:true"],
                                 )
+                                time_diff = (
+                                    datetime.datetime.now(datetime.timezone.utc)
+                                    - request_context.request_time
+                                ).total_seconds() * 1000
+                                logger.debug(
+                                    f"[ChatCompletions] TTFT is {time_diff}",
+                                    extra={
+                                        "recipient_identifier": recipient_identifier,
+                                        "sender_identifier": sender_identifier,
+                                    },
+                                )
 
                             filtered_content = url_filter.filter_content(content)
                             if filtered_content is not None:
