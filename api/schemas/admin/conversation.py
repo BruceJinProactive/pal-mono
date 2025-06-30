@@ -69,7 +69,7 @@ class ListConversationMessagesResponse(BaseModel):
     total_messages: int
 
 
-class UpdateSessionRequest(BaseModel):
+class UpdateConversationRequest(BaseModel):
     is_escalated: bool
 
 

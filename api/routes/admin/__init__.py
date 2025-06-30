@@ -38,7 +38,7 @@ from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
-    UpdateSessionRequest,
+    UpdateConversationRequest,
     UpdateSessionResponse,
 )
 from api.schemas.admin.feedback import (
@@ -649,7 +649,8 @@ async def list_account_campaigns(
 DEFAULT_SESSION_AGE = 3600 * 24 * 365  # 365 days of history
 
 
-@admin_router.get("/accounts/{account_name}/sessions")
+@admin_router.get("/accounts/{account_name}/sessions", include_in_schema=False)
+@admin_router.get("/accounts/{account_name}/conversations")
 async def list_account_conversations(
     account_name: str,
     keyword: str = Query("", description="Optional keyword to filter the results by"),
@@ -692,7 +693,7 @@ async def list_account_conversations(
     )
 
 
-@admin_router.get("/sessions/{session_id}/messages")
+@admin_router.get("/sessions/{session_id}/messages", include_in_schema=False)
 async def list_session_messages(
     session_id: uuid.UUID,
     page: int = Query(..., description="Current page, first page starts at 1", gt=0),
@@ -711,14 +712,38 @@ async def list_session_messages(
     in chronological order.
     """
     return await _conversation.list_conversation_messages(
-        session_id, page, page_size, sort_order, context, session
+        None, session_id, page, page_size, sort_order, context, session
     )
 
 
-@admin_router.patch("/sessions/{session_id}")
+@admin_router.get("/accounts/{account_name}/conversations/{conversation_id}/messages")
+async def list_conversation_messages(
+    account_name: str,
+    conversation_id: uuid.UUID,
+    page: int = Query(..., description="Current page, first page starts at 1", gt=0),
+    page_size: int = Query(
+        ..., description="Size of each page, cannot be less than 1", gt=0
+    ),
+    sort_order: SortOrder = Query(
+        SortOrder.desc,
+        description="The order in which messages are sorted by on the timestamp field",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListConversationMessagesResponse:
+    """
+    Returns the detailed convo session messages for the given id. Messages are sorted
+    in chronological order.
+    """
+    return await _conversation.list_conversation_messages(
+        account_name, conversation_id, page, page_size, sort_order, context, session
+    )
+
+
+@admin_router.patch("/sessions/{session_id}", include_in_schema=False)
 async def update_session(
     session_id: uuid.UUID,
-    session_request: UpdateSessionRequest,
+    session_request: UpdateConversationRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> UpdateSessionResponse:
@@ -727,6 +752,26 @@ async def update_session(
     """
     return await _conversation.update_session(
         session_id, session_request, context, session
+    )
+
+
+@admin_router.patch("/accounts/{account_name}/conversations/{conversation_id}")
+async def update_conversation(
+    account_name: str,
+    conversation_id: uuid.UUID,
+    update_request: UpdateConversationRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> UpdateSessionResponse:
+    """
+    Update the session with the given id.
+    """
+    return await _conversation.update_conversation(
+        context,
+        session,
+        account_name,
+        conversation_id,
+        update_request,
     )
 
 

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
-    UpdateSessionRequest,
+    UpdateConversationRequest,
     UpdateSessionResponse,
     UserSessionSearchFilters,
 )
@@ -73,6 +73,7 @@ async def list_account_user_sessions(
 
 
 async def list_conversation_messages(
+    account_name: str | None,
     conversation_id: uuid.UUID,
     page: int,
     page_size: int,
@@ -81,11 +82,19 @@ async def list_conversation_messages(
     session: Session,
 ) -> ListConversationMessagesResponse:
     # Validate request
+    if account_name:
+        authorize_user_account(context, account_name)
+
     conversation = admin_service.get_conversation_by_id(session, conversation_id)
     if not conversation:
         raise not_found_error(f"Conversation not found for id: {conversation_id}")
     account = conversation.user.account
-    authorize_user_account(context, account.name)
+
+    if account_name and account_name != account.name:
+        raise not_found_error(f"Conversation not found for id: {conversation_id}")
+
+    if not account_name:
+        authorize_user_account(context, account.name)
 
     # Retrieve conversation messages
     all_messages = admin_service.get_conversation_messages(
@@ -108,7 +117,7 @@ async def list_conversation_messages(
 
 async def update_session(
     session_id: uuid.UUID,
-    session_request: UpdateSessionRequest,
+    session_request: UpdateConversationRequest,
     context: UserContext,
     session: Session,
 ) -> UpdateSessionResponse:
@@ -146,6 +155,38 @@ async def update_session(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Failed to update session {session_id}",
+        )
+
+    return UpdateSessionResponse(is_escalated=conversation.is_escalated)
+
+
+async def update_conversation(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    conversation_id: uuid.UUID,
+    session_request: UpdateConversationRequest,
+) -> UpdateSessionResponse:
+    authorize_user_account(context, account_name)
+
+    # Fetch first to validate ownership
+    conversation = admin_service.get_conversation_by_id(session, conversation_id)
+
+    if not conversation:
+        raise not_found_error(f"Conversation {conversation_id} not found")
+
+    if account_name != conversation.user.account.name:
+        raise not_found_error(f"Conversation {conversation_id} not found")
+
+    # Safe to mutate after successful auth
+    conversation = admin_service.update_conversation_escalation(
+        session, conversation_id, session_request.is_escalated
+    )
+
+    if conversation is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update conversation {conversation_id}",
         )
 
     return UpdateSessionResponse(is_escalated=conversation.is_escalated)
