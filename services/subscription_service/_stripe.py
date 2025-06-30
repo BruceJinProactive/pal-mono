@@ -42,7 +42,9 @@ def create_checkout_session(
                     "quantity": len(project_ids),
                 }
             ],
-            metadata={"project_ids": json.dumps([str(pid) for pid in project_ids])},
+            metadata={
+                "project_ids": json.dumps([str(pid) for pid in project_ids]),
+            },
             client_reference_id=str(account_id),
             success_url=f"{redirect_url_prefix}/success?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{redirect_url_prefix}/cancel",
@@ -57,7 +59,7 @@ def handle_checkout_success(
     session_id: str,
 ) -> StripeCheckoutResponse | None:
     """
-     Updates metadata for each subscription item after a successful checkout.
+    Updates metadata for each subscription item after a successful checkout.
     Links each subscription item to a specific project_id saved during subscription creation.
     """
     try:
@@ -106,6 +108,7 @@ def handle_checkout_success(
         )
 
     return StripeCheckoutResponse(
+        account_id=parse_uuid(session.client_reference_id),
         customer_id=str(subscription.customer),
         subscription_id=subscription.id,
     )
@@ -219,8 +222,10 @@ def remove_project_from_subscription(
     )
 
 
-def parse_uuid(uuid_str: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(uuid_str)
-    except ValueError:
-        return uuid.UUID(int=0)
+def parse_uuid(uuid_str: str | None) -> uuid.UUID:
+    if uuid_str:
+        try:
+            return uuid.UUID(uuid_str)
+        except ValueError:
+            pass
+    return uuid.UUID(int=0)

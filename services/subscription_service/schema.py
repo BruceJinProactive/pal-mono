@@ -52,5 +52,6 @@ class StripeSubscriptionDetails(BaseModel):
 
 
 class StripeCheckoutResponse(BaseModel):
+    account_id: uuid.UUID
     customer_id: str
     subscription_id: str

@@ -11,6 +11,7 @@ from services.subscription_service.schema import (
 
 from . import _implementation
 from ._implementation import create_checkout_url
+from ._stripe import handle_checkout_success
 
 
 def create_subscription(
@@ -119,4 +120,5 @@ __all__ = [
     "update_subscription_plan",
     "expire_subscription_plan",
     "create_checkout_url",
+    "handle_checkout_success",
 ]

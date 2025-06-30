@@ -3,7 +3,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.routes.admin._auth import authorize_admin
+from api.routes.admin._auth import authorize_admin, authorize_user_account
 from api.routes.admin._builder import build_subscription, build_subscription_plan
 from api.routes.admin._utils import UserContext, not_found_error
 from api.schemas.admin.subscription import (
@@ -23,6 +23,7 @@ from services import (
     project_service,
     subscription_service,
 )
+from services.account_service import AccountParams
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger
 
@@ -432,3 +433,32 @@ def create_checkout_session(
         )
 
     return CheckoutSessionResponse(checkout_url=checkout_url)
+
+
+def handle_subscription_checkout_callback(
+    context: UserContext,
+    session: Session,
+    session_id: str,
+):
+    checkout_response = subscription_service.handle_checkout_success(session_id)
+    if not checkout_response:
+        raise not_found_error("Invalid session id or checkout not successful")
+
+    account = account_service.get_account_by_id(session, checkout_response.account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="The account linked in the checkout session does not exist",
+        )
+
+    authorize_user_account(context, account.name)
+
+    account_service.update_account(
+        session,
+        context,
+        account.name,
+        AccountParams(
+            stripe_customer_id=checkout_response.customer_id,
+            stripe_subscription_id=checkout_response.subscription_id,
+        ),
+    )
