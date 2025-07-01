@@ -52,9 +52,7 @@ class PalSimpleAgent:
 
         client = AsyncOpenAI(api_key=api_key)
         self.primary_llm = CoreLLM(config.model.identifier, client)
-        self._session_id = uuid.UUID(config.metadata.session_id)
-        self._agent_id = config.metadata.agent_id
-        self._account_name = config.metadata.account_name
+        self.config = config
         logger.debug("[PalSimpleAgent] initialized")
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
@@ -64,10 +62,10 @@ class PalSimpleAgent:
         """
         # Get chat history and convert to OpenAI format
         history_messages = await self.get_history_messages(input)
-        converted_messages = self._convert_messages_to_openai_format(history_messages)
+        openai_inputs = self._build_openai_input(history_messages)
 
         # Call the CoreLLM chat method with properly typed messages
-        openai_response = await self.primary_llm.chat(converted_messages, input.stream)
+        openai_response = await self.primary_llm.chat(openai_inputs, input.stream)
 
         logger.debug(
             f"[PalSimpleAgent] primary_llm called with {len(history_messages)} messages, streaming={input.stream}"
@@ -88,7 +86,9 @@ class PalSimpleAgent:
         """
         # Query history messages from storage
         current_time = datetime.datetime.now(datetime.timezone.utc)
-        history_messages = await query_history_messages(self._session_id, limit=100)
+        history_messages = await query_history_messages(
+            uuid.UUID(self.config.metadata.session_id), limit=100
+        )
 
         messages = [
             Message(
@@ -130,32 +130,41 @@ class PalSimpleAgent:
             current_time,
             [
                 f"streaming:{str(input.stream).lower()}",
-                f"conversation_id:{self._session_id}",
+                f"conversation_id:{self.config.metadata.session_id}",
                 "agent:pal_simple",
-                f"agent_id:{self._agent_id}",
-                f"account_name:{self._account_name}",
+                f"agent_id:{self.config.metadata.agent_id}",
+                f"account_name:{self.config.metadata.account_name}",
             ],
         )
 
         return messages
 
-    def _convert_messages_to_openai_format(
+    def _build_openai_input(
         self, messages: list[Message]
     ) -> List[ChatCompletionMessageParam]:
         """
         Convert Message objects to OpenAI ChatCompletionMessageParam format.
+        Includes developer message with persona description as the first message.
 
         Args:
             messages: List of Message objects
 
         Returns:
-            List of ChatCompletionMessageParam objects
+            List of ChatCompletionMessageParam objects with developer message first
         """
         converted_messages: List[ChatCompletionMessageParam] = []
 
+        # Add developer message with persona description as first message
+        if self.config.persona.description:
+            developer_msg: ChatCompletionMessageParam = {
+                "role": "developer",
+                "content": self.config.persona.description,
+            }
+            converted_messages.append(developer_msg)
+
         for message in messages:
             # Validate role is a valid OpenAI role
-            valid_roles = {"system", "user", "assistant", "function", "tool"}
+            valid_roles = {"user", "assistant"}
             if message.role not in valid_roles:
                 raise ValueError(f"Invalid role: {message.role}")
 
@@ -225,8 +234,8 @@ class PalSimpleAgent:
                 [
                     "streaming:true",
                     "agent:pal_simple",
-                    f"agent_id:{self._agent_id}",
-                    f"account_name:{self._account_name}",
+                    f"agent_id:{self.config.metadata.agent_id}",
+                    f"account_name:{self.config.metadata.account_name}",
                 ],
             )
 
@@ -240,8 +249,8 @@ class PalSimpleAgent:
                         [
                             "streaming:true",
                             "agent:pal_simple",
-                            f"agent_id:{self._agent_id}",
-                            f"account_name:{self._account_name}",
+                            f"agent_id:{self.config.metadata.agent_id}",
+                            f"account_name:{self.config.metadata.account_name}",
                         ],
                     )
 
