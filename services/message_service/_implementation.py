@@ -317,7 +317,11 @@ async def get_chat_response_stream(
                     send_dd_histogram_metrics(
                         "message_service.waiting_first_chunk",
                         request_context.request_time,
-                        ["streaming:true"],
+                        [
+                            "streaming:true",
+                            f"agent_id:{agent_id}",
+                            f"account_name:{account_name}",
+                        ],
                     )
 
                     async for chunk in response_stream:
@@ -325,7 +329,11 @@ async def get_chat_response_stream(
                             send_dd_histogram_metrics(
                                 "message_service.received_first_chunk",
                                 request_context.request_time,
-                                ["streaming:true"],
+                                [
+                                    "streaming:true",
+                                    f"agent_id:{agent_id}",
+                                    f"account_name:{account_name}",
+                                ],
                             )
 
                         async with trace_async_block(

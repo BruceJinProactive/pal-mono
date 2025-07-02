@@ -369,7 +369,12 @@ async def chat_completions_agno(
                         send_dd_histogram_metrics(
                             "chat_completions.waiting_first_chunk",
                             request_context.request_time,
-                            ["path:agno", "streaming:true"],
+                            [
+                                "path:agno",
+                                "streaming:true",
+                                f"sender_identifier:{sender_identifier}",
+                                f"recipient_identifier:{recipient_identifier}",
+                            ],
                         )
 
                         async for chunk in response_stream:
@@ -390,7 +395,12 @@ async def chat_completions_agno(
                                 send_dd_histogram_metrics(
                                     "chat_completions.received_first_chunk",
                                     request_context.request_time,
-                                    ["path:agno", "streaming:true"],
+                                    [
+                                        "path:agno",
+                                        "streaming:true",
+                                        f"sender_identifier:{sender_identifier}",
+                                        f"recipient_identifier:{recipient_identifier}",
+                                    ],
                                 )
                                 time_diff = (
                                     datetime.datetime.now(datetime.timezone.utc)

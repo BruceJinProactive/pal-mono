@@ -152,7 +152,11 @@ class Agent:
                     send_dd_histogram_metrics(
                         "agent.waiting_first_chunk",
                         input.request_context.request_time,
-                        ["streaming:true"],
+                        [
+                            "streaming:true",
+                            f"agent_id:{self._metadata.agent_id}",
+                            f"account_name:{self._metadata.account_name}",
+                        ],
                     )
 
                     async for chunk in output_stream:
@@ -162,7 +166,11 @@ class Agent:
                             send_dd_histogram_metrics(
                                 "agent.received_first_chunk",
                                 input.request_context.request_time,
-                                ["streaming:true"],
+                                [
+                                    "streaming:true",
+                                    f"agent_id:{self._metadata.agent_id}",
+                                    f"account_name:{self._metadata.account_name}",
+                                ],
                             )
 
                         output_content += chunk.content
