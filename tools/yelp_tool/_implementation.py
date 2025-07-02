@@ -11,7 +11,6 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.utils.ordering._llm import llm_call
 from tools.yelp_tool._apis import (
     create_hold,
-    create_reservation,
     get_openings,
     get_waitlist_status,
     get_yelp_bearer_token,
@@ -25,10 +24,9 @@ from tools.yelp_tool._prompt_constants import (
 from tools.yelp_tool._utils import (
     create_holds_request,
     create_openings_request,
-    create_reservation_from_hold_response,
+    create_reservation_from_hold,
     create_waitlist_status_request,
     format_openings_for_llm,
-    format_reservation_response_for_llm,
     format_waitlist_status_for_llm,
 )
 from tools.yelp_tool.classes import (
@@ -199,33 +197,26 @@ class YelpTool(Toolkit):
         """
         Make a reservation for a restaurant using the Yelp Bookings API.
 
-        Use when: User explicitly wants to book a reservation with all required details.
-        Do NOT use for: Checking availability (use get_restaurant_openings instead).
+        Use when: User explicitly wants to book/place/make a reservation with all required details.
+        Required info: number of people, date, time, first name, last name, phone, email.
 
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
+        Do NOT use for:
+        - Checking availability or time slots (use get_restaurant_openings instead)
+        - Getting restaurant information
+        - Asking about wait times (use get_waitlist_status instead)
+        - Just browsing or inquiring about reservations
 
-        Returns:
-            str: Formatted string containing reservation confirmation details, or error message
+        This tool will either:
+        1. Complete the reservation immediately (no credit card required)
+        2. Return a link to complete on Yelp's site (credit card required)
         """
         try:
             bearer_token = self._yelp_bearer_token
-
-            # Validate bearer token before proceeding
             if not bearer_token:
-                logger.debug(
-                    "[YelpTool.make_reservation] Failed to obtain Yelp bearer token"
-                )
                 return "Unable to authenticate with Yelp. Please try again later."
 
-            unique_id = str(
-                uuid.uuid4()
-            )  # NOTE: Generate MOCK unique ID for testing purposes
-
-            # Get chat history and extract reservation parameters
+            # Extract reservation details
             chat_history = self._get_chat_history(latest_user_message)  # type: ignore
-
-            # Extract using ReservationQuery class
             reservation_query = llm_call(
                 system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT,
                 prompt=RESERVATION_EXTRACTION_USER_PROMPT.format(
@@ -236,121 +227,77 @@ class YelpTool(Toolkit):
             )
 
             if not isinstance(reservation_query, ReservationQuery):
-                return "I couldn't understand your reservation request. Please provide all the necessary details for making a reservation."
+                return "I couldn't understand your reservation request. Please provide all the necessary details."
 
-            # Validate required fields
-            required_fields = {
-                "covers": reservation_query.covers,
-                "date": reservation_query.date,
-                "time": reservation_query.time,
-                "first_name": reservation_query.first_name,
-                "last_name": reservation_query.last_name,
-                "phone": reservation_query.phone,
-                "email": reservation_query.email,
-            }
-
-            missing_fields = [
-                field_name for field_name, value in required_fields.items() if not value
-            ]
+            # Check required fields individually
+            missing_fields = []
+            if not reservation_query.covers:
+                missing_fields.append("number of people")
+            if not reservation_query.date:
+                missing_fields.append("date")
+            if not reservation_query.time:
+                missing_fields.append("time")
+            if not reservation_query.first_name:
+                missing_fields.append("first name")
+            if not reservation_query.last_name:
+                missing_fields.append("last name")
+            if not reservation_query.phone:
+                missing_fields.append("phone")
+            if not reservation_query.email:
+                missing_fields.append("email")
 
             if missing_fields:
-                field_map = {
-                    "covers": "number of people",
-                    "date": "reservation date",
-                    "time": "reservation time",
-                    "first_name": "first name",
-                    "last_name": "last name",
-                    "phone": "phone number",
-                    "email": "email address",
-                }
+                if len(missing_fields) == 1:
+                    return f"I need your {missing_fields[0]}."
+                elif len(missing_fields) == 2:
+                    return f"I need your {missing_fields[0]} and {missing_fields[1]}."
+                else:
+                    return f"I need your {', '.join(missing_fields[:-1])}, and {missing_fields[-1]}."
 
-                missing_display = [
-                    field_map.get(field, field) for field in missing_fields
-                ]
-                return f"To make a reservation, I need the following information: {', '.join(missing_display)}. Please provide these details."
-
-            # At this point, all required fields are validated to be non-None
-
-            # Step 1: Create a hold
-            logger.debug(
-                f"[YelpTool.make_reservation] Creating hold for {reservation_query.covers} people on {reservation_query.date} at {reservation_query.time}"
-            )
-
+            # Create hold
             hold_success, hold_message, hold_request = create_holds_request(
                 business_id_or_alias=self.business_id_or_alias,
                 covers=reservation_query.covers,  # type: ignore
                 date=reservation_query.date,  # type: ignore
                 time=reservation_query.time,  # type: ignore
-                unique_id=unique_id,
+                unique_id=str(uuid.uuid4()),
             )
 
             if not hold_success or not hold_request:
-                return f"Failed to create reservation hold: {hold_message}"
+                return f"Failed to create hold: {hold_message}"
 
-            # Step 2: Create a hold with proper error handling
             try:
                 hold_response = create_hold(
-                    bearer_token=bearer_token,
-                    request_params=hold_request,
+                    bearer_token=bearer_token, request_params=hold_request
                 )
-            except Exception as exc:
-                logger.debug(f"[YelpTool.make_reservation] create_hold failed: {exc}")
-                logger.debug(traceback.format_exc())
-                return "Yelp was unable to place a hold – please try again or choose another time."
+                if not hold_response or not hold_response.hold_id:
+                    return "Unable to place a hold. Please try again."
 
-            # Check if hold_response is valid before accessing attributes
-            if not hold_response:
-                logger.debug("[YelpTool.make_reservation] create_hold returned None")
-                return "I couldn't create a hold with Yelp – please try again."
+            except Exception as e:
+                error_msg = str(e).lower()
 
-            # Verify hold_response has the expected hold_id attribute
-            if not hasattr(hold_response, "hold_id") or not hold_response.hold_id:
-                logger.debug(
-                    "[YelpTool.make_reservation] hold_response missing or empty hold_id"
-                )
-                return "Yelp hold response was incomplete – please try again."
+                # Determine error prefix and try to show available options
+                if "covers_value_out_of_range" in error_msg:
+                    error_prefix = f"This restaurant doesn't accept reservations for {reservation_query.covers} people."
+                elif "invalid_date_time_range" in error_msg:
+                    error_prefix = f"The date/time {reservation_query.date} at {reservation_query.time} is invalid."
+                else:
+                    return f"Unable to place a hold for {reservation_query.time} on {reservation_query.date} due to {error_msg}"
 
-            logger.debug(
-                f"[YelpTool.make_reservation] Hold created successfully with ID: {hold_response.hold_id}"
-            )
+                # Return simple error message
+                return error_prefix
 
-            # Step 2.5: Check if credit card is required - if so, return the reserve URL
+            # If credit card required, return URL
             if hold_response.credit_card_hold:
-                # Validate that reserve_url is available
                 if not hold_response.reserve_url:
-                    logger.debug(
-                        "[YelpTool.make_reservation] Credit card hold required but no reserve_url provided"
-                    )
-                    return "This restaurant requires a credit card to complete the reservation, but the booking link is not available. Please try again later."
+                    return "This restaurant requires a credit card, but the booking link is not available."
 
-                logger.debug(
-                    "[YelpTool.make_reservation] Restaurant requires credit card hold, returning reserve URL"
-                )
+                return f"I've placed a hold for {reservation_query.covers} people on {reservation_query.date} at {reservation_query.time}.\n\nThis restaurant requires a credit card to complete the reservation.\n\nPlease complete your reservation here: {hold_response.reserve_url}\n\nNote: This hold expires in 5 minutes."
 
-                # Format a user-friendly message with the reserve URL
-                message_parts = [
-                    f"I've placed a temporary hold on your reservation for {reservation_query.covers} people on {reservation_query.date} at {reservation_query.time}.",
-                    "This restaurant requires a credit card to complete the reservation.",
-                    f"Please complete your reservation by clicking this link: {hold_response.reserve_url}",
-                    "Note: This hold expires in 5 minutes.",
-                ]
-
-                if hold_response.notes and hold_response.notes.strip():
-                    message_parts.append(f"Restaurant notes: {hold_response.notes}")
-
-                if (
-                    hold_response.cancellation_policy
-                    and hold_response.cancellation_policy.strip()
-                ):
-                    message_parts.append(
-                        f"Cancellation policy: {hold_response.cancellation_policy}"
-                    )
-
-                return "\n\n".join(message_parts)
-
-            # Step 3: Create the reservation using the hold (only if no credit card required)
-            reservation_success, reservation_message, reservation_request = (
-                create_reservation_from_hold_response(
+            # Create reservation directly
+            reservation_success, reservation_message, reservation_response = (
+                create_reservation_from_hold(
+                    bearer_token=bearer_token,
                     holds_response=hold_response,
                     holds_request=hold_request,
                     first_name=reservation_query.first_name,  # type: ignore
@@ -361,61 +308,15 @@ class YelpTool(Toolkit):
                 )
             )
 
-            if not reservation_success or not reservation_request:
-                return f"Failed to create reservation request: {reservation_message}"
+            if not reservation_success or not reservation_response:
+                return f"Failed to create reservation: {reservation_message}"
 
-            # Step 4: Create the reservation with proper error handling (only if no credit card required)
-            try:
-                reservation_response = create_reservation(
-                    bearer_token=bearer_token,
-                    request_params=reservation_request,
-                )
-            except Exception as exc:
-                logger.debug(
-                    f"[YelpTool.make_reservation] create_reservation failed: {exc}"
-                )
-                logger.debug(traceback.format_exc())
-                return "Yelp rejected the reservation request – please verify details and try again."
-
-            # Check if reservation_response is valid before accessing attributes
-            if not reservation_response:
-                logger.debug(
-                    "[YelpTool.make_reservation] create_reservation returned None"
-                )
-                return "Yelp reservation response was empty – please try again."
-
-            # Verify reservation_response has the expected reservation_id attribute
-            if (
-                not hasattr(reservation_response, "reservation_id")
-                or not reservation_response.reservation_id
-            ):
-                logger.debug(
-                    "[YelpTool.make_reservation] reservation_response missing or empty reservation_id"
-                )
-                return "Yelp reservation response was incomplete – please try again."
-
-            logger.debug(
-                f"[YelpTool.make_reservation] Reservation created successfully with ID: {reservation_response.reservation_id}"
-            )
-
-            # Format and return the reservation confirmation with error handling
-            try:
-                formatted_response = format_reservation_response_for_llm(
-                    reservation_response
-                )
-                return formatted_response
-            except Exception as exc:
-                logger.debug(
-                    f"[YelpTool.make_reservation] Failed to format reservation response: {exc}"
-                )
-                logger.debug(traceback.format_exc())
-                # Return basic confirmation if formatting fails
-                return f"Reservation confirmed! Your reservation ID is: {reservation_response.reservation_id}"
+            return f"Reservation confirmed! Your reservation ID is: {reservation_response.reservation_id}"
 
         except Exception as e:
-            logger.debug(f"[YelpTool.make_reservation] Error making reservation: {e}")
+            logger.debug(f"[YelpTool.make_reservation] Error: {e}")
             logger.debug(traceback.format_exc())
-            return f"Failed to make reservation. Error: {str(e)}"
+            return "Failed to make reservation. Please try again."
 
     @tool
     def get_waitlist_status(self) -> str:
