@@ -38,12 +38,17 @@ def add_voice_speed_if_supported(
 
     if provider == "cartesia":
         voice_config = voice_config.copy()  # Avoid mutating the original dict
-        voice_config["speed"] = CARTESIA_SPEED_MAPPING.get(speech_rate, "normal")
-        logger.debug(
-            f"Applied Cartesia speed {voice_config['speed']} for speech rate {speech_rate}"
+        experimental_controls = voice_config.get("experimentalControls", {}).copy()
+        experimental_controls["speed"] = CARTESIA_SPEED_MAPPING.get(
+            speech_rate, "normal"
         )
+        voice_config["experimentalControls"] = experimental_controls
+        logger.debug(
+            f"Applied Cartesia speed {voice_config['experimentalControls']['speed']} for speech rate {speech_rate}"
+        )
+        return voice_config  # Return the modified copy
 
-    return voice_config
+    return voice_config  # Return original for non-Cartesia
 
 
 def validate_vapi_request(request: Request) -> bool:
