@@ -1180,10 +1180,11 @@ class AdoraTool(Toolkit):
     @tool
     def get_menu_item_info(self, menu_item: str) -> str:
         """
-        Get details about a menu item
+        Get details about a menu item. The detailed information such as modifiers, toppings, etc. could be found by this tool.
         This tool should be used when:
         - A customer asks about a specific menu item
-        - A customer wants to add additional modifiers or toppings to a menu item
+        - A customer wants to add modifiers or toppings to a menu item
+        - A customer wants to select a flavor/sauce for a menu item
 
         Do not use this tool if the customer is asking about the menu in general or when user checks out.
 
