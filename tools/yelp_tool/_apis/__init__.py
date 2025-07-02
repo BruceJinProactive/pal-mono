@@ -1,3 +1,5 @@
+import time
+import urllib.parse
 from typing import Optional
 
 from tools.yelp_tool._apis._utils import (
@@ -6,6 +8,8 @@ from tools.yelp_tool._apis._utils import (
     connect_yelp_api,
 )
 from tools.yelp_tool.classes import (
+    DinTaiFungAvailabilityRequest,
+    DinTaiFungAvailabilityResponse,
     YelpAccessToken,
     YelpAccessTokenRequest,
     YelpAccessTokenResponse,
@@ -292,3 +296,114 @@ def get_waitlist_status(
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
+
+
+def get_din_tai_fung_availability(
+    request_params: DinTaiFungAvailabilityRequest,
+) -> DinTaiFungAvailabilityResponse:
+    """
+    Get available reservation times for Din Tai Fung using their custom search endpoint.
+
+    This endpoint uses Din Tai Fung's specific availability API that returns time slots
+    in their custom format with form actions for direct reservation.
+
+    Note: This API is not stable and may fail with connection errors. Implements retry logic.
+
+    Args:
+        request_params: DinTaiFungAvailabilityRequest object containing the search parameters
+
+    Returns:
+        DinTaiFungAvailabilityResponse object containing available reservation times
+
+    Raises:
+        Exception: If the API request fails after all retries or returns an error
+    """
+    # Build query parameters with URL encoded time format
+    query_params = {
+        "days_before": request_params.days_before,
+        "days_after": request_params.days_after,
+        "date": request_params.date,
+        "time": request_params.time.replace(":", "%3A"),  # URL encode colons
+        "covers": str(request_params.covers),
+        "biz_id": request_params.biz_id,
+        "biz_lat": request_params.biz_lat,
+        "biz_long": request_params.biz_long,
+    }
+
+    api_function = "/reservations/din-tai-fung-new-york-3/search_availability"
+
+    extra_headers = {"User-Agent": "Mozilla/5.0 (compatible; YelpBookingBot)"}
+
+    # Retry configuration
+    max_retries = 5
+    base_delay = 1.0  # seconds
+
+    last_exception = None
+
+    for attempt in range(max_retries + 1):  # 0, 1, 2, 3, 4, 5 (6 total attempts)
+        try:
+            # Use the existing connect_yelp_api utility
+            response = connect_yelp_api(
+                http_method="GET",
+                api_function=api_function,
+                api_host="www.yelp.com",
+                bearer_token=None,  # Din Tai Fung endpoint doesn't require bearer token
+                query_params=query_params,
+                extra_headers=extra_headers,
+            )
+
+            if response.status != 200:
+                logger.debug(
+                    f"Din Tai Fung API returned error: {response.status} {response.reason}"
+                )
+                logger.debug(f"Response body: {response.decoded_body}")
+                raise Exception(
+                    f"Din Tai Fung API error: {response.status} {response.reason}"
+                )
+
+            try:
+                return DinTaiFungAvailabilityResponse(**response.decoded_body)
+            except Exception as e:
+                logger.debug(f"Failed to parse Din Tai Fung API response: {str(e)}")
+                logger.debug(f"Response data: {response.decoded_body}")
+                raise Exception(
+                    f"Failed to parse Din Tai Fung API response: {str(e)}"
+                ) from e
+
+        except Exception as e:
+            last_exception = e
+            error_str = str(e).lower()
+
+            # Check if this is a transient error that we should retry
+            transient_errors = [
+                "unexpected end of file",
+                "connection reset",
+                "connection aborted",
+                "timeout",
+                "temporary failure",
+                "network is unreachable",
+                "connection refused",
+                "read timeout",
+                "connection timed out",
+            ]
+
+            is_transient = any(err in error_str for err in transient_errors)
+
+            # Don't retry on final attempt or non-transient errors
+            if attempt == max_retries or not is_transient:
+                logger.debug(
+                    f"Din Tai Fung API failed after {attempt + 1} attempts: {e}"
+                )
+                break
+
+            # Calculate delay with exponential backoff
+            delay = base_delay * (2**attempt)
+            logger.debug(
+                f"Din Tai Fung API attempt {attempt + 1} failed ({e}), retrying in {delay}s..."
+            )
+            time.sleep(delay)
+
+    # If we get here, all retries failed
+    raise Exception(
+        f"Din Tai Fung API failed after {max_retries + 1} attempts. Last error: {last_exception}"
+    ) from last_exception
