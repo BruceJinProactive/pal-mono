@@ -4,6 +4,8 @@ from typing import Any, List, Optional, Tuple
 
 from tools.yelp_tool._apis import create_reservation
 from tools.yelp_tool.classes import (
+    DinTaiFungAvailabilityRequest,
+    DinTaiFungAvailabilityResponse,
     YelpAccessToken,
     YelpBookingsHoldsRequest,
     YelpBookingsHoldsResponse,
@@ -490,3 +492,140 @@ def format_waitlist_status_for_llm(
         result_lines.append("\nNo wait time estimates available")
 
     return "\n".join(result_lines)
+
+
+def create_din_tai_fung_availability_request(
+    covers: int,
+    date: str,
+    time: str,
+) -> Tuple[bool, str, Optional[DinTaiFungAvailabilityRequest]]:
+    """
+    Validate parameters and create DinTaiFungAvailabilityRequest object.
+    Provides early validation with user-friendly error messages.
+
+    Args:
+        covers: Number of people for the reservation
+        date: Date in YYYY-mm-dd format
+        time: Time in HH:MM format (MUST be exactly HH:MM, nothing else)
+
+    Returns:
+        Tuple containing:
+        - bool: Success status
+        - str: Error message or success message
+        - Optional[DinTaiFungAvailabilityRequest]: Request object or None
+    """
+    errors = []
+
+    # Use helper functions for validation
+    errors.extend(_validate_covers(covers))
+    errors.extend(_validate_date(date))
+    errors.extend(_validate_time(time))  # This ensures time is exactly HH:MM format
+
+    # Return early if validation fails
+    if errors:
+        return False, "; ".join(errors), None
+
+    # Ensure time is exactly HH:MM format (validation already passed, but be explicit)
+    time_parts = time.split(":")
+    if len(time_parts) != 2:
+        return False, "Time must be in HH:MM format", None
+
+    # Convert time format from HH:MM to HH:MM:SS for the Din Tai Fung endpoint
+    time_formatted = f"{time}:00"
+
+    # Create request object
+    try:
+        request_obj = DinTaiFungAvailabilityRequest(
+            covers=covers,
+            date=date,
+            time=time_formatted,  # This will be HH:MM:SS format
+        )
+        return True, "Request created successfully", request_obj
+    except Exception as e:
+        return False, f"Failed to create request: {str(e)}", None
+
+
+def format_din_tai_fung_availability_for_llm(
+    availability_response: DinTaiFungAvailabilityResponse,
+) -> str:
+    """
+    Format the Din Tai Fung availability response into a human-readable string for display.
+    Prominently highlights the closest available time based on user's requested time.
+
+    Args:
+        availability_response: Parsed Din Tai Fung availability response object
+
+    Returns:
+        str: Formatted string representation of available reservation times with recommendation
+    """
+    if not availability_response.success or not availability_response.availability_data:
+        return "No availability found for the requested time."
+
+    result_lines = ["Available Reservation Times for Din Tai Fung:"]
+
+    for availability_group in availability_response.availability_data:
+        date_str = availability_group.date
+        covers = availability_group.covers
+        requested_time = availability_group.time
+
+        result_lines.append(
+            f"\n{date_str} for {covers} guests (you requested: {requested_time}):"
+        )
+
+        if availability_group.availability_list:
+            # Mark the closest time in the list if it exists
+            closest_time = (
+                availability_response.closest_match.formatted_time
+                if availability_response.closest_match
+                else None
+            )
+
+            formatted_times = []
+
+            # Add closest time first if it exists
+            if closest_time:
+                formatted_times.append(f"{closest_time} (closest match)")
+
+            # Add all other times
+            for slot in availability_group.availability_list:
+                if slot.formatted_time != closest_time:
+                    formatted_times.append(slot.formatted_time)
+
+            result_lines.append(f"  Available times: {', '.join(formatted_times)}")
+        else:
+            result_lines.append("  No available times found")
+
+    return "\n".join(result_lines)
+
+
+def get_din_tai_fung_reservation_url(
+    availability_response: DinTaiFungAvailabilityResponse,
+) -> Tuple[bool, str, Optional[str]]:
+    """
+    Extract the reservation URL from Din Tai Fung availability response.
+
+    Args:
+        availability_response: Parsed Din Tai Fung availability response object
+
+    Returns:
+        Tuple containing:
+        - bool: Success status
+        - str: Error message or success message
+        - Optional[str]: Full reservation URL or None
+    """
+    if not availability_response.success or not availability_response.closest_match:
+        return False, "No reservation slots available for the requested time.", None
+
+    closest_match = availability_response.closest_match
+    if not closest_match.form_action:
+        return False, "No reservation URL available.", None
+
+    # Construct the full reservation URL
+    base_url = "https://www.yelp.com"
+    reservation_url = f"{base_url}{closest_match.form_action}"
+
+    return (
+        True,
+        f"Reservation URL generated for {closest_match.formatted_time}",
+        reservation_url,
+    )

@@ -11,6 +11,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.utils.ordering._llm import llm_call
 from tools.yelp_tool._apis import (
     create_hold,
+    get_din_tai_fung_availability,
     get_openings,
     get_waitlist_status,
     get_yelp_bearer_token,
@@ -22,12 +23,15 @@ from tools.yelp_tool._prompt_constants import (
     RESERVATION_EXTRACTION_USER_PROMPT,
 )
 from tools.yelp_tool._utils import (
+    create_din_tai_fung_availability_request,
     create_holds_request,
     create_openings_request,
     create_reservation_from_hold,
     create_waitlist_status_request,
+    format_din_tai_fung_availability_for_llm,
     format_openings_for_llm,
     format_waitlist_status_for_llm,
+    get_din_tai_fung_reservation_url,
 )
 from tools.yelp_tool.classes import (
     OpeningsQuery,
@@ -50,9 +54,13 @@ class YelpTool(Toolkit):
         self.business_id_or_alias = business_id_or_alias
         self.tool_metadata = tool_metadata
 
-        self.register(self.get_restaurant_openings)
-        self.register(self.make_reservation)
-        self.register(self.get_waitlist_status)
+        if self.business_id_or_alias == "din-tai-fung-new-york-3":
+            self.register(self.get_openings_din_tai_fung)
+            self.register(self.make_reservation_din_tai_fung)
+        else:
+            self.register(self.get_restaurant_openings)
+            self.register(self.make_reservation)
+            self.register(self.get_waitlist_status)
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -363,3 +371,142 @@ class YelpTool(Toolkit):
             )
             logger.debug(traceback.format_exc())
             return "Failed to get waitlist status. Please try again."
+
+    @tool
+    def get_openings_din_tai_fung(self, latest_user_message: str) -> str:
+        """
+        Get available reservation times for Din Tai Fung using their custom search endpoint.
+
+        Use when: User wants to check availability or see time options for Din Tai Fung.
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
+
+        Returns:
+            str: Formatted string containing available reservation times, or error message
+        """
+        try:
+            # Get chat history and extract search parameters
+            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+
+            # Extract using OpeningsQuery class
+            openings_query = llm_call(
+                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT,
+                prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
+                    chat_history=chat_history
+                ),
+                response_format=OpeningsQuery,
+                reasoning=False,
+            )
+
+            if not isinstance(openings_query, OpeningsQuery):
+                return "I couldn't understand your reservation search request. Please specify the number of people, date, and time you'd like to search for."
+
+            # Validate required fields
+            if (
+                not openings_query.covers
+                or not openings_query.date
+                or not openings_query.time
+            ):
+                missing_fields = []
+                if not openings_query.covers:
+                    missing_fields.append("number of people")
+                if not openings_query.date:
+                    missing_fields.append("date")
+                if not openings_query.time:
+                    missing_fields.append("time")
+
+                return f"To search for available times, I need the following information: {', '.join(missing_fields)}. Please provide these details."
+
+            # Create request object
+            success, message, request_obj = create_din_tai_fung_availability_request(
+                covers=openings_query.covers,  # type: ignore
+                date=openings_query.date,  # type: ignore
+                time=openings_query.time,  # type: ignore
+            )
+
+            if not success or not request_obj:
+                return f"Invalid request parameters: {message}"
+
+            # Make API call
+            response = get_din_tai_fung_availability(request_params=request_obj)
+
+            # Format response for display
+            formatted_response = format_din_tai_fung_availability_for_llm(response)
+            return formatted_response
+
+        except Exception as e:
+            logger.debug(f"[YelpTool.get_openings_din_tai_fung] Error: {e}")
+            logger.debug(traceback.format_exc())
+            return "Failed to get restaurant openings. Please try again."
+
+    @tool
+    def make_reservation_din_tai_fung(self, latest_user_message: str) -> str:
+        """
+        Make a reservation for Din Tai Fung using their custom workflow.
+
+        Use when: User explicitly wants to book/place/make a reservation at Din Tai Fung.
+        Required info: number of people, date, time.
+
+        This will return a link to complete the reservation on Yelp's site.
+        """
+        try:
+            # Get chat history and extract search parameters
+            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+
+            # Extract using OpeningsQuery class for basic parameters
+            openings_query = llm_call(
+                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT,
+                prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
+                    chat_history=chat_history
+                ),
+                response_format=OpeningsQuery,
+                reasoning=False,
+            )
+
+            if not isinstance(openings_query, OpeningsQuery):
+                return "I couldn't understand your reservation request. Please specify the number of people, date, and time you'd like to book."
+
+            # Validate required fields
+            if (
+                not openings_query.covers
+                or not openings_query.date
+                or not openings_query.time
+            ):
+                missing_fields = []
+                if not openings_query.covers:
+                    missing_fields.append("number of people")
+                if not openings_query.date:
+                    missing_fields.append("date")
+                if not openings_query.time:
+                    missing_fields.append("time")
+
+                return f"To make a reservation, I need the following information: {', '.join(missing_fields)}. Please provide these details."
+
+            # Create request object
+            success, message, request_obj = create_din_tai_fung_availability_request(
+                covers=openings_query.covers,  # type: ignore
+                date=openings_query.date,  # type: ignore
+                time=openings_query.time,  # type: ignore
+            )
+
+            if not success or not request_obj:
+                return f"Invalid request parameters: {message}"
+
+            # Get availability data
+            response = get_din_tai_fung_availability(request_params=request_obj)
+
+            # Extract reservation URL
+            url_success, url_message, reservation_url = (
+                get_din_tai_fung_reservation_url(response)
+            )
+
+            if not url_success or not reservation_url:
+                return url_message
+
+            return f"I found availability for {openings_query.covers} people on {openings_query.date}.\n\nThe closest available time is {response.closest_match.formatted_time if response.closest_match else 'N/A'}.\n\nPlease complete your reservation here: {reservation_url}"
+
+        except Exception as e:
+            logger.debug(f"[YelpTool.make_reservation_din_tai_fung] Error: {e}")
+            logger.debug(traceback.format_exc())
+            return "Failed to make reservation. Please try again."
