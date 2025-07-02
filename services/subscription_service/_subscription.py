@@ -683,6 +683,26 @@ def cancel_account_subscription(
                 raise ValueError(
                     "Cannot cancel free trial while paid subscription is active"
                 )
+
+    # Cancel Stripe subscription first if it exists
+    if subscription_to_cancel.stripe_subscription_id:
+        stripe_cancelled = _stripe.cancel_subscription(
+            subscription_to_cancel.stripe_subscription_id
+        )
+        if not stripe_cancelled:
+            raise RuntimeError(
+                f"Failed to cancel Stripe subscription {subscription_to_cancel.stripe_subscription_id}. "
+                "Internal subscription will not be cancelled to maintain data consistency."
+            )
+        logger.info(
+            "Successfully cancelled Stripe subscription",
+            extra={
+                "account_id": str(account.id),
+                "subscription_external_id": str(external_id),
+                "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
+            },
+        )
+
     old_subscription = copy.copy(subscription_to_cancel)
 
     try:
@@ -693,7 +713,7 @@ def cancel_account_subscription(
             account_id=account.id,
             resource_id=str(external_id),
             old_record=old_subscription,
-            auto_commit=False,
+            auto_commit=True,
         ) as ctx:
             cancelled_subscription = (
                 subscription_repository.cancel_account_subscription(
@@ -743,6 +763,20 @@ def create_checkout_url(
     customer_email: str | None,
     redirect_url_prefix: str,
 ) -> str | None:
+    """
+    Create a Stripe checkout URL for a subscription.
+
+    Args:
+        session: Database session
+        account_id: UUID of the account creating the subscription
+        external_id: External ID of the subscription to create checkout for
+        project_ids: List of project UUIDs to associate with the subscription
+        customer_email: Optional email for the customer
+        redirect_url_prefix: URL prefix for success/cancel redirects
+
+    Returns:
+        Checkout URL string or None if subscription not found
+    """
     # Can't bill a subscription that has 0 projects
     if not project_ids:
         raise ValueError("Account has no projects to associate with the subscription")
@@ -753,10 +787,10 @@ def create_checkout_url(
     if not subscription or subscription.account_id != account_id:
         return None
 
-    # Validate subscription is active
-    if subscription.status != SubscriptionStatus.active:
+    # Validate subscription must be pending
+    if subscription.status != SubscriptionStatus.pending:
         raise ValueError(
-            f"Subscription status must be active, but is {subscription.status}"
+            f"Subscription status must be pending, but is {subscription.status}"
         )
 
     # Validate subscription doesn't already have a Stripe subscription ID
@@ -777,6 +811,7 @@ def create_checkout_url(
         customer_email=customer_email,
         price_id=plan.stripe_price_id,
         redirect_url_prefix=redirect_url_prefix,
+        start_date=subscription.start_date,
     )
 
     if not checkout_session or not checkout_session.url:

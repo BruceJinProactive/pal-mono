@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from datetime import datetime
+from typing import Any, Dict
 
 import stripe
 from stripe.checkout import Session
@@ -22,34 +23,70 @@ def create_checkout_session(
     customer_email: str | None,
     price_id: str,
     redirect_url_prefix: str,
+    start_date: datetime | None = None,
 ) -> Session:
     """
     Creates a new checkout session that allows user to subscribe to our product and
     automatically get charged the monthly fee by stripe.
+
+    Args:
+        account_id: UUID of the account creating the subscription
+        project_ids: List of project UUIDs to associate with the subscription
+        customer_email: Optional email for the customer
+        price_id: Stripe price ID for the subscription
+        redirect_url_prefix: URL prefix for success/cancel redirects
+        start_date: Optional datetime when billing starts and trial ends.
+                   If None, subscription begins immediately with no trial.
+
+    Returns:
+        Stripe checkout session object
     """
     redirect_url_prefix = redirect_url_prefix.rstrip("/")
 
-    kwargs = {}
-    if customer_email:
-        kwargs["customer_email"] = customer_email
+    # Build subscription_data
+    subscription_data_params: Dict[str, Any] = {
+        "metadata": {
+            "project_ids": json.dumps([str(pid) for pid in project_ids]),
+        }
+    }
+
+    if start_date:
+        # Set start date for both billing and trial end
+        start_timestamp = int(start_date.timestamp())
+        subscription_data_params["billing_cycle_anchor"] = start_timestamp
+        subscription_data_params["trial_end"] = start_timestamp
+
+        logger.info(
+            f"Setting subscription start date and trial end to {start_date.isoformat()}",
+            extra={
+                "account_id": str(account_id),
+                "start_timestamp": start_timestamp,
+            },
+        )
+    else:
+        logger.info(
+            "Creating subscription with immediate start and no trial",
+            extra={"account_id": str(account_id)},
+        )
 
     try:
-        return stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=[
+        session_params = {
+            "mode": "subscription",
+            "line_items": [
                 {
                     "price": price_id,
                     "quantity": len(project_ids),
                 }
             ],
-            metadata={
-                "project_ids": json.dumps([str(pid) for pid in project_ids]),
-            },
-            client_reference_id=str(account_id),
-            success_url=f"{redirect_url_prefix}/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{redirect_url_prefix}/cancel",
-            **kwargs,
-        )
+            "subscription_data": subscription_data_params,
+            "client_reference_id": str(account_id),
+            "success_url": f"{redirect_url_prefix}/success?session_id={{CHECKOUT_SESSION_ID}}",
+            "cancel_url": f"{redirect_url_prefix}/cancel",
+        }
+        if customer_email:
+            session_params["customer_email"] = customer_email
+
+        return stripe.checkout.Session.create(**session_params)
     except Exception as e:
         logger.error(f"Failed to create checkout session with stripe due to error: {e}")
         raise e
@@ -220,6 +257,61 @@ def remove_project_from_subscription(
             "project_id": old_project_id,
         },
     )
+
+
+def cancel_subscription(subscription_id: str, cancel_immediately: bool = False) -> bool:
+    """
+    Cancels a Stripe subscription.
+
+    Args:
+        subscription_id: The Stripe subscription ID to cancel
+        cancel_immediately: If True, cancels immediately. If False, cancels at period end.
+
+    Returns:
+        bool: True if cancellation was successful, False otherwise
+    """
+    try:
+        if cancel_immediately:
+            # Cancel immediately
+            cancelled_subscription = stripe.Subscription.cancel(subscription_id)
+            logger.info(
+                "Successfully cancelled subscription immediately",
+                extra={
+                    "subscription_id": subscription_id,
+                    "status": cancelled_subscription.status,
+                },
+            )
+        else:
+            # Cancel at period end (default behavior)
+            updated_subscription = stripe.Subscription.modify(
+                subscription_id, cancel_at_period_end=True
+            )
+            logger.info(
+                "Successfully scheduled subscription for cancellation at period end",
+                extra={
+                    "subscription_id": subscription_id,
+                    "cancel_at_period_end": updated_subscription.cancel_at_period_end,
+                },
+            )
+        return True
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to cancel subscription: {e}",
+            extra={
+                "subscription_id": subscription_id,
+                "cancel_immediately": cancel_immediately,
+            },
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            f"Unexpected error cancelling subscription: {e}",
+            extra={
+                "subscription_id": subscription_id,
+                "cancel_immediately": cancel_immediately,
+            },
+        )
+        return False
 
 
 def parse_uuid(uuid_str: str | None) -> uuid.UUID:
