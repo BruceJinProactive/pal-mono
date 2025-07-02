@@ -395,3 +395,92 @@ class ReservationQuery(BaseModel):
 
 
 ######### LLM EXTRACTION CLASSES END ############
+
+
+# DIN TAI FUNG API CLASSES START
+
+
+class DinTaiFungAvailabilitySlot(BaseModel):
+    """Individual availability slot from Din Tai Fung endpoint"""
+
+    timestamp: int = Field(description="Unix timestamp for the availability slot")
+    formatted_time: str = Field(
+        description="Human-readable time format (e.g., '3:45 PM')"
+    )
+    form_action: str = Field(description="Form action URL for making reservation")
+    csrf_token: str = Field(description="CSRF token for the reservation form")
+    isodate: str = Field(description="ISO date string with timezone")
+
+
+class DinTaiFungAvailabilityGroup(BaseModel):
+    """Availability group for a specific date/time search"""
+
+    availability_list: List[DinTaiFungAvailabilitySlot] = Field(
+        description="List of available time slots"
+    )
+    date: str = Field(description="Date in human-readable format (e.g., 'Thu, Jul 10')")
+    covers: int = Field(description="Number of people for the search")
+    time: str = Field(description="Requested time (e.g., '6:00 PM')")
+    timestamp: int = Field(description="Unix timestamp for the requested time")
+    msg: str = Field(description="Message template for availability")
+    isodate: str = Field(description="ISO date string for requested time")
+
+
+class DinTaiFungAvailabilityRequest(BaseModel):
+    """Request parameters for Din Tai Fung availability endpoint"""
+
+    # Query parameters
+    covers: int = Field(
+        description="How many people are attending the reservation (min. value is 1; max value is 10).",
+        ge=1,
+        le=10,
+    )
+    date: str = Field(
+        description="The date for the reservation, format is YYYY-mm-dd",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    time: str = Field(
+        description="The time of the requested reservation, format is HH:MM:SS",
+        pattern=r"^\d{2}:\d{2}:\d{2}$",
+    )
+    days_before: str = Field(default="0", description="Days before to search")
+    days_after: str = Field(default="0", description="Days after to search")
+    biz_id: str = Field(default="Y5TqZhNxPC6BWnM7zsCSjA", description="Business ID")
+    biz_lat: str = Field(default="40", description="Business latitude")
+    biz_long: str = Field(default="-75", description="Business longitude")
+
+
+class DinTaiFungAvailabilityResponse(BaseModel):
+    """Response from Din Tai Fung availability endpoint"""
+
+    success: bool = Field(description="Whether the request was successful")
+    availability_data: List[DinTaiFungAvailabilityGroup] = Field(
+        description="Available reservation times grouped by search criteria"
+    )
+    availability_profile: str = Field(
+        description="Availability profile (e.g., 'medium')"
+    )
+    exact_match: Optional[DinTaiFungAvailabilitySlot] = Field(
+        default=None, description="Exact match for requested time, if available"
+    )
+    closest_match: Optional[DinTaiFungAvailabilitySlot] = Field(
+        default=None, description="Closest available time to the requested time"
+    )
+    notify_me_message: Optional[str] = Field(
+        default=None, description="Message for notify me functionality"
+    )
+    notify_me_url: Optional[str] = Field(
+        default=None, description="URL for notify me functionality"
+    )
+    enable_next_available: bool = Field(
+        default=False, description="Whether next available feature is enabled"
+    )
+    motivational_content: Optional[str] = Field(
+        default=None, description="Motivational content for booking"
+    )
+    recovery_profile: str = Field(
+        default="none", description="Recovery profile for booking"
+    )
+
+
+# DIN TAI FUNG API CLASSES END
