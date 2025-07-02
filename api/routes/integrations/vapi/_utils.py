@@ -1,12 +1,49 @@
 import os
+from typing import Any, Dict
 
 from fastapi import Request
 
+from db.tables.agents import SpeechRate
 from utils.log import logger
 
 # Constants
 VAPI_SECRET_HEADER = "X-VAPI-SIGNATURE"
 VAPI_TIMESTAMP_HEADER = "X-VAPI-TIMESTAMP"
+
+# Cartesia voice speed mapping
+CARTESIA_SPEED_MAPPING = {
+    SpeechRate.slowest: "slowest",
+    SpeechRate.slower: "slow",
+    SpeechRate.normal: "normal",
+    SpeechRate.faster: "fast",
+    SpeechRate.fastest: "fastest",
+}
+
+
+def add_voice_speed_if_supported(
+    voice_config: Dict[str, Any], speech_rate: SpeechRate
+) -> Dict[str, Any]:
+    """
+    Add speed parameter to voice config if the provider supports it.
+    Currently only supports Cartesia provider.
+
+    Args:
+        voice_config: The voice configuration dictionary
+        speech_rate: The speech rate enum
+
+    Returns:
+        Updated voice config with speed parameter if supported by the provider
+    """
+    provider = voice_config.get("provider", "").lower()
+
+    if provider == "cartesia":
+        voice_config = voice_config.copy()  # Avoid mutating the original dict
+        voice_config["speed"] = CARTESIA_SPEED_MAPPING.get(speech_rate, "normal")
+        logger.debug(
+            f"Applied Cartesia speed {voice_config['speed']} for speech rate {speech_rate}"
+        )
+
+    return voice_config
 
 
 def validate_vapi_request(request: Request) -> bool:

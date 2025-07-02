@@ -21,7 +21,7 @@ from db.tables.types import Channel
 from services import agent_service, project_service, user_service
 from utils.log import logger
 
-from ._utils import validate_vapi_request
+from ._utils import add_voice_speed_if_supported, validate_vapi_request
 
 SPORTSMAN_VOICE_ID = "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
 
@@ -215,6 +215,13 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         else:
             voice_id = config.persona.voice_id
 
+            # Get speech rate from config
+        if dynamic_vapi_config and config.voice_config.speech_rate:
+            speech_rate = config.voice_config.speech_rate
+        else:
+            # Default to normal if not configured
+            speech_rate = SpeechRate.normal
+
         if config.persona.multilingual:
             transcriber = {
                 "provider": "deepgram",
@@ -237,6 +244,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 "voiceId": voice_id or SPORTSMAN_VOICE_ID,
                 "model": "sonic",
             }
+
+        # Add speed if provider supports it
+        voice = add_voice_speed_if_supported(voice, speech_rate)
 
         if dynamic_vapi_config and config.voice_config.background_noise:
             background_sound = "office"
@@ -570,25 +580,3 @@ async def handle_session_closure(message_data, session: AsyncSession):
     except Exception as e:
         logger.error(f"Error in handle_session_closure: {str(e)}")
         return {"error": str(e)}
-
-
-def map_speech_rate(speech_rate: SpeechRate) -> str:
-    """
-    Map the speech rate to a speed string expected by vapi.
-
-    Args:
-        speech_rate: The speech rate enum
-
-    Returns:
-        float: The speed value
-    """
-    if speech_rate == SpeechRate.slowest:
-        return "slowest"
-    elif speech_rate == SpeechRate.slower:
-        return "slow"
-    elif speech_rate == SpeechRate.faster:
-        return "fast"
-    elif speech_rate == SpeechRate.fastest:
-        return "fastest"
-    else:
-        return "normal"
