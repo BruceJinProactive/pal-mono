@@ -4,14 +4,14 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from db.tables.types import AuthType, IntegrationType, POSProvider
+from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 
 
 # Request models
-class CreateIntegrationRequest(BaseModel):
+class IntegrationRequest(BaseModel):
     """Create Integration Request"""
 
-    provider: POSProvider = Field(..., description="The POS provider")
+    provider: IntegrationProvider = Field(..., description="The POS provider")
     integration_type: IntegrationType = Field(
         ..., description="The type of integration"
     )
@@ -47,50 +47,13 @@ class CreateIntegrationRequest(BaseModel):
         )
 
 
-class UpdateIntegrationRequest(BaseModel):
-    """Update Integration Request"""
-
-    provider: Optional[POSProvider] = Field(None, description="The POS provider")
-    integration_type: Optional[IntegrationType] = Field(
-        None, description="The type of integration"
-    )
-    auth_type: Optional[AuthType] = Field(None, description="The authentication type")
-    business_id: Optional[str] = Field(
-        None, description="Business identifier from the provider"
-    )
-    raw_config: Optional[Dict] = Field(None, description="Additional metadata")
-    access_token: Optional[str] = Field(None, description="Access token for OAuth")
-    refresh_token: Optional[str] = Field(None, description="Refresh token for OAuth")
-    client_id: Optional[str] = Field(None, description="Client ID for OAuth")
-    client_secret: Optional[str] = Field(None, description="Client secret for OAuth")
-    api_key: Optional[str] = Field(
-        None, description="API key for API key authentication"
-    )
-
-    def to_update_integration_params(self):
-        from services.integration_service.schema import UpdateIntegrationParams
-
-        return UpdateIntegrationParams(
-            provider=self.provider,
-            integration_type=self.integration_type,
-            auth_type=self.auth_type,
-            business_id=self.business_id,
-            raw_config=self.raw_config,
-            access_token=self.access_token,
-            refresh_token=self.refresh_token,
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            api_key=self.api_key,
-        )
-
-
 # Response models
 class IntegrationResponse(BaseModel):
     """Integration Response"""
 
     id: uuid.UUID = Field(..., description="Integration ID")
     account_id: uuid.UUID = Field(..., description="Account ID")
-    provider: POSProvider = Field(..., description="The POS provider")
+    provider: IntegrationProvider = Field(..., description="The POS provider")
     integration_type: IntegrationType = Field(
         ..., description="The type of integration"
     )
@@ -114,7 +77,7 @@ class IntegrationSummaryResponse(BaseModel):
     """Integration Summary Response"""
 
     id: uuid.UUID = Field(..., description="Integration ID")
-    provider: POSProvider = Field(..., description="The POS provider")
+    provider: IntegrationProvider = Field(..., description="The POS provider")
     integration_type: IntegrationType = Field(
         ..., description="The type of integration"
     )

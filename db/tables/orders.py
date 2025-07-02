@@ -13,7 +13,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
-from .types import POSProvider
+from .types import IntegrationProvider
 
 
 class Order(Base):
@@ -37,9 +37,9 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(), nullable=False)
 
     # Integration details
-    vendor: Mapped[POSProvider | None] = mapped_column(
+    vendor: Mapped[IntegrationProvider | None] = mapped_column(
         Enum(
-            POSProvider,
+            IntegrationProvider,
         ),
         nullable=True,
     )

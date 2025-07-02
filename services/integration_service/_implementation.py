@@ -9,7 +9,6 @@ from db.tables.integration import Integration, ProjectIntegration
 from services.integration_service.schema import (
     IntegrationParams,
     ProjectIntegrationParams,
-    UpdateIntegrationParams,
 )
 from utils.log import logger
 
@@ -54,7 +53,7 @@ def update_integration(
     session: Session,
     account_id: uuid.UUID,
     integration_id: uuid.UUID,
-    params: UpdateIntegrationParams,
+    params: IntegrationParams,
 ) -> Optional[Integration]:
     """Update an integration."""
     integration_repository = db.IntegrationRepository(session)

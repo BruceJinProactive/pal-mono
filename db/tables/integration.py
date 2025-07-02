@@ -13,7 +13,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
-from .types import AuthType, IntegrationType, POSProvider
+from .types import AuthType, IntegrationProvider, IntegrationType
 
 if TYPE_CHECKING:
     pass
@@ -32,7 +32,9 @@ class Integration(Base):
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
-    provider: Mapped[POSProvider] = mapped_column(Enum(POSProvider), nullable=False)
+    provider: Mapped[IntegrationProvider] = mapped_column(
+        Enum(IntegrationProvider), nullable=False
+    )
     integration_type: Mapped[IntegrationType] = mapped_column(
         Enum(IntegrationType), nullable=False
     )

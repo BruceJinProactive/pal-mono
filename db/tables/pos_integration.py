@@ -11,7 +11,7 @@ from sqlalchemy.sql import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
-from .types import POSProvider
+from .types import IntegrationProvider
 
 
 class POSState(str, enum.Enum):
@@ -30,7 +30,9 @@ class POSIntegration(Base):
         index=True,
     )
     store_identifier: Mapped[str] = mapped_column(String, nullable=False)
-    provider: Mapped[POSProvider] = mapped_column(Enum(POSProvider), nullable=False)
+    provider: Mapped[IntegrationProvider] = mapped_column(
+        Enum(IntegrationProvider), nullable=False
+    )
     state: Mapped[POSState] = mapped_column(Enum(POSState), nullable=False)
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True

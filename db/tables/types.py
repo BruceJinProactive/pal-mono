@@ -58,12 +58,13 @@ class Language(str, enum.Enum):
     multilingual = "multilingual"
 
 
-class POSProvider(str, enum.Enum):
+class IntegrationProvider(str, enum.Enum):
     yelp = "yelp"
     toast = "toast"
     olo = "olo"
     adora = "adora"
     square = "square"
+    opentable = "opentable"
 
 
 class IntegrationType(str, enum.Enum):

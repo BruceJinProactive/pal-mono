@@ -6,13 +6,12 @@ from sqlalchemy.orm import Session
 import db
 import services.integration_service as integration_service
 from api.schemas.admin.integration import (
-    CreateIntegrationRequest,
     CreateProjectIntegrationRequest,
+    IntegrationRequest,
     IntegrationResponse,
     ListIntegrationsResponse,
     ListProjectIntegrationsResponse,
     ProjectIntegrationResponse,
-    UpdateIntegrationRequest,
     UpdateProjectIntegrationRequest,
 )
 
@@ -73,7 +72,7 @@ def get_integration(
 
 async def create_integration(
     account_name: str,
-    integration: CreateIntegrationRequest,
+    integration: IntegrationRequest,
     context: UserContext,
     session: Session,
 ) -> IntegrationResponse:
@@ -99,7 +98,7 @@ async def create_integration(
 async def update_integration(
     account_name: str,
     integration_id: uuid.UUID,
-    integration: UpdateIntegrationRequest,
+    integration: IntegrationRequest,
     context: UserContext,
     session: Session,
 ) -> IntegrationResponse:
@@ -125,7 +124,7 @@ async def update_integration(
         session=session,
         account_id=account.id,
         integration_id=integration_id,
-        params=integration.to_update_integration_params(),
+        params=integration.to_integration_params(),
     )
 
     if not updated_integration:

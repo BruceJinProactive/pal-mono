@@ -50,13 +50,12 @@ from api.schemas.admin.feedback import (
 )
 from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
 from api.schemas.admin.integration import (
-    CreateIntegrationRequest,
     CreateProjectIntegrationRequest,
+    IntegrationRequest,
     IntegrationResponse,
     ListIntegrationsResponse,
     ListProjectIntegrationsResponse,
     ProjectIntegrationResponse,
-    UpdateIntegrationRequest,
     UpdateProjectIntegrationRequest,
 )
 from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
@@ -71,7 +70,6 @@ from api.schemas.admin.phone_number import (
     ReleaseProjectNumberRequest,
     ReserveProjectNumberRequest,
 )
-from api.schemas.admin.pos_integration import POSIntegrationRequest
 from api.schemas.admin.project import (
     CreateProjectRequest,
     Project,
@@ -98,8 +96,11 @@ from api.schemas.admin.user_management import (
 )
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
-from db.tables.types import Channel
+from db.tables.types import Channel, IntegrationProvider
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
+from services.integration_service._utils import (
+    store_integration_credentials,
+)
 
 from . import (
     _account,
@@ -373,13 +374,16 @@ def get_integration(
 )
 async def create_integration(
     account_name: str,
-    integration: CreateIntegrationRequest,
+    integration: IntegrationRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> IntegrationResponse:
     """
     Create a new integration for the specified account.
     """
+
+    integration = store_integration_credentials(integration, account_name)
+
     return await _integration.create_integration(
         account_name, integration, context, session
     )
@@ -389,13 +393,20 @@ async def create_integration(
 async def update_integration(
     account_name: str,
     integration_id: uuid.UUID,
-    integration: UpdateIntegrationRequest,
+    integration: IntegrationRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> IntegrationResponse:
     """
     Update an existing integration.
     """
+
+    provider = _integration.get_integration(
+        account_name, integration_id, context, session
+    ).provider
+    integration.provider = provider
+    integration = store_integration_credentials(integration, account_name)
+
     return await _integration.update_integration(
         account_name, integration_id, integration, context, session
     )
@@ -1017,36 +1028,6 @@ async def get_project_instagram_username(
 
     """
     return _projects.get_project_instagram_username(project_id, session)
-
-
-@admin_router.put("/projects/{project_id}/pos_integrations")
-async def set_project_pos_integration(
-    project_id: uuid.UUID,
-    request: POSIntegrationRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-):
-    """
-    Creates a new POS integration for a project, if the project already has
-    an existing integration, it will be replaced.
-    """
-    return await _pos_integration.set_project_pos_integration(
-        context, session, project_id, request
-    )
-
-
-@admin_router.get("/projects/{project_id}/pos_integrations")
-async def get_project_pos_integration(
-    project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-):
-    """
-    Get the POS integration for a project.
-    """
-    return await _pos_integration.get_project_pos_integration(
-        context, session, project_id
-    )
 
 
 """

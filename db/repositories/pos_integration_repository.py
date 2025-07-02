@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from db.tables.change_log import ChangeResourceType
 from db.tables.pos_integration import POSIntegration, POSState
-from db.tables.types import POSProvider
+from db.tables.types import IntegrationProvider
 from utils.log import logger
 
 
@@ -20,7 +20,7 @@ class POSIntegrationRepository:
         created_by: str,
         project_id: uuid.UUID,
         store_identifier: str,
-        provider: POSProvider,
+        provider: IntegrationProvider,
         state: POSState = POSState.active,
     ) -> POSIntegration:
         """
@@ -105,7 +105,7 @@ class POSIntegrationRepository:
         self,
         project_id: uuid.UUID,
         store_identifier: str,
-        provider: POSProvider,
+        provider: IntegrationProvider,
         state: POSState,
     ) -> POSIntegration:
         try:

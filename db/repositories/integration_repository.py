@@ -5,7 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.tables.integration import Integration
-from db.tables.types import AuthType, IntegrationType, POSProvider
+from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 from utils.log import logger
 
 
@@ -50,7 +50,7 @@ class IntegrationRepository:
     def get_integrations_by_provider_and_type(
         self,
         account_id: uuid.UUID,
-        provider: POSProvider,
+        provider: IntegrationProvider,
         integration_type: IntegrationType,
     ) -> List[Integration]:
         """Retrieve integrations by provider and type for an account."""
@@ -70,7 +70,7 @@ class IntegrationRepository:
     def create_integration(
         self,
         account_id: uuid.UUID,
-        provider: POSProvider,
+        provider: IntegrationProvider,
         integration_type: IntegrationType,
         auth_type: AuthType,
         **kwargs,
