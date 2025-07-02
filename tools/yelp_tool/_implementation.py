@@ -314,7 +314,41 @@ class YelpTool(Toolkit):
                 f"[YelpTool.make_reservation] Hold created successfully with ID: {hold_response.hold_id}"
             )
 
-            # Step 3: Create the reservation using the hold
+            # Step 2.5: Check if credit card is required - if so, return the reserve URL
+            if hold_response.credit_card_hold:
+                # Validate that reserve_url is available
+                if not hold_response.reserve_url:
+                    logger.debug(
+                        "[YelpTool.make_reservation] Credit card hold required but no reserve_url provided"
+                    )
+                    return "This restaurant requires a credit card to complete the reservation, but the booking link is not available. Please try again later."
+
+                logger.debug(
+                    "[YelpTool.make_reservation] Restaurant requires credit card hold, returning reserve URL"
+                )
+
+                # Format a user-friendly message with the reserve URL
+                message_parts = [
+                    f"I've placed a temporary hold on your reservation for {reservation_query.covers} people on {reservation_query.date} at {reservation_query.time}.",
+                    "This restaurant requires a credit card to complete the reservation.",
+                    f"Please complete your reservation by clicking this link: {hold_response.reserve_url}",
+                    "Note: This hold expires in 5 minutes.",
+                ]
+
+                if hold_response.notes and hold_response.notes.strip():
+                    message_parts.append(f"Restaurant notes: {hold_response.notes}")
+
+                if (
+                    hold_response.cancellation_policy
+                    and hold_response.cancellation_policy.strip()
+                ):
+                    message_parts.append(
+                        f"Cancellation policy: {hold_response.cancellation_policy}"
+                    )
+
+                return "\n\n".join(message_parts)
+
+            # Step 3: Create the reservation using the hold (only if no credit card required)
             reservation_success, reservation_message, reservation_request = (
                 create_reservation_from_hold_response(
                     holds_response=hold_response,
@@ -330,7 +364,7 @@ class YelpTool(Toolkit):
             if not reservation_success or not reservation_request:
                 return f"Failed to create reservation request: {reservation_message}"
 
-            # Step 4: Create the reservation with proper error handling
+            # Step 4: Create the reservation with proper error handling (only if no credit card required)
             try:
                 reservation_response = create_reservation(
                     bearer_token=bearer_token,
