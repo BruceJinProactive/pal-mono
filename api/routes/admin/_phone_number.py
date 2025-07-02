@@ -28,6 +28,13 @@ async def reserve_phone_number(
     if project is None:
         raise not_found_error(f"Project with id {project_id} not found")
 
+    logger.info(
+        "Attempting to reserve a new phone number for project",
+        extra={
+            "project_id": project_id,
+        },
+    )
+
     try:
         number_service = NumberService()
         number_response = number_service.setup_number(
@@ -61,14 +68,6 @@ async def reserve_phone_number(
             ),
             auto_commit=True,
         )
-        logger.info(
-            "Successfully reserved new phone number for project",
-            extra={
-                "project_id": project_id,
-                "phone_number": number_response.number,
-                "channels": request.channels,
-            },
-        )
     except Exception:
         logger.exception("Failed to update channel identifiers with new voice number")
         number_service.release_number(number_response.number)
@@ -76,6 +75,14 @@ async def reserve_phone_number(
             status_code=400,
             detail="Failed to update project. The purchased number has been released.",
         )
+    logger.info(
+        "Successfully reserved new phone number for project",
+        extra={
+            "project_id": project_id,
+            "phone_number": number_response.number,
+            "channels": request.channels,
+        },
+    )
 
 
 async def release_phone_number(
@@ -112,28 +119,35 @@ async def release_phone_number(
     try:
         number_service = NumberService()
         number_service.release_number(request.phone_number)
-    except ValueError:
+    except Exception:
         logger.exception("Failed to release phone number")
         raise HTTPException(
             status_code=500,
             detail="Failed to release phone number. Please try again later.",
         )
 
-    new_channel_identifiers = []
-    for channel_identifier in project.channel_identifiers or []:
-        channel = channel_identifier.split(":")[0]
-        identifier = channel_identifier.split(":")[1]
-        if channel in ["sms", "voice"] and identifier == request.phone_number:
-            continue
-        new_channel_identifiers.append(channel_identifier)
+    try:
+        new_channel_identifiers = []
+        for channel_identifier in project.channel_identifiers or []:
+            channel = channel_identifier.split(":")[0]
+            identifier = channel_identifier.split(":")[1]
+            if channel in ["sms", "voice"] and identifier == request.phone_number:
+                continue
+            new_channel_identifiers.append(channel_identifier)
 
-    project_service.update_project(
-        session,
-        context,
-        project_id,
-        params=ProjectParams(
-            channel_identifiers=new_channel_identifiers,
-        ),
-        auto_commit=True,
-    )
+        project_service.update_project(
+            session,
+            context,
+            project_id,
+            params=ProjectParams(
+                channel_identifiers=new_channel_identifiers,
+            ),
+            auto_commit=True,
+        )
+    except Exception:
+        logger.exception("Failed to update project channel identifiers")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update project channel identifiers. Please try again later.",
+        )
     logger.info("Successfully released phone number from project")
