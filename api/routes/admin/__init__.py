@@ -96,7 +96,7 @@ from api.schemas.admin.user_management import (
 )
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
-from db.tables.types import Channel, IntegrationProvider
+from db.tables.types import Channel
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 from services.integration_service._utils import (
     store_integration_credentials,
@@ -115,7 +115,6 @@ from . import (
     _knowledge,
     _lead,
     _phone_number,
-    _pos_integration,
     _projects,
     _subscription,
     _users,
