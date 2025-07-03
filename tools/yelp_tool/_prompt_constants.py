@@ -16,17 +16,17 @@ Your task is to extract the following information from the chat history:
 6. Assume the year as that of the current date {current_date} unless otherwise specified.
 
 # TIME FILTERING RULES:
-- If user asks for "openings after [time]" (e.g., "after 6pm"), set num_results_before to 0
-- If user asks for "openings before [time]" (e.g., "before 8pm"), set num_results_after to 0
-- If user asks for "later times" or "later slots", set num_results_before to 0
-- If user asks for "earlier times" or "earlier slots", set num_results_after to 0
-- If no time filtering is mentioned, leave both fields as null
+- If user asks for "openings after [time]" (e.g., "after 6pm"), set the time to that time (e.g., "18:00") AND set num_results_before to 0
+- If user asks for "openings before [time]" (e.g., "before 8pm"), set the time to that time (e.g., "20:00") AND set num_results_after to 0
+- If user asks for "later times" or "later slots", set num_results_before to 0 (but keep the original time if specified)
+- If user asks for "earlier times" or "earlier slots", set num_results_after to 0 (but keep the original time if specified)
+- If no time filtering is mentioned, leave both num_results_before and num_results_after as null
 - IMPORTANT: Never set both num_results_before and num_results_after to 0 at the same time
 
 # RULES:
 - covers must be between 1 and 10
 - date must be in YYYY-MM-DD format
-- time must be in HH:MM format (24-hour)
+- time must be in HH:MM format (24-hour) and cannot be empty
 - get_covers_range is optional and defaults to false
 - num_results_before: set to 0 only when user wants results AFTER a certain time, otherwise null
 - num_results_after: set to 0 only when user wants results BEFORE a certain time, otherwise null
