@@ -169,14 +169,14 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
     }
 
 
-def _create_openai_client() -> openai.OpenAI:
+def _create_openai_client() -> openai.AsyncOpenAI:
     """Create and return an OpenAI client with API key validation."""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         logger.error("OPENAI_API_KEY environment variable not found")
         raise ValueError("OPENAI_API_KEY environment variable is required")
 
-    return openai.OpenAI(api_key=api_key)
+    return openai.AsyncOpenAI(api_key=api_key)
 
 
 def _create_response_data(model: str, content: str) -> dict:
@@ -204,7 +204,7 @@ def _create_response_data(model: str, content: str) -> dict:
     }
 
 
-def _send_urls_via_sms(
+async def _send_urls_via_sms(
     collected_content: List[str],
     sender_identifier: str,
     recipient_identifier: str,
@@ -265,7 +265,7 @@ Instructions:
 - Use line breaks for clarity
 """
 
-            response = openai_client.chat.completions.create(
+            response = await openai_client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
@@ -433,7 +433,7 @@ async def chat_completions_agno(
                         )
 
                         # Send URLs via SMS if any are found in the collected content
-                        _send_urls_via_sms(
+                        await _send_urls_via_sms(
                             collected_content, sender_identifier, recipient_identifier
                         )
 
@@ -557,7 +557,7 @@ async def chat_completions_oai(
 
                     # Call OpenAI API with streaming
                     # Use type: ignore to bypass type checking issues with OpenAI SDK
-                    stream = openai_client.chat.completions.create(  # type: ignore
+                    stream = await openai_client.chat.completions.create(  # type: ignore
                         model=model,
                         messages=openai_messages,  # type: ignore
                         temperature=request.temperature,
@@ -652,7 +652,7 @@ async def chat_completions_oai(
 
         # Non-streaming response
         # Use type: ignore to bypass type checking issues with OpenAI SDK
-        response = openai_client.chat.completions.create(  # type: ignore
+        response = await openai_client.chat.completions.create(  # type: ignore
             model=model,
             messages=openai_messages,  # type: ignore
             temperature=request.temperature,
