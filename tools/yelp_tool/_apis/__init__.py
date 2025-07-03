@@ -307,7 +307,7 @@ def get_din_tai_fung_availability(
     This endpoint uses Din Tai Fung's specific availability API that returns time slots
     in their custom format with form actions for direct reservation.
 
-    Note: This API is not stable and may fail with connection errors. Implements retry logic.
+    Note: This API is not stable and may fail with connection errors. Implements retry logic with 6 attempts.
 
     Args:
         request_params: DinTaiFungAvailabilityRequest object containing the search parameters
@@ -323,7 +323,7 @@ def get_din_tai_fung_availability(
         "days_before": request_params.days_before,
         "days_after": request_params.days_after,
         "date": request_params.date,
-        "time": request_params.time.replace(":", "%3A"),  # URL encode colons
+        "time": request_params.time,
         "covers": str(request_params.covers),
         "biz_id": request_params.biz_id,
         "biz_lat": request_params.biz_lat,
@@ -332,12 +332,12 @@ def get_din_tai_fung_availability(
 
     api_function = "/reservations/din-tai-fung-new-york-3/search_availability"
 
-    extra_headers = {"User-Agent": "Mozilla/5.0 (compatible; YelpBookingBot)"}
+    extra_headers = {
+        "X-Requested-With": "XMLHttpRequest",
+    }
 
     # Retry configuration
-    max_retries = 5
-    base_delay = 1.0  # seconds
-
+    max_retries = 5  # 6 total attempts (0-5)
     last_exception = None
 
     for attempt in range(max_retries + 1):  # 0, 1, 2, 3, 4, 5 (6 total attempts)
@@ -396,12 +396,8 @@ def get_din_tai_fung_availability(
                 )
                 break
 
-            # Calculate delay with exponential backoff
-            delay = base_delay * (2**attempt)
-            logger.debug(
-                f"Din Tai Fung API attempt {attempt + 1} failed ({e}), retrying in {delay}s..."
-            )
-            time.sleep(delay)
+            # Retry immediately without delay
+            logger.debug(f"Din Tai Fung API attempt {attempt + 1} failed ({e}).")
 
     # If we get here, all retries failed
     raise Exception(
