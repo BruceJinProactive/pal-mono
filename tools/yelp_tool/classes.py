@@ -77,6 +77,14 @@ class YelpBookingsOpeningsRequest(BaseModel):
         default=None,
         description="If true, include the covers_range dict in the response.",
     )
+    num_results_after: Optional[int] = Field(
+        default=None,
+        description="Set to 0 if user wants to know the openings before the current result, otherwise don't include this field",
+    )
+    num_results_before: Optional[int] = Field(
+        default=None,
+        description="Set to 0 if user wants to know the openings after the current result, otherwise don't include this field",
+    )
 
 
 class ReservationTime(BaseModel):
@@ -350,6 +358,14 @@ class OpeningsQuery(BaseModel):
     get_covers_range: Optional[bool] = Field(
         default=False,
         description="If true, include the covers_range dict in the response.",
+    )
+    num_results_after: Optional[int] = Field(
+        default=None,
+        description="Set to 0 if user wants to know the openings before the current result, otherwise don't include this field",
+    )
+    num_results_before: Optional[int] = Field(
+        default=None,
+        description="Set to 0 if user wants to know the openings after the current result, otherwise don't include this field",
     )
 
 

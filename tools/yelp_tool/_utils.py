@@ -15,6 +15,7 @@ from tools.yelp_tool.classes import (
     YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
+from utils.log import logger
 
 
 def _validate_business_id_or_alias(business_id_or_alias: str) -> List[str]:
@@ -200,6 +201,8 @@ def create_openings_request(
     date: str,
     time: str,
     get_covers_range: Optional[bool] = None,
+    num_results_after: Optional[int] = None,
+    num_results_before: Optional[int] = None,
 ) -> Tuple[bool, str, Optional[YelpBookingsOpeningsRequest]]:
     """
     Validate parameters and create YelpBookingsOpeningsRequest object.
@@ -211,6 +214,8 @@ def create_openings_request(
         date: Date in YYYY-mm-dd format
         time: Time in HH:MM format
         get_covers_range: Whether to include covers range in response
+        num_results_after: Set to 0 if user wants to know the openings before the current result, otherwise don't include this field
+        num_results_before: Set to 0 if user wants to know the openings after the current result, otherwise don't include this field
 
     Returns:
         Tuple containing:
@@ -230,6 +235,14 @@ def create_openings_request(
     if errors:
         return False, "; ".join(errors), None
 
+    # if both are 0, set both to None and log an error
+    if num_results_after == 0 and num_results_before == 0:
+        logger.warning(
+            "num_results_after and num_results_before cannot both be 0, setting both to None"
+        )
+        num_results_after = None
+        num_results_before = None
+
     # Create request object
     try:
         request_obj = YelpBookingsOpeningsRequest(
@@ -238,6 +251,8 @@ def create_openings_request(
             date=date,
             time=time,
             get_covers_range=get_covers_range,
+            num_results_after=num_results_after,
+            num_results_before=num_results_before,
         )
         return True, "Request created successfully", request_obj
     except Exception as e:

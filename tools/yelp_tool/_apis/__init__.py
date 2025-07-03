@@ -57,6 +57,12 @@ def get_openings(
     if request_params.get_covers_range is not None:
         query_params["get_covers_range"] = str(request_params.get_covers_range).lower()
 
+    if request_params.num_results_after == 0:
+        query_params["num_results_after"] = "0"
+
+    if request_params.num_results_before == 0:
+        query_params["num_results_before"] = "0"
+
     response = connect_yelp_api(
         http_method="GET",
         api_function=api_function,

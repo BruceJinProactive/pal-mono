@@ -5,6 +5,7 @@ Your task is to extract the following information from the chat history:
 - Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date}.
 - Time: The desired reservation time in HH:MM format (24-hour format)
 - Whether to include covers range information (optional)
+- Time filtering preferences: Whether user wants results before or after a specific time
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not make assumptions
@@ -14,11 +15,21 @@ Your task is to extract the following information from the chat history:
 5. If information is missing, output null for that field
 6. Assume the year as that of the current date {current_date} unless otherwise specified.
 
+# TIME FILTERING RULES:
+- If user asks for "openings after [time]" (e.g., "after 6pm"), set num_results_before to 0
+- If user asks for "openings before [time]" (e.g., "before 8pm"), set num_results_after to 0
+- If user asks for "later times" or "later slots", set num_results_before to 0
+- If user asks for "earlier times" or "earlier slots", set num_results_after to 0
+- If no time filtering is mentioned, leave both fields as null
+- IMPORTANT: Never set both num_results_before and num_results_after to 0 at the same time
+
 # RULES:
 - covers must be between 1 and 10
 - date must be in YYYY-MM-DD format
 - time must be in HH:MM format (24-hour)
 - get_covers_range is optional and defaults to false
+- num_results_before: set to 0 only when user wants results AFTER a certain time, otherwise null
+- num_results_after: set to 0 only when user wants results BEFORE a certain time, otherwise null
 """
 
 OPENINGS_EXTRACTION_USER_PROMPT = """
