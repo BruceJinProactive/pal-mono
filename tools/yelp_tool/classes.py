@@ -478,7 +478,7 @@ class DinTaiFungAvailabilityResponse(BaseModel):
     motivational_content: Optional[str] = Field(
         default=None, description="Motivational content for booking"
     )
-    recovery_profile: str = Field(
+    recovery_profile: Optional[str] = Field(
         default="none", description="Recovery profile for booking"
     )
 

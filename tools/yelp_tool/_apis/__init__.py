@@ -372,25 +372,7 @@ def get_din_tai_fung_availability(
 
         except Exception as e:
             last_exception = e
-            error_str = str(e).lower()
-
-            # Check if this is a transient error that we should retry
-            transient_errors = [
-                "unexpected end of file",
-                "connection reset",
-                "connection aborted",
-                "timeout",
-                "temporary failure",
-                "network is unreachable",
-                "connection refused",
-                "read timeout",
-                "connection timed out",
-            ]
-
-            is_transient = any(err in error_str for err in transient_errors)
-
-            # Don't retry on final attempt or non-transient errors
-            if attempt == max_retries or not is_transient:
+            if attempt == max_retries:
                 logger.debug(
                     f"Din Tai Fung API failed after {attempt + 1} attempts: {e}"
                 )
