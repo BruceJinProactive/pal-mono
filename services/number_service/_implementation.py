@@ -5,12 +5,17 @@ from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
 )
+from vapi import Vapi
+from vapi.types.create_twilio_phone_number_dto import (
+    CreateTwilioPhoneNumberDto,
+)
+from vapi.types.custom_llm_model import CustomLlmModel
+from vapi.types.server import Server
 
 from utils.log import logger
 
 from ._utils import (
     AssistantConfig,
-    DynamicModuleImportManager,
     NumberResponse,
     get_server_url,
 )
@@ -66,7 +71,7 @@ class NumberService:
             # Retrieve each secret via public API
             twilio_account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
             twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-            self.vapi_token = os.environ.get("VAPI_API_KEY", "")
+            vapi_token = os.environ.get("VAPI_API_KEY", "")
 
             # Validate that none are empty or None
             missing = [
@@ -74,13 +79,14 @@ class NumberService:
                 for name, val in [
                     ("TWILIO_ACCOUNT_SID", twilio_account_sid),
                     ("TWILIO_AUTH_TOKEN", twilio_auth_token),
-                    ("VAPI_API_KEY", self.vapi_token),
+                    ("VAPI_API_KEY", vapi_token),
                 ]
                 if not val
             ]
             if missing:
                 raise KeyError(f"Missing required secrets: {', '.join(missing)}")
 
+            self.vapi_client = Vapi(token=vapi_token)
             self.twilio_client = Client(twilio_account_sid, twilio_auth_token)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize NumberService: {e}") from e
@@ -176,18 +182,11 @@ class NumberService:
         Returns:
             Assistant instance configured with the specified model
         """
-        with DynamicModuleImportManager():
-            from vapi import Vapi
-            from vapi.types.custom_llm_model import CustomLlmModel
-
-            vapi_client = Vapi(token=self.vapi_token)
-            assistant = vapi_client.assistants.create(
-                name=config["merchant_name"],
-                model=CustomLlmModel(
-                    url=config["model_url"], model=config["model_name"]
-                ),
-            )
-            return assistant.id
+        assistant = self.vapi_client.assistants.create(
+            name=config["merchant_name"],
+            model=CustomLlmModel(url=config["model_url"], model=config["model_name"]),
+        )
+        return assistant.id
 
     def setup_number(
         self,
@@ -246,30 +245,22 @@ class NumberService:
         phone_number = number_response.number
 
         # Import number to Vapi
-        with DynamicModuleImportManager():
-            try:
-                from vapi import Vapi
-                from vapi.types.create_twilio_phone_number_dto import (
-                    CreateTwilioPhoneNumberDto,
-                )
-                from vapi.types.server import Server
-
-                vapi_client = Vapi(token=self.vapi_token)
-                vapi_client.phone_numbers.create(
-                    request=CreateTwilioPhoneNumberDto(
-                        number=phone_number,
-                        twilio_account_sid=self.twilio_client.username,  # type: ignore
-                        twilio_auth_token=self.twilio_client.password,
-                        name=self._get_friendly_name(merchant_name),
-                        assistant_id=assistant_id,
-                        server=Server(url=server_url),
-                    ),
-                )
-            except Exception as e:
-                self._release_number_from_twilio(
-                    phone_number
-                )  # release the purchased number if the vapi call fails
-                raise ValueError(f"Failed to import number to Vapi: {e}") from e
+        try:
+            self.vapi_client.phone_numbers.create(
+                request=CreateTwilioPhoneNumberDto(
+                    number=phone_number,
+                    twilio_account_sid=self.twilio_client.username,  # type: ignore
+                    twilio_auth_token=self.twilio_client.password,
+                    name=self._get_friendly_name(merchant_name),
+                    assistant_id=assistant_id,
+                    server=Server(url=server_url),
+                ),
+            )
+        except Exception as e:
+            self._release_number_from_twilio(
+                phone_number
+            )  # release the purchased number if the vapi call fails
+            raise ValueError(f"Failed to import number to Vapi: {e}") from e
 
         return number_response
 
@@ -312,18 +303,15 @@ class NumberService:
         Raises:
             ValueError: If release from Vapi fails
         """
-        with DynamicModuleImportManager():
-            try:
-                from vapi import Vapi
+        try:
 
-                vapi_client = Vapi(token=self.vapi_token)
-                vapi_numbers = vapi_client.phone_numbers.list()
-                for n in vapi_numbers:
-                    if n.number == number:
-                        vapi_client.phone_numbers.delete(id=n.id)
-                        break
-            except Exception as e:
-                raise ValueError(f"Failed to release number from Vapi: {e}") from e
+            vapi_numbers = self.vapi_client.phone_numbers.list()
+            for n in vapi_numbers:
+                if n.number == number:
+                    self.vapi_client.phone_numbers.delete(id=n.id)
+                    break
+        except Exception as e:
+            raise ValueError(f"Failed to release number from Vapi: {e}") from e
 
     def _release_number_from_twilio(self, number: str):
         """Release a phone number from Twilio.
