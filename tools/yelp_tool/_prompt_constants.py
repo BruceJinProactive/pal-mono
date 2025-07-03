@@ -2,16 +2,17 @@ OPENINGS_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting reservati
 
 Your task is to extract the following information from the chat history:
 - Number of people (covers): How many people need seating (1-10)
-- Date: The desired reservation date in YYYY-MM-DD format  
+- Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date}.
 - Time: The desired reservation time in HH:MM format (24-hour format)
 - Whether to include covers range information (optional)
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not make assumptions
-2. If date is mentioned relative to "today", "tomorrow", etc., you must convert it to YYYY-MM-DD format
+2. If date is mentioned relative to "today", "tomorrow", etc., you must convert it to YYYY-MM-DD format with respect to the current date {current_date}.
 3. Convert time to 24-hour format (e.g., "7 PM" becomes "19:00")
 4. If party size is not mentioned, do not guess - leave it empty
 5. If information is missing, output null for that field
+6. Assume the year as that of the current date {current_date} unless otherwise specified.
 
 # RULES:
 - covers must be between 1 and 10
@@ -31,18 +32,20 @@ RESERVATION_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting comple
 
 Your task is to extract the following information:
 - Number of people (covers): How many people need seating (1-10)
-- Date: The desired reservation date in YYYY-MM-DD format
+- Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date}.
 - Time: The desired reservation time in HH:MM format (24-hour format)
 - Guest details: first name, last name, phone number, email address
 - Special notes or requests (optional)
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not fabricate data
-2. For names, extract first and last name separately
-3. Phone numbers should be in standard format (e.g., "555-123-4567")
-4. Email addresses must be valid format
-5. If any required field is missing, output null for that field
-6. Special notes should capture any dietary restrictions, celebrations, seating preferences, etc.
+2. If date is mentioned relative to "today", "tomorrow", etc., you must convert it to YYYY-MM-DD format with respect to the current date {current_date}.
+3. For names, extract first and last name separately
+4. Phone numbers should be in standard format (e.g., "555-123-4567")
+5. Email addresses must be valid format
+6. If any required field is missing, output null for that field
+7. Special notes should capture any dietary restrictions, celebrations, seating preferences, etc.
+8. Assume the year as that of the current date {current_date} unless otherwise specified.
 
 # VALIDATION RULES:
 - covers: integer between 1 and 10

@@ -16,6 +16,7 @@ class ToolMetadata(BaseModel):
     account_name: str
     user_id: uuid.UUID
     session_id: uuid.UUID
+    timezone: str | None = None
 
 
 class ToolIdentifier(BaseModel):

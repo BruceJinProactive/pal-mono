@@ -183,6 +183,7 @@ class RawConfig:
             account_name=self.account.name,
             user_id=self.user_id,
             session_id=self.conversation_id,
+            timezone=self.project.timezone,
         )
 
         if not raw_tools:
@@ -326,7 +327,7 @@ class RawConfig:
                 settings = raw_knowledge.get("settings")
                 self._validate_settings(provider, settings)
 
-                additional_context += f"""
+                additional_context += f"""  
                 --- MENU START ---
                 {settings["content"]}
                 --- MENU END ---

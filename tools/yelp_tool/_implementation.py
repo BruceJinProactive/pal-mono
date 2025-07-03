@@ -1,6 +1,8 @@
 import traceback
 import uuid
+from datetime import datetime
 from functools import cached_property
+from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -64,7 +66,40 @@ class YelpTool(Toolkit):
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
-        logger.debug(f"YelpTool instance created: business id={business_id_or_alias}")
+        logger.debug(
+            f"YelpTool instance created: business id={self.business_id_or_alias}"
+        )
+
+    def _get_current_date(self) -> str:
+        """
+        Get the current date in YYYY-MM-DD format based on the timezone from metadata.
+
+        Returns:
+            str: Current date in YYYY-MM-DD format
+
+        Raises:
+            ValueError: If current date cannot be determined due to invalid timezone
+        """
+        try:
+            # Determine timezone with fallback to UTC
+            timezone_str = None
+
+            if self.tool_metadata and self.tool_metadata.timezone:
+                timezone_str = self.tool_metadata.timezone
+            else:
+                # Fallback to UTC if timezone is not available
+                timezone_str = "UTC"
+                logger.warning(
+                    "[YelpTool._get_current_date] No timezone available in tool metadata, using UTC as fallback"
+                )
+
+            timezone = ZoneInfo(timezone_str)
+            current_date = datetime.now(timezone).strftime("%Y-%m-%d")
+
+            return current_date
+        except Exception as e:
+            logger.error(f"Error getting timezone-aware date: {e}")
+            raise ValueError(f"Cannot determine current date. Error: {e}") from e
 
     @cached_property
     def _yelp_bearer_token(self) -> YelpAccessToken:
@@ -146,8 +181,11 @@ class YelpTool(Toolkit):
             chat_history = self._get_chat_history(latest_user_message)  # type: ignore
 
             # Extract using OpeningsQuery class
+            current_date = self._get_current_date()
             openings_query = llm_call(
-                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT,
+                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT.format(
+                    current_date=current_date
+                ),
                 prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
                 ),
@@ -225,8 +263,11 @@ class YelpTool(Toolkit):
 
             # Extract reservation details
             chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            current_date = self._get_current_date()
             reservation_query = llm_call(
-                system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT,
+                system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT.format(
+                    current_date=current_date
+                ),
                 prompt=RESERVATION_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
                 ),
@@ -390,8 +431,11 @@ class YelpTool(Toolkit):
             chat_history = self._get_chat_history(latest_user_message)  # type: ignore
 
             # Extract using OpeningsQuery class
+            current_date = self._get_current_date()
             openings_query = llm_call(
-                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT,
+                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT.format(
+                    current_date=current_date
+                ),
                 prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
                 ),
@@ -455,8 +499,11 @@ class YelpTool(Toolkit):
             chat_history = self._get_chat_history(latest_user_message)  # type: ignore
 
             # Extract using OpeningsQuery class for basic parameters
+            current_date = self._get_current_date()
             openings_query = llm_call(
-                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT,
+                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT.format(
+                    current_date=current_date
+                ),
                 prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
                 ),
