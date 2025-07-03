@@ -336,6 +336,12 @@ def get_din_tai_fung_availability(
         "biz_long": request_params.biz_long,
     }
 
+    if request_params.num_results_after == 0:
+        query_params["num_results_after"] = "0"
+
+    if request_params.num_results_before == 0:
+        query_params["num_results_before"] = "0"
+
     api_function = "/reservations/din-tai-fung-new-york-3/search_availability"
 
     extra_headers = {

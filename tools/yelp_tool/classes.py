@@ -464,6 +464,14 @@ class DinTaiFungAvailabilityRequest(BaseModel):
     biz_id: str = Field(default="Y5TqZhNxPC6BWnM7zsCSjA", description="Business ID")
     biz_lat: str = Field(default="40", description="Business latitude")
     biz_long: str = Field(default="-75", description="Business longitude")
+    num_results_after: Optional[int] = Field(
+        default=None,
+        description="Set to 0 if user wants to know the openings before the current result, otherwise don't include this field",
+    )
+    num_results_before: Optional[int] = Field(
+        default=None,
+        description="Set to 0 if user wants to know the openings after the current result, otherwise don't include this field",
+    )
 
 
 class DinTaiFungAvailabilityResponse(BaseModel):

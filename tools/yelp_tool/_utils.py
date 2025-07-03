@@ -513,6 +513,8 @@ def create_din_tai_fung_availability_request(
     covers: int,
     date: str,
     time: str,
+    num_results_after: Optional[int] = None,
+    num_results_before: Optional[int] = None,
 ) -> Tuple[bool, str, Optional[DinTaiFungAvailabilityRequest]]:
     """
     Validate parameters and create DinTaiFungAvailabilityRequest object.
@@ -522,6 +524,8 @@ def create_din_tai_fung_availability_request(
         covers: Number of people for the reservation
         date: Date in YYYY-mm-dd format
         time: Time in HH:MM format (MUST be exactly HH:MM, nothing else)
+        num_results_after: Set to 0 if user wants to know the openings before the current result, otherwise don't include this field
+        num_results_before: Set to 0 if user wants to know the openings after the current result, otherwise don't include this field
 
     Returns:
         Tuple containing:
@@ -540,6 +544,14 @@ def create_din_tai_fung_availability_request(
     if errors:
         return False, "; ".join(errors), None
 
+    # Validate mutual exclusion of time filters
+    if num_results_after == 0 and num_results_before == 0:
+        logger.warning(
+            "num_results_after and num_results_before cannot both be 0, setting both to None"
+        )
+        num_results_after = None
+        num_results_before = None
+
     # Ensure time is exactly HH:MM format (validation already passed, but be explicit)
     time_parts = time.split(":")
     if len(time_parts) != 2:
@@ -554,6 +566,8 @@ def create_din_tai_fung_availability_request(
             covers=covers,
             date=date,
             time=time_formatted,  # This will be HH:MM:SS format
+            num_results_after=num_results_after,
+            num_results_before=num_results_before,
         )
         return True, "Request created successfully", request_obj
     except Exception as e:
