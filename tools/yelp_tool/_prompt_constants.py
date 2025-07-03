@@ -16,8 +16,8 @@ Your task is to extract the following information from the chat history:
 6. Assume the year as that of the current date {current_date} unless otherwise specified.
 
 # TIME FILTERING RULES:
-- If user asks for "openings after [time]" (e.g., "after 6pm"), set the time to that time (e.g., "18:00") AND set num_results_before to 0
-- If user asks for "openings before [time]" (e.g., "before 8pm"), set the time to that time (e.g., "20:00") AND set num_results_after to 0
+- If user asks for "openings after [time]", set the time to that time AND set num_results_before to 0, do not mistakenly set num_results_after to 0
+- If user asks for "openings before [time]", set the time to that time AND set num_results_after to 0, do not mistakenly set num_results_before to 0
 - If user asks for "later times" or "later slots", set num_results_before to 0 (but keep the original time if specified)
 - If user asks for "earlier times" or "earlier slots", set num_results_after to 0 (but keep the original time if specified)
 - If no time filtering is mentioned, leave both num_results_before and num_results_after as null
