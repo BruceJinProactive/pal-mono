@@ -1,6 +1,5 @@
 import asyncio
 import os
-import time
 
 # AsyncIterator from typing is for type hint only, not for runtime check
 from collections.abc import AsyncIterator as _AsyncIterator
@@ -16,7 +15,6 @@ from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
 from utils.dd import send_dd_histogram_metrics, traced
-from utils.log import logger
 
 
 class Agent:
@@ -134,22 +132,10 @@ class Agent:
                 )
 
                 # Update memory with the user's input
-                logger.debug(
-                    f"[TTFT] About to update memory at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                )
                 self._update_memory(input.content)
-                logger.debug(
-                    f"[TTFT] Memory update completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                )
 
                 try:
-                    logger.debug(
-                        f"[TTFT] About to call framework agent.arun at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                    )
                     output_stream = await self._agent.arun(input)  # type: ignore
-                    logger.debug(
-                        f"[TTFT] Framework agent.arun returned at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                    )
                     if not isinstance(output_stream, _AsyncIterator):
                         LLMObs.annotate(
                             tags={
@@ -171,9 +157,6 @@ class Agent:
                             f"agent_id:{self._metadata.agent_id}",
                             f"account_name:{self._metadata.account_name}",
                         ],
-                    )
-                    logger.debug(
-                        f"[TTFT] agent.waiting_first_chunk recorded at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
                     )
 
                     async for chunk in output_stream:

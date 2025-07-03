@@ -1,6 +1,5 @@
 import datetime
 import os
-import time
 import uuid
 from typing import AsyncIterator, List
 
@@ -62,29 +61,11 @@ class PalSimpleAgent:
 
         """
         # Get chat history and convert to OpenAI format
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: About to get_history_messages at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-        )
         history_messages = await self.get_history_messages(input)
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: get_history_messages completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-        )
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: About to _build_openai_input at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-        )
         openai_inputs = self._build_openai_input(history_messages)
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: _build_openai_input completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-        )
 
         # Call the CoreLLM chat method with properly typed messages
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: About to call primary_llm.chat at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-        )
         openai_response = await self.primary_llm.chat(openai_inputs, input.stream)
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: primary_llm.chat completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-        )
 
         logger.debug(
             f"[PalSimpleAgent] primary_llm called with {len(history_messages)} messages, streaming={input.stream}"
@@ -105,14 +86,8 @@ class PalSimpleAgent:
         """
         # Query history messages from storage
         current_time = datetime.datetime.now(datetime.timezone.utc)
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: About to query_history_messages at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-        )
         history_messages = await query_history_messages(
             uuid.UUID(self.config.metadata.session_id), limit=100
-        )
-        logger.debug(
-            f"[TTFT] PAL_SIMPLE: query_history_messages completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
         )
 
         messages = [

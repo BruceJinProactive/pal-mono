@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import time
 import uuid
 from typing import AsyncIterator, Optional
 
@@ -181,23 +180,11 @@ class AgnoAgent:
 
                 output_content = ""
                 with trace_block("Agno Core Agent Processing"):
-                    logger.debug(
-                        f"[TTFT] AGNO: About to _build_model_inputs at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                    )
                     message, messages = await self._build_model_inputs(input)
-                    logger.debug(
-                        f"[TTFT] AGNO: _build_model_inputs completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                    )
-                    logger.debug(
-                        f"[TTFT] AGNO: About to call _agent.arun at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                    )
                     result = await self._agent.arun(
                         message,
                         messages=messages,
                         stream=input.stream,
-                    )
-                    logger.debug(
-                        f"[TTFT] AGNO: _agent.arun completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
                     )
                     try:
                         send_dd_histogram_metrics(
@@ -271,14 +258,8 @@ class AgnoAgent:
         self, input: Input
     ) -> tuple[Optional[str], Optional[list[Message]]]:
         if self._storage_provider == StorageProvider.AGNO:
-            logger.debug(
-                f"[TTFT] AGNO: Using AGNO storage provider at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-            )
             return input.get_prompt(), None
         elif self._storage_provider == StorageProvider.PALSTORAGE:
-            logger.debug(
-                f"[TTFT] AGNO: Using PALSTORAGE provider at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-            )
             current_time = datetime.datetime.now(datetime.timezone.utc)
 
             if (
@@ -286,15 +267,9 @@ class AgnoAgent:
                 and self._memory_config.provider == MemoryProvider.PROMPT
             ):
                 # Run both operations concurrently - memory operation in thread pool to avoid blocking
-                logger.debug(
-                    f"[TTFT] AGNO: About to run concurrent get_history_messages and get_all_memories at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                )
                 messages, mem_content = await asyncio.gather(
                     self.get_history_messages(input),
                     asyncio.to_thread(lambda: asyncio.run(get_all_memories(self._user_id))),  # type: ignore
-                )
-                logger.debug(
-                    f"[TTFT] AGNO: Concurrent operations completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
                 )
                 if mem_content:
                     mem_message = Message(role="developer", content=mem_content)
@@ -307,13 +282,7 @@ class AgnoAgent:
                         f"[PalMemory]: No user info from memory for user: {self._user_id}"
                     )
             else:
-                logger.debug(
-                    f"[TTFT] AGNO: About to get_history_messages (no memory) at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                )
                 messages = await self.get_history_messages(input)
-                logger.debug(
-                    f"[TTFT] AGNO: get_history_messages completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-                )
 
             send_dd_histogram_metrics(
                 "framework_agent.query_history_messages_time_spent",
@@ -334,13 +303,7 @@ class AgnoAgent:
 
     async def get_history_messages(self, input: Input) -> list[Message]:
         if self._storage_provider == StorageProvider.PALSTORAGE:
-            logger.debug(
-                f"[TTFT] AGNO: About to query_history_messages at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-            )
             history_messages = await query_history_messages(self._session_id, limit=100)
-            logger.debug(
-                f"[TTFT] AGNO: query_history_messages completed at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms"
-            )
         else:
             raise ValueError(
                 f"history_message doesn't apply to {self._storage_provider}"

@@ -1,6 +1,5 @@
 import datetime
 import random
-import time
 import uuid
 from typing import AsyncIterator
 
@@ -308,13 +307,7 @@ async def get_chat_response_stream(
             logger.debug(f"Input stream mode: {input}")
 
             # Get streaming response
-            logger.debug(
-                f"[TTFT] About to call agent.arun at {(time.time() - request_context.request_time.timestamp()) * 1000:.1f}ms"
-            )
             response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
-            logger.debug(
-                f"[TTFT] agent.arun returned at {(time.time() - request_context.request_time.timestamp()) * 1000:.1f}ms"
-            )
             collected_content = []
 
             # ==== Step 3: Process the streaming response ====
@@ -329,9 +322,6 @@ async def get_chat_response_stream(
                             f"agent_id:{agent_id}",
                             f"account_name:{account_name}",
                         ],
-                    )
-                    logger.debug(
-                        f"[TTFT] message_service.waiting_first_chunk recorded at {(time.time() - request_context.request_time.timestamp()) * 1000:.1f}ms"
                     )
 
                     async for chunk in response_stream:
