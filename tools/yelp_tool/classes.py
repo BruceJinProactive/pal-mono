@@ -359,13 +359,13 @@ class OpeningsQuery(BaseModel):
         default=False,
         description="If true, include the covers_range dict in the response.",
     )
-    num_results_after: Optional[int] = Field(
+    after: Optional[bool] = Field(
         default=None,
-        description="Set to 0 if user wants to know the openings before the current result, otherwise don't include this field",
+        description="Set to true if user wants openings after a specific time",
     )
-    num_results_before: Optional[int] = Field(
+    before: Optional[bool] = Field(
         default=None,
-        description="Set to 0 if user wants to know the openings after the current result, otherwise don't include this field",
+        description="Set to true if user wants openings before a specific time",
     )
 
 

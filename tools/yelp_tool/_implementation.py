@@ -218,16 +218,8 @@ class YelpTool(Toolkit):
                 date=openings_query.date,
                 time=openings_query.time,
                 get_covers_range=openings_query.get_covers_range,
-                num_results_after=(
-                    openings_query.num_results_after
-                    if openings_query.num_results_after == 0
-                    else None
-                ),
-                num_results_before=(
-                    openings_query.num_results_before
-                    if openings_query.num_results_before == 0
-                    else None
-                ),
+                num_results_after=(0 if openings_query.before else None),
+                num_results_before=(0 if openings_query.after else None),
             )
 
             if not success or not request_obj:
@@ -477,16 +469,8 @@ class YelpTool(Toolkit):
                 covers=openings_query.covers,  # type: ignore
                 date=openings_query.date,  # type: ignore
                 time=openings_query.time,  # type: ignore
-                num_results_after=(
-                    openings_query.num_results_after
-                    if openings_query.num_results_after == 0
-                    else None
-                ),
-                num_results_before=(
-                    openings_query.num_results_before
-                    if openings_query.num_results_before == 0
-                    else None
-                ),
+                num_results_after=(0 if openings_query.before else None),
+                num_results_before=(0 if openings_query.after else None),
             )
 
             if not success or not request_obj:
@@ -555,16 +539,8 @@ class YelpTool(Toolkit):
                 covers=openings_query.covers,  # type: ignore
                 date=openings_query.date,  # type: ignore
                 time=openings_query.time,  # type: ignore
-                num_results_after=(
-                    openings_query.num_results_after
-                    if openings_query.num_results_after == 0
-                    else None
-                ),
-                num_results_before=(
-                    openings_query.num_results_before
-                    if openings_query.num_results_before == 0
-                    else None
-                ),
+                num_results_after=(0 if openings_query.before else None),
+                num_results_before=(0 if openings_query.after else None),
             )
 
             if not success or not request_obj:
