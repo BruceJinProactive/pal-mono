@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import time
 import uuid
 from typing import AsyncIterator, Optional
 
@@ -100,12 +101,7 @@ class AgnoAgent:
             )
 
         self._agent = agent
-        self._storage_provider = config.storage_provider
-        self._memory_config = config.memory
-        self._user_id = config.metadata.user_id
-        self._session_id = uuid.UUID(config.metadata.session_id)
-        self._agent_id = config.metadata.agent_id
-        self._account_name = config.metadata.account_name
+        self.config = config
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -181,11 +177,28 @@ class AgnoAgent:
                 output_content = ""
                 with trace_block("Agno Core Agent Processing"):
                     message, messages = await self._build_model_inputs(input)
+                    logger.debug(
+                        f"[AgnoAgent] start getting called at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                        extra={
+                            "agent_id": self.config.metadata.agent_id,
+                            "account_name": self.config.metadata.account_name,
+                        },
+                    )
+
                     result = await self._agent.arun(
                         message,
                         messages=messages,
                         stream=input.stream,
                     )
+
+                    logger.debug(
+                        f"[AgnoAgent] called with {len(messages) if messages else 'None'} messages, streaming={input.stream}, return_type:{type(result)} at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                        extra={
+                            "agent_id": self.config.metadata.agent_id,
+                            "account_name": self.config.metadata.account_name,
+                        },
+                    )
+
                     try:
                         send_dd_histogram_metrics(
                             "framework_agent.waiting_first_chunk",
@@ -193,9 +206,16 @@ class AgnoAgent:
                             [
                                 "streaming:true",
                                 "agent:agno",
-                                f"agent_id:{self._agent_id}",
-                                f"account_name:{self._account_name}",
+                                f"agent_id:{self.config.metadata.agent_id}",
+                                f"account_name:{self.config.metadata.account_name}",
                             ],
+                        )
+                        logger.debug(
+                            f"[AgnoAgent] waiting_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                            extra={
+                                "agent_id": self.config.metadata.agent_id,
+                                "account_name": self.config.metadata.account_name,
+                            },
                         )
 
                         index = 0
@@ -208,9 +228,16 @@ class AgnoAgent:
                                     [
                                         "streaming:true",
                                         "agent:agno",
-                                        f"agent_id:{self._agent_id}",
-                                        f"account_name:{self._account_name}",
+                                        f"agent_id:{self.config.metadata.agent_id}",
+                                        f"account_name:{self.config.metadata.account_name}",
                                     ],
+                                )
+                                logger.debug(
+                                    f"[AgnoAgent] received_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                                    extra={
+                                        "agent_id": self.config.metadata.agent_id,
+                                        "account_name": self.config.metadata.account_name,
+                                    },
                                 )
 
                             output_content += chunk.content
@@ -257,19 +284,19 @@ class AgnoAgent:
     async def _build_model_inputs(
         self, input: Input
     ) -> tuple[Optional[str], Optional[list[Message]]]:
-        if self._storage_provider == StorageProvider.AGNO:
+        if self.config.storage_provider == StorageProvider.AGNO:
             return input.get_prompt(), None
-        elif self._storage_provider == StorageProvider.PALSTORAGE:
+        elif self.config.storage_provider == StorageProvider.PALSTORAGE:
             current_time = datetime.datetime.now(datetime.timezone.utc)
 
             if (
-                self._memory_config.enabled
-                and self._memory_config.provider == MemoryProvider.PROMPT
+                self.config.memory.enabled
+                and self.config.memory.provider == MemoryProvider.PROMPT
             ):
                 # Run both operations concurrently - memory operation in thread pool to avoid blocking
                 messages, mem_content = await asyncio.gather(
                     self.get_history_messages(input),
-                    asyncio.to_thread(lambda: asyncio.run(get_all_memories(self._user_id))),  # type: ignore
+                    asyncio.to_thread(lambda: asyncio.run(get_all_memories(self.config.metadata.user_id))),  # type: ignore
                 )
                 if mem_content:
                     mem_message = Message(role="developer", content=mem_content)
@@ -279,7 +306,7 @@ class AgnoAgent:
                     )
                 else:
                     logger.debug(
-                        f"[PalMemory]: No user info from memory for user: {self._user_id}"
+                        f"[PalMemory]: No user info from memory for user: {self.config.metadata.user_id}"
                     )
             else:
                 messages = await self.get_history_messages(input)
@@ -289,10 +316,10 @@ class AgnoAgent:
                 current_time,
                 [
                     f"streaming:{str(input.stream).lower()}",
-                    f"conversation_id:{self._session_id}",
+                    f"conversation_id:{self.config.metadata.session_id}",
                     "agent:agno",
-                    f"agent_id:{self._agent_id}",
-                    f"account_name:{self._account_name}",
+                    f"agent_id:{self.config.metadata.agent_id}",
+                    f"account_name:{self.config.metadata.account_name}",
                 ],
             )
 
@@ -302,11 +329,13 @@ class AgnoAgent:
             return None, None
 
     async def get_history_messages(self, input: Input) -> list[Message]:
-        if self._storage_provider == StorageProvider.PALSTORAGE:
-            history_messages = await query_history_messages(self._session_id, limit=100)
+        if self.config.storage_provider == StorageProvider.PALSTORAGE:
+            history_messages = await query_history_messages(
+                uuid.UUID(self.config.metadata.session_id), limit=100
+            )
         else:
             raise ValueError(
-                f"history_message doesn't apply to {self._storage_provider}"
+                f"history_message doesn't apply to {self.config.storage_provider}"
             )
 
         messages = [

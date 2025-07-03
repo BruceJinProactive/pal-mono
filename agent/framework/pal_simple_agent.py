@@ -1,5 +1,6 @@
 import datetime
 import os
+import time
 import uuid
 from typing import AsyncIterator, List
 
@@ -65,10 +66,22 @@ class PalSimpleAgent:
         openai_inputs = self._build_openai_input(history_messages)
 
         # Call the CoreLLM chat method with properly typed messages
+        logger.debug(
+            f"[PalSimpleAgent] primary_llm start getting called at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+            extra={
+                "agent_id": self.config.metadata.agent_id,
+                "account_name": self.config.metadata.account_name,
+            },
+        )
+
         openai_response = await self.primary_llm.chat(openai_inputs, input.stream)
 
         logger.debug(
-            f"[PalSimpleAgent] primary_llm called with {len(history_messages)} messages, streaming={input.stream}"
+            f"[PalSimpleAgent] primary_llm called with {len(history_messages)} messages, streaming={input.stream}, return_type:{type(openai_response)} at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+            extra={
+                "agent_id": self.config.metadata.agent_id,
+                "account_name": self.config.metadata.account_name,
+            },
         )
 
         # Convert OpenAI ChatCompletion to Output format
@@ -240,9 +253,25 @@ class PalSimpleAgent:
             )
 
             index = 0
+            logger.debug(
+                f"[PalSimpleAgent] waiting_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                extra={
+                    "agent_id": self.config.metadata.agent_id,
+                    "account_name": self.config.metadata.account_name,
+                },
+            )
+
             async for chunk in stream:
                 index += 1
                 if index == 1:
+                    logger.debug(
+                        f"[PalSimpleAgent] received_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                        extra={
+                            "agent_id": self.config.metadata.agent_id,
+                            "account_name": self.config.metadata.account_name,
+                        },
+                    )
+
                     send_dd_histogram_metrics(
                         "framework_agent.received_first_chunk",
                         input.request_context.request_time,
