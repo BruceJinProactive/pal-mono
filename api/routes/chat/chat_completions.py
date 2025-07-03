@@ -579,7 +579,7 @@ async def chat_completions_oai(
 
                     # Stream the results
                     chunk_count = 0
-                    for chunk in stream:
+                    async for chunk in stream:
                         chunk_count += 1
                         if hasattr(chunk, "model_dump"):
                             chunk_data = chunk.model_dump()
