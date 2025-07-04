@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import time
+import uuid
 from typing import AsyncIterator, Optional
 
 import agno.agent.agent
@@ -18,7 +19,6 @@ from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
 from utils.dd import send_dd_histogram_metrics, trace_block
 from utils.log import logger
-import uuid
 
 MODEL_PROVIDER_MAP = {
     "openai": OpenAIChat,
@@ -159,6 +159,16 @@ class AgnoAgent:
                             "agent_id": self.config.metadata.agent_id,
                             "account_name": self.config.metadata.account_name,
                         },
+                    )
+                    send_dd_histogram_metrics(
+                        "framework_agent.start_streaming",
+                        input.request_context.request_time,
+                        [
+                            "streaming:true",
+                            "agent:agno",
+                            f"agent_id:{self.config.metadata.agent_id}",
+                            f"account_name:{self.config.metadata.account_name}",
+                        ],
                     )
 
                     result = await self._agent.arun(
