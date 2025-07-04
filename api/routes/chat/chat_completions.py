@@ -402,18 +402,6 @@ async def chat_completions_agno(
                                         f"recipient_identifier:{recipient_identifier}",
                                     ],
                                 )
-                                time_diff = (
-                                    datetime.datetime.now(datetime.timezone.utc)
-                                    - request_context.request_time
-                                ).total_seconds() * 1000
-                                logger.debug(
-                                    f"[ChatCompletions] TTFT is {time_diff}",
-                                    extra={
-                                        "recipient_identifier": recipient_identifier,
-                                        "sender_identifier": sender_identifier,
-                                    },
-                                )
-
                             filtered_content = url_filter.filter_content(content)
                             if filtered_content is not None:
                                 # Replace the original content in chunk_data with filtered_content
@@ -425,7 +413,32 @@ async def chat_completions_agno(
                                         chunk_data["choices"][0]["delta"][
                                             "content"
                                         ] = filtered_content
+
                                 yield f"data: {json.dumps(chunk_data)}\n\n"
+
+                                if chunk_count == 1:
+                                    time_diff = (
+                                        datetime.datetime.now(datetime.timezone.utc)
+                                        - request_context.request_time
+                                    ).total_seconds() * 1000
+                                    logger.debug(
+                                        f"[ChatCompletions] TTFT is {time_diff}",
+                                        extra={
+                                            "recipient_identifier": recipient_identifier,
+                                            "sender_identifier": sender_identifier,
+                                        },
+                                    )
+
+                                    send_dd_histogram_metrics(
+                                        "chat_completions.sent_first_chunk",
+                                        request_context.request_time,
+                                        [
+                                            "path:agno",
+                                            "streaming:true",
+                                            f"sender_identifier:{sender_identifier}",
+                                            f"recipient_identifier:{recipient_identifier}",
+                                        ],
+                                    )
 
                         # Log completion of stream
                         logger.info(
