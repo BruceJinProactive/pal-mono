@@ -135,6 +135,15 @@ class Agent:
                 self._update_memory(input.content)
 
                 try:
+                    send_dd_histogram_metrics(
+                        "agent.start_streaming",
+                        input.request_context.request_time,
+                        [
+                            "streaming:true",
+                            f"agent_id:{self._metadata.agent_id}",
+                            f"account_name:{self._metadata.account_name}",
+                        ],
+                    )
                     output_stream = await self._agent.arun(input)  # type: ignore
                     if not isinstance(output_stream, _AsyncIterator):
                         LLMObs.annotate(

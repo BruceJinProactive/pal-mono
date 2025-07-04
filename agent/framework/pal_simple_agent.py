@@ -73,6 +73,16 @@ class PalSimpleAgent:
                 "account_name": self.config.metadata.account_name,
             },
         )
+        send_dd_histogram_metrics(
+            "framework_agent.start_streaming",
+            input.request_context.request_time,
+            [
+                f"streaming:{str(input.stream).lower()}",
+                "agent:pal_simple",
+                f"agent_id:{self.config.metadata.agent_id}",
+                f"account_name:{self.config.metadata.account_name}",
+            ],
+        )
 
         openai_response = await self.primary_llm.chat(openai_inputs, input.stream)
 
