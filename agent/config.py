@@ -32,11 +32,6 @@ class AgentMetadata(BaseModel):
     framework: AgentFramework
 
 
-class StorageProvider(StrEnum):
-    AGNO = auto()
-    PALSTORAGE = auto()
-
-
 class VoiceConfig(BaseModel):
     enabled: bool = False
     greeting_message: str | None
@@ -53,7 +48,6 @@ class AgentConfig(BaseModel):
     memory: MemoryConfig
     knowledge: KnowledgeConfig
     tool: ToolConfig
-    storage_provider: StorageProvider
     voice_config: VoiceConfig
 
     metadata: AgentMetadata

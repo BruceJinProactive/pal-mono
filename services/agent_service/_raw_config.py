@@ -21,7 +21,7 @@ from agent import (
     ToolIdentifier,
     ToolMetadata,
 )
-from agent.config import StorageProvider, VoiceConfig
+from agent.config import VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.memory import MemoryProvider
 from agent.model import ModelProvider
@@ -63,10 +63,6 @@ class RawConfig:
 
             self.client_config = ClientConfig(data=client_data)
 
-            storage_provider = self.agent.raw_config.get(
-                "storage_provider", StorageProvider.PALSTORAGE
-            )
-
             memory_provider = self.agent.raw_config.get(
                 "memory_provider", MemoryProvider.DEFAULT
             )
@@ -92,7 +88,6 @@ class RawConfig:
                     ),
                 ),
                 client=self.client_config,
-                storage_provider=storage_provider,
                 additional_context=self._get_additional_context(),
                 voice_config=VoiceConfig(
                     enabled=self.agent.raw_config.get(

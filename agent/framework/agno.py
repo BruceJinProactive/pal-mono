@@ -1,19 +1,16 @@
 import asyncio
 import datetime
 import time
-import uuid
 from typing import AsyncIterator, Optional
 
 import agno.agent.agent
 from agno.models.message import Message
 from agno.models.openai.chat import OpenAIChat
-from agno.storage.agent.postgres import PostgresAgentStorage
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
 from pydantic import BaseModel, Field
 
-import db
-from agent.config import AgentConfig, StorageProvider
+from agent.config import AgentConfig
 from agent.input_output import Input, Output
 from agent.memory import MemoryProvider
 from agent.memory._implementation import get_all_memories
@@ -21,6 +18,7 @@ from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
 from utils.dd import send_dd_histogram_metrics, trace_block
 from utils.log import logger
+import uuid
 
 MODEL_PROVIDER_MAP = {
     "openai": OpenAIChat,
@@ -42,23 +40,6 @@ class ResponseModel(BaseModel):
 
 class AgnoAgent:
     def __init__(self, config: AgentConfig):
-        if config.storage_provider == StorageProvider.AGNO:
-            storage = PostgresAgentStorage(
-                table_name=f"{config.metadata.account_name}_storage_agno",
-                db_url=db.db_url,
-            )
-            add_history_to_messages = True
-            logger.debug(
-                f"Agent: {config.metadata.agent_id} is using {config.storage_provider} Storage"
-            )
-        elif config.storage_provider == StorageProvider.PALSTORAGE:
-            storage = None
-            add_history_to_messages = False
-            logger.debug(
-                f"Agent: {config.metadata.agent_id} is using {config.storage_provider} Storage"
-            )
-        else:
-            raise ValueError(f"Storeage: {config.storage_provider} is invalid")
 
         tools = [
             tool
@@ -91,12 +72,7 @@ class AgnoAgent:
                 ### Tools ###
                 tools=tools,  # type: ignore
                 ### Storage ### # Note: To be replaced by our own session and message tables
-                storage=storage,
-                add_history_to_messages=add_history_to_messages,
-                num_history_responses=10,
-                response_model=(
-                    ResponseModel if not config.stream else None
-                ),  # NOTE: stream response model is not supported by AGNO
+                response_model=(ResponseModel if not config.stream else None),
                 additional_context=config.additional_context,
             )
 
@@ -284,59 +260,46 @@ class AgnoAgent:
     async def _build_model_inputs(
         self, input: Input
     ) -> tuple[Optional[str], Optional[list[Message]]]:
-        if self.config.storage_provider == StorageProvider.AGNO:
-            return input.get_prompt(), None
-        elif self.config.storage_provider == StorageProvider.PALSTORAGE:
-            current_time = datetime.datetime.now(datetime.timezone.utc)
+        current_time = datetime.datetime.now(datetime.timezone.utc)
 
-            if (
-                self.config.memory.enabled
-                and self.config.memory.provider == MemoryProvider.PROMPT
-            ):
-                # Run both operations concurrently - memory operation in thread pool to avoid blocking
-                messages, mem_content = await asyncio.gather(
-                    self.get_history_messages(input),
-                    asyncio.to_thread(lambda: asyncio.run(get_all_memories(self.config.metadata.user_id))),  # type: ignore
-                )
-                if mem_content:
-                    mem_message = Message(role="developer", content=mem_content)
-                    messages.append(mem_message)
-                    logger.debug(
-                        f"[PalMemory]: Find user info from memory: {mem_content}"
-                    )
-                else:
-                    logger.debug(
-                        f"[PalMemory]: No user info from memory for user: {self.config.metadata.user_id}"
-                    )
-            else:
-                messages = await self.get_history_messages(input)
-
-            send_dd_histogram_metrics(
-                "framework_agent.query_history_messages_time_spent",
-                current_time,
-                [
-                    f"streaming:{str(input.stream).lower()}",
-                    f"conversation_id:{self.config.metadata.session_id}",
-                    "agent:agno",
-                    f"agent_id:{self.config.metadata.agent_id}",
-                    f"account_name:{self.config.metadata.account_name}",
-                ],
+        if (
+            self.config.memory.enabled
+            and self.config.memory.provider == MemoryProvider.PROMPT
+        ):
+            # Run both operations concurrently - memory operation in thread pool to avoid blocking
+            messages, mem_content = await asyncio.gather(
+                self.get_history_messages(input),
+                asyncio.to_thread(lambda: asyncio.run(get_all_memories(self.config.metadata.user_id))),  # type: ignore
             )
-
-            return None, messages
-
+            if mem_content:
+                mem_message = Message(role="developer", content=mem_content)
+                messages.append(mem_message)
+                logger.debug(f"[PalMemory]: Find user info from memory: {mem_content}")
+            else:
+                logger.debug(
+                    f"[PalMemory]: No user info from memory for user: {self.config.metadata.user_id}"
+                )
         else:
-            return None, None
+            messages = await self.get_history_messages(input)
+
+        send_dd_histogram_metrics(
+            "framework_agent.query_history_messages_time_spent",
+            current_time,
+            [
+                f"streaming:{str(input.stream).lower()}",
+                f"conversation_id:{self.config.metadata.session_id}",
+                "agent:agno",
+                f"agent_id:{self.config.metadata.agent_id}",
+                f"account_name:{self.config.metadata.account_name}",
+            ],
+        )
+
+        return None, messages
 
     async def get_history_messages(self, input: Input) -> list[Message]:
-        if self.config.storage_provider == StorageProvider.PALSTORAGE:
-            history_messages = await query_history_messages(
-                uuid.UUID(self.config.metadata.session_id), limit=100
-            )
-        else:
-            raise ValueError(
-                f"history_message doesn't apply to {self.config.storage_provider}"
-            )
+        history_messages = await query_history_messages(
+            uuid.UUID(self.config.metadata.session_id), limit=100
+        )
 
         messages = [
             Message(role=msg.role, content=msg.content) for msg in history_messages
@@ -344,12 +307,12 @@ class AgnoAgent:
 
         if len(messages) < 1:
             logger.error(
-                "[PalStorage] Message history should contain at least 1 message"
+                "[AgnoAgent] Message history should contain at least 1 message"
             )
         else:
             if messages[-1].content != input.content:
                 logger.error(
-                    f"[PalStorage] The latest message: {messages[-1].content} should be the current user input: {input.content}"
+                    f"[AgnoAgent] The latest message: {messages[-1].content} should be the current user input: {input.content}"
                 )
             else:
                 messages = messages[:-1]
