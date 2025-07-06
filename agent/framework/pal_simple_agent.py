@@ -296,6 +296,13 @@ class PalSimpleAgent:
                 if chunk.choices and len(chunk.choices) > 0:
                     choice = chunk.choices[0]
                     if choice.delta and choice.delta.content:
+                        logger.debug(
+                            f"[PalSimpleAgent] sent_{index}_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                            extra={
+                                "agent_id": self.config.metadata.agent_id,
+                                "account_name": self.config.metadata.account_name,
+                            },
+                        )
                         yield Output(content=choice.delta.content)
 
         except Exception as e:
