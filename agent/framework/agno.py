@@ -226,10 +226,6 @@ class AgnoAgent:
                                     },
                                 )
 
-                            if hasattr(chunk, "content"):
-                                logger.debug(
-                                    "[AgnoAgent] received chunk has content field"
-                                )
                             output_content += chunk.content
                             yield Output(
                                 content=(
