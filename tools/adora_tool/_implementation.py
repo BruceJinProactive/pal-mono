@@ -486,7 +486,7 @@ class AdoraTool(Toolkit):
         if not phone_number or not _utils.is_valid_phone_number(phone_number):
             return (
                 f"{phone_number} is not a valid phone number. "
-                "Please provide a valid phone number in the format XXX-XXX-XXXX."
+                "Please provide a valid phone number in the standard ten-digit format."
             )
 
         if self.qa_store:  # Do not apply discount for QA store
@@ -1054,7 +1054,7 @@ class AdoraTool(Toolkit):
         try:
             phone_number = _utils.format_phone_number(phone_number)
             if not phone_number:
-                return "Please provide a valid phone number in the format XXX-XXX-XXXX."
+                return "Please provide a valid phone number in the standard ten-digit format."
 
             # Use _get_adora_bearer_token to ensure LLMObs tracking
             bearer_token = self._get_adora_bearer_token()
