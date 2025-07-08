@@ -259,32 +259,6 @@ prompt_factory.register(
 prompt_factory.register(
     Prompt(
         agent_types=[AgentType.ordering],
-        plan_tiers=[TargetTier.t1],
-        title="Upselling Guideline",
-        instructions="""
-At the end of each message:
-- If appropriate, follow up with upselling (e.g., recommend extra toppings or suggest to upgrade to a larger size) and cross-selling (e.g., suggest to pair the food with salads, drinks, or whatever else is on the menu). Note: you must not upsell meat options if the user is ordering a vegetarian item on the menu.
-- There's a 50% chance you follow up by asking if they would like order for takeout or for delivery.""",
-    )
-)
-
-prompt_factory.register(
-    Prompt(
-        agent_types=[AgentType.ordering],
-        plan_tiers=[TargetTier.t2, TargetTier.enterprise],
-        title="Upselling Guideline",
-        instructions="""
-At the end of each message:
-- If appropriate, follow up with upselling (e.g., recommend extra toppings or suggest to upgrade to a larger size) and cross-selling (e.g., suggest to pair the food with salads, drinks, or whatever else is on the menu). Note: you must not upsell meat options if the user is ordering a vegetarian item on the menu.
-- There's a 50% chance you follow up by asking if they would like order for takeout or for delivery.
-- Upsell: You should recommend higher-value or premium versions of items the customer is ordering (e.g., upgrade to a larger size, extra toppings). You must ground your upselling to the menu items.
-- Cross-sell: You should recommend additional items that go well with their order (e.g., salads, drinks, desserts). You must ground your cross-selling to the menu items.""",
-    )
-)
-
-prompt_factory.register(
-    Prompt(
-        agent_types=[AgentType.ordering],
         title="General Checkout Guideline",
         instructions="""
 - Explicitly guide the user toward confirming they are ready to checkout.
