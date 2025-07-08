@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import json
 import os
@@ -15,10 +14,6 @@ from urlextract import URLExtract
 import db
 from api.routes.chat._utils import create_url_filter
 from api.routes.chat.chat import chat_router
-from api.routes.chat.smart_filler import (
-    generate_smart_filler_chunk,
-    should_use_smart_filler,
-)
 from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
@@ -125,15 +120,10 @@ def _parse_caller_info(model: str) -> tuple[str, str]:
 
 def _convert_chunk_to_dict(chunk):
     """Convert a chunk to a dictionary representation."""
-    # If chunk is already a dict, return it as-is
-    if isinstance(chunk, dict):
-        return chunk
-
-    # If chunk has model_dump method, use it
     if hasattr(chunk, "model_dump"):
         return chunk.model_dump()
 
-    # Fall back to dict representation for objects with attributes
+    # Fall back to dict representation
     return {
         "id": chunk.id,
         "object": chunk.object,
@@ -346,61 +336,31 @@ async def chat_completions_agno(
 
         if request.stream:
             # Use streaming response
-            async def generate_stream(content):
+            async def generate_stream():
                 try:
-                    # Log stream start
-                    logger.info(f"Starting streaming response for model={model}")
-                    send_dd_histogram_metrics(
-                        "chat_completions.start_streaming",
-                        request_context.request_time,
-                        ["path:agno", "streaming:true"],
-                    )
-
-                    # Create unified stream that combines filler and response
-                    async def create_unified_stream():
-                        # Run filler check and response stream in parallel
-                        filler_task = asyncio.create_task(
-                            should_use_smart_filler(content)
-                        )
-                        response_task = asyncio.create_task(
-                            get_chat_response_stream(
-                                session=session,
-                                message=message,
-                                request_context=request_context,
-                            )
+                    try:
+                        # Log stream start
+                        logger.info(f"Starting streaming response for model={model}")
+                        send_dd_histogram_metrics(
+                            "chat_completions.start_streaming",
+                            request_context.request_time,
+                            ["path:agno", "streaming:true"],
                         )
 
-                        # Race condition: if filler is fast, use it; if response is ready first, skip filler
-                        done, _ = await asyncio.wait(
-                            [filler_task, response_task],
-                            return_when=asyncio.FIRST_COMPLETED,
+                        response_stream = await get_chat_response_stream(
+                            session=session,
+                            message=message,
+                            request_context=request_context,
                         )
-
-                        # Check which task completed first
-                        if filler_task in done:
-                            # Filler completed first - use it if applicable
-                            use_filler, filler_text = await filler_task
-                            if use_filler:
-                                filler_chunk = generate_smart_filler_chunk(
-                                    model, filler_text
-                                )
-                                yield filler_chunk
-                                logger.debug(f"Sent smart filler: {filler_text}")
-
-                            # Now wait for response stream
-                            response_stream = await response_task
-                        else:
-                            # Response stream completed first - cancel filler and proceed
-                            filler_task.cancel()
-                            logger.debug("Response stream ready first, skipping filler")
-                            response_stream = await response_task
-
-                        # Yield all chunks from the response stream
-                        if response_stream:
-                            async for chunk in response_stream:
-                                yield chunk
-
-                    response_stream = create_unified_stream()
+                    except Exception as es:
+                        # Log the error and create a fallback response
+                        logger.error(
+                            f"Error getting streaming response from agent: {str(es)}"
+                        )
+                        fallback_chunk = _create_fallback_chunk(model, fallback_content)
+                        yield f"data: {json.dumps(fallback_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
 
                     collected_content = []
                     if response_stream:
@@ -417,7 +377,6 @@ async def chat_completions_agno(
                             ],
                         )
 
-                        # Process the unified stream (includes both filler and response)
                         async for chunk in response_stream:
                             chunk_count += 1
                             chunk_data = _convert_chunk_to_dict(chunk)
@@ -492,15 +451,21 @@ async def chat_completions_agno(
                         )
 
                         yield "data: [DONE]\n\n"
-                except Exception as es:
-                    # Log the error and create a fallback response
-                    logger.error(f"Error in streaming response: {str(es)}")
-                    fallback_chunk = _create_fallback_chunk(model, fallback_content)
-                    yield f"data: {json.dumps(fallback_chunk)}\n\n"
+
+                except Exception as e:
+                    logger.error(f"Error in streaming response: {str(e)}")
+                    error_data = {
+                        "error": {
+                            "message": str(e),
+                            "type": "server_error",
+                            "code": 500,
+                        }
+                    }
+                    yield f"data: {json.dumps(error_data)}\n\n"
                     yield "data: [DONE]\n\n"
 
             return StreamingResponse(
-                generate_stream(content),
+                generate_stream(),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
