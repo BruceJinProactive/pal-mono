@@ -77,19 +77,21 @@ build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 88
+extend-exclude = "(?x)(^|/)build/"
 
 [tool.isort]
 profile = "black"
 line_length = 88
+skip_glob = ["build/**"]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
-exclude = ["aienv*", ".venv*", ".git"]
+exclude = ["aienv*", ".venv*", ".git", "build"]
 [tool.ruff.lint.per-file-ignores]
 # Ignore `F401` (import violations) in all `__init__.py` files
 "__init__.py" = ["F401", "F403"]
 "*.ipynb" = ["E402"]
 
 [tool.pyright]
-exclude = ["aienv*", ".venv*", "**/__pycache__", "workspace/", ".git"]
+exclude = ["aienv*", ".venv*", "**/__pycache__", "workspace/", ".git", "build"]
 typeCheckingMode = "standard"
