@@ -7,16 +7,11 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from ._util import set_access_token, get_square_client_id, get_square_client_secret
 from ._valid import _oauth_state, valid_request
+from services.service_utils import get_server_url
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
 SQUARE_SCOPES = ["PAYMENTS_READ", "CUSTOMERS_READ"]
-
-# Replace with your actual redirect URI
-SQUARE_REDIRECT_URI = os.environ.get(
-    "SQUARE_REDIRECT_URI",
-    "https://lat-api.proactiveailab.com/v1/integrations/square/palona/callback",
-)
 
 
 async def install(request: Request, app_name: str):
@@ -26,12 +21,14 @@ async def install(request: Request, app_name: str):
 
     client_id = get_square_client_id(app_name)
     scopes = " ".join(SQUARE_SCOPES)
+    # Build the redirect URI dynamically
+    redirect_uri = f"{get_server_url()}/v1/integrations/square/{app_name}/callback"
     auth_url = (
         f"{SQUARE_AUTH_URL}?client_id={client_id}"
         f"&scope={scopes}"
         f"&session=False"
         f"&state={state}"
-        f"&redirect_uri={SQUARE_REDIRECT_URI}"
+        f"&redirect_uri={redirect_uri}"
     )
     return RedirectResponse(auth_url)
 
@@ -64,14 +61,8 @@ async def callback(request: Request, app_name: str):
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": str(e)},
         )
-    redirect_uri = (
-        request.app.state.settings.SQUARE_REDIRECT_URI
-        if hasattr(request.app.state, "settings")
-        else None
-    )
-    if not redirect_uri:
-        # fallback to env or secret
-        redirect_uri = os.getenv("SQUARE_REDIRECT_URI")
+    # Always build the redirect_uri dynamically for token exchange
+    redirect_uri = f"{get_server_url()}/v1/integrations/square/{app_name}/callback"
 
     # Exchange code for access token
     data = {
