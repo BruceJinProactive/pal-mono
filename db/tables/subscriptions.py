@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+from sqlalchemy import Index, and_
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
@@ -11,7 +12,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import Boolean, DateTime, Enum, Integer, String
 
 from .base import Base
-from .types import PlanTier, SubscriptionStatus, SubscriptionType
+from .types import PaymentMethod, PlanTier, SubscriptionStatus
 
 if TYPE_CHECKING:
     from .accounts import Account
@@ -47,6 +48,9 @@ class SubscriptionPlan(Base):
         Boolean, nullable=False, default=True, server_default="true"
     )
     sort_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hidden: Mapped[Boolean] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
@@ -83,19 +87,18 @@ class AccountSubscription(Base):
         nullable=False,
         index=True,
     )
-    subscription_type: Mapped[SubscriptionType] = mapped_column(
-        Enum(SubscriptionType, name="subscriptiontype"),
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        Enum(PaymentMethod),
         nullable=False,
+        server_default=PaymentMethod.autopay.value,
+    )
+    trial_start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     start_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
     end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    call_quota: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    order_quota: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    call_overage_charge: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    order_overage_charge: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    monthly_fee: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     stripe_subscription_id: Mapped[Optional[str]] = mapped_column(
         String, nullable=True, index=True
     )
@@ -113,3 +116,49 @@ class AccountSubscription(Base):
 
     account: Mapped["Account"] = relationship("Account", back_populates="subscriptions")
     subscription_plan: Mapped["SubscriptionPlan"] = relationship("SubscriptionPlan")
+
+    @property
+    def is_valid(self):
+        return self.status in [SubscriptionStatus.pending, SubscriptionStatus.active]
+
+
+class ProjectSubscription(Base):
+    __tablename__ = "project_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        nullable=False,
+        index=True,
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    subscription_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    deleted: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default="false",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_project_id_unique_not_deleted",
+            "project_id",
+            unique=True,
+            postgresql_where=and_(deleted.is_(False)),
+        ),
+    )

@@ -14,10 +14,10 @@ from vapi.types.server import Server
 
 from utils.log import logger
 
+from ..service_utils import get_server_url
 from ._utils import (
     AssistantConfig,
     NumberResponse,
-    get_server_url,
 )
 
 
@@ -227,7 +227,7 @@ class NumberService:
                 server_url = None
         else:
             assistant_id = None
-            server_url = get_server_url()
+            server_url = f"{get_server_url()}/v1/integrations/vapi/"
 
         merchant_name = (
             assistant_config["merchant_name"] if assistant_config else merchant_name

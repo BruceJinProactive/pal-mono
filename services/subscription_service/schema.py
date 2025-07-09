@@ -4,16 +4,15 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from db.tables.subscriptions import SubscriptionType
-from db.tables.types import PlanTier
+from db.tables.types import PaymentMethod, PlanTier, SubscriptionStatus
 
 
 class SubscriptionPlanParams(BaseModel):
-    name: str
-    tier: PlanTier
+    name: str | None = None
+    tier: PlanTier | None = None
     description: Optional[str] = None
-    features_included: List[str] = []
-    features_excluded: List[str] = []
+    features_included: Optional[List[str]] = None
+    features_excluded: Optional[List[str]] = None
     call_quota: Optional[int] = None
     order_quota: Optional[int] = None
     call_overage_charge: Optional[int] = None
@@ -21,25 +20,39 @@ class SubscriptionPlanParams(BaseModel):
     free_trial_days: Optional[int] = None
     monthly_fee: Optional[int] = None
     stripe_price_id: Optional[str] = None
-    active: bool = True
-    sort_id: Optional[int] = None
+    active: bool | None = None
+    sort_id: int | None = None
+    hidden: bool | None = True
 
 
-class SubscriptionOverride(BaseModel):
+class AccountSubscriptionParams(BaseModel):
+    version: int
+    account_id: uuid.UUID
+    subscription_plan_id: uuid.UUID
+    payment_method: PaymentMethod
+    trial_start_date: Optional[datetime] = None
+    start_date: datetime
+    end_date: datetime
+    call_quota: Optional[int] = None
+    order_quota: Optional[int] = None
+    call_overage_charge: Optional[int] = None
+    order_overage_charge: Optional[int] = None
+    monthly_fee: Optional[int] = None
+    stripe_subscription_id: Optional[str] = None
+    status: SubscriptionStatus
+
+
+class SubscriptionSchedule(BaseModel):
+    trial_start_date: datetime | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
-    call_quota: int | None = None
-    order_quota: int | None = None
-    call_overage_charge: int | None = None
-    order_overage_charge: int | None = None
-    monthly_fee: int | None = None
     stripe_subscription_id: str | None = None
 
 
 class SubscriptionParams(BaseModel):
-    subscription_plan_id: str
-    subscription_type: SubscriptionType
-    override: SubscriptionOverride | None = None
+    subscription_plan_id: uuid.UUID
+    payment_method: PaymentMethod
+    schedule: SubscriptionSchedule | None = None
 
 
 class StripeSubscriptionDetails(BaseModel):
@@ -54,4 +67,5 @@ class StripeSubscriptionDetails(BaseModel):
 class StripeCheckoutResponse(BaseModel):
     account_id: uuid.UUID
     customer_id: str
-    subscription_id: str
+    stripe_subscription_id: str
+    subscription_external_id: uuid.UUID

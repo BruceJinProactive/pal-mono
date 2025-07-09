@@ -110,6 +110,22 @@ def get_projects_by_account_id(
     return _implementation.get_projects_by_account_id(session, account_id)
 
 
+def get_projects_by_ids(
+    session: Session, project_ids: List[uuid.UUID]
+) -> List[db.Project]:
+    """
+    Gets multiple projects by their IDs.
+
+    Args:
+        session (Session): The database connection.
+        project_ids (List[uuid.UUID]): List of project IDs to fetch.
+
+    Returns:
+        List[Project]: A list of projects matching the provided IDs.
+    """
+    return _implementation.get_projects_by_ids(session, project_ids)
+
+
 def replace_project_channel_identifiers(
     session: Session, project_id: uuid.UUID, channel_identifiers: List[str]
 ) -> None:

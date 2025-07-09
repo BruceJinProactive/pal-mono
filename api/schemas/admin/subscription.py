@@ -4,11 +4,16 @@ from typing import List, Optional
 
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, PositiveInt, field_validator
 
-from db.tables.types import PlanTier, SubscriptionStatus, SubscriptionType
+from api.schemas.admin.project import ProjectSummary
+from db.tables.types import (
+    PaymentMethod,
+    PlanTier,
+    SubscriptionStatus,
+)
 from services.subscription_service.schema import (
-    SubscriptionOverride,
     SubscriptionParams,
     SubscriptionPlanParams,
+    SubscriptionSchedule,
 )
 
 
@@ -28,6 +33,7 @@ class SubscriptionPlan(BaseModel):
     stripe_price_id: Optional[str]
     active: bool
     sort_id: Optional[int]
+    hidden: bool
     created_at: datetime
     updated_at: Optional[datetime]
 
@@ -47,6 +53,7 @@ class CreateSubscriptionPlanRequest(BaseModel):
     stripe_price_id: Optional[str] = None
     active: bool = True
     sort_id: Optional[int] = None
+    hidden: bool = True
 
     @field_validator("name")
     def validate_name(cls, v):
@@ -82,14 +89,15 @@ class UpdateSubscriptionPlanRequest(BaseModel):
     stripe_price_id: Optional[str] = None
     active: Optional[bool] = None
     sort_id: Optional[int] = None
+    hidden: Optional[bool] = None
 
     def to_subscription_plan_params(self) -> SubscriptionPlanParams:
         return SubscriptionPlanParams(
-            name=self.name or "",
-            description=self.description or "",
-            tier=self.tier or PlanTier.t1,
-            features_included=self.features_included or [],
-            features_excluded=self.features_excluded or [],
+            name=self.name,
+            description=self.description,
+            tier=self.tier,
+            features_included=self.features_included,
+            features_excluded=self.features_excluded,
             call_quota=self.call_quota,
             order_quota=self.order_quota,
             call_overage_charge=self.call_overage_charge,
@@ -97,8 +105,9 @@ class UpdateSubscriptionPlanRequest(BaseModel):
             free_trial_days=self.free_trial_days,
             monthly_fee=self.monthly_fee,
             stripe_price_id=self.stripe_price_id,
-            active=self.active or True,
+            active=self.active,
             sort_id=self.sort_id,
+            hidden=self.hidden,
         )
 
     @field_validator("name")
@@ -125,15 +134,11 @@ class Subscription(BaseModel):
     external_id: uuid.UUID
     version: Optional[int] = None
     account_id: uuid.UUID
-    subscription_plan_id: uuid.UUID
-    subscription_type: SubscriptionType
+    subscription_plan: SubscriptionPlan | None = None
+    payment_method: PaymentMethod
+    trial_start_date: Optional[datetime] = None
     start_date: datetime
     end_date: datetime
-    call_quota: Optional[int] = None
-    order_quota: Optional[int] = None
-    call_overage_charge: Optional[int] = None
-    order_overage_charge: Optional[int] = None
-    monthly_fee: Optional[int] = None
     stripe_subscription_id: Optional[str] = None
     status: SubscriptionStatus
     created_at: datetime
@@ -142,14 +147,15 @@ class Subscription(BaseModel):
 
 class CreateSubscriptionRequest(BaseModel):
     subscription_plan_id: uuid.UUID
-    subscription_type: SubscriptionType
-    override: SubscriptionOverride | None
+    payment_method: PaymentMethod
+    schedule: SubscriptionSchedule | None
+    project_ids: Optional[list[uuid.UUID]] = None
 
     def to_subscription_params(self) -> SubscriptionParams:
         return SubscriptionParams(
-            subscription_plan_id=str(self.subscription_plan_id),
-            subscription_type=self.subscription_type,
-            override=self.override,
+            subscription_plan_id=self.subscription_plan_id,
+            payment_method=self.payment_method,
+            schedule=self.schedule,
         )
 
 
@@ -172,29 +178,51 @@ class ListAccountSubscriptionsResponse(BaseModel):
     scheduled: List[Subscription] = []
 
 
+class ListSubscriptionsRequest(BaseModel):
+    """Request for listing subscriptions with pagination and filtering."""
+
+    page: int = 1
+    page_size: int = 20
+    account_id: Optional[uuid.UUID] = None
+    status_filter: Optional[List[SubscriptionStatus]] = None
+
+    @field_validator("page")
+    def validate_page(cls, v):
+        if v < 1:
+            raise ValueError("Page must be greater than 0")
+        return v
+
+    @field_validator("page_size")
+    def validate_page_size(cls, v):
+        if v < 1 or v > 100:
+            raise ValueError("Page size must be between 1 and 100")
+        return v
+
+
+class ListSubscriptionsResponse(BaseModel):
+    """Response for listing subscriptions with pagination."""
+
+    subscriptions: List[Subscription]
+    total_subscriptions: int
+    total_pages: int
+
+
 class UpdateAccountSubscriptionRequest(BaseModel):
     """Request to update an account subscription."""
 
+    payment_method: Optional[PaymentMethod] = None
+    trial_start_date: Optional[datetime] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    call_quota: Optional[int] = None
-    order_quota: Optional[int] = None
-    call_overage_charge: Optional[int] = None
-    order_overage_charge: Optional[int] = None
-    monthly_fee: Optional[int] = None
-    stripe_subscription_id: Optional[str] = None
 
-    @field_validator("call_overage_charge", "order_overage_charge", "monthly_fee")
-    def validate_positive_amounts(cls, v):
-        if v is not None and v < 0:
-            raise ValueError("Charges and fees must be non-negative")
-        return v
+    @field_validator("start_date")
+    def validate_start_date(cls, v, info):
+        if v is None:
+            return v
 
-    @field_validator("call_quota", "order_quota")
-    def validate_positive_numbers(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Quotas must be positive")
-        return v
+        if "trial_start_date" in info.data:
+            if v < info.data["trial_start_date"]:
+                raise ValueError("Start date must be after trial start date")
 
     @field_validator("end_date")
     def validate_end_date(cls, v, info):
@@ -247,9 +275,43 @@ class UpdateAccountSubscriptionStatusResponse(BaseModel):
 
 
 class CreateCheckoutSessionRequest(BaseModel):
-    customer_email: EmailStr
+    customer_email: EmailStr | None = None
     redirect_url_prefix: AnyHttpUrl
 
 
-class CheckoutSessionResponse(BaseModel):
-    checkout_url: str
+class ProjectSubscription(BaseModel):
+    """Schema for ProjectSubscription response"""
+
+    id: uuid.UUID
+    project: ProjectSummary
+    subscription_id: uuid.UUID
+    deleted: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class ListProjectSubscriptionsResponse(BaseModel):
+    """Response for listing project subscriptions"""
+
+    project_subscriptions: list[ProjectSubscription]
+    total_count: int
+
+
+class CreateProjectSubscriptionRequest(BaseModel):
+    """Request for creating a project subscription"""
+
+    project_id: uuid.UUID
+
+
+class CreateProjectSubscriptionResponse(BaseModel):
+    """Response for creating a project subscription"""
+
+    message: str
+    project_subscription: ProjectSubscription
+
+
+class RemoveProjectSubscriptionResponse(BaseModel):
+    """Response for removing a project subscription"""
+
+    message: str
+    success: bool

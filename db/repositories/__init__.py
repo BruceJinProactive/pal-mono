@@ -9,5 +9,9 @@ from .message_repository import MessageRepository, MessageRepositoryAsync
 from .pos_integration_repository import POSIntegrationRepository
 from .project_integration_repository import ProjectIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
-from .subscription_repository import SubscriptionRepository
+from .subscription_repository import (
+    AccountSubscriptionRepository,
+    ProjectSubscriptionRepository,
+    SubscriptionPlanRepository,
+)
 from .user_repository import UserRepository, UserRepositoryAsync

@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import List, Optional
 
 from fastapi import (
     APIRouter,
@@ -77,12 +78,15 @@ from api.schemas.admin.project import (
     UpdateProjectRequest,
 )
 from api.schemas.admin.subscription import (
-    CheckoutSessionResponse,
     CreateCheckoutSessionRequest,
+    CreateProjectSubscriptionRequest,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
+    ListSubscriptionsResponse,
     Subscription,
+    SubscriptionPlan,
+    SubscriptionStatus,
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
@@ -1371,7 +1375,7 @@ async def create_subscription_plan(
     request: CreateSubscriptionPlanRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-):
+) -> SubscriptionPlan:
     """
     Creates a new subscription plan.
     """
@@ -1380,13 +1384,23 @@ async def create_subscription_plan(
 
 @admin_router.get("/plans")
 async def list_subscription_plans(
+    hidden: Optional[bool] = Query(
+        None,
+        description="Filter by hidden status (true = hidden only, false = not hidden only, null = all)",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
     """
-    Retrieves all subscription plans.
+    Retrieves all subscription plans, optionally filtered by hidden status.
+
+    Args:
+        hidden: Optional filter for hidden status:
+            - true: return only hidden plans
+            - false: return only non-hidden plans
+            - null/omitted: return all plans
     """
-    return _subscription.list_subscription_plans(context, session)
+    return _subscription.list_subscription_plans(context, session, hidden=hidden)
 
 
 @admin_router.get("/plans/{plan_id}")
@@ -1407,27 +1421,35 @@ async def update_subscription_plan(
     request: UpdateSubscriptionPlanRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-):
+) -> SubscriptionPlan:
     """
-    Updates a subscription plan by ID.
+    Updates a subscription plan with business logic for field restrictions.
+
+    Business Rules:
+    - If there are no linked account subscriptions (deleted ones are fine), all fields can be updated
+    - If there are any linked account subscriptions that are not deleted, only these fields can be updated:
+      - sort_id
+      - free_trial_days
+      - active
+      - hidden
     """
-    return _subscription.update_subscription_plan(plan_id, request, context, session)
+    return _subscription.update_subscription_plan(context, session, plan_id, request)
 
 
-@admin_router.patch("/plans/{plan_id}/expire")
-async def expire_subscription_plan(
+@admin_router.delete("/plans/{plan_id}")
+async def delete_subscription_plan(
     plan_id: uuid.UUID,
     hard_delete: bool = Query(
-        False, description="Whether to permanently delete the plan from the database"
+        False, description="Physically delete from database if true"
     ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
     """
-    Expires a subscription plan by ID. If hard_delete is True, permanently deletes it from the database.
+    Hard delete a subscription plan when it has 0 subscriptions attached.
     """
-    return _subscription.expire_subscription_plan(
-        plan_id, context, session, hard_delete
+    return _subscription.delete_subscription_plan(
+        plan_id, hard_delete, context, session
     )
 
 
@@ -1447,7 +1469,9 @@ async def create_account_subscription(
     """
     Creates a new subscription for an account.
     """
-    return _subscription.create_subscription(context, session, account_name, request)
+    return _subscription.create_account_subscription(
+        context, session, account_name, request
+    )
 
 
 @admin_router.get("/accounts/{account_name}/subscriptions")
@@ -1476,10 +1500,10 @@ def update_account_subscription(
 ) -> Subscription:
     """
     Modifies the account_subscription configuration referenced by the external id.
-    If the status of the latest version is not active, no edit can be made unless force_update is true.
+    If the status of the latest version is not valid, no edit can be made unless force_update is true.
     This creates a new version with incremented version number.
     """
-    return _subscription.update_subscription(
+    return _subscription.update_account_subscription(
         context, session, account_name, external_id, request, force_update
     )
 
@@ -1497,7 +1521,7 @@ def update_account_subscription_status(
     Only active subscriptions can be updated to active or pending status.
     This API can be used to cancel a subscription.
     """
-    return _subscription.update_subscription_status(
+    return _subscription.update_account_subscription_status(
         context, session, account_name, external_id, request
     )
 
@@ -1506,23 +1530,16 @@ def update_account_subscription_status(
 def cancel_account_subscription(
     account_name: str,
     external_id: uuid.UUID,
-    hard_delete: bool = Query(
-        False,
-        description="Whether to permanently delete the subscription from the database",
-    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> dict:
     """
-    Cancels a subscription for the given account. If hard_delete is True, permanently deletes it from the database.
-    Business Rules:
-    - Cannot cancel free trial if there's a paid subscription in place
-    - Can cancel paid subscription while keeping free trial in place
-    - For paid subscriptions, cancels Stripe subscription first
+    Cancels a subscription for the given account.
+
     This operation cannot be reverted unless they sign up again.
     """
-    return _subscription.cancel_subscription(
-        context, session, account_name, external_id, hard_delete
+    return _subscription.cancel_account_subscription(
+        context, session, account_name, external_id
     )
 
 
@@ -1533,7 +1550,7 @@ def create_subscription_checkout_session(
     request: CreateCheckoutSessionRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> CheckoutSessionResponse:
+) -> str:
     """
     Creates a Stripe checkout session for a subscription.
     The subscription must be active and not have a stripe_subscription_id.
@@ -1553,3 +1570,45 @@ def handle_subscription_checkout_callback(
     Handles the callback from stripe payment success event.
     """
     _subscription.handle_subscription_checkout_callback(context, db_session, session_id)
+
+
+@admin_router.get("/subscriptions/{external_id}/projects")
+def list_project_subscriptions_by_subscription_external_id(
+    external_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    db_session: Session = Depends(db.get_db),
+):
+    """List all project subscriptions for a given subscription external ID."""
+    return _subscription.list_project_subscriptions_by_subscription_external_id(
+        context, db_session, external_id
+    )
+
+
+@admin_router.put("/accounts/{account_name}/subscriptions/{external_id}/projects")
+def create_project_subscription(
+    account_name: str,
+    external_id: uuid.UUID,
+    request: CreateProjectSubscriptionRequest,
+    context: UserContext = Depends(authenticate_user),
+    db_session: Session = Depends(db.get_db),
+):
+    """Create a new project subscription."""
+    return _subscription.create_project_subscription(
+        context, db_session, account_name, external_id, request
+    )
+
+
+@admin_router.delete(
+    "/accounts/{account_name}/subscriptions/{external_id}/projects/{project_id}"
+)
+def remove_project_subscription(
+    account_name: str,
+    external_id: uuid.UUID,
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    db_session: Session = Depends(db.get_db),
+):
+    """Remove a project subscription."""
+    return _subscription.remove_project_subscription(
+        context, db_session, account_name, external_id, project_id
+    )

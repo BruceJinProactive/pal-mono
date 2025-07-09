@@ -33,17 +33,12 @@ class TargetTier(str, enum.Enum):
     enterprise = "enterprise"
 
 
-class SubscriptionType(str, enum.Enum):
-    trial = "trial"
-    monthly = "monthly"
-    contract = "contract"
-
-
 class SubscriptionStatus(str, enum.Enum):
-    pending = "pending"
-    active = "active"
+    pending = "pending"  # unpaid
+    active = "active"  # paid
     expired = "expired"
     cancelled = "cancelled"
+    deleted = "deleted"
 
 
 # Do not use this, it is deprecated
@@ -78,3 +73,8 @@ class AuthType(str, enum.Enum):
     client_secret = "client_secret"
     api_key = "api_key"
     basic_auth = "basic_auth"
+
+
+class PaymentMethod(str, enum.Enum):
+    autopay = "autopay"
+    invoice = "invoice"

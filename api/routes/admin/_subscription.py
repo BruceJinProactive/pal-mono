@@ -1,18 +1,27 @@
 import uuid
+from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.routes.admin._auth import authorize_admin, authorize_user_account
-from api.routes.admin._builder import build_subscription, build_subscription_plan
+from api.routes.admin._builder import (
+    build_project_subscription,
+    build_subscription,
+    build_subscription_plan,
+)
 from api.routes.admin._utils import UserContext, not_found_error
 from api.schemas.admin.subscription import (
-    CheckoutSessionResponse,
     CreateCheckoutSessionRequest,
+    CreateProjectSubscriptionRequest,
+    CreateProjectSubscriptionResponse,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     ListAccountSubscriptionsResponse,
+    ListProjectSubscriptionsResponse,
+    RemoveProjectSubscriptionResponse,
     Subscription,
+    SubscriptionPlan,
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
@@ -32,7 +41,7 @@ def create_subscription_plan(
     context: UserContext,
     session: Session,
     request: CreateSubscriptionPlanRequest,
-):
+) -> SubscriptionPlan:
     """
     Creates a new subscription plan.
     """
@@ -52,6 +61,7 @@ def create_subscription_plan(
         stripe_price_id=request.stripe_price_id,
         active=request.active,
         sort_id=request.sort_id,
+        hidden=request.hidden,
     )
 
     try:
@@ -79,12 +89,18 @@ def create_subscription_plan(
 def list_subscription_plans(
     context: UserContext,
     session: Session,
+    hidden: Optional[bool] = None,
 ):
     """
-    Lists all subscription plans.
+    Lists all subscription plans, optionally filtered by hidden status.
+
+    Args:
+        context: User context for authorization
+        session: Database session
+        hidden: Optional filter for hidden status (None = all, True = hidden only, False = not hidden only)
     """
     authorize_admin(context)
-    plans = subscription_service.get_subscription_plans(session)
+    plans = subscription_service.get_subscription_plans(session, hidden=hidden)
     return [build_subscription_plan(plan) for plan in plans]
 
 
@@ -109,29 +125,18 @@ def get_subscription_plan(
 
 
 def update_subscription_plan(
+    context: UserContext,
+    session: Session,
     plan_id: uuid.UUID,
     request: UpdateSubscriptionPlanRequest,
-    context: UserContext,
-    session: Session,
-):
-    """
-    Updates a subscription plan by ID.
-    """
+) -> SubscriptionPlan:
     authorize_admin(context)
 
-    plan = subscription_service.get_subscription_plan_by_id(session, plan_id)
-    if not plan:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Subscription plan {plan_id} not found",
-            headers={"Content-Type": "application/json"},
-        )
-
-    plan_params = request.to_subscription_plan_params()
     try:
-        db_plan = subscription_service.update_subscription_plan(
-            session, context, plan_id, plan_params
+        updated_plan = subscription_service.update_subscription_plan(
+            session, context, plan_id, request.to_subscription_plan_params()
         )
+        return build_subscription_plan(updated_plan)
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,30 +144,18 @@ def update_subscription_plan(
             headers={"Content-Type": "application/json"},
         )
 
-    return build_subscription_plan(db_plan)
 
-
-def expire_subscription_plan(
+def delete_subscription_plan(
     plan_id: uuid.UUID,
+    hard_delete: bool,
     context: UserContext,
     session: Session,
-    hard_delete: bool = False,
 ):
-    """
-    Expires or hard deletes a subscription plan by ID.
-    """
     authorize_admin(context)
     try:
-        expired_plan = subscription_service.expire_subscription_plan(
+        subscription_service.delete_subscription_plan(
             session, context, plan_id, hard_delete
         )
-
-        if hard_delete:
-            return {
-                "message": f"Subscription plan {plan_id} has been permanently deleted"
-            }
-        else:
-            return build_subscription_plan(expired_plan)
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -171,7 +164,7 @@ def expire_subscription_plan(
         )
 
 
-def create_subscription(
+def create_account_subscription(
     context: UserContext,
     session: Session,
     account_name: str,
@@ -181,13 +174,19 @@ def create_subscription(
     Creates a new subscription for an account.
     """
     authorize_admin(context)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} does not exist")
+
     subscription_params = request.to_subscription_params()
     try:
-        db_subscription = subscription_service.create_subscription(
+        db_subscription = subscription_service.create_account_subscription(
             session,
             context,
-            account_name,
+            account.id,
             subscription_params,
+            project_ids=request.project_ids or [],
         )
     except ValueError as err:
         raise HTTPException(
@@ -210,9 +209,14 @@ def list_account_subscriptions(
 ) -> ListAccountSubscriptionsResponse:
     """Get all active subscriptions for an account."""
     authorize_admin(context)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} does not exist")
+
     try:
         current, scheduled = subscription_service.get_account_subscriptions(
-            session, account_name
+            session, account.id
         )
 
         return ListAccountSubscriptionsResponse(
@@ -220,10 +224,7 @@ def list_account_subscriptions(
             scheduled=[build_subscription(sub) for sub in scheduled],
         )
     except ValueError as err:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Account not found: {err}",
-        )
+        raise not_found_error(f"Account not found: {err}")
     except Exception as err:
         logger.error(f"Error retrieving account subscriptions: {err}")
         raise HTTPException(
@@ -232,7 +233,7 @@ def list_account_subscriptions(
         )
 
 
-def update_subscription(
+def update_account_subscription(
     context: UserContext,
     session: Session,
     account_name: str,
@@ -243,35 +244,32 @@ def update_subscription(
     """Update an account subscription by external_id, creating a new version."""
     authorize_admin(context)
 
-    if not request.model_dump():
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found!")
+
+    update_data = request.model_dump()
+    if not update_data:
         raise HTTPException(
             status_code=400,
             detail="No fields provided for update",
         )
 
-    update_data = request.model_dump()
-
     try:
         new_subscription = subscription_service.update_account_subscription(
             session,
             context,
-            account_name,
+            account.id,
             external_id,
             update_data,
             force_update,
         )
         return build_subscription(new_subscription)
     except ValueError as err:
-        if "does not exist" in str(err):
-            raise HTTPException(
-                status_code=404,
-                detail=str(err),
-            )
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=str(err),
-            )
+        raise HTTPException(
+            status_code=404,
+            detail=str(err),
+        )
     except Exception as err:
         logger.error(f"Error updating account subscription: {err}")
         raise HTTPException(
@@ -280,7 +278,7 @@ def update_subscription(
         )
 
 
-def update_subscription_status(
+def update_account_subscription_status(
     context: UserContext,
     session: Session,
     account_name: str,
@@ -290,19 +288,21 @@ def update_subscription_status(
     """Update the status of an account subscription."""
     authorize_admin(context)
 
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found.")
+
     try:
         updated_subscription = subscription_service.update_account_subscription_status(
             session,
             context,
-            account_name,
+            account.id,
             external_id,
             request.status,
         )
         if updated_subscription is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Subscription not found",
-            )
+            raise not_found_error("Subscription not found")
+
         return UpdateAccountSubscriptionStatusResponse(
             message="Subscription status updated successfully",
             external_id=updated_subscription.external_id,
@@ -310,10 +310,7 @@ def update_subscription_status(
         )
     except ValueError as err:
         if "does not exist" in str(err):
-            raise HTTPException(
-                status_code=404,
-                detail=str(err),
-            )
+            raise not_found_error(str(err))
         elif "Cannot update status" in str(err):
             raise HTTPException(
                 status_code=400,
@@ -332,31 +329,22 @@ def update_subscription_status(
         )
 
 
-def cancel_subscription(
+def cancel_account_subscription(
     context: UserContext,
     session: Session,
     account_name: str,
     external_id: uuid.UUID,
-    hard_delete: bool = False,
 ) -> dict:
     """Cancel an account subscription."""
     authorize_admin(context)
 
     try:
         cancelled_subscription = subscription_service.cancel_account_subscription(
-            session, context, account_name, external_id, hard_delete
+            session, context, account_name, external_id
         )
 
-        if hard_delete:
-            return {
-                "message": f"Subscription {external_id} has been permanently deleted"
-            }
-
         if cancelled_subscription is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Subscription not found",
-            )
+            raise not_found_error("Subscription not found")
         return {"message": "Subscription cancelled successfully"}
     except ValueError as err:
         if "does not exist" in str(err):
@@ -394,7 +382,7 @@ def create_checkout_session(
     account_name: str,
     external_id: uuid.UUID,
     request: CreateCheckoutSessionRequest,
-) -> CheckoutSessionResponse:
+) -> str:
     """Create a Stripe checkout session for a subscription."""
     authorize_admin(context)
 
@@ -403,16 +391,14 @@ def create_checkout_session(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
-    projects = project_service.get_projects_by_account_id(session, account.id)
-    project_ids = [p.id for p in projects]
-
     try:
-        checkout_url = subscription_service.create_checkout_url(
+        checkout_url = subscription_service.create_stripe_checkout_url(
             session=session,
             account_id=account.id,
             external_id=external_id,
-            project_ids=project_ids,
-            customer_email=str(request.customer_email),
+            customer_email=(
+                str(request.customer_email) if request.customer_email else None
+            ),
             redirect_url_prefix=str(request.redirect_url_prefix),
         )
     except RuntimeError as err:
@@ -432,7 +418,7 @@ def create_checkout_session(
             f"Subscription {external_id} not found in account: {account_name}"
         )
 
-    return CheckoutSessionResponse(checkout_url=checkout_url)
+    return checkout_url
 
 
 def handle_subscription_checkout_callback(
@@ -440,7 +426,9 @@ def handle_subscription_checkout_callback(
     session: Session,
     session_id: str,
 ):
-    checkout_response = subscription_service.handle_checkout_success(session_id)
+    checkout_response = subscription_service.handle_stripe_checkout_success(
+        session, context, session_id
+    )
     if not checkout_response:
         raise not_found_error("Invalid session id or checkout not successful")
 
@@ -459,6 +447,114 @@ def handle_subscription_checkout_callback(
         account.name,
         AccountParams(
             stripe_customer_id=checkout_response.customer_id,
-            stripe_subscription_id=checkout_response.subscription_id,
         ),
     )
+
+
+def list_project_subscriptions_by_subscription_external_id(
+    context: UserContext,
+    session: Session,
+    external_id: uuid.UUID,
+) -> ListProjectSubscriptionsResponse:
+    """List all project subscriptions for a given subscription external ID."""
+    authorize_admin(context)
+
+    try:
+        project_subscriptions = (
+            subscription_service.get_project_subscriptions_by_subscription_external_id(
+                session, context, external_id
+            )
+        )
+
+        # Collect project IDs and fetch projects
+        project_ids = [ps.project_id for ps in project_subscriptions]
+        projects = project_service.get_projects_by_ids(session, project_ids)
+
+        # Create a mapping for quick lookup
+        projects_by_id = {project.id: project for project in projects}
+
+        # Build response objects
+        project_subscription_responses = []
+        for ps in project_subscriptions:
+            project = projects_by_id.get(ps.project_id)
+            if project:
+                project_subscription_responses.append(
+                    build_project_subscription(ps, project)
+                )
+
+        return ListProjectSubscriptionsResponse(
+            project_subscriptions=project_subscription_responses,
+            total_count=len(project_subscription_responses),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error listing project subscriptions: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def create_project_subscription(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    external_id: uuid.UUID,
+    request: CreateProjectSubscriptionRequest,
+) -> CreateProjectSubscriptionResponse:
+    """Create a new project subscription."""
+    authorize_admin(context)
+
+    try:
+        # Use external_id from path and project_id from request
+        project_subscription, project = (
+            subscription_service.create_project_subscription(
+                session, context, request.project_id, external_id
+            )
+        )
+
+        # Build response object
+        project_subscription_response = build_project_subscription(
+            project_subscription, project
+        )
+
+        return CreateProjectSubscriptionResponse(
+            message="Project subscription created successfully",
+            project_subscription=project_subscription_response,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating project subscription: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def remove_project_subscription(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    external_id: uuid.UUID,
+    project_id: uuid.UUID,
+) -> RemoveProjectSubscriptionResponse:
+    """Remove a project subscription."""
+    authorize_admin(context)
+
+    try:
+        # Use external_id and project_id from path
+        success = subscription_service.remove_project_subscription(
+            session, context, project_id, external_id
+        )
+
+        if success:
+            return RemoveProjectSubscriptionResponse(
+                message="Project subscription removed successfully",
+                success=True,
+            )
+        else:
+            return RemoveProjectSubscriptionResponse(
+                message="Failed to remove project subscription",
+                success=False,
+            )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error removing project subscription: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

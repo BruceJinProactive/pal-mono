@@ -124,6 +124,21 @@ def get_projects_by_account_id(session: Session, account_id: uuid.UUID):
     return project_repository.get_projects_by_account_id(account_id)
 
 
+def get_projects_by_ids(session: Session, project_ids: List[uuid.UUID]):
+    """
+    Gets multiple projects by their IDs.
+
+    Args:
+        session (Session): The database connection.
+        project_ids (List[uuid.UUID]): List of project IDs to fetch.
+
+    Returns:
+        List[Project]: A list of projects matching the provided IDs.
+    """
+    project_repository = db.ProjectRepository(session)
+    return project_repository.get_projects_by_ids(project_ids)
+
+
 def update_project_config(
     session: Session, project_id: uuid.UUID, config: Dict[str, Any]
 ) -> None:

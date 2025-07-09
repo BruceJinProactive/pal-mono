@@ -21,7 +21,7 @@ class ChangeLogContext:
         auto_commit: bool = True,
     ):
         self._session = session
-        self._account_id = account_id
+        self._account_id = account_id or UUID(int=0)
         self._resource_type = resource_type
         self._resource_id = resource_id
         self._author = author
@@ -63,9 +63,6 @@ class ChangeLogContext:
             return False  # Re-raise the exception
 
         try:
-            if self._account_id is None:
-                logger.warning("Skipping change log creation: account_id is not set")
-                return True
             if self._resource_id is None:
                 logger.warning("Skipping change log creation: resource_id is not set")
                 return True

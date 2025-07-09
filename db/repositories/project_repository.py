@@ -305,3 +305,26 @@ class ProjectRepository:
             .all()
         )
         return projects
+
+    def get_projects_by_ids(self, project_ids: List[uuid.UUID]) -> List[Project]:
+        """
+        Retrieve projects by a list of project IDs.
+
+        Args:
+            project_ids (List[uuid.UUID]): List of project IDs to fetch.
+
+        Returns:
+            List[Project]: A list of projects matching the provided IDs.
+        """
+        if not project_ids:
+            return []
+
+        try:
+            projects = (
+                self.session.query(Project).filter(Project.id.in_(project_ids)).all()
+            )
+            return projects
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving projects by IDs: {e}")
+            return []

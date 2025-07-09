@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict
 
 import stripe
@@ -15,13 +15,17 @@ from utils.log import logger
 
 # Initialize the Stripe API key once, at module load
 stripe.api_key = os.environ.get("STRIPE_API_KEY")
+SUBSCRIPTION_EXTERNAL_ID = "subscription_external_id"
+PROJECT_IDS = "project_ids"
+REDIRECT_URL = "redirect_url"
 
 
 def create_checkout_session(
     account_id: uuid.UUID,
-    project_ids: list[uuid.UUID],
     customer_email: str | None,
+    subscription_external_id: uuid.UUID,
     price_id: str,
+    quantity: int,
     redirect_url_prefix: str,
     start_date: datetime | None = None,
 ) -> Session:
@@ -34,6 +38,7 @@ def create_checkout_session(
         project_ids: List of project UUIDs to associate with the subscription
         customer_email: Optional email for the customer
         price_id: Stripe price ID for the subscription
+        quantity: Number of projects that need to be subscribed
         redirect_url_prefix: URL prefix for success/cancel redirects
         start_date: Optional datetime when billing starts and trial ends.
                    If None, subscription begins immediately with no trial.
@@ -46,14 +51,14 @@ def create_checkout_session(
     # Build subscription_data
     subscription_data_params: Dict[str, Any] = {
         "metadata": {
-            "project_ids": json.dumps([str(pid) for pid in project_ids]),
+            SUBSCRIPTION_EXTERNAL_ID: str(subscription_external_id),
+            REDIRECT_URL: f"{redirect_url_prefix}/success",
         }
     }
 
-    if start_date:
-        # Set start date for both billing and trial end
+    if start_date and start_date > datetime.now(UTC):
+        # If start_date is in the future, then there is a trial.
         start_timestamp = int(start_date.timestamp())
-        subscription_data_params["billing_cycle_anchor"] = start_timestamp
         subscription_data_params["trial_end"] = start_timestamp
 
         logger.info(
@@ -75,13 +80,13 @@ def create_checkout_session(
             "line_items": [
                 {
                     "price": price_id,
-                    "quantity": len(project_ids),
+                    "quantity": quantity,
                 }
             ],
             "subscription_data": subscription_data_params,
             "client_reference_id": str(account_id),
-            "success_url": f"{redirect_url_prefix}/success?session_id={{CHECKOUT_SESSION_ID}}",
-            "cancel_url": f"{redirect_url_prefix}/cancel",
+            "success_url": f"{redirect_url_prefix}?action=payment_success&session_id={{CHECKOUT_SESSION_ID}}",
+            "cancel_url": f"{redirect_url_prefix}?action=payment_cancelled",
         }
         if customer_email:
             session_params["customer_email"] = customer_email
@@ -113,11 +118,10 @@ def handle_checkout_success(
             "No subscription found in the session!", extra={"session_id": session_id}
         )
         return None
-    subscription_id = session.subscription
+    subscription_id = str(session.subscription)
 
     try:
-        subscription = stripe.Subscription.retrieve(id=str(subscription_id))
-        project_ids = json.loads(subscription.metadata.get("project_ids", "[]"))
+        subscription = stripe.Subscription.retrieve(id=subscription_id)
     except (stripe.StripeError, json.JSONDecodeError, KeyError) as e:
         logger.error(
             f"Failed to retrieve subscription details: {e}",
@@ -125,29 +129,14 @@ def handle_checkout_success(
         )
         return None
 
-    items = list(subscription.items.auto_paging_iter())
+    external_id = parse_uuid(subscription.metadata.get(SUBSCRIPTION_EXTERNAL_ID))
 
-    if len(project_ids) != len(items):
-        logger.error(
-            "Mismatch between number of projects and number of subscription items!",
-            extra={
-                "session_id": session_id,
-                "account_id": session.client_reference_id,
-                "project_ids": project_ids,
-                "num_items": len(items),
-            },
-        )
-        return None
-
-    for index, item in enumerate(items):
-        stripe.SubscriptionItem.modify(
-            item.id, metadata={"project_id": project_ids[index]}
-        )
-
+    logger.info("Successfully handled stripe checkout success event")
     return StripeCheckoutResponse(
         account_id=parse_uuid(session.client_reference_id),
         customer_id=str(subscription.customer),
-        subscription_id=subscription.id,
+        stripe_subscription_id=subscription_id,
+        subscription_external_id=external_id,
     )
 
 
@@ -162,9 +151,9 @@ def get_subscription_details(
         invoice = stripe.Invoice.create_preview(customer=customer_id)
 
         project_ids = [
-            parse_uuid(item.get("metadata", {}).get("project_id", ""))
+            parse_uuid(item.get("metadata", {}).get(PROJECT_IDS, ""))
             for item in subscription.get("items", {}).get("data", [])
-            if item.get("metadata", {}).get("project_id")
+            if item.get("metadata", {}).get(PROJECT_IDS)
         ]
     except stripe.StripeError as e:
         logger.error(
@@ -259,6 +248,90 @@ def remove_project_from_subscription(
     )
 
 
+def update_subscription_quantity(
+    subscription_id: str, price_id: str, new_quantity: int
+) -> bool:
+    """
+    Update the quantity of a subscription item that matches the given price_id.
+
+    Args:
+        subscription_id: The Stripe subscription ID
+        price_id: The price ID to match against subscription items
+        new_quantity: The new quantity to set
+
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    try:
+        # Retrieve the subscription with expanded items
+        subscription = stripe.Subscription.retrieve(subscription_id, expand=["items"])
+
+        if not subscription.items or not subscription.items.data:
+            logger.warning(
+                "No subscription items found",
+                extra={"subscription_id": subscription_id},
+            )
+            return False
+
+        # Find the subscription item that matches the price_id
+        target_item = None
+        for item in subscription.items.data:
+            if item.price.id == price_id:
+                target_item = item
+                break
+
+        if not target_item:
+            logger.warning(
+                f"No subscription item found with price_id {price_id}",
+                extra={
+                    "subscription_id": subscription_id,
+                    "price_id": price_id,
+                },
+            )
+            return False
+
+        # Update the quantity of the subscription item
+        stripe.SubscriptionItem.modify(
+            target_item.id,
+            quantity=new_quantity,
+            proration_behavior="create_prorations",
+        )
+
+        logger.info(
+            "Successfully updated subscription item quantity",
+            extra={
+                "subscription_id": subscription_id,
+                "price_id": price_id,
+                "old_quantity": target_item.quantity,
+                "new_quantity": new_quantity,
+                "item_id": target_item.id,
+            },
+        )
+
+        return True
+
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to update subscription quantity: {e}",
+            extra={
+                "subscription_id": subscription_id,
+                "price_id": price_id,
+                "new_quantity": new_quantity,
+            },
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            f"Unexpected error updating subscription quantity: {e}",
+            extra={
+                "subscription_id": subscription_id,
+                "price_id": price_id,
+                "new_quantity": new_quantity,
+            },
+        )
+        return False
+
+
 def cancel_subscription(subscription_id: str, cancel_immediately: bool = False) -> bool:
     """
     Cancels a Stripe subscription.
@@ -309,6 +382,117 @@ def cancel_subscription(subscription_id: str, cancel_immediately: bool = False) 
             extra={
                 "subscription_id": subscription_id,
                 "cancel_immediately": cancel_immediately,
+            },
+        )
+        return False
+
+
+def update_subscription(
+    subscription_id: str,
+    trial_end_date: datetime | None = None,
+    payment_method: str | None = None,
+    new_price_id: str | None = None,
+) -> bool:
+    """
+    Updates a Stripe subscription with new parameters.
+
+    Args:
+        subscription_id: The Stripe subscription ID to update
+        trial_end_date: Optional new trial end date. If provided, extends or modifies the trial period.
+        payment_method: Optional new payment method ID to set as default
+        new_price_id: Optional new price ID to change the monthly fee
+
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    try:
+        update_params = {}
+
+        # Update trial end date if provided
+        if trial_end_date:
+            if trial_end_date > datetime.now(UTC):
+                update_params["trial_end"] = int(trial_end_date.timestamp())
+                logger.info(
+                    f"Updating subscription trial end to {trial_end_date.isoformat()}",
+                    extra={"subscription_id": subscription_id},
+                )
+            else:
+                logger.warning(
+                    "Trial end date is in the past, skipping trial update",
+                    extra={"subscription_id": subscription_id},
+                )
+        # Update payment method if provided
+        if payment_method:
+            update_params["default_payment_method"] = payment_method
+            logger.info(
+                "Updating subscription payment method",
+                extra={
+                    "subscription_id": subscription_id,
+                    "payment_method": payment_method,
+                },
+            )
+
+        # Update price/monthly fee if provided
+        if new_price_id:
+            # First, get the current subscription to find the subscription item
+            subscription = stripe.Subscription.retrieve(
+                subscription_id, expand=["items"]
+            )
+
+            # Update the first subscription item with the new price
+            # Note: This assumes a single subscription item. For multiple items,
+            # you might need more complex logic
+            if subscription.items and subscription.items.data:
+                subscription_item = subscription.items.data[0]
+                stripe.SubscriptionItem.modify(
+                    subscription_item.id,
+                    price=new_price_id,
+                    proration_behavior="create_prorations",
+                )
+                logger.info(
+                    "Updated subscription item price",
+                    extra={
+                        "subscription_id": subscription_id,
+                        "new_price_id": new_price_id,
+                        "item_id": subscription_item.id,
+                    },
+                )
+
+        # Apply subscription-level updates if any
+        if update_params:
+            updated_subscription = stripe.Subscription.modify(
+                subscription_id, **update_params
+            )
+            logger.info(
+                "Successfully updated subscription",
+                extra={
+                    "subscription_id": subscription_id,
+                    "updated_fields": list(update_params.keys()),
+                    "status": updated_subscription.status,
+                },
+            )
+
+        return True
+
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to update subscription: {e}",
+            extra={
+                "subscription_id": subscription_id,
+                "trial_end_date": trial_end_date,
+                "payment_method": payment_method,
+                "new_price_id": new_price_id,
+            },
+        )
+        return False
+    except Exception as e:
+        logger.error(
+            f"Unexpected error updating subscription: {e}",
+            extra={
+                "subscription_id": subscription_id,
+                "trial_end_date": trial_end_date,
+                "payment_method": payment_method,
+                "new_price_id": new_price_id,
             },
         )
         return False

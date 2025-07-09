@@ -14,7 +14,11 @@ from api.schemas.admin.integration import (
 )
 from api.schemas.admin.lead import Lead
 from api.schemas.admin.project import Project, ProjectSummary
-from api.schemas.admin.subscription import Subscription, SubscriptionPlan
+from api.schemas.admin.subscription import (
+    ProjectSubscription,
+    Subscription,
+    SubscriptionPlan,
+)
 
 
 def build_account(account: db.Account) -> Account:
@@ -229,6 +233,7 @@ def build_subscription_plan(plan: db.SubscriptionPlan) -> SubscriptionPlan:
         stripe_price_id=plan.stripe_price_id,
         active=plan.active,
         sort_id=plan.sort_id,
+        hidden=bool(plan.hidden),
         created_at=plan.created_at,
         updated_at=plan.updated_at,
     )
@@ -240,17 +245,13 @@ def build_subscription(subscription: db.AccountSubscription) -> Subscription:
         external_id=subscription.external_id,
         version=subscription.version,
         account_id=subscription.account_id,
-        subscription_plan_id=subscription.subscription_plan_id,
-        subscription_type=subscription.subscription_type,
+        subscription_plan=build_subscription_plan(subscription.subscription_plan),
+        payment_method=subscription.payment_method,
         status=subscription.status,
+        trial_start_date=subscription.trial_start_date,
         start_date=subscription.start_date,
         end_date=subscription.end_date,
-        call_quota=subscription.call_quota,
-        order_quota=subscription.order_quota,
-        call_overage_charge=subscription.call_overage_charge,
-        order_overage_charge=subscription.order_overage_charge,
         stripe_subscription_id=subscription.stripe_subscription_id,
-        monthly_fee=subscription.monthly_fee,
         created_at=subscription.created_at,
         updated_at=subscription.updated_at,
     )
@@ -312,4 +313,19 @@ def build_project_integration_summary(
         integration_id=project_integration.integration_id,
         store_identifier=project_integration.store_identifier,
         created_at=project_integration.created_at,
+    )
+
+
+def build_project_subscription(
+    project_subscription: db.ProjectSubscription,
+    project: db.Project,
+) -> ProjectSubscription:
+    """Build a project subscription response with project details."""
+    return ProjectSubscription(
+        id=project_subscription.id,
+        project=build_project_summary(project),
+        subscription_id=project_subscription.subscription_id,
+        deleted=project_subscription.deleted,
+        created_at=project_subscription.created_at,
+        updated_at=project_subscription.updated_at,
     )

@@ -14,7 +14,7 @@ from ._auth import authorize_user_account
 from ._builder import build_agent, build_project_summary
 from ._utils import UserContext, not_found_error
 
-EMPTY_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+EMPTY_UUID = uuid.UUID(int=0)
 
 
 def get_agent(
