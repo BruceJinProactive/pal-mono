@@ -42,25 +42,12 @@ jobs:
           .venv/bin/uv pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382
           .venv/bin/uv pip install --no-cache -r requirements.txt
 
-      - name: Format check with black
-        run: |
-          .venv/bin/black . --check --diff
-
-      - name: Lint with ruff
-        run: |
-          .venv/bin/ruff check .
-
-      - name: Sort imports with isort
-        run: |
-          .venv/bin/isort .
-
-      - name: Set PATHS for pyright
+      - name: Add .venv/bin to PATH
         run: |
           echo "${PWD}/.venv/bin" >> $GITHUB_PATH
 
-      - name: Type-check with pyright
-        run: |
-          .venv/bin/pyright .
+      - name: Run validation script
+        run: scripts/validate.sh
 
       # If the job fails, send a message to Slack
       - name: Notify Slack
