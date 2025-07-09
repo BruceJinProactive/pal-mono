@@ -9,6 +9,7 @@ from api.routes.endpoints import endpoints
 from api.routes.integrations.adora import adora_router
 from api.routes.integrations.shopify import _implementation
 from api.routes.integrations.vapi import vapi_router
+from api.routes.integrations.square import _implementation as square_implementation
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
 
@@ -71,3 +72,19 @@ def get_project_info(
         html.escape(app_name),
         session,
     )
+
+
+@integrations_router.get("/square/{app_name}/install", status_code=status.HTTP_200_OK)
+async def square_install(request: Request, app_name: str):
+    """
+    Redirects to the Square OAuth installation page for the integration.
+    """
+    return await square_implementation.install(request, html.escape(app_name))
+
+
+@integrations_router.get("/square/{app_name}/callback", status_code=status.HTTP_200_OK)
+async def square_callback(request: Request, app_name: str):
+    """
+    Handles the callback from Square OAuth.
+    """
+    return await square_implementation.callback(request, html.escape(app_name))
