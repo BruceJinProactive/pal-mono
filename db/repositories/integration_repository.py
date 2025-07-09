@@ -4,7 +4,7 @@ from typing import List, Optional
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from db.tables.integration import Integration
+from db.tables.integration import Integration, ProjectIntegration
 from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 from utils.log import logger
 
@@ -66,6 +66,30 @@ class IntegrationRepository:
             self.session.rollback()
             logger.error(f"Error retrieving integrations by provider and type: {e}")
             return []
+
+    def get_integration_by_project_and_type(
+        self,
+        account_id: uuid.UUID,
+        project_id: uuid.UUID,
+        integration_type: IntegrationType,
+    ) -> Integration | None:
+        """Retrieve an integration by project ID and type."""
+        try:
+            return (
+                self.session.query(Integration)
+                .join(
+                    ProjectIntegration,
+                    Integration.id == ProjectIntegration.integration_id,
+                )
+                .filter(Integration.account_id == account_id)
+                .filter(ProjectIntegration.project_id == project_id)
+                .filter(Integration.integration_type == integration_type)
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving integration by project and type: {e}")
+            return None
 
     def create_integration(
         self,

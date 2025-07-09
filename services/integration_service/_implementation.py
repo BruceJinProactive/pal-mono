@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 import db
 from db.tables.integration import Integration, ProjectIntegration
+from db.tables.types import IntegrationType
 from services.integration_service.schema import (
     IntegrationParams,
     ProjectIntegrationParams,
@@ -27,6 +28,19 @@ def get_integrations_by_account_id(
     """Get all integrations for an account."""
     integration_repository = db.IntegrationRepository(session)
     return integration_repository.get_integrations_by_account_id(account_id)
+
+
+def get_integration_by_project_and_type(
+    session: Session,
+    account_id: uuid.UUID,
+    project_id: uuid.UUID,
+    integration_type: IntegrationType,
+) -> Optional[Integration]:
+    """Get an integration by project ID and type."""
+    integration_repository = db.IntegrationRepository(session)
+    return integration_repository.get_integration_by_project_and_type(
+        account_id, project_id, integration_type
+    )
 
 
 def create_integration(

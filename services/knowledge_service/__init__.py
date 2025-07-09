@@ -1,3 +1,7 @@
+from typing import Optional
+
+from db.tables.types import IntegrationProvider
+
 from . import _implementation
 from .schema import KnowledgeFile
 
@@ -83,7 +87,80 @@ def delete_knowledge_file(
     return _implementation.delete_knowledge_file(index_name, namespace, file_name)
 
 
+def delete_namespace(
+    index_name: str,
+    namespace: str,
+) -> dict:
+    """
+    Delete all vectors from a specific namespace in the Pinecone index.
+
+    Args:
+        index_name (str): The name of the Pinecone index
+        namespace (str): The namespace to delete all vectors from
+
+    Returns:
+        dict: A dictionary with deletion results including the number of deleted vectors
+
+    Raises:
+        Exception: If there is an error accessing the Pinecone index or deleting the vectors.
+    """
+    return _implementation.delete_namespace(index_name, namespace)
+
+
+def update_agent_kb(
+    pos_provider: IntegrationProvider,
+    store_id: str,
+    client_id: str,
+    client_secret: str,
+    token_api_endpoint: Optional[str],
+    general_api_endpoint: Optional[str],
+    pinecone_namespace: str,
+    pinecone_index_name: str,
+    debug: bool = False,
+) -> dict:
+    """
+    Update the knowledge base for an agent.
+
+    Args:
+        pos_provider (IntegrationProvider): The POS provider to use to update the knowledge base. Example: ADORA, TOAST, SQUARE, OLO.
+        store_id (str): The ID of the store to update the knowledge base for.
+        client_id (str): The ID of the client to update the knowledge base for.
+        client_secret (str): The secret of the client to update the knowledge base for.
+        token_api_endpoint (str): The endpoint to get the token for the client.
+        general_api_endpoint (str): The endpoint to get the general information for the client.
+        pinecone_namespace (str): The namespace to upsert the knowledge base to.
+
+    Returns:
+        dict: A dictionary of the following:
+            - system prompt menu: Menu information added to project config
+            - pinecone namespace name: The namespace name in Pinecone the menu is upserted to
+
+    When debug is enabled, the endpoint will return the following:
+    - debug:
+        - pos_provider: POS provider name
+        - store_id: Store ID
+        - client_id: Client ID
+        - client_secret: Client secret
+        - token_api_endpoint: Token API endpoint
+        - general_api_endpoint: General API endpoint
+    """
+    return _implementation.update_agent_kb(
+        pos_provider,
+        store_id,
+        client_id,
+        client_secret,
+        token_api_endpoint,
+        general_api_endpoint,
+        pinecone_namespace,
+        pinecone_index_name,
+        debug,
+    )
+
+
 __all__ = [
     "list_knowledge_files",
     "upload_knowledge_file",
+    "delete_knowledge_file",
+    "delete_namespace",
+    "update_agent_kb",
 ]

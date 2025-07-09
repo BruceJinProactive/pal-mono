@@ -2,6 +2,7 @@ import os
 import shutil
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -9,6 +10,7 @@ from llama_index.core.schema import TextNode
 from llama_index.embeddings.cohere import CohereEmbedding
 from pinecone import Index, Pinecone
 
+from db.tables.types import IntegrationProvider
 from services.knowledge_service.schema import KnowledgeFile
 from utils.log import logger
 
@@ -148,6 +150,58 @@ def delete_knowledge_file(
     return ids_to_delete
 
 
+def delete_namespace(
+    index_name: str,
+    namespace: str,
+) -> dict:
+    """
+    Delete all vectors from a specific namespace in the Pinecone index.
+
+    Args:
+        index_name (str): The name of the Pinecone index
+        namespace (str): The namespace to delete all vectors from
+
+    Returns:
+        dict: A dictionary with deletion results
+
+    Raises:
+        Exception: If there is an error accessing the Pinecone index or deleting the vectors.
+    """
+    try:
+        index = _get_index(index_name)
+
+        logger.debug(
+            "About to delete entire namespace",
+            extra={
+                "index": index_name,
+                "namespace": namespace,
+            },
+        )
+
+        # Delete all vectors in the namespace
+        index.delete(delete_all=True, namespace=namespace)
+
+        logger.debug(
+            "Successfully deleted namespace",
+            extra={
+                "index": index_name,
+                "namespace": namespace,
+            },
+        )
+
+        return {
+            "namespace": namespace,
+            "index": index_name,
+            "message": f"Successfully deleted all vectors in namespace '{namespace}' from index '{index_name}'.\n Please head to pinecone dashboard to delete the namespace.",
+        }
+
+    except Exception as e:
+        logger.error(
+            f"Error deleting namespace {namespace} from index {index_name}: {e}"
+        )
+        raise Exception(f"Failed to delete namespace: {str(e)}")
+
+
 def _get_index(index_name: str):
     pc = Pinecone(PINECONE_API_KEY)
     index = pc.Index(index_name)
@@ -163,3 +217,37 @@ def _list_data(index: Index, namespace: str):
         include_metadata=True,
     )
     return response["matches"]
+
+
+def update_agent_kb(
+    pos_provider: IntegrationProvider,
+    store_id: str,
+    client_id: str,
+    client_secret: str,
+    token_api_endpoint: Optional[str],
+    general_api_endpoint: Optional[str],
+    pinecone_namespace: str,
+    pinecone_index_name: str,
+    debug: bool = False,
+) -> dict:
+    # TODO: implement the logic to update the knowledge base for an agent
+    if debug:
+        return {
+            "debug": {
+                "pos_provider": pos_provider,
+                "store_id": store_id,
+                "client_id": client_id,
+                # ONLY SHOW FIRST 3 CHARACTERS OF CLIENT SECRET
+                "client_secret": client_secret[:3],
+                "token_api_endpoint": token_api_endpoint,
+                "general_api_endpoint": general_api_endpoint,
+            },
+            "pinecone_namespace": pinecone_namespace,
+            "pinecone_index_name": pinecone_index_name,
+            "system_prompt_menu": "",
+        }
+    return {
+        "system_prompt_menu": "",
+        "pinecone_namespace": pinecone_namespace,
+        "pinecone_index_name": pinecone_index_name,
+    }

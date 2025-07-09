@@ -9,6 +9,7 @@ from api.schemas.admin.integration import (
     CreateProjectIntegrationRequest,
     IntegrationRequest,
     IntegrationResponse,
+    IntegrationType,
     ListIntegrationsResponse,
     ListProjectIntegrationsResponse,
     ProjectIntegrationResponse,
@@ -66,6 +67,33 @@ def get_integration(
     )
     if not integration:
         raise not_found_error(f"Integration {integration_id} not found")
+
+    return build_integration(integration)
+
+
+def get_integration_by_project_and_type(
+    account_name: str,
+    project_id: uuid.UUID,
+    integration_type: IntegrationType,
+    context: UserContext,
+    session: Session,
+) -> IntegrationResponse:
+    """Get an integration by project ID and type."""
+    # Verify user can access this account
+    account_repository = db.AccountRepository(session)
+    account = account_repository.get_account(account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found")
+
+    authorize_user_account(context, account_name)
+
+    integration = integration_service.get_integration_by_project_and_type(
+        session, account.id, project_id, integration_type
+    )
+    if not integration:
+        raise not_found_error(
+            f"Integration of type {integration_type} not found for project {project_id}"
+        )
 
     return build_integration(integration)
 

@@ -1,18 +1,20 @@
 import uuid
+from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 import db
+from api.schemas.admin.integration import IntegrationType
 from api.schemas.admin.knowledge import (
     KnowledgeFile,
     ListKnowledgeFileResponse,
     ResourceType,
 )
-from services import admin_service, agent_service, project_service
+from services import admin_service, agent_service, knowledge_service, project_service
 from utils.log import logger
 
-from . import UserContext, _auth
+from . import UserContext, _auth, _integration
 from ._utils import not_found_error
 
 
@@ -139,4 +141,146 @@ def get_and_authorize(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid resource type: {resource.value}",
+        )
+
+
+async def update_agent_kb(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    project_id: uuid.UUID,
+    pinecone_index_name: str,
+    debug: bool = False,
+) -> dict:
+    """
+    Update the knowledge base for an agent.
+
+    This includes:
+    - Downloading the menu from the store through the API endpoint
+    - Generating embeddings for the menu items
+    - Storing the embeddings in Pinecone
+    - Updating the agent config with the new concatenated menu
+
+    Returns:
+        - system prompt menu: Menu information added to project config
+        - pinecone namespace name: The namespace name in Pinecone the menu is upserted to
+
+    Args:
+        timestamp: Optional timestamp in YYYY-MM-DD_HH:MM format to append to namespace.
+                  If not provided, will search in database or use current time.
+    """
+    try:
+        # Authorize the user's access to the admin resource
+        _auth.authorize_admin(context)
+
+        # Get the project
+        project = project_service.get_project(session, project_id)
+        if not project:
+            raise not_found_error("Project not found")
+
+        # Get the POS integration directly
+        pos_integration = _integration.get_integration_by_project_and_type(
+            account_name,
+            project_id,
+            IntegrationType.pos,
+            context,
+            session,
+        )
+        # Get the store identifier from the POS integration
+        store_id = pos_integration.business_id
+        if not store_id:
+            raise ValueError("Store identifier not found in the POS integration")
+
+        # Validate required integration fields
+        if not pos_integration.client_id:
+            raise ValueError("Client ID not found in the POS integration")
+
+        if not pos_integration.client_secret:
+            raise ValueError("Client secret not found in the POS integration")
+
+        # Get API endpoints from raw config
+        api_endpoints = project.raw_config.get("api_endpoints", {})
+        token_api_endpoint = api_endpoints.get("token_api_endpoint")
+        general_api_endpoint = api_endpoints.get("general_api_endpoint")
+
+        # Validate API endpoints
+        if not token_api_endpoint:
+            raise ValueError("Token API endpoint not found in the project's raw config")
+        if not general_api_endpoint:
+            raise ValueError(
+                "General API endpoint not found in the project's raw config"
+            )
+
+        # Handle timestamp logic: time + random hex string
+        namespace_timestamp = (
+            datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + "_" + str(uuid.uuid4())[:4]
+        )
+
+        # Get Pinecone settings from project config or use defaults
+        pinecone_namespace = f"{project.name}_{namespace_timestamp}"
+
+        # Update the knowledge base for the agent
+        return knowledge_service.update_agent_kb(
+            pos_integration.provider,
+            store_id,
+            pos_integration.client_id,
+            pos_integration.client_secret,
+            token_api_endpoint,
+            general_api_endpoint,
+            pinecone_namespace,
+            pinecone_index_name,
+            debug,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error updating knowledge base: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating knowledge base: {str(e)}",
+        )
+
+
+async def delete_vector_database_namespace(
+    context: UserContext,
+    pinecone_index_name: str,
+    pinecone_namespace: str,
+) -> dict:
+    """
+    Delete all vector data from a specific namespace in the Pinecone index.
+    This is a direct delete operation that removes all vectors in the specified namespace.
+
+    WARNING: This operation cannot be undone. All vector data in the namespace will be permanently deleted.
+    """
+    try:
+        # Authorize the user's access to the admin resource
+        _auth.authorize_admin(context)
+
+        # Validate input parameters
+        if not pinecone_index_name or not pinecone_index_name.strip():
+            raise ValueError("Pinecone index name cannot be empty")
+        if not pinecone_namespace or not pinecone_namespace.strip():
+            raise ValueError("Pinecone namespace cannot be empty")
+
+        # Use the knowledge service to delete the namespace
+        return knowledge_service.delete_namespace(
+            pinecone_index_name, pinecone_namespace
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error deleting namespace: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        logger.error(
+            f"Error deleting namespace {pinecone_namespace} from index {pinecone_index_name}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting namespace: {str(e)}",
         )
