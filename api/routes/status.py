@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from api.routes.endpoints import endpoints
-from utils.dttm import current_utc_str
+from datetime import datetime, timezone
 
 ######################################################
 ## Router for health checks
@@ -25,5 +25,5 @@ def status_health():
         "status": "success",
         "router": "status",
         "path": endpoints.HEALTH,
-        "utc": current_utc_str(),
+        "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
     }

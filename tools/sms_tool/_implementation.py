@@ -12,7 +12,7 @@ from db.tables.types import Channel
 from services.relay_service import send_message as relay_send_message
 from tools.sms_tool._llm import generate_order_summary
 from tools.sms_tool.classes import Message, MessageType
-from utils.dttm import current_utc
+from datetime import datetime, timezone
 from utils.log import logger
 
 
@@ -101,7 +101,7 @@ class SMSTool(Toolkit):
             )
 
             # Send the message through the relay service
-            response = relay_send_message(relay_message, delivery_time=current_utc())
+            response = relay_send_message(relay_message, delivery_time=datetime.now(timezone.utc))
 
             if response.get("status") == "scheduled":
                 return "Message sent successfully."

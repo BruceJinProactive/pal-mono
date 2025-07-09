@@ -10,7 +10,7 @@ from sqlalchemy.sql.functions import coalesce
 
 from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dd import send_dd_histogram_metrics
-from utils.dttm import current_utc
+
 from utils.log import logger
 
 CONVERSATION_RESET_SECONDS_SINCE_CREATED = 24 * 3600  # 24 hours
@@ -40,7 +40,7 @@ class MessageRepositoryAsync:
         latest_conversation = result.scalar_one_or_none()
 
         # Step 4: Initialize conversation_id and determine if we need a new conversation
-        current_time = current_utc()
+        current_time = datetime.datetime.now(datetime.timezone.utc)
         conversation_id = None
 
         if (

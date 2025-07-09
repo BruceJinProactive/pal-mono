@@ -1,12 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from api.schemas.chat.message import Message
-from utils.dttm import current_utc
 
 from . import _implementation
 
 
-def send_message(message: Message, delivery_time: datetime = current_utc()) -> dict:
+def send_message(message: Message, delivery_time: datetime = datetime.now(timezone.utc)) -> dict:
     """
     Send a message with an optional delivery time.
 
@@ -21,7 +20,7 @@ def send_message(message: Message, delivery_time: datetime = current_utc()) -> d
 
 
 def send_messages(
-    messages: list[Message], delivery_time: datetime = current_utc()
+    messages: list[Message], delivery_time: datetime = datetime.now(timezone.utc)
 ) -> list[dict]:
     """
     Send multiple messages with an optional delivery time.

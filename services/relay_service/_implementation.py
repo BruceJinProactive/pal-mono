@@ -6,7 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from api.schemas.chat.message import Message
-from utils.dttm import current_utc
+
 from utils.log import logger
 
 # Initialize AWS client
@@ -16,7 +16,7 @@ stepfunctions = boto3.client("stepfunctions")
 AWS_RELAY_STATE_MACHINE_ARN = os.getenv("AWS_RELAY_STATE_MACHINE_ARN")
 
 
-def send_message(message: Message, delivery_time: datetime = current_utc()) -> dict:
+def send_message(message: Message, delivery_time: datetime = datetime.now(timezone.utc)) -> dict:
     logger.info(f"relay_service.send_message: {message}")
     try:
         # Ensure delivery_time is a datetime object
@@ -71,7 +71,7 @@ def send_message(message: Message, delivery_time: datetime = current_utc()) -> d
 
 
 def send_messages(
-    messages: list[Message], delivery_time: datetime = current_utc()
+    messages: list[Message], delivery_time: datetime = datetime.now(timezone.utc)
 ) -> list[dict]:
     responses = []
 
