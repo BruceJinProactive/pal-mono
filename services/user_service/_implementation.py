@@ -13,15 +13,14 @@ from db.tables.types import Channel
 from utils.log import logger
 
 
-# TODO: get_user_by_channel_identifier in user_service is deprecated, remove it once Streamlit internal_app is replaced with new one
-def get_user_by_channel_identifier(
-    session: Session,
+async def get_user_by_channel_identifier_async(
+    session: AsyncSession,
     account_id: uuid.UUID,
     channel_identifier: str,
     create_new_user: bool = False,
 ) -> db.User | None:
-    user_repository = db.UserRepository(session)
-    user = user_repository.get_user_by_channel_identifier(
+    user_repository = db.UserRepositoryAsync(session)
+    user = await user_repository.get_user_by_channel_identifier(
         account_id=account_id,
         channel_identifier=channel_identifier,
     )
@@ -30,7 +29,7 @@ def get_user_by_channel_identifier(
         return user
 
     if create_new_user:
-        new_user = user_repository.create_user(
+        new_user = await user_repository.create_user(
             account_id=account_id, channel_identifier=channel_identifier
         )
         return new_user

@@ -334,8 +334,8 @@ async def handle_status_update(message_data, session: AsyncSession):
                     raise ValueError(
                         f"Project not found for this message: {project_channel_identifier}"
                     )
-                user_repo = db.UserRepositoryAsync(session)
-                user = await user_repo.get_user_by_channel_identifier(
+                user = await user_service.get_user_by_channel_identifier_async(
+                    session=session,
                     account_id=project.account_id,
                     channel_identifier=channel_identifier,
                 )
@@ -548,9 +548,10 @@ async def handle_session_closure(message_data, session: AsyncSession):
                 f"Project not found for this message: {project_channel_identifier}"
             )
 
-        user_repo = db.UserRepositoryAsync(session)
-        user = await user_repo.get_user_by_channel_identifier(
-            account_id=project.account_id, channel_identifier=channel_identifier
+        user = await user_service.get_user_by_channel_identifier_async(
+            session=session,
+            account_id=project.account_id,
+            channel_identifier=channel_identifier,
         )
         if not user:
             raise ValueError(

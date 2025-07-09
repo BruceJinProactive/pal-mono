@@ -11,29 +11,6 @@ from api.schemas.chat.message import Message
 from . import _implementation
 
 
-def get_user_by_channel_identifier(
-    session: Session,
-    account_id: uuid.UUID,
-    channel_identifier: str,
-    create_new_user: bool = False,
-) -> db.User | None:
-    """
-    Retrieve a user based on the provided account ID, channel platform, and channel identifier.
-
-    Args:
-        session (Session): The database session to use for the query.
-        account_id (uuid.UUID): The unique identifier of the account.
-        channel_identifier (str): The identifier of the channel, such as "whatsapp:+1xxxxxxxxxx"
-        create_new_user (bool, optional): Flag indicating whether to create a new user if one does not exist. Defaults to False.
-
-    Returns:
-        db.User | None: The retrieved user if found, otherwise None.
-    """
-    return _implementation.get_user_by_channel_identifier(
-        session, account_id, channel_identifier, create_new_user
-    )
-
-
 def get_users_by_account_id(
     session: Session,
     account_id: uuid.UUID,
@@ -87,8 +64,31 @@ async def create_user_async(
     return await _implementation.create_user_async(session, project, message)
 
 
+async def get_user_by_channel_identifier_async(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    channel_identifier: str,
+    create_new_user: bool = False,
+) -> db.User | None:
+    """
+    Asynchronously retrieve a user based on the provided account ID and channel identifier.
+
+    Args:
+        session (AsyncSession): The asynchronous database session to use for the query.
+        account_id (uuid.UUID): The unique identifier of the account.
+        channel_identifier (str): The identifier of the channel, such as "voice:+1xxxxxxxxxx"
+        create_new_user (bool, optional): Flag indicating whether to create a new user if one does not exist. Defaults to False.
+
+    Returns:
+        db.User | None: The retrieved user if found, otherwise None.
+    """
+    return await _implementation.get_user_by_channel_identifier_async(
+        session, account_id, channel_identifier, create_new_user
+    )
+
+
 __all__ = [
-    "get_user_by_channel_identifier",
+    "get_user_by_channel_identifier_async",
     "get_users_by_account_id",
     "get_user_async",
     "create_user_async",
