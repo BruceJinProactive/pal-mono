@@ -435,7 +435,7 @@ async def get_chat_response_stream(
                         testing=testing,
                     )
 
-                    full_response = " ".join(collected_content).strip()
+                    full_response = "".join(collected_content)
 
                     # Process output for URL updates
                     await _utils.process_output_for_url_updates(
