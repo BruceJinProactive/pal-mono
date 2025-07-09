@@ -40,7 +40,13 @@ def handle_stripe_checkout_success(
     update_account_subscription(
         session, context, response.account_id, response.subscription_external_id, data
     )
-    logger.info("Successfully updated subscription's stripe id")
+    logger.info(
+        "Successfully updated subscription's stripe id",
+        extra={
+            "account_subscription_id": response.subscription_external_id,
+            "stripe_subscription_id": response.stripe_subscription_id,
+        },
+    )
     return response
 
 
@@ -311,6 +317,7 @@ def update_account_subscription(
         "start_date",
         "end_date",
         "status",
+        "stripe_subscription_id",
     }
 
     for k, v in update_data.items():
