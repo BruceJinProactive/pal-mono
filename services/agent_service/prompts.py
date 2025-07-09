@@ -21,7 +21,7 @@ class PromptFactory:
         self.registry.append(prompt)
 
     def build(
-        self, channel: Channel, agent_type: AgentType, plan_tier: TargetTier
+        self, channel: Channel, agent_type: AgentType, plan_tier: TargetTier, pos_vendor: OrderIntegrationVendor
     ) -> list[tuple[str, str]]:
         selected_prompts = []
         for prompt in self.registry:
@@ -30,6 +30,8 @@ class PromptFactory:
             if prompt.agent_types is not None and agent_type not in prompt.agent_types:
                 continue
             if prompt.plan_tiers is not None and plan_tier not in prompt.plan_tiers:
+                continue
+            if prompt.pos_vendors is not None and pos_vendor not in prompt.pos_vendors:
                 continue
             selected_prompts.append(prompt)
 

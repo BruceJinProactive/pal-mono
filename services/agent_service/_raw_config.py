@@ -261,7 +261,9 @@ class RawConfig:
 
     def _get_agent_info(self, channel: Channel):
         # default to premium tier for now.
-        info_list = prompt_factory.build(channel, self.agent.agent_type, TargetTier.t2)
+        info_list = prompt_factory.build(
+            channel, self.agent.agent_type, TargetTier.t2, self.agent.pos_vendor
+        )
         if self.agent.communication_style:
             info_list.append(
                 ("## Custom Communication Style", self.agent.communication_style)
