@@ -74,17 +74,17 @@ def get_project_info(
     )
 
 
-@integrations_router.get("/square/{app_name}/install", status_code=status.HTTP_200_OK)
-async def square_install(request: Request, app_name: str):
+@integrations_router.get("/square/install", status_code=status.HTTP_200_OK)
+async def square_install(request: Request):
     """
     Redirects to the Square OAuth installation page for the integration.
     """
-    return await square_implementation.install(request, html.escape(app_name))
+    return await square_implementation.install(request)
 
 
-@integrations_router.get("/square/{app_name}/callback", status_code=status.HTTP_200_OK)
-async def square_callback(request: Request, app_name: str):
+@integrations_router.get("/square/callback", status_code=status.HTTP_200_OK)
+async def square_callback(request: Request):
     """
     Handles the callback from Square OAuth.
     """
-    return await square_implementation.callback(request, html.escape(app_name))
+    return await square_implementation.callback(request)

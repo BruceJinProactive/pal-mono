@@ -14,15 +14,15 @@ SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
 SQUARE_SCOPES = ["PAYMENTS_READ", "CUSTOMERS_READ"]
 
 
-async def install(request: Request, app_name: str):
+async def install(request: Request):
     # Generate state for CSRF protection
     state = binascii.b2a_hex(os.urandom(15)).decode("utf-8")
     _oauth_state[state] = True  # No shop_url needed for Square
 
-    client_id = get_square_client_id(app_name)
+    client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
     # Build the redirect URI dynamically
-    redirect_uri = f"{get_server_url()}/v1/integrations/square/{app_name}/callback"
+    redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
     auth_url = (
         f"{SQUARE_AUTH_URL}?client_id={client_id}"
         f"&scope={scopes}"
@@ -33,9 +33,9 @@ async def install(request: Request, app_name: str):
     return RedirectResponse(auth_url)
 
 
-async def callback(request: Request, app_name: str):
+async def callback(request: Request):
     # Validate state parameter for CSRF protection
-    valid_request(request, app_name, is_callback=True)
+    valid_request(request, is_callback=True)
     code = request.query_params.get("code")
     state = request.query_params.get("state")
 
@@ -54,15 +54,15 @@ async def callback(request: Request, app_name: str):
         )
 
     try:
-        client_id = get_square_client_id(app_name)
-        client_secret = get_square_client_secret(app_name)
+        client_id = get_square_client_id()
+        client_secret = get_square_client_secret()
     except ValueError as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": str(e)},
         )
     # Always build the redirect_uri dynamically for token exchange
-    redirect_uri = f"{get_server_url()}/v1/integrations/square/{app_name}/callback"
+    redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
 
     # Exchange code for access token
     data = {
@@ -96,7 +96,7 @@ async def callback(request: Request, app_name: str):
             content={"error": "Missing access token or merchant ID in response"},
         )
 
-    token_prefix = f"{app_name}_{merchant_id}"
+    token_prefix = f"square_{merchant_id}"
     try:
         set_access_token(token_prefix, access_token)
     except Exception as e:

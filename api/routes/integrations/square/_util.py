@@ -4,24 +4,24 @@ from utils import secret
 from utils.log import logger
 
 
-def get_square_client_id(app_name: str) -> str:
+def get_square_client_id() -> str:
     value = secret._get_client_secrets().get(
-        f"SQUARE_{app_name.upper()}_CLIENT_ID"
-    ) or os.getenv(f"SQUARE_{app_name.upper()}_CLIENT_ID")
+        "SQUARE_CLIENT_ID"
+    ) or os.getenv("SQUARE_CLIENT_ID")
     if value is None:
         raise ValueError(
-            f"SQUARE_{app_name.upper()}_CLIENT_ID is not set in secrets or environment variables"
+            "SQUARE_CLIENT_ID is not set in secrets or environment variables"
         )
     return value
 
 
-def get_square_client_secret(app_name: str) -> str:
+def get_square_client_secret() -> str:
     value = secret._get_client_secrets().get(
-        f"SQUARE_{app_name.upper()}_CLIENT_SECRET"
-    ) or os.getenv(f"SQUARE_{app_name.upper()}_CLIENT_SECRET")
+        "SQUARE_CLIENT_SECRET"
+    ) or os.getenv("SQUARE_CLIENT_SECRET")
     if value is None:
         raise ValueError(
-            f"SQUARE_{app_name.upper()}_CLIENT_SECRET is not set in secrets or environment variables"
+            "SQUARE_CLIENT_SECRET is not set in secrets or environment variables"
         )
     return value
 

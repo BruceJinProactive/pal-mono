@@ -8,7 +8,7 @@ _oauth_state = {}
 _oauth_state_lock = threading.Lock()
 
 
-def valid_request(request: Request, app_name: str, is_callback=False):
+def valid_request(request: Request, is_callback=False):
     # For Square, just check the state parameter for CSRF protection
     state = request.query_params.get("state")
     if is_callback:
