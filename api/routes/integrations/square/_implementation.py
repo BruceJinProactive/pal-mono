@@ -13,7 +13,10 @@ SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
 SQUARE_SCOPES = ["PAYMENTS_READ", "CUSTOMERS_READ"]
 
 # Replace with your actual redirect URI
-SQUARE_REDIRECT_URI = os.environ.get("SQUARE_REDIRECT_URI", "https://palona.ai")
+SQUARE_REDIRECT_URI = os.environ.get(
+    "SQUARE_REDIRECT_URI",
+    "https://lat-api.proactiveailab.com/v1/integrations/square/palona/callback",
+)
 
 
 async def install(request: Request, app_name: str):
