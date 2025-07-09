@@ -2,7 +2,6 @@ import os
 import shutil
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
@@ -14,11 +13,13 @@ from db.tables.types import IntegrationProvider
 from services.knowledge_service.schema import KnowledgeFile
 from utils.log import logger
 
-# Check if Pinecone API key exists
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 
-if not PINECONE_API_KEY:
-    raise ValueError("Pinecone API key not found")
+def _get_pinecone_api_key() -> str:
+    """Retrieve and validate Pinecone API key."""
+    api_key = os.getenv("PINECONE_API_KEY")
+    if not api_key:
+        raise ValueError("PINECONE_API_KEY environment variable not set")
+    return api_key
 
 
 def _get_cohere_api_key() -> str:
@@ -203,7 +204,8 @@ def delete_namespace(
 
 
 def _get_index(index_name: str):
-    pc = Pinecone(PINECONE_API_KEY)
+    pinecone_api_key = _get_pinecone_api_key()
+    pc = Pinecone(pinecone_api_key)
     index = pc.Index(index_name)
     return index
 
@@ -224,30 +226,79 @@ def update_agent_kb(
     store_id: str,
     client_id: str,
     client_secret: str,
-    token_api_endpoint: Optional[str],
-    general_api_endpoint: Optional[str],
+    token_api_endpoint: str,
+    general_api_endpoint: str,
     pinecone_namespace: str,
     pinecone_index_name: str,
     debug: bool = False,
 ) -> dict:
-    # TODO: implement the logic to update the knowledge base for an agent
-    if debug:
-        return {
-            "debug": {
-                "pos_provider": pos_provider,
-                "store_id": store_id,
-                "client_id": client_id,
-                # ONLY SHOW FIRST 3 CHARACTERS OF CLIENT SECRET
-                "client_secret": client_secret[:3],
-                "token_api_endpoint": token_api_endpoint,
-                "general_api_endpoint": general_api_endpoint,
-            },
-            "pinecone_namespace": pinecone_namespace,
-            "pinecone_index_name": pinecone_index_name,
-            "system_prompt_menu": "",
-        }
-    return {
-        "system_prompt_menu": "",
-        "pinecone_namespace": pinecone_namespace,
-        "pinecone_index_name": pinecone_index_name,
+    """Update the knowledge base for an agent based on the POS provider."""
+
+    debug_info = {
+        "pos_provider": pos_provider,
+        "store_id": store_id,
+        "client_id": client_id,
+        # ONLY SHOW FIRST 3 CHARACTERS OF CLIENT SECRET
+        "client_secret": client_secret[:3],
+        "token_api_endpoint": token_api_endpoint,
+        "general_api_endpoint": general_api_endpoint,
     }
+
+    if debug:
+        logger.debug("update_agent_kb called with debug=True", extra=debug_info)
+
+    try:
+        if pos_provider == IntegrationProvider.adora:
+            from services.knowledge_service.adora.adora_processor import (
+                AdoraMenuProcessor,
+            )
+
+            processor = AdoraMenuProcessor(debug=debug)
+            result = processor.process_and_index_menu(
+                store_id=store_id,
+                client_id=client_id,
+                client_secret=client_secret,
+                pinecone_index_name=pinecone_index_name,
+                pinecone_namespace=pinecone_namespace,
+                token_api_endpoint=token_api_endpoint,
+                general_api_endpoint=general_api_endpoint,
+            )
+
+            logger.info(
+                "Successfully updated knowledge base for Adora agent",
+                extra={
+                    "store_id": store_id,
+                    "processed_items": result.get("processed_items", 0),
+                    "final_namespace": result.get("pinecone_namespace"),
+                },
+            )
+
+            if debug:
+                result["debug"] = debug_info
+
+            return result
+
+        else:
+            raise ValueError(f"Unsupported POS provider: {pos_provider}")
+
+    except Exception as e:
+        logger.error(
+            f"Error updating knowledge base for {pos_provider} agent",
+            extra={
+                "store_id": store_id,
+                "error": str(e),
+                "pos_provider": pos_provider,
+            },
+        )
+
+        if debug:
+            return {
+                "debug": debug_info,
+                "error": str(e),
+                "pinecone_namespace": pinecone_namespace,
+                "pinecone_index_name": pinecone_index_name,
+                "system_prompt_menu": "",
+            }
+
+        # Re-raise the exception for production environments
+        raise

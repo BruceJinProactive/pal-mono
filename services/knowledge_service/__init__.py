@@ -1,5 +1,3 @@
-from typing import Optional
-
 from db.tables.types import IntegrationProvider
 
 from . import _implementation
@@ -112,8 +110,8 @@ def update_agent_kb(
     store_id: str,
     client_id: str,
     client_secret: str,
-    token_api_endpoint: Optional[str],
-    general_api_endpoint: Optional[str],
+    token_api_endpoint: str,
+    general_api_endpoint: str,
     pinecone_namespace: str,
     pinecone_index_name: str,
     debug: bool = False,
@@ -126,9 +124,11 @@ def update_agent_kb(
         store_id (str): The ID of the store to update the knowledge base for.
         client_id (str): The ID of the client to update the knowledge base for.
         client_secret (str): The secret of the client to update the knowledge base for.
-        token_api_endpoint (str): The endpoint to get the token for the client.
-        general_api_endpoint (str): The endpoint to get the general information for the client.
+        token_api_endpoint (str): The complete URL for the token endpoint (e.g., "https://identity.adorapos.net/connect/token"). Required.
+        general_api_endpoint (str): The complete URL for the menu endpoint (e.g., "https://public.api.adorapos.net/api/v1/OrderHub/menu"). Required.
         pinecone_namespace (str): The namespace to upsert the knowledge base to.
+        pinecone_index_name (str): The name of the Pinecone index to use.
+        debug (bool): Whether to enable debug mode.
 
     Returns:
         dict: A dictionary of the following:
@@ -141,8 +141,8 @@ def update_agent_kb(
         - store_id: Store ID
         - client_id: Client ID
         - client_secret: Client secret
-        - token_api_endpoint: Token API endpoint
-        - general_api_endpoint: General API endpoint
+        - token_api_endpoint: Token API endpoint URL
+        - general_api_endpoint: General API endpoint URL
     """
     return _implementation.update_agent_kb(
         pos_provider,
