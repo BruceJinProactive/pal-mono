@@ -335,6 +335,8 @@ async def chat_completions_agno(
         )
 
         fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
+        # A stable closure variable in the nested closure
+        user_content = content
 
         if request.stream:
             # Use streaming response
@@ -351,9 +353,11 @@ async def chat_completions_agno(
 
                         # Create unified stream that combines filler and response
                         async def create_unified_stream():
+                            # Capture content in local scope to avoid closure issues
+
                             # Helper function to get first filler chunk
                             async def get_first_filler_chunk():
-                                filler_stream = get_smart_filler_stream(content)
+                                filler_stream = get_smart_filler_stream(user_content)
                                 try:
                                     return (
                                         await filler_stream.__anext__(),

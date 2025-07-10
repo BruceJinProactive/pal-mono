@@ -91,23 +91,23 @@ Filler words:"""
             if hasattr(choice, "delta") and choice.delta:
                 content = getattr(choice.delta, "content", None)
 
-            # Always yield the chunk (even without content for proper stream termination)
-            yield ChatCompletionChunk(
-                id=chunk_id,
-                object="chat.completion.chunk",
-                created=created_timestamp,
-                model=model,
-                choices=[
-                    Choice(
-                        index=index,
-                        delta=ChoiceDelta(role="assistant", content=content),
-                        finish_reason=None,
-                    )
-                ],
-            )
             if content:
+                # Only yield chunks with actual content to avoid empty chunks in stream
+                yield ChatCompletionChunk(
+                    id=chunk_id,
+                    object="chat.completion.chunk",
+                    created=created_timestamp,
+                    model=model,
+                    choices=[
+                        Choice(
+                            index=index,
+                            delta=ChoiceDelta(role="assistant", content=content),
+                            finish_reason=None,
+                        )
+                    ],
+                )
                 logger.debug(f"[SmartFiller] Streamed chunk: '{content}'")
-            index += 1
+                index += 1
 
         logger.debug("[SmartFiller] Completed streaming smart filler")
 
