@@ -8,8 +8,8 @@ import db
 from api.routes.endpoints import endpoints
 from api.routes.integrations.adora import adora_router
 from api.routes.integrations.shopify import _implementation
-from api.routes.integrations.vapi import vapi_router
 from api.routes.integrations.square import _implementation as square_implementation
+from api.routes.integrations.vapi import vapi_router
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
 

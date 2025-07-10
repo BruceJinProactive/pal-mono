@@ -5,7 +5,9 @@ from api.schemas.chat.message import Message
 from . import _implementation
 
 
-def send_message(message: Message, delivery_time: datetime = datetime.now(timezone.utc)) -> dict:
+def send_message(
+    message: Message, delivery_time: datetime = datetime.now(timezone.utc)
+) -> dict:
     """
     Send a message with an optional delivery time.
 

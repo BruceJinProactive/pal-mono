@@ -1,12 +1,43 @@
 import uuid
 from typing import List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from db.tables.integration import Integration, ProjectIntegration
 from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 from utils.log import logger
+
+
+class IntegrationAsyncRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_integration_by_project_and_type(
+        self,
+        account_id: uuid.UUID,
+        project_id: uuid.UUID,
+        integration_type: IntegrationType,
+    ) -> Integration | None:
+        """Retrieve an integration by project ID and type."""
+        try:
+            query = (
+                select(Integration)
+                .join(
+                    ProjectIntegration,
+                    Integration.id == ProjectIntegration.integration_id,
+                )
+                .filter(Integration.account_id == account_id)
+                .filter(ProjectIntegration.project_id == project_id)
+                .filter(Integration.integration_type == integration_type)
+            )
+            result = await self.session.execute(query)
+            return result.scalars().first()
+        except SQLAlchemyError as e:
+            logger.error(f"Error retrieving integration by project and type: {e}")
+            return None
 
 
 class IntegrationRepository:

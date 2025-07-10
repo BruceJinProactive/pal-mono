@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter
 
 from api.routes.endpoints import endpoints
-from datetime import datetime, timezone
 
 ######################################################
 ## Router for health checks

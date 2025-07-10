@@ -1,8 +1,8 @@
-from fastapi import HTTPException, Request, status
-
 # TODO: Replace with Redis or database-backed state management
 # _oauth_state = {}
 import threading
+
+from fastapi import HTTPException, Request, status
 
 _oauth_state = {}
 _oauth_state_lock = threading.Lock()

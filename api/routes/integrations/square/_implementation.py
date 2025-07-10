@@ -1,13 +1,14 @@
-import os
 import binascii
-import requests
+import os
 
+import requests
 from fastapi import Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from ._util import set_access_token, get_square_client_id, get_square_client_secret
-from ._valid import _oauth_state, valid_request
 from services.service_utils import get_server_url
+
+from ._util import get_square_client_id, get_square_client_secret, set_access_token
+from ._valid import _oauth_state, valid_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"

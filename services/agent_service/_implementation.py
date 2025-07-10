@@ -10,8 +10,8 @@ import db
 from agent import AgentConfig
 from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
-from db.tables.types import Channel
-from services import account_service
+from db.tables.types import Channel, IntegrationType
+from services import account_service, integration_service
 from services.history_service import change_log_context
 from utils.log import logger
 
@@ -57,6 +57,10 @@ async def construct_agent_config(
     if db_project is None:
         raise ValueError("Invalid project_id")
 
+    integration = await integration_service.async_get_integration_by_project_and_type(
+        db_session, db_project.account_id, db_project.id, IntegrationType.pos
+    )
+
     raw_config = _raw_config.RawConfig(
         agent=db_agent,
         project=db_project,
@@ -64,6 +68,7 @@ async def construct_agent_config(
         user_id=user_id,
         conversation_id=conversation_id,
         channel=channel,
+        integration=integration,
     )
 
     # Convert blueprint to agent config

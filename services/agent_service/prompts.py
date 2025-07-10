@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from db.tables.types import AgentType, Channel, OrderIntegrationVendor, TargetTier
+from db.tables.types import AgentType, Channel, IntegrationProvider, TargetTier
 
 
 @dataclass
@@ -10,7 +10,7 @@ class Prompt:
     channels: list[Channel] | None = None
     agent_types: list[AgentType] | None = None
     plan_tiers: list[TargetTier] | None = None
-    pos_vendors: list[OrderIntegrationVendor] | None = None
+    pos_vendors: list[IntegrationProvider] | None = None
 
 
 class PromptFactory:
@@ -21,7 +21,11 @@ class PromptFactory:
         self.registry.append(prompt)
 
     def build(
-        self, channel: Channel, agent_type: AgentType, plan_tier: TargetTier, pos_vendor: OrderIntegrationVendor
+        self,
+        channel: Channel,
+        agent_type: AgentType,
+        plan_tier: TargetTier,
+        pos_vendor: IntegrationProvider | None,
     ) -> list[tuple[str, str]]:
         selected_prompts = []
         for prompt in self.registry:
@@ -282,7 +286,7 @@ prompt_factory.register(
 prompt_factory.register(
     Prompt(
         agent_types=[AgentType.ordering],
-        pos_vendors=[OrderIntegrationVendor.adora],
+        pos_vendors=[IntegrationProvider.adora],
         title="POS Checkout Guideline",
         instructions="""
 - Always include the payment link for the user to finalize their order in the checkout message. The payment link must be placed in the placeholder [PAYMENT_URL](<https://example.com/payment_url>) and is the returned payment url from the checkout tool call.""",
@@ -292,10 +296,20 @@ prompt_factory.register(
 prompt_factory.register(
     Prompt(
         agent_types=[AgentType.ordering],
-        pos_vendors=[OrderIntegrationVendor.toast],
+        pos_vendors=[IntegrationProvider.toast],
         title="POS Checkout Guideline",
         instructions="""
 - Tell the user that they must pay at the store. Do not provide them with any payment links.""",
+    )
+)
+
+prompt_factory.register(
+    Prompt(
+        agent_types=[AgentType.ordering],
+        pos_vendors=[IntegrationProvider.square],
+        title="POS Checkout Guideline",
+        instructions="""
+- Always include the payment link for the user to finalize their order in the checkout message.""",
     )
 )
 

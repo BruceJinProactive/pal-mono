@@ -1,4 +1,5 @@
 from ._implementation import (
+    async_get_integration_by_project_and_type,
     create_integration,
     create_project_integration,
     delete_integration,

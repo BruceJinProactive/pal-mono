@@ -2,6 +2,7 @@ import uuid
 from dataclasses import asdict
 from typing import List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
@@ -39,6 +40,19 @@ def get_integration_by_project_and_type(
     """Get an integration by project ID and type."""
     integration_repository = db.IntegrationRepository(session)
     return integration_repository.get_integration_by_project_and_type(
+        account_id, project_id, integration_type
+    )
+
+
+async def async_get_integration_by_project_and_type(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    project_id: uuid.UUID,
+    integration_type: IntegrationType,
+) -> Optional[Integration]:
+    """Get an integration by project ID and type."""
+    integration_repository = db.IntegrationAsyncRepository(session)
+    return await integration_repository.get_integration_by_project_and_type(
         account_id, project_id, integration_type
     )
 

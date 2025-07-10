@@ -25,6 +25,7 @@ from agent.config import VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.memory import MemoryProvider
 from agent.model import ModelProvider
+from db import Integration
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
 from services.agent_service.prompts import prompt_factory
@@ -42,6 +43,7 @@ class RawConfig:
         conversation_id: UUID,
         channel: Channel,
         client_config: ClientConfig | None = None,
+        integration: Integration | None = None,
     ):
         self.agent = agent
         self.project = project
@@ -50,6 +52,7 @@ class RawConfig:
         self.conversation_id = conversation_id
         self.client_config = client_config
         self.channel = channel
+        self.integration = integration
 
     def build(self) -> AgentConfig:
         try:
@@ -262,7 +265,10 @@ class RawConfig:
     def _get_agent_info(self, channel: Channel):
         # default to premium tier for now.
         info_list = prompt_factory.build(
-            channel, self.agent.agent_type, TargetTier.t2, self.agent.pos_vendor
+            channel,
+            self.agent.agent_type,
+            TargetTier.t2,
+            self.integration.provider if self.integration else None,
         )
         if self.agent.communication_style:
             info_list.append(
@@ -324,7 +330,7 @@ class RawConfig:
                 settings = raw_knowledge.get("settings")
                 self._validate_settings(provider, settings)
 
-                additional_context += f"""  
+                additional_context += f"""
                 --- MENU START ---
                 {settings["content"]}
                 --- MENU END ---

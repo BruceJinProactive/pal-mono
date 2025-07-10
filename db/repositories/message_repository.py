@@ -10,7 +10,6 @@ from sqlalchemy.sql.functions import coalesce
 
 from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dd import send_dd_histogram_metrics
-
 from utils.log import logger
 
 CONVERSATION_RESET_SECONDS_SINCE_CREATED = 24 * 3600  # 24 hours
