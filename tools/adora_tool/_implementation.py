@@ -517,6 +517,7 @@ class AdoraTool(Toolkit):
 
         if self.mp:
             event_properties = {
+                "runtime_env": os.getenv("RUNTIME_ENV", "dev"),
                 "action_name": AdoraTool.checkout_order.__name__,
                 "account_name": self.tool_metadata.account_name,
                 "conversation_id": str(self.tool_metadata.session_id),

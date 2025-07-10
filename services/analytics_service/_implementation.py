@@ -18,6 +18,7 @@ BOOKMARK_ID_MAPPING = {
     "MAU": 76661239,
     "MESSAGE": 76661240,
     "CONVERSION": 76661919,
+    "ORDER": 81979859,
 }
 
 MIXPANEL_REPORTS = [
@@ -25,6 +26,7 @@ MIXPANEL_REPORTS = [
     (76661239, "Monthly Active Users"),
     (76661240, "Turn of Messages"),
     (76661919, "Checkout Conversion"),
+    (81979859, "Total Order Value"),
 ]
 
 
