@@ -90,6 +90,7 @@ Filler words:
                 content = getattr(choice.delta, "content", None)
 
             if content:
+                # Yield the chunk when content is present
                 yield ChatCompletionChunk(
                     id=chunk_id,
                     object="chat.completion.chunk",

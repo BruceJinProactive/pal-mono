@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import os
@@ -14,6 +15,7 @@ from urlextract import URLExtract
 import db
 from api.routes.chat._utils import create_url_filter
 from api.routes.chat.chat import chat_router
+from api.routes.chat.smart_filler import get_smart_filler_stream
 from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
@@ -179,6 +181,17 @@ def _create_openai_client() -> openai.AsyncOpenAI:
     return openai.AsyncOpenAI(api_key=api_key)
 
 
+def _is_smart_filler_enabled(recipient_identifier: str) -> bool:
+    """Check if smart filler is enabled for the given recipient identifier."""
+    enabled_recipients = os.environ.get("SMART_FILLER_ENABLED_RECIPIENTS", "")
+    if not enabled_recipients:
+        return False
+
+    # Parse comma-separated list of recipient identifiers
+    enabled_list = [r.strip() for r in enabled_recipients.split(",") if r.strip()]
+    return recipient_identifier in enabled_list
+
+
 def _create_response_data(model: str, content: str) -> dict:
     """Create a standard response data object."""
     return {
@@ -202,6 +215,108 @@ def _create_response_data(model: str, content: str) -> dict:
             "total_tokens": 0,
         },
     }
+
+
+async def _create_unified_stream(
+    user_content: str,
+    session: AsyncSession,
+    message: Message,
+    request_context: RequestContext,
+    recipient_identifier: str,
+):
+    """Create a unified stream that combines filler and response streams."""
+
+    # Check if smart filler is enabled for this recipient
+    smart_filler_enabled = _is_smart_filler_enabled(recipient_identifier)
+
+    if not smart_filler_enabled:
+        logger.debug(f"Smart filler disabled for recipient: {recipient_identifier}")
+        # Just return the response stream without filler
+        response_stream = await get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=request_context,
+        )
+        if response_stream:
+            async for chunk in response_stream:
+                yield chunk
+        return
+
+    logger.debug(f"Smart filler enabled for recipient: {recipient_identifier}")
+
+    # Helper function to get first filler chunk
+    async def get_first_filler_chunk():
+        filler_stream = get_smart_filler_stream(user_content)
+        try:
+            return (
+                await filler_stream.__anext__(),
+                filler_stream,
+            )
+        except StopAsyncIteration:
+            return None, None
+
+    # Helper function to get first response chunk
+    async def get_first_response_chunk():
+        response_stream = await get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=request_context,
+        )
+        if response_stream:
+            try:
+                return (
+                    await response_stream.__anext__(),
+                    response_stream,
+                )
+            except StopAsyncIteration:
+                return None, None
+        return None, None
+
+    # Start both tasks in parallel - race for first chunks
+    filler_task = asyncio.create_task(get_first_filler_chunk())
+    response_task = asyncio.create_task(get_first_response_chunk())
+
+    # Race condition: wait for either first chunk to arrive
+    done, _ = await asyncio.wait(
+        [filler_task, response_task],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    if filler_task in done:
+        # Filler first chunk won the race
+        try:
+            first_filler_chunk, filler_stream = await filler_task
+            if first_filler_chunk and filler_stream:
+                # Yield first filler chunk
+                yield first_filler_chunk
+                logger.debug("Smart filler won: sent first chunk")
+
+                # Continue yielding remaining filler chunks
+                async for filler_chunk in filler_stream:
+                    yield filler_chunk
+
+                logger.debug("Completed smart filler streaming")
+        except Exception as e:
+            logger.warning(f"Error in smart filler stream: {e}")
+
+        # Now wait for response stream and yield its chunks
+        first_response_chunk, response_stream = await response_task
+        if first_response_chunk:
+            yield first_response_chunk
+        if response_stream:
+            async for chunk in response_stream:
+                yield chunk
+    else:
+        # Response first chunk won the race - cancel filler
+        filler_task.cancel()
+        logger.debug("Main response won: skipping filler")
+
+        first_response_chunk, response_stream = await response_task
+        if first_response_chunk:
+            yield first_response_chunk
+        if response_stream:
+            async for chunk in response_stream:
+                yield chunk
 
 
 async def _send_urls_via_sms(
@@ -333,9 +448,9 @@ async def chat_completions_agno(
         )
 
         fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
-
         if request.stream:
-            # Use streaming response
+            # A stable closure variable in the nested closure
+            user_content = content
             async def generate_stream():
                 try:
                     try:
@@ -347,10 +462,13 @@ async def chat_completions_agno(
                             ["path:agno", "streaming:true"],
                         )
 
-                        response_stream = await get_chat_response_stream(
+                        # Create unified stream that combines filler and response
+                        response_stream = _create_unified_stream(
+                            user_content=user_content,
                             session=session,
                             message=message,
                             request_context=request_context,
+                            recipient_identifier=recipient_identifier,
                         )
                     except Exception as es:
                         # Log the error and create a fallback response
