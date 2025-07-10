@@ -18,7 +18,7 @@ SQUARE_SCOPES = ["PAYMENTS_READ", "CUSTOMERS_READ"]
 async def install(request: Request):
     # Generate state for CSRF protection
     state = binascii.b2a_hex(os.urandom(15)).decode("utf-8")
-    _oauth_state[state] = True  # No shop_url needed for Square
+    _oauth_state[state] = True
 
     client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
@@ -38,15 +38,6 @@ async def callback(request: Request):
     # Validate state parameter for CSRF protection
     valid_request(request, is_callback=True)
     code = request.query_params.get("code")
-    state = request.query_params.get("state")
-
-    # Validate state
-    if not state or state not in _oauth_state:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": "Invalid or missing state parameter"},
-        )
-    del _oauth_state[state]  # Remove state after use
 
     if not code:
         return JSONResponse(
