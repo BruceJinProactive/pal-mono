@@ -36,32 +36,30 @@ async def get_smart_filler_stream(
         client = openai.AsyncOpenAI(api_key=api_key)
 
         # Create a fast, focused prompt for context-aware filler
-        prompt = f"""User query: "{user_message}"
+        prompt = f"""
+You are an assistant that generates short, natural filler phrases to use during conversation pauses based on the complexity of a user's query.
 
-Generate appropriate filler words based on query complexity:
+Instructions:
 
-COMPLEX QUERIES (need longer filler, 8-15 words):
-- Recommendations ("what restaurant", "recommend", "suggest")
-- Menu details ("menu", "what's available", "options")
-- Prices ("price", "cost", "how much")
-- Comparisons ("compare", "difference", "better")
-- Location/hours ("where", "when open", "hours")
-
-SIMPLE QUERIES (need short filler, 1-5 words):
-- Greetings ("hello", "hi", "hey")
-- Yes/no questions ("is", "can", "do you")
-- Thanks ("thank", "thanks")
-
-Generate ONLY the filler words, no explanation. Be natural and conversational.
+- For COMPLEX queries (keywords like “recommend”, “menu”, “price”, “compare”, “when open”, “hours”), generate a natural filler phrase between 8 and 15 words.
+- For SIMPLE queries (greetings, yes/no questions, thanks), generate a short filler phrase between 1 and 5 words.
+- Output ONLY the filler phrase—no complete sentences, no punctuation at the end, and no explanations.
+- Be conversational and natural.
 
 Examples:
-- "What restaurant do you recommend?" → "Let me find some great options for you..."
-- "What's the menu like?" → "Let me check what's available..."
-- "How much does it cost?" → "Let me look up the pricing..."
-- "Hello" → "Hi there!"
-- "Thank you" → "You're welcome!"
 
-Filler words:"""
+User query: "What restaurant do you recommend?"
+Filler words: Let me find some great options for you
+
+User query: "Hello"
+Filler words: Hi there
+
+User query: "So when the store is open,"
+Filler words: Let me check the store hours for you
+
+User query: "{user_message}"
+Filler words:
+"""
 
         # Use streaming with optimized settings for speed
         response = await client.chat.completions.create(
@@ -91,23 +89,22 @@ Filler words:"""
             if hasattr(choice, "delta") and choice.delta:
                 content = getattr(choice.delta, "content", None)
 
-            # Always yield the chunk (even without content for proper stream termination)
-            yield ChatCompletionChunk(
-                id=chunk_id,
-                object="chat.completion.chunk",
-                created=created_timestamp,
-                model=model,
-                choices=[
-                    Choice(
-                        index=index,
-                        delta=ChoiceDelta(role="assistant", content=content),
-                        finish_reason=None,
-                    )
-                ],
-            )
             if content:
+                yield ChatCompletionChunk(
+                    id=chunk_id,
+                    object="chat.completion.chunk",
+                    created=created_timestamp,
+                    model=model,
+                    choices=[
+                        Choice(
+                            index=index,
+                            delta=ChoiceDelta(role="assistant", content=content),
+                            finish_reason=None,
+                        )
+                    ],
+                )
                 logger.debug(f"[SmartFiller] Streamed chunk: '{content}'")
-            index += 1
+                index += 1
 
         logger.debug("[SmartFiller] Completed streaming smart filler")
 
