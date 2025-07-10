@@ -244,7 +244,7 @@ async def _create_unified_stream(
     smart_filler_enabled = _is_smart_filler_enabled(recipient_identifier)
     static_mode_enabled = _is_static_mode_enabled(recipient_identifier)
 
-    if not smart_filler_enabled and not static_mode_enabled:
+    if not smart_filler_enabled:
         logger.debug(f"No filler enabled for recipient: {recipient_identifier}")
         # Just return the response stream without filler
         response_stream = await get_chat_response_stream(
@@ -258,8 +258,7 @@ async def _create_unified_stream(
         return
 
     # Determine which filler mode to use
-    use_static_mode = static_mode_enabled
-    filler_type = "static" if use_static_mode else "smart"
+    filler_type = "static" if static_mode_enabled else "smart"
     logger.debug(
         f"{filler_type.capitalize()} filler enabled for recipient: {recipient_identifier}"
     )
@@ -267,7 +266,7 @@ async def _create_unified_stream(
     # Helper function to get first filler chunk
     async def get_first_filler_chunk():
         filler_stream = get_smart_filler_stream(
-            user_content, static_mode=use_static_mode
+            user_content, static_mode=static_mode_enabled
         )
         try:
             return (

@@ -31,13 +31,14 @@ async def get_smart_filler_stream(
         return
 
     if static_mode:
+        logger.debug("[SmartFiller] Starting streaming in static mode")
         async for chunk in _get_static_mode_stream(user_message):
             yield chunk
         return
 
     model = "gpt-3.5-turbo"
     try:
-        logger.info("[SmartFiller] Starting streaming smart filler generation")
+        logger.debug("[SmartFiller] Starting streaming smart filler generation")
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
@@ -208,7 +209,7 @@ async def _get_static_mode_stream(
     else:
         selected_filler = random.choice(simple_fillers)
 
-    logger.info(
+    logger.debug(
         f"[StaticMode] Selected filler: '{selected_filler}' for query: '{user_message[:50]}...'"
     )
 
