@@ -79,7 +79,7 @@ class AdoraMenuProcessor:
             pinecone_index_name: The name of the Pinecone index to use
             pinecone_namespace: The namespace to store the menu data in
             token_api_endpoint: The complete URL for the token endpoint
-            general_api_endpoint: The complete URL for the menu endpoint
+            general_api_endpoint: The complete URL for the general API endpoint
 
         Returns:
             dict: Processing results including menu data and indexing information
@@ -95,6 +95,10 @@ class AdoraMenuProcessor:
                     client_secret=client_secret,
                     token_api_endpoint=token_api_endpoint,
                 )
+                if self.debug:
+                    logger.debug(
+                        f"[adora_processor.process_and_index_menu] Successfully got authentication token for store {store_id}"
+                    )
 
             # Step 2: Download menu data
             menu_data = download_menu(
@@ -104,8 +108,12 @@ class AdoraMenuProcessor:
             )
 
             if self.debug:
-                logger.debug(f"Successfully downloaded menu for store {store_id}")
-                logger.debug(f"Menu contains {len(menu_data.get('items', []))} items")
+                logger.debug(
+                    f"[adora_processor.process_and_index_menu] Successfully downloaded menu for store {store_id}"
+                )
+                logger.debug(
+                    f"[adora_processor.process_and_index_menu] Menu contains {len(menu_data.get('items', []))} items"
+                )
 
             # Step 3: Generate individual item texts
             individual_items = []
@@ -116,12 +124,10 @@ class AdoraMenuProcessor:
                     with_ids=True,
                 )
                 individual_items.append(item_text)
-
             # Step 4: Generate consolidated menu
             consolidated_menu = self._generate_consolidated_menu(
                 individual_items=individual_items
             )
-
             # Step 5: Index to Pinecone
             final_namespace = index_to_pinecone(
                 individual_items=individual_items,
@@ -129,10 +135,9 @@ class AdoraMenuProcessor:
                 pinecone_namespace=pinecone_namespace,
                 debug=self.debug,
             )
-
             if self.debug:
                 logger.debug(
-                    f"Processing complete. Total items: {len(individual_items)}"
+                    f"[adora_processor.process_and_index_menu] Processing complete. Total items: {len(individual_items)}"
                 )
 
             return {

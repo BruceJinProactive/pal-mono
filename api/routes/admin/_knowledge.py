@@ -186,6 +186,7 @@ async def update_agent_kb(
             context,
             session,
         )
+
         # Get the store identifier from the POS integration
         store_id = pos_integration.business_id
         if not store_id:
@@ -199,10 +200,9 @@ async def update_agent_kb(
             raise ValueError("Client secret not found in the POS integration")
 
         # Get API endpoints from raw config
-        api_endpoints = project.raw_config.get("api_endpoints", {})
+        api_endpoints = pos_integration.raw_config.get("api_endpoints", {})
         token_api_endpoint = api_endpoints.get("token_api_endpoint")
         general_api_endpoint = api_endpoints.get("general_api_endpoint")
-
         # Validate API endpoints
         if not token_api_endpoint:
             raise ValueError("Token API endpoint not found in the project's raw config")
@@ -217,7 +217,7 @@ async def update_agent_kb(
         )
 
         # Get Pinecone settings from project config or use defaults
-        pinecone_namespace = f"{project.name}_{namespace_timestamp}"
+        pinecone_namespace = f"{project.name}_{store_id}_{namespace_timestamp}"
 
         # Update the knowledge base for the agent
         return knowledge_service.update_agent_kb(
@@ -234,13 +234,13 @@ async def update_agent_kb(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error updating knowledge base: {str(e)}",
+            detail=f"Error updating knowledge base:\n{str(e)}",
             headers={"Content-Type": "application/json"},
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating knowledge base: {str(e)}",
+            detail=f"Error updating knowledge base:\n{str(e)}",
         )
 
 

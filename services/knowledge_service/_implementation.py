@@ -236,7 +236,6 @@ def update_agent_kb(
 
     debug_info = {
         "pos_provider": pos_provider,
-        "store_id": store_id,
         "client_id": client_id,
         # ONLY SHOW FIRST 3 CHARACTERS OF CLIENT SECRET
         "client_secret": client_secret[:3],

@@ -60,7 +60,9 @@ def index_to_pinecone(
     cohere_api_key = _get_cohere_api_key()
 
     if debug:
-        logger.debug(f"Indexing {len(individual_items)} items to Pinecone...")
+        logger.debug(
+            f"[indexer.index_to_pinecone] Indexing {len(individual_items)} items to Pinecone..."
+        )
 
     # Create documents from individual items
     documents = []
@@ -81,11 +83,8 @@ def index_to_pinecone(
     pc = Pinecone(api_key=pinecone_api_key)
     pinecone_index = pc.Index(pinecone_index_name)
 
-    # Add timestamp to namespace
-    namespace_with_date = f"{pinecone_namespace}_{time.strftime('%Y-%m-%d')}"
-
     vector_store = PineconeVectorStore(
-        pinecone_index=pinecone_index, namespace=namespace_with_date
+        pinecone_index=pinecone_index, namespace=pinecone_namespace
     )
 
     embed_model = CohereEmbedding(
@@ -104,7 +103,7 @@ def index_to_pinecone(
 
     if debug:
         logger.debug(
-            f"Successfully indexed to Pinecone namespace: {namespace_with_date}"
+            f"Successfully indexed to Pinecone namespace: {pinecone_namespace}"
         )
 
-    return namespace_with_date
+    return pinecone_namespace

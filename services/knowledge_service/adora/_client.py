@@ -55,7 +55,9 @@ def get_bearer_token(
     }
 
     try:
-        logger.debug("Requesting bearer token from %s", token_url)
+        logger.debug(
+            f"[adora_client.get_bearer_token] Requesting bearer token from {token_url}"
+        )
         response = requests.post(token_url, data=payload, timeout=10)
         response.raise_for_status()
         token = response.json().get("access_token")
@@ -80,8 +82,8 @@ def download_menu(
     Args:
         store_id: The store ID to download menu for
         token: The bearer token for authentication
-        general_api_endpoint: The complete URL for the menu endpoint
-            (e.g., "https://public.api.adorapos.net/api/v1/OrderHub/menu")
+        general_api_endpoint: The complete URL for the general API endpoint
+            (e.g., "https://public.api.adorapos.net/api/v1/OrderHub")
 
     Returns:
         dict: The menu data from the API
@@ -90,13 +92,18 @@ def download_menu(
         RuntimeError: If menu download fails
         ValueError: If menu data is invalid
     """
-    menu_url = general_api_endpoint
 
     headers = {"Authorization": f"Bearer {token}"}
     params = {"sid": store_id}
-
+    menu_url = (
+        general_api_endpoint + "menu"
+        if general_api_endpoint.endswith("/")
+        else general_api_endpoint + "/menu"
+    )
     try:
-        logger.debug("Downloading menu for store %s", store_id)
+        logger.debug(
+            f"[adora_client.download_menu] Downloading menu for store {store_id}"
+        )
         response = requests.get(menu_url, headers=headers, params=params, timeout=10)
         response.raise_for_status()
         menu_data = response.json()
