@@ -1,5 +1,7 @@
+import asyncio
 import datetime
 import os
+import random
 import uuid
 from typing import AsyncIterator
 
@@ -12,18 +14,25 @@ from utils.log import logger
 
 async def get_smart_filler_stream(
     user_message: str,
+    static_mode: bool = False,
 ) -> AsyncIterator[ChatCompletionChunk]:
     """
-    Generate real-time streaming smart filler chunks based on user query complexity.
+    Generate real-time streaming filler chunks based on user query complexity.
 
     Args:
         user_message: The user's original message
+        static_mode: If True, use pre-defined static fillers; if False, use OpenAI
 
     Yields:
-        Streaming chunks with context-aware filler content as it arrives from OpenAI
+        Streaming chunks with filler content (static or context-aware from OpenAI)
     """
     if not user_message or not user_message.strip():
-        logger.debug("Empty user message, skipping smart filler")
+        logger.debug("Empty user message, skipping filler")
+        return
+
+    if static_mode:
+        async for chunk in _get_static_mode_stream(user_message):
+            yield chunk
         return
 
     model = "gpt-3.5-turbo"
@@ -65,9 +74,9 @@ Filler words:
         response = await client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,  # Lower temperature for more consistent, faster responses
-            max_tokens=40,  # Limit tokens for faster generation
-            timeout=1.5,  # Short timeout for speed
+            temperature=0.3,
+            max_tokens=40,
+            timeout=1.5,
             stream=True,
         )
 
@@ -127,3 +136,133 @@ Filler words:
             ],
         )
         logger.debug(f"[SmartFiller] Used fallback: '{fallback_content}'")
+
+
+async def _get_static_mode_stream(
+    user_message: str,
+) -> AsyncIterator[ChatCompletionChunk]:
+    """
+    Generate real-time streaming static mode chunks with pre-defined words.
+
+    Args:
+        user_message: The user's original message
+
+    Yields:
+        Streaming chunks with pre-defined filler content
+    """
+    # Pre-defined filler phrases - much faster than OpenAI API calls
+    simple_fillers = [
+        "One moment",
+        "Just a sec",
+        "Let me check",
+        "Hold on",
+        "Give me a moment",
+        "Please wait",
+        "Looking into it",
+        "Checking now",
+    ]
+
+    complex_fillers = [
+        "Let me find that information for you",
+        "I'm looking up the details",
+        "Let me check what I can find",
+        "Searching for the best options",
+        "Let me gather that information",
+        "I'll find what you need",
+        "Let me see what's available",
+        "Looking for the right details",
+    ]
+
+    # Simple heuristic to determine if query is complex
+    # Check for keywords that typically indicate more complex requests
+    complex_keywords = [
+        "recommend",
+        "suggestion",
+        "compare",
+        "when",
+        "where",
+        "how",
+        "what",
+        "why",
+        "which",
+        "menu",
+        "price",
+        "cost",
+        "open",
+        "hours",
+        "schedule",
+        "available",
+        "options",
+        "best",
+        "better",
+        "different",
+        "alternatives",
+    ]
+
+    user_lower = user_message.lower()
+    is_complex = any(keyword in user_lower for keyword in complex_keywords)
+
+    # Select appropriate filler based on complexity
+    if is_complex:
+        selected_filler = random.choice(complex_fillers)
+    else:
+        selected_filler = random.choice(simple_fillers)
+
+    logger.info(
+        f"[StaticMode] Selected filler: '{selected_filler}' for query: '{user_message[:50]}...'"
+    )
+
+    try:
+        model = "static-filler"
+        chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
+        created_timestamp = int(
+            datetime.datetime.now(datetime.timezone.utc).timestamp()
+        )
+
+        # Split the filler into words and stream them
+        words = selected_filler.split()
+
+        for i, word in enumerate(words):
+            # Add space before word except for the first word
+            content = word if i == 0 else f" {word}"
+
+            # Create and yield chunk
+            yield ChatCompletionChunk(
+                id=chunk_id,
+                object="chat.completion.chunk",
+                created=created_timestamp,
+                model=model,
+                choices=[
+                    Choice(
+                        index=i,
+                        delta=ChoiceDelta(role="assistant", content=content),
+                        finish_reason=None,
+                    )
+                ],
+            )
+
+            logger.debug(f"[StaticMode] Streamed chunk: '{content}'")
+
+            # Small delay to simulate natural speech pattern
+            await asyncio.sleep(0.05)  # 50ms delay between words
+
+        logger.debug("[StaticMode] Completed streaming static filler")
+
+    except Exception as e:
+        logger.warning(f"[StaticMode] Error in streaming: {e}")
+        # Return a simple fallback filler if something goes wrong
+        fallback_content = "One moment"
+        yield ChatCompletionChunk(
+            id=f"chatcmpl-{uuid.uuid4().hex}",
+            object="chat.completion.chunk",
+            created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+            model="static-filler",
+            choices=[
+                Choice(
+                    index=0,
+                    delta=ChoiceDelta(role="assistant", content=fallback_content),
+                    finish_reason=None,
+                )
+            ],
+        )
+        logger.debug(f"[StaticMode] Used fallback: '{fallback_content}'")

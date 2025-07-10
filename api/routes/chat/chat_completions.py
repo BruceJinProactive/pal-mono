@@ -2,12 +2,15 @@ import asyncio
 import datetime
 import json
 import os
+import random
 import uuid
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional
 
 import openai
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from openai.types.chat import ChatCompletionChunk
+from openai.types.chat.chat_completion_chunk import Choice, ChoiceDelta
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from urlextract import URLExtract
@@ -192,6 +195,17 @@ def _is_smart_filler_enabled(recipient_identifier: str) -> bool:
     return recipient_identifier in enabled_list
 
 
+def _is_static_mode_enabled(recipient_identifier: str) -> bool:
+    """Check if static mode is enabled for the given recipient identifier."""
+    enabled_recipients = os.environ.get("STATIC_MODE_ENABLED_RECIPIENTS", "")
+    if not enabled_recipients:
+        return False
+
+    # Parse comma-separated list of recipient identifiers
+    enabled_list = [r.strip() for r in enabled_recipients.split(",") if r.strip()]
+    return recipient_identifier in enabled_list
+
+
 def _create_response_data(model: str, content: str) -> dict:
     """Create a standard response data object."""
     return {
@@ -226,11 +240,12 @@ async def _create_unified_stream(
 ):
     """Create a unified stream that combines filler and response streams."""
 
-    # Check if smart filler is enabled for this recipient
+    # Check if smart filler or static mode is enabled for this recipient
     smart_filler_enabled = _is_smart_filler_enabled(recipient_identifier)
+    static_mode_enabled = _is_static_mode_enabled(recipient_identifier)
 
-    if not smart_filler_enabled:
-        logger.debug(f"Smart filler disabled for recipient: {recipient_identifier}")
+    if not smart_filler_enabled and not static_mode_enabled:
+        logger.debug(f"No filler enabled for recipient: {recipient_identifier}")
         # Just return the response stream without filler
         response_stream = await get_chat_response_stream(
             session=session,
@@ -242,11 +257,18 @@ async def _create_unified_stream(
                 yield chunk
         return
 
-    logger.debug(f"Smart filler enabled for recipient: {recipient_identifier}")
+    # Determine which filler mode to use
+    use_static_mode = static_mode_enabled
+    filler_type = "static" if use_static_mode else "smart"
+    logger.debug(
+        f"{filler_type.capitalize()} filler enabled for recipient: {recipient_identifier}"
+    )
 
     # Helper function to get first filler chunk
     async def get_first_filler_chunk():
-        filler_stream = get_smart_filler_stream(user_content)
+        filler_stream = get_smart_filler_stream(
+            user_content, static_mode=use_static_mode
+        )
         try:
             return (
                 await filler_stream.__anext__(),
@@ -289,15 +311,15 @@ async def _create_unified_stream(
             if first_filler_chunk and filler_stream:
                 # Yield first filler chunk
                 yield first_filler_chunk
-                logger.debug("Smart filler won: sent first chunk")
+                logger.debug(f"{filler_type.capitalize()} filler won: sent first chunk")
 
                 # Continue yielding remaining filler chunks
                 async for filler_chunk in filler_stream:
                     yield filler_chunk
 
-                logger.debug("Completed smart filler streaming")
+                logger.debug(f"Completed {filler_type} filler streaming")
         except Exception as e:
-            logger.warning(f"Error in smart filler stream: {e}")
+            logger.warning(f"Error in {filler_type} filler stream: {e}")
 
         # Now wait for response stream and yield its chunks
         first_response_chunk, response_stream = await response_task
@@ -451,6 +473,7 @@ async def chat_completions_agno(
         if request.stream:
             # A stable closure variable in the nested closure
             user_content = content
+
             async def generate_stream():
                 try:
                     try:
