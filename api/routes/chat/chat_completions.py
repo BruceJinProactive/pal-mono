@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import json
 import os
@@ -15,7 +14,6 @@ from urlextract import URLExtract
 import db
 from api.routes.chat._utils import create_url_filter
 from api.routes.chat.chat import chat_router
-from api.routes.chat.smart_filler import get_smart_filler_stream
 from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
@@ -349,93 +347,11 @@ async def chat_completions_agno(
                             ["path:agno", "streaming:true"],
                         )
 
-                        # Create unified stream that combines filler and response
-                        async def create_unified_stream():
-                            # Helper function to get first filler chunk
-                            async def get_first_filler_chunk():
-                                filler_stream = get_smart_filler_stream(content)
-                                try:
-                                    return (
-                                        await filler_stream.__anext__(),
-                                        filler_stream,
-                                    )
-                                except StopAsyncIteration:
-                                    return None, None
-
-                            # Helper function to get first response chunk
-                            async def get_first_response_chunk():
-                                response_stream = await get_chat_response_stream(
-                                    session=session,
-                                    message=message,
-                                    request_context=request_context,
-                                )
-                                if response_stream:
-                                    try:
-                                        return (
-                                            await response_stream.__anext__(),
-                                            response_stream,
-                                        )
-                                    except StopAsyncIteration:
-                                        return None, None
-                                return None, None
-
-                            # Start both tasks in parallel - race for first chunks
-                            filler_task = asyncio.create_task(get_first_filler_chunk())
-                            response_task = asyncio.create_task(
-                                get_first_response_chunk()
-                            )
-
-                            # Race condition: wait for either first chunk to arrive
-                            done, _ = await asyncio.wait(
-                                [filler_task, response_task],
-                                return_when=asyncio.FIRST_COMPLETED,
-                            )
-
-                            if filler_task in done:
-                                # Filler first chunk won the race
-                                try:
-                                    first_filler_chunk, filler_stream = (
-                                        await filler_task
-                                    )
-                                    if first_filler_chunk and filler_stream:
-                                        # Yield first filler chunk
-                                        yield first_filler_chunk
-                                        logger.debug(
-                                            "Smart filler won: sent first chunk"
-                                        )
-
-                                        # Continue yielding remaining filler chunks
-                                        async for filler_chunk in filler_stream:
-                                            yield filler_chunk
-
-                                        logger.debug("Completed smart filler streaming")
-                                except Exception as e:
-                                    logger.warning(f"Error in smart filler stream: {e}")
-
-                                # Now wait for response stream and yield its chunks
-                                first_response_chunk, response_stream = (
-                                    await response_task
-                                )
-                                if first_response_chunk:
-                                    yield first_response_chunk
-                                if response_stream:
-                                    async for chunk in response_stream:
-                                        yield chunk
-                            else:
-                                # Response first chunk won the race - cancel filler
-                                filler_task.cancel()
-                                logger.debug("Main response won: skipping filler")
-
-                                first_response_chunk, response_stream = (
-                                    await response_task
-                                )
-                                if first_response_chunk:
-                                    yield first_response_chunk
-                                if response_stream:
-                                    async for chunk in response_stream:
-                                        yield chunk
-
-                        response_stream = create_unified_stream()
+                        response_stream = await get_chat_response_stream(
+                            session=session,
+                            message=message,
+                            request_context=request_context,
+                        )
                     except Exception as es:
                         # Log the error and create a fallback response
                         logger.error(
