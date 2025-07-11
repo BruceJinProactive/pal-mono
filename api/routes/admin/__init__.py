@@ -42,6 +42,12 @@ from api.schemas.admin.conversation import (
     UpdateConversationRequest,
     UpdateSessionResponse,
 )
+from api.schemas.admin.email import (
+    GetTemplateInfoRequest,
+    ListTemplatesRequest,
+    SendBatchEmailsRequest,
+    SendEmailRequest,
+)
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
     Feedback,
@@ -111,6 +117,7 @@ from . import (
     _auth,
     _campaign,
     _conversation,
+    _email,
     _feedback,
     _history,
     _integration,
@@ -945,6 +952,60 @@ async def release_phone_number(
     Release the specified phone number.
     """
     await _phone_number.release_phone_number(project_id, request, context, session)
+
+
+"""
+---------- Email Endpoints ----------
+-------------------------------------
+"""
+
+
+@admin_router.post("/email/send", status_code=status.HTTP_200_OK)
+async def send_email(
+    request: SendEmailRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Send a single email using a Postmark template.
+    """
+    return await _email.send_email(request, context, session)
+
+
+@admin_router.post("/email/send_batch", status_code=status.HTTP_200_OK)
+async def send_batch_emails(
+    request: SendBatchEmailsRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Send multiple emails using Postmark templates in a single API call.
+    """
+    return await _email.send_batch_emails(request, context, session)
+
+
+@admin_router.post("/email/template/info", status_code=status.HTTP_200_OK)
+async def get_template_info(
+    request: GetTemplateInfoRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Get information about a Postmark template.
+    """
+    return await _email.get_template_info(request, context, session)
+
+
+@admin_router.post("/email/templates/list", status_code=status.HTTP_200_OK)
+async def list_templates(
+    request: ListTemplatesRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    List available Postmark templates.
+    """
+    return await _email.list_templates(request, context, session)
 
 
 @admin_router.delete(
