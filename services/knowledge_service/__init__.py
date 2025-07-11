@@ -105,6 +105,30 @@ def delete_namespace(
     return _implementation.delete_namespace(index_name, namespace)
 
 
+def query_vector_database(
+    index_name: str,
+    namespace: str,
+    query: str,
+    top_k: int = 10,
+) -> list:
+    """
+    Query vectors in a specific namespace of the Pinecone index using semantic search.
+
+    Args:
+        index_name (str): The name of the Pinecone index
+        namespace (str): The namespace within the index to query
+        query (str): The text query to search for
+        top_k (int): The number of top results to return (default: 10)
+
+    Returns:
+        list: A list of matching vectors with scores and metadata
+
+    Raises:
+        Exception: If there is an error accessing the Pinecone index or querying the vectors.
+    """
+    return _implementation.query_vector_database(index_name, namespace, query, top_k)
+
+
 def update_agent_kb(
     pos_provider: IntegrationProvider,
     store_id: str,
@@ -162,5 +186,6 @@ __all__ = [
     "upload_knowledge_file",
     "delete_knowledge_file",
     "delete_namespace",
+    "query_vector_database",
     "update_agent_kb",
 ]

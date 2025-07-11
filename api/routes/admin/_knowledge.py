@@ -284,3 +284,55 @@ async def delete_vector_database_namespace(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting namespace: {str(e)}",
         )
+
+
+async def query_vector_database_namespace(
+    context: UserContext,
+    pinecone_index_name: str,
+    pinecone_namespace: str,
+    query: str,
+    top_k: int = 10,
+) -> list:
+    """
+    Query vectors in a specific namespace of the Pinecone index using semantic search.
+    This operation performs a semantic search and returns the most relevant results.
+    """
+    try:
+        # Authorize the user's access to the admin resource
+        _auth.authorize_admin(context)
+
+        # Validate input parameters
+        if not pinecone_index_name or not pinecone_index_name.strip():
+            raise ValueError("Pinecone index name cannot be empty")
+        if not pinecone_namespace or not pinecone_namespace.strip():
+            raise ValueError("Pinecone namespace cannot be empty")
+        if not query or not query.strip():
+            raise ValueError("Query text cannot be empty")
+        if top_k <= 0:
+            raise ValueError("top_k must be greater than 0")
+
+        # Use the knowledge service to query the namespace
+        try:
+            result = knowledge_service.query_vector_database(
+                pinecone_index_name, pinecone_namespace, query, top_k
+            )
+            logger.debug(f"Query returned {len(result) if result else 0} results")
+            return result
+        except Exception as service_error:
+            logger.error(f"Knowledge service error: {service_error}", exc_info=True)
+            raise
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error querying namespace: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        logger.error(
+            f"Error querying namespace {pinecone_namespace} from index {pinecone_index_name}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error querying namespace: {str(e)}",
+        )

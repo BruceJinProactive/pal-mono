@@ -1235,6 +1235,27 @@ async def delete_vector_database_namespace(
     )
 
 
+@admin_router.get("/vectors")
+async def query_vector_database_namespace(
+    context: UserContext = Depends(authenticate_user),
+    pinecone_index_name: str = Query(..., description="Pinecone index name"),
+    pinecone_namespace: str = Query(..., description="Pinecone namespace to query"),
+    query: str = Query(..., description="Query text for semantic search"),
+    top_k: int = Query(10, gt=0, le=100, description="Number of top results to return"),
+) -> list:
+    """
+    Query vectors in a specific namespace of the Pinecone index using semantic search.
+    This operation performs a semantic search and returns the most relevant results.
+    """
+    return await _knowledge.query_vector_database_namespace(
+        context,
+        pinecone_index_name,
+        pinecone_namespace,
+        query,
+        top_k,
+    )
+
+
 @admin_router.post("/accounts/{account_name}/projects/{project_id}/update_menu")
 async def update_agent_kb(
     account_name: str,

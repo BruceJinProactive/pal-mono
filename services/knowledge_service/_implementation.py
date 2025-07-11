@@ -203,6 +203,95 @@ def delete_namespace(
         raise Exception(f"Failed to delete namespace: {str(e)}")
 
 
+def query_vector_database(
+    index_name: str,
+    namespace: str,
+    query: str,
+    top_k: int = 10,
+) -> list:
+    """
+    Query vectors in a specific namespace of the Pinecone index using semantic search.
+
+    Args:
+        index_name (str): The name of the Pinecone index
+        namespace (str): The namespace within the index to query
+        query (str): The text query to search for
+        top_k (int): The number of top results to return (default: 10)
+
+    Returns:
+        list: A list of matching vectors with scores and metadata
+
+    Raises:
+        Exception: If there is an error accessing the Pinecone index or querying the vectors.
+    """
+    try:
+        # Get Cohere API key for embedding generation
+        cohere_api_key = _get_cohere_api_key()
+
+        # Initialize Cohere embeddings
+        embed_model = CohereEmbedding(
+            api_key=cohere_api_key,
+            model_name="embed-english-v3.0",
+        )
+
+        # Get Pinecone index
+        index = _get_index(index_name)
+
+        logger.debug(
+            "About to query vector database",
+            extra={
+                "index": index_name,
+                "namespace": namespace,
+                "query": query[:100] + "..." if len(query) > 100 else query,
+                "top_k": top_k,
+            },
+        )
+
+        # Generate embedding for the query
+        query_embedding = embed_model.get_text_embedding(query)
+
+        # Query the index
+        response = index.query(
+            vector=query_embedding,
+            namespace=namespace,
+            top_k=top_k,
+            include_metadata=True,
+        )
+
+        matches = response["matches"]
+        logger.debug(
+            "Successfully queried vector database",
+            extra={
+                "index": index_name,
+                "namespace": namespace,
+                "num_results": len(matches),
+            },
+        )
+
+        # Convert to basic Python types for JSON serialization
+        try:
+            serializable_matches = []
+            for match in matches:
+                serializable_match = {
+                    "id": str(match.get("id", "")),
+                    "score": float(match.get("score", 0.0)),
+                    "metadata": dict(match.get("metadata", {})),
+                }
+                serializable_matches.append(serializable_match)
+            return serializable_matches
+        except Exception as e:
+            logger.error(f"Error serializing matches: {e}")
+            # Fallback: return raw matches
+            return matches
+
+    except Exception as e:
+        logger.error(
+            f"Error querying namespace {namespace} from index {index_name}: {e}",
+            exc_info=True,
+        )
+        raise Exception(f"Failed to query vector database: {str(e)}")
+
+
 def _get_index(index_name: str):
     pinecone_api_key = _get_pinecone_api_key()
     pc = Pinecone(pinecone_api_key)
