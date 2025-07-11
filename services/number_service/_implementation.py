@@ -354,7 +354,4 @@ class NumberService:
 
     def _get_friendly_name(self, business_name: str) -> str:
         stage = os.environ.get("RUNTIME_ENV") or "dev"
-        if stage == "prd":
-            return business_name
-        else:
-            return f"{stage}:{business_name}"
+        return f"{stage}:{business_name}"
