@@ -1,3 +1,4 @@
+import json
 import logging
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -63,9 +64,31 @@ def _get_olo_token(client_key: str) -> str:
     return client_key
 
 
-def _get_square_token(client_key: str) -> str:
-    """Get access token for Square provider (API key is the token)."""
-    return client_key
+def _get_square_token(merchant_id: str) -> Optional[str]:
+    """Get access token for Square provider using OAuth (merchant_id required)."""
+    from utils import secret
+
+    if not merchant_id:
+        logger.error("merchant_id is required for Square OAuth token retrieval.")
+        return None
+    secret_key = f"SQUARE_{merchant_id.upper()}_ACCESS_TOKEN"
+    try:
+        secret_value = secret.get_client_secret(secret_key)
+        # The value is a JSON string: {"access_token": ...}
+        token_obj = None
+        try:
+            token_obj = json.loads(secret_value)
+        except Exception as e:
+            logger.error(
+                f"Failed to parse Square access token JSON for merchant_id {merchant_id}: {e}"
+            )
+            return None
+        return token_obj.get("access_token")
+    except Exception as e:
+        logger.error(
+            f"Failed to retrieve Square access token for merchant_id {merchant_id}: {e}"
+        )
+        return None
 
 
 def _get_yelp_token() -> Optional[str]:
@@ -93,6 +116,7 @@ def get_pos_access_token(
     client_id: Optional[str] = None,
     client_secret: Optional[str] = None,
     config: Optional[TokenExchangeConfig] = None,
+    business_id: Optional[str] = None,
 ) -> Optional[str]:
     """
     Retrieve the client_key and client_secret from the secret manager and exchange them for an access token.
@@ -100,6 +124,7 @@ def get_pos_access_token(
 
     Args:
         provider: The POS provider to get the access token for
+        business_id: The Square merchant_id (required for Square)
         project_name: The name of the project
         store_identifier: The store identifier
         config: Optional configuration for token exchange (defaults to TokenExchangeConfig())
@@ -126,9 +151,11 @@ def get_pos_access_token(
                 raise ValueError("Client ID is required for Olo provider")
             access_token = _get_olo_token(client_id)
         elif provider == IntegrationProvider.square:
-            if not client_id:
-                raise ValueError("Client ID is required for Square provider")
-            access_token = _get_square_token(client_id)
+            if not business_id:
+                raise ValueError(
+                    "business_id (merchant_id) is required for Square provider"
+                )
+            access_token = _get_square_token(business_id)
         elif provider == IntegrationProvider.yelp:
             access_token = _get_yelp_token()
         elif provider == IntegrationProvider.opentable:

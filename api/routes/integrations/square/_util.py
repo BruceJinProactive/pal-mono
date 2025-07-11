@@ -29,7 +29,7 @@ def get_square_client_secret() -> str:
 
 def set_access_token(token_prefix: str, access_token: str) -> None:
     # print(f"[DEBUG] Storing access token for {token_prefix}: {access_token}")
-    project_secret_key = f"{token_prefix.upper()}_SQUARE_ACCESS_TOKEN"
+    project_secret_key = f"{token_prefix.upper()}_ACCESS_TOKEN"
     project_secret_value = json.dumps({"access_token": access_token})
     try:
         secret.upsert_client_secret(project_secret_key, project_secret_value)

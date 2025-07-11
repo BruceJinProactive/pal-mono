@@ -2,15 +2,12 @@ import asyncio
 import datetime
 import json
 import os
-import random
 import uuid
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import openai
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from openai.types.chat import ChatCompletionChunk
-from openai.types.chat.chat_completion_chunk import Choice, ChoiceDelta
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from urlextract import URLExtract
