@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from vapi import AsyncVapi
 
 import db
 from api.schemas.chat.message import (
@@ -19,11 +20,105 @@ from api.schemas.chat.message import (
 from db.tables.agents import SpeechRate
 from db.tables.types import Channel
 from services import agent_service, project_service, user_service
+from utils.dd import dd_histogram_duration
 from utils.log import logger
 
 from ._utils import add_voice_speed_if_supported, validate_vapi_request
 
 SPORTSMAN_VOICE_ID = "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
+
+
+async def _measure_voice_to_voice_latency(message_data: dict) -> None:
+    """
+    Measure conversation turn-taking latency for a completed call and send metrics to DataDog.
+    Distinguishes between user-to-agent and agent-to-user response latencies.
+
+    Args:
+        message_data: Message data sent from VAPI webhook
+    """
+    call_data = message_data.get("call", {})
+    call_id = call_data.get("id")
+
+    # Extract caller information
+    customer_data = message_data.get("customer", {})
+    customer_number = customer_data.get("number", "")
+
+    # Extract business information
+    phone_number_data = message_data.get("phoneNumber", {})
+    phone_number = phone_number_data.get("number", "")
+
+    messages = message_data.get("messages", [])
+
+    if not messages:
+        logger.debug(f"No messages found for call {call_id}")
+        return
+
+    # Filter out system messages and sort by time to ensure proper sequence
+    filtered_messages = [
+        msg for msg in messages if msg.get("role", "").lower() != "system"
+    ]
+    sorted_messages = sorted(filtered_messages, key=lambda x: x.get("time", 0))
+
+    if len(sorted_messages) < 2:
+        logger.debug(
+            f"Not enough non-system messages for latency calculation in call {call_id}"
+        )
+        return
+
+    # Calculate turn-taking latency between consecutive messages
+    for i in range(len(sorted_messages) - 1):
+        current_msg = sorted_messages[i]
+        next_msg = sorted_messages[i + 1]
+
+        # Check if current message has endTime and next message has time
+        if current_msg.get("endTime") and next_msg.get("time"):
+            # Calculate latency: time when next message started - time when current message ended
+            raw_latency_ms = next_msg["time"] - current_msg["endTime"]
+
+            # Log negative latency cases (interruptions/overlapping speech)
+            if raw_latency_ms < 0:
+                logger.info(
+                    f"Negative latency detected for call {call_id}: {raw_latency_ms}ms "
+                    f"({current_msg.get('role', 'unknown')} -> {next_msg.get('role', 'unknown')}) - "
+                    f"indicates interruption or overlapping speech"
+                )
+
+            # Use max(0, ...) because latency can be negative if user cuts off AI speech (interrupts)
+            latency_ms = max(0, raw_latency_ms)
+
+            current_role = current_msg.get("role", "").lower()
+            next_role = next_msg.get("role", "").lower()
+
+            # Determine latency type based on roles
+            if current_role == "user" and next_role == "bot":
+                latency_type = "user_end_to_agent_start"
+            elif current_role == "bot" and next_role == "user":
+                latency_type = "agent_end_to_user_start"
+            else:
+                latency_type = "unknown"
+
+            if latency_type in ["user_end_to_agent_start", "agent_end_to_user_start"]:
+                dd_histogram_duration(
+                    name="vapi.voice_to_voice_latency",
+                    duration_ms=latency_ms,
+                    tags=[
+                        f"call_id:{call_id}",
+                        f"customer_number:{customer_number}",
+                        f"phone_number:{phone_number}",
+                        f"latency_type:{latency_type}",
+                    ],
+                )
+                logger.debug(
+                    f"Turn latency for call {call_id}: {latency_ms}ms "
+                    f"(from: {current_role} -> {next_role})"
+                )
+            else:
+                logger.warning(
+                    f"Unexpected message role for call {call_id}: {latency_ms}ms "
+                    f"({latency_type}: {current_role} -> {next_role})"
+                )
+        else:
+            logger.debug(f"Only one message found for call {call_id}")
 
 
 async def api_vapi_server(request: Request, session: AsyncSession) -> JSONResponse:
@@ -574,6 +669,10 @@ async def handle_session_closure(message_data, session: AsyncSession):
                 conversation.status = db.ConversationStatus.CLOSING
 
             await session.commit()
+
+        # Measure and record voice-to-voice latency metrics
+        await _measure_voice_to_voice_latency(message_data)
+
         return {
             "status": "session closed",
         }
