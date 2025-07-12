@@ -171,10 +171,27 @@ class RawConfig:
                 )
         return KnowledgeConfig(enabled=False)
 
-    def _get_agent_tools(self) -> ToolConfig:
-        # Extract the knowledge section of the raw config
-        raw_tools = self.agent.raw_config.get("tools")
+    def _get_project_tools_override(self) -> dict[str, dict]:
+        raw_config = self.project.raw_config or {}
+        tools = raw_config.get("tools", {})
+        identifiers = tools.get("identifiers", [])
 
+        result = {}
+        for identifier in identifiers:
+            if not isinstance(identifier, dict) or "tool_name" not in identifier:
+                raise ValueError(
+                    "Each tool identifier must be a dict with 'tool_name' key"
+                )
+            tool_name = identifier["tool_name"]
+            if tool_name in result:
+                raise ValueError(
+                    f"Duplicate tool f{tool_name} in project.raw_config.tools!"
+                )
+            result[tool_name] = identifier
+
+        return result
+
+    def _get_agent_tools(self) -> ToolConfig:
         metadata = ToolMetadata(
             agent_id=self.agent.id,
             account_id=self.account.id,
@@ -184,18 +201,18 @@ class RawConfig:
             timezone=self.project.timezone,
         )
 
-        if not raw_tools:
-            logger.warning("'tools' is not provided in 'agent.raw_config'.")
-            return ToolConfig(metadata=metadata)
-
-        # TODO: Tool provider configuration not implemented yet (not necessary for now)
-
-        raw_identifiers = raw_tools.get("identifiers", [])
-
+        # Extract the tools from agent config
+        raw_tools = self.agent.raw_config.get("tools", {})
+        raw_identifiers = raw_tools.get("identifiers", []) or []
         if not isinstance(raw_identifiers, list):
             raise ValueError("'identifiers' should be a list.")
 
-        identifiers: list[ToolIdentifier] = []
+        # Load overrides from project config
+        project_tool_overrides = self._get_project_tools_override()
+
+        seen_tools = set()
+        final_identifiers: list[ToolIdentifier] = []
+
         for raw_tool in raw_identifiers:
             if not isinstance(raw_tool, dict):
                 raise ValueError("'identifiers' should be a list of dict.")
@@ -204,14 +221,36 @@ class RawConfig:
             tool_args = raw_tool.get("tool_args", {})
             access_metadata = raw_tool.get("access_metadata", False)
 
-            tool = ToolIdentifier(
-                tool_name=tool_name,
-                args=tool_args,
-                access_metadata=access_metadata,
-            )
-            identifiers.append(tool)
+            # Apply override if available
+            if tool_name in project_tool_overrides:
+                tool_override = project_tool_overrides[tool_name]
+                tool_args = {
+                    **tool_args,
+                    **tool_override.get("tool_args", {}),
+                }  # shallow merge
+                access_metadata = tool_override.get("access_metadata", access_metadata)
 
-        return ToolConfig(identifiers=identifiers, metadata=metadata)
+            final_identifiers.append(
+                ToolIdentifier(
+                    tool_name=tool_name,
+                    args=tool_args,
+                    access_metadata=access_metadata,
+                )
+            )
+            seen_tools.add(tool_name)
+
+        # Add new tools from project config that weren't in agent config
+        for tool_name, overrides in project_tool_overrides.items():
+            if tool_name not in seen_tools:
+                final_identifiers.append(
+                    ToolIdentifier(
+                        tool_name=tool_name,
+                        args=overrides.get("tool_args", {}),
+                        access_metadata=overrides.get("access_metadata", False),
+                    )
+                )
+
+        return ToolConfig(identifiers=final_identifiers, metadata=metadata)
 
     def _get_agent_model_config(self) -> ModelConfig:
         raw_model = self.agent.raw_config.get("model", {})
