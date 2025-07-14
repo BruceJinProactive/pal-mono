@@ -79,14 +79,13 @@ async def callback(request: Request):
     access_token = token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
     merchant_id = token_data.get("merchant_id")
-    # print(
-    #    f"[DEBUG] Access token: {access_token}"
-    # )  # <--- This will print the token in your terminal
 
     if not access_token or not refresh_token or not merchant_id:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": "Missing access token, refresh token, or merchant ID in response"},
+            content={
+                "error": "Missing access token, refresh token, or merchant ID in response"
+            },
         )
 
     token_prefix = f"square_{merchant_id}"
@@ -101,7 +100,10 @@ async def callback(request: Request):
 
     # Optionally, redirect to a success page or just return a message
     return JSONResponse(
-        {"message": "Access token stored successfully!", "merchant_id": merchant_id}
+        {
+            "message": "Access and refresh token stored successfully!",
+            "merchant_id": merchant_id,
+        }
     )
 
 

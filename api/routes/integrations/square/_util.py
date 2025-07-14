@@ -27,12 +27,13 @@ def get_square_client_secret() -> str:
     return value
 
 
-def set_access_token(token_prefix: str, access_token: str, refresh_token: str | None = None) -> None:
-    # print(f"[DEBUG] Storing access token for {token_prefix}: {access_token}")
+def set_access_token(
+    token_prefix: str, access_token: str, refresh_token: str | None = None
+) -> None:
     project_secret_key = f"{token_prefix.upper()}_ACCESS_TOKEN"
-    token_data = {"access_token": access_token}
-    if refresh_token:
-        token_data["refresh_token"] = refresh_token
+    token_data = {"access_token": access_token, "refresh_token": refresh_token}
+    # if refresh_token:
+    #    token_data["refresh_token"] = refresh_token
     project_secret_value = json.dumps(token_data)
     try:
         secret.upsert_client_secret(project_secret_key, project_secret_value)

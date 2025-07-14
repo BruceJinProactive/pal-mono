@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from vapi import AsyncVapi
 
 import db
 from api.schemas.chat.message import (
