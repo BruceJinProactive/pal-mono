@@ -208,3 +208,19 @@ class IntegrationRepository:
             self.session.rollback()
             logger.error(f"Error deleting integration: {e}")
             raise
+
+    def get_integrations_by_provider_and_business_id(
+        self,
+        provider: IntegrationProvider,
+        business_id: str,
+    ) -> List[Integration]:
+        """Get integrations by provider and business_id."""
+        try:
+            return self.session.query(Integration).filter(
+                Integration.provider == provider,
+                Integration.business_id == business_id
+            ).all()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving integrations by provider and business_id: {e}")
+            return []

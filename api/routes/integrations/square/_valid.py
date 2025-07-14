@@ -17,5 +17,7 @@ def valid_request(request: Request, is_callback=False):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or missing state parameter",
             )
+        account_name = _oauth_state[state]
         del _oauth_state[state]
+        return account_name
     return True

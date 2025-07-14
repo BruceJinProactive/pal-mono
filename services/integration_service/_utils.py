@@ -65,25 +65,32 @@ def _get_olo_token(client_key: str) -> str:
 
 
 def _get_square_token(merchant_id: str) -> Optional[str]:
-    """Get access token for Square provider using OAuth (merchant_id required)."""
-    from utils import secret
+    """Get access token for Square provider using Integration table (merchant_id required)."""
+    from db import IntegrationRepository
+    from db.tables.types import IntegrationProvider
+    import db
 
     if not merchant_id:
         logger.error("merchant_id is required for Square OAuth token retrieval.")
         return None
-    secret_key = f"SQUARE_{merchant_id.upper()}_TOKENS"
+    
     try:
-        secret_value = secret.get_client_secret(secret_key)
-        # The value is a JSON string: {"access_token": ...}
-        token_obj = None
+        session = next(db.get_db())
         try:
-            token_obj = json.loads(secret_value)
-        except Exception as e:
-            logger.error(
-                f"Failed to parse Square access token JSON for merchant_id {merchant_id}: {e}"
+            integration_repository = IntegrationRepository(session)
+            integrations = integration_repository.get_integrations_by_provider_and_business_id(
+                IntegrationProvider.square, merchant_id
             )
-            return None
-        return token_obj.get("access_token")
+            
+            if not integrations:
+                logger.error(f"No Square integration found for merchant_id {merchant_id}")
+                return None
+            
+            integration = max(integrations, key=lambda x: x.created_at)
+            return integration.access_token
+        finally:
+            session.close()
+            
     except Exception as e:
         logger.error(
             f"Failed to retrieve Square access token for merchant_id {merchant_id}: {e}"

@@ -5,6 +5,11 @@ import requests
 from fastapi import Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
+import db
+from api.routes.admin._auth import authenticate_user, authorize_user_account
+from api.schemas.admin.integration import IntegrationRequest
+from db.tables.types import IntegrationProvider, IntegrationType, AuthType
+from services.integration_service import create_integration
 from services.service_utils import get_server_url
 
 from ._util import get_square_client_id, get_square_client_secret, set_access_token
@@ -16,9 +21,16 @@ SQUARE_SCOPES = ["ITEMS_READ", "ORDERS_READ", "ORDERS_WRITE"]
 
 
 async def install(request: Request):
-    # Generate state for CSRF protection
+    account_name = request.query_params.get("account_name")
+    if not account_name:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "account_name parameter is required"},
+        )
+    
+    # Generate state for CSRF protection and store account context
     state = binascii.b2a_hex(os.urandom(15)).decode("utf-8")
-    _oauth_state[state] = True
+    _oauth_state[state] = account_name
 
     client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
@@ -35,8 +47,15 @@ async def install(request: Request):
 
 
 async def callback(request: Request):
-    # Validate state parameter for CSRF protection
-    valid_request(request, is_callback=True)
+    # Validate state parameter for CSRF protection and get account_name
+    account_name_result = valid_request(request, is_callback=True)
+    if not isinstance(account_name_result, str):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Invalid state validation"},
+        )
+    account_name = account_name_result
+    
     code = request.query_params.get("code")
 
     if not code:
@@ -53,6 +72,7 @@ async def callback(request: Request):
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": str(e)},
         )
+    
     # Always build the redirect_uri dynamically for token exchange
     redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
 
@@ -88,23 +108,54 @@ async def callback(request: Request):
             },
         )
 
-    token_prefix = f"square_{merchant_id}"
     try:
-        set_access_token(token_prefix, access_token, refresh_token)
+        context = authenticate_user(request)
+        authorize_user_account(context, account_name)
+        
+        session = next(db.get_db())
+        try:
+            account_repository = db.AccountRepository(session)
+            account = account_repository.get_account(account_name)
+            if not account:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"error": f"Account {account_name} not found"},
+                )
+
+            integration_request = IntegrationRequest(
+                provider=IntegrationProvider.square,
+                integration_type=IntegrationType.pos,
+                auth_type=AuthType.oauth,
+                business_id=merchant_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                client_id=None,
+                client_secret=None,
+                api_key=None,
+            )
+
+            created_integration = create_integration(
+                session=session,
+                account_id=account.id,
+                params=integration_request.to_integration_params(),
+            )
+
+            return JSONResponse(
+                {
+                    "message": "Integration created successfully!",
+                    "merchant_id": merchant_id,
+                    "integration_id": str(created_integration.id),
+                }
+            )
+        finally:
+            session.close()
+
     except Exception as e:
-        print(f"[DEBUG] Failed to store access token: {e}")
+        print(f"[DEBUG] Failed to create integration: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"error": "Internal Token Error"},
+            content={"error": "Failed to create integration"},
         )
-
-    # Optionally, redirect to a success page or just return a message
-    return JSONResponse(
-        {
-            "message": "Access and refresh token stored successfully!",
-            "merchant_id": merchant_id,
-        }
-    )
 
 
 # TODO: Implement api_chat and api_project_info if needed for Square, similar to Shopify
