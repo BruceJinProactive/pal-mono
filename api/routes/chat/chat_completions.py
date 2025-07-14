@@ -386,11 +386,17 @@ Content:
 
 Instructions:
 - If the content is about a pending-payment order:
-  - Start with a sentence stating the order status (e.g., "Your order is pending")
-  - Include the title: "Order Summary:"
-  - List each ordered item on a new line, prefixed with a dash (-) and using the exact item name
-  - Include a breakdown: Subtotal, Sales Tax, Discount, and Order Total, each on its own line
-  - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay here: [INSERT_URL_HERE]")
+  - **IMPORTANT: Only include a detailed "Order Summary" if ALL necessary order details (items, subtotal, sales tax, discount, order total) are explicitly available in the provided Content.**
+    - If ALL necessary order details ARE available:
+        - Start with a sentence stating the order status (e.g., "Your order is pending")
+        - Include the title: "Order Summary:"
+        - List each ordered item on a new line, prefixed with a dash (-) and using the exact item name
+        - Include a breakdown: Subtotal, Sales Tax, Discount, and Order Total, each on its own line
+        - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay here: [INSERT_URL_HERE]")
+    - **If ANY necessary order detail (item names, subtotal, taxes, discount, or order total) is MISSING or incomplete in the Content:**
+        - Start with a sentence stating the order status (e.g., "Your order is pending")
+        - Provide a **general** call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay for your order here: [INSERT_URL_HERE]")
+        - **DO NOT include a detailed "Order Summary:" section or list individual items/prices if details are missing.**
 - If the content is not about a pending-payment order:
   - Provide a clear, short summary of the main point
   - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Order here: [INSERT_URL_HERE]")
