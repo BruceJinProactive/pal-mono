@@ -71,7 +71,7 @@ def _get_square_token(merchant_id: str) -> Optional[str]:
     if not merchant_id:
         logger.error("merchant_id is required for Square OAuth token retrieval.")
         return None
-    secret_key = f"SQUARE_{merchant_id.upper()}_ACCESS_TOKEN"
+    secret_key = f"SQUARE_{merchant_id.upper()}_TOKENS"
     try:
         secret_value = secret.get_client_secret(secret_key)
         # The value is a JSON string: {"access_token": ...}
