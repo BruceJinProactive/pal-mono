@@ -12,6 +12,5 @@ ModelProvider = _config.ModelProvider
 
 get_client = _implementation.get_client
 get_async_client = _implementation.get_async_client
-get_model = _implementation.get_model
 get_gemini_model = _implementation.get_gemini_model
 get_embedder = _implementation.get_embedder

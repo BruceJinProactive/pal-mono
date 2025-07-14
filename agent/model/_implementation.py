@@ -3,8 +3,6 @@ from os import getenv
 
 from agno.embedder.openai import OpenAIEmbedder
 from agno.models.google.gemini import Gemini
-from agno.models.openai.chat import OpenAIChat
-from agno.models.openai.like import OpenAILike
 from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, Field
 
@@ -62,26 +60,6 @@ def get_async_client() -> AsyncOpenAI:
         base_url=MODEL_ROUTER_BASE_URL,
     )
     return client
-
-
-def get_model(model_name: str = ModelName.MEDIUM, stream: bool = False) -> OpenAIChat:
-    """
-    Get the appropriate LLM (Large Language Model) instance based on the provided model name.
-
-    Args:
-        model_name: The name of the model to retrieve. Must be "medium" or "small"
-
-    Returns:
-        An instance of OpenAILike configured with the model router settings.
-    """
-    if stream:
-        model = OpenAIChat(id="gpt-4o")
-        return model
-    else:
-        model = OpenAILike(
-            id=model_name, client=get_client(), async_client=get_async_client()
-        )
-        return model
 
 
 def get_gemini_model():
