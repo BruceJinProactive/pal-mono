@@ -35,7 +35,7 @@ def create_query_engine(namespace) -> BaseQueryEngine:
 
     # Create our basic query engine
     query_engine = index.as_query_engine(
-        similarity_top_k=3, response_synthesizer=response_synthesizer
+        similarity_top_k=5, response_synthesizer=response_synthesizer
     )
 
     return query_engine
