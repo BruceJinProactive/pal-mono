@@ -10,10 +10,13 @@ from api.routes.admin._auth import authenticate_user, authorize_user_account
 from api.schemas.admin.integration import IntegrationRequest
 from db.tables.types import IntegrationProvider, IntegrationType, AuthType
 from services.integration_service import create_integration
+from services.integration_service.schema import IntegrationParams
 from services.service_utils import get_server_url
+from utils.log import logger
 
 from ._util import get_square_client_id, get_square_client_secret, set_access_token
 from ._valid import _oauth_state, valid_request
+
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
@@ -27,7 +30,7 @@ async def install(request: Request):
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": "account_name parameter is required"},
         )
-    
+
     # Generate state for CSRF protection and store account context
     state = binascii.b2a_hex(os.urandom(15)).decode("utf-8")
     _oauth_state[state] = account_name
@@ -55,7 +58,7 @@ async def callback(request: Request):
             content={"error": "Invalid state validation"},
         )
     account_name = account_name_result
-    
+
     code = request.query_params.get("code")
 
     if not code:
@@ -72,7 +75,7 @@ async def callback(request: Request):
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": str(e)},
         )
-    
+
     # Always build the redirect_uri dynamically for token exchange
     redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
 
@@ -111,7 +114,7 @@ async def callback(request: Request):
     try:
         context = authenticate_user(request)
         authorize_user_account(context, account_name)
-        
+
         session = next(db.get_db())
         try:
             account_repository = db.AccountRepository(session)
@@ -122,7 +125,7 @@ async def callback(request: Request):
                     content={"error": f"Account {account_name} not found"},
                 )
 
-            integration_request = IntegrationRequest(
+            integration_request = IntegrationParams(
                 provider=IntegrationProvider.square,
                 integration_type=IntegrationType.pos,
                 auth_type=AuthType.oauth,
@@ -137,7 +140,7 @@ async def callback(request: Request):
             created_integration = create_integration(
                 session=session,
                 account_id=account.id,
-                params=integration_request.to_integration_params(),
+                params=integration_request,
             )
 
             return JSONResponse(
@@ -151,10 +154,10 @@ async def callback(request: Request):
             session.close()
 
     except Exception as e:
-        print(f"[DEBUG] Failed to create integration: {e}")
+        logger.error(f"[DEBUG] Failed to create integration: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"error": "Failed to create integration"},
+            content={"error": f"Failed to create integration: {e}"},
         )
 
 
