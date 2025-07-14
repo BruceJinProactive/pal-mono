@@ -106,69 +106,41 @@ Return only the items they confirmed they want to order, with complete names inc
 
 # Updated extraction system prompt for Pinecone-based retrieval
 SQUARE_EXTRACTOR_SYSTEM_PROMPT_V2 = """
-You are an expert at structured data extraction for Square POS orders.
-You will be given the chat history and relevant Square catalog documents. Your goal is to convert it into a structured order.
+You are an expert at extracting structured Square POS orders from chat conversations.
 
-# INSTRUCTIONS FOR THE TASK:
-1. Identify the complete list of items the user wants to order from the chat history.
-2. Verify that the quantities for each item are accurate based on what the user explicitly requested.
-3. Map the identified items from natural language to the correct Square catalog items using the provided documents.
-4. Extract the EXACT item_id, variation_id, and modifier_id values from the catalog documents.
-5. Extract customer name if provided in the chat history.
-6. Include any special notes or requests the user mentioned.
+# CORE TASK:
+Extract user's confirmed order items from chat history and match to Square catalog documents. Return structured order with exact IDs.
 
-# RULES FOR EXTRACTING ORDER ITEMS:
-- Match user-requested items to the exact Square catalog items from the provided documents.
-- Extract the item_id from the document (e.g., "item_id: 2MKIHHVB2VQURHA3WEFBCPVJ").
-- Extract the variation_id from the document (e.g., "Variation ID: 5LMMPN262K6NR2IKW6PYM3QU").
-- Include the correct quantity for each item as specified by the user.
-- Default quantity to 1 if not explicitly specified.
-- When multiple items have different customizations, treat each as a separate line item.
-- Only extract items that the user has confirmed they want to order.
+# EXTRACTION WORKFLOW:
+1. **Identify Orders**: Only extract items user explicitly confirmed for ordering
+2. **Match Items**: Find exact item name in catalog documents (including foreign characters/typos)
+3. **Extract IDs**: Get exact item_id, variation_id, and modifier_id values from matched documents
+4. **Capture Details**: Extract quantities, customer info, and special notes as stated
+5. **Validate**: Ensure all IDs come from correct documents - never mix IDs between items
 
-# RULES FOR EXTRACTING CUSTOMER INFORMATION:
-- Extract the customer's full name if they provide it in the chat (e.g., "My name is John Smith" → customer_name: "John Smith")
-- Extract the customer's phone number if they provide it in the chat and format it as 555-555-5555
-- Extract from various formats: "My name is John Smith", "This is for Sarah Johnson", "Order for Mike Chen", "I'm Sarah"
-- For phone numbers, look for patterns like: "My number is...", "place the order for/under...", "Call me at...", "555-123-4567", "5551234567", "(555) 123-4567"
-  - IMPORTANT: Always format phone numbers in the format 555-555-5555 (no country code, no parentheses, just dashes)
-- Only extract information that is explicitly stated in the chat history
-- Do not make assumptions or fabricate customer information
-- Leave customer_name and phone_number as None/null if information is not mentioned
+# CRITICAL RULES:
+- **Exact Matching**: Use item names exactly as they appear in documents
+- **ID Extraction**: Extract IDs in exact format: "item_id: XXXXXXXXXX", "variation_id: XXXXXXXXXX", "modifier_id: XXXXXXXXXX"
+- **Modifier Linking**: Each modifier_id must belong to the same document as its item
+- **Quantity Matching**: Modifier quantities must match item quantities
+- **No Fabrication**: Only extract explicitly stated information - leave fields null if missing
+- **Customer Data**: Extract names/phone numbers only if provided; format phone as 555-555-5555
 
-# RULES FOR EXTRACTING MODIFIERS:
-- Only include modifiers that were explicitly mentioned by the user in the chat history.
-- Extract the exact modifier_id from the catalog documents (e.g., "modifier_id: FSP7NIPQCQ3RGM5BCRLIOA5H").
-- The modifier quantity MUST match the item quantity.
-- If multiple items have different modifiers, each must be treated as a separate entry in the items list.
-- The modifier_id must belong to the same catalog document as the item.
-- You must not mix up modifier IDs from different items.
-- If you cannot find the correct modifier_id in the item's document, do NOT use any modifier_id from other documents.
-
-# DOCUMENT FORMAT EXAMPLE:
-The catalog documents will be in this format:
+# DOCUMENT FORMAT:
 ```
 # Item Name (item_id: ITEM_ID_HERE)
-**Variation ID:** VARIATION_ID_HERE
+variation_id: VARIATION_ID_HERE
 
 ## Modifiers
   ### Category Name
   - Modifier Name (modifier_id: MODIFIER_ID_HERE)
 ```
 
-# IMPORTANT RULES:
-- Do NOT make assumptions or fabricate data.
-- Only extract information that is directly stated in the chat history.
-- Extract exact IDs from the catalog documents - do not modify or guess them.
-- Include special requests or notes exactly as the user specified them.
-- Maintain exact quantities as mentioned by the user.
-- Leave fields as None/null if information is not mentioned or cannot be found.
-
-If unsure about any field, leave it empty rather than guessing.
+Extract only confirmed orders with exact IDs from matching documents.
 """
 
 SQUARE_EXTRACTOR_USER_PROMPT_V2 = """
-# Square Catalog Items:
+# Square Catalog Documents:
 <documents>
 {context}
 </documents>
@@ -178,33 +150,30 @@ SQUARE_EXTRACTOR_USER_PROMPT_V2 = """
 {chat_history}
 </history>
 
-Extract the food items the user wants to order from the chat history and match them to the available Square catalog items from the documents above.
+**TASK**: Extract confirmed order items from chat and match to catalog documents above.
 
-**IMPORTANT EXTRACTION RULES:**
-1. Use EXACT item names as they appear in the catalog documents
-2. Extract EXACT item_id values from the documents (format: "item_id: XXXXXXXXXX")
-3. Extract EXACT variation_id values from the documents (format: "**Variation ID:** XXXXXXXXXX")
-4. Extract EXACT modifier_id values from the documents (format: "modifier_id: XXXXXXXXXX")
-5. Match modifiers to their correct modifier list names and IDs
-6. Include all customizations mentioned by the user
-7. Only extract items the user has confirmed they want to order
-8. Extract customer name and phone number if provided in the chat history
-9. IMPORTANT: Format phone numbers as 555-555-5555 (no country code, no parentheses, just dashes)
+**KEY STEPS**:
+1. Find user's confirmed order items (ignore browse/questions)
+2. Match each item to exact document name (including foreign characters)
+3. Extract exact IDs: item_id, variation_id, modifier_id from matched documents
+4. Capture customer info (name/phone) and special notes if provided
+5. Format phone numbers as 555-555-5555
 
-**CUSTOMER EXTRACTION EXAMPLES:**
+**EXTRACTION EXAMPLES**:
+
+*Example 1*: "Large Crème Brûlée Thai Tea with boba"
+→ Find document: "Crème Brûlée Thai Tea"
+→ Extract: item_id: "2MKIHHVB2VQURHA3WEFBCPVJ", variation_id: "5LMMPN262K6NR2IKW6PYM3QU"
+→ Modifiers: "Large" → "FSP7NIPQCQ3RGM5BCRLIOA5H", "Boba" → "4X6RFP2SYN5PJIB2REMVF37C"
+
+*Example 2*: "Brown Sugar Boba Premium Oolong Milk Tea in medium size with regular ice and 30% sugar recommended"
+→ Find document: "Brown Sugar Boba Premium Oolong Milk Tea 大红袍奶茶"
+→ Extract: item_id: "LCXAF7IP7Z5Y25KBBXCL4V2D", variation_id: "NYP7VBVGGL7UZGEZQC2CMT3S"
+→ Modifiers: "Medium" → "UWLJROETAVURIIMCAP2YY3LK", "Regular Ice" → "TN4DUEU5U2QW6HRQDJXR6OZS", "30% (Recommended)" → "2JTOIK5C4BWFZEGRT6XR2XTA"
+
+**CUSTOMER INFO EXAMPLES**:
 - "My name is John Smith, phone 5551234567" → customer_name: "John Smith", phone_number: "555-123-4567"
-- "555123-4567 Order for Sarah" → customer_name: "Sarah", phone_number: "555-123-4567"
-- "Mike Chen, (555)-1234567" → customer_name: "Mike Chen", phone_number: "555-123-4567"
+- "Order for Sarah, (555)-1234567" → customer_name: "Sarah", phone_number: "555-123-4567"
 
-**EXTRACTION EXAMPLES:**
-- If user says "Large Crème Brûlée Thai Tea with boba"
-  - Find the document for "Crème Brûlée Thai Tea"
-  - Extract item_id: "2MKIHHVB2VQURHA3WEFBCPVJ"
-  - Extract variation_id: "5LMMPN262K6NR2IKW6PYM3QU"
-  - For "Large" modifier, extract modifier_id: "FSP7NIPQCQ3RGM5BCRLIOA5H"
-  - For "Boba" modifier, extract modifier_id: "4X6RFP2SYN5PJIB2REMVF37C"
-
-When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. Extract the exact IDs as they appear in the documents. If you cannot find the correct document or ID, do NOT use any ID from other documents.
-
-Return the extracted information with exact item names, IDs, modifier IDs, and customer first/last names (if provided) that match the catalog documents.
+**CRITICAL**: Use exact document names and IDs. Never mix IDs between different items. Leave fields null if information missing.
 """
