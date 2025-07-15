@@ -1,11 +1,13 @@
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from vapi import AsyncVapi
 
 import db
 from api.schemas.chat.message import (
@@ -27,6 +29,82 @@ from ._utils import add_voice_speed_if_supported, validate_vapi_request
 SPORTSMAN_VOICE_ID = "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
 
 
+def send_dd_latency(
+    log_message: str, call_id: str, customer_number: str, phone_number: str
+) -> None:
+    """
+    Extract latency metrics from VAPI log message and send to DataDog.
+
+    Args:
+        log_message: Log message containing latency data
+        call_id: Call ID for tagging
+        customer_number: Customer phone number for tagging
+        phone_number: Business phone number for tagging
+    """
+    # Extract turn latency
+    turn_latency_match = re.search(r"Turn latency: (\d+)ms", log_message)
+    turn_latency = int(turn_latency_match.group(1)) if turn_latency_match else None
+
+    # Extract transcriber latency
+    transcriber_match = re.search(r"transcriber: (\d+)ms", log_message)
+    transcriber_latency = int(transcriber_match.group(1)) if transcriber_match else None
+
+    # Extract model latency
+    model_match = re.search(r"model: (\d+)ms", log_message)
+    model_latency = int(model_match.group(1)) if model_match else None
+
+    # Extract voice latency
+    voice_match = re.search(r"voice: (\d+)ms", log_message)
+    voice_latency = int(voice_match.group(1)) if voice_match else None
+
+    logger.debug(
+        f"Extracted latencies for call {call_id} (from {customer_number} to {phone_number}): turn={turn_latency}ms, transcriber={transcriber_latency}ms, model={model_latency}ms, voice={voice_latency}ms"
+    )
+
+    # Send individual metrics to DataDog
+    base_tags = [
+        f"call_id:{call_id}",
+        f"customer_number:{customer_number}",
+        f"phone_number:{phone_number}",
+    ]
+
+    if turn_latency is not None:
+        dd_histogram_duration(
+            name="vapi.turn_latency",
+            duration_ms=turn_latency,
+            tags=base_tags + ["component:total"],
+        )
+    else:
+        logger.debug(f"Turn latency not found in log message for call {call_id}")
+
+    if transcriber_latency is not None:
+        dd_histogram_duration(
+            name="vapi.transcriber_latency",
+            duration_ms=transcriber_latency,
+            tags=base_tags + ["component:transcriber"],
+        )
+    else:
+        logger.debug(f"Transcriber latency not found in log message for call {call_id}")
+
+    if model_latency is not None:
+        dd_histogram_duration(
+            name="vapi.model_latency",
+            duration_ms=model_latency,
+            tags=base_tags + ["component:model"],
+        )
+    else:
+        logger.debug(f"Model latency not found in log message for call {call_id}")
+
+    if voice_latency is not None:
+        dd_histogram_duration(
+            name="vapi.voice_latency",
+            duration_ms=voice_latency,
+            tags=base_tags + ["component:voice"],
+        )
+    else:
+        logger.debug(f"Voice latency not found in log message for call {call_id}")
+
+
 async def _measure_voice_to_voice_latency(message_data: dict) -> None:
     """
     Measure conversation turn-taking latency for a completed call and send metrics to DataDog.
@@ -46,78 +124,29 @@ async def _measure_voice_to_voice_latency(message_data: dict) -> None:
     phone_number_data = message_data.get("phoneNumber", {})
     phone_number = phone_number_data.get("number", "")
 
-    messages = message_data.get("messages", [])
-
-    if not messages:
-        logger.debug(f"No messages found for call {call_id}")
+    # Initialize VAPI client
+    vapi_token = os.environ.get("VAPI_TOKEN")
+    if not vapi_token:
+        logger.error("VAPI_TOKEN environment variable not set")
         return
 
-    # Filter out system messages and sort by time to ensure proper sequence
-    filtered_messages = [
-        msg for msg in messages if msg.get("role", "").lower() != "system"
-    ]
-    sorted_messages = sorted(filtered_messages, key=lambda x: x.get("time", 0))
+    vapi_client = AsyncVapi(token=vapi_token)
 
-    if len(sorted_messages) < 2:
-        logger.debug(
-            f"Not enough non-system messages for latency calculation in call {call_id}"
-        )
+    # Get logs for this call
+    try:
+        logs_pager = await vapi_client.logs.get(call_id=call_id, type="Call")
+
+        # Collect and filter logs from the pager
+        async for log in logs_pager:
+            # Filter for turn latency logs
+            log_level = getattr(log, "level", None)
+            log_message = getattr(log, "log", None)
+            if log_level == "INFO" and log_message and "Turn latency:" in log_message:
+                send_dd_latency(log_message, call_id, customer_number, phone_number)
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve logs for call {call_id}: {str(e)}")
         return
-
-    # Calculate turn-taking latency between consecutive messages
-    for i in range(len(sorted_messages) - 1):
-        current_msg = sorted_messages[i]
-        next_msg = sorted_messages[i + 1]
-
-        # Check if current message has endTime and next message has time
-        if current_msg.get("endTime") and next_msg.get("time"):
-            # Calculate latency: time when next message started - time when current message ended
-            raw_latency_ms = next_msg["time"] - current_msg["endTime"]
-
-            # Log negative latency cases (interruptions/overlapping speech)
-            if raw_latency_ms < 0:
-                logger.info(
-                    f"Negative latency detected for call {call_id}: {raw_latency_ms}ms "
-                    f"({current_msg.get('role', 'unknown')} -> {next_msg.get('role', 'unknown')}) - "
-                    f"indicates interruption or overlapping speech"
-                )
-
-            # Use max(0, ...) because latency can be negative if user cuts off AI speech (interrupts)
-            latency_ms = max(0, raw_latency_ms)
-
-            current_role = current_msg.get("role", "").lower()
-            next_role = next_msg.get("role", "").lower()
-
-            # Determine latency type based on roles
-            if current_role == "user" and next_role == "bot":
-                latency_type = "user_end_to_agent_start"
-            elif current_role == "bot" and next_role == "user":
-                latency_type = "agent_end_to_user_start"
-            else:
-                latency_type = "unknown"
-
-            if latency_type in ["user_end_to_agent_start", "agent_end_to_user_start"]:
-                dd_histogram_duration(
-                    name="vapi.voice_to_voice_latency",
-                    duration_ms=latency_ms,
-                    tags=[
-                        f"call_id:{call_id}",
-                        f"customer_number:{customer_number}",
-                        f"phone_number:{phone_number}",
-                        f"latency_type:{latency_type}",
-                    ],
-                )
-                logger.debug(
-                    f"Turn latency for call {call_id}: {latency_ms}ms "
-                    f"(from: {current_role} -> {next_role})"
-                )
-            else:
-                logger.warning(
-                    f"Unexpected message role for call {call_id}: {latency_ms}ms "
-                    f"({latency_type}: {current_role} -> {next_role})"
-                )
-        else:
-            logger.debug(f"Only one message found for call {call_id}")
 
 
 async def api_vapi_server(request: Request, session: AsyncSession) -> JSONResponse:
