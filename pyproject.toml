@@ -47,6 +47,7 @@ dependencies = [
   "vapi-server-sdk==1.6.0",
   "twilio==9.3.2",
   "urlextract==1.9.0",
+  "portkey-ai>=1.14.0",
 
 
   # DevOps
