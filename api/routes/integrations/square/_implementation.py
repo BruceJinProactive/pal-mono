@@ -6,15 +6,13 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
 import db
-from api.routes.admin._auth import authenticate_user, authorize_user_account
-from api.schemas.admin.integration import IntegrationRequest
 from db.tables.types import IntegrationProvider, IntegrationType, AuthType
 from services.integration_service import create_integration
 from services.integration_service.schema import IntegrationParams
 from services.service_utils import get_server_url
 from utils.log import logger
 
-from ._util import get_square_client_id, get_square_client_secret, set_access_token
+from ._util import get_square_client_id, get_square_client_secret
 from ._valid import _oauth_state, valid_request
 
 
@@ -111,54 +109,49 @@ async def callback(request: Request):
             },
         )
 
+    session = next(db.get_db())
     try:
-        context = authenticate_user(request)
-        authorize_user_account(context, account_name)
-
-        session = next(db.get_db())
-        try:
-            account_repository = db.AccountRepository(session)
-            account = account_repository.get_account(account_name)
-            if not account:
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content={"error": f"Account {account_name} not found"},
-                )
-
-            integration_request = IntegrationParams(
-                provider=IntegrationProvider.square,
-                integration_type=IntegrationType.pos,
-                auth_type=AuthType.oauth,
-                business_id=merchant_id,
-                access_token=access_token,
-                refresh_token=refresh_token,
-                client_id=None,
-                client_secret=None,
-                api_key=None,
-            )
-
-            created_integration = create_integration(
-                session=session,
-                account_id=account.id,
-                params=integration_request,
-            )
-
+        account_repository = db.AccountRepository(session)
+        account = account_repository.get_account(account_name)
+        if not account:
             return JSONResponse(
-                {
-                    "message": "Integration created successfully!",
-                    "merchant_id": merchant_id,
-                    "integration_id": str(created_integration.id),
-                }
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": f"Account {account_name} not found"},
             )
-        finally:
-            session.close()
 
+        integration_request = IntegrationParams(
+            provider=IntegrationProvider.square,
+            integration_type=IntegrationType.pos,
+            auth_type=AuthType.oauth,
+            business_id=merchant_id,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            client_id=None,
+            client_secret=None,
+            api_key=None,
+        )
+
+        created_integration = create_integration(
+            session=session,
+            account_id=account.id,
+            params=integration_request,
+        )
+
+        return JSONResponse(
+            {
+                "message": "Integration created successfully!",
+                "merchant_id": merchant_id,
+                "integration_id": str(created_integration.id),
+            }
+        )
     except Exception as e:
         logger.error(f"[DEBUG] Failed to create integration: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": f"Failed to create integration: {e}"},
         )
+    finally:
+        session.close()
 
 
 # TODO: Implement api_chat and api_project_info if needed for Square, similar to Shopify

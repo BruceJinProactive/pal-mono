@@ -1,4 +1,3 @@
-import json
 import logging
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -73,24 +72,28 @@ def _get_square_token(merchant_id: str) -> Optional[str]:
     if not merchant_id:
         logger.error("merchant_id is required for Square OAuth token retrieval.")
         return None
-    
+
     try:
         session = next(db.get_db())
         try:
             integration_repository = IntegrationRepository(session)
-            integrations = integration_repository.get_integrations_by_provider_and_business_id(
-                IntegrationProvider.square, merchant_id
+            integrations = (
+                integration_repository.get_integrations_by_provider_and_business_id(
+                    IntegrationProvider.square, merchant_id
+                )
             )
-            
+
             if not integrations:
-                logger.error(f"No Square integration found for merchant_id {merchant_id}")
+                logger.error(
+                    f"No Square integration found for merchant_id {merchant_id}"
+                )
                 return None
-            
+
             integration = max(integrations, key=lambda x: x.created_at)
             return integration.access_token
         finally:
             session.close()
-            
+
     except Exception as e:
         logger.error(
             f"Failed to retrieve Square access token for merchant_id {merchant_id}: {e}"

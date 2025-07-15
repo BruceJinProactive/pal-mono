@@ -216,11 +216,17 @@ class IntegrationRepository:
     ) -> List[Integration]:
         """Get integrations by provider and business_id."""
         try:
-            return self.session.query(Integration).filter(
-                Integration.provider == provider,
-                Integration.business_id == business_id
-            ).all()
+            return (
+                self.session.query(Integration)
+                .filter(
+                    Integration.provider == provider,
+                    Integration.business_id == business_id,
+                )
+                .all()
+            )
         except SQLAlchemyError as e:
             self.session.rollback()
-            logger.error(f"Error retrieving integrations by provider and business_id: {e}")
+            logger.error(
+                f"Error retrieving integrations by provider and business_id: {e}"
+            )
             return []
