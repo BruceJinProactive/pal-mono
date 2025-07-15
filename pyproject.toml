@@ -23,7 +23,7 @@ dependencies = [
   "asyncpg==0.30.0",
 
   # /ai
-  "agno==1.7.2",
+  "agno==1.0.8",
   "openai==1.59.9",
   "pypdf==5.1.0",
   "geopy==2.4.1",

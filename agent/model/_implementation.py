@@ -79,12 +79,7 @@ def get_model(model_name: str = ModelName.MEDIUM, stream: bool = False) -> OpenA
         return model
     else:
         model = OpenAILike(
-            id=model_name,
-            api_key="dummy",  # Required but not used by model router
-            base_url=MODEL_ROUTER_BASE_URL,
-            default_headers={
-                "x-api-key": MODEL_ROUTER_API_KEY,
-            },
+            id=model_name, client=get_client(), async_client=get_async_client()
         )
         return model
 
