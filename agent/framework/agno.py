@@ -223,10 +223,11 @@ class AgnoAgent:
                                     extra={
                                         "agent_id": self.config.metadata.agent_id,
                                         "account_name": self.config.metadata.account_name,
+                                        "chunk": chunk,
                                     },
                                 )
 
-                            output_content += chunk.content
+                            output_content += chunk.content or ""
                             yield Output(
                                 content=(
                                     chunk.content
