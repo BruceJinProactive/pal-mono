@@ -6,7 +6,7 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
 import db
-from db.tables.types import IntegrationProvider, IntegrationType, AuthType
+from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 from services.integration_service import create_integration
 from services.integration_service.schema import IntegrationParams
 from services.service_utils import get_server_url
@@ -14,7 +14,6 @@ from utils.log import logger
 
 from ._util import get_square_client_id, get_square_client_secret
 from ._valid import _oauth_state, valid_request
-
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"

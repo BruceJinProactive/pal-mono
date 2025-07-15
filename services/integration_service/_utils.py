@@ -4,9 +4,7 @@ from typing import Optional, Tuple
 
 from fastapi import HTTPException, status
 
-from api.schemas.admin.integration import (
-    IntegrationRequest,
-)
+from api.schemas.admin.integration import IntegrationRequest
 from db.tables.types import IntegrationProvider
 
 # Import POS token exchange functions from each tool
@@ -65,9 +63,9 @@ def _get_olo_token(client_key: str) -> str:
 
 def _get_square_token(merchant_id: str) -> Optional[str]:
     """Get access token for Square provider using Integration table (merchant_id required)."""
+    import db
     from db import IntegrationRepository
     from db.tables.types import IntegrationProvider
-    import db
 
     if not merchant_id:
         logger.error("merchant_id is required for Square OAuth token retrieval.")

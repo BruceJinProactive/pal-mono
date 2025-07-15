@@ -6,19 +6,14 @@ from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
 )
 from vapi import Vapi
-from vapi.types.create_twilio_phone_number_dto import (
-    CreateTwilioPhoneNumberDto,
-)
+from vapi.types.create_twilio_phone_number_dto import CreateTwilioPhoneNumberDto
 from vapi.types.custom_llm_model import CustomLlmModel
 from vapi.types.server import Server
 
 from utils.log import logger
 
 from ..service_utils import get_server_url
-from ._utils import (
-    AssistantConfig,
-    NumberResponse,
-)
+from ._utils import AssistantConfig, NumberResponse
 
 
 class NumberService:

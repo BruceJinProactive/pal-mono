@@ -5,11 +5,7 @@ from typing import List, Optional
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, PositiveInt, field_validator
 
 from api.schemas.admin.project import ProjectSummary
-from db.tables.types import (
-    PaymentMethod,
-    PlanTier,
-    SubscriptionStatus,
-)
+from db.tables.types import PaymentMethod, PlanTier, SubscriptionStatus
 from services.subscription_service.schema import (
     SubscriptionParams,
     SubscriptionPlanParams,

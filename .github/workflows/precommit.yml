@@ -47,7 +47,7 @@ jobs:
           echo "${PWD}/.venv/bin" >> $GITHUB_PATH
 
       - name: Run validation script
-        run: scripts/validate.sh
+        run: scripts/validate.sh --check
 
       # If the job fails, send a message to Slack
       - name: Notify Slack

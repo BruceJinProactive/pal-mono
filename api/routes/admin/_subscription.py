@@ -27,11 +27,7 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionStatusResponse,
     UpdateSubscriptionPlanRequest,
 )
-from services import (
-    account_service,
-    project_service,
-    subscription_service,
-)
+from services import account_service, project_service, subscription_service
 from services.account_service import AccountParams
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger
