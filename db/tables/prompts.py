@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy import Boolean, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Enum, String, Text
@@ -54,13 +54,6 @@ class Prompt(Base):
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
     )
 
-    # Relationships
-    prompt_details: Mapped[List["PromptDetails"]] = relationship(
-        "PromptDetails",
-        back_populates="prompt",
-        primaryjoin="Prompt.id == PromptDetails.prompt_id",
-    )
-
 
 class PromptDetails(Base):
     __tablename__ = "prompt_details"
@@ -86,13 +79,6 @@ class PromptDetails(Base):
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
-    )
-
-    # Relationships
-    prompt: Mapped["Prompt"] = relationship(
-        "Prompt",
-        back_populates="prompt_details",
-        primaryjoin="Prompt.id == PromptDetails.prompt_id",
     )
 
     __table_args__ = (
