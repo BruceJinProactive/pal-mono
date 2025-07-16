@@ -380,24 +380,32 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
         # Document the expected format using a comment
         # Model field format: {sender_identifier: string, recipient_identifier: string, call_id?: string}
-        return {
-            "assistant": {
-                "firstMessage": greeting,
-                "transcriber": transcriber,
-                "model": {
-                    "provider": "custom-llm",
-                    "url": f"{api_url}/v1",
-                    "model": json.dumps(caller_info),
-                    "messages": [
-                        {"role": "system", "content": config.persona.description}
-                    ],
-                },
-                "voice": voice,
-                "backgroundSound": background_sound,
-                "backgroundDenoisingEnabled": True,
-                "silenceTimeoutSeconds": 60,
-            }
+
+        # Prepare assistant configuration
+        assistant_config = {
+            "firstMessage": greeting,
+            "transcriber": transcriber,
+            "model": {
+                "provider": "custom-llm",
+                "url": f"{api_url}/v1",
+                "model": json.dumps(caller_info),
+                "messages": [{"role": "system", "content": config.persona.description}],
+            },
+            "voice": voice,
+            "backgroundSound": background_sound,
+            "silenceTimeoutSeconds": 60,
+            "backgroundDenoisingEnabled": True,
         }
+
+        # Add background speech denoising configuration if available
+        if dynamic_vapi_config and config.voice_config.background_speech_denoising_plan:
+            assistant_config["backgroundSpeechDenoisingPlan"] = (
+                config.voice_config.background_speech_denoising_plan.model_dump(
+                    exclude_none=True
+                )
+            )
+
+        return {"assistant": assistant_config}
     except Exception as e:
         logger.error(f"Error in handle_assistant_request: {str(e)}")
         return {"error": str(e)}

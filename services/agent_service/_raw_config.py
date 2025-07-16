@@ -21,7 +21,7 @@ from agent import (
     ToolIdentifier,
     ToolMetadata,
 )
-from agent.config import VoiceConfig
+from agent.config import BackgroundSpeechDenoisingPlan, VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.memory import MemoryProvider
 from agent.model import ModelProvider
@@ -100,6 +100,7 @@ class RawConfig:
                     voice_id=self.agent.voice_id,
                     speech_rate=self.agent.speech_rate,
                     background_noise=self.agent.background_noise,
+                    background_speech_denoising_plan=self._get_background_speech_denoising_plan(),
                     language=self.agent.language,
                 ),
             )
@@ -376,6 +377,21 @@ class RawConfig:
                 """
 
         return additional_context
+
+    def _get_background_speech_denoising_plan(
+        self,
+    ) -> BackgroundSpeechDenoisingPlan | None:
+        """Get background speech denoising plan with smart denoising enabled by default."""
+        config = self.agent.raw_config.get("background_speech_denoising_plan")
+
+        # Use provided config or default to smart denoising enabled
+        config = config or {"smartDenoisingPlan": {"enabled": True}}
+
+        try:
+            return BackgroundSpeechDenoisingPlan.model_validate(config)
+        except ValidationError as e:
+            logger.warning(f"Invalid background speech denoising plan: {e}")
+            return None
 
     def _get_knowledge_provider(self, raw_knowledge) -> Optional[KnowledgeProvider]:
         raw_provider = raw_knowledge.get("provider")

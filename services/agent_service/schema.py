@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+from typing import Optional
 
+from agent.config import BackgroundSpeechDenoisingPlan
 from db.tables.agents import AgentType, Language, SpeechRate
 
 
@@ -15,4 +17,5 @@ class AgentParams:
     greeting_message: str | None = None
     speech_rate: SpeechRate | None = None
     background_noise: bool | None = None
+    background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
     language: Language | None = None

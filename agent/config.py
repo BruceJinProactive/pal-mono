@@ -32,12 +32,36 @@ class AgentMetadata(BaseModel):
     framework: AgentFramework
 
 
+class SmartDenoisingPlan(BaseModel):
+    """Configuration for smart denoising."""
+
+    enabled: bool = True
+
+
+class FourierDenoisingPlan(BaseModel):
+    """Configuration for fourier denoising."""
+
+    enabled: bool = True
+    mediaDetectionEnabled: Optional[bool] = None
+    baselineOffsetDb: Optional[int] = None
+    windowSizeMs: Optional[int] = None
+    baselinePercentile: Optional[int] = None
+
+
+class BackgroundSpeechDenoisingPlan(BaseModel):
+    """Configuration for background speech denoising."""
+
+    smartDenoisingPlan: Optional[SmartDenoisingPlan] = None
+    fourierDenoisingPlan: Optional[FourierDenoisingPlan] = None
+
+
 class VoiceConfig(BaseModel):
     enabled: bool = False
     greeting_message: str | None
     voice_id: str | None
     speech_rate: SpeechRate
     background_noise: bool
+    background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
     language: Language
 
 
