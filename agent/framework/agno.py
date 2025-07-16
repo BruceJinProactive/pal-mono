@@ -6,7 +6,6 @@ from typing import AsyncIterator, Optional
 
 import agno.agent.agent
 from agno.models.message import Message
-from agno.models.openai.chat import OpenAIChat
 from agno.run.response import RunResponseContentEvent
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
@@ -18,12 +17,10 @@ from agent.memory import MemoryProvider
 from agent.memory._implementation import get_all_memories
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
+from services.llm_service import build_agno_model
+from services.llm_service.schema import ModelOptions
 from utils.dd import send_dd_histogram_metrics, trace_block
 from utils.log import logger
-
-MODEL_PROVIDER_MAP = {
-    "openai": OpenAIChat,
-}
 
 
 class ResponseModel(BaseModel):
@@ -271,22 +268,14 @@ class AgnoAgent:
     def _get_agent_model(self, config: AgentConfig):
         model_config = config.model
         if not model_config:
-            model = OpenAIChat(id="gpt-4o")
+            return build_agno_model(ModelOptions.GPT_4O)
         else:
-            provider = model_config.provider.lower()
-            model_cls = MODEL_PROVIDER_MAP.get(provider)
-            if model_cls:
-                try:
-                    model = model_cls(id=model_config.identifier)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to load model {provider}, fallback to gpt-4o: {e}"
-                    )
-                    model = OpenAIChat(id="gpt-4o")
-            else:
-                logger.warning(f"Unknown provider {provider}, fallback to gpt-4o")
-                model = OpenAIChat(id="gpt-4o")
-        return model
+            model_name = model_config.identifier
+            for model_option in ModelOptions:
+                if model_name == model_option.model_name:
+                    return build_agno_model(model_option)
+            logger.warning(f"Failed to load model {model_name}, fallback to gpt-4o.")
+            return build_agno_model(ModelOptions.GPT_4O)
 
     async def _build_model_inputs(
         self, input: Input
