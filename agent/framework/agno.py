@@ -206,6 +206,19 @@ class AgnoAgent:
 
                         chunk_index = 0
                         async for chunk in result:
+                            # Log every chunk for debugging
+                            logger.debug(
+                                f"[AgnoAgent] received chunk of type {type(chunk).__name__}",
+                                extra={
+                                    "agent_id": self.config.metadata.agent_id,
+                                    "account_name": self.config.metadata.account_name,
+                                    "chunk_type": type(chunk).__name__,
+                                    "chunk": chunk,
+                                    "has_content": hasattr(chunk, "content"),
+                                    "content": getattr(chunk, "content", None),
+                                },
+                            )
+
                             # Skip chunks without valid content
                             content = getattr(chunk, "content", None)
                             if not content or content == "":
