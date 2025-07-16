@@ -204,10 +204,24 @@ class AgnoAgent:
                             },
                         )
 
-                        index = 0
+                        chunk_index = 0
                         async for chunk in result:
-                            index += 1
-                            if index == 1:
+                            # Skip chunks without valid content
+                            content = getattr(chunk, "content", None)
+                            if not content or content == "":
+                                logger.debug(
+                                    "[AgnoAgent] skipping chunk with empty/None content",
+                                    extra={
+                                        "agent_id": self.config.metadata.agent_id,
+                                        "account_name": self.config.metadata.account_name,
+                                        "chunk": chunk,
+                                        "content": content,
+                                    },
+                                )
+                                continue
+
+                            chunk_index += 1
+                            if chunk_index == 1:
                                 send_dd_histogram_metrics(
                                     "framework_agent.received_first_chunk",
                                     input.request_context.request_time,
@@ -227,13 +241,9 @@ class AgnoAgent:
                                     },
                                 )
 
-                            output_content += chunk.content or ""
+                            output_content += content
                             yield Output(
-                                content=(
-                                    chunk.content
-                                    if hasattr(chunk, "content")
-                                    else chunk
-                                ),
+                                content=content,
                                 documents=[],
                                 images=[],
                             )
