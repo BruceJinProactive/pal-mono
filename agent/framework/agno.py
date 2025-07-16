@@ -7,6 +7,7 @@ from typing import AsyncIterator, Optional
 import agno.agent.agent
 from agno.models.message import Message
 from agno.models.openai.chat import OpenAIChat
+from agno.run.response import RunResponseContentEvent
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
 from pydantic import BaseModel, Field
@@ -206,60 +207,56 @@ class AgnoAgent:
 
                         chunk_index = 0
                         async for chunk in result:
-                            # Log every chunk for debugging
-                            logger.debug(
-                                f"[AgnoAgent] received chunk of type {type(chunk).__name__}",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                    "chunk_type": type(chunk).__name__,
-                                    "chunk": chunk,
-                                    "has_content": hasattr(chunk, "content"),
-                                    "content": getattr(chunk, "content", None),
-                                },
-                            )
+                            if isinstance(chunk, RunResponseContentEvent):
+                                # Skip chunks without valid content
+                                content = getattr(chunk, "content", None)
+                                if not content:
+                                    logger.debug(
+                                        "[AgnoAgent] skipping chunk with empty/None content",
+                                        extra={
+                                            "agent_id": self.config.metadata.agent_id,
+                                            "account_name": self.config.metadata.account_name,
+                                            "chunk": chunk,
+                                        },
+                                    )
+                                    continue
 
-                            # Skip chunks without valid content
-                            content = getattr(chunk, "content", None)
-                            if not content or content == "":
+                                chunk_index += 1
+                                if chunk_index == 1:
+                                    send_dd_histogram_metrics(
+                                        "framework_agent.received_first_chunk",
+                                        input.request_context.request_time,
+                                        [
+                                            "streaming:true",
+                                            "agent:agno",
+                                            f"agent_id:{self.config.metadata.agent_id}",
+                                            f"account_name:{self.config.metadata.account_name}",
+                                        ],
+                                    )
+                                    logger.debug(
+                                        f"[AgnoAgent] received_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                                        extra={
+                                            "agent_id": self.config.metadata.agent_id,
+                                            "account_name": self.config.metadata.account_name,
+                                            "chunk": chunk,
+                                        },
+                                    )
+
+                                output_content += content
+                                yield Output(
+                                    content=content,
+                                    documents=[],
+                                    images=[],
+                                )
+                            else:
                                 logger.debug(
-                                    "[AgnoAgent] skipping chunk with empty/None content",
+                                    f"[AgnoAgent] received non ResponseContent type chunk: {type(chunk)}",
                                     extra={
                                         "agent_id": self.config.metadata.agent_id,
                                         "account_name": self.config.metadata.account_name,
                                         "chunk": chunk,
-                                        "content": content,
                                     },
                                 )
-                                continue
-
-                            chunk_index += 1
-                            if chunk_index == 1:
-                                send_dd_histogram_metrics(
-                                    "framework_agent.received_first_chunk",
-                                    input.request_context.request_time,
-                                    [
-                                        "streaming:true",
-                                        "agent:agno",
-                                        f"agent_id:{self.config.metadata.agent_id}",
-                                        f"account_name:{self.config.metadata.account_name}",
-                                    ],
-                                )
-                                logger.debug(
-                                    f"[AgnoAgent] received_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
-                                    extra={
-                                        "agent_id": self.config.metadata.agent_id,
-                                        "account_name": self.config.metadata.account_name,
-                                        "chunk": chunk,
-                                    },
-                                )
-
-                            output_content += content
-                            yield Output(
-                                content=content,
-                                documents=[],
-                                images=[],
-                            )
 
                     except Exception as e:
                         logger.error(f"Error streaming output: {e}")
