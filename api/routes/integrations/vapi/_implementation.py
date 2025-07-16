@@ -125,9 +125,9 @@ async def _measure_voice_to_voice_latency(message_data: dict) -> None:
     phone_number = phone_number_data.get("number", "")
 
     # Initialize VAPI client
-    vapi_token = os.environ.get("VAPI_TOKEN")
+    vapi_token = os.environ.get("VAPI_API_KEY")
     if not vapi_token:
-        logger.error("VAPI_TOKEN environment variable not set")
+        logger.error("VAPI_API_KEY environment variable not set")
         return
 
     vapi_client = AsyncVapi(token=vapi_token)
