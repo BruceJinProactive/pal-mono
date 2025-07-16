@@ -9,7 +9,7 @@ from utils.log import logger
 # Postmark API configuration
 POSTMARK_API_HOST = "api.postmarkapp.com"
 DEFAULT_TIMEOUT = 30  # 30 seconds default timeout
-DEFAULT_FROM_EMAIL = "no-reply@palona.ai"  # Default sender email
+DEFAULT_FROM_EMAIL = "support@proactiveailab.com"  # Default sender email
 
 
 def _get_postmark_token() -> str:
