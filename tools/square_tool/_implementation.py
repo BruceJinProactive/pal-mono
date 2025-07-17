@@ -134,7 +134,7 @@ class SquareTool(Toolkit):
                     description=f"Order payment for {total_item_count} items",
                     order=order,  # Use the actual order object
                     checkout_options=CheckoutOptions(  # type: ignore
-                        allow_tipping=True,
+                        allow_tipping=False,
                         ask_for_shipping_address=False,
                         enable_coupon=False,
                         enable_loyalty=False,
