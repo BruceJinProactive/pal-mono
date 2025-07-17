@@ -12,7 +12,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Enum, String, Text
 
 from .base import Base
-from .types import AgentType, Channel, Language, PlanTier
+from .types import Channel
 
 
 class Prompt(Base):
@@ -25,18 +25,10 @@ class Prompt(Base):
         nullable=False,
         index=True,
     )
+    default_prompt_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[Optional[list[Channel]]] = mapped_column(
         ARRAY(Enum(Channel)), nullable=True
-    )
-    agent_type: Mapped[Optional[list[AgentType]]] = mapped_column(
-        ARRAY(Enum(AgentType)), nullable=True
-    )
-    plan_tier: Mapped[Optional[list[PlanTier]]] = mapped_column(
-        ARRAY(Enum(PlanTier)), nullable=True
-    )
-    language: Mapped[Optional[list[Language]]] = mapped_column(
-        ARRAY(Enum(Language)), nullable=True
     )
     resource_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
