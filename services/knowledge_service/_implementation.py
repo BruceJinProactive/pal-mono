@@ -337,9 +337,7 @@ def update_agent_kb(
 
     try:
         if pos_provider == IntegrationProvider.adora:
-            from services.knowledge_service.adora.adora_processor import (
-                AdoraMenuProcessor,
-            )
+            from services.knowledge_service.adora import AdoraMenuProcessor
 
             processor = AdoraMenuProcessor(debug=debug)
             result = processor.process_and_index_menu(

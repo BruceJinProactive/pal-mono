@@ -19,7 +19,7 @@ Output formats:
 from collections import defaultdict
 from typing import Any, Dict, List
 
-from ._lookup import get_category_name, get_modifier_group_name, get_size_description
+from ._utils import get_category_name, get_modifier_group_name, get_size_description
 
 
 def generate_item_text(

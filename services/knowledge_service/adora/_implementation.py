@@ -38,7 +38,7 @@ from utils.log import logger
 from ._client import download_menu, get_bearer_token
 from ._formatter import format_consolidated_menu, generate_item_text
 from ._indexer import index_to_pinecone
-from ._lookup import parse_item_data
+from ._utils import parse_item_data
 
 
 class AdoraMenuProcessor:
@@ -97,7 +97,7 @@ class AdoraMenuProcessor:
                 )
                 if self.debug:
                     logger.debug(
-                        f"[adora_processor.process_and_index_menu] Successfully got authentication token for store {store_id}"
+                        f"[adora._implementation.process_and_index_menu] Successfully got authentication token for store {store_id}"
                     )
 
             # Step 2: Download menu data
@@ -109,10 +109,10 @@ class AdoraMenuProcessor:
 
             if self.debug:
                 logger.debug(
-                    f"[adora_processor.process_and_index_menu] Successfully downloaded menu for store {store_id}"
+                    f"[adora._implementation.process_and_index_menu] Successfully downloaded menu for store {store_id}"
                 )
                 logger.debug(
-                    f"[adora_processor.process_and_index_menu] Menu contains {len(menu_data.get('items', []))} items"
+                    f"[adora._implementation.process_and_index_menu] Menu contains {len(menu_data.get('items', []))} items"
                 )
 
             # Step 3: Generate individual item texts
@@ -137,7 +137,7 @@ class AdoraMenuProcessor:
             )
             if self.debug:
                 logger.debug(
-                    f"[adora_processor.process_and_index_menu] Processing complete. Total items: {len(individual_items)}"
+                    f"[adora._implementation.process_and_index_menu] Processing complete. Total items: {len(individual_items)}"
                 )
 
             return {

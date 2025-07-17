@@ -1,7 +1,7 @@
 """
-Menu data lookup and parsing operations for Adora integration.
+Menu data utilities for Adora integration.
 
-This module provides functions to:
+This module provides utility functions to:
 - Look up menu entities (categories, sizes, modifiers) by ID
 - Parse formatted menu text back into structured data
 - Extract specific information from text using regex patterns
