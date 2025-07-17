@@ -13,6 +13,7 @@ from api.schemas.admin.integration import (
     ListIntegrationsResponse,
     ListProjectIntegrationsResponse,
     ProjectIntegrationResponse,
+    UpdateIntegrationRequest,
     UpdateProjectIntegrationRequest,
 )
 
@@ -116,7 +117,7 @@ async def create_integration(
     # Create integration with direct token storage
     created_integration = integration_service.create_integration(
         session=session,
-        account_id=account.id,
+        account=account,
         params=integration.to_integration_params(),
     )
 
@@ -126,7 +127,7 @@ async def create_integration(
 async def update_integration(
     account_name: str,
     integration_id: uuid.UUID,
-    integration: IntegrationRequest,
+    integration: UpdateIntegrationRequest,
     context: UserContext,
     session: Session,
 ) -> IntegrationResponse:
@@ -150,7 +151,7 @@ async def update_integration(
     # Update integration with direct token storage
     updated_integration = integration_service.update_integration(
         session=session,
-        account_id=account.id,
+        account=account,
         integration_id=integration_id,
         params=integration.to_integration_params(),
     )

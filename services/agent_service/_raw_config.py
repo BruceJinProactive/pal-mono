@@ -25,10 +25,10 @@ from agent.config import BackgroundSpeechDenoisingPlan, VoiceConfig
 from agent.knowledge import KnowledgeConfigSettings
 from agent.memory import MemoryProvider
 from agent.model import ModelProvider
-from db import Integration
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
 from services.agent_service.prompts import prompt_factory
+from services.integration_service.schema import IntegrationDetail
 from utils.log import logger
 
 
@@ -43,7 +43,7 @@ class RawConfig:
         conversation_id: UUID,
         channel: Channel,
         client_config: ClientConfig | None = None,
-        integration: Integration | None = None,
+        integration: IntegrationDetail | None = None,
     ):
         self.agent = agent
         self.project = project

@@ -8,7 +8,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 import db
 from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 from services.integration_service import create_integration
-from services.integration_service.schema import IntegrationParams
+from services.integration_service.schema import (
+    CreateIntegrationParams,
+    IntegrationCredentials,
+)
 from services.service_utils import get_server_url
 from utils.log import logger
 
@@ -118,22 +121,21 @@ async def callback(request: Request):
                 content={"error": f"Account {account_name} not found"},
             )
 
-        integration_request = IntegrationParams(
+        integration_params = CreateIntegrationParams(
             provider=IntegrationProvider.square,
             integration_type=IntegrationType.pos,
             auth_type=AuthType.oauth,
             business_id=merchant_id,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            client_id=None,
-            client_secret=None,
-            api_key=None,
+            credentials=IntegrationCredentials(
+                access_token=access_token,
+                refresh_token=refresh_token,
+            ),
         )
 
         created_integration = create_integration(
             session=session,
-            account_id=account.id,
-            params=integration_request,
+            account=account,
+            params=integration_params,
         )
 
         return JSONResponse(

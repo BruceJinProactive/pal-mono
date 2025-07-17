@@ -45,6 +45,7 @@ class Integration(Base):
         nullable=False,
         server_default=text("'{}'::jsonb"),
     )
+    secret_key: Mapped[str] = mapped_column(String, nullable=False, server_default="")
     access_token: Mapped[str | None] = mapped_column(String, nullable=True)
     refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
     client_id: Mapped[str | None] = mapped_column(String, nullable=True)

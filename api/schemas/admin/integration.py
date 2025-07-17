@@ -5,6 +5,11 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from db.tables.types import AuthType, IntegrationProvider, IntegrationType
+from services.integration_service.schema import (
+    CreateIntegrationParams,
+    IntegrationCredentials,
+    UpdateIntegrationParams,
+)
 
 
 # Request models
@@ -31,19 +36,61 @@ class IntegrationRequest(BaseModel):
     )
 
     def to_integration_params(self):
-        from services.integration_service.schema import IntegrationParams
-
-        return IntegrationParams(
+        return CreateIntegrationParams(
             provider=self.provider,
             integration_type=self.integration_type,
             auth_type=self.auth_type,
             business_id=self.business_id,
             raw_config=self.raw_config,
-            access_token=self.access_token,
-            refresh_token=self.refresh_token,
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            api_key=self.api_key,
+            credentials=IntegrationCredentials(
+                access_token=self.access_token,
+                refresh_token=self.refresh_token,
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                api_key=self.api_key,
+            ),
+        )
+
+
+class UpdateIntegrationRequest(BaseModel):
+    business_id: Optional[str] = Field(
+        None, description="Business identifier from the provider"
+    )
+    raw_config: Optional[Dict] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
+    access_token: Optional[str] = Field(None, description="Access token for OAuth")
+    refresh_token: Optional[str] = Field(None, description="Refresh token for OAuth")
+    client_id: Optional[str] = Field(None, description="Client ID for OAuth")
+    client_secret: Optional[str] = Field(None, description="Client secret for OAuth")
+    api_key: Optional[str] = Field(
+        None, description="API key for API key authentication"
+    )
+
+    def to_integration_params(self):
+        # Only create credentials object if at least one credential field is provided
+        credentials = None
+        if any(
+            [
+                self.access_token is not None,
+                self.refresh_token is not None,
+                self.client_id is not None,
+                self.client_secret is not None,
+                self.api_key is not None,
+            ]
+        ):
+            credentials = IntegrationCredentials(
+                access_token=self.access_token,
+                refresh_token=self.refresh_token,
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                api_key=self.api_key,
+            )
+
+        return UpdateIntegrationParams(
+            business_id=self.business_id,
+            raw_config=self.raw_config,
+            credentials=credentials,
         )
 
 

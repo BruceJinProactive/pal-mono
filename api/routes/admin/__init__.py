@@ -63,6 +63,7 @@ from api.schemas.admin.integration import (
     ListIntegrationsResponse,
     ListProjectIntegrationsResponse,
     ProjectIntegrationResponse,
+    UpdateIntegrationRequest,
     UpdateProjectIntegrationRequest,
 )
 from api.schemas.admin.knowledge import ListKnowledgeFileResponse, ResourceType
@@ -108,7 +109,6 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
-from services.integration_service._utils import store_integration_credentials
 
 from . import (
     _account,
@@ -389,9 +389,6 @@ async def create_integration(
     """
     Create a new integration for the specified account.
     """
-
-    integration = store_integration_credentials(integration, account_name)
-
     return await _integration.create_integration(
         account_name, integration, context, session
     )
@@ -401,20 +398,13 @@ async def create_integration(
 async def update_integration(
     account_name: str,
     integration_id: uuid.UUID,
-    integration: IntegrationRequest,
+    integration: UpdateIntegrationRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> IntegrationResponse:
     """
     Update an existing integration.
     """
-
-    provider = _integration.get_integration(
-        account_name, integration_id, context, session
-    ).provider
-    integration.provider = provider
-    integration = store_integration_credentials(integration, account_name)
-
     return await _integration.update_integration(
         account_name, integration_id, integration, context, session
     )

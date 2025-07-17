@@ -1,243 +1,145 @@
-import logging
-from dataclasses import dataclass
-from typing import Optional, Tuple
+import json
+import random
+import string
 
-from fastapi import HTTPException, status
-
-from api.schemas.admin.integration import IntegrationRequest
-from db.tables.types import IntegrationProvider
-
-# Import POS token exchange functions from each tool
-from tools.adora_tool._apis import get_adora_pos_auth_token
-from tools.opentable_tool._apis import get_opentable_access_token
-from tools.toast_tool._apis import get_toast_access_token
-from utils.secret import upsert_client_secret
-
-# from tools.yelp_tool._apis import get_yelp_access_token  # Not implemented
-# For Olo and Square, the 'token' is just the API key, not an exchange
+import db
+from db import Account
+from db.tables.integration import Integration
+from db.tables.types import AuthType
+from services.integration_service.schema import (
+    IntegrationCredentials,
+    IntegrationDetail,
+)
+from utils.log import logger
+from utils.secret import get_client_secret, upsert_client_secret
 
 
-logger = logging.getLogger(__name__)
+def _generate_secret_key(
+    account_name: str, integration_type: str, provider_name: str, auth_type: str
+) -> str:
+    """
+    Generate a unique secret key for storing integration credentials.
+
+    Format: {account_name}_{integration_type}_{provider_name}_{auth_type}_{random_suffix}
+    """
+    # Clean account name (remove non-alphanumeric characters and convert to uppercase)
+    clean_account_name = "".join(c for c in account_name if c.isalnum()).upper()
+
+    # Generate 4 random characters (mix of letters and numbers)
+    random_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
+
+    # Build the key with integration ID for uniqueness
+    secret_key = f"{clean_account_name}_{integration_type.upper()}_{provider_name.upper()}_{auth_type.upper()}_{random_suffix}"
+
+    return secret_key
 
 
-@dataclass
-class TokenExchangeConfig:
-    """Configuration for POS token exchange operations."""
+def _extract_auth_secrets(
+    credentials: IntegrationCredentials, auth_type: AuthType
+) -> dict:
+    """
+    Extract authentication secrets based on auth_type and return as a dictionary.
+    Only includes non-None/non-empty fields to support partial updates.
+    """
+    secrets = {}
 
-    qa_store: bool = False
-    token_api_endpoint: Optional[str] = None
-    use_production: bool = False
+    if auth_type == AuthType.oauth:
+        if credentials.access_token:
+            secrets["access_token"] = credentials.access_token
+        if credentials.refresh_token:
+            secrets["refresh_token"] = credentials.refresh_token
 
+    elif auth_type == AuthType.api_key:
+        if credentials.api_key:
+            secrets["api_key"] = credentials.api_key
 
-def _get_adora_token(
-    client_id: str, client_secret: str, config: TokenExchangeConfig
-) -> Optional[str]:
-    """Get access token for Adora provider."""
-    token_obj = get_adora_pos_auth_token(
-        key=client_id,
-        secret=client_secret,
-        qa_store=config.qa_store,
-        token_api_endpoint=config.token_api_endpoint,
-    )
-    return (
-        token_obj.access_token
-        if token_obj and hasattr(token_obj, "access_token")
-        else None
-    )
+    elif auth_type == AuthType.client_secret:
+        if credentials.client_id:
+            secrets["client_id"] = credentials.client_id
+        if credentials.client_secret:
+            secrets["client_secret"] = credentials.client_secret
 
+    else:
+        raise ValueError(f"Unsupported authentication type: {auth_type}")
 
-def _get_toast_token(client_key: str, client_secret: str) -> Optional[str]:
-    """Get access token for Toast provider."""
-    token_obj = get_toast_access_token(client_key, client_secret)
-    return (
-        token_obj.access_token
-        if token_obj and hasattr(token_obj, "access_token")
-        else None
-    )
+    if not secrets:
+        raise ValueError(f"No valid credentials provided for {auth_type}")
+
+    return secrets
 
 
-def _get_olo_token(client_key: str) -> str:
-    """Get access token for Olo provider (API key is the token)."""
-    return client_key
-
-
-def _get_square_token(merchant_id: str) -> Optional[str]:
-    """Get access token for Square provider using Integration table (merchant_id required)."""
-    import db
-    from db import IntegrationRepository
-    from db.tables.types import IntegrationProvider
-
-    if not merchant_id:
-        logger.error("merchant_id is required for Square OAuth token retrieval.")
-        return None
-
+def _get_integration_credentials(secret_key: str) -> dict:
     try:
-        session = next(db.get_db())
+        secrets_json = get_client_secret(secret_key)
+        return json.loads(secrets_json)
+    except KeyError:
+        logger.error(f"Secret key '{secret_key}' not found in secret manager")
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON format for secret key '{secret_key}': {e}")
+        raise
+
+
+def update_integration_credentials(
+    account: Account,
+    credentials: IntegrationCredentials,
+    integration: db.Integration,
+):
+    # Extract authentication secrets based on auth_type (partial updates supported)
+    new_auth_secrets = _extract_auth_secrets(credentials, integration.auth_type)
+
+    # Generate secret key if not provided
+    secret_key = integration.secret_key
+    if not secret_key:
+        secret_key = _generate_secret_key(
+            account_name=account.name,
+            integration_type=integration.integration_type.value,
+            provider_name=integration.provider.value,
+            auth_type=integration.auth_type.value,
+        )
+        # For new integrations, store the provided credentials
+        final_auth_secrets = new_auth_secrets
+    else:
+        # For existing integrations, merge new credentials with existing ones
         try:
-            integration_repository = IntegrationRepository(session)
-            integrations = (
-                integration_repository.get_integrations_by_provider_and_business_id(
-                    IntegrationProvider.square, merchant_id
-                )
+            existing_auth_secrets = _get_integration_credentials(secret_key)
+            # Merge existing secrets with new ones (new ones take precedence)
+            final_auth_secrets = {**existing_auth_secrets, **new_auth_secrets}
+        except (KeyError, json.JSONDecodeError):
+            # If we can't retrieve existing secrets, just use the new ones
+            logger.warning(
+                f"Could not retrieve existing secrets for key {secret_key}, using new credentials only"
             )
+            final_auth_secrets = new_auth_secrets
 
-            if not integrations:
-                logger.error(
-                    f"No Square integration found for merchant_id {merchant_id}"
-                )
-                return None
+    # Store merged secrets in secret manager
+    secrets_json = json.dumps(final_auth_secrets)
+    upsert_client_secret(secret_key, secrets_json)
 
-            integration = max(integrations, key=lambda x: x.created_at)
-            return integration.access_token
-        finally:
-            session.close()
-
-    except Exception as e:
-        logger.error(
-            f"Failed to retrieve Square access token for merchant_id {merchant_id}: {e}"
-        )
-        return None
-
-
-def _get_yelp_token() -> Optional[str]:
-    """Get access token for Yelp provider (not implemented)."""
-    logger.warning("Yelp access token exchange not implemented.")
-    return None
-
-
-def _get_opentable_token(
-    client_key: str, client_secret: str, config: TokenExchangeConfig
-) -> Optional[str]:
-    """Get access token for OpenTable provider."""
-    token_obj = get_opentable_access_token(
-        client_key, client_secret, use_production=config.use_production
+    logger.info(
+        f"Updated integration secrets for account {account.name} with key {secret_key}"
     )
-    return (
-        token_obj.access_token
-        if token_obj and hasattr(token_obj, "access_token")
-        else None
+    return secret_key
+
+
+def build_integration_detail(integration: Integration):
+    credentials = {}
+    if integration.secret_key:
+        credentials = _get_integration_credentials(integration.secret_key)
+
+    return IntegrationDetail(
+        id=integration.id,
+        account_id=integration.account_id,
+        integration_type=integration.integration_type,
+        provider=integration.provider,
+        auth_type=integration.auth_type,
+        business_id=integration.business_id,
+        raw_config=integration.raw_config,
+        access_token=credentials.get("access_token"),
+        refresh_token=credentials.get("refresh_token"),
+        client_id=credentials.get("client_id"),
+        client_secret=credentials.get("client_secret"),
+        api_key=credentials.get("api_key"),
+        created_at=integration.created_at,
+        updated_at=integration.updated_at,
     )
-
-
-def get_pos_access_token(
-    provider: IntegrationProvider,
-    client_id: Optional[str] = None,
-    client_secret: Optional[str] = None,
-    config: Optional[TokenExchangeConfig] = None,
-    business_id: Optional[str] = None,
-) -> Optional[str]:
-    """
-    Retrieve the client_key and client_secret from the secret manager and exchange them for an access token.
-    Returns the access token if successful, else None. Does not store the access token.
-
-    Args:
-        provider: The POS provider to get the access token for
-        business_id: The Square merchant_id (required for Square)
-        project_name: The name of the project
-        store_identifier: The store identifier
-        config: Optional configuration for token exchange (defaults to TokenExchangeConfig())
-    """
-    if config is None:
-        config = TokenExchangeConfig()
-
-    try:
-        # Provider-specific token retrieval
-        if provider == IntegrationProvider.adora:
-            if not client_id or not client_secret:
-                raise ValueError(
-                    "Client ID and client secret are required for Adora provider"
-                )
-            access_token = _get_adora_token(client_id, client_secret, config)
-        elif provider == IntegrationProvider.toast:
-            if not client_id or not client_secret:
-                raise ValueError(
-                    "Client ID and client secret are required for Toast provider"
-                )
-            access_token = _get_toast_token(client_id, client_secret)
-        elif provider == IntegrationProvider.olo:
-            if not client_id:
-                raise ValueError("Client ID is required for Olo provider")
-            access_token = _get_olo_token(client_id)
-        elif provider == IntegrationProvider.square:
-            if not business_id:
-                raise ValueError(
-                    "business_id (merchant_id) is required for Square provider"
-                )
-            access_token = _get_square_token(business_id)
-        elif provider == IntegrationProvider.yelp:
-            access_token = _get_yelp_token()
-        elif provider == IntegrationProvider.opentable:
-            if not client_id or not client_secret:
-                raise ValueError(
-                    "Client ID and client secret are required for OpenTable provider"
-                )
-            access_token = _get_opentable_token(client_id, client_secret, config)
-        else:
-            logger.warning(f"Provider {provider} not supported for token exchange.")
-            return None
-
-        if access_token:
-            logger.debug(f"Retrieved access token for {provider} (not stored)")
-            return access_token
-
-        logger.error(f"Failed to obtain access token for {provider}")
-        return None
-
-    except Exception as e:
-        logger.exception(f"Error retrieving access token for {provider}: {e}")
-        return None
-
-
-def _store_integration_credentials(
-    provider: IntegrationProvider,
-    account_name: str,
-    client_id: str,
-    client_secret: str,
-) -> Tuple[str, str]:
-    """
-    Store the client_key and client_secret for a POS provider in the secret manager.
-    """
-    id_key = f"{account_name.upper()}_{provider.value.upper()}_CLIENT_ID"
-    secret_key = f"{account_name.upper()}_{provider.value.upper()}_CLIENT_SECRET"
-    upsert_client_secret(id_key, client_id)
-    upsert_client_secret(secret_key, client_secret)
-    logger.info(f"Successfully stored credentials for {provider.value} provider")
-    return id_key, secret_key
-
-
-def store_integration_credentials(
-    integration: IntegrationRequest,
-    account_name: str,
-) -> IntegrationRequest:
-    """
-    Store the client_key and client_secret for a POS provider in the secret manager.
-    """
-    # Validate credentials based on provider requirements
-
-    if integration.provider in [
-        IntegrationProvider.adora,
-        IntegrationProvider.toast,
-        IntegrationProvider.opentable,
-    ]:
-        if not (integration.client_id and integration.client_secret):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Client ID and Client Secret are required for this provider",
-            )
-    elif integration.provider in [IntegrationProvider.olo, IntegrationProvider.square]:
-        if not integration.client_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Client ID is required for this provider",
-            )
-
-    if integration.client_id:
-        id_key, secret_key = _store_integration_credentials(
-            integration.provider,
-            account_name,
-            integration.client_id,
-            integration.client_secret or "",
-        )
-        integration.client_id = id_key
-        integration.client_secret = secret_key
-    return integration

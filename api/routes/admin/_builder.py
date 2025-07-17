@@ -19,6 +19,7 @@ from api.schemas.admin.subscription import (
     Subscription,
     SubscriptionPlan,
 )
+from services.integration_service.schema import IntegrationDetail
 
 
 def build_account(account: db.Account) -> Account:
@@ -257,7 +258,7 @@ def build_subscription(subscription: db.AccountSubscription) -> Subscription:
     )
 
 
-def build_integration(integration: db.Integration) -> IntegrationResponse:
+def build_integration(integration: IntegrationDetail) -> IntegrationResponse:
     """Build an integration response with actual token values."""
     return IntegrationResponse(
         id=integration.id,
@@ -278,7 +279,7 @@ def build_integration(integration: db.Integration) -> IntegrationResponse:
 
 
 def build_integration_summary(
-    integration: db.Integration,
+    integration: IntegrationDetail,
 ) -> IntegrationSummaryResponse:
     """Build an integration summary response."""
     return IntegrationSummaryResponse(
