@@ -1120,6 +1120,7 @@ def signup_account_user(
                     },
                     # from_email can be omitted to use default
                 )
+                logger.info(f"Welcome email sent to {user_email}")
         except Exception as e:
             logger.error(f"Failed to send welcome email via Postmark: {e}")
     except ClientError as e:
@@ -1171,6 +1172,7 @@ def signup_account_user(
                     },
                     # from_email can be omitted to use default
                 )
+                logger.info(f"Welcome email sent to {user_email}")
         except Exception as e:
             logger.error(f"Failed to send welcome email via Postmark: {e}")
         id_token = auth_response["AuthenticationResult"]["IdToken"]
