@@ -31,6 +31,7 @@ Dependencies:
 - _indexer: Vector store operations
 """
 
+import re
 from typing import Any, Dict, List
 
 from utils.log import logger
@@ -69,6 +70,7 @@ class AdoraMenuProcessor:
         pinecone_namespace: str,
         token_api_endpoint: str,
         general_api_endpoint: str,
+        include_category_in_doc_name: bool = False,
     ) -> Dict[str, Any]:
         """Process Adora menu and index it to Pinecone.
 
@@ -80,6 +82,7 @@ class AdoraMenuProcessor:
             pinecone_namespace: The namespace to store the menu data in
             token_api_endpoint: The complete URL for the token endpoint
             general_api_endpoint: The complete URL for the general API endpoint
+            include_category_in_doc_name: Whether to include category name in document names. Defaults to False.
 
         Returns:
             dict: Processing results including menu data and indexing information
@@ -117,13 +120,31 @@ class AdoraMenuProcessor:
 
             # Step 3: Generate individual item texts
             individual_items = []
-            for item in menu_data.get("items", []):
-                item_text = generate_item_text(
+            for i, item in enumerate(menu_data.get("items", [])):
+                item_text, item_name, category_name = generate_item_text(
                     item=item,
                     menu_data=menu_data,
                     with_ids=True,
                 )
-                individual_items.append(item_text)
+
+                # Sanitize item_name and category_name
+                item_name_sanitized = re.sub(r"[^\w\s]", "", item_name)
+                category_name_sanitized = re.sub(r"[^\w\s]", "", category_name)
+
+                # Generate document name based on include_category_in_doc_name setting
+                if include_category_in_doc_name:
+                    # Check if category name is already in item name (case insensitive)
+                    if category_name.lower() in item_name.lower():
+                        document_name = f"item_{i}_{item_name_sanitized}"
+                    else:
+                        document_name = (
+                            f"item_{i}_{item_name_sanitized} {category_name_sanitized}"
+                        )
+                else:
+                    # Don't include category name in document name
+                    document_name = f"item_{i}_{item_name_sanitized}"
+
+                individual_items.append({document_name: item_text})
             # Step 4: Generate consolidated menu
             consolidated_menu = self._generate_consolidated_menu(
                 individual_items=individual_items
@@ -152,21 +173,30 @@ class AdoraMenuProcessor:
             logger.error(f"Error processing Adora menu: {e}")
             raise
 
-    def _generate_consolidated_menu(self, individual_items: List[str]) -> str:
+    def _generate_consolidated_menu(
+        self, individual_items: List[Dict[str, str]]
+    ) -> str:
         """Generate consolidated menu text from individual items.
 
         Args:
-            individual_items: List of formatted individual item strings
+            individual_items: List of dictionaries where each dict contains one key-value pair.
+                            Key format depends on include_category_in_doc_name setting:
+                            - If True: "item_{index}_{item_name}" if category is already in item name,
+                              or "item_{index}_{item_name} {category_name}" if category is not in item name.
+                            - If False: "item_{index}_{item_name}" (category name never included).
+                            Value: The formatted item text.
 
         Returns:
             str: Consolidated menu text
         """
         # Parse items for consolidated format
         menu_items = []
-        for item_text in individual_items:
-            item_data = parse_item_data(item_text)
-            if item_data:
-                menu_items.append(item_data)
+        for item_dict in individual_items:
+            # Each item_dict has one key-value pair
+            for _, item_text in item_dict.items():
+                item_data = parse_item_data(item_text)
+                if item_data:
+                    menu_items.append(item_data)
 
         # Sort and format consolidated menu
         menu_items.sort(key=lambda x: (x["category"], x["name"]))

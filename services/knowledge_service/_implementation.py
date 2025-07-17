@@ -320,6 +320,7 @@ def update_agent_kb(
     pinecone_namespace: str,
     pinecone_index_name: str,
     debug: bool = False,
+    include_category_in_doc_name: bool = False,
 ) -> dict:
     """Update the knowledge base for an agent based on the POS provider."""
 
@@ -348,6 +349,7 @@ def update_agent_kb(
                 pinecone_namespace=pinecone_namespace,
                 token_api_endpoint=token_api_endpoint,
                 general_api_endpoint=general_api_endpoint,
+                include_category_in_doc_name=include_category_in_doc_name,
             )
 
             logger.info(

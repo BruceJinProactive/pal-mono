@@ -139,6 +139,7 @@ def update_agent_kb(
     pinecone_namespace: str,
     pinecone_index_name: str,
     debug: bool = False,
+    include_category_in_doc_name: bool = False,
 ) -> dict:
     """
     Update the knowledge base for an agent.
@@ -153,6 +154,7 @@ def update_agent_kb(
         pinecone_namespace (str): The namespace to upsert the knowledge base to.
         pinecone_index_name (str): The name of the Pinecone index to use.
         debug (bool): Whether to enable debug mode.
+        include_category_in_doc_name (bool): Whether to include category name in document names. Defaults to False.
 
     Returns:
         dict: A dictionary of the following:
@@ -178,6 +180,7 @@ def update_agent_kb(
         pinecone_namespace,
         pinecone_index_name,
         debug,
+        include_category_in_doc_name,
     )
 
 

@@ -24,7 +24,7 @@ Dependencies:
 """
 
 import time
-from typing import List
+from typing import Dict, List
 
 from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.embeddings.cohere import CohereEmbedding
@@ -39,7 +39,7 @@ from utils.log import logger
 
 
 def index_to_pinecone(
-    individual_items: List[str],
+    individual_items: List[Dict[str, str]],
     pinecone_index_name: str,
     pinecone_namespace: str,
     debug: bool = False,
@@ -47,7 +47,10 @@ def index_to_pinecone(
     """Index individual menu items to Pinecone.
 
     Args:
-        individual_items: List of formatted menu item strings
+        individual_items: List of dictionaries where each dict contains one key-value pair.
+                        Key format: "item_{index}_{item_name}" if category is already in item name,
+                        or "item_{index}_{item_name} {category_name}" if category is not in item name.
+                        Value: The formatted item text.
         pinecone_index_name: Name of the Pinecone index
         pinecone_namespace: Namespace for the Pinecone index
         debug: Whether to enable debug logging
@@ -66,18 +69,20 @@ def index_to_pinecone(
 
     # Create documents from individual items
     documents = []
-    for i, item_text in enumerate(individual_items):
-        doc = Document(
-            text=item_text,
-            metadata={
-                "include_ids": "True",
-                "item_index": i,
-                "file_name": f"adora_menu_{time.strftime('%Y-%m-%d')}.txt",
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "size_bytes": len(item_text.encode("utf-8")),
-            },
-        )
-        documents.append(doc)
+    for i, item_dict in enumerate(individual_items):
+        # Each item_dict has one key-value pair
+        for document_name, item_text in item_dict.items():
+            doc = Document(
+                text=item_text,
+                metadata={
+                    "include_ids": "True",
+                    "item_index": i,
+                    "file_name": document_name,
+                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "size_bytes": len(item_text.encode("utf-8")),
+                },
+            )
+            documents.append(doc)
 
     # Initialize Pinecone
     pc = Pinecone(api_key=pinecone_api_key)

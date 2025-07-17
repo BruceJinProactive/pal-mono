@@ -151,6 +151,7 @@ async def update_agent_kb(
     project_id: uuid.UUID,
     pinecone_index_name: str,
     debug: bool = False,
+    include_category_in_doc_name: bool = False,
 ) -> dict:
     """
     Update the knowledge base for an agent.
@@ -168,6 +169,7 @@ async def update_agent_kb(
     Args:
         timestamp: Optional timestamp in YYYY-MM-DD_HH:MM format to append to namespace.
                   If not provided, will search in database or use current time.
+        include_category_in_doc_name: Whether to include category name in document names. Defaults to False.
     """
     try:
         # Authorize the user's access to the admin resource
@@ -230,6 +232,7 @@ async def update_agent_kb(
             pinecone_namespace,
             pinecone_index_name,
             debug,
+            include_category_in_doc_name,
         )
     except ValueError as e:
         raise HTTPException(

@@ -17,7 +17,7 @@ Output formats:
 """
 
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from ._utils import get_category_name, get_modifier_group_name, get_size_description
 
@@ -26,7 +26,7 @@ def generate_item_text(
     item: Dict[str, Any],
     menu_data: Dict[str, Any],
     with_ids: bool = False,
-) -> str:
+) -> Tuple[str, str, str]:
     """Generate text representation of a menu item.
 
     Args:
@@ -35,7 +35,7 @@ def generate_item_text(
         with_ids: Whether to include IDs in the output
 
     Returns:
-        str: Formatted text representation of the menu item
+        Tuple[str, str, str]: A tuple containing (item_text, item_name, category_name)
     """
     categories = menu_data.get("categories", [])
     sizes = menu_data.get("sizes", [])
@@ -148,7 +148,8 @@ def generate_item_text(
 
             lines.append("")
 
-    return "\n".join(lines)
+    item_text = "\n".join(lines)
+    return item_text, item_name, category_name
 
 
 def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:

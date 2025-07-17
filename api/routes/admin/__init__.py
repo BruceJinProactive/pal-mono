@@ -1262,6 +1262,9 @@ async def update_agent_kb(
     project_id: uuid.UUID,
     pinecone_index_name: str = Query(..., description="Pinecone index name"),
     debug: bool = Query(False, description="Enable debug mode"),
+    include_category_in_doc_name: bool = Query(
+        False, description="Whether to include category name in document names"
+    ),
     context: UserContext = Depends(authenticate_user),
     db_session: Session = Depends(db.get_db),
 ) -> dict:
@@ -1291,6 +1294,7 @@ async def update_agent_kb(
     Args:
         timestamp: Optional timestamp in YYYY-MM-DD_HH:MM format to append to namespace.
                   If not provided, will search in database or use current time.
+        include_category_in_doc_name: Whether to include category name in document names. Defaults to False.
     """
     # Integration details and API endpoints are now retrieved from the project's integrations and raw config
     return await _knowledge.update_agent_kb(
@@ -1300,6 +1304,7 @@ async def update_agent_kb(
         project_id,
         pinecone_index_name,
         debug,
+        include_category_in_doc_name,
     )
 
 
