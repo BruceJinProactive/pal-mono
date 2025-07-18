@@ -1,6 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import (
     APIRouter,
@@ -33,7 +33,7 @@ from api.schemas.admin.agent import (
     CreateAgentRequest,
     UpdateAgentRequest,
 )
-from api.schemas.admin.analytics import GetAllReportsResponse, GetReportResponse
+from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
@@ -281,30 +281,42 @@ async def list_account_projects(
 
 
 @admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
-def get_account_reports(
+async def get_account_reports(
     account_name: str,
     start_date: datetime | None = Query(
         default=None,
-        description="Start date for the report data. If not provided, defaults to 7 days before end_date.",
+        description="Start date for the report data. If not provided, defaults to today.",
     ),
     end_date: datetime | None = Query(
         default=None,
-        description="End date for the report data. If not provided, defaults to current time.",
+        description="End date for the report data. If not provided, defaults to 7 days from start date.",
     ),
     context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> GetAllReportsResponse:
     """
-    Retrieve all available report data for this account.
-    Data is filtered by the specified date range (default: last 7 days).
+    Retrieve unified analytics reports for this account.
+    Data is filtered by the specified date range (default: today + 7 days).
     """
-    # Set default dates if not provided
-    end_date = end_date or datetime.now(UTC)
-    start_date = start_date or (end_date - timedelta(seconds=DEFAULT_STATS_AGE))
+    from ._auth import authorize_user_account
 
-    return GetAllReportsResponse(
-        reports=_analytics.get_all_reports(account_name, start_date, end_date)
-    )
+    # Authorize user for this account
+    authorize_user_account(context, account_name)
+
+    # Set default dates if not provided (today + 7 days)
+
+    if end_date is None:
+        # Set end_date to today at 23:59:59
+        now = datetime.now(UTC)
+        end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    if start_date is None:
+        # Subtract 6 full days to get exactly 7 calendar days
+        start_date = end_date - timedelta(days=6)
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Get unified reports using async session
+    return await _analytics.get_reports(account_name, session, start_date, end_date)
 
 
 @admin_router.get("/accounts/{account_name}/stat")
@@ -1342,37 +1354,6 @@ async def get_change_log(
         context=context,
         session=session,
     )
-
-
-"""
----------- Insights Endpoints ----------
-----------------------------------------
-"""
-
-
-@admin_router.get("/reports", status_code=status.HTTP_200_OK)
-def get_report(
-    request: Request,
-    report_name: str = Query(..., description="Report Name"),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-    start_date: datetime = Query(
-        default=None,
-        description="Start date for the report data. If not provided, defaults to 7 days before end_date.",
-    ),
-    end_date: datetime = Query(
-        default=None,
-        description="End date for the report data. If not provided, defaults to current time.",
-    ),
-) -> GetReportResponse:
-    """
-    Retrieve report data for the specified report name.
-    """
-    report_data = (
-        _analytics.get_report(request, report_name, session, start_date, end_date) or {}
-    )
-
-    return GetReportResponse(report_data=report_data)
 
 
 """

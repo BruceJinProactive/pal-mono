@@ -1,10 +1,13 @@
 import asyncio
 import os
+import uuid
 from datetime import datetime
 
 import requests
 from mixpanel import Mixpanel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+import db
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from utils.log import logger
 
@@ -14,18 +17,10 @@ MIXPANEL_WORKSPACE_ID = 9701744
 
 # Mapping of report names to bookmark IDs, will store them in db in the future
 BOOKMARK_ID_MAPPING = {
-    "DAU": 76662037,
-    "MAU": 76661239,
-    "MESSAGE": 76661240,
-    "CONVERSION": 76661919,
     "ORDER": 81979859,
 }
 
 MIXPANEL_REPORTS = [
-    (76662037, "Daily Active Users"),
-    (76661239, "Monthly Active Users"),
-    (76661240, "Turn of Messages"),
-    (76661919, "Checkout Conversion"),
     (81979859, "Total Order Value"),
 ]
 
@@ -128,3 +123,66 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
             logger.error(f"Error tracking event {event_name} for user {user_id}: {e}")
 
     asyncio.create_task(asyncio.to_thread(_track))
+
+
+async def get_DAU(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    start_date: datetime,
+    end_date: datetime,
+) -> dict[str, dict[str, int]]:
+    """
+    Calculate Daily Active Users (DAU) for a given account within a date range.
+
+    Args:
+        session (Session): Database session
+        account_id (uuid.UUID): The account ID to calculate DAU for
+        start_date (datetime): Start date for the DAU calculation
+        end_date (datetime): End date for the DAU calculation
+
+    Returns:
+        dict[str, dict[str, int]]: Dictionary with date strings as keys and channel DAU counts as values
+    """
+    try:
+        message_repo = db.MessageRepositoryAsync(session)
+        result = await message_repo.get_daily_active_users(
+            account_id, start_date, end_date
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error calculating DAU for account {account_id}: {e}")
+        logger.exception("Full DAU exception traceback:")
+        return {}
+
+
+async def get_daily_message_turns(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    start_date: datetime,
+    end_date: datetime,
+) -> dict[str, dict[str, int]]:
+    """
+    Calculate Daily Message Turns for a given account within a date range.
+
+    A "turn" consists of a user message followed by an agent response.
+    We count agent messages since each represents a completed conversation turn.
+
+    Args:
+        session (AsyncSession): Async database session
+        account_id (uuid.UUID): The account ID to calculate message turns for
+        start_date (datetime): Start date for the calculation
+        end_date (datetime): End date for the calculation
+
+    Returns:
+        dict[str, dict[str, int]]: Dictionary with date strings as keys and channel turn counts as values
+    """
+    try:
+        message_repo = db.MessageRepositoryAsync(session)
+        result = await message_repo.get_daily_message_turns(
+            account_id, start_date, end_date
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error calculating message turns for account {account_id}: {e}")
+        logger.exception("Full message turns exception traceback:")
+        return {}
