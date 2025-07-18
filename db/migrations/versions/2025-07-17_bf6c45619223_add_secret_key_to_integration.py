@@ -1,7 +1,7 @@
 """Add secret key to integration
 
 Revision ID: bf6c45619223
-Revises: 19b630fb971a
+Revises: 28ca5408086d
 Create Date: 2025-07-17 07:17:51.998546
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "bf6c45619223"
-down_revision: Union[str, None] = "19b630fb971a"
+down_revision: Union[str, None] = "28ca5408086d"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

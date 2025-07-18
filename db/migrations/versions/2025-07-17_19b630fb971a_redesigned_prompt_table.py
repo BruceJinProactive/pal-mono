@@ -1,7 +1,7 @@
 """Redesigned prompt table
 
 Revision ID: 19b630fb971a
-Revises: 28ca5408086d
+Revises: bf6c45619223
 Create Date: 2025-07-17 20:17:16.259419
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "19b630fb971a"
-down_revision: Union[str, None] = "28ca5408086d"
+down_revision: Union[str, None] = "bf6c45619223"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
