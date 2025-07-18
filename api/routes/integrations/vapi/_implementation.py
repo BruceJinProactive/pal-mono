@@ -248,7 +248,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         customer_data = message_data.get("customer", {})
         customer_number = customer_data.get("number", "")
 
-        logger.info(
+        logger.debug(
             f"Handling assistant request for call {call_id} from {customer_number} to {phone_number}"
         )
 
@@ -327,7 +327,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         # Check if multilingual workflow should be used
         if config.persona.multilingual_workflow and config.voice_config.enabled:
-            logger.info(f"Creating multilingual workflow for call {call_id}")
+            logger.debug(f"Creating multilingual workflow for call {call_id}")
             return create_multilingual_workflow_demo(
                 agent_config=config,
                 account_display_name=account_display_name,
@@ -787,18 +787,14 @@ def create_multilingual_workflow_demo(
                         "type": "conversation",
                         "prompt": f"You are helping the customer select their preferred language for {account_display_name} support. Listen carefully for: English/one/1 to select English, Español/Spanish/dos/two/2 to select Spanish, 中文/Chinese/三/three/3 to select Chinese. Extract their language preference clearly. If unclear, ask them to repeat their choice.",
                         "isStart": True,
-                        "messagePlan": {
-                            "firstMessage": f"Hello! Hola! 您好! Welcome to {account_display_name} support. For English, say English or one. Para español, diga Español o dos. 中文请说中文或者三。"
-                        },
+                        "firstMessage": f"Hello! Hola! 您好! Welcome to {account_display_name} support. For English, say English or one. Para español, diga Español o dos. 中文请说中文或者三。",
                         "variableExtractionPlan": {
-                            "output": [
-                                {
-                                    "type": "string",
-                                    "title": "preferred_language",
-                                    "description": "Customer preferred language choice",
-                                    "enum": ["english", "spanish", "chinese"],
-                                }
-                            ]
+                            "schema": {
+                                "type": "string",
+                                "title": "preferred_language",
+                                "description": "Customer preferred language choice",
+                                "enum": ["english", "spanish", "chinese"],
+                            }
                         },
                     },
                     # English Support Node
@@ -823,9 +819,7 @@ def create_multilingual_workflow_demo(
                             ],
                         },
                         "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
-                        "messagePlan": {
-                            "firstMessage": f"Perfect! I am {agent_config.persona.name}, your English support representative for {account_display_name}. How can I assist you today?"
-                        },
+                        "firstMessage": f"Perfect! I am {agent_config.persona.name}, your English support representative for {account_display_name}. How can I assist you today?",
                     },
                     # Spanish Support Node
                     {
@@ -849,9 +843,7 @@ def create_multilingual_workflow_demo(
                             ],
                         },
                         "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
-                        "messagePlan": {
-                            "firstMessage": f"¡Perfecto! Soy {agent_config.persona.name}, su representante de soporte en español para {account_display_name}. ¿Cómo puedo asistirle hoy?"
-                        },
+                        "firstMessage": f"¡Perfecto! Soy {agent_config.persona.name}, su representante de soporte en español para {account_display_name}. ¿Cómo puedo asistirle hoy?",
                     },
                     # Chinese Support Node
                     {
@@ -875,9 +867,7 @@ def create_multilingual_workflow_demo(
                             ],
                         },
                         "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
-                        "messagePlan": {
-                            "firstMessage": f"太好了！我是{agent_config.persona.name}，您的中文客服代表，为{account_display_name}服务。请问今天有什么可以帮助您的吗？"
-                        },
+                        "firstMessage": f"太好了！我是{agent_config.persona.name}，您的中文客服代表，为{account_display_name}服务。请问今天有什么可以帮助您的吗？",
                     },
                 ],
                 # Workflow routing logic
@@ -939,7 +929,7 @@ def create_multilingual_workflow_demo(
         workflow_config["workflow"]["backgroundDenoisingEnabled"] = True
         workflow_config["workflow"]["silenceTimeoutSeconds"] = 60
 
-        logger.info(
+        logger.debug(
             f"DEMO: Created multilingual workflow for call {call_id} with {len(workflow_config['workflow']['nodes'])} nodes"
         )
 
