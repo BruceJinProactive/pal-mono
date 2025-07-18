@@ -749,31 +749,43 @@ def create_multilingual_workflow_demo(
         dict: Multilingual workflow configuration ready to be returned to VAPI
     """
     try:
-        # Get API URL for model callbacks
+        # Get API URL and create shorter caller info
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
-
-        # Base transcriber configuration (multilingual)
-        transcriber = {
-            "provider": "deepgram",
-            "model": "nova-3",
-            "language": "multi",
+        caller_info_short = {
+            "sender_identifier": caller_info["sender_identifier"],
+            "recipient_identifier": caller_info["recipient_identifier"],
         }
 
-        # Default voice for language selection - uses multilingual model
-        default_voice = {
-            "provider": "cartesia",
-            "voiceId": agent_config.voice_config.voice_id or SPORTSMAN_VOICE_ID,
-            "model": "sonic-multilingual",
-        }
-
-        # Check if speech rate is configured
+        # Get voice configuration
+        voice_id = agent_config.voice_config.voice_id or SPORTSMAN_VOICE_ID
         speech_rate = getattr(agent_config.voice_config, "speech_rate", None)
 
-        # Add speech rate if configured
-        if speech_rate:
-            default_voice = add_voice_speed_if_supported(default_voice, speech_rate)
+        # Base configurations
+        transcriber = {"provider": "deepgram", "model": "nova-3", "language": "multi"}
+        default_voice = _create_voice_config(
+            "cartesia", voice_id, "sonic-multilingual", speech_rate
+        )
 
-        # Create the workflow configuration
+        # Language configurations
+        language_configs = {
+            "english": {
+                "voice_model": "sonic",
+                "system_content": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
+                "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
+            },
+            "spanish": {
+                "voice_model": "sonic-multilingual",
+                "system_content": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. {agent_config.persona.description} Mantén las respuestas concisas y útiles.",
+                "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
+            },
+            "chinese": {
+                "voice_model": "sonic-multilingual",
+                "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} 请保持回答简洁有用。",
+                "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
+            },
+        }
+
+        # Create workflow configuration
         workflow_config = {
             "workflow": {
                 "name": f"{account_display_name} Multilingual Support Workflow",
@@ -781,156 +793,121 @@ def create_multilingual_workflow_demo(
                 "voice": default_voice,
                 "globalPrompt": f"{account_display_name} provides excellent customer service.",
                 "nodes": [
-                    # Language Selection Node - Entry point
-                    {
-                        "name": "language_selection",
-                        "type": "conversation",
-                        "prompt": f"You are helping the customer select their preferred language for {account_display_name} support. Listen carefully for: English/one/1 to select English, Español/Spanish/dos/two/2 to select Spanish, 中文/Chinese/三/three/3 to select Chinese. Extract their language preference clearly. If unclear, ask them to repeat their choice.",
-                        "isStart": True,
-                        "variableExtractionPlan": {
-                            "schema": {
-                                "type": "string",
-                                "title": "preferred_language",
-                                "description": "Customer preferred language choice",
-                                "enum": ["english", "spanish", "chinese"],
-                            }
-                        },
-                    },
-                    # English Support Node
-                    {
-                        "name": "english_support",
-                        "type": "conversation",
-                        "voice": {
-                            "provider": "cartesia",
-                            "voiceId": agent_config.voice_config.voice_id
-                            or SPORTSMAN_VOICE_ID,
-                            "model": "sonic",  # Standard English model
-                        },
-                        "model": {
-                            "provider": "custom-llm",
-                            "url": f"{api_url}/v1",
-                            "model": json.dumps(caller_info),
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
-                                }
-                            ],
-                        },
-                        "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
-                    },
-                    # Spanish Support Node
-                    {
-                        "name": "spanish_support",
-                        "type": "conversation",
-                        "voice": {
-                            "provider": "cartesia",
-                            "voiceId": agent_config.voice_config.voice_id
-                            or SPORTSMAN_VOICE_ID,
-                            "model": "sonic-multilingual",  # Multilingual for better Spanish
-                        },
-                        "model": {
-                            "provider": "custom-llm",
-                            "url": f"{api_url}/v1",
-                            "model": json.dumps(caller_info),
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. {agent_config.persona.description} Mantén las respuestas concisas y útiles.",
-                                }
-                            ],
-                        },
-                        "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
-                    },
-                    # Chinese Support Node
-                    {
-                        "name": "chinese_support",
-                        "type": "conversation",
-                        "voice": {
-                            "provider": "cartesia",
-                            "voiceId": agent_config.voice_config.voice_id
-                            or SPORTSMAN_VOICE_ID,
-                            "model": "sonic-multilingual",  # Multilingual for better Chinese
-                        },
-                        "model": {
-                            "provider": "custom-llm",
-                            "url": f"{api_url}/v1",
-                            "model": json.dumps(caller_info),
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} 请保持回答简洁有用。",
-                                }
-                            ],
-                        },
-                        "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
-                    },
+                    _create_language_selection_node(account_display_name),
+                    *[
+                        _create_support_node(
+                            lang,
+                            config,
+                            voice_id,
+                            speech_rate,
+                            api_url,
+                            caller_info_short,
+                        )
+                        for lang, config in language_configs.items()
+                    ],
                 ],
-                # Workflow routing logic
-                "edges": [
-                    {
-                        "from": "language_selection",
-                        "to": "english_support",
-                        "condition": {
-                            "type": "ai",
-                            "prompt": "Customer selected English language support",
-                        },
-                    },
-                    {
-                        "from": "language_selection",
-                        "to": "spanish_support",
-                        "condition": {
-                            "type": "ai",
-                            "prompt": "Customer selected Spanish language support",
-                        },
-                    },
-                    {
-                        "from": "language_selection",
-                        "to": "chinese_support",
-                        "condition": {
-                            "type": "ai",
-                            "prompt": "Customer selected Chinese language support",
-                        },
-                    },
-                    {
-                        "from": "language_selection",
-                        "to": "english_support",
-                        "condition": {
-                            "type": "ai",
-                            "prompt": "If language preference is unclear or not detected, default to English support",
-                        },
-                    },
-                ],
+                "edges": _create_workflow_edges(),
+                "backgroundSound": (
+                    "office" if _has_background_noise(agent_config) else "off"
+                ),
             }
         }
-
-        # Apply speech rate to all voice configurations in nodes
-        if speech_rate:
-            for node in workflow_config["workflow"]["nodes"]:
-                if "voice" in node:
-                    node["voice"] = add_voice_speed_if_supported(
-                        node["voice"], speech_rate
-                    )
-
-        # Apply background sound settings if enabled
-        if (
-            hasattr(agent_config.voice_config, "background_noise")
-            and agent_config.voice_config.background_noise
-        ):
-            workflow_config["workflow"]["backgroundSound"] = "office"
-        else:
-            workflow_config["workflow"]["backgroundSound"] = "off"
-
-        # Add additional workflow settings - these belong in different sections
-        # backgroundDenoisingEnabled and silenceTimeoutSeconds are not valid at workflow level
 
         logger.debug(
             f"DEMO: Created multilingual workflow for call {call_id} with {len(workflow_config['workflow']['nodes'])} nodes"
         )
-
         return workflow_config
 
     except Exception as e:
         logger.error(f"DEMO: Error creating multilingual workflow config: {str(e)}")
-        # Return error in format expected by VAPI
         return {"error": f"Error creating multilingual workflow: {str(e)}"}
+
+
+def _create_voice_config(provider: str, voice_id: str, model: str, speech_rate) -> dict:
+    """Create voice configuration with optional speech rate."""
+    voice = {"provider": provider, "voiceId": voice_id, "model": model}
+    return add_voice_speed_if_supported(voice, speech_rate) if speech_rate else voice
+
+
+def _create_language_selection_node(account_display_name: str) -> dict:
+    """Create the language selection node."""
+    return {
+        "name": "language_selection",
+        "type": "conversation",
+        "prompt": f"You are helping the customer select their preferred language for {account_display_name} support. Listen carefully for: English/one/1 to select English, Español/Spanish/dos/two/2 to select Spanish, 中文/Chinese/三/three/3 to select Chinese. Extract their language preference clearly. If unclear, ask them to repeat their choice.",
+        "isStart": True,
+        "variableExtractionPlan": {
+            "schema": {
+                "type": "string",
+                "title": "preferred_language",
+                "description": "Customer preferred language choice",
+                "enum": ["english", "spanish", "chinese"],
+            }
+        },
+    }
+
+
+def _create_support_node(
+    language: str,
+    config: dict,
+    voice_id: str,
+    speech_rate,
+    api_url: str,
+    caller_info_short: dict,
+) -> dict:
+    """Create a language-specific support node."""
+    return {
+        "name": f"{language}_support",
+        "type": "conversation",
+        "voice": _create_voice_config(
+            "cartesia", voice_id, config["voice_model"], speech_rate
+        ),
+        "model": {
+            "provider": "custom-llm",
+            "url": f"{api_url}/v1",
+            "model": json.dumps(caller_info_short),
+            "messages": [{"role": "system", "content": config["system_content"]}],
+        },
+        "prompt": config["prompt"],
+    }
+
+
+def _create_workflow_edges() -> list:
+    """Create workflow routing edges."""
+    languages = ["english", "spanish", "chinese"]
+    edges = []
+
+    # Add edges for each language
+    for lang in languages:
+        edges.append(
+            {
+                "from": "language_selection",
+                "to": f"{lang}_support",
+                "condition": {
+                    "type": "ai",
+                    "prompt": f"Customer selected {lang.capitalize()} language support",
+                },
+            }
+        )
+
+    # Add fallback to English
+    edges.append(
+        {
+            "from": "language_selection",
+            "to": "english_support",
+            "condition": {
+                "type": "ai",
+                "prompt": "If language preference is unclear or not detected, default to English support",
+            },
+        }
+    )
+
+    return edges
+
+
+def _has_background_noise(agent_config) -> bool:
+    """Check if background noise is enabled."""
+    return (
+        hasattr(agent_config.voice_config, "background_noise")
+        and agent_config.voice_config.background_noise
+    )
