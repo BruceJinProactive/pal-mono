@@ -19,6 +19,8 @@ from api.routes.chat.smart_filler import get_smart_filler_stream
 from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
+from services.llm_service import call_llm_default, call_llm_stream
+from services.llm_service.schema import ModelOptions
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_message
 from utils.dd import send_dd_histogram_metrics
@@ -374,9 +376,6 @@ async def _send_urls_via_sms(
         first_url = urls[0]
 
         try:
-            # Use OpenAI to generate a short summary with URLs
-            openai_client = _create_openai_client()
-
             # Create a prompt for summarization
             prompt = f"""
 Please create a short, SMS-friendly summary of the following content. DO NOT write out or paraphrase the full URL. Instead, insert the placeholder [INSERT_URL_HERE] where the link should go.
@@ -404,13 +403,23 @@ Instructions:
 - Use line breaks for clarity
 """
 
-            response = await openai_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=100,
+            chat_complete_params = {
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 100,
+            }
+            response = await call_llm_default(
+                model_option=ModelOptions.GPT_4O, params=chat_complete_params
             )
 
+            if (
+                not response.choices
+                or not response.choices[0]
+                or not response.choices[0].message
+            ):
+                raise RuntimeError(
+                    f"No response from LLM: {response.model_dump_json()}"
+                )
             summary_content = response.choices[0].message.content
             logger.debug(
                 f"Generated SMS summary: {summary_content} from original content {full_content}"
@@ -426,7 +435,8 @@ Instructions:
                 f"The summarized content is empty from original content {full_content}"
             )
         else:
-            summary_content = summary_content.replace(
+            # Ignore potential format conflict (consider as str, not list)
+            summary_content = summary_content.replace(  # type: ignore
                 "[INSERT_URL_HERE]", str(first_url)
             )
             logger.debug(f"Post processed SMS summary to {summary_content}")
@@ -676,8 +686,6 @@ async def chat_completions_oai(
     logger.info(f"Chat completions request: {json.dumps(request.model_dump())}")
 
     try:
-        openai_client = _create_openai_client()
-
         # Convert request format to proper OpenAI format using structured types
         if request.messages:
             # Convert dictionaries to proper message objects
@@ -699,7 +707,7 @@ async def chat_completions_oai(
             raise ValueError("Either 'message' or 'messages' must be provided")
 
         # Always use GPT-4o regardless of what's in the request
-        model = "gpt-4o"  # Ignore request.model and always use GPT-4o
+        model = ModelOptions.GPT_4O  # Ignore request.model and always use GPT-4o
 
         if request.stream:
 
@@ -713,16 +721,17 @@ async def chat_completions_oai(
 
                     # Call OpenAI API with streaming
                     # Use type: ignore to bypass type checking issues with OpenAI SDK
-                    stream = await openai_client.chat.completions.create(  # type: ignore
-                        model=model,
-                        messages=openai_messages,  # type: ignore
-                        temperature=request.temperature,
-                        top_p=request.top_p,
-                        n=request.n,
-                        max_tokens=request.max_tokens,
-                        presence_penalty=request.presence_penalty,
-                        frequency_penalty=request.frequency_penalty,
-                        stream=True,
+                    chat_complete_params = {
+                        "messages": openai_messages,
+                        "temperature": request.temperature,
+                        "top_p": request.top_p,
+                        "n": request.n,
+                        "max_tokens": request.max_tokens,
+                        "presence_penalty": request.presence_penalty,
+                        "frequency_penalty": request.frequency_penalty,
+                    }
+                    stream = await call_llm_stream(
+                        model_option=model, params=chat_complete_params
                     )
 
                     # Log stream start
@@ -740,6 +749,11 @@ async def chat_completions_oai(
                         if hasattr(chunk, "model_dump"):
                             chunk_data = chunk.model_dump()
                         else:
+                            if not chunk.choices:
+                                logger.error(
+                                    "Choice not found for completion response."
+                                )
+                                continue
                             # Fall back to dict representation
                             chunk_data = {
                                 "id": chunk.id,
@@ -751,12 +765,12 @@ async def chat_completions_oai(
                                         "index": choice.index,
                                         "delta": {
                                             "role": (
-                                                choice.delta.role
+                                                choice.delta.role  # type: ignore
                                                 if hasattr(choice.delta, "role")
                                                 else None
                                             ),
                                             "content": (
-                                                choice.delta.content
+                                                choice.delta.content  # type: ignore
                                                 if hasattr(choice.delta, "content")
                                                 else None
                                             ),
@@ -808,15 +822,17 @@ async def chat_completions_oai(
 
         # Non-streaming response
         # Use type: ignore to bypass type checking issues with OpenAI SDK
-        response = await openai_client.chat.completions.create(  # type: ignore
-            model=model,
-            messages=openai_messages,  # type: ignore
-            temperature=request.temperature,
-            top_p=request.top_p,
-            n=request.n,
-            max_tokens=request.max_tokens,
-            presence_penalty=request.presence_penalty,
-            frequency_penalty=request.frequency_penalty,
+        chat_complete_params = {
+            "messages": openai_messages,
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "n": request.n,
+            "max_tokens": request.max_tokens,
+            "presence_penalty": request.presence_penalty,
+            "frequency_penalty": request.frequency_penalty,
+        }
+        response = await call_llm_default(
+            model_option=model, params=chat_complete_params
         )
 
         # Convert response to dict
@@ -838,7 +854,8 @@ async def chat_completions_oai(
                         },
                         "finish_reason": choice.finish_reason,
                     }
-                    for choice in response.choices
+                    for choice in response.choices  # type: ignore
+                    if choice.message
                 ],
                 "usage": (
                     {
