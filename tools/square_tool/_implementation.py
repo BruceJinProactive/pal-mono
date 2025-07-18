@@ -139,7 +139,7 @@ class SquareTool(Toolkit):
                         enable_coupon=False,
                         enable_loyalty=False,
                     ),
-                    payment_note="Palona AI testing - Square order payment",
+                    payment_note="Palona AI - Square order payment",
                     use_production=self.use_production,
                 ),
             )
