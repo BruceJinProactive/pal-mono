@@ -769,17 +769,19 @@ def create_multilingual_workflow_demo(
         # Language configurations
         language_configs = {
             "english": {
-                "voice_model": "sonic",
+                "voice_model": "sonic-2",
                 "system_content": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
                 "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
             },
             "spanish": {
-                "voice_model": "sonic-multilingual",
+                "voice_model": "sonic-2",
+                "voice_id": "db832ebd-3cb6-42e7-9d47-912b425adbaa",  # young spanish-speaking woman
                 "system_content": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. {agent_config.persona.description} Mantén las respuestas concisas y útiles.",
                 "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
             },
             "chinese": {
-                "voice_model": "sonic-multilingual",
+                "voice_model": "sonic-2",
+                "voice_id": "0b904166-a29f-4d2e-bb20-41ca302f98e9",  # chinese commercial woman
                 "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} 请保持回答简洁有用。",
                 "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
             },
@@ -834,7 +836,7 @@ def _create_language_selection_node(account_display_name: str) -> dict:
     return {
         "name": "language_selection",
         "type": "conversation",
-        "prompt": f"You are helping the customer select their preferred language for {account_display_name} support. Listen carefully for: English/one/1 to select English, Español/Spanish/dos/two/2 to select Spanish, 中文/Chinese/三/three/3 to select Chinese. Extract their language preference clearly. If unclear, ask them to repeat their choice.",
+        "prompt": f"You are helping the customer select their preferred language for {account_display_name} support. Listen carefully for: English to select English, Español/Spanish to select Spanish, 中文/Chinese to select Chinese. Extract their language preference clearly. If unclear, ask them to repeat their choice.",
         "isStart": True,
         "variableExtractionPlan": {
             "schema": {
@@ -850,12 +852,15 @@ def _create_language_selection_node(account_display_name: str) -> dict:
 def _create_support_node(
     language: str,
     config: dict,
-    voice_id: str,
+    default_voice_id: str,
     speech_rate,
     api_url: str,
     caller_info_short: dict,
 ) -> dict:
     """Create a language-specific support node."""
+    # Use language-specific voice ID if available, otherwise use default
+    voice_id = config.get("voice_id", default_voice_id)
+
     return {
         "name": f"{language}_support",
         "type": "conversation",
