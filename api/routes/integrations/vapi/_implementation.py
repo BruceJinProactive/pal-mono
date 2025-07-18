@@ -779,7 +779,7 @@ def create_multilingual_workflow_demo(
                 "name": f"{account_display_name} Multilingual Support Workflow",
                 "transcriber": transcriber,
                 "voice": default_voice,
-                "globalPrompt": f"{account_display_name} is committed to providing excellent customer service. {agent_config.persona.description}",
+                "globalPrompt": f"{account_display_name} provides excellent customer service.",
                 "nodes": [
                     # Language Selection Node - Entry point
                     {
@@ -787,7 +787,6 @@ def create_multilingual_workflow_demo(
                         "type": "conversation",
                         "prompt": f"You are helping the customer select their preferred language for {account_display_name} support. Listen carefully for: English/one/1 to select English, Español/Spanish/dos/two/2 to select Spanish, 中文/Chinese/三/three/3 to select Chinese. Extract their language preference clearly. If unclear, ask them to repeat their choice.",
                         "isStart": True,
-                        "firstMessage": f"Hello! Hola! 您好! Welcome to {account_display_name} support. For English, say English or one. Para español, diga Español o dos. 中文请说中文或者三。",
                         "variableExtractionPlan": {
                             "schema": {
                                 "type": "string",
@@ -819,7 +818,6 @@ def create_multilingual_workflow_demo(
                             ],
                         },
                         "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
-                        "firstMessage": f"Perfect! I am {agent_config.persona.name}, your English support representative for {account_display_name}. How can I assist you today?",
                     },
                     # Spanish Support Node
                     {
@@ -843,7 +841,6 @@ def create_multilingual_workflow_demo(
                             ],
                         },
                         "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
-                        "firstMessage": f"¡Perfecto! Soy {agent_config.persona.name}, su representante de soporte en español para {account_display_name}. ¿Cómo puedo asistirle hoy?",
                     },
                     # Chinese Support Node
                     {
@@ -867,7 +864,6 @@ def create_multilingual_workflow_demo(
                             ],
                         },
                         "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
-                        "firstMessage": f"太好了！我是{agent_config.persona.name}，您的中文客服代表，为{account_display_name}服务。请问今天有什么可以帮助您的吗？",
                     },
                 ],
                 # Workflow routing logic
@@ -925,9 +921,8 @@ def create_multilingual_workflow_demo(
         else:
             workflow_config["workflow"]["backgroundSound"] = "off"
 
-        # Add additional workflow settings
-        workflow_config["workflow"]["backgroundDenoisingEnabled"] = True
-        workflow_config["workflow"]["silenceTimeoutSeconds"] = 60
+        # Add additional workflow settings - these belong in different sections
+        # backgroundDenoisingEnabled and silenceTimeoutSeconds are not valid at workflow level
 
         logger.debug(
             f"DEMO: Created multilingual workflow for call {call_id} with {len(workflow_config['workflow']['nodes'])} nodes"
