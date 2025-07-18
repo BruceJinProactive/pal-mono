@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, cast, distinct, func, not_, or_
+from sqlalchemy import Boolean, cast, distinct, not_, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -133,6 +133,7 @@ class MessageRepositoryAsync:
             List[Message]: A list of messages, empty if an error occurs.
         """
         try:
+
             start_time = datetime.datetime.now(datetime.timezone.utc)
             result = await self.session.execute(
                 select(Message)
@@ -156,196 +157,6 @@ class MessageRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error retrieving messages: {e}")
             return []
-
-    async def get_daily_active_users(
-        self,
-        account_id: uuid.UUID,
-        start_date: datetime.datetime,
-        end_date: datetime.datetime,
-    ) -> dict[str, dict[str, int]]:
-        """
-        Calculate Daily Active Users (DAU) for a given account within a date range,
-        grouped by channel and filtered to exclude testing messages.
-
-        Args:
-            account_id (uuid.UUID): The account ID to filter messages by
-            start_date (datetime.datetime): Start date for the DAU calculation
-            end_date (datetime.datetime): End date for the DAU calculation
-
-        Returns:
-            dict[str, dict[str, int]]: Dictionary with date strings as keys and
-                                      channel DAU counts as values
-        """
-        try:
-            # Query to get DAU by joining messages -> conversations -> users
-            # Group by date and channel, count distinct users
-            # Filter out testing messages
-
-            # Define expressions to avoid GROUP BY issues with JSON fields
-            channel_expr = Message.body["channel"].astext
-            date_expr = func.date(Message.created_at)
-
-            query = (
-                select(
-                    date_expr.label("date"),
-                    channel_expr.label("channel"),
-                    func.count(func.distinct(Conversation.user_id)).label("dau"),
-                )
-                .join(Conversation, Message.conversation_id == Conversation.id)
-                .join(User, Conversation.user_id == User.id)
-                .filter(
-                    User.account_id == account_id,
-                    Message.created_at >= start_date,
-                    Message.created_at <= end_date,
-                    # Filter out testing messages
-                    ~cast(
-                        coalesce(Message.body["metadata"]["testing"].astext, "false"),
-                        Boolean,
-                    ),
-                )
-                .group_by(date_expr, channel_expr)
-                .order_by(date_expr, channel_expr)
-            )
-
-            result = await self.session.execute(query)
-            rows = result.all()
-
-            # Convert result to nested dictionary: {date: {channel: count}}
-            dau_data = {}
-            valid_channels = [
-                "api",
-                "instagram",
-                "internal_app",
-                "sms",
-                "voice",
-                "whatsapp",
-            ]
-
-            # First, initialize all dates in the range with 0 values
-            current_date = start_date.date()
-            end_date_only = end_date.date()
-
-            while current_date <= end_date_only:
-                date_str = current_date.strftime("%Y-%m-%d")
-                dau_data[date_str] = {channel: 0 for channel in valid_channels}
-                current_date += datetime.timedelta(days=1)
-
-            # Then, fill in actual data from the query results
-            for row in rows:
-                date_str = row.date.strftime("%Y-%m-%d")
-                channel_name = (
-                    row.channel.lower() if row.channel else "unknown"
-                )  # Convert to lowercase
-
-                # Only count known channels, ignore unknown ones
-                if channel_name in valid_channels:
-                    dau_data[date_str][channel_name] = row.dau
-
-            return dau_data
-
-        except SQLAlchemyError as e:
-            await self.session.rollback()
-            logger.error(f"Error calculating daily active users: {e}")
-            return {}
-
-    async def get_daily_message_turns(
-        self,
-        account_id: uuid.UUID,
-        start_date: datetime.datetime,
-        end_date: datetime.datetime,
-    ) -> dict[str, dict[str, int]]:
-        """
-        Calculate Daily Message Turns for a given account within a date range.
-
-        A "turn" consists of a user message followed by an agent response.
-        We count agent messages since each represents a completed conversation turn.
-
-        Args:
-            account_id (uuid.UUID): The account ID to calculate message turns for
-            start_date (datetime): Start date for the calculation
-            end_date (datetime): End date for the calculation
-
-        Returns:
-            dict[str, dict[str, int]]: Dictionary with date strings as keys and channel turn counts as values
-        """
-        try:
-            # Define expressions for efficient querying
-            date_expr = func.date(Message.created_at)
-            channel_expr = Message.body["channel"].astext
-            author_type_expr = Message.body[
-                "author_type"
-            ].astext  # Fixed: use author_type not sender_type
-
-            # Query to count agent/assistant messages (completed turns) by date and channel
-            query = (
-                select(
-                    date_expr.label("date"),
-                    channel_expr.label("channel"),
-                    func.count(Message.id).label("message_turns"),
-                )
-                .join(Conversation, Message.conversation_id == Conversation.id)
-                .join(User, Conversation.user_id == User.id)
-                .where(
-                    User.account_id == account_id,
-                    Message.created_at >= start_date,
-                    Message.created_at <= end_date,
-                    # Count only agent messages (completed conversation turns)
-                    author_type_expr
-                    == "agent",  # Fixed: use author_type and only "agent"
-                    # Filter out mock users for production data
-                    ~Message.body["sender_identifier"].astext.like("mock-user%"),
-                    # Filter out testing messages
-                    ~cast(
-                        coalesce(Message.body["metadata"]["testing"].astext, "false"),
-                        Boolean,
-                    ),
-                )
-                .group_by(date_expr, channel_expr)
-                .order_by(date_expr, channel_expr)
-            )
-
-            result = await self.session.execute(query)
-            rows = result.all()
-
-            # Convert result to nested dictionary: {date: {channel: count}}
-            message_turns_data = {}
-            valid_channels = [
-                "api",
-                "instagram",
-                "internal_app",
-                "sms",
-                "voice",
-                "whatsapp",
-            ]
-
-            # First, initialize all dates in the range with 0 values
-            current_date = start_date.date()
-            end_date_only = end_date.date()
-
-            while current_date <= end_date_only:
-                date_str = current_date.strftime("%Y-%m-%d")
-                message_turns_data[date_str] = {
-                    channel: 0 for channel in valid_channels
-                }
-                current_date += datetime.timedelta(days=1)
-
-            # Then, fill in actual data from the query results
-            for row in rows:
-                date_str = row.date.strftime("%Y-%m-%d")
-                channel_name = (
-                    row.channel.lower() if row.channel else "unknown"
-                )  # Convert to lowercase
-
-                # Only count known channels, ignore unknown ones
-                if channel_name in valid_channels:
-                    message_turns_data[date_str][channel_name] = row.message_turns
-
-            return message_turns_data
-
-        except SQLAlchemyError as e:
-            await self.session.rollback()
-            logger.error(f"Error calculating daily message turns: {e}")
-            return {}
 
 
 class MessageRepository:
