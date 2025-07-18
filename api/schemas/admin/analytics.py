@@ -2,6 +2,9 @@ from enum import Enum
 
 from pydantic import BaseModel
 
+# Valid channel names used across the analytics system
+VALID_CHANNELS = ["api", "instagram", "internal_app", "sms", "voice", "whatsapp"]
+
 
 class Event(str, Enum):
     """Analytics Event"""
@@ -26,3 +29,15 @@ class GetAllReportsResponse(BaseModel):
     """Get All Reports Response"""
 
     reports: list[PerformanceReport]
+
+
+class ChannelData(BaseModel):
+    """Daily Active Users data for a specific channel"""
+
+    api: int
+    instagram: int
+    internal_app: int
+    sms: int
+    voice: int
+    whatsapp: int
+    total: int

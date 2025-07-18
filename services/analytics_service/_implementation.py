@@ -1,10 +1,14 @@
 import asyncio
 import os
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta
 
 import requests
 from mixpanel import Mixpanel
+from sqlalchemy.orm import Session
 
+import db
+from api.schemas.admin.analytics import VALID_CHANNELS
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from utils.log import logger
 
@@ -14,20 +18,57 @@ MIXPANEL_WORKSPACE_ID = 9701744
 
 # Mapping of report names to bookmark IDs, will store them in db in the future
 BOOKMARK_ID_MAPPING = {
-    "DAU": 76662037,
-    "MAU": 76661239,
-    "MESSAGE": 76661240,
-    "CONVERSION": 76661919,
     "ORDER": 81979859,
 }
 
 MIXPANEL_REPORTS = [
-    (76662037, "Daily Active Users"),
-    (76661239, "Monthly Active Users"),
-    (76661240, "Turn of Messages"),
-    (76661919, "Checkout Conversion"),
     (81979859, "Total Order Value"),
 ]
+
+
+def _process_analytics_results_to_dict(
+    rows,
+    start_date: datetime,
+    end_date: datetime,
+    value_field_name: str,
+) -> dict[str, dict[str, int]]:
+    """
+    Convert analytics query results to nested dictionary format.
+
+    Args:
+        rows: Query result rows with date, channel, and value fields
+        start_date: Start date for the analytics calculation
+        end_date: End date for the analytics calculation
+        value_field_name: Name of the field containing the count value (e.g., 'dau', 'message_turns')
+
+    Returns:
+        dict[str, dict[str, int]]: Dictionary with date strings as keys and channel counts as values
+    """
+    # Convert result to nested dictionary: {date: {channel: count}}
+    analytics_data = {}
+    valid_channels = VALID_CHANNELS
+
+    # First, initialize all dates in the range with 0 values
+    current_date = start_date.date()
+    end_date_only = end_date.date()
+
+    while current_date <= end_date_only:
+        date_str = current_date.strftime("%Y-%m-%d")
+        analytics_data[date_str] = {channel: 0 for channel in valid_channels}
+        current_date += timedelta(days=1)
+
+    # Then, fill in actual data from the query results
+    for row in rows:
+        date_str = row.date.strftime("%Y-%m-%d")
+        channel_name = (
+            row.channel.lower() if row.channel else "unknown"
+        )  # Convert to lowercase
+
+        # Only count known channels, ignore unknown ones
+        if channel_name in valid_channels:
+            analytics_data[date_str][channel_name] = getattr(row, value_field_name)
+
+    return analytics_data
 
 
 def get_report_from_mixpanel(
@@ -128,3 +169,64 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
             logger.error(f"Error tracking event {event_name} for user {user_id}: {e}")
 
     asyncio.create_task(asyncio.to_thread(_track))
+
+
+def get_dau(
+    session: Session,
+    account_id: uuid.UUID,
+    start_date: datetime,
+    end_date: datetime,
+) -> dict[str, dict[str, int]]:
+    """
+    Calculate Daily Active Users (DAU) for a given account within a date range.
+
+    Args:
+        session (Session): Database session
+        account_id (uuid.UUID): The account ID to calculate DAU for
+        start_date (datetime): Start date for the DAU calculation
+        end_date (datetime): End date for the DAU calculation
+
+    Returns:
+        dict[str, dict[str, int]]: Dictionary with date strings as keys and channel DAU counts as values
+    """
+    try:
+        message_repo = db.MessageRepository(session)
+        result = message_repo.get_daily_active_users(account_id, start_date, end_date)
+        return _process_analytics_results_to_dict(result, start_date, end_date, "dau")
+    except Exception as e:
+        logger.error(f"Error calculating DAU for account {account_id}: {e}")
+        logger.exception("Full DAU exception traceback:")
+        return {}
+
+
+def get_daily_message_turns(
+    session: Session,
+    account_id: uuid.UUID,
+    start_date: datetime,
+    end_date: datetime,
+) -> dict[str, dict[str, int]]:
+    """
+    Calculate Daily Message Turns for a given account within a date range.
+
+    A "turn" consists of a user message followed by an agent response.
+    We count agent messages since each represents a completed conversation turn.
+
+    Args:
+        session (Session):  Database session
+        account_id (uuid.UUID): The account ID to calculate message turns for
+        start_date (datetime): Start date for the calculation
+        end_date (datetime): End date for the calculation
+
+    Returns:
+        dict[str, dict[str, int]]: Dictionary with date strings as keys and channel turn counts as values
+    """
+    try:
+        message_repo = db.MessageRepository(session)
+        result = message_repo.get_daily_message_turns(account_id, start_date, end_date)
+        return _process_analytics_results_to_dict(
+            result, start_date, end_date, "message_turns"
+        )
+    except Exception as e:
+        logger.error(f"Error calculating message turns for account {account_id}: {e}")
+        logger.exception("Full message turns exception traceback:")
+        return {}
