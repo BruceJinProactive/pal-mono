@@ -8,7 +8,6 @@ from llama_index.core.response_synthesizers import (
 )
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
-from pinecone import Index as PineconeIndex
 from pinecone import Pinecone
 
 from utils.log import logger
@@ -35,7 +34,7 @@ def _get_cohere_api_key() -> str:
     return api_key
 
 
-def _initialize_pinecone_index(api_key: str, index_name: str) -> PineconeIndex:
+def _initialize_pinecone_index(api_key: str, index_name: str):
     """Initialize and return Pinecone index."""
     try:
         pc = Pinecone(api_key=api_key)

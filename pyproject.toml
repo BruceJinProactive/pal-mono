@@ -28,14 +28,13 @@ dependencies = [
   "google-genai==1.25.0",
   "pypdf==5.1.0",
   "geopy==2.4.1",
-  "pinecone==5.3.1",
+  "pinecone==7.3.0",
   "ShopifyAPI==12.7.0",
   "ddtrace==2.21.6",
-  "llama-index==0.12.28",
-  "llama-index-vector-stores-pinecone==0.4.5",
+  "llama-index-vector-stores-pinecone==0.6.0",
   "llama-index-embeddings-cohere==0.5.1",
   "llama-index-llms-gemini==0.5.0",
-  "llama-index-llms-groq==0.3.1",
+  "llama-index-llms-groq==0.3.2",
   "instructor==1.9.2",
   "mem0ai==0.1.48",
   "mixpanel==4.10.1",
@@ -44,11 +43,11 @@ dependencies = [
   "shapely==2.1.0",
   "boto3==1.37.34",
   "datadog==0.51.0",
-  "pydantic[email]==2.11.4",
   "vapi-server-sdk==1.6.0",
   "twilio==9.3.2",
   "urlextract==1.9.0",
   "portkey-ai>=1.14.0",
+  "email-validator==2.2.0",
 
 
   # DevOps
@@ -59,12 +58,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-  "black==24.8.0",
-  "isort==5.13.2",
-  "ruff==0.6.2",
-  "pyright==1.1.382",
-]
+dev = ["black==24.8.0", "isort==5.13.2", "ruff==0.6.2", "pyright==1.1.382"]
 
 [build-system]
 requires = ["setuptools"]

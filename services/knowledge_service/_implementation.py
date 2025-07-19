@@ -7,7 +7,7 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import TextNode
 from llama_index.embeddings.cohere import CohereEmbedding
-from pinecone import Index, Pinecone
+from pinecone import Pinecone
 
 from db.tables.types import IntegrationProvider
 from services.knowledge_service.schema import KnowledgeFile
@@ -258,7 +258,7 @@ def query_vector_database(
             include_metadata=True,
         )
 
-        matches = response["matches"]
+        matches = response.matches  # type: ignore
         logger.debug(
             "Successfully queried vector database",
             extra={
@@ -299,7 +299,7 @@ def _get_index(index_name: str):
     return index
 
 
-def _list_data(index: Index, namespace: str):
+def _list_data(index, namespace: str):
     query = [0.0] * 1024
     response = index.query(
         vector=query,
@@ -307,7 +307,7 @@ def _list_data(index: Index, namespace: str):
         top_k=1000,  # Retrieve up to 1000 files
         include_metadata=True,
     )
-    return response["matches"]
+    return response.matches  # type: ignore
 
 
 def update_agent_kb(
