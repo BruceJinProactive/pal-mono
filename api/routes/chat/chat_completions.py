@@ -216,9 +216,9 @@ def _get_simple_filler(recipient_identifier: str) -> str:
 def _create_response_data(model: str, content: str, is_chunk: bool = False) -> dict:
     """Create a standard response data object."""
     content_key = "delta" if is_chunk else "message"
-    return {
+    response = {
         "id": f"chatcmpl-{uuid.uuid4().hex}",
-        "object": "chat.completion",
+        "object": "chat.completion" if not is_chunk else "chat.completion.chunk",
         "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
         "model": model,
         "choices": [
@@ -231,12 +231,14 @@ def _create_response_data(model: str, content: str, is_chunk: bool = False) -> d
                 "finish_reason": "stop" if not is_chunk else None,
             }
         ],
-        "usage": {
+    }
+    if not is_chunk:
+        response["usage"] = {
             "prompt_tokens": 0,  # We don't track these
             "completion_tokens": 0,
             "total_tokens": 0,
-        },
-    }
+        }
+    return response
 
 
 async def _send_urls_via_sms(
