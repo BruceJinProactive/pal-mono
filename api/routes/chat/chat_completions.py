@@ -454,6 +454,10 @@ async def chat_completions_agno(
                             await asyncio.sleep(0.7)
 
                         async for chunk in response_stream:
+                            logger.debug(
+                                "[ChatCompletions] processing streaming response"
+                            )
+
                             chunk_count += 1
                             chunk_data = _convert_chunk_to_dict(chunk)
 
@@ -475,6 +479,7 @@ async def chat_completions_agno(
                                             "content"
                                         ] = filtered_content
 
+                                logger.debug("[ChatCompletions] sent chunks")
                                 yield f"data: {json.dumps(chunk_data)}\n\n"
 
                                 if chunk_count == 1:
