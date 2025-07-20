@@ -422,6 +422,9 @@ async def chat_completions_agno(
                                 model, filler_text, True
                             )
                             yield f"data: {json.dumps(filler_chunk)}\n\n"
+                            logger.debug(
+                                f"[ChatCompletions] fillersent chunks: {filler_chunk}"
+                            )
 
                             collected_content.append(filler_text)
                             logger.debug(
@@ -479,7 +482,9 @@ async def chat_completions_agno(
                                             "content"
                                         ] = filtered_content
 
-                                logger.debug("[ChatCompletions] sent chunks")
+                                logger.debug(
+                                    f"[ChatCompletions] sent chunks: {chunk_data}"
+                                )
                                 yield f"data: {json.dumps(chunk_data)}\n\n"
 
                                 if chunk_count == 1:
