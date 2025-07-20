@@ -424,10 +424,6 @@ async def chat_completions_agno(
                                 model, filler_text, True
                             )
                             yield f"data: {json.dumps(filler_chunk)}\n\n"
-                            logger.debug(
-                                f"[ChatCompletions] fillersent chunks: {filler_chunk}"
-                            )
-
                             collected_content.append(filler_text)
                             logger.debug(
                                 f"First stream chunk: {json.dumps(filler_chunk)}"
@@ -459,10 +455,6 @@ async def chat_completions_agno(
                             await asyncio.sleep(0.7)
 
                         async for chunk in response_stream:
-                            logger.debug(
-                                "[ChatCompletions] processing streaming response"
-                            )
-
                             chunk_count += 1
                             chunk_data = _convert_chunk_to_dict(chunk)
 
@@ -484,9 +476,6 @@ async def chat_completions_agno(
                                             "content"
                                         ] = filtered_content
 
-                                logger.debug(
-                                    f"[ChatCompletions] sent chunks: {chunk_data}"
-                                )
                                 yield f"data: {json.dumps(chunk_data)}\n\n"
 
                                 if chunk_count == 1:
