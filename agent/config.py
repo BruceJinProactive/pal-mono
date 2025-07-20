@@ -22,6 +22,7 @@ class AgentPersona(BaseModel):
     description: Optional[str] = None
     voice_id: Optional[str] = None
     multilingual: bool = False
+    model_mode: Optional[str] = None
     multilingual_workflow: bool = False
 
 

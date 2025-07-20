@@ -357,13 +357,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             speech_rate = SpeechRate.normal
 
         if config.persona.multilingual:
-            # Check for model_mode parameter to determine transcriber configuration
-            model_mode = getattr(config.persona, "model_mode", None)
-
-            if model_mode == "google":
+            if config.persona.model_mode == "google":
                 transcriber = {
                     "provider": "google",
-                    "model": "gemini-2.0-flash-lite",
+                    "model": "gemini-2.5-flash",
                     "language": "Multilingual",
                 }
             else:

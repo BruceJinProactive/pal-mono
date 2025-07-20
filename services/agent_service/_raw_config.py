@@ -134,6 +134,7 @@ class RawConfig:
         )
         voice_id = raw_persona.get("voice_id") or None
         multilingual = raw_persona.get("multilingual") or False
+        model_mode = raw_persona.get("model_mode") or None
         multilingual_workflow = raw_persona.get("multilingual_workflow") or False
 
         return AgentPersona(
@@ -142,6 +143,7 @@ class RawConfig:
             description=system_prompt,
             voice_id=voice_id,
             multilingual=multilingual,
+            model_mode=model_mode,
             multilingual_workflow=multilingual_workflow,
         )
 
