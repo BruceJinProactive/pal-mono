@@ -289,7 +289,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         # Save request message to database
         message_repo = db.MessageRepositoryAsync(session)
         request_message = await message_repo.create_message(
-            user_id=user.id, message_body=message.to_dict()
+            user_id=user.id, project_id=project.id, message_body=message.to_dict()
         )
         await session.refresh(user, attribute_names=["id"])
 

@@ -47,6 +47,11 @@ class Conversation(Base):
         nullable=False,
         index=True,
     )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        index=True,
+        nullable=True,  # to stay compatible with historical conversations
+    )
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(

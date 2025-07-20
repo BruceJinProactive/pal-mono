@@ -78,7 +78,7 @@ async def get_chat_response_async(
 
         # Save request message to database
         request_message = await message_repo.create_message(
-            user_id=user.id, message_body=message.to_dict()
+            user_id=user.id, project_id=project.id, message_body=message.to_dict()
         )
 
         # Send analytics event
@@ -156,7 +156,9 @@ async def get_chat_response_async(
                 if user:
                     # Save the opt-in message to the database
                     await message_repo.create_message(
-                        user_id=user.id, message_body=opt_in_message.to_dict()
+                        user_id=user.id,
+                        project_id=project.id,
+                        message_body=opt_in_message.to_dict(),
                     )
 
                     await session.refresh(user, attribute_names=["id"])
@@ -187,7 +189,7 @@ async def get_chat_response_async(
             response_messages.append(message)
             # Save response message to database
             await message_repo.create_message(
-                user_id=user_id, message_body=message.to_dict()
+                user_id=user_id, project_id=project.id, message_body=message.to_dict()
             )
 
         await session.refresh(user, attribute_names=["id"])
@@ -250,7 +252,7 @@ async def get_chat_response_stream(
                 f"Persist streaming inbound message: {message.to_dict()} from user: {user.id}"
             )
             request_message = await message_repo.create_message(
-                user_id=user.id, message_body=message.to_dict()
+                user_id=user.id, project_id=project.id, message_body=message.to_dict()
             )
             if not request_message:
                 raise ValueError("Failed to create request message")
@@ -457,7 +459,9 @@ async def get_chat_response_stream(
                         f"Persist streaming outbound message: {response_message.to_dict()} to user: {user.id}"
                     )
                     await message_repo.create_message(
-                        user_id=user.id, message_body=response_message.to_dict()
+                        user_id=user.id,
+                        project_id=project.id,
+                        message_body=response_message.to_dict(),
                     )
 
                     await session.refresh(user, attribute_names=["id"])

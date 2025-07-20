@@ -20,7 +20,9 @@ class MessageRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create_message(self, user_id: uuid.UUID, message_body: dict):
+    async def create_message(
+        self, user_id: uuid.UUID, project_id: uuid.UUID, message_body: dict
+    ):
         # Step 1: Get the user from the database
         result = await self.session.execute(select(User).filter(User.id == user_id))
         user = result.scalar_one_or_none()
@@ -104,7 +106,7 @@ class MessageRepositoryAsync:
             latest_conversation is None
             or latest_conversation.status != ConversationStatus.ACTIVE
         ):
-            new_conversation = Conversation(user_id=user.id)
+            new_conversation = Conversation(user_id=user.id, project_id=project_id)
             self.session.add(new_conversation)
             await self.session.flush()
             conversation_id = new_conversation.id
