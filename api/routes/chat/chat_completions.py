@@ -228,7 +228,7 @@ def _create_response_data(model: str, content: str, is_chunk: bool = False) -> d
                     "role": "assistant",
                     "content": content,
                 },
-                "finish_reason": "stop" if not is_chunk else "",
+                "finish_reason": "stop" if not is_chunk else None,
             }
         ],
         "usage": {
