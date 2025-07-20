@@ -2,10 +2,10 @@ import asyncio
 import datetime
 import json
 import os
+import random
 import uuid
 from typing import Any, Dict, List, Literal, Optional
 
-import openai
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -15,7 +15,6 @@ from urlextract import URLExtract
 import db
 from api.routes.chat._utils import create_url_filter
 from api.routes.chat.chat import chat_router
-from api.routes.chat.smart_filler import get_smart_filler_stream
 from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
@@ -173,36 +172,45 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
     }
 
 
-def _create_openai_client() -> openai.AsyncOpenAI:
-    """Create and return an OpenAI client with API key validation."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        logger.error("OPENAI_API_KEY environment variable not found")
-        raise ValueError("OPENAI_API_KEY environment variable is required")
+def _get_simple_filler(recipient_identifier: str) -> str:
+    """
+    Generate a simple filler phrase.
 
-    return openai.AsyncOpenAI(api_key=api_key)
+    Args:
+        user_message: The user's original message
 
+    Returns:
+        A simple filler string
+    """
 
-def _is_smart_filler_enabled(recipient_identifier: str) -> bool:
-    """Check if smart filler is enabled for the given recipient identifier."""
     enabled_recipients = os.environ.get("SMART_FILLER_ENABLED_RECIPIENTS", "")
+
     if not enabled_recipients:
-        return False
+        return ""
 
-    # Parse comma-separated list of recipient identifiers
     enabled_list = [r.strip() for r in enabled_recipients.split(",") if r.strip()]
-    return recipient_identifier in enabled_list
 
+    if recipient_identifier not in enabled_list:
+        return ""
 
-def _is_static_mode_enabled(recipient_identifier: str) -> bool:
-    """Check if static mode is enabled for the given recipient identifier."""
-    enabled_recipients = os.environ.get("STATIC_MODE_ENABLED_RECIPIENTS", "")
-    if not enabled_recipients:
-        return False
+    simple_fillers = [
+        "Sure",
+        "Yeah",
+        "Alright",
+        "Okay",
+        "Got it",
+        "One moment",
+        "Just a sec",
+        "Hold on",
+        "Give me a moment",
+    ]
 
-    # Parse comma-separated list of recipient identifiers
-    enabled_list = [r.strip() for r in enabled_recipients.split(",") if r.strip()]
-    return recipient_identifier in enabled_list
+    # Always use simple filler
+    selected_filler = random.choice(simple_fillers)
+
+    logger.debug(f"[SimpleFiller] Selected filler: '{selected_filler}' for query")
+
+    return selected_filler
 
 
 def _create_response_data(model: str, content: str) -> dict:
@@ -228,115 +236,6 @@ def _create_response_data(model: str, content: str) -> dict:
             "total_tokens": 0,
         },
     }
-
-
-async def _create_unified_stream(
-    user_content: str,
-    session: AsyncSession,
-    message: Message,
-    request_context: RequestContext,
-    recipient_identifier: str,
-):
-    """Create a unified stream that combines filler and response streams."""
-
-    # Check if smart filler or static mode is enabled for this recipient
-    smart_filler_enabled = _is_smart_filler_enabled(recipient_identifier)
-    static_mode_enabled = _is_static_mode_enabled(recipient_identifier)
-
-    if not smart_filler_enabled:
-        logger.debug(f"No filler enabled for recipient: {recipient_identifier}")
-        # Just return the response stream without filler
-        response_stream = await get_chat_response_stream(
-            session=session,
-            message=message,
-            request_context=request_context,
-        )
-        if response_stream:
-            async for chunk in response_stream:
-                yield chunk
-        return
-
-    # Determine which filler mode to use
-    filler_type = "static" if static_mode_enabled else "smart"
-    logger.debug(
-        f"{filler_type.capitalize()} filler enabled for recipient: {recipient_identifier}"
-    )
-
-    # Helper function to get first filler chunk
-    async def get_first_filler_chunk():
-        filler_stream = get_smart_filler_stream(
-            user_content, static_mode=static_mode_enabled
-        )
-        try:
-            return (
-                await filler_stream.__anext__(),
-                filler_stream,
-            )
-        except StopAsyncIteration:
-            return None, None
-
-    # Helper function to get first response chunk
-    async def get_first_response_chunk():
-        response_stream = await get_chat_response_stream(
-            session=session,
-            message=message,
-            request_context=request_context,
-        )
-        if response_stream:
-            try:
-                return (
-                    await response_stream.__anext__(),
-                    response_stream,
-                )
-            except StopAsyncIteration:
-                return None, None
-        return None, None
-
-    # Start both tasks in parallel - race for first chunks
-    filler_task = asyncio.create_task(get_first_filler_chunk())
-    response_task = asyncio.create_task(get_first_response_chunk())
-
-    # Race condition: wait for either first chunk to arrive
-    done, _ = await asyncio.wait(
-        [filler_task, response_task],
-        return_when=asyncio.FIRST_COMPLETED,
-    )
-
-    if filler_task in done:
-        # Filler first chunk won the race
-        try:
-            first_filler_chunk, filler_stream = await filler_task
-            if first_filler_chunk and filler_stream:
-                # Yield first filler chunk
-                yield first_filler_chunk
-                logger.debug(f"{filler_type.capitalize()} filler won: sent first chunk")
-
-                # Continue yielding remaining filler chunks
-                async for filler_chunk in filler_stream:
-                    yield filler_chunk
-
-                logger.debug(f"Completed {filler_type} filler streaming")
-        except Exception as e:
-            logger.warning(f"Error in {filler_type} filler stream: {e}")
-
-        # Now wait for response stream and yield its chunks
-        first_response_chunk, response_stream = await response_task
-        if first_response_chunk:
-            yield first_response_chunk
-        if response_stream:
-            async for chunk in response_stream:
-                yield chunk
-    else:
-        # Response first chunk won the race - cancel filler
-        filler_task.cancel()
-        logger.debug("Main response won: skipping filler")
-
-        first_response_chunk, response_stream = await response_task
-        if first_response_chunk:
-            yield first_response_chunk
-        if response_stream:
-            async for chunk in response_stream:
-                yield chunk
 
 
 async def _send_urls_via_sms(
@@ -483,40 +382,26 @@ async def chat_completions_agno(
 
         fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
         if request.stream:
-            # A stable closure variable in the nested closure
-            user_content = content
 
             async def generate_stream():
                 try:
-                    try:
-                        # Log stream start
-                        logger.info(f"Starting streaming response for model={model}")
-                        send_dd_histogram_metrics(
-                            "chat_completions.start_streaming",
-                            request_context.request_time,
-                            ["path:agno", "streaming:true"],
-                        )
+                    # Log stream start
+                    logger.info(f"Starting streaming response for model={model}")
+                    send_dd_histogram_metrics(
+                        "chat_completions.start_streaming",
+                        request_context.request_time,
+                        ["path:agno", "streaming:true"],
+                    )
 
-                        # Create unified stream that combines filler and response
-                        response_stream = _create_unified_stream(
-                            user_content=user_content,
-                            session=session,
-                            message=message,
-                            request_context=request_context,
-                            recipient_identifier=recipient_identifier,
-                        )
-                    except Exception as es:
-                        # Log the error and create a fallback response
-                        logger.error(
-                            f"Error getting streaming response from agent: {str(es)}"
-                        )
-                        fallback_chunk = _create_fallback_chunk(model, fallback_content)
-                        yield f"data: {json.dumps(fallback_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
-                        return
+                    response_stream = await get_chat_response_stream(
+                        session=session,
+                        message=message,
+                        request_context=request_context,
+                    )
 
                     collected_content = []
                     if response_stream:
+                        filler_text = _get_simple_filler(recipient_identifier)
                         chunk_count = 0
                         url_filter = create_url_filter()
                         send_dd_histogram_metrics(
@@ -529,6 +414,43 @@ async def chat_completions_agno(
                                 f"recipient_identifier:{recipient_identifier}",
                             ],
                         )
+                        if filler_text:
+                            chunk_count += 1
+                            # Create a simple filler chunk
+                            filler_chunk = _create_response_data(
+                                "simple-filler", filler_text
+                            )
+                            yield f"data: {json.dumps(filler_chunk)}\n\n"
+
+                            collected_content.append(filler_text)
+                            logger.debug(
+                                f"First stream chunk: {json.dumps(filler_chunk)}"
+                            )
+                            time_diff = (
+                                datetime.datetime.now(datetime.timezone.utc)
+                                - request_context.request_time
+                            ).total_seconds() * 1000
+                            logger.debug(
+                                f"[ChatCompletions] TTFT is {time_diff}",
+                                extra={
+                                    "recipient_identifier": recipient_identifier,
+                                    "sender_identifier": sender_identifier,
+                                },
+                            )
+
+                            send_dd_histogram_metrics(
+                                "chat_completions.sent_first_chunk",
+                                request_context.request_time,
+                                [
+                                    "path:agno",
+                                    "streaming:true",
+                                    f"sender_identifier:{sender_identifier}",
+                                    f"recipient_identifier:{recipient_identifier}",
+                                ],
+                            )
+
+                            # Add delay before real response
+                            await asyncio.sleep(0.7)
 
                         async for chunk in response_stream:
                             chunk_count += 1
@@ -540,21 +462,6 @@ async def chat_completions_agno(
                                 .get("content", "")
                             )
                             collected_content.append(content)
-                            # Only log first chunk to avoid excessive logging
-                            if chunk_count == 1:
-                                logger.debug(
-                                    f"First stream chunk: {json.dumps(chunk_data)}"
-                                )
-                                send_dd_histogram_metrics(
-                                    "chat_completions.received_first_chunk",
-                                    request_context.request_time,
-                                    [
-                                        "path:agno",
-                                        "streaming:true",
-                                        f"sender_identifier:{sender_identifier}",
-                                        f"recipient_identifier:{recipient_identifier}",
-                                    ],
-                                )
                             filtered_content = url_filter.filter_content(content)
                             if filtered_content is not None:
                                 # Replace the original content in chunk_data with filtered_content
@@ -607,14 +514,8 @@ async def chat_completions_agno(
 
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
-                    error_data = {
-                        "error": {
-                            "message": str(e),
-                            "type": "server_error",
-                            "code": 500,
-                        }
-                    }
-                    yield f"data: {json.dumps(error_data)}\n\n"
+                    fallback_chunk = _create_fallback_chunk(model, fallback_content)
+                    yield f"data: {json.dumps(fallback_chunk)}\n\n"
                     yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -787,7 +688,7 @@ async def chat_completions_oai(
                                 f"First stream chunk: {json.dumps(chunk_data)}"
                             )
                             send_dd_histogram_metrics(
-                                "chat_completions.received_first_chunk",
+                                "chat_completions.sent_first_chunk",
                                 request_context.request_time,
                                 ["path:oai", "streaming:true"],
                             )
