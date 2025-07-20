@@ -213,8 +213,9 @@ def _get_simple_filler(recipient_identifier: str) -> str:
     return selected_filler
 
 
-def _create_response_data(model: str, content: str) -> dict:
+def _create_response_data(model: str, content: str, is_chunk: bool = False) -> dict:
     """Create a standard response data object."""
+    content_key = "delta" if is_chunk else "message"
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
@@ -223,11 +224,11 @@ def _create_response_data(model: str, content: str) -> dict:
         "choices": [
             {
                 "index": 0,
-                "message": {
+                f"{content_key}": {
                     "role": "assistant",
                     "content": content,
                 },
-                "finish_reason": "stop",
+                "finish_reason": "stop" if not is_chunk else "",
             }
         ],
         "usage": {
@@ -418,7 +419,7 @@ async def chat_completions_agno(
                             chunk_count += 1
                             # Create a simple filler chunk
                             filler_chunk = _create_response_data(
-                                "simple-filler", filler_text
+                                model, filler_text, True
                             )
                             yield f"data: {json.dumps(filler_chunk)}\n\n"
 
