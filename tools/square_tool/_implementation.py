@@ -8,8 +8,11 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
 from pydantic import ValidationError
 
+import db
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from db.tables.types import IntegrationType
+from services import integration_service
 from tools.square_tool._apis import create_payment_link
 from tools.square_tool._prompt_constants import (
     RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
@@ -47,11 +50,11 @@ class SquareTool(Toolkit):
     3. Creates orders using the extracted IDs without relying on MENU_ID
 
     Constructor Parameters:
-        access_token (str): Square API access token
+        access_token (str, optional): Square API access token (fallback if integration not found)
         location_id (str): Square location ID
         namespace (str): Pinecone namespace containing the catalog documents
         index_name (str): Pinecone index name
-        tool_metadata (ToolMetadata): Tool metadata for chat history access
+        tool_metadata (ToolMetadata): Tool metadata for chat history access (includes project_id)
         use_production (bool): Whether to use production Square API
 
     Expected Pinecone Document Format:
@@ -65,11 +68,11 @@ class SquareTool(Toolkit):
 
     def __init__(
         self,
-        access_token: str,
         location_id: str,
         namespace: str,
         index_name: str,
         tool_metadata: ToolMetadata,
+        access_token: Optional[str] = None,
         use_production: bool = False,
     ):
         super().__init__(name="square_tool")
@@ -77,7 +80,7 @@ class SquareTool(Toolkit):
         self.tool_metadata = tool_metadata
         self.use_production = use_production
         self.location_id = location_id
-        self.access_token = access_token
+        self.fallback_access_token = access_token
         self.namespace = namespace
         self.index_name = index_name
 
@@ -92,17 +95,70 @@ class SquareTool(Toolkit):
         # Register tools
         self.register(self.create_order_and_payment_link)
 
+    def _get_access_token_from_integration(self) -> Optional[str]:
+        """
+        Retrieve Square access token from integration service.
+
+        Returns:
+            Optional[str]: Access token if integration found and has token, None otherwise
+        """
+        project_id = self.tool_metadata.project_id
+        if not project_id:
+            logger.debug("No project_id in metadata, cannot retrieve integration")
+            return None
+
+        try:
+            # Create a database session to query integrations
+            session = next(db.get_db())
+            try:
+                integration = integration_service.get_integration_by_project_and_type(
+                    session=session,
+                    account_id=self.tool_metadata.account_id,
+                    project_id=project_id,
+                    integration_type=IntegrationType.pos,
+                )
+
+                if integration and integration.access_token:
+                    logger.debug("Retrieved access token from integration service")
+                    return integration.access_token
+                else:
+                    logger.debug("No integration found or missing access token")
+                    return None
+            finally:
+                session.close()
+
+        except Exception as e:
+            logger.warning(f"Failed to retrieve integration: {e}")
+            return None
+
     @cached_property
     def _square_token(self) -> SquareAccessToken:
         """
-        Returns the Square API access token provided during initialization.
+        Returns the Square API access token, first trying integration service,
+        then falling back to the token provided during initialization.
 
         Returns:
             SquareAccessToken: An object containing the access token for Square API calls.
         """
         with LLMObs.task(name="get_square_token"):
+            # Try to get access token from integration service first
+            access_token = self._get_access_token_from_integration()
+
+            # Fallback to initializer token if no integration token found
+            if not access_token:
+                access_token = self.fallback_access_token
+                if access_token:
+                    logger.debug("Using fallback access token from initializer")
+                else:
+                    logger.error(
+                        "No access token available from integration or fallback"
+                    )
+                    raise ValueError(
+                        "No access token available from integration or fallback"
+                    )
+
             bearer_token = SquareAccessToken(
-                access_token=self.access_token,
+                access_token=access_token,
                 token_type="Bearer",
             )
             return bearer_token

@@ -201,6 +201,7 @@ class RawConfig:
             account_name=self.account.name,
             user_id=self.user_id,
             session_id=self.conversation_id,
+            project_id=self.project.id,
             timezone=self.project.timezone,
         )
 
