@@ -863,13 +863,7 @@ def _create_support_node(
     """Create a language-specific support node."""
     # Use language-specific voice ID if available, otherwise use default
     voice_id = config.get("voice_id", default_voice_id)
-    final_message = ""
-    if language == "chinese":
-        final_message = (
-            "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答用户的问题"
-        )
-    elif language == "spanish":
-        final_message = "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder a las preguntas del usuario en español."
+
     return {
         "name": f"{language}_support",
         "type": "conversation",
@@ -880,9 +874,7 @@ def _create_support_node(
             "provider": "custom-llm",
             "url": f"{api_url}/v1",
             "model": json.dumps(caller_info_short),
-            "messages": [
-                {"role": "system", "content": config["system_content"] + final_message}
-            ],
+            "messages": [{"role": "system", "content": config["system_content"]}],
         },
         "prompt": config["prompt"],
     }
