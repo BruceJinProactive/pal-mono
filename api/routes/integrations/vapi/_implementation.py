@@ -847,16 +847,8 @@ def _create_starting_message_node(agent_name: str, account_display_name: str) ->
     return {
         "name": "start_node",
         "type": "say",
-        "prompt": f"Introduce yourself and ask the customer which language they prefer: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+        "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
         "isStart": True,
-        "variableExtractionPlan": {
-            "schema": {
-                "type": "string",
-                "title": "preferred_language",
-                "description": "Customer preferred language choice",
-                "enum": ["english", "spanish", "chinese"],
-            }
-        },
     }
 
 
