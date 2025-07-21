@@ -807,7 +807,6 @@ def create_multilingual_workflow_demo(
                     _create_starting_message_node(
                         agent_config.persona.name, account_display_name
                     ),
-                    _create_language_selection_node(account_display_name),
                     *[
                         _create_support_node(
                             lang,
@@ -853,23 +852,6 @@ def _create_starting_message_node(agent_name: str, account_display_name: str) ->
     }
 
 
-def _create_language_selection_node(account_display_name: str) -> dict:
-    """Create the language selection node."""
-    return {
-        "name": "language_selection",
-        "type": "conversation",
-        "prompt": "Listen to the customer's response about their language preference. They were just asked which language they prefer (English, Spanish, or Chinese). Extract their choice clearly. If they say something unclear, politely ask them to choose between English, Spanish, or Chinese.",
-        "variableExtractionPlan": {
-            "schema": {
-                "type": "string",
-                "title": "preferred_language",
-                "description": "Customer preferred language choice",
-                "enum": ["english", "spanish", "chinese"],
-            }
-        },
-    }
-
-
 def _create_support_node(
     language: str,
     config: dict,
@@ -882,6 +864,11 @@ def _create_support_node(
     # Use language-specific voice ID if available, otherwise use default
     voice_id = config.get("voice_id", default_voice_id)
 
+    final_message = ""
+    if language == "chinese":
+        final_message = "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答"
+    elif language == "spanish":
+        final_message = "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder en español."
     return {
         "name": f"{language}_support",
         "type": "conversation",
@@ -892,7 +879,9 @@ def _create_support_node(
             "provider": "custom-llm",
             "url": f"{api_url}/v1",
             "model": json.dumps(caller_info_short),
-            "messages": [{"role": "system", "content": config["system_content"]}],
+            "messages": [
+                {"role": "system", "content": config["system_content"] + final_message}
+            ],
         },
         "prompt": config["prompt"],
     }
@@ -903,14 +892,11 @@ def _create_workflow_edges() -> list:
     languages = ["english", "spanish", "chinese"]
     edges = []
 
-    # Edge from starting message to language selection
-    edges.append({"from": "start_node", "to": "language_selection"})
-
-    # Add edges for each language
+    # Add edges directly from start_node to each language support
     for lang in languages:
         edges.append(
             {
-                "from": "language_selection",
+                "from": "start_node",
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
@@ -922,7 +908,7 @@ def _create_workflow_edges() -> list:
     # Add fallback to English
     edges.append(
         {
-            "from": "language_selection",
+            "from": "start_node",
             "to": "english_support",
             "condition": {
                 "type": "ai",
