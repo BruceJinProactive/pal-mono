@@ -13,6 +13,7 @@ from api.routes.endpoints import endpoints
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
+from db.session import AsyncSessionLocal
 from db.tables.types import Channel
 from services import project_service
 from services.message_service import (
@@ -120,26 +121,34 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                     send_messages([filler_message])
                     logger.info(f"Sending filler message: {filler_message}")
 
-                async for new_session in db.get_db_async():
-                    # Start the filler message task only if the message channel is VOICE
-                    if request.message.channel == Channel.VOICE:
-                        filler_message_task = asyncio.create_task(send_filler_message())
-                    else:
-                        filler_message_task = None
-                    # Get the actual response
-                    response_messages = await get_chat_response_async(
-                        session=new_session,
-                        message=request.message,
-                        request_context=request_context,
-                    )
-                    # Cancel the filler message task if it hasn't triggered yet
-                    if filler_message_task:
-                        filler_message_task.cancel()
+                async with AsyncSessionLocal() as new_session:
+                    try:
+                        # Start the filler message task only if the message channel is VOICE
+                        if request.message.channel == Channel.VOICE:
+                            filler_message_task = asyncio.create_task(
+                                send_filler_message()
+                            )
+                        else:
+                            filler_message_task = None
+                        # Get the actual response
+                        response_messages = await get_chat_response_async(
+                            session=new_session,
+                            message=request.message,
+                            request_context=request_context,
+                        )
+                        # Cancel the filler message task if it hasn't triggered yet
+                        if filler_message_task:
+                            filler_message_task.cancel()
 
-                    result = send_messages(response_messages)
-                    logger.info(
-                        f"Chat API, schedule to send messages: {response_messages}, result: {result}"
-                    )
+                        result = send_messages(response_messages)
+                        logger.info(
+                            f"Chat API, schedule to send messages: {response_messages}, result: {result}"
+                        )
+                        await new_session.commit()
+                    except Exception as e:
+                        await new_session.rollback()
+                        logger.error(f"Database error in generate_and_send: {str(e)}")
+                        raise
 
             asyncio.create_task(generate_and_send())
 
@@ -169,7 +178,15 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
         )
     except Exception as e:
         # Log the error
-        logger.error(f"Error processing message: {str(e)}")
+        logger.error(
+            f"Error processing message: {str(e)}",
+            extra={
+                "relay_response": request.relay_response,
+                "stream": request.stream,
+                "sender_identifier": request.message.sender_identifier,
+                "recipient_identifier": request.message.recipient_identifier,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
