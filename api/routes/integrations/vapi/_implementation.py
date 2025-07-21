@@ -804,6 +804,9 @@ def create_multilingual_workflow_demo(
                 "voice": default_voice,
                 "globalPrompt": f"{account_display_name} provides excellent customer service.",
                 "nodes": [
+                    _create_starting_message_node(
+                        agent_config.persona.name, account_display_name
+                    ),
                     _create_language_selection_node(account_display_name),
                     *[
                         _create_support_node(
@@ -840,13 +843,22 @@ def _create_voice_config(provider: str, voice_id: str, model: str, speech_rate) 
     return add_voice_speed_if_supported(voice, speech_rate) if speech_rate else voice
 
 
+def _create_starting_message_node(agent_name: str, account_display_name: str) -> dict:
+    """Create the starting message node."""
+    return {
+        "name": "start_node",
+        "type": "say",
+        "message": f"Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+        "isStart": True,
+    }
+
+
 def _create_language_selection_node(account_display_name: str) -> dict:
     """Create the language selection node."""
     return {
         "name": "language_selection",
         "type": "conversation",
-        "prompt": f"You are helping the customer select their preferred language for {account_display_name} support. Listen carefully for: English to select English, Español/Spanish to select Spanish, 中文/Chinese to select Chinese. Extract their language preference clearly. If unclear, ask them to repeat their choice.",
-        "isStart": True,
+        "prompt": "Listen to the customer's response about their language preference. They were just asked which language they prefer (English, Spanish, or Chinese). Extract their choice clearly. If they say something unclear, politely ask them to choose between English, Spanish, or Chinese.",
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
@@ -890,6 +902,9 @@ def _create_workflow_edges() -> list:
     """Create workflow routing edges."""
     languages = ["english", "spanish", "chinese"]
     edges = []
+
+    # Edge from starting message to language selection
+    edges.append({"from": "start_node", "to": "language_selection"})
 
     # Add edges for each language
     for lang in languages:
