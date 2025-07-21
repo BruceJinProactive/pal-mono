@@ -13,29 +13,31 @@ class PromptRepository:
         self.session = session
         self.auto_commit = auto_commit
 
+    def _convert_channels(self, channels: list) -> list:
+        """Convert string channel values to Channel enum members."""
+        converted_channels = []
+        for channel_str in channels:
+            if isinstance(channel_str, str):
+                matching_enum = None
+                for channel_enum in Channel:
+                    if channel_enum.value == channel_str.lower():
+                        matching_enum = channel_enum
+                        break
+                if matching_enum:
+                    converted_channels.append(matching_enum)
+                else:
+                    logger.warning(f"Unknown channel value: {channel_str}")
+            else:
+                converted_channels.append(channel_str)
+        return converted_channels
+
     def create_prompt(self, **kwargs) -> Prompt:
         try:
             prompt = Prompt(id=uuid.uuid4())
             for key, value in kwargs.items():
                 if value is not None and hasattr(prompt, key):
                     if key == "channel" and isinstance(value, list):
-                        converted_channels = []
-                        for channel_str in value:
-                            if isinstance(channel_str, str):
-                                matching_enum = None
-                                for channel_enum in Channel:
-                                    if channel_enum.value == channel_str.lower():
-                                        matching_enum = channel_enum
-                                        break
-                                if matching_enum:
-                                    converted_channels.append(matching_enum)
-                                else:
-                                    logger.warning(
-                                        f"Unknown channel value: {channel_str}"
-                                    )
-                            else:
-                                converted_channels.append(channel_str)
-                        setattr(prompt, key, converted_channels)
+                        setattr(prompt, key, self._convert_channels(value))
                     else:
                         setattr(prompt, key, value)
 
@@ -106,3 +108,39 @@ class PromptRepository:
                 query = query.filter(Prompt.channel.overlap(channel_enums))
 
         return query.order_by(Prompt.created_at.desc()).all()
+
+    def get_prompt_by_id(self, prompt_id: uuid.UUID) -> Prompt | None:
+        return (
+            self.session.query(Prompt)
+            .filter(Prompt.id == prompt_id, ~Prompt.deleted)
+            .first()
+        )
+
+    def update_prompt(self, prompt_id: uuid.UUID, **kwargs) -> Prompt | None:
+        try:
+            prompt = self.get_prompt_by_id(prompt_id)
+            if not prompt:
+                return None
+
+            for key, value in kwargs.items():
+                if value is not None and hasattr(prompt, key):
+                    if key == "channel" and isinstance(value, list):
+                        setattr(prompt, key, self._convert_channels(value))
+                    else:
+                        setattr(prompt, key, value)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(prompt)
+            return prompt
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating prompt: {e}")
+            raise
+
+    def get_next_version_number(self, prompt_id: uuid.UUID) -> int:
+        latest_details = self.get_latest_prompt_details(prompt_id)
+        return (latest_details.version_number + 1) if latest_details else 1

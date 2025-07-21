@@ -118,3 +118,69 @@ def get_prompts(
                 account_prompts.append(prompt)
 
     return account_prompts
+
+
+def update_prompt(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    prompt_id: uuid.UUID,
+    name: str | None = None,
+    channel: list[str] | None = None,
+    content: str | None = None,
+    change_summary: str | None = None,
+    auto_commit: bool = True,
+) -> db.Prompt:
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    prompt_repository = PromptRepository(session, auto_commit=auto_commit)
+
+    existing_prompt = prompt_repository.get_prompt_by_id(prompt_id)
+    if not existing_prompt:
+        raise ValueError("Prompt not found")
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Prompt,
+        author=context.email,
+        account_id=account.id,
+        auto_commit=auto_commit,
+    ) as ctx:
+        prompt_update_data = {}
+        if name is not None:
+            prompt_update_data["name"] = name
+        if channel is not None:
+            prompt_update_data["channel"] = channel
+
+        updated_prompt = existing_prompt
+        if prompt_update_data:
+            updated_prompt = prompt_repository.update_prompt(
+                prompt_id, **prompt_update_data
+            )
+            if not updated_prompt:
+                raise ValueError("Failed to update prompt")
+            ctx.resource_id = str(updated_prompt.id)
+            ctx.new_record = updated_prompt
+
+        if content is not None:
+            next_version = prompt_repository.get_next_version_number(prompt_id)
+
+            details_params = PromptDetailsParams(
+                prompt_id=prompt_id,
+                version_number=next_version,
+                content=content,
+                change_summary=change_summary or f"Version {next_version}",
+                created_by=context.email,
+            )
+
+            new_details = prompt_repository.create_prompt_details(
+                **asdict(details_params)
+            )
+
+            updated_prompt = prompt_repository.update_prompt(
+                prompt_id, default_prompt_id=str(new_details.id)
+            )
+
+        return updated_prompt

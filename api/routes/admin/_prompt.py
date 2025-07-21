@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from api.routes.admin._auth import authorize_admin
 from api.routes.admin._builder import build_prompt
 from api.routes.admin._utils import UserContext
-from api.schemas.admin.prompt import CreatePromptRequest, Prompt
+from api.schemas.admin.prompt import CreatePromptRequest, Prompt, UpdatePromptRequest
 from services import prompt_service
 from services.prompt_service.schema import PromptParams
 
@@ -86,3 +86,42 @@ def get_prompts(
         )
 
     return [build_prompt(db_prompt, session) for db_prompt in db_prompts]
+
+
+def update_prompt(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    prompt_id: str,
+    request: UpdatePromptRequest,
+) -> Prompt:
+    authorize_admin(context)
+    try:
+        prompt_uuid = uuid.UUID(prompt_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid prompt_id format. Must be a valid UUID.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        db_prompt = prompt_service.update_prompt(
+            session,
+            context,
+            account_name,
+            prompt_uuid,
+            name=request.name,
+            channel=request.channel,
+            content=request.content,
+            change_summary=request.change_summary,
+            auto_commit=True,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+
+    return build_prompt(db_prompt, session)

@@ -84,7 +84,7 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
-from api.schemas.admin.prompt import CreatePromptRequest, Prompt
+from api.schemas.admin.prompt import CreatePromptRequest, Prompt, UpdatePromptRequest
 from api.schemas.admin.subscription import (
     CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
@@ -1749,7 +1749,9 @@ async def create_prompt(
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
-    """Create a new prompt."""
+    """
+    Create a new prompt.
+    """
     return _prompt.create_prompt(context, session, account_name, request)
 
 
@@ -1769,7 +1771,23 @@ def get_prompts(
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
-    """Get prompts with optional filtering, search, and channel filtering."""
+    """
+    Get prompts with optional filtering, search, and channel filtering.
+    """
     return _prompt.get_prompts(
         context, session, account_name, resource_type, resource_id, search, channels
     )
+
+
+@admin_router.patch("/accounts/{account_name}/prompts/{prompt_id}")
+def update_prompt(
+    account_name: str,
+    prompt_id: str,
+    request: UpdatePromptRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Prompt:
+    """
+    Update an existing prompt.
+    """
+    return _prompt.update_prompt(context, session, account_name, prompt_id, request)

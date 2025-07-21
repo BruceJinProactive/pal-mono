@@ -36,3 +36,10 @@ class CreatePromptRequest(BaseModel):
     resource_type: str
     content: str
     change_summary: str | None = None
+
+
+class UpdatePromptRequest(BaseModel):
+    name: str | None = None
+    channel: list[str] | None = None
+    content: str | None = None
+    change_summary: str | None = None
