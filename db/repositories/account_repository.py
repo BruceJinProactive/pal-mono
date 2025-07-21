@@ -50,12 +50,10 @@ class AccountRepository:
             logger.error(f"Error retrieving account: {e}")
             return []
 
-    def filter_accounts_by_name(
-        self, keyword: Optional[str] = None, limit: int = 20
-    ) -> List[Account]:
+    def filter_accounts_by_name(self, keyword: Optional[str] = None) -> List[Account]:
         """
         Filter accounts by a flexible name or display_name match, using a case-insensitive partial match.
-        If no keyword is provided, returns all accounts with a default limit of 20.
+        If no keyword is provided, returns all accounts.
         """
         try:
             query = self.session.query(Account).filter(
@@ -68,7 +66,7 @@ class AccountRepository:
                     | (Account.display_name.ilike(f"%{keyword}%"))
                 )
 
-            return query.limit(limit).all()
+            return query.all()
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error filtering accounts by name: {e}")
