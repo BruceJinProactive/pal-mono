@@ -1811,3 +1811,16 @@ def get_prompt_versions(
     Get all versions of prompt details for a specific prompt.
     """
     return _prompt.get_prompt_versions(context, session, account_name, prompt_id)
+
+
+@admin_router.delete("/accounts/{account_name}/prompts/{prompt_id}")
+def delete_prompt(
+    account_name: str,
+    prompt_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete an existing prompt (soft delete).
+    """
+    _prompt.delete_prompt(context, session, account_name, prompt_id)

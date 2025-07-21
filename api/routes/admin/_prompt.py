@@ -135,3 +135,26 @@ def get_prompt_versions(
         )
 
     return [build_prompt_details(version) for version in db_versions]
+
+
+def delete_prompt(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    prompt_id: uuid.UUID,
+) -> None:
+    authorize_admin(context)
+    try:
+        prompt_service.delete_prompt(
+            session,
+            context,
+            account_name,
+            prompt_id,
+            auto_commit=True,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )

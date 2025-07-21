@@ -152,3 +152,22 @@ class PromptRepository:
             .order_by(PromptDetails.version_number.desc())
             .all()
         )
+
+    def delete_prompt(self, prompt_id: uuid.UUID) -> bool:
+        try:
+            prompt = self.get_prompt_by_id(prompt_id)
+            if not prompt:
+                return False
+
+            prompt.deleted = True
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            return True
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error deleting prompt: {e}")
+            raise
