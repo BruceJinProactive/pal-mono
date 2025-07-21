@@ -895,7 +895,7 @@ def _create_workflow_edges() -> list:
 
     # Language preference conditions from start node
     language_conditions = {
-        "english": "Customer indicates they want to communicate in English by saying things like: 'English', 'English please', 'I speak English', 'Let's continue in English', 'Can we speak English?', or responds in English when asked about language preference.",
+        "english": "Customer indicates they want to communicate in English by saying things like: 'English', 'English please', 'I speak English', 'Let's continue in English', 'Can we speak English?'.",
         "spanish": "Customer indicates they want to communicate in Spanish by saying things like: 'Spanish', 'Español', 'Spanish please', 'En español', 'Hablo español', 'I speak Spanish', 'Let's continue in Spanish', 'Can we speak Spanish?', 'Prefiero español', or responds in Spanish when asked about language preference.",
         "chinese": "Customer indicates they want to communicate in Chinese by saying things like: 'Chinese', 'Mandarin', 'Chinese please', '中文', '普通话', 'I speak Chinese', 'Let's continue in Chinese', 'Can we speak Chinese?', '我说中文', '我想用中文', or responds in Chinese when asked about language preference.",
     }
@@ -913,66 +913,8 @@ def _create_workflow_edges() -> list:
             }
         )
 
-    # Language switching conditions between nodes
-    switch_conditions = {
-        "to_spanish": "Customer requests to switch to Spanish by saying things like: 'Can we switch to Spanish?', 'Spanish please', 'En español por favor', 'Prefiero español', 'Let's continue in Spanish', '¿Podemos hablar en español?', 'Español', or starts speaking Spanish.",
-        "to_english": "Customer requests to switch to English by saying things like: 'Can we switch to English?', 'English please', 'Let's continue in English', 'I prefer English', 'Can we speak English?', 'English', or starts speaking English clearly.",
-        "to_chinese": "Customer requests to switch to Chinese by saying things like: 'Can we switch to Chinese?', 'Chinese please', 'Let's continue in Chinese', 'I prefer Chinese', '我想用中文', '可以说中文吗?', '中文', or starts speaking Chinese.",
-    }
-
-    # Allow switching between languages
-    edges.extend(
-        [
-            {
-                "from": "english_support",
-                "to": "spanish_support",
-                "condition": {
-                    "type": "ai",
-                    "prompt": switch_conditions["to_spanish"],
-                },
-            },
-            {
-                "from": "english_support",
-                "to": "chinese_support",
-                "condition": {
-                    "type": "ai",
-                    "prompt": switch_conditions["to_chinese"],
-                },
-            },
-            {
-                "from": "spanish_support",
-                "to": "chinese_support",
-                "condition": {
-                    "type": "ai",
-                    "prompt": switch_conditions["to_chinese"],
-                },
-            },
-            {
-                "from": "spanish_support",
-                "to": "english_support",
-                "condition": {
-                    "type": "ai",
-                    "prompt": switch_conditions["to_english"],
-                },
-            },
-            {
-                "from": "chinese_support",
-                "to": "english_support",
-                "condition": {
-                    "type": "ai",
-                    "prompt": switch_conditions["to_english"],
-                },
-            },
-            {
-                "from": "chinese_support",
-                "to": "spanish_support",
-                "condition": {
-                    "type": "ai",
-                    "prompt": switch_conditions["to_spanish"],
-                },
-            },
-        ]
-    )
+    # Note: Language switching between nodes is currently disabled
+    # Once a customer selects a language, they remain in that language for the entire conversation
 
     return edges
 
