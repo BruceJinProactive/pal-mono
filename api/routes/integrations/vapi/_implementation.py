@@ -807,7 +807,6 @@ def create_multilingual_workflow_demo(
                     _create_starting_message_node(
                         agent_config.persona.name, account_display_name
                     ),
-                    _create_language_selection_node(account_display_name),
                     *[
                         _create_support_node(
                             lang,
@@ -848,17 +847,8 @@ def _create_starting_message_node(agent_name: str, account_display_name: str) ->
     return {
         "name": "start_node",
         "type": "say",
-        "prompt": f"Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+        "prompt": f"Introduce yourself and ask the customer which language they prefer: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
         "isStart": True,
-    }
-
-
-def _create_language_selection_node(account_display_name: str) -> dict:
-    """Create the language selection node."""
-    return {
-        "name": "language_selection",
-        "type": "conversation",
-        "prompt": "Listen to the customer's response about their language preference. They were just asked which language they prefer (English, Spanish, or Chinese). Extract their choice clearly. If they say something unclear, politely ask them to choose between English, Spanish, or Chinese.",
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
@@ -903,18 +893,15 @@ def _create_workflow_edges() -> list:
     languages = ["english", "spanish", "chinese"]
     edges = []
 
-    # Edge from starting message to language selection
-    edges.append({"from": "start_node", "to": "language_selection"})
-
-    # Add edges for each language
+    # Add edges directly from start_node to each language support
     for lang in languages:
         edges.append(
             {
-                "from": "language_selection",
+                "from": "start_node",
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
-                    "prompt": f"Customer selected {lang.capitalize()} language support",
+                    "prompt": f"Customer preferred {lang.capitalize()} language support",
                 },
             }
         )
@@ -922,7 +909,7 @@ def _create_workflow_edges() -> list:
     # Add fallback to English
     edges.append(
         {
-            "from": "language_selection",
+            "from": "start_node",
             "to": "english_support",
             "condition": {
                 "type": "ai",
