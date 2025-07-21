@@ -891,83 +891,89 @@ def _create_support_node(
 
 def _create_workflow_edges() -> list:
     """Create workflow routing edges."""
-    languages = ["english", "spanish", "chinese"]
     edges = []
 
+    # Language preference conditions from start node
+    language_conditions = {
+        "english": "Customer indicates they want to communicate in English by saying things like: 'English', 'English please', 'I speak English', 'Let's continue in English', 'Can we speak English?', or responds in English when asked about language preference.",
+        "spanish": "Customer indicates they want to communicate in Spanish by saying things like: 'Spanish', 'Español', 'Spanish please', 'En español', 'Hablo español', 'I speak Spanish', 'Let's continue in Spanish', 'Can we speak Spanish?', 'Prefiero español', or responds in Spanish when asked about language preference.",
+        "chinese": "Customer indicates they want to communicate in Chinese by saying things like: 'Chinese', 'Mandarin', 'Chinese please', '中文', '普通话', 'I speak Chinese', 'Let's continue in Chinese', 'Can we speak Chinese?', '我说中文', '我想用中文', or responds in Chinese when asked about language preference.",
+    }
+
     # Add edges directly from start_node to each language support
-    for lang in languages:
+    for lang, condition in language_conditions.items():
         edges.append(
             {
                 "from": "start_node",
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
-                    "prompt": f"Customer says they want to speak in {lang.capitalize()}",
+                    "prompt": condition,
                 },
             }
         )
 
+    # Language switching conditions between nodes
+    switch_conditions = {
+        "to_spanish": "Customer requests to switch to Spanish by saying things like: 'Can we switch to Spanish?', 'Spanish please', 'En español por favor', 'Prefiero español', 'Let's continue in Spanish', '¿Podemos hablar en español?', 'Español', or starts speaking Spanish.",
+        "to_english": "Customer requests to switch to English by saying things like: 'Can we switch to English?', 'English please', 'Let's continue in English', 'I prefer English', 'Can we speak English?', 'English', or starts speaking English clearly.",
+        "to_chinese": "Customer requests to switch to Chinese by saying things like: 'Can we switch to Chinese?', 'Chinese please', 'Let's continue in Chinese', 'I prefer Chinese', '我想用中文', '可以说中文吗?', '中文', or starts speaking Chinese.",
+    }
+
     # Allow switching between languages
-    edges.append(
-        {
-            "from": "english_support",
-            "to": "spanish_support",
-            "condition": {
-                "type": "ai",
-                "prompt": "Customer says they want to speak in Spanish",
+    edges.extend(
+        [
+            {
+                "from": "english_support",
+                "to": "spanish_support",
+                "condition": {
+                    "type": "ai",
+                    "prompt": switch_conditions["to_spanish"],
+                },
             },
-        }
-    )
-    edges.append(
-        {
-            "from": "english_support",
-            "to": "chinese_support",
-            "condition": {
-                "type": "ai",
-                "prompt": "Customer says they want to speak in Chinese",
+            {
+                "from": "english_support",
+                "to": "chinese_support",
+                "condition": {
+                    "type": "ai",
+                    "prompt": switch_conditions["to_chinese"],
+                },
             },
-        }
-    )
-    edges.append(
-        {
-            "from": "spanish_support",
-            "to": "chinese_support",
-            "condition": {
-                "type": "ai",
-                "prompt": "Customer says they want to speak in Chinese",
+            {
+                "from": "spanish_support",
+                "to": "chinese_support",
+                "condition": {
+                    "type": "ai",
+                    "prompt": switch_conditions["to_chinese"],
+                },
             },
-        }
-    )
-    edges.append(
-        {
-            "from": "spanish_support",
-            "to": "english_support",
-            "condition": {
-                "type": "ai",
-                "prompt": "Customer says they want to speak in English",
+            {
+                "from": "spanish_support",
+                "to": "english_support",
+                "condition": {
+                    "type": "ai",
+                    "prompt": switch_conditions["to_english"],
+                },
             },
-        }
-    )
-    edges.append(
-        {
-            "from": "chinese_support",
-            "to": "english_support",
-            "condition": {
-                "type": "ai",
-                "prompt": "Customer says they want to speak in English",
+            {
+                "from": "chinese_support",
+                "to": "english_support",
+                "condition": {
+                    "type": "ai",
+                    "prompt": switch_conditions["to_english"],
+                },
             },
-        }
-    )
-    edges.append(
-        {
-            "from": "chinese_support",
-            "to": "spanish_support",
-            "condition": {
-                "type": "ai",
-                "prompt": "Customer says they want to speak in Spanish",
+            {
+                "from": "chinese_support",
+                "to": "spanish_support",
+                "condition": {
+                    "type": "ai",
+                    "prompt": switch_conditions["to_spanish"],
+                },
             },
-        }
+        ]
     )
+
     return edges
 
 
