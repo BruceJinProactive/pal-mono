@@ -88,3 +88,12 @@ async def square_callback(request: Request):
     Handles the callback from Square OAuth.
     """
     return await square_implementation.callback(request)
+
+
+@integrations_router.post("/square/refresh", status_code=status.HTTP_200_OK)
+async def square_refresh(request: Request):
+    """
+    Triggers a refresh of the Square access token for the given account.
+    Expects a JSON body with 'account_name'.
+    """
+    return await square_implementation.refresh(request)

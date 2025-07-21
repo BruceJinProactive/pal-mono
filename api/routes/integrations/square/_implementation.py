@@ -1,4 +1,5 @@
 import binascii
+import json
 import os
 
 import requests
@@ -6,14 +7,18 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
 import db
+from db.repositories.account_repository import AccountRepository
+from db.repositories.integration_repository import IntegrationRepository
 from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 from services.integration_service import create_integration
+from services.integration_service._utils import update_integration_credentials
 from services.integration_service.schema import (
     CreateIntegrationParams,
     IntegrationCredentials,
 )
 from services.service_utils import get_server_url
 from utils.log import logger
+from utils.secret import get_client_secret
 
 from ._util import get_square_client_id, get_square_client_secret
 from ._valid import _oauth_state, valid_request
@@ -153,6 +158,113 @@ async def callback(request: Request):
         )
     finally:
         session.close()
+
+
+async def refresh(request: Request):
+    """
+    FastAPI endpoint to refresh the Square access token for the given account.
+    Expects a JSON body with 'account_name'.
+    """
+    try:
+        data = await request.json()
+        account_name = data.get("account_name")
+        if not account_name:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "Missing 'account_name' in request body"},
+            )
+
+        SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
+        client_id = get_square_client_id()
+        client_secret = get_square_client_secret()
+        session = next(db.get_db())
+        try:
+            account_repository = AccountRepository(session)
+            account = account_repository.get_account(account_name)
+            if not account:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"error": f"Account {account_name} not found"},
+                )
+            integration_repository = IntegrationRepository(session)
+            integrations = integration_repository.get_integrations_by_provider_and_type(
+                account.id, IntegrationProvider.square, IntegrationType.pos
+            )
+            if not integrations:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": f"No Square integration found for account '{account_name}'"
+                    },
+                )
+            integration = integrations[0]
+            if not integration.secret_key:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": f"Integration for account '{account_name}' does not have a secret_key"
+                    },
+                )
+            secrets_json = get_client_secret(integration.secret_key)
+            secrets = json.loads(secrets_json)
+            refresh_token = secrets.get("refresh_token")
+            if not refresh_token:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": f"No refresh token found in secret manager for account '{account_name}'"
+                    },
+                )
+            data = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            }
+            headers = {"Content-Type": "application/json"}
+            resp = requests.post(SQUARE_TOKEN_URL, json=data, headers=headers)
+            if resp.status_code != 200:
+                logger.error(f"Failed to refresh Square token: {resp.text}")
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={"error": f"Failed to refresh Square token: {resp.text}"},
+                )
+            token_data = resp.json()
+            new_access_token = token_data.get("access_token")
+            new_refresh_token = token_data.get("refresh_token")
+            if not new_access_token or not new_refresh_token:
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={
+                        "error": "Missing access token or refresh token in Square response"
+                    },
+                )
+            creds = IntegrationCredentials(
+                access_token=new_access_token, refresh_token=new_refresh_token
+            )
+            update_integration_credentials(account, creds, integration)
+            session.commit()
+            logger.info(
+                f"Successfully refreshed Square token for account '{account_name}'"
+            )
+            return JSONResponse({"status": "success"})
+        except Exception as e:
+            session.rollback()
+            logger.error(
+                f"Error refreshing Square token for account '{account_name}': {e}"
+            )
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"error": str(e)},
+            )
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Error in refresh endpoint: {e}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": str(e)},
+        )
 
 
 # TODO: Implement api_chat and api_project_info if needed for Square, similar to Shopify
