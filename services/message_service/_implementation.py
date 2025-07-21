@@ -68,6 +68,9 @@ async def get_chat_response_async(
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
 
+        # Store project_id early while object is attached to session
+        project_id = project.id
+
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
             session, project, message
@@ -78,7 +81,7 @@ async def get_chat_response_async(
 
         # Save request message to database
         request_message = await message_repo.create_message(
-            user_id=user.id, project_id=project.id, message_body=message.to_dict()
+            user_id=user.id, project_id=project_id, message_body=message.to_dict()
         )
 
         # Send analytics event
@@ -113,7 +116,7 @@ async def get_chat_response_async(
             session=session,
             agent_id=agent_id,
             user_id=user.id,
-            project_id=project.id,
+            project_id=project_id,
             conversation_id=request_message.conversation_id,
             channel=message.channel,
         )
@@ -157,7 +160,7 @@ async def get_chat_response_async(
                     # Save the opt-in message to the database
                     await message_repo.create_message(
                         user_id=user.id,
-                        project_id=project.id,
+                        project_id=project_id,
                         message_body=opt_in_message.to_dict(),
                     )
 
@@ -189,7 +192,7 @@ async def get_chat_response_async(
             response_messages.append(message)
             # Save response message to database
             await message_repo.create_message(
-                user_id=user_id, project_id=project.id, message_body=message.to_dict()
+                user_id=user_id, project_id=project_id, message_body=message.to_dict()
             )
 
         await session.refresh(user, attribute_names=["id"])
