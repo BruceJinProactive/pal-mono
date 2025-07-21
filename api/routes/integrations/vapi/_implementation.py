@@ -779,6 +779,7 @@ def create_multilingual_workflow_demo(
         language_configs = {
             "english": {
                 "voice_model": "sonic-2",
+                "voice_id": SPORTSMAN_VOICE_ID,
                 "system_content": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
                 "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
             },
@@ -791,7 +792,7 @@ def create_multilingual_workflow_demo(
             "chinese": {
                 "voice_model": "sonic-2",
                 "voice_id": "0b904166-a29f-4d2e-bb20-41ca302f98e9",  # chinese commercial woman
-                "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} 请保持回答简洁有用。",
+                "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。",
                 "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
             },
         }
@@ -863,7 +864,13 @@ def _create_support_node(
     """Create a language-specific support node."""
     # Use language-specific voice ID if available, otherwise use default
     voice_id = config.get("voice_id", default_voice_id)
-
+    final_message = ""
+    if language == "chinese":
+        final_message = (
+            "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答用户的问题"
+        )
+    elif language == "spanish":
+        final_message = "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder a las preguntas del usuario en español."
     return {
         "name": f"{language}_support",
         "type": "conversation",
@@ -874,7 +881,9 @@ def _create_support_node(
             "provider": "custom-llm",
             "url": f"{api_url}/v1",
             "model": json.dumps(caller_info_short),
-            "messages": [{"role": "system", "content": config["system_content"]}],
+            "messages": [
+                {"role": "system", "content": config["system_content"] + final_message}
+            ],
         },
         "prompt": config["prompt"],
     }
@@ -893,7 +902,7 @@ def _create_workflow_edges() -> list:
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
-                    "prompt": f"Customer wants to speak in {lang.capitalize()} language",
+                    "prompt": f"Customer says they want to speak in {lang.capitalize()}",
                 },
             }
         )
@@ -905,7 +914,7 @@ def _create_workflow_edges() -> list:
             "to": "spanish_support",
             "condition": {
                 "type": "ai",
-                "prompt": "Customer wants to speak in Spanish language",
+                "prompt": "Customer says they want to speak in Spanish",
             },
         }
     )
@@ -915,7 +924,7 @@ def _create_workflow_edges() -> list:
             "to": "chinese_support",
             "condition": {
                 "type": "ai",
-                "prompt": "Customer wants to speak in Chinese language",
+                "prompt": "Customer says they want to speak in Chinese",
             },
         }
     )
@@ -925,7 +934,7 @@ def _create_workflow_edges() -> list:
             "to": "chinese_support",
             "condition": {
                 "type": "ai",
-                "prompt": "Customer wants to speak in Chinese language",
+                "prompt": "Customer says they want to speak in Chinese",
             },
         }
     )
@@ -935,7 +944,7 @@ def _create_workflow_edges() -> list:
             "to": "english_support",
             "condition": {
                 "type": "ai",
-                "prompt": "Customer wants to speak in English language",
+                "prompt": "Customer says they want to speak in English",
             },
         }
     )
@@ -945,7 +954,7 @@ def _create_workflow_edges() -> list:
             "to": "english_support",
             "condition": {
                 "type": "ai",
-                "prompt": "Customer wants to speak in English language",
+                "prompt": "Customer says they want to speak in English",
             },
         }
     )
@@ -955,7 +964,7 @@ def _create_workflow_edges() -> list:
             "to": "spanish_support",
             "condition": {
                 "type": "ai",
-                "prompt": "Customer wants to speak in Spanish language",
+                "prompt": "Customer says they want to speak in Spanish",
             },
         }
     )
