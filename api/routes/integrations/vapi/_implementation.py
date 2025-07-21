@@ -893,23 +893,72 @@ def _create_workflow_edges() -> list:
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
-                    "prompt": f"Customer preferred {lang.capitalize()} language support",
+                    "prompt": f"Customer wants to speak in {lang.capitalize()} language",
                 },
             }
         )
 
-    # Add fallback to English
+    # Allow switching between languages
     edges.append(
         {
-            "from": "start_node",
-            "to": "english_support",
+            "from": "english_support",
+            "to": "spanish_support",
             "condition": {
                 "type": "ai",
-                "prompt": "If language preference is unclear or not detected, default to English support",
+                "prompt": "Customer wants to speak in Spanish language",
             },
         }
     )
-
+    edges.append(
+        {
+            "from": "english_support",
+            "to": "chinese_support",
+            "condition": {
+                "type": "ai",
+                "prompt": "Customer wants to speak in Chinese language",
+            },
+        }
+    )
+    edges.append(
+        {
+            "from": "spanish_support",
+            "to": "chinese_support",
+            "condition": {
+                "type": "ai",
+                "prompt": "Customer wants to speak in Chinese language",
+            },
+        }
+    )
+    edges.append(
+        {
+            "from": "spanish_support",
+            "to": "english_support",
+            "condition": {
+                "type": "ai",
+                "prompt": "Customer wants to speak in English language",
+            },
+        }
+    )
+    edges.append(
+        {
+            "from": "chinese_support",
+            "to": "english_support",
+            "condition": {
+                "type": "ai",
+                "prompt": "Customer wants to speak in English language",
+            },
+        }
+    )
+    edges.append(
+        {
+            "from": "chinese_support",
+            "to": "spanish_support",
+            "condition": {
+                "type": "ai",
+                "prompt": "Customer wants to speak in Spanish language",
+            },
+        }
+    )
     return edges
 
 
