@@ -356,7 +356,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             # Default to normal if not configured
             speech_rate = SpeechRate.normal
 
-        if config.persona.multilingual:
+        if config.persona.multilingual or config.persona.multilingual_workflow:
             if config.persona.model_mode == "google":
                 transcriber = {
                     "provider": "google",
@@ -808,6 +808,7 @@ def create_multilingual_workflow_demo(
                     _create_starting_message_node(
                         agent_config.persona.name, account_display_name
                     ),
+                    _create_language_selection_node(),
                     *[
                         _create_support_node(
                             lang,
@@ -853,6 +854,23 @@ def _create_starting_message_node(agent_name: str, account_display_name: str) ->
     }
 
 
+def _create_language_selection_node() -> dict:
+    """Create the language selection node."""
+    return {
+        "name": "language_selection",
+        "type": "conversation",
+        "prompt": "Do not say anything. Listen to the customer's response about their language preference. They were just asked which language they prefer (English, Spanish, or Chinese). Extract their choice clearly. If they say something unclear, politely ask them to choose between English, Spanish, or Chinese.",
+        "variableExtractionPlan": {
+            "schema": {
+                "type": "string",
+                "title": "preferred_language",
+                "description": "Customer preferred language choice",
+                "enum": ["english", "spanish", "chinese"],
+            }
+        },
+    }
+
+
 def _create_support_node(
     language: str,
     config: dict,
@@ -891,30 +909,36 @@ def _create_support_node(
 
 def _create_workflow_edges() -> list:
     """Create workflow routing edges."""
+    languages = ["english", "spanish", "chinese"]
     edges = []
 
-    # Language preference conditions from start node
-    language_conditions = {
-        "english": "Customer indicates they want to communicate in English by saying things like: 'English', 'English please', 'I speak English', 'Let's continue in English', 'Can we speak English?'.",
-        "spanish": "Customer indicates they want to communicate in Spanish by saying things like: 'Spanish', 'Español', 'Spanish please', 'En español', 'Hablo español', 'I speak Spanish', 'Let's continue in Spanish', 'Can we speak Spanish?', 'Prefiero español', or responds in Spanish when asked about language preference.",
-        "chinese": "Customer indicates they want to communicate in Chinese by saying things like: 'Chinese', 'Mandarin', 'Chinese please', '中文', '普通话', 'I speak Chinese', 'Let's continue in Chinese', 'Can we speak Chinese?', '我说中文', '我想用中文', or responds in Chinese when asked about language preference.",
-    }
+    # Edge from starting message to language selection
+    edges.append({"from": "start_node", "to": "language_selection"})
 
-    # Add edges directly from start_node to each language support
-    for lang, condition in language_conditions.items():
+    # Add edges for each language
+    for lang in languages:
         edges.append(
             {
-                "from": "start_node",
+                "from": "language_selection",
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
-                    "prompt": condition,
+                    "prompt": f"Customer selected {lang.capitalize()} language support",
                 },
             }
         )
 
-    # Note: Language switching between nodes is currently disabled
-    # Once a customer selects a language, they remain in that language for the entire conversation
+    # Add fallback to English
+    edges.append(
+        {
+            "from": "language_selection",
+            "to": "english_support",
+            "condition": {
+                "type": "ai",
+                "prompt": "If language preference is unclear or not detected, default to English support",
+            },
+        }
+    )
 
     return edges
 
