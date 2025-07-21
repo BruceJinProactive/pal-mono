@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -42,3 +44,45 @@ def create_prompt(
         )
 
     return build_prompt(db_prompt, session)
+
+
+def get_prompts(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    search: str | None = None,
+    channels: list[str] | None = None,
+) -> list[Prompt]:
+    authorize_admin(context)
+    try:
+        resource_uuid = None
+        if resource_id:
+            try:
+                resource_uuid = uuid.UUID(resource_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid resource_id format. Must be a valid UUID.",
+                    headers={"Content-Type": "application/json"},
+                )
+
+        db_prompts = prompt_service.get_prompts(
+            session,
+            context,
+            account_name,
+            resource_type,
+            resource_uuid,
+            search,
+            channels,
+            auto_commit=True,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+
+    return [build_prompt(db_prompt, session) for db_prompt in db_prompts]

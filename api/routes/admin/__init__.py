@@ -84,7 +84,7 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
-from api.schemas.admin.prompt import CreatePromptRequest
+from api.schemas.admin.prompt import CreatePromptRequest, Prompt
 from api.schemas.admin.subscription import (
     CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
@@ -1751,3 +1751,25 @@ async def create_prompt(
 ):
     """Create a new prompt."""
     return _prompt.create_prompt(context, session, account_name, request)
+
+
+@admin_router.get("/accounts/{account_name}/prompts")
+def get_prompts(
+    account_name: str,
+    resource_type: str | None = Query(
+        None, description="Optional filter by resource type"
+    ),
+    resource_id: str | None = Query(None, description="Optional filter by resource ID"),
+    search: str | None = Query(
+        None, description="Optional search term to match against prompt name"
+    ),
+    channels: list[str] | None = Query(
+        None, description="Optional list of channels to filter by"
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """Get prompts with optional filtering, search, and channel filtering."""
+    return _prompt.get_prompts(
+        context, session, account_name, resource_type, resource_id, search, channels
+    )

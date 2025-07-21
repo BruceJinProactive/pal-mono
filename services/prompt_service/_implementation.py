@@ -1,3 +1,4 @@
+import uuid
 from dataclasses import asdict
 
 from sqlalchemy.orm import Session
@@ -71,3 +72,49 @@ def create_prompt(
         prompt_repository.create_prompt_details(**asdict(details_params))
 
     return prompt
+
+
+def get_prompts(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    resource_type: str | None = None,
+    resource_id: uuid.UUID | None = None,
+    search: str | None = None,
+    channels: list[str] | None = None,
+    auto_commit: bool = True,
+) -> list[db.Prompt]:
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    if resource_id:
+        if resource_type == "project":
+            project = project_service.get_project(session, resource_id)
+            if not project or project.account_id != account.id:
+                raise ValueError("Selected project is not available in the account")
+        elif resource_type == "agent":
+            agent = agent_service.get_agent(session, resource_id)
+            if not agent or agent.account_id != account.id:
+                raise ValueError("Selected agent is not available in the account")
+        elif resource_type:
+            raise ValueError(f"Unsupported resource type: {resource_type}")
+
+    prompt_repository = PromptRepository(session, auto_commit=auto_commit)
+
+    all_prompts = prompt_repository.get_prompts(
+        resource_type, resource_id, search, channels
+    )
+
+    account_prompts = []
+    for prompt in all_prompts:
+        if prompt.resource_type == "project":
+            project = project_service.get_project(session, prompt.resource_id)
+            if project and project.account_id == account.id:
+                account_prompts.append(prompt)
+        elif prompt.resource_type == "agent":
+            agent = agent_service.get_agent(session, prompt.resource_id)
+            if agent and agent.account_id == account.id:
+                account_prompts.append(prompt)
+
+    return account_prompts

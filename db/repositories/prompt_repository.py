@@ -79,3 +79,30 @@ class PromptRepository:
             .order_by(PromptDetails.version_number.desc())
             .first()
         )
+
+    def get_prompts(
+        self,
+        resource_type: str | None = None,
+        resource_id: uuid.UUID | None = None,
+        search: str | None = None,
+        channels: list[str] | None = None,
+    ) -> list[Prompt]:
+        query = self.session.query(Prompt).filter(~Prompt.deleted)
+
+        if resource_type:
+            query = query.filter(Prompt.resource_type == resource_type)
+        if resource_id:
+            query = query.filter(Prompt.resource_id == resource_id)
+        if search:
+            query = query.filter(Prompt.name.ilike(f"%{search}%"))
+        if channels:
+            channel_enums = []
+            for channel_str in channels:
+                for channel_enum in Channel:
+                    if channel_enum.value == channel_str.lower():
+                        channel_enums.append(channel_enum)
+                        break
+            if channel_enums:
+                query = query.filter(Prompt.channel.overlap(channel_enums))
+
+        return query.order_by(Prompt.created_at.desc()).all()
