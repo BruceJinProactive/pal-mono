@@ -84,6 +84,7 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
+from api.schemas.admin.prompt import CreatePromptRequest
 from api.schemas.admin.subscription import (
     CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
@@ -125,6 +126,7 @@ from . import (
     _lead,
     _phone_number,
     _projects,
+    _prompt,
     _subscription,
     _users,
 )
@@ -1732,3 +1734,20 @@ def remove_project_subscription(
     return _subscription.remove_project_subscription(
         context, db_session, account_name, external_id, project_id
     )
+
+
+"""
+---------- Prompt Endpoints ----------
+------------------------------------
+"""
+
+
+@admin_router.put("/accounts/{account_name}/prompts")
+async def create_prompt(
+    account_name: str,
+    request: CreatePromptRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """Create a new prompt."""
+    return _prompt.create_prompt(context, session, account_name, request)

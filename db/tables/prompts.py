@@ -28,7 +28,8 @@ class Prompt(Base):
     default_prompt_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     channel: Mapped[Optional[list[Channel]]] = mapped_column(
-        ARRAY(Enum(Channel)), nullable=True
+        ARRAY(Enum(Channel, values_callable=lambda obj: [e.value for e in obj])),
+        nullable=True,
     )
     resource_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True

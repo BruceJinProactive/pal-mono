@@ -22,6 +22,7 @@ class ChangeResourceType(str, enum.Enum):
     POSIntegration = "POSIntegration"
     SubscriptionPlan = "SubscriptionPlan"
     Subscription = "Subscription"
+    Prompt = "Prompt"
 
 
 class ChangeAction(str, enum.Enum):

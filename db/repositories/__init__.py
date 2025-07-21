@@ -9,6 +9,7 @@ from .message_repository import MessageRepository, MessageRepositoryAsync
 from .pos_integration_repository import POSIntegrationRepository
 from .project_integration_repository import ProjectIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
+from .prompt_repository import PromptRepository
 from .subscription_repository import (
     AccountSubscriptionRepository,
     ProjectSubscriptionRepository,

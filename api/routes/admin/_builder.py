@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import db
 from api.routes.admin._utils import get_agent_type
 from api.routes.utils import map_uri_to_s3_url
@@ -14,11 +16,13 @@ from api.schemas.admin.integration import (
 )
 from api.schemas.admin.lead import Lead
 from api.schemas.admin.project import Project, ProjectSummary
+from api.schemas.admin.prompt import Prompt, PromptDetails
 from api.schemas.admin.subscription import (
     ProjectSubscription,
     Subscription,
     SubscriptionPlan,
 )
+from db.repositories.prompt_repository import PromptRepository
 from services.integration_service.schema import IntegrationDetail
 
 
@@ -329,4 +333,46 @@ def build_project_subscription(
         deleted=project_subscription.deleted,
         created_at=project_subscription.created_at,
         updated_at=project_subscription.updated_at,
+    )
+
+
+def build_prompt_details(prompt_details: db.PromptDetails) -> PromptDetails:
+    return PromptDetails(
+        id=prompt_details.id,
+        prompt_id=prompt_details.prompt_id,
+        version_number=prompt_details.version_number,
+        content=prompt_details.content,
+        change_summary=prompt_details.change_summary,
+        created_by=prompt_details.created_by,
+        created_at=prompt_details.created_at,
+        updated_at=prompt_details.updated_at or datetime.now(),
+    )
+
+
+def build_prompt(prompt: db.Prompt, session=None) -> Prompt:
+    details = None
+    if session:
+        prompt_repository = PromptRepository(session, auto_commit=False)
+        latest_details = prompt_repository.get_latest_prompt_details(prompt.id)
+        if latest_details:
+            details = build_prompt_details(latest_details)
+
+    return Prompt(
+        id=prompt.id,
+        name=prompt.name,
+        default_prompt_id=prompt.default_prompt_id,
+        channel=(
+            [
+                channel.value if hasattr(channel, "value") else channel
+                for channel in prompt.channel
+            ]
+            if prompt.channel
+            else []
+        ),
+        resource_id=prompt.resource_id,
+        resource_type=prompt.resource_type,
+        deleted=prompt.deleted,
+        created_at=prompt.created_at,
+        updated_at=prompt.updated_at or datetime.now(),
+        details=details,
     )
