@@ -144,3 +144,11 @@ class PromptRepository:
     def get_next_version_number(self, prompt_id: uuid.UUID) -> int:
         latest_details = self.get_latest_prompt_details(prompt_id)
         return (latest_details.version_number + 1) if latest_details else 1
+
+    def get_all_prompt_versions(self, prompt_id: uuid.UUID) -> list[PromptDetails]:
+        return (
+            self.session.query(PromptDetails)
+            .filter(PromptDetails.prompt_id == prompt_id)
+            .order_by(PromptDetails.version_number.desc())
+            .all()
+        )

@@ -184,3 +184,32 @@ def update_prompt(
             )
 
         return updated_prompt
+
+
+def get_prompt_versions(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    prompt_id: uuid.UUID,
+    auto_commit: bool = True,
+) -> list[db.PromptDetails]:
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    prompt_repository = PromptRepository(session, auto_commit=auto_commit)
+
+    existing_prompt = prompt_repository.get_prompt_by_id(prompt_id)
+    if not existing_prompt:
+        raise ValueError("Prompt not found")
+
+    if existing_prompt.resource_type == "project":
+        project = project_service.get_project(session, existing_prompt.resource_id)
+        if not project or project.account_id != account.id:
+            raise ValueError("Prompt is not accessible in this account")
+    elif existing_prompt.resource_type == "agent":
+        agent = agent_service.get_agent(session, existing_prompt.resource_id)
+        if not agent or agent.account_id != account.id:
+            raise ValueError("Prompt is not accessible in this account")
+
+    return prompt_repository.get_all_prompt_versions(prompt_id)

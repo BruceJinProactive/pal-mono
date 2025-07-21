@@ -84,7 +84,12 @@ from api.schemas.admin.project import (
     ProjectSummary,
     UpdateProjectRequest,
 )
-from api.schemas.admin.prompt import CreatePromptRequest, Prompt, UpdatePromptRequest
+from api.schemas.admin.prompt import (
+    CreatePromptRequest,
+    Prompt,
+    PromptDetails,
+    UpdatePromptRequest,
+)
 from api.schemas.admin.subscription import (
     CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
@@ -1761,7 +1766,9 @@ def get_prompts(
     resource_type: str | None = Query(
         None, description="Optional filter by resource type"
     ),
-    resource_id: str | None = Query(None, description="Optional filter by resource ID"),
+    resource_id: uuid.UUID | None = Query(
+        None, description="Optional filter by resource ID"
+    ),
     search: str | None = Query(
         None, description="Optional search term to match against prompt name"
     ),
@@ -1782,7 +1789,7 @@ def get_prompts(
 @admin_router.patch("/accounts/{account_name}/prompts/{prompt_id}")
 def update_prompt(
     account_name: str,
-    prompt_id: str,
+    prompt_id: uuid.UUID,
     request: UpdatePromptRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
@@ -1791,3 +1798,16 @@ def update_prompt(
     Update an existing prompt.
     """
     return _prompt.update_prompt(context, session, account_name, prompt_id, request)
+
+
+@admin_router.get("/accounts/{account_name}/prompts/{prompt_id}/versions")
+def get_prompt_versions(
+    account_name: str,
+    prompt_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> list[PromptDetails]:
+    """
+    Get all versions of prompt details for a specific prompt.
+    """
+    return _prompt.get_prompt_versions(context, session, account_name, prompt_id)
