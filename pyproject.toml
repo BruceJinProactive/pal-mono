@@ -7,7 +7,7 @@ authors = [{ name = "Proactive AI Lab", email = "rnd@proactiveailab.com" }]
 
 dependencies = [
   # /api
-  "fastapi==0.115.12",
+  "fastapi==0.116.1",
   "uvicorn==0.30.6",
   "uvloop==0.21.0",
   "python-multipart==0.0.19",
