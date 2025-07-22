@@ -31,6 +31,8 @@ class Account(BaseModel):
     tier: str | None = None
     notes: str | None = None
     contract_signed: bool = False
+    phone_number: str | None = None
+    channels: list[str] | None = None
 
 
 class AccountSummary(BaseModel):
@@ -47,6 +49,8 @@ class AccountSummary(BaseModel):
     tier: str | None = None
     contract_signed: bool = False
     notes: str | None = None
+    phone_number: str | None = None
+    channels: list[str] | None = None
 
 
 class ListAccountsResponse(BaseModel):
@@ -72,6 +76,8 @@ class UpdateAccountRequest(BaseModel):
     tier: TargetTier | None = None
     notes: str | None = None
     contract_signed: bool | None = None
+    phone_number: str | None = None
+    channels: list[str] | None = None
 
     def to_account_params(self) -> AccountParams:
         return AccountParams(
@@ -89,6 +95,8 @@ class UpdateAccountRequest(BaseModel):
             tier=self.tier,
             notes=self.notes,
             contract_signed=self.contract_signed,
+            phone_number=self.phone_number,
+            channels=self.channels,
         )
 
 

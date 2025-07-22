@@ -46,6 +46,8 @@ def build_account(account: db.Account) -> Account:
         tier=account.tier.value if account.tier else None,
         notes=account.notes,
         contract_signed=account.contract_signed,
+        phone_number=account.phone_number,
+        channels=account.channels,
     )
 
 
@@ -63,6 +65,8 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         tier=account.tier.value if account.tier else None,
         contract_signed=account.contract_signed,
         notes=account.notes,
+        phone_number=account.phone_number,
+        channels=account.channels,
     )
 
 
