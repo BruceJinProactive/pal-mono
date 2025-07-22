@@ -777,8 +777,9 @@ def create_multilingual_workflow_demo(
                     _create_starting_message_node(
                         agent_config.persona.name,
                         account_display_name,
-                        True,
+                        False,
                     ),
+                    _create_language_selection_node(),
                     *[
                         _create_support_node(
                             lang,
@@ -880,16 +881,31 @@ def _create_starting_message_node(
             },
             "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
             "variableExtractionPlan": {
-                "output": [
-                    {
-                        "type": "string",
-                        "title": "preferred_language",
-                        "description": "Customer preferred language choice",
-                        "enum": ["english", "spanish", "chinese"],
-                    }
-                ]
+                "schema": {
+                    "type": "string",
+                    "title": "preferred_language",
+                    "description": "Customer preferred language choice",
+                    "enum": ["english", "spanish", "chinese"],
+                }
             },
         }
+
+
+def _create_language_selection_node() -> dict:
+    """Create the language selection node that waits for user's language preference."""
+    return {
+        "name": "language_selection",
+        "type": "conversation",
+        "prompt": "The AI agent just finished giving instructions about language options. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. If they say something unclear or don't specify a language, politely remind them of the options and ask them to choose.",
+        "variableExtractionPlan": {
+            "schema": {
+                "type": "string",
+                "title": "preferred_language",
+                "description": "Customer preferred language choice",
+                "enum": ["english", "spanish", "chinese"],
+            }
+        },
+    }
 
 
 def _create_support_node(
@@ -932,18 +948,21 @@ def _create_workflow_edges() -> list:
     """Create workflow routing edges."""
     edges = []
 
-    # Language preference conditions from start node
+    # Edge from start_node to language_selection
+    edges.append({"from": "start_node", "to": "language_selection"})
+
+    # Language preference conditions from language_selection node
     language_conditions = {
         "english": "Customer indicates they want to communicate in English by saying things like: 'English', 'English please', 'I speak English', 'Let's continue in English', 'Can we speak English?'.",
         "spanish": "Customer indicates they want to communicate in Spanish by saying things like: 'Spanish', 'Español', 'Spanish please', 'En español', 'Hablo español', 'I speak Spanish', 'Let's continue in Spanish', 'Can we speak Spanish?', 'Prefiero español'.",
         "chinese": "Customer indicates they want to communicate in Chinese by saying things like: 'Chinese', 'Mandarin', 'Chinese please'.",
     }
 
-    # Add edges directly from start_node to each language support
+    # Add edges from language_selection to each language support
     for lang, condition in language_conditions.items():
         edges.append(
             {
-                "from": "start_node",
+                "from": "language_selection",
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
