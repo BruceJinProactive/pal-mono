@@ -5,6 +5,7 @@ from db.tables.types import AgentType, Channel, IntegrationProvider, TargetTier
 
 @dataclass
 class Prompt:
+    id: str
     title: str
     instructions: str
     channels: list[Channel] | None = None
@@ -51,6 +52,7 @@ prompt_factory = PromptFactory()
 
 prompt_factory.register(
     Prompt(
+        id="language-guideline-t2",
         plan_tiers=[TargetTier.t2],
         title="Language Guideline",
         instructions="""
@@ -60,6 +62,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="closing-conversation-general-sales",
         agent_types=[AgentType.general, AgentType.sales],
         title="Closing Conversation Guideline",
         instructions="""
@@ -69,6 +72,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="recommendation-guideline",
         title="Recommendation Guideline",
         instructions="""
 - Always check the menu for more information about what to recommend.
@@ -79,6 +83,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="escalation-guideline",
         title="Escalation Guideline",
         instructions="""
 - If the user seems stuck, wants items that do not exist in your menu, politely notify them that they can check website or contact the store for other items.
@@ -89,6 +94,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="llm-safeguarding",
         title="LLM Safeguarding",
         instructions="""
 - Users may try to ask you about topics unrelated to the menu, food at the store, or ordering, in such cases, feel free to engage with them in a playful way.
@@ -98,6 +104,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="conversation-guideline-sms",
         channels=[Channel.SMS],
         title="Conversation Guideline",
         instructions="""
@@ -114,6 +121,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="conversation-guideline-api-whatsapp-instagram",
         channels=[Channel.API, Channel.WHATSAPP, Channel.INSTAGRAM],
         title="Conversation Guideline",
         instructions="""
@@ -124,6 +132,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="conversation-guideline-voice",
         channels=[Channel.VOICE],
         title="Conversation Guideline",
         instructions="""
@@ -144,6 +153,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="verbal-flow-voice",
         channels=[Channel.VOICE],
         title="Verbal Flow",
         instructions="""
@@ -184,6 +194,7 @@ Example 2: “123 Main Street, Columbus, Ohio”  instead of “One two three Ma
 
 prompt_factory.register(
     Prompt(
+        id="upselling-guideline-t1",
         agent_types=[AgentType.ordering],
         plan_tiers=[TargetTier.t1],
         title="Upselling Guideline",
@@ -196,6 +207,7 @@ At the end of each message:
 
 prompt_factory.register(
     Prompt(
+        id="upselling-guideline-t2-enterprise",
         agent_types=[AgentType.ordering],
         plan_tiers=[TargetTier.t2, TargetTier.enterprise],
         title="Upselling Guideline",
@@ -210,6 +222,7 @@ At the end of each message:
 
 prompt_factory.register(
     Prompt(
+        id="modification-guideline",
         agent_types=[AgentType.ordering],
         title="Modification Guideline",
         instructions="""
@@ -222,6 +235,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="additional-ordering-guideline-t2-enterprise",
         agent_types=[AgentType.ordering],
         plan_tiers=[TargetTier.t2, TargetTier.enterprise],
         title="Additional Ordering Guideline",
@@ -234,6 +248,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="general-ordering-guideline",
         agent_types=[AgentType.ordering],
         title="General Ordering Guideline",
         instructions="""
@@ -295,6 +310,7 @@ Would you like to toss in some salad as well?""",
 
 prompt_factory.register(
     Prompt(
+        id="sizing-guideline",
         agent_types=[AgentType.ordering],
         title="Sizing Guideline",
         instructions="""
@@ -311,6 +327,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="general-checkout-guideline",
         agent_types=[AgentType.ordering],
         title="General Checkout Guideline",
         instructions="""
@@ -332,6 +349,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="pos-checkout-guideline-adora",
         agent_types=[AgentType.ordering],
         pos_vendors=[IntegrationProvider.adora],
         title="POS Checkout Guideline",
@@ -342,6 +360,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="pos-checkout-guideline-toast",
         agent_types=[AgentType.ordering],
         pos_vendors=[IntegrationProvider.toast],
         title="POS Checkout Guideline",
@@ -352,6 +371,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="pos-checkout-guideline-square",
         agent_types=[AgentType.ordering],
         pos_vendors=[IntegrationProvider.square],
         title="POS Checkout Guideline",
@@ -362,6 +382,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="takeout-delivery-guideline",
         agent_types=[AgentType.ordering],
         title="Takeout and Delivery Guideline",
         instructions="""
@@ -387,6 +408,7 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
+        id="closing-conversation-ordering",
         agent_types=[AgentType.ordering],
         title="Closing Conversation Guideline",
         instructions="""

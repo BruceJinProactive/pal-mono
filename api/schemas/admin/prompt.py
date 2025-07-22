@@ -28,6 +28,16 @@ class Prompt(BaseModel):
     details: PromptDetails | None = None
 
 
+class SystemPrompt(BaseModel):
+    id: str
+    title: str
+    instructions: str
+    channels: list[str] | None = None
+    agent_types: list[str] | None = None
+    plan_tiers: list[str] | None = None
+    pos_vendors: list[str] | None = None
+
+
 class CreatePromptRequest(BaseModel):
     name: str
     default_prompt_id: str | None = None

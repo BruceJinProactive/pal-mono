@@ -88,6 +88,7 @@ from api.schemas.admin.prompt import (
     CreatePromptRequest,
     Prompt,
     PromptDetails,
+    SystemPrompt,
     UpdatePromptRequest,
 )
 from api.schemas.admin.subscription import (
@@ -1824,3 +1825,26 @@ def delete_prompt(
     Delete an existing prompt (soft delete).
     """
     _prompt.delete_prompt(context, session, account_name, prompt_id)
+
+
+@admin_router.get("/accounts/{account_name}/prompts/system")
+def get_system_prompts(
+    account_name: str,
+    resource_type: str = Query(..., description="Resource type"),
+    resource_id: uuid.UUID = Query(..., description="Resource ID"),
+    search: str | None = Query(
+        None, description="Search term to filter prompts by title or instructions"
+    ),
+    channels: str | None = Query(
+        None,
+        description="Comma-separated list of channels to filter by (e.g. 'sms,voice,api')",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> list[SystemPrompt]:
+    """
+    Get filtered system prompts based on resource type, agent type, plan tier, search, and channels.
+    """
+    return _prompt.get_system_prompts(
+        context, session, account_name, resource_type, resource_id, search, channels
+    )
