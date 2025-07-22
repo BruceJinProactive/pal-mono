@@ -780,6 +780,7 @@ def create_multilingual_workflow_demo(
                         False,
                     ),
                     _create_language_selection_node(),
+                    *_create_say_nodes(),
                     *[
                         _create_support_node(
                             lang,
@@ -908,6 +909,21 @@ def _create_language_selection_node() -> dict:
     }
 
 
+def _create_say_nodes() -> list[dict]:
+    """Create transition say nodes for each language."""
+    say_messages = {
+        "english": "Perfect! Let me connect you to our English support.",
+        "spanish": "¡Perfecto! Te conectaré con nuestro soporte en español.",
+        "chinese": "好的！我为您转接中文客服。",
+    }
+
+    say_nodes = []
+    for lang, message in say_messages.items():
+        say_nodes.append({"name": f"say_{lang}", "type": "say", "prompt": message})
+
+    return say_nodes
+
+
 def _create_support_node(
     language: str,
     config: dict,
@@ -958,18 +974,23 @@ def _create_workflow_edges() -> list:
         "chinese": "Customer selected Chinese language support",
     }
 
-    # Add edges from language_selection to each language support
+    # Add edges from language_selection to say nodes
     for lang, condition in language_conditions.items():
         edges.append(
             {
                 "from": "language_selection",
-                "to": f"{lang}_support",
+                "to": f"say_{lang}",
                 "condition": {
                     "type": "ai",
                     "prompt": condition,
                 },
             }
         )
+
+    # Add edges from say nodes to language support nodes
+    languages = ["english", "spanish", "chinese"]
+    for lang in languages:
+        edges.append({"from": f"say_{lang}", "to": f"{lang}_support"})
 
     # Note: Language switching between nodes is currently disabled
     # Once a customer selects a language, they remain in that language for the entire conversation
