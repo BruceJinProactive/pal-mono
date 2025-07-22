@@ -132,13 +132,9 @@ def _build_workflow_nodes(
 
     nodes = [
         # Starting message node
-        _create_starting_message_node(
-            agent_config.persona.name,
-            account_display_name,
-            False,
-        ),
+        _create_starting_message_node(agent_config.persona.name, account_display_name),
         # Language selection node
-        _create_language_selection_node(),
+        _create_language_selection_node(transcriber),
         # Say nodes for transitions
         *_create_say_nodes(say_configs=LANGUAGE_SAY_CONFIGS),
         # Support nodes for each language
@@ -243,54 +239,24 @@ def _create_voice_config(provider: str, voice_id: str, model: str, speech_rate) 
     return add_voice_speed_if_supported(voice, speech_rate) if speech_rate else voice
 
 
-def _create_starting_message_node(
-    agent_name: str,
-    account_display_name: str,
-    conversation_node: bool = False,
-) -> dict:
+def _create_starting_message_node(agent_name: str, account_display_name: str) -> dict:
     """Create the starting message node."""
     node_config = {
         "name": "start_node",
         "isStart": True,
+        "type": "say",
         "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
     }
-
-    if not conversation_node:
-        node_config["type"] = "say"
-    else:
-        node_config.update(
-            {
-                "type": "conversation",
-                "variableExtractionPlan": {
-                    "schema": {
-                        "type": "string",
-                        "title": "preferred_language",
-                        "description": "Customer preferred language choice",
-                        "enum": ["english", "spanish", "chinese"],
-                    }
-                },
-            }
-        )
 
     return node_config
 
 
-def _create_language_selection_node() -> dict:
+def _create_language_selection_node(transcriber: dict | None = None) -> dict:
     """Create the language selection node that waits for user's language preference."""
-    return {
+    node_config = {
         "name": "language_selection",
         "type": "conversation",
         "prompt": "The AI agent just finished giving instructions about language options. The first message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. DO NOT SAY ANYTHING. OUTPUT ONLY 'Let me know.'",
-        "transcriber": {
-            "provider": "google",
-            "model": "gemini-2.5-flash",
-            "language": "Multilingual",
-        },
-        "voice": {
-            "provider": "cartesia",
-            "voiceId": SPORTSMAN_VOICE_ID,
-            "model": "sonic-2",
-        },
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
@@ -300,6 +266,12 @@ def _create_language_selection_node() -> dict:
             }
         },
     }
+
+    # Add transcriber if provided
+    if transcriber:
+        node_config["transcriber"] = transcriber
+
+    return node_config
 
 
 def _create_say_nodes(say_configs: dict) -> list[dict]:
@@ -413,6 +385,11 @@ def _has_background_noise(agent_config) -> bool:
     )
 
 
+# ============================================================================
+# MAIN API HANDLERS
+# ============================================================================
+
+
 def _get_transcriber_and_voice_config(
     agent_config, voice_id: str | None, speech_rate
 ) -> tuple[dict, dict]:
@@ -452,11 +429,6 @@ def _get_transcriber_and_voice_config(
     voice = add_voice_speed_if_supported(voice, speech_rate)
 
     return transcriber, voice
-
-
-# ============================================================================
-# MAIN API HANDLERS
-# ============================================================================
 
 
 def send_dd_latency(
