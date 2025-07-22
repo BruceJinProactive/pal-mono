@@ -760,7 +760,7 @@ def create_multilingual_workflow_demo(
             },
             "chinese": {
                 "voice_model": "sonic-2",
-                "voice_id": "0b904166-a29f-4d2e-bb20-41ca302f98e9",  # chinese commercial woman
+                "voice_id": "3a63e2d1-1c1e-425d-8e79-5100bc910e90",  # chinese call center woman
                 "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。",
                 "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
             },
@@ -879,7 +879,7 @@ def _create_starting_message_node(
                 "voiceId": SPORTSMAN_VOICE_ID,
                 "model": "sonic-2",
             },
-            "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+            "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese.",
             "variableExtractionPlan": {
                 "schema": {
                     "type": "string",
@@ -896,7 +896,7 @@ def _create_language_selection_node() -> dict:
     return {
         "name": "language_selection",
         "type": "conversation",
-        "prompt": "The AI agent just finished giving instructions about language options. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. If they say something unclear or don't specify a language, politely remind them of the options and ask them to choose.",
+        "prompt": "The AI agent just finished giving instructions about language options. The fist message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. Say: 'Let me know which language you prefer.'",
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
@@ -953,9 +953,9 @@ def _create_workflow_edges() -> list:
 
     # Language preference conditions from language_selection node
     language_conditions = {
-        "english": "Customer indicates they want to communicate in English by saying things like: 'English', 'English please', 'I speak English', 'Let's continue in English', 'Can we speak English?'.",
-        "spanish": "Customer indicates they want to communicate in Spanish by saying things like: 'Spanish', 'Español', 'Spanish please', 'En español', 'Hablo español', 'I speak Spanish', 'Let's continue in Spanish', 'Can we speak Spanish?', 'Prefiero español'.",
-        "chinese": "Customer indicates they want to communicate in Chinese by saying things like: 'Chinese', 'Mandarin', 'Chinese please'.",
+        "english": "Customer selected English language support",
+        "spanish": "Customer selected Spanish language support",
+        "chinese": "Customer selected Chinese language support",
     }
 
     # Add edges from language_selection to each language support
