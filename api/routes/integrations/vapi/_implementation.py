@@ -356,40 +356,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             # Default to normal if not configured
             speech_rate = SpeechRate.normal
 
-        if config.persona.multilingual or config.persona.multilingual_workflow:
-            if config.persona.model_mode == "google":
-                transcriber = {
-                    "provider": "google",
-                    "model": "gemini-2.5-flash",
-                    "language": "Multilingual",
-                }
-            else:
-                # Default multilingual setup (Deepgram)
-                transcriber = {
-                    "provider": "deepgram",
-                    "model": "nova-3",
-                    "language": "multi",
-                }
-
-            voice = {
-                "provider": "cartesia",
-                "voiceId": voice_id or SPORTSMAN_VOICE_ID,
-                "model": "sonic-multilingual",
-            }
-
-        else:
-            transcriber = {
-                "provider": "deepgram",
-                "model": "nova-3",
-            }
-            voice = {
-                "provider": "cartesia",
-                "voiceId": voice_id or SPORTSMAN_VOICE_ID,
-                "model": "sonic",
-            }
-
-        # Add speed if provider supports it
-        voice = add_voice_speed_if_supported(voice, speech_rate)
+        # Get transcriber and voice configuration
+        transcriber, voice = _get_transcriber_and_voice_config(
+            config, voice_id, speech_rate
+        )
 
         if dynamic_vapi_config and config.voice_config.background_noise:
             background_sound = "office"
@@ -769,10 +739,9 @@ def create_multilingual_workflow_demo(
         voice_id = agent_config.voice_config.voice_id or SPORTSMAN_VOICE_ID
         speech_rate = getattr(agent_config.voice_config, "speech_rate", None)
 
-        # Base configurations
-        transcriber = {"provider": "deepgram", "model": "nova-3", "language": "multi"}
-        default_voice = _create_voice_config(
-            "cartesia", voice_id, "sonic-multilingual", speech_rate
+        # Get transcriber and default voice configuration
+        transcriber, default_voice = _get_transcriber_and_voice_config(
+            agent_config, voice_id, speech_rate
         )
 
         # Language configurations
@@ -808,7 +777,6 @@ def create_multilingual_workflow_demo(
                     _create_starting_message_node(
                         agent_config.persona.name, account_display_name
                     ),
-                    _create_language_selection_node(),
                     *[
                         _create_support_node(
                             lang,
@@ -838,6 +806,47 @@ def create_multilingual_workflow_demo(
         return {"error": f"Error creating multilingual workflow: {str(e)}"}
 
 
+def _get_transcriber_and_voice_config(
+    agent_config, voice_id: str | None, speech_rate
+) -> tuple[dict, dict]:
+    """Get transcriber and voice configuration based on agent config."""
+    if agent_config.persona.multilingual or agent_config.persona.multilingual_workflow:
+        if agent_config.persona.model_mode == "google":
+            transcriber = {
+                "provider": "google",
+                "model": "gemini-2.5-flash",
+                "language": "Multilingual",
+            }
+        else:
+            # Default multilingual setup (Deepgram)
+            transcriber = {
+                "provider": "deepgram",
+                "model": "nova-3",
+                "language": "multi",
+            }
+
+        voice = {
+            "provider": "cartesia",
+            "voiceId": voice_id or SPORTSMAN_VOICE_ID,
+            "model": "sonic-multilingual",
+        }
+    else:
+        transcriber = {
+            "provider": "deepgram",
+            "model": "nova-3",
+        }
+        voice = {
+            "provider": "cartesia",
+            "voiceId": voice_id or SPORTSMAN_VOICE_ID,
+            "model": "sonic",
+        }
+
+    # Add speed if provider supports it
+    voice = add_voice_speed_if_supported(voice, speech_rate)
+
+    return transcriber, voice
+
+
 def _create_voice_config(provider: str, voice_id: str, model: str, speech_rate) -> dict:
     """Create voice configuration with optional speech rate."""
     voice = {"provider": provider, "voiceId": voice_id, "model": model}
@@ -851,23 +860,6 @@ def _create_starting_message_node(agent_name: str, account_display_name: str) ->
         "type": "say",
         "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
         "isStart": True,
-    }
-
-
-def _create_language_selection_node() -> dict:
-    """Create the language selection node."""
-    return {
-        "name": "language_selection",
-        "type": "conversation",
-        "prompt": "Do not say anything. Listen to the customer's response about their language preference. They were just asked which language they prefer (English, Spanish, or Chinese). Extract their choice clearly. If they say something unclear, politely ask them to choose between English, Spanish, or Chinese.",
-        "variableExtractionPlan": {
-            "schema": {
-                "type": "string",
-                "title": "preferred_language",
-                "description": "Customer preferred language choice",
-                "enum": ["english", "spanish", "chinese"],
-            }
-        },
     }
 
 
@@ -909,36 +901,30 @@ def _create_support_node(
 
 def _create_workflow_edges() -> list:
     """Create workflow routing edges."""
-    languages = ["english", "spanish", "chinese"]
     edges = []
 
-    # Edge from starting message to language selection
-    edges.append({"from": "start_node", "to": "language_selection"})
+    # Language preference conditions from start node
+    language_conditions = {
+        "english": "Customer indicates they want to communicate in English by saying things like: 'English', 'English please', 'I speak English', 'Let's continue in English', 'Can we speak English?'.",
+        "spanish": "Customer indicates they want to communicate in Spanish by saying things like: 'Spanish', 'Español', 'Spanish please', 'En español', 'Hablo español', 'I speak Spanish', 'Let's continue in Spanish', 'Can we speak Spanish?', 'Prefiero español'.",
+        "chinese": "Customer indicates they want to communicate in Chinese by saying things like: 'Chinese', 'Mandarin', 'Chinese please'.",
+    }
 
-    # Add edges for each language
-    for lang in languages:
+    # Add edges directly from start_node to each language support
+    for lang, condition in language_conditions.items():
         edges.append(
             {
-                "from": "language_selection",
+                "from": "start_node",
                 "to": f"{lang}_support",
                 "condition": {
                     "type": "ai",
-                    "prompt": f"Customer selected {lang.capitalize()} language support",
+                    "prompt": condition,
                 },
             }
         )
 
-    # Add fallback to English
-    edges.append(
-        {
-            "from": "language_selection",
-            "to": "english_support",
-            "condition": {
-                "type": "ai",
-                "prompt": "If language preference is unclear or not detected, default to English support",
-            },
-        }
-    )
+    # Note: Language switching between nodes is currently disabled
+    # Once a customer selects a language, they remain in that language for the entire conversation
 
     return edges
 
