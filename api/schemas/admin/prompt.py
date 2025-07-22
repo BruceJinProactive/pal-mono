@@ -40,6 +40,7 @@ class CreatePromptRequest(BaseModel):
 
 class UpdatePromptRequest(BaseModel):
     name: str | None = None
+    default_prompt_id: str | None = None
     channel: list[str] | None = None
     content: str | None = None
     change_summary: str | None = None

@@ -97,6 +97,7 @@ def update_prompt(
             account_name,
             prompt_id,
             name=request.name,
+            default_prompt_id=request.default_prompt_id,
             channel=request.channel,
             content=request.content,
             change_summary=request.change_summary,

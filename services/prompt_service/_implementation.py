@@ -126,6 +126,7 @@ def update_prompt(
     account_name: str,
     prompt_id: uuid.UUID,
     name: str | None = None,
+    default_prompt_id: str | None = None,
     channel: list[str] | None = None,
     content: str | None = None,
     change_summary: str | None = None,
@@ -151,6 +152,8 @@ def update_prompt(
         prompt_update_data = {}
         if name is not None:
             prompt_update_data["name"] = name
+        if default_prompt_id is not None:
+            prompt_update_data["default_prompt_id"] = default_prompt_id
         if channel is not None:
             prompt_update_data["channel"] = channel
 
@@ -175,13 +178,7 @@ def update_prompt(
                 created_by=context.email,
             )
 
-            new_details = prompt_repository.create_prompt_details(
-                **asdict(details_params)
-            )
-
-            updated_prompt = prompt_repository.update_prompt(
-                prompt_id, default_prompt_id=str(new_details.id)
-            )
+            prompt_repository.create_prompt_details(**asdict(details_params))
 
         return updated_prompt
 
