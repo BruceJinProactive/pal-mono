@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Enum
+from sqlalchemy import Boolean, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -13,6 +13,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
+from .types import TargetTier
 
 if TYPE_CHECKING:
     from .agents import Agent
@@ -25,6 +26,12 @@ class BusinessIndustry(str, enum.Enum):
     FOOD_BEVERAGE = "food_beverage"
     LIFESTYLE = "lifestyle"
     E_COMMERCE = "e_commerce"
+
+
+class BusinessSegment(str, enum.Enum):
+    smb = "smb"  # small & medium business
+    mm = "mm"  # mid-market
+    ent = "ent"  # enterprise
 
 
 class AccountStatus(str, enum.Enum):
@@ -67,6 +74,21 @@ class Account(Base):
     # Stripe subscription info
     stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Owner information
+    owner: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Business segment and tier information
+    segment: Mapped[BusinessSegment | None] = mapped_column(
+        Enum(BusinessSegment), nullable=True
+    )
+    tier: Mapped[TargetTier | None] = mapped_column(Enum(TargetTier), nullable=True)
+
+    # Contract and notes information
+    contract_signed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, index=True, server_default=text("false")
+    )
+    notes: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns
     status: Mapped[AccountStatus] = mapped_column(
