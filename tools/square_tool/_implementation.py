@@ -156,7 +156,7 @@ class SquareTool(Toolkit):
                     raise ValueError(
                         "No access token available from integration or fallback"
                     )
-
+            logger.info(f"Amy's Debug Info: {access_token}")
             bearer_token = SquareAccessToken(
                 access_token=access_token,
                 token_type="Bearer",
