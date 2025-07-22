@@ -775,7 +775,11 @@ def create_multilingual_workflow_demo(
                 "globalPrompt": f"{account_display_name} provides excellent customer service.",
                 "nodes": [
                     _create_starting_message_node(
-                        agent_config.persona.name, account_display_name
+                        agent_config.persona.name,
+                        account_display_name,
+                        caller_info_short,
+                        api_url,
+                        True,
                     ),
                     *[
                         _create_support_node(
@@ -853,14 +857,54 @@ def _create_voice_config(provider: str, voice_id: str, model: str, speech_rate) 
     return add_voice_speed_if_supported(voice, speech_rate) if speech_rate else voice
 
 
-def _create_starting_message_node(agent_name: str, account_display_name: str) -> dict:
+def _create_starting_message_node(
+    agent_name: str,
+    account_display_name: str,
+    caller_info_short: dict,
+    api_url: str,
+    conversation_node: bool = False,
+) -> dict:
     """Create the starting message node."""
-    return {
-        "name": "start_node",
-        "type": "say",
-        "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
-        "isStart": True,
-    }
+    if not conversation_node:
+        return {
+            "name": "start_node",
+            "type": "say",
+            "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+            "isStart": True,
+        }
+    else:
+        return {
+            "name": "start_node",
+            "type": "conversation",
+            "isStart": True,
+            "voice": {
+                "provider": "cartesia",
+                "voiceId": SPORTSMAN_VOICE_ID,
+                "model": "sonic-2",
+            },
+            "model": {
+                "provider": "custom-llm",
+                "url": f"{api_url}/v1",
+                "model": json.dumps(caller_info_short),
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a customer support agent. You are helping the customer to choose the language they prefer.",
+                    }
+                ],
+            },
+            "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+            "variableExtractionPlan": {
+                "output": [
+                    {
+                        "type": "string",
+                        "title": "preferred_language",
+                        "description": "Customer preferred language choice",
+                        "enum": ["english", "spanish", "chinese"],
+                    }
+                ]
+            },
+        }
 
 
 def _create_support_node(
