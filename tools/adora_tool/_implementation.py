@@ -841,7 +841,7 @@ class AdoraTool(Toolkit):
                     return "Failed to extract structured data. Please try again."
 
             if not order.order_type:
-                logger.error("No order type specified.")
+                logger.debug("No order type specified.")
                 return "Sorry, do you want that for Takeout or Delivery?"
 
             try:
@@ -854,7 +854,7 @@ class AdoraTool(Toolkit):
             # Validate the address if the order is for delivery
             if order.order_type == AdoraOrderType.DELIVERY:
                 if not order.delivery_address:
-                    logger.warning(
+                    logger.debug(
                         "AdoraTool.checkout_order] Delivery order constructed has no address"
                     )
                     return "Could you provide your address?"
@@ -912,13 +912,13 @@ class AdoraTool(Toolkit):
 
             ### Validate and check fields ###
             if not order.customer:
-                logger.error("Customer info is missing.")
+                logger.debug("Customer info is missing.")
                 return "We'll need your first name and phone number to place the order."
             elif not order.customer.first_name:
-                logger.error("Customer first name is missing.")
+                logger.debug("Customer first name is missing.")
                 return "We'll need your first name."
             elif not order.customer.phone_number:
-                logger.error("Customer phone number is missing.")
+                logger.debug("Customer phone number is missing.")
                 return "We'll need your phone number."
 
             # Set user's last name
