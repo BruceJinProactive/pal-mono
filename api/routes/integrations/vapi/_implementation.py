@@ -777,8 +777,6 @@ def create_multilingual_workflow_demo(
                     _create_starting_message_node(
                         agent_config.persona.name,
                         account_display_name,
-                        caller_info_short,
-                        api_url,
                         True,
                     ),
                     *[
@@ -860,8 +858,6 @@ def _create_voice_config(provider: str, voice_id: str, model: str, speech_rate) 
 def _create_starting_message_node(
     agent_name: str,
     account_display_name: str,
-    caller_info_short: dict,
-    api_url: str,
     conversation_node: bool = False,
 ) -> dict:
     """Create the starting message node."""
@@ -881,17 +877,6 @@ def _create_starting_message_node(
                 "provider": "cartesia",
                 "voiceId": SPORTSMAN_VOICE_ID,
                 "model": "sonic-2",
-            },
-            "model": {
-                "provider": "custom-llm",
-                "url": f"{api_url}/v1",
-                "model": json.dumps(caller_info_short),
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a customer support agent. You are helping the customer to choose the language they prefer.",
-                    }
-                ],
             },
             "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
             "variableExtractionPlan": {
