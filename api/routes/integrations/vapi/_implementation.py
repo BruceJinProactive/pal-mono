@@ -770,17 +770,24 @@ def create_multilingual_workflow_demo(
         workflow_config = {
             "workflow": {
                 "name": f"{account_display_name} Multilingual Support Workflow",
-                "transcriber": transcriber,
-                "voice": default_voice,
                 "globalPrompt": f"{account_display_name} provides excellent customer service.",
                 "nodes": [
                     _create_starting_message_node(
                         agent_config.persona.name,
                         account_display_name,
                         False,
+                        transcriber,
+                        default_voice,
                     ),
-                    _create_language_selection_node(),
-                    *_create_say_nodes(voice_id, speech_rate),
+                    _create_language_selection_node(
+                        {
+                            "provider": "google",
+                            "model": "gemini-2.5-flash",
+                            "language": "Multilingual",
+                        },
+                        default_voice,
+                    ),
+                    *_create_say_nodes(voice_id, speech_rate, transcriber),
                     *[
                         _create_support_node(
                             lang,
@@ -789,6 +796,7 @@ def create_multilingual_workflow_demo(
                             speech_rate,
                             api_url,
                             caller_info_short,
+                            transcriber,
                         )
                         for lang, config in language_configs.items()
                     ],
@@ -832,7 +840,7 @@ def _get_transcriber_and_voice_config(
         voice = {
             "provider": "cartesia",
             "voiceId": voice_id or SPORTSMAN_VOICE_ID,
-            "model": "sonic-multilingual",
+            "model": "sonic-2",
         }
     else:
         transcriber = {
@@ -861,43 +869,50 @@ def _create_starting_message_node(
     agent_name: str,
     account_display_name: str,
     conversation_node: bool = False,
+    transcriber: dict | None = None,
+    voice: dict | None = None,
 ) -> dict:
     """Create the starting message node."""
+    node_config = {
+        "name": "start_node",
+        "isStart": True,
+        "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+    }
+
+    # Add transcriber and voice if provided
+    if transcriber:
+        node_config["transcriber"] = transcriber
+    if voice:
+        node_config["voice"] = voice
+
     if not conversation_node:
-        return {
-            "name": "start_node",
-            "type": "say",
-            "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
-            "isStart": True,
-        }
+        node_config["type"] = "say"
     else:
-        return {
-            "name": "start_node",
-            "type": "conversation",
-            "isStart": True,
-            "voice": {
-                "provider": "cartesia",
-                "voiceId": SPORTSMAN_VOICE_ID,
-                "model": "sonic-2",
-            },
-            "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese.",
-            "variableExtractionPlan": {
-                "schema": {
-                    "type": "string",
-                    "title": "preferred_language",
-                    "description": "Customer preferred language choice",
-                    "enum": ["english", "spanish", "chinese"],
-                }
-            },
-        }
+        node_config.update(
+            {
+                "type": "conversation",
+                "variableExtractionPlan": {
+                    "schema": {
+                        "type": "string",
+                        "title": "preferred_language",
+                        "description": "Customer preferred language choice",
+                        "enum": ["english", "spanish", "chinese"],
+                    }
+                },
+            }
+        )
+
+    return node_config
 
 
-def _create_language_selection_node() -> dict:
+def _create_language_selection_node(
+    transcriber: dict | None = None, voice: dict | None = None
+) -> dict:
     """Create the language selection node that waits for user's language preference."""
-    return {
+    node_config = {
         "name": "language_selection",
         "type": "conversation",
-        "prompt": "The AI agent just finished giving instructions about language options. The fist message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. Say: 'Let me know which language you prefer.'",
+        "prompt": "The AI agent just finished giving instructions about language options. The fist message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. DO NOT SAY ANYTHING. OUTPUT ONLY AN EMPTY STRING.",
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
@@ -908,8 +923,18 @@ def _create_language_selection_node() -> dict:
         },
     }
 
+    # Add transcriber and voice if provided
+    if transcriber:
+        node_config["transcriber"] = transcriber
+    if voice:
+        node_config["voice"] = voice
 
-def _create_say_nodes(voice_id: str | None, speech_rate) -> list[dict]:
+    return node_config
+
+
+def _create_say_nodes(
+    voice_id: str | None, speech_rate, transcriber: dict | None = None
+) -> list[dict]:
     """Create transition say nodes for each language with appropriate voices."""
     say_configs = {
         "english": {
@@ -931,14 +956,17 @@ def _create_say_nodes(voice_id: str | None, speech_rate) -> list[dict]:
 
     say_nodes = []
     for lang, config in say_configs.items():
+        node_config: dict = {
+            "name": f"say_{lang}",
+            "type": "say",
+            "prompt": config["prompt"],
+        }
 
-        say_nodes.append(
-            {
-                "name": f"say_{lang}",
-                "type": "say",
-                "prompt": config["prompt"],
-            }
-        )
+        # Add transcriber if provided
+        if transcriber:
+            node_config["transcriber"] = transcriber
+
+        say_nodes.append(node_config)
 
     return say_nodes
 
@@ -950,33 +978,40 @@ def _create_support_node(
     speech_rate,
     api_url: str,
     caller_info_short: dict,
+    transcriber: dict | None = None,
 ) -> dict:
     """Create a language-specific support node."""
     # Use language-specific voice ID if available, otherwise use default
     voice_id = config.get("voice_id", default_voice_id)
-    # final_message = ""
-    # if language == "chinese":
-    #     final_message = (
-    #         "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答用户的问题"
-    #     )
-    # elif language == "spanish":
-    #     final_message = "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder a las preguntas del usuario en español."
-    return {
+
+    # Language-specific system message additions
+    language_instructions = {
+        "chinese": "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答用户的问题",
+        "spanish": "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder a las preguntas del usuario en español.",
+    }
+
+    system_content = config["system_content"] + language_instructions.get(language, "")
+
+    node_config = {
         "name": f"{language}_support",
         "type": "conversation",
         "voice": _create_voice_config(
             "cartesia", voice_id, config["voice_model"], speech_rate
         ),
-        # "model": {
-        #     "provider": "custom-llm",
-        #     "url": f"{api_url}/v1",
-        #     "model": json.dumps(caller_info_short),
-        #     "messages": [
-        #         {"role": "system", "content": config["system_content"] + final_message}
-        #     ],
-        # },
+        "model": {
+            "provider": "custom-llm",
+            "url": f"{api_url}/v1",
+            "model": json.dumps(caller_info_short),
+            "messages": [{"role": "system", "content": system_content}],
+        },
         "prompt": config["prompt"],
     }
+
+    # Add transcriber if provided
+    if transcriber:
+        node_config["transcriber"] = transcriber
+
+    return node_config
 
 
 def _create_workflow_edges() -> list:
