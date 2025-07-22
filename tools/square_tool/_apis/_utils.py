@@ -124,6 +124,16 @@ def connect_square_api(
 
         try:
             # Make request
+            logger.info(
+                "Sending square request",
+                extra={
+                    "base_url": base_url,
+                    "method_str": method_str,
+                    "path": path,
+                    "body": body,
+                    "headers": json.dumps(headers),
+                },
+            )
             conn.request(method_str, path, body, headers)
 
             # Get response
