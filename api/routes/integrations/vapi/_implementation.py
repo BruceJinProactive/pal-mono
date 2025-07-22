@@ -280,7 +280,17 @@ def _create_language_selection_node() -> dict:
     return {
         "name": "language_selection",
         "type": "conversation",
-        "prompt": "The AI agent just finished giving instructions about language options. The first message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. DO NOT SAY ANYTHING. OUTPUT ONLY AN EMPTY STRING.",
+        "prompt": "The AI agent just finished giving instructions about language options. The first message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. DO NOT SAY ANYTHING. OUTPUT ONLY 'Let me know.'",
+        "transcriber": {
+            "provider": "google",
+            "model": "gemini-2.5-flash",
+            "language": "Multilingual",
+        },
+        "voice": {
+            "provider": "cartesia",
+            "voiceId": SPORTSMAN_VOICE_ID,
+            "model": "sonic-2",
+        },
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
