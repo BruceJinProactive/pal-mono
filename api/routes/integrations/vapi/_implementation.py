@@ -918,12 +918,12 @@ def _create_say_nodes(voice_id: str | None, speech_rate) -> list[dict]:
             "voice_model": "sonic-2",
         },
         "spanish": {
-            "prompt": "¡Perfecto! Te conectaré con nuestro soporte en español.",
+            "prompt": "Perfect! Let me connect you to our Spanish support.",
             "voice_id": "db832ebd-3cb6-42e7-9d47-912b425adbaa",  # young spanish-speaking woman
             "voice_model": "sonic-2",
         },
         "chinese": {
-            "prompt": "好的！我为您转接中文客服。",
+            "prompt": "Perfect! Let me connect you to our Chinese support.",
             "voice_id": "0b904166-a29f-4d2e-bb20-41ca302f98e9",  # chinese commercial woman
             "voice_model": "sonic-2",
         },
@@ -931,16 +931,12 @@ def _create_say_nodes(voice_id: str | None, speech_rate) -> list[dict]:
 
     say_nodes = []
     for lang, config in say_configs.items():
-        voice_config = _create_voice_config(
-            "cartesia", config["voice_id"], config["voice_model"], speech_rate
-        )
 
         say_nodes.append(
             {
                 "name": f"say_{lang}",
                 "type": "say",
                 "prompt": config["prompt"],
-                "voice": voice_config,
             }
         )
 
