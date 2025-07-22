@@ -166,7 +166,7 @@ def create_order(
         return CreateOrderResponse(**result)
 
     except Exception as e:
-        raise ValueError(f"Failed to create order: {str(e)}") from e
+        raise ValueError(f"Failed to create order: {access_token} {str(e)}") from e
 
 
 def create_payment_link(
