@@ -49,18 +49,12 @@ LANGUAGE_VOICE_CONFIGS = {
 LANGUAGE_SAY_CONFIGS = {
     "english": {
         "prompt": "Perfect! Let me connect you to our English support.",
-        "voice_id": "ed81fd13-2016-4a49-8fe3-c0d2761695fc",
-        "voice_model": "sonic-2",
     },
     "spanish": {
-        "prompt": "Perfect! Let me connect you to our Spanish support.",
-        "voice_id": "db832ebd-3cb6-42e7-9d47-912b425adbaa",
-        "voice_model": "sonic-2",
+        "prompt": "¡Perfecto! Te conecto con nuestro soporte en español.",
     },
     "chinese": {
-        "prompt": "Perfect! Let me connect you to our Chinese support.",
-        "voice_id": "0b904166-a29f-4d2e-bb20-41ca302f98e9",  # chinese commercial woman
-        "voice_model": "sonic-2",
+        "prompt": "好的！让我为您连接到我们的中文客服。",
     },
 }
 
@@ -278,10 +272,18 @@ def _create_say_nodes(say_configs: dict) -> list[dict]:
     """Create transition say nodes for each language with appropriate voices."""
     say_nodes = []
     for lang, config in say_configs.items():
+        # Get voice configuration from LANGUAGE_VOICE_CONFIGS
+        voice_config = LANGUAGE_VOICE_CONFIGS[lang]
+
         node_config: dict = {
             "name": f"say_{lang}",
             "type": "say",
             "prompt": config["prompt"],
+            "voice": {
+                "provider": "cartesia",
+                "voiceId": voice_config["voice_id"],
+                "model": voice_config["voice_model"],
+            },
         }
 
         say_nodes.append(node_config)
