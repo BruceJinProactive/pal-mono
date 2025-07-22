@@ -780,7 +780,7 @@ def create_multilingual_workflow_demo(
                         False,
                     ),
                     _create_language_selection_node(),
-                    *_create_say_nodes(),
+                    *_create_say_nodes(voice_id, speech_rate),
                     *[
                         _create_support_node(
                             lang,
@@ -909,17 +909,40 @@ def _create_language_selection_node() -> dict:
     }
 
 
-def _create_say_nodes() -> list[dict]:
-    """Create transition say nodes for each language."""
-    say_messages = {
-        "english": "Perfect! Let me connect you to our English support.",
-        "spanish": "¡Perfecto! Te conectaré con nuestro soporte en español.",
-        "chinese": "好的！我为您转接中文客服。",
+def _create_say_nodes(voice_id: str | None, speech_rate) -> list[dict]:
+    """Create transition say nodes for each language with appropriate voices."""
+    say_configs = {
+        "english": {
+            "prompt": "Perfect! Let me connect you to our English support.",
+            "voice_id": voice_id or SPORTSMAN_VOICE_ID,
+            "voice_model": "sonic-2",
+        },
+        "spanish": {
+            "prompt": "¡Perfecto! Te conectaré con nuestro soporte en español.",
+            "voice_id": "db832ebd-3cb6-42e7-9d47-912b425adbaa",  # young spanish-speaking woman
+            "voice_model": "sonic-2",
+        },
+        "chinese": {
+            "prompt": "好的！我为您转接中文客服。",
+            "voice_id": "0b904166-a29f-4d2e-bb20-41ca302f98e9",  # chinese commercial woman
+            "voice_model": "sonic-2",
+        },
     }
 
     say_nodes = []
-    for lang, message in say_messages.items():
-        say_nodes.append({"name": f"say_{lang}", "type": "say", "prompt": message})
+    for lang, config in say_configs.items():
+        voice_config = _create_voice_config(
+            "cartesia", config["voice_id"], config["voice_model"], speech_rate
+        )
+
+        say_nodes.append(
+            {
+                "name": f"say_{lang}",
+                "type": "say",
+                "prompt": config["prompt"],
+                "voice": voice_config,
+            }
+        )
 
     return say_nodes
 
@@ -935,27 +958,27 @@ def _create_support_node(
     """Create a language-specific support node."""
     # Use language-specific voice ID if available, otherwise use default
     voice_id = config.get("voice_id", default_voice_id)
-    final_message = ""
-    if language == "chinese":
-        final_message = (
-            "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答用户的问题"
-        )
-    elif language == "spanish":
-        final_message = "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder a las preguntas del usuario en español."
+    # final_message = ""
+    # if language == "chinese":
+    #     final_message = (
+    #         "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答用户的问题"
+    #     )
+    # elif language == "spanish":
+    #     final_message = "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder a las preguntas del usuario en español."
     return {
         "name": f"{language}_support",
         "type": "conversation",
         "voice": _create_voice_config(
             "cartesia", voice_id, config["voice_model"], speech_rate
         ),
-        "model": {
-            "provider": "custom-llm",
-            "url": f"{api_url}/v1",
-            "model": json.dumps(caller_info_short),
-            "messages": [
-                {"role": "system", "content": config["system_content"] + final_message}
-            ],
-        },
+        # "model": {
+        #     "provider": "custom-llm",
+        #     "url": f"{api_url}/v1",
+        #     "model": json.dumps(caller_info_short),
+        #     "messages": [
+        #         {"role": "system", "content": config["system_content"] + final_message}
+        #     ],
+        # },
         "prompt": config["prompt"],
     }
 
