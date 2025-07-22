@@ -41,6 +41,11 @@ def build_account(account: db.Account) -> Account:
         projects=[str(project.id) for project in account.projects],
         agents=[str(agent.id) for agent in account.agents],
         status=account.status,
+        owner=account.owner,
+        segment=account.segment.value if account.segment else None,
+        tier=account.tier.value if account.tier else None,
+        notes=account.notes,
+        contract_signed=account.contract_signed,
     )
 
 
@@ -53,6 +58,11 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         icon_url=map_uri_to_s3_url(account.icon_uri),
         industry=account.industry,
         status=account.status,
+        owner=account.owner,
+        segment=account.segment.value if account.segment else None,
+        tier=account.tier.value if account.tier else None,
+        contract_signed=account.contract_signed,
+        notes=account.notes,
     )
 
 

@@ -4,7 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from db.tables.accounts import AccountStatus, BusinessIndustry
+from db.tables.accounts import AccountSegment, AccountStatus, BusinessIndustry
+from db.tables.types import TargetTier
 from services.account_service import AccountParams
 
 
@@ -25,6 +26,11 @@ class Account(BaseModel):
     projects: list[str] = []  # list of project uuids
     agents: list[str] = []  # list of agent uuids
     lead_id: UUID | None = None
+    owner: str | None = None
+    segment: str | None = None
+    tier: str | None = None
+    notes: str | None = None
+    contract_signed: bool = False
 
 
 class AccountSummary(BaseModel):
@@ -36,6 +42,11 @@ class AccountSummary(BaseModel):
     status: AccountStatus
     icon_url: str
     industry: str | None
+    owner: str | None = None
+    segment: str | None = None
+    tier: str | None = None
+    contract_signed: bool = False
+    notes: str | None = None
 
 
 class ListAccountsResponse(BaseModel):
@@ -56,6 +67,11 @@ class UpdateAccountRequest(BaseModel):
     business_promotions: str | None = None
     business_catalog: str | None = None
     business_others: str | None = None
+    owner: str | None = None
+    segment: AccountSegment | None = None
+    tier: TargetTier | None = None
+    notes: str | None = None
+    contract_signed: bool | None = None
 
     def to_account_params(self) -> AccountParams:
         return AccountParams(
@@ -68,6 +84,11 @@ class UpdateAccountRequest(BaseModel):
             business_promotions=self.business_promotions,
             business_catalog=self.business_catalog,
             business_others=self.business_others,
+            owner=self.owner,
+            segment=self.segment,
+            tier=self.tier,
+            notes=self.notes,
+            contract_signed=self.contract_signed,
         )
 
 

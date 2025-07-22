@@ -49,6 +49,12 @@ class AccountStatus(str, enum.Enum):
     deleted = "deleted"  # soft deleting account
 
 
+class AccountSegment(str, enum.Enum):
+    smb = "smb"  # small & medium business
+    mm = "mm"  # mid-market
+    ent = "ent"  # enterprise
+
+
 class Account(Base):
     __tablename__ = "accounts"
 
