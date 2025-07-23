@@ -239,7 +239,7 @@ def _create_starting_message_node(agent_name: str, account_display_name: str) ->
         "name": "start_node",
         "isStart": True,
         "type": "say",
-        "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish, or Chinese. Please tell me which language you prefer.",
+        "prompt": f"Introduce yourself and decide which language the customer prefer by asking questions such as: Hi, this is {agent_name} from {account_display_name}. I can help you in English, Spanish/español, or Chinese/中文. Please tell me which language you prefer.",
     }
 
     return node_config
