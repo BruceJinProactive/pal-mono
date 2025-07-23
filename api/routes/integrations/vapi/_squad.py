@@ -1,8 +1,8 @@
 import json
 import os
-from typing import Literal
+from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from utils.log import logger
 
@@ -12,6 +12,7 @@ from ._workflow import _get_language_configurations
 
 
 class VAPIAssistant(BaseModel):
+    name: str
     firstMessage: str
     transcriber: dict
     model: dict | str
@@ -34,14 +35,25 @@ class AssistantDestination(BaseModel):
     type: Literal["assistant"] = "assistant"
 
 
+class SquadMember(BaseModel):
+    assistantId: Optional[str] = None  # For existing assistants
+    assistant: Optional[VAPIAssistant] = None  # For transient assistants
+    assistantDestinations: Optional[list[AssistantDestination]] = (
+        None  # Transfer destinations for this member
+    )
+
+    @model_validator(mode="after")
+    def validate_assistant_or_assistant_id(self):
+        if self.assistant is None and self.assistantId is None:
+            raise ValueError("Either assistant or assistantId must be provided")
+        return self
+
+
 class SquadConfig(BaseModel):
     name: str
     members: list[
-        VAPIAssistant
-    ]  # This is the list of assistants that make up the squad. The call will start with the first assistant in the list.
-    assistantDestinations: list[
-        AssistantDestination
-    ]  # These are the other assistants that this assistant can transfer to.
+        SquadMember
+    ]  # This is the list of squad members that make up the squad.
 
 
 def _create_voice_config(language_config: dict, speech_rate) -> dict:
@@ -100,6 +112,7 @@ def _create_assistant_config(
 
 
 def _create_language_assistant(
+    name: str,
     language: str,
     language_config: dict,
     agent_config,
@@ -127,6 +140,9 @@ def _create_language_assistant(
 
     # Add background speech denoising if available
     _add_background_denoising_if_available(assistant_config, agent_config)
+
+    # Add name
+    assistant_config["name"] = name
 
     return VAPIAssistant(**assistant_config)
 
@@ -185,8 +201,59 @@ def create_multilingual_squad_demo(
         # Create multilingual greeting for the main assistant
         multilingual_greeting = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or 中文. How can I assist you today?"
 
+        # Create assistant destinations for each language assistant
+
+        # For English assistant: can transfer to Spanish and Chinese
+        english_destinations = [
+            AssistantDestination(
+                assistantName="spanish_assistant",
+                message="¡Perfecto! Te conecto con nuestro soporte en español.",
+                description="Spanish language customer support. Transfer here when customer requests help in Spanish or español.",
+                transferMode="swap-system-message-in-history",
+            ),
+            AssistantDestination(
+                assistantName="chinese_assistant",
+                message="好的！让我为您连接到我们的中文客服。",
+                description="Chinese language customer support. Transfer here when customer requests help in Chinese or 中文.",
+                transferMode="swap-system-message-in-history",
+            ),
+        ]
+
+        # For Spanish assistant: can transfer to English and Chinese
+        spanish_destinations = [
+            AssistantDestination(
+                assistantName="english_assistant",
+                message="Perfect! I'll connect you with our English support.",
+                description="English language customer support. Transfer here when customer requests help in English.",
+                transferMode="swap-system-message-in-history",
+            ),
+            AssistantDestination(
+                assistantName="chinese_assistant",
+                message="好的！让我为您连接到我们的中文客服。",
+                description="Chinese language customer support. Transfer here when customer requests help in Chinese or 中文.",
+                transferMode="swap-system-message-in-history",
+            ),
+        ]
+
+        # For Chinese assistant: can transfer to English and Spanish
+        chinese_destinations = [
+            AssistantDestination(
+                assistantName="english_assistant",
+                message="Perfect! I'll connect you with our English support.",
+                description="English language customer support. Transfer here when customer requests help in English.",
+                transferMode="swap-system-message-in-history",
+            ),
+            AssistantDestination(
+                assistantName="spanish_assistant",
+                message="¡Perfecto! Te conecto con nuestro soporte en español.",
+                description="Spanish language customer support. Transfer here when customer requests help in Spanish or español.",
+                transferMode="swap-system-message-in-history",
+            ),
+        ]
+
         # Create assistants using helper functions
         english_assistant = _create_language_assistant(
+            name="english_assistant",
             language="english",
             language_config=language_configs["english"],
             agent_config=agent_config,
@@ -199,6 +266,7 @@ def create_multilingual_squad_demo(
         )
 
         spanish_assistant = _create_language_assistant(
+            name="spanish_assistant",
             language="spanish",
             language_config=language_configs["spanish"],
             agent_config=agent_config,
@@ -213,6 +281,7 @@ def create_multilingual_squad_demo(
         )
 
         chinese_assistant = _create_language_assistant(
+            name="chinese_assistant",
             language="chinese",
             language_config=language_configs["chinese"],
             agent_config=agent_config,
@@ -226,28 +295,23 @@ def create_multilingual_squad_demo(
             ),
         )
 
-        # Create assistant destinations for language switching
-        spanish_destination = AssistantDestination(
-            assistantName="spanish_support",
-            message="¡Perfecto! Te conecto con nuestro soporte en español.",
-            description="Spanish language customer support. Transfer here when customer requests help in Spanish or español.",
-            transferMode="swap-system-message-in-history",
-        )
-
-        chinese_destination = AssistantDestination(
-            assistantName="chinese_support",
-            message="好的！让我为您连接到我们的中文客服。",
-            description="Chinese language customer support. Transfer here when customer requests help in Chinese or 中文.",
-            transferMode="swap-system-message-in-history",
-        )
-
-        assistant_destinations = [spanish_destination, chinese_destination]
-
         # Create squad configuration
         squad_config = SquadConfig(
             name=f"{account_display_name} Multilingual Support Squad",
-            members=[english_assistant, spanish_assistant, chinese_assistant],
-            assistantDestinations=assistant_destinations,
+            members=[
+                SquadMember(
+                    assistant=english_assistant,
+                    assistantDestinations=english_destinations,
+                ),
+                SquadMember(
+                    assistant=spanish_assistant,
+                    assistantDestinations=spanish_destinations,
+                ),
+                SquadMember(
+                    assistant=chinese_assistant,
+                    assistantDestinations=chinese_destinations,
+                ),
+            ],
         )
 
         return {"squad": squad_config.model_dump()}
