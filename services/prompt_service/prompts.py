@@ -1,6 +1,10 @@
 from dataclasses import dataclass
+from uuid import UUID
 
+from db.repositories.prompt_repository import PromptRepository
+from db.session import SyncSessionLocal
 from db.tables.types import AgentType, Channel, IntegrationProvider, TargetTier
+from utils.log import logger
 
 
 @dataclass
@@ -27,8 +31,22 @@ class PromptFactory:
         agent_type: AgentType,
         plan_tier: TargetTier,
         pos_vendor: IntegrationProvider | None,
+        agent_id: UUID | None = None,
     ) -> list[tuple[str, str]]:
-        selected_prompts = []
+        """
+        Build the final list of prompts by merging factory prompts with database prompts.
+
+        Args:
+            channel: Communication channel (SMS, VOICE, etc.)
+            agent_type: Type of agent (ordering, general, etc.)
+            plan_tier: Tier level (t1, t2, enterprise)
+            pos_vendor: POS vendor integration (adora, toast, etc.)
+            agent_id: Agent ID for querying database prompts (optional)
+
+        Returns:
+            List of (title, instructions) tuples for the final prompts
+        """
+        selected_factory_prompts = []
         for prompt in self.registry:
             if prompt.channels is not None and channel not in prompt.channels:
                 continue
@@ -38,13 +56,87 @@ class PromptFactory:
                 continue
             if prompt.pos_vendors is not None and pos_vendor not in prompt.pos_vendors:
                 continue
-            selected_prompts.append(prompt)
+            selected_factory_prompts.append(prompt)
 
-        sections = []
-        for prompt in selected_prompts:
-            sections.append((f"## {prompt.title}", prompt.instructions))
+        factory_prompts = []
+        for prompt in selected_factory_prompts:
+            factory_prompts.append((f"## {prompt.title}", prompt.instructions))
 
-        return sections
+        if agent_id is None:
+            return factory_prompts
+
+        with SyncSessionLocal() as session:
+            try:
+                prompt_repository = PromptRepository(session, auto_commit=False)
+
+                all_db_prompts = prompt_repository.get_prompts(
+                    resource_type="agent",
+                    resource_id=agent_id,
+                    channels=[channel.value] if channel else None,
+                )
+
+                db_prompts = []
+                for prompt in all_db_prompts:
+                    if prompt.channel is None or len(prompt.channel) == 0:
+                        db_prompts.append(prompt)
+                    elif channel in prompt.channel:
+                        db_prompts.append(prompt)
+
+                active_db_prompts = [p for p in db_prompts if not p.deleted]
+
+                final_prompts = {}
+
+                for factory_prompt in selected_factory_prompts:
+                    try:
+                        if not hasattr(factory_prompt, "title") or not hasattr(
+                            factory_prompt, "id"
+                        ):
+                            raise ValueError(
+                                f"Factory prompt missing title or id attributes: {factory_prompt}"
+                            )
+
+                        final_prompts[factory_prompt.id] = (
+                            f"## {factory_prompt.title}",
+                            factory_prompt.instructions,
+                        )
+
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing factory prompt '{factory_prompt.title}': {e}. Prompt will be dropped."
+                        )
+
+                for db_prompt in active_db_prompts:
+                    try:
+                        latest_details = prompt_repository.get_latest_prompt_details(
+                            db_prompt.id
+                        )
+                        if latest_details:
+                            title = f"## {db_prompt.name}"
+                            content = latest_details.content
+
+                            if db_prompt.default_prompt_id:
+                                final_prompts[db_prompt.default_prompt_id] = (
+                                    title,
+                                    content,
+                                )
+                            else:
+                                custom_key = f"custom_{db_prompt.id}"
+                                final_prompts[custom_key] = (title, content)
+
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing database prompt {db_prompt.id}: {e}. Prompt will be skipped."
+                        )
+
+                info_list = list(final_prompts.values())
+
+                return info_list
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to load database prompts for agent {agent_id}: {e}. Using factory prompts only."
+                )
+                return factory_prompts
 
 
 prompt_factory = PromptFactory()

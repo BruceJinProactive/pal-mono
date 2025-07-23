@@ -28,8 +28,8 @@ from agent.memory import MemoryProvider
 from agent.model import ModelProvider
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
-from services.agent_service.prompts import prompt_factory
 from services.integration_service.schema import IntegrationDetail
+from services.prompt_service.prompts import prompt_factory
 from utils.log import logger
 
 
@@ -315,7 +315,9 @@ class RawConfig:
             self.agent.agent_type,
             TargetTier.t2,
             self.integration.provider if self.integration else None,
+            self.agent.id,
         )
+
         if self.agent.communication_style:
             info_list.append(
                 ("## Custom Communication Style", self.agent.communication_style)

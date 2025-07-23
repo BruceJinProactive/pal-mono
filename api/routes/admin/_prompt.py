@@ -21,7 +21,7 @@ from services import (
     prompt_service,
     subscription_service,
 )
-from services.agent_service.prompts import prompt_factory
+from services.prompt_service.prompts import prompt_factory
 from services.prompt_service.schema import PromptParams
 
 
