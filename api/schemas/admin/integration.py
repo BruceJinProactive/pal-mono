@@ -34,6 +34,9 @@ class IntegrationRequest(BaseModel):
     api_key: Optional[str] = Field(
         None, description="API key for API key authentication"
     )
+    expires_at: Optional[datetime] = Field(
+        None, description="Expiration timestamp for the integration"
+    )
 
     def to_integration_params(self):
         return CreateIntegrationParams(
@@ -49,6 +52,7 @@ class IntegrationRequest(BaseModel):
                 client_secret=self.client_secret,
                 api_key=self.api_key,
             ),
+            expires_at=self.expires_at,
         )
 
 
@@ -65,6 +69,9 @@ class UpdateIntegrationRequest(BaseModel):
     client_secret: Optional[str] = Field(None, description="Client secret for OAuth")
     api_key: Optional[str] = Field(
         None, description="API key for API key authentication"
+    )
+    expires_at: Optional[datetime] = Field(
+        None, description="Expiration timestamp for the integration"
     )
 
     def to_integration_params(self):
@@ -91,6 +98,7 @@ class UpdateIntegrationRequest(BaseModel):
             business_id=self.business_id,
             raw_config=self.raw_config,
             credentials=credentials,
+            expires_at=self.expires_at,
         )
 
 
@@ -118,6 +126,7 @@ class IntegrationResponse(BaseModel):
     )
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
+    expires_at: Optional[datetime] = Field(None, description="Expiration timestamp")
 
 
 class IntegrationSummaryResponse(BaseModel):

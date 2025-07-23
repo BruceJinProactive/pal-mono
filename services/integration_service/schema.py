@@ -37,6 +37,7 @@ class UpdateIntegrationParams:
     business_id: Optional[str] = None
     raw_config: Optional[Dict] = None
     credentials: Optional[IntegrationCredentials] = None
+    expires_at: Optional[datetime] = None
 
 
 @dataclass
@@ -64,3 +65,4 @@ class IntegrationDetail:
     api_key: Optional[str]
     created_at: datetime
     updated_at: datetime | None
+    expires_at: Optional[datetime] = None

@@ -142,4 +142,5 @@ def build_integration_detail(integration: Integration):
         api_key=credentials.get("api_key"),
         created_at=integration.created_at,
         updated_at=integration.updated_at,
+        expires_at=integration.expires_at,
     )

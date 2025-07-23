@@ -293,6 +293,7 @@ def build_integration(integration: IntegrationDetail) -> IntegrationResponse:
         api_key=integration.api_key,
         created_at=integration.created_at,
         updated_at=integration.updated_at,
+        expires_at=integration.expires_at,
     )
 
 
