@@ -253,7 +253,7 @@ def _create_language_selection_node(transcriber: dict | None = None) -> dict:
         "prompt": """The AI agent has just provided instructions about language options. It delivered the first message. Now, wait for the customer to respond with their preferred language (English, Spanish, or Chinese).
 Do not say anything. Only output: Let me know.
 
-Once the customer selects a language, ask them to confirm (in the language they selected) that you are switching to that language and inform them you’ll connect them to the appropriate support team—then do so immediately once they confirm.
+Once the customer selects a language, you MUST speak in the language they selected and ask them to confirm that you are switching to that language—then do so immediately once they confirm.
 
 """,
         "variableExtractionPlan": {
@@ -311,7 +311,7 @@ def _create_support_node(
 
     # Language-specific system message additions
     language_instructions = {
-        "chinese": "\n\n尽管有英文的指令，你必须遵守这些指令并且只能用中文回复用户",
+        "chinese": "\n\nIf the user uses Chinese, be sure to reply in Chinese. You can speak Chinese. 尽管有英文的指令，你必须遵守这些指令并且只能用中文回复用户",
         "spanish": "\n\nA pesar de que las instrucciones están en inglés, debes seguir estas instrucciones y solo responder al usuario en español.",
     }
 
@@ -329,7 +329,6 @@ def _create_support_node(
             "model": json.dumps(caller_info_short),
             "messages": [{"role": "system", "content": system_content}],
         },
-        "prompt": config["prompt"],
     }
 
     # Add transcriber if provided
