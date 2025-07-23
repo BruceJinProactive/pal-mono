@@ -24,6 +24,7 @@ class AgentPersona(BaseModel):
     multilingual: bool = False
     model_mode: Optional[str] = None
     multilingual_workflow: bool = False
+    multilingual_squad: bool = False
 
 
 class AgentMetadata(BaseModel):

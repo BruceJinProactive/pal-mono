@@ -6,18 +6,12 @@ from fastapi import Request
 from db.tables.agents import SpeechRate
 from utils.log import logger
 
-# Constants
-VAPI_SECRET_HEADER = "X-VAPI-SIGNATURE"
-VAPI_TIMESTAMP_HEADER = "X-VAPI-TIMESTAMP"
-
-# Cartesia voice speed mapping
-CARTESIA_SPEED_MAPPING = {
-    SpeechRate.slowest: "slowest",
-    SpeechRate.slower: "slow",
-    SpeechRate.normal: "normal",
-    SpeechRate.faster: "fast",
-    SpeechRate.fastest: "fastest",
-}
+from ._constants import (
+    CARTESIA_SPEED_MAPPING,
+    SPORTSMAN_VOICE_ID,
+    VAPI_SECRET_HEADER,
+    VAPI_TIMESTAMP_HEADER,
+)
 
 
 def add_voice_speed_if_supported(
@@ -88,3 +82,44 @@ def validate_vapi_request(request: Request) -> bool:
     # 2. Comparing it with the provided signature
 
     return True
+
+
+def _get_transcriber_and_voice_config(
+    agent_config, voice_id: str | None, speech_rate
+) -> tuple[dict, dict]:
+    """Get transcriber and voice configuration based on agent config."""
+    if agent_config.persona.multilingual or agent_config.persona.multilingual_workflow:
+        if agent_config.persona.model_mode == "google":
+            transcriber = {
+                "provider": "google",
+                "model": "gemini-2.5-flash",
+                "language": "Multilingual",
+            }
+        else:
+            # Default multilingual setup (Deepgram)
+            transcriber = {
+                "provider": "deepgram",
+                "model": "nova-3",
+                "language": "multi",
+            }
+
+        voice = {
+            "provider": "cartesia",
+            "voiceId": voice_id or SPORTSMAN_VOICE_ID,
+            "model": "sonic-2",
+        }
+    else:
+        transcriber = {
+            "provider": "deepgram",
+            "model": "nova-3",
+        }
+        voice = {
+            "provider": "cartesia",
+            "voiceId": voice_id or SPORTSMAN_VOICE_ID,
+            "model": "sonic",
+        }
+
+    # Add speed if provider supports it
+    voice = add_voice_speed_if_supported(voice, speech_rate)
+
+    return transcriber, voice
