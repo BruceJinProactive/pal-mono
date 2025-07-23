@@ -129,6 +129,8 @@ def _build_workflow_nodes(
         _create_starting_message_node(agent_config.persona.name, account_display_name),
         # Language selection node
         _create_language_selection_node(transcriber),
+        # Say nodes for transitions
+        *_create_say_nodes(say_configs=LANGUAGE_SAY_CONFIGS),
         # Support nodes for each language
         *[
             _create_support_node(
@@ -248,7 +250,7 @@ def _create_language_selection_node(transcriber: dict | None = None) -> dict:
     node_config = {
         "name": "language_selection",
         "type": "conversation",
-        "prompt": "The AI agent just finished giving instructions about language options. The first message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. DO NOT SAY ANYTHING. OUTPUT ONLY 'Let me know.'. Once the customer has selected a language, you should let them know you are switching to that language and tell them you will connect them to the appropriate support team.",
+        "prompt": "The AI agent just finished giving instructions about language options. The first message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. DO NOT SAY ANYTHING. OUTPUT ONLY 'Let me know.'",
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
@@ -337,7 +339,7 @@ def _create_workflow_edges() -> list[dict]:
     Create workflow routing edges for the multilingual workflow.
 
     The workflow flow is:
-    start_node -> language_selection -> {language}_support
+    start_node -> language_selection -> say_{language} -> {language}_support
 
     Returns:
         list: List of workflow edges defining the routing logic
@@ -348,7 +350,7 @@ def _create_workflow_edges() -> list[dict]:
     # Initial edge: start_node -> language_selection
     edges.append({"from": "start_node", "to": "language_selection"})
 
-    # Language selection edges: language_selection -> {language}_support
+    # Language selection edges: language_selection -> say_{language}
     language_conditions = {
         "english": "Customer selected English language support",
         "spanish": "Customer selected Spanish language support",
@@ -356,17 +358,20 @@ def _create_workflow_edges() -> list[dict]:
     }
 
     for lang in supported_languages:
-        # Add edge from language_selection directly to support node with AI condition
+        # Add edge from language_selection to say node with AI condition
         edges.append(
             {
                 "from": "language_selection",
-                "to": f"{lang}_support",
+                "to": f"say_{lang}",
                 "condition": {
                     "type": "ai",
                     "prompt": language_conditions[lang],
                 },
             }
         )
+
+        # Add edge from say node to support node
+        edges.append({"from": f"say_{lang}", "to": f"{lang}_support"})
 
     # Note: Language switching between nodes is currently disabled
     # Once a customer selects a language, they remain in that language for the entire conversation
