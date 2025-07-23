@@ -1,7 +1,7 @@
 """add_expires_at_to_integration
 
 Revision ID: 9a6f6f3ef3cf
-Revises: 682a568fb3ef
+Revises: 258c85dcd0ed
 Create Date: 2025-07-23 12:40:37.689574
 
 """
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "9a6f6f3ef3cf"
-down_revision: Union[str, None] = "682a568fb3ef"
+down_revision: Union[str, None] = "258c85dcd0ed"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
