@@ -90,8 +90,8 @@ def _get_language_configurations(
         },
         "chinese": {
             **language_voice_configs["chinese"],
-            "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。",
-            "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。",
+            "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。必须使用中文回答。",
+            "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。必须使用中文回答。",
         },
     }
 
@@ -253,7 +253,7 @@ def _create_language_selection_node(transcriber: dict | None = None) -> dict:
         "prompt": """The AI agent has just provided instructions about language options. It delivered the first message. Now, wait for the customer to respond with their preferred language (English, Spanish, or Chinese).
 Do not say anything. Only output: Let me know.
 
-Once the customer selects a language, confirm the switch and inform them you’ll connect them to the appropriate support team—then do so immediately, without waiting for a response.
+Once the customer selects a language, ask them to confirm (in the language they selected) that you are switching to that language and inform them you’ll connect them to the appropriate support team—then do so immediately once they confirm.
 
 """,
         "variableExtractionPlan": {
@@ -311,8 +311,8 @@ def _create_support_node(
 
     # Language-specific system message additions
     language_instructions = {
-        "chinese": "\n\n以上是英文的指令，你必须遵守这些指令并且只能用中文回答用户的问题",
-        "spanish": "\n\nLas instrucciones anteriores están en inglés; debes seguir esas instrucciones y solo puedes responder a las preguntas del usuario en español.",
+        "chinese": "\n\n尽管有英文的指令，你必须遵守这些指令并且只能用中文回复用户",
+        "spanish": "\n\nA pesar de que las instrucciones están en inglés, debes seguir estas instrucciones y solo responder al usuario en español.",
     }
 
     system_content = config["system_content"] + language_instructions.get(language, "")
