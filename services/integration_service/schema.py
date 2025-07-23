@@ -1,6 +1,6 @@
-import datetime
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from db.tables.types import AuthType, IntegrationProvider, IntegrationType
@@ -27,6 +27,7 @@ class CreateIntegrationParams:
     credentials: IntegrationCredentials
     business_id: Optional[str] = None
     raw_config: Optional[Dict] = None
+    expires_at: Optional[datetime] = None
 
 
 @dataclass
@@ -61,5 +62,5 @@ class IntegrationDetail:
     client_id: Optional[str]
     client_secret: Optional[str]
     api_key: Optional[str]
-    created_at: datetime.datetime
-    updated_at: datetime.datetime | None
+    created_at: datetime
+    updated_at: datetime | None
