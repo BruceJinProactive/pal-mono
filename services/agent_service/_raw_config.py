@@ -3,6 +3,7 @@ from typing import Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from jinja2.sandbox import SandboxedEnvironment
 from pydantic import ValidationError
 
 import db
@@ -96,7 +97,7 @@ class RawConfig:
                     enabled=self.agent.raw_config.get(
                         "vapi_voice_config_enabled", False
                     ),
-                    greeting_message=self.agent.greeting_message,
+                    greeting_message=self._render_greeting_message(),
                     voice_id=self.agent.voice_id,
                     speech_rate=self.agent.speech_rate,
                     background_noise=self.agent.background_noise,
@@ -436,3 +437,25 @@ class RawConfig:
                 raise ValueError(
                     "Invalid KnowledgeConfig settings for provider 'KnowledgeConfig'."
                 ) from e
+
+    def _render_greeting_message(self) -> str:
+        """Render the greeting message using Jinja2 sandboxed template with agent, project, and account context."""
+        if not self.agent.greeting_message:
+            return ""
+
+        try:
+            env = SandboxedEnvironment()
+            template = env.from_string(self.agent.greeting_message)
+            return template.render(
+                agent=self.agent, project=self.project, account=self.account
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to render greeting message template: {e}. Using original message.",
+                extra={
+                    "agent_id": self.agent.id,
+                    "error": str(e),
+                },
+            )
+            # Fallback to original message if template rendering fails
+            return self.agent.greeting_message
