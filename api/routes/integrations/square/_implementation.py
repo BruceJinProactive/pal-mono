@@ -107,11 +107,11 @@ async def callback(request: Request):
     merchant_id = token_data.get("merchant_id")
     expires_at = token_data.get("expires_at")
 
-    if not access_token or not refresh_token or not merchant_id:
+    if not access_token or not refresh_token or not merchant_id or not expires_at:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
-                "error": "Missing access token, refresh token, or merchant ID in response"
+                "error": "Missing access token, refresh token, merchant ID, or expires_at in response"
             },
         )
 
