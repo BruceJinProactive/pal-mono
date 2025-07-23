@@ -250,7 +250,12 @@ def _create_language_selection_node(transcriber: dict | None = None) -> dict:
     node_config = {
         "name": "language_selection",
         "type": "conversation",
-        "prompt": "The AI agent just finished giving instructions about language options. The first message is spoken by the AI agent. You are now waiting for the customer's response about their preferred language (English, Spanish, or Chinese). Listen carefully to their answer and extract their language choice. DO NOT SAY ANYTHING. OUTPUT ONLY 'Let me know.'",
+        "prompt": """The AI agent has just provided instructions about language options. It delivered the first message. Now, wait for the customer to respond with their preferred language (English, Spanish, or Chinese).
+Do not say anything. Only output: Let me know.
+
+Once the customer selects a language, confirm the switch and inform them you’ll connect them to the appropriate support team—then do so immediately, without waiting for a response.
+
+""",
         "variableExtractionPlan": {
             "schema": {
                 "type": "string",
@@ -273,17 +278,17 @@ def _create_say_nodes(say_configs: dict) -> list[dict]:
     say_nodes = []
     for lang, config in say_configs.items():
         # Get voice configuration from LANGUAGE_VOICE_CONFIGS
-        voice_config = LANGUAGE_VOICE_CONFIGS[lang]
+        # voice_config = LANGUAGE_VOICE_CONFIGS[lang]
 
         node_config: dict = {
             "name": f"say_{lang}",
             "type": "say",
             "prompt": config["prompt"],
-            "voice": {
-                "provider": "cartesia",
-                "voiceId": voice_config["voice_id"],
-                "model": voice_config["voice_model"],
-            },
+            # "voice": {
+            #     "provider": "cartesia",
+            #     "voiceId": voice_config["voice_id"],
+            #     "model": voice_config["voice_model"],
+            # },
         }
 
         say_nodes.append(node_config)
