@@ -90,10 +90,23 @@ async def square_callback(request: Request):
     return await square_implementation.callback(request)
 
 
-@integrations_router.post("/square/refresh", status_code=status.HTTP_200_OK)
-async def square_refresh(request: Request):
+@integrations_router.post("/square/refresh-expiring", status_code=status.HTTP_200_OK)
+async def square_refresh_expiring(request: Request):
     """
-    Triggers a refresh of the Square access token for the given account.
-    Expects a JSON body with 'account_name'.
+    Check all Square integrations and refresh tokens that are expiring within 7 days.
+    Optionally accepts a JSON body with 'days_threshold' to customize the expiration window.
     """
-    return await square_implementation.refresh(request)
+    try:
+        data = await request.json()
+        days_threshold = data.get("days_threshold", 7)
+    except (ValueError, TypeError):
+        days_threshold = 7
+
+    session = next(db.get_db())
+    try:
+        result = square_implementation.check_and_refresh_expiring_square_tokens(
+            session=session, days_threshold=days_threshold
+        )
+        return result
+    finally:
+        session.close()

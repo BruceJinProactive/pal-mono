@@ -98,6 +98,24 @@ class IntegrationRepository:
             logger.error(f"Error retrieving integrations by provider and type: {e}")
             return []
 
+    def get_all_integrations_by_provider_and_type(
+        self,
+        provider: IntegrationProvider,
+        integration_type: IntegrationType,
+    ) -> List[Integration]:
+        """Retrieve all integrations by provider and type across all accounts."""
+        try:
+            return (
+                self.session.query(Integration)
+                .filter(Integration.provider == provider)
+                .filter(Integration.integration_type == integration_type)
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving all integrations by provider and type: {e}")
+            return []
+
     def get_integration_by_project_and_type(
         self,
         account_id: uuid.UUID,

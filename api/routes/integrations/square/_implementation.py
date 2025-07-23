@@ -1,6 +1,7 @@
 import binascii
 import json
 import os
+from datetime import datetime, timedelta
 
 import requests
 from fastapi import Request, status
@@ -268,3 +269,171 @@ async def refresh(request: Request):
 
 
 # TODO: Implement api_chat and api_project_info if needed for Square, similar to Shopify
+
+
+def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -> dict:
+    """
+    Check all Square integrations and refresh tokens that are expiring within the specified days.
+
+    Args:
+        session: Database session
+        days_threshold: Number of days before expiration to trigger refresh (default: 7)
+
+    Returns:
+        dict: Summary of the operation including counts of checked, refreshed, and failed integrations
+    """
+    integration_repository = IntegrationRepository(session)
+    account_repository = AccountRepository(session)
+
+    # Get all Square integrations
+    square_integrations = (
+        integration_repository.get_all_integrations_by_provider_and_type(
+            provider=IntegrationProvider.square, integration_type=IntegrationType.pos
+        )
+    )
+
+    if not square_integrations:
+        logger.info("No Square integrations found")
+        return {
+            "total_checked": 0,
+            "total_refreshed": 0,
+            "total_failed": 0,
+            "errors": [],
+        }
+
+    logger.info(f"Found {len(square_integrations)} Square integrations to check")
+
+    total_refreshed = 0
+    total_failed = 0
+    errors = []
+
+    # Calculate the expiration threshold
+    expiration_threshold = datetime.now() + timedelta(days=days_threshold)
+
+    for integration in square_integrations:
+        try:
+            # Skip integrations without secret_key or expires_at
+            if not integration.secret_key:
+                logger.warning(
+                    f"Integration {integration.id} has no secret_key, skipping"
+                )
+                continue
+
+            # Check if expires_at column exists and has a value
+            if not hasattr(integration, "expires_at") or integration.expires_at is None:
+                logger.warning(
+                    f"Integration {integration.id} has no expires_at value, skipping"
+                )
+                continue
+
+            # Check if token expires within the threshold
+            if integration.expires_at > expiration_threshold:
+                logger.debug(
+                    f"Integration {integration.id} expires at {integration.expires_at}, not within threshold"
+                )
+                continue
+
+            logger.info(
+                f"Integration {integration.id} expires at {integration.expires_at}, refreshing token"
+            )
+
+            # Get account for this integration
+            account = account_repository.get_account_by_id(integration.account_id)
+            if not account:
+                logger.error(
+                    f"Account {integration.account_id} not found for integration {integration.id}"
+                )
+                errors.append(
+                    f"Account {integration.account_id} not found for integration {integration.id}"
+                )
+                total_failed += 1
+                continue
+
+            # Get secrets from secret manager
+            secrets_json = get_client_secret(integration.secret_key)
+            secrets = json.loads(secrets_json)
+            refresh_token = secrets.get("refresh_token")
+
+            if not refresh_token:
+                logger.error(f"No refresh token found for integration {integration.id}")
+                errors.append(
+                    f"No refresh token found for integration {integration.id}"
+                )
+                total_failed += 1
+                continue
+
+            # Call Square API to refresh token
+            SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
+            client_id = get_square_client_id()
+            client_secret = get_square_client_secret()
+
+            data = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            }
+            headers = {"Content-Type": "application/json"}
+
+            resp = requests.post(SQUARE_TOKEN_URL, json=data, headers=headers)
+            if resp.status_code != 200:
+                logger.error(
+                    f"Failed to refresh Square token for integration {integration.id}: {resp.text}"
+                )
+                errors.append(
+                    f"Failed to refresh Square token for integration {integration.id}: {resp.text}"
+                )
+                total_failed += 1
+                continue
+
+            token_data = resp.json()
+            new_access_token = token_data.get("access_token")
+            new_refresh_token = token_data.get("refresh_token")
+
+            if not new_access_token or not new_refresh_token:
+                logger.error(
+                    f"Missing access token or refresh token in Square response for integration {integration.id}"
+                )
+                errors.append(
+                    f"Missing access token or refresh token in Square response for integration {integration.id}"
+                )
+                total_failed += 1
+                continue
+
+            # Update integration credentials
+            creds = IntegrationCredentials(
+                access_token=new_access_token, refresh_token=new_refresh_token
+            )
+            update_integration_credentials(account, creds, integration)
+
+            # Update expires_at if provided in response
+            if "expires_at" in token_data:
+                integration.expires_at = datetime.fromisoformat(
+                    token_data["expires_at"].replace("Z", "+00:00")
+                )
+
+            session.commit()
+            logger.info(
+                f"Successfully refreshed token for integration {integration.id}"
+            )
+            total_refreshed += 1
+
+        except Exception as e:
+            logger.error(
+                f"Error refreshing token for integration {integration.id}: {e}"
+            )
+            errors.append(
+                f"Error refreshing token for integration {integration.id}: {str(e)}"
+            )
+            total_failed += 1
+            session.rollback()
+
+    result = {
+        "total_checked": len(square_integrations),
+        "total_refreshed": total_refreshed,
+        "total_failed": total_failed,
+        "errors": errors,
+    }
+
+    logger.info(f"Token refresh summary: {result}")
+    return result
