@@ -1,3 +1,5 @@
+import random
+import string
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -24,6 +26,10 @@ def get_knowledge_settings(
         return _get_agent_knowledge_settings(session, context, target, auto_create)
     else:
         raise ValueError(f"Unrecognized target type: {type(target)}")
+
+
+def generate_password(length: int = 12) -> str:
+    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
 def _get_project_knowledge_settings(
