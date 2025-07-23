@@ -188,15 +188,15 @@ def _get_simple_filler(recipient_identifier: str) -> str:
         return ""
 
     simple_fillers = [
-        "Sure",
-        "Yeah",
-        "Alright",
-        "Okay",
-        "Got it",
-        "One moment",
-        "Just a sec",
-        "Hold on",
-        "Give me a moment",
+        "Sure.",
+        "Yeah.",
+        "Alright.",
+        "Okay.",
+        "Got it.",
+        "One moment.",
+        "Just a sec.",
+        "Hold on.",
+        "Give me a moment.",
     ]
 
     # Always use simple filler
