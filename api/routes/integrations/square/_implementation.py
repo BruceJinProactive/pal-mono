@@ -25,7 +25,7 @@ from ._valid import _oauth_state, valid_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
-SQUARE_SCOPES = ["ITEMS_READ", "ORDERS_READ", "ORDERS_WRITE"]
+SQUARE_SCOPES = ["ITEMS_READ", "ORDERS_READ", "ORDERS_WRITE", "MERCHANT_PROFILE_READ"]
 
 
 async def install(request: Request):
