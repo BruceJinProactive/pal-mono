@@ -250,7 +250,7 @@ def create_multilingual_squad_demo(
             assistantDestinations=assistant_destinations,
         )
 
-        return squad_config.model_dump()
+        return {"squad": squad_config.model_dump()}
 
     except Exception as e:
         logger.error(f"Error creating multilingual squad config: {str(e)}")
