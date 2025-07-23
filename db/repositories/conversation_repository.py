@@ -153,18 +153,19 @@ class ConversationRepository:
         user_ids: list[uuid.UUID],
         start_date: datetime,
         end_date: datetime,
+        project_id: uuid.UUID | None = None,
     ) -> list[uuid.UUID]:
         try:
-            return [
-                id
-                for id, in self.session.query(Conversation.id)
-                .filter(
-                    Conversation.user_id.in_(user_ids),
-                    Conversation.created_at >= start_date,
-                    Conversation.created_at <= end_date,
-                )
-                .all()
-            ]
+            query = self.session.query(Conversation.id).filter(
+                Conversation.user_id.in_(user_ids),
+                Conversation.created_at >= start_date,
+                Conversation.created_at <= end_date,
+            )
+
+            if project_id is not None:
+                query = query.filter(Conversation.project_id == project_id)
+
+            return [id for id, in query.all()]
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving conversation ids: {e}")
