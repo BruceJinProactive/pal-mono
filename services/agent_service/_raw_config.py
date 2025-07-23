@@ -137,6 +137,7 @@ class RawConfig:
         multilingual = raw_persona.get("multilingual") or False
         model_mode = raw_persona.get("model_mode") or None
         multilingual_workflow = raw_persona.get("multilingual_workflow") or False
+        multilingual_squad = raw_persona.get("multilingual_squad") or False
 
         return AgentPersona(
             name=name,
@@ -146,6 +147,7 @@ class RawConfig:
             multilingual=multilingual,
             model_mode=model_mode,
             multilingual_workflow=multilingual_workflow,
+            multilingual_squad=multilingual_squad,
         )
 
     def _get_agent_knowledge(self) -> KnowledgeConfig:
