@@ -45,7 +45,13 @@ ag ws up -y # appending -y allows you to skip the confirmation step
 ag ws up -f (Force rebuild from scratch)
 ```
 
-7. Getting Started with pal-manage-app
+7. Run this command to migrate local db to the latest schema.
+
+```bash
+docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
+```
+
+8. Getting Started with pal-manage-app
 
    - Clone the repo `pal-manage-app` and build it.
    - Create .env.local and fill in all required environment variables as instructed,
@@ -56,13 +62,13 @@ ag ws up -f (Force rebuild from scratch)
      ```
    - Run Manage app locally and navigate to http://localhost:3000/.
 
-8. Log into the Management Application
+9. Log into the Management Application
 
    - Under the 'Tools', select 'Merchant Onboarding'.
    - Enter the account name: "palona".
    - Click the 'Next Step' button to proceed.
 
-9. Create a New Agent
+10. Create a New Agent
 
    - Click on 'New Agent'.
    - Enter the agent name: "palona agent".
@@ -70,7 +76,7 @@ ag ws up -f (Force rebuild from scratch)
    - Provide a greeting message (e.g., “Hello”).
    - Click 'Next Step' to continue.
 
-10. Create a New Project
+11. Create a New Project
 
     - Click on 'New Project'.
     - Enter the project name: "palona-default".
@@ -78,12 +84,12 @@ ag ws up -f (Force rebuild from scratch)
     - Enable the required Communication Integrations.
     - Proceed by clicking 'Next Step'.
 
-11. Configure Admin Credentials
+12. Configure Admin Credentials
 
     - Enter the Admin Username and Email Address as prompted.
     - Complete the setup process.
 
-12. Under the 'Chat' page, you should be able to talk to the agent of the "palona" account.
+13. Under the 'Chat' page, you should be able to talk to the agent of the "palona" account.
 
 ### Local Environment
 
