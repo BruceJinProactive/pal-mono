@@ -29,7 +29,19 @@ def get_knowledge_settings(
 
 
 def generate_password(length: int = 12) -> str:
-    return "".join(random.choices(string.ascii_letters + string.digits, k=length))
+    if length < 8:
+        raise ValueError("Password length should be at least 8")
+    chars = [
+        random.choice(string.ascii_lowercase),
+        random.choice(string.ascii_uppercase),
+        random.choice(string.digits),
+        random.choice(string.punctuation),
+    ]
+    chars += random.choices(
+        string.ascii_letters + string.digits + string.punctuation, k=length - 4
+    )
+    random.shuffle(chars)
+    return "".join(chars)
 
 
 def _get_project_knowledge_settings(
