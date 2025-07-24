@@ -416,8 +416,8 @@ class ReservationQuery(BaseModel):
 # DIN TAI FUNG API CLASSES START
 
 
-class DinTaiFungAvailabilitySlot(BaseModel):
-    """Individual availability slot from Din Tai Fung endpoint"""
+class OpenApiAvailabilitySlot(BaseModel):
+    """Individual availability slot from open API endpoint"""
 
     timestamp: int = Field(description="Unix timestamp for the availability slot")
     formatted_time: str = Field(
@@ -428,10 +428,10 @@ class DinTaiFungAvailabilitySlot(BaseModel):
     isodate: str = Field(description="ISO date string with timezone")
 
 
-class DinTaiFungAvailabilityGroup(BaseModel):
+class OpenApiAvailabilityGroup(BaseModel):
     """Availability group for a specific date/time search"""
 
-    availability_list: List[DinTaiFungAvailabilitySlot] = Field(
+    availability_list: List[OpenApiAvailabilitySlot] = Field(
         description="List of available time slots"
     )
     date: str = Field(description="Date in human-readable format (e.g., 'Thu, Jul 10')")
@@ -442,8 +442,8 @@ class DinTaiFungAvailabilityGroup(BaseModel):
     isodate: str = Field(description="ISO date string for requested time")
 
 
-class DinTaiFungAvailabilityRequest(BaseModel):
-    """Request parameters for Din Tai Fung availability endpoint"""
+class OpenApiAvailabilityRequest(BaseModel):
+    """Request parameters for open API availability endpoint"""
 
     # Query parameters
     covers: int = Field(
@@ -474,20 +474,20 @@ class DinTaiFungAvailabilityRequest(BaseModel):
     )
 
 
-class DinTaiFungAvailabilityResponse(BaseModel):
-    """Response from Din Tai Fung availability endpoint"""
+class OpenApiAvailabilityResponse(BaseModel):
+    """Response from open API availability endpoint"""
 
     success: bool = Field(description="Whether the request was successful")
-    availability_data: List[DinTaiFungAvailabilityGroup] = Field(
+    availability_data: List[OpenApiAvailabilityGroup] = Field(
         description="Available reservation times grouped by search criteria"
     )
     availability_profile: str = Field(
         description="Availability profile (e.g., 'medium')"
     )
-    exact_match: Optional[DinTaiFungAvailabilitySlot] = Field(
+    exact_match: Optional[OpenApiAvailabilitySlot] = Field(
         default=None, description="Exact match for requested time, if available"
     )
-    closest_match: Optional[DinTaiFungAvailabilitySlot] = Field(
+    closest_match: Optional[OpenApiAvailabilitySlot] = Field(
         default=None, description="Closest available time to the requested time"
     )
     notify_me_message: Optional[str] = Field(

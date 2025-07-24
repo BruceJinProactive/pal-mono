@@ -4,8 +4,8 @@ from typing import Any, List, Optional, Tuple
 
 from tools.yelp_tool._apis import create_reservation
 from tools.yelp_tool.classes import (
-    DinTaiFungAvailabilityRequest,
-    DinTaiFungAvailabilityResponse,
+    OpenApiAvailabilityRequest,
+    OpenApiAvailabilityResponse,
     YelpAccessToken,
     YelpBookingsHoldsRequest,
     YelpBookingsHoldsResponse,
@@ -509,15 +509,15 @@ def format_waitlist_status_for_llm(
     return "\n".join(result_lines)
 
 
-def create_din_tai_fung_availability_request(
+def create_open_api_availability_request(
     covers: int,
     date: str,
     time: str,
     num_results_after: Optional[int] = None,
     num_results_before: Optional[int] = None,
-) -> Tuple[bool, str, Optional[DinTaiFungAvailabilityRequest]]:
+) -> Tuple[bool, str, Optional[OpenApiAvailabilityRequest]]:
     """
-    Validate parameters and create DinTaiFungAvailabilityRequest object.
+    Validate parameters and create OpenApiAvailabilityRequest object.
     Provides early validation with user-friendly error messages.
 
     Args:
@@ -531,7 +531,7 @@ def create_din_tai_fung_availability_request(
         Tuple containing:
         - bool: Success status
         - str: Error message or success message
-        - Optional[DinTaiFungAvailabilityRequest]: Request object or None
+        - Optional[OpenApiAvailabilityRequest]: Request object or None
     """
     errors = []
 
@@ -562,7 +562,7 @@ def create_din_tai_fung_availability_request(
 
     # Create request object
     try:
-        request_obj = DinTaiFungAvailabilityRequest(
+        request_obj = OpenApiAvailabilityRequest(
             covers=covers,
             date=date,
             time=time_formatted,  # This will be HH:MM:SS format
@@ -574,8 +574,8 @@ def create_din_tai_fung_availability_request(
         return False, f"Failed to create request: {str(e)}", None
 
 
-def format_din_tai_fung_availability_for_llm(
-    availability_response: DinTaiFungAvailabilityResponse,
+def format_open_api_availability_for_llm(
+    availability_response: OpenApiAvailabilityResponse,
 ) -> str:
     """
     Format the Din Tai Fung availability response into a human-readable string for display.
@@ -627,8 +627,8 @@ def format_din_tai_fung_availability_for_llm(
     return "\n".join(result_lines)
 
 
-def get_din_tai_fung_reservation_url(
-    availability_response: DinTaiFungAvailabilityResponse,
+def get_open_api_reservation_url(
+    availability_response: OpenApiAvailabilityResponse,
 ) -> Tuple[bool, str, Optional[str]]:
     """
     Extract the reservation URL from Din Tai Fung availability response.

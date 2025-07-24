@@ -1,15 +1,11 @@
-import time
-import urllib.parse
-from typing import Optional
-
 from tools.yelp_tool._apis._utils import (
     YELP_API_HOST,
     YELP_PARTNER_API_HOST,
     connect_yelp_api,
 )
 from tools.yelp_tool.classes import (
-    DinTaiFungAvailabilityRequest,
-    DinTaiFungAvailabilityResponse,
+    OpenApiAvailabilityRequest,
+    OpenApiAvailabilityResponse,
     YelpAccessToken,
     YelpAccessTokenRequest,
     YelpAccessTokenResponse,
@@ -304,22 +300,22 @@ def get_waitlist_status(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
-def get_din_tai_fung_availability(
-    request_params: DinTaiFungAvailabilityRequest,
-) -> DinTaiFungAvailabilityResponse:
+def get_open_api_availability(
+    request_params: OpenApiAvailabilityRequest,
+) -> OpenApiAvailabilityResponse:
     """
-    Get available reservation times for Din Tai Fung using their custom search endpoint.
+    Get available reservation times for restaurants using their open API search endpoint.
 
-    This endpoint uses Din Tai Fung's specific availability API that returns time slots
+    This endpoint uses the restaurant's specific availability API that returns time slots
     in their custom format with form actions for direct reservation.
 
     Note: This API is not stable and may fail with connection errors. Implements retry logic with 6 attempts.
 
     Args:
-        request_params: DinTaiFungAvailabilityRequest object containing the search parameters
+        request_params: OpenApiAvailabilityRequest object containing the search parameters
 
     Returns:
-        DinTaiFungAvailabilityResponse object containing available reservation times
+        OpenApiAvailabilityResponse object containing available reservation times
 
     Raises:
         Exception: If the API request fails after all retries or returns an error
@@ -359,41 +355,35 @@ def get_din_tai_fung_availability(
                 http_method="GET",
                 api_function=api_function,
                 api_host="www.yelp.com",
-                bearer_token=None,  # Din Tai Fung endpoint doesn't require bearer token
+                bearer_token=None,  # Open API endpoint doesn't require bearer token
                 query_params=query_params,
                 extra_headers=extra_headers,
             )
 
             if response.status != 200:
                 logger.debug(
-                    f"Din Tai Fung API returned error: {response.status} {response.reason}"
+                    f"Open API returned error: {response.status} {response.reason}"
                 )
                 logger.debug(f"Response body: {response.decoded_body}")
-                raise Exception(
-                    f"Din Tai Fung API error: {response.status} {response.reason}"
-                )
+                raise Exception(f"Open API error: {response.status} {response.reason}")
 
             try:
-                return DinTaiFungAvailabilityResponse(**response.decoded_body)
+                return OpenApiAvailabilityResponse(**response.decoded_body)
             except Exception as e:
-                logger.debug(f"Failed to parse Din Tai Fung API response: {str(e)}")
+                logger.debug(f"Failed to parse Open API response: {str(e)}")
                 logger.debug(f"Response data: {response.decoded_body}")
-                raise Exception(
-                    f"Failed to parse Din Tai Fung API response: {str(e)}"
-                ) from e
+                raise Exception(f"Failed to parse Open API response: {str(e)}") from e
 
         except Exception as e:
             last_exception = e
             if attempt == max_retries:
-                logger.debug(
-                    f"Din Tai Fung API failed after {attempt + 1} attempts: {e}"
-                )
+                logger.debug(f"Open API failed after {attempt + 1} attempts: {e}")
                 break
 
             # Retry immediately without delay
-            logger.debug(f"Din Tai Fung API attempt {attempt + 1} failed ({e}).")
+            logger.debug(f"Open API attempt {attempt + 1} failed ({e}).")
 
     # If we get here, all retries failed
     raise Exception(
-        f"Din Tai Fung API failed after {max_retries + 1} attempts. Last error: {last_exception}"
+        f"Open API failed after {max_retries + 1} attempts. Last error: {last_exception}"
     ) from last_exception
