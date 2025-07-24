@@ -969,8 +969,8 @@ def list_knowledge_files(
     """
     index_name, namespace = get_knowledge_settings(session, context, target)
     if not index_name or not namespace:
-        logger.error(
-            "Target has missing knowledge setting, knowledge files not retrieved.",
+        logger.info(
+            "Target has no knowledge setting, knowledge files not retrieved.",
             extra={
                 "target_id": target.id,
                 "target_type": type(target),
