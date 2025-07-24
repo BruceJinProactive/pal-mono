@@ -131,7 +131,7 @@ async def callback(request: Request):
             parsed_expires_at = datetime.fromisoformat(
                 expires_at.replace("Z", "+00:00")
             )
-
+        parsed_expires_at = datetime.now(timezone.utc) + timedelta(days=1)
         integration_params = CreateIntegrationParams(
             provider=IntegrationProvider.square,
             integration_type=IntegrationType.pos,
