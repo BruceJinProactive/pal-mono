@@ -88,7 +88,11 @@ def _get_transcriber_and_voice_config(
     agent_config, voice_id: str | None, speech_rate
 ) -> tuple[dict, dict]:
     """Get transcriber and voice configuration based on agent config."""
-    if agent_config.persona.multilingual or agent_config.persona.multilingual_workflow:
+    if (
+        agent_config.persona.multilingual
+        or agent_config.persona.multilingual_workflow
+        or agent_config.persona.multilingual_squad
+    ):
         if agent_config.persona.model_mode == "google":
             transcriber = {
                 "provider": "google",

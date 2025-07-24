@@ -199,7 +199,7 @@ def create_multilingual_squad_demo(
         )
 
         # Create multilingual greeting for the main assistant
-        multilingual_greeting = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or 中文. How can I assist you today?"
+        multilingual_greeting = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or Chinese. How can I assist you today?"
 
         # Create assistant destinations for each language assistant
 
@@ -208,13 +208,13 @@ def create_multilingual_squad_demo(
             AssistantDestination(
                 assistantName="spanish_assistant",
                 message="¡Perfecto! Te conecto con nuestro soporte en español.",
-                description="Spanish language customer support. Transfer here when customer requests help in Spanish or español.",
+                description="Transfer to Spanish-speaking assistant when the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support.",
                 transferMode="swap-system-message-in-history",
             ),
             AssistantDestination(
                 assistantName="chinese_assistant",
                 message="好的！让我为您连接到我们的中文客服。",
-                description="Chinese language customer support. Transfer here when customer requests help in Chinese or 中文.",
+                description="Transfer to Chinese-speaking assistant when the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support.",
                 transferMode="swap-system-message-in-history",
             ),
         ]
@@ -224,13 +224,13 @@ def create_multilingual_squad_demo(
             AssistantDestination(
                 assistantName="english_assistant",
                 message="Perfect! I'll connect you with our English support.",
-                description="English language customer support. Transfer here when customer requests help in English.",
+                description="Transfer to English-speaking assistant when the customer explicitly requests help in English, switches to English, or indicates they prefer English language support.",
                 transferMode="swap-system-message-in-history",
             ),
             AssistantDestination(
                 assistantName="chinese_assistant",
                 message="好的！让我为您连接到我们的中文客服。",
-                description="Chinese language customer support. Transfer here when customer requests help in Chinese or 中文.",
+                description="Transfer to Chinese-speaking assistant when the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support.",
                 transferMode="swap-system-message-in-history",
             ),
         ]
@@ -240,13 +240,13 @@ def create_multilingual_squad_demo(
             AssistantDestination(
                 assistantName="english_assistant",
                 message="Perfect! I'll connect you with our English support.",
-                description="English language customer support. Transfer here when customer requests help in English.",
+                description="Transfer to English-speaking assistant when the customer explicitly requests help in English, switches to English, or indicates they prefer English language support.",
                 transferMode="swap-system-message-in-history",
             ),
             AssistantDestination(
                 assistantName="spanish_assistant",
                 message="¡Perfecto! Te conecto con nuestro soporte en español.",
-                description="Spanish language customer support. Transfer here when customer requests help in Spanish or español.",
+                description="Transfer to Spanish-speaking assistant when the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support.",
                 transferMode="swap-system-message-in-history",
             ),
         ]
