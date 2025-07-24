@@ -57,6 +57,7 @@ def create_integration(
             secret_key=secret_key,
             business_id=params.business_id,
             raw_config=params.raw_config,
+            expires_at=params.expires_at,
         )
 
         if not updated_integration:
