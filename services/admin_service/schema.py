@@ -24,7 +24,7 @@ class ChannelInfo:
 
 @dataclass
 class UserSessionPreview:
-    user_session: db.Conversation
+    conversation: db.Conversation
     last_message: db.Message
     message_count: int
 

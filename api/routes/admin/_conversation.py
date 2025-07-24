@@ -9,7 +9,6 @@ from api.schemas.admin.conversation import (
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
     UpdateConversationRequest,
-    UpdateSessionResponse,
     UserSessionSearchFilters,
 )
 from db.tables.types import Channel
@@ -20,7 +19,7 @@ from ._auth import authorize_user_account
 from ._utils import SortOrder, UserContext, not_found_error
 
 
-async def list_account_user_sessions(
+async def list_account_conversations(
     account_name: str,
     keyword: str,
     channel: Channel | None,
@@ -40,7 +39,7 @@ async def list_account_user_sessions(
 
     start_date = datetime.datetime.now() - datetime.timedelta(seconds=lookback)
     end_date = datetime.datetime.now()
-    total, user_session_previews = admin_service.list_user_sessions_in_account(
+    total, user_session_previews = admin_service.list_conversations_in_account(
         account_id=account.id,
         keyword=keyword,
         channel=channel.value if channel else None,
@@ -56,8 +55,8 @@ async def list_account_user_sessions(
     total_pages = (total + page_size - 1) // page_size
 
     user_sessions = [
-        _builder.build_user_session(
-            user_session=preview.user_session,
+        _builder.build_conversation(
+            conversation=preview.conversation,
             last_message=preview.last_message,
             message_count=preview.message_count,
         )
@@ -117,58 +116,13 @@ async def list_conversation_messages(
     )
 
 
-async def update_session(
-    session_id: uuid.UUID,
-    session_request: UpdateConversationRequest,
-    context: UserContext,
-    session: Session,
-) -> UpdateSessionResponse:
-    """Update session escalation status.
-
-    Args:
-        session_id: The ID of the session to update
-        session_request: The update request containing is_escalated flag
-        context: The authenticated user context
-        session: The database session
-
-    Returns:
-        UpdateSessionResponse: The response containing the updated escalation status
-
-    Raises:
-        HTTPException: If the session is not found or user is not authorized
-    """
-    # Fetch first to validate ownership
-    conversation = admin_service.get_conversation_by_id(session, session_id)
-    if not conversation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Session {session_id} not found",
-        )
-
-    # Authorize user has access to this account
-    authorize_user_account(context, conversation.user.account.name)
-
-    # Safe to mutate after successful auth
-    conversation = admin_service.update_conversation_escalation(
-        session, session_id, session_request.is_escalated
-    )
-
-    if conversation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Failed to update session {session_id}",
-        )
-
-    return UpdateSessionResponse(is_escalated=conversation.is_escalated)
-
-
 async def update_conversation(
     context: UserContext,
     session: Session,
     account_name: str,
     conversation_id: uuid.UUID,
-    session_request: UpdateConversationRequest,
-) -> UpdateSessionResponse:
+    update_request: UpdateConversationRequest,
+):
     authorize_user_account(context, account_name)
 
     # Fetch first to validate ownership
@@ -180,9 +134,11 @@ async def update_conversation(
     if account_name != conversation.user.account.name:
         raise not_found_error(f"Conversation {conversation_id} not found")
 
-    # Safe to mutate after successful auth
-    conversation = admin_service.update_conversation_escalation(
-        session, conversation_id, session_request.is_escalated
+    conversation = admin_service.update_conversation(
+        session,
+        conversation_id=conversation_id,
+        is_escalated=update_request.is_escalated,
+        project_id=update_request.project_id,
     )
 
     if conversation is None:
@@ -190,5 +146,3 @@ async def update_conversation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update conversation {conversation_id}",
         )
-
-    return UpdateSessionResponse(is_escalated=conversation.is_escalated)

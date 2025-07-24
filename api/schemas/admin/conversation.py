@@ -25,9 +25,10 @@ class Message(BaseModel):
     media: dict | None = None
 
 
-class UserSession(BaseModel):
+class Conversation(BaseModel):
     id: uuid.UUID
     status: str
+    project_id: uuid.UUID | None
     last_message: Message | None
     total_messages: int
     created_at: datetime.datetime
@@ -57,7 +58,7 @@ class UserSessionSearchFilters(BaseModel):
 
 
 class ListUserSessionsResponse(BaseModel):
-    sessions: list[UserSession]
+    sessions: list[Conversation]
     filters: UserSessionSearchFilters
     total_sessions: int
     total_pages: int
@@ -70,8 +71,5 @@ class ListConversationMessagesResponse(BaseModel):
 
 
 class UpdateConversationRequest(BaseModel):
-    is_escalated: bool
-
-
-class UpdateSessionResponse(BaseModel):
-    is_escalated: bool
+    is_escalated: bool | None = None
+    project_id: uuid.UUID | None = None

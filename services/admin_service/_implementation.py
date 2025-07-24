@@ -86,7 +86,7 @@ def get_conversation_by_id(
     return conversation
 
 
-def list_user_sessions_in_account(
+def list_conversations_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
@@ -120,7 +120,7 @@ def list_user_sessions_in_account(
     # Build the session previews
     user_session_previews = [
         UserSessionPreview(
-            user_session=session,
+            conversation=session,
             last_message=message_repository.get_last_user_message_by_conversation(
                 session.id
             )
@@ -1253,13 +1253,17 @@ def delete_account_user(account_name: str, user_email: str) -> None:
             raise ValueError(f"Failed to delete Cognito user: {str(e)}")
 
 
-def update_conversation_escalation(
+def update_conversation(
     session: Session,
     conversation_id: uuid.UUID,
-    is_escalated: bool,
+    is_escalated: bool | None,
+    project_id: uuid.UUID | None,
 ) -> db.Conversation | None:
     conversation_repository = db.ConversationRepository(session)
-    update_data = ConversationUpdate(is_escalated=is_escalated)
+    update_data = ConversationUpdate(
+        is_escalated=is_escalated,
+        project_id=project_id,
+    )
     return conversation_repository.update_conversation(
         conversation_id=conversation_id, update_data=update_data
     )

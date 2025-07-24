@@ -5,7 +5,7 @@ from api.routes.admin._utils import get_agent_type
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
-from api.schemas.admin.conversation import Message, UserSession
+from api.schemas.admin.conversation import Conversation, Message
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
 from api.schemas.admin.integration import (
@@ -170,15 +170,16 @@ def build_feedback(
     )
 
 
-def build_user_session(
-    user_session: db.Conversation,
+def build_conversation(
+    conversation: db.Conversation,
     message_count: int,
     last_message: db.Message,
-) -> UserSession:
-    return UserSession(
-        id=user_session.id,
-        status=user_session.status.value,
-        created_at=user_session.created_at,
+) -> Conversation:
+    return Conversation(
+        id=conversation.id,
+        status=conversation.status.value,
+        project_id=conversation.project_id,
+        created_at=conversation.created_at,
         last_message=build_message(last_message) if last_message else None,
         total_messages=message_count,
     )

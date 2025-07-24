@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import func, inspect
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -18,6 +18,7 @@ class ConversationUpdate(BaseModel):
 
     status: Optional[ConversationStatus] = None
     is_escalated: Optional[bool] = None
+    project_id: Optional[uuid.UUID] = None
 
 
 class ConversationRepositoryAsync:
@@ -284,7 +285,13 @@ class ConversationRepository:
             if not conversation:
                 return None
 
-            if "is_escalated" in update_data.model_dump(exclude_unset=True):
+            if update_data.status is not None:
+                conversation.status = update_data.status
+
+            if update_data.project_id is not None:
+                conversation.project_id = update_data.project_id
+
+            if update_data.is_escalated is not None:
                 self.session.query(Message).filter(
                     Message.conversation_id == conversation_id
                 ).update(
@@ -297,13 +304,6 @@ class ConversationRepository:
                     },
                     synchronize_session=False,
                 )
-
-            mapper_cols = {c.key for c in inspect(Conversation).mapper.column_attrs} - {
-                "id"
-            }
-            for field, value in update_data.model_dump(exclude_unset=True).items():
-                if field in mapper_cols:
-                    setattr(conversation, field, value)
 
             self.session.commit()
             self.session.refresh(conversation)

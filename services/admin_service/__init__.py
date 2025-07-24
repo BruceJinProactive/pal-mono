@@ -21,7 +21,7 @@ from .schema import (
 )
 
 
-def list_user_sessions_in_account(
+def list_conversations_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
@@ -34,7 +34,7 @@ def list_user_sessions_in_account(
     hide_testing_sessions: bool,
     db_session: Session,
 ) -> tuple[int, list[UserSessionPreview]]:
-    return _implementation.list_user_sessions_in_account(
+    return _implementation.list_conversations_in_account(
         account_id,
         keyword,
         channel,
@@ -539,10 +539,11 @@ def delete_account_user(account_name: str, user_email: str) -> None:
     return _implementation.delete_account_user(account_name, user_email)
 
 
-def update_conversation_escalation(
+def update_conversation(
     session: Session,
     conversation_id: uuid.UUID,
-    is_escalated: bool,
+    is_escalated: bool | None,
+    project_id: uuid.UUID | None,
 ) -> db.Conversation | None:
     """
     Update the escalation status of a conversation.
@@ -551,12 +552,13 @@ def update_conversation_escalation(
         session (Session): The database session used to perform queries.
         conversation_id (uuid.UUID): The unique identifier of the conversation to update.
         is_escalated (bool): The new escalation status.
+        project_id (uuid.UUID): The new project_id.
 
     Returns:
         db.Conversation | None: The updated conversation or none if id does not exist.
     """
-    return _implementation.update_conversation_escalation(
-        session, conversation_id, is_escalated
+    return _implementation.update_conversation(
+        session, conversation_id, is_escalated, project_id
     )
 
 
@@ -656,7 +658,7 @@ def get_lead(
 
 
 __all__ = [
-    "list_user_sessions_in_account",
+    "list_conversations_in_account",
     "get_inbox_conversations",
     "get_conversation_by_id",
     "get_conversation_messages",
@@ -679,7 +681,7 @@ __all__ = [
     "create_account_user",
     "signup_account_user",
     "delete_account_user",
-    "update_conversation_escalation",
+    "update_conversation",
     "list_leads",
     "create_lead",
     "update_lead",
