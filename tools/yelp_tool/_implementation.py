@@ -53,7 +53,7 @@ class YelpTool(Toolkit):
         business_id_or_alias: str,
         tool_metadata: ToolMetadata,
         credit_card_required: bool,
-        use_creditcard_workflow: Optional[bool] = None,
+        yelp_integration_api: bool = False,
         biz_id: Optional[str] = None,
         biz_lat: Optional[str] = None,
         biz_long: Optional[str] = None,
@@ -64,15 +64,15 @@ class YelpTool(Toolkit):
         Args:
             business_id_or_alias: The Yelp business ID or alias
             tool_metadata: Tool metadata containing session information
-            credit_card_required: Whether this business actually requires credit card for reservations
-            use_creditcard_workflow: Force use of credit card workflow (overrides credit_card_required).
-                                   If None, defaults to credit_card_required value.
-            biz_id: Business-specific ID parameter (required if using credit card workflow)
-            biz_lat: Business latitude parameter (required if using credit card workflow)
-            biz_long: Business longitude parameter (required if using credit card workflow)
+                        credit_card_required: Whether this business actually requires credit card for reservations
+            yelp_integration_api: Use Yelp integration API workflow (no credit card required workflow).
+                                Defaults to False (uses public booking API).
+            biz_id: Business-specific ID parameter (required if yelp_integration_api=True)
+            biz_lat: Business latitude parameter (required if yelp_integration_api=True)
+            biz_long: Business longitude parameter (required if yelp_integration_api=True)
 
         Raises:
-            ValueError: If using credit card workflow but biz_id, biz_lat, or biz_long are not provided
+            ValueError: If yelp_integration_api=False but biz_id, biz_lat, or biz_long are not provided
         """
         super().__init__(name="yelp_tool")
 
@@ -83,12 +83,15 @@ class YelpTool(Toolkit):
         self.credit_card_required = credit_card_required
 
         # Determine which workflow to use
-        if use_creditcard_workflow is None:
-            # Default behavior: use workflow based on credit_card_required
-            self.use_creditcard_workflow = credit_card_required
+        if not yelp_integration_api:
+            # Use Yelp integration API workflow (credit card required workflow)
+            self.use_creditcard_workflow = True
         else:
-            # Explicit override: use the specified workflow
-            self.use_creditcard_workflow = use_creditcard_workflow
+            # Use standard booking API workflow based on credit_card_required
+            self.use_creditcard_workflow = credit_card_required
+
+        # Store the API choice for reference
+        self.yelp_integration_api = yelp_integration_api
 
         # Validate business-specific parameters for credit card workflow
         if self.use_creditcard_workflow:
@@ -101,7 +104,7 @@ class YelpTool(Toolkit):
                 if not biz_long:
                     missing_params.append("biz_long")
                 raise ValueError(
-                    f"Credit card workflow needs these parameters: {', '.join(missing_params)}"
+                    f"Yelp integration API workflow needs these parameters: {', '.join(missing_params)}"
                 )
             self.biz_id = biz_id
             self.biz_lat = biz_lat
@@ -123,7 +126,7 @@ class YelpTool(Toolkit):
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
         logger.debug(
-            f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={self.credit_card_required}, use_creditcard_workflow={self.use_creditcard_workflow}"
+            f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={self.credit_card_required}, yelp_integration_api={self.yelp_integration_api}, use_creditcard_workflow={self.use_creditcard_workflow}"
         )
 
     def _get_current_date(self) -> str:

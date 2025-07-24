@@ -36,7 +36,7 @@ OPENINGS_EXTRACTION_USER_PROMPT = """
 # Chat History:
 {chat_history}
 
-Extract the reservation search parameters from the conversation above. Only include information that was explicitly mentioned by the user.
+Extract the reservation search parameters from the conversation above. Only include information that was explicitly mentioned by the user. You must identify the correct reservation search parameters that the user is looking for.
 """
 
 RESERVATION_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting complete reservation details from conversation history.
@@ -58,6 +58,12 @@ Your task is to extract the following information:
 7. Special notes should capture any dietary restrictions, celebrations, seating preferences, etc.
 8. Assume the year as that of the current date {current_date} unless otherwise specified.
 
+# TIME EXTRACTION PRIORITY:
+1. **MOST IMPORTANT**: If the user specifically selects or confirms a particular time from available options (e.g., "I'll take the 5:45 pm", "book the 7:30 slot"), use that EXACT time
+2. If the user initially asks for a time range (e.g., "after 5pm") but then selects a specific time, use the selected time, NOT the range boundary
+3. Pay close attention to the user's final time choice - this takes precedence over initial search parameters
+4. Convert all times to 24-hour format (e.g., "5:45 PM" becomes "17:45", "7:30 PM" becomes "19:30")
+
 # VALIDATION RULES:
 - covers: integer between 1 and 10
 - date: YYYY-MM-DD format
@@ -72,11 +78,12 @@ Your task is to extract the following information:
 - Only extract information that was clearly stated by the user
 - If a required field is not provided, the reservation cannot be completed
 - Do not guess or infer missing information
+- When the user selects a specific time, that is their final choice - use it exactly
 """
 
 RESERVATION_EXTRACTION_USER_PROMPT = """
 # Chat History:
 {chat_history}
 
-Extract the complete reservation details from the conversation above. Include all information needed to make a reservation.
+Extract the complete reservation details from the conversation above. Include all information needed to make a reservation. Pay special attention to the user's final time selection if they chose from available options.
 """
