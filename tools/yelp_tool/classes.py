@@ -47,10 +47,10 @@ class YelpAccessToken(BaseModel):
         return bool(self.access_token and self.token_type and not self.is_expired())
 
 
-######### YELP BOOKINGS API CLASSES START ############
+######### YELP BOOKINGS API CLASSES START (CREDIT CARD NOT REQUIRED) ############
 
 
-class YelpBookingsOpeningsRequest(BaseModel):
+class YelpBookingsOpeningsRequestCreditCardNotRequired(BaseModel):
     """Request parameters for Yelp Bookings openings endpoint"""
 
     # Path parameter
@@ -121,7 +121,7 @@ class CoversRange(BaseModel):
     )
 
 
-class YelpBookingsOpeningsResponse(BaseModel):
+class YelpBookingsOpeningsResponseCreditCardNotRequired(BaseModel):
     """Response from Yelp Bookings openings endpoint"""
 
     reservation_times: List[DailyReservationTimes] = Field(
@@ -133,7 +133,7 @@ class YelpBookingsOpeningsResponse(BaseModel):
     )
 
 
-class YelpBookingsHoldsRequest(BaseModel):
+class YelpBookingsHoldsRequestCreditCardNotRequired(BaseModel):
     """Request parameters for Yelp Bookings holds endpoint"""
 
     # Path parameter
@@ -162,7 +162,7 @@ class YelpBookingsHoldsRequest(BaseModel):
     )
 
 
-class YelpBookingsHoldsResponse(BaseModel):
+class YelpBookingsHoldsResponseCreditCardNotRequired(BaseModel):
     """Response from Yelp Bookings holds endpoint"""
 
     cancellation_policy: str = Field(
@@ -189,7 +189,7 @@ class YelpBookingsHoldsResponse(BaseModel):
     )
 
 
-class YelpBookingsReservationsRequest(BaseModel):
+class YelpBookingsReservationsRequestCreditCardNotRequired(BaseModel):
     """Request parameters for Yelp Bookings reservations endpoint"""
 
     # Path parameter
@@ -234,7 +234,7 @@ class YelpBookingsReservationsRequest(BaseModel):
     )
 
 
-class YelpBookingsReservationsResponse(BaseModel):
+class YelpBookingsReservationsResponseCreditCardNotRequired(BaseModel):
     """Response from Yelp Bookings reservations endpoint"""
 
     confirmation_url: str = Field(
@@ -246,7 +246,7 @@ class YelpBookingsReservationsResponse(BaseModel):
     )
 
 
-######### YELP BOOKINGS API CLASSES END ############
+######### YELP BOOKINGS API CLASSES END (CREDIT CARD NOT REQUIRED) ############
 
 
 ######### YELP PARTNER API CLASSES START ############
@@ -369,6 +369,31 @@ class OpeningsQuery(BaseModel):
     )
 
 
+class OpeningsQueryWithoutCreditCard(BaseModel):
+    """Extracted parameters for searching restaurant openings - mirrors YelpBookingsOpeningsRequest with optional fields"""
+
+    covers: Optional[int] = Field(
+        default=None,
+        description="How many people are attending the reservation (min. value is 1; max value is 10).",
+        ge=1,
+        le=10,
+    )
+    date: Optional[str] = Field(
+        default=None,
+        description="The date for the reservation, format is YYYY-mm-dd",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    time: Optional[str] = Field(
+        default=None,
+        description="The time of the requested reservation, format is HH:MM",
+        pattern=r"^\d{2}:\d{2}$",
+    )
+    get_covers_range: Optional[bool] = Field(
+        default=False,
+        description="If true, include the covers_range dict in the response.",
+    )
+
+
 class ReservationQuery(BaseModel):
     """Extracted parameters for making a restaurant reservation - mirrors YelpBookingsReservationsRequest with optional fields"""
 
@@ -413,10 +438,10 @@ class ReservationQuery(BaseModel):
 ######### LLM EXTRACTION CLASSES END ############
 
 
-# DIN TAI FUNG API CLASSES START
+# YELP CREDIT CARD REQUIRED API CLASSES START
 
 
-class OpenApiAvailabilitySlot(BaseModel):
+class YelpBookingsOpeningsSlotCreditCardRequired(BaseModel):
     """Individual availability slot from open API endpoint"""
 
     timestamp: int = Field(description="Unix timestamp for the availability slot")
@@ -428,10 +453,10 @@ class OpenApiAvailabilitySlot(BaseModel):
     isodate: str = Field(description="ISO date string with timezone")
 
 
-class OpenApiAvailabilityGroup(BaseModel):
+class YelpBookingsOpeningsGroupCreditCardRequired(BaseModel):
     """Availability group for a specific date/time search"""
 
-    availability_list: List[OpenApiAvailabilitySlot] = Field(
+    availability_list: List[YelpBookingsOpeningsSlotCreditCardRequired] = Field(
         description="List of available time slots"
     )
     date: str = Field(description="Date in human-readable format (e.g., 'Thu, Jul 10')")
@@ -442,7 +467,7 @@ class OpenApiAvailabilityGroup(BaseModel):
     isodate: str = Field(description="ISO date string for requested time")
 
 
-class OpenApiAvailabilityRequest(BaseModel):
+class YelpBookingsOpeningsRequestCreditCardRequired(BaseModel):
     """Request parameters for open API availability endpoint"""
 
     # Query parameters
@@ -474,20 +499,20 @@ class OpenApiAvailabilityRequest(BaseModel):
     )
 
 
-class OpenApiAvailabilityResponse(BaseModel):
+class YelpBookingsOpeningsResponseCreditCardRequired(BaseModel):
     """Response from open API availability endpoint"""
 
     success: bool = Field(description="Whether the request was successful")
-    availability_data: List[OpenApiAvailabilityGroup] = Field(
+    availability_data: List[YelpBookingsOpeningsGroupCreditCardRequired] = Field(
         description="Available reservation times grouped by search criteria"
     )
     availability_profile: str = Field(
         description="Availability profile (e.g., 'medium')"
     )
-    exact_match: Optional[OpenApiAvailabilitySlot] = Field(
+    exact_match: Optional[YelpBookingsOpeningsSlotCreditCardRequired] = Field(
         default=None, description="Exact match for requested time, if available"
     )
-    closest_match: Optional[OpenApiAvailabilitySlot] = Field(
+    closest_match: Optional[YelpBookingsOpeningsSlotCreditCardRequired] = Field(
         default=None, description="Closest available time to the requested time"
     )
     notify_me_message: Optional[str] = Field(
@@ -507,4 +532,4 @@ class OpenApiAvailabilityResponse(BaseModel):
     )
 
 
-# DIN TAI FUNG API CLASSES END
+# YELP CREDIT CARD REQUIRED API CLASSES END

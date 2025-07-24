@@ -2,16 +2,16 @@ import re
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
 
-from tools.yelp_tool._apis import create_reservation
+from tools.yelp_tool._apis import create_reservation_creditcard_not_required
 from tools.yelp_tool.classes import (
-    OpenApiAvailabilityRequest,
-    OpenApiAvailabilityResponse,
     YelpAccessToken,
-    YelpBookingsHoldsRequest,
-    YelpBookingsHoldsResponse,
-    YelpBookingsOpeningsRequest,
-    YelpBookingsOpeningsResponse,
-    YelpBookingsReservationsRequest,
+    YelpBookingsHoldsRequestCreditCardNotRequired,
+    YelpBookingsHoldsResponseCreditCardNotRequired,
+    YelpBookingsOpeningsRequestCreditCardNotRequired,
+    YelpBookingsOpeningsRequestCreditCardRequired,
+    YelpBookingsOpeningsResponseCreditCardNotRequired,
+    YelpBookingsOpeningsResponseCreditCardRequired,
+    YelpBookingsReservationsRequestCreditCardNotRequired,
     YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
@@ -195,7 +195,7 @@ def _validate_name(name: str, field_name: str) -> List[str]:
     return errors
 
 
-def create_openings_request(
+def create_openings_request_creditcard_not_required(
     business_id_or_alias: str,
     covers: int,
     date: str,
@@ -203,9 +203,9 @@ def create_openings_request(
     get_covers_range: Optional[bool] = None,
     num_results_after: Optional[int] = None,
     num_results_before: Optional[int] = None,
-) -> Tuple[bool, str, Optional[YelpBookingsOpeningsRequest]]:
+) -> Tuple[bool, str, Optional[YelpBookingsOpeningsRequestCreditCardNotRequired]]:
     """
-    Validate parameters and create YelpBookingsOpeningsRequest object.
+    Validate parameters and create YelpBookingsOpeningsRequestCreditCardNotRequired object for credit card not required workflow.
     Provides early validation with user-friendly error messages.
 
     Args:
@@ -221,7 +221,7 @@ def create_openings_request(
         Tuple containing:
         - bool: Success status
         - str: Error message or success message
-        - Optional[YelpBookingsOpeningsRequest]: Request object or None
+        - Optional[YelpBookingsOpeningsRequestCreditCardNotRequired]: Request object or None
     """
     errors = []
 
@@ -245,7 +245,7 @@ def create_openings_request(
 
     # Create request object
     try:
-        request_obj = YelpBookingsOpeningsRequest(
+        request_obj = YelpBookingsOpeningsRequestCreditCardNotRequired(
             business_id_or_alias=business_id_or_alias,
             covers=covers,
             date=date,
@@ -259,12 +259,14 @@ def create_openings_request(
         return False, f"Failed to create request: {str(e)}", None
 
 
-def format_openings_for_llm(openings_response: YelpBookingsOpeningsResponse) -> str:
+def format_openings_for_llm_creditcard_not_required(
+    openings_response: YelpBookingsOpeningsResponseCreditCardNotRequired,
+) -> str:
     """
-    Format the openings response into a human-readable string for display.
+    Format the credit card not required openings response into a human-readable string for display.
 
     Args:
-        openings_response: Parsed openings response object
+        openings_response: Parsed credit card not required openings response object
 
     Returns:
         str: Formatted string representation of available reservation times
@@ -312,15 +314,15 @@ def format_openings_for_llm(openings_response: YelpBookingsOpeningsResponse) -> 
     return "\n".join(result_lines)
 
 
-def create_holds_request(
+def create_holds_request_creditcard_not_required(
     business_id_or_alias: str,
     covers: int,
     date: str,
     time: str,
     unique_id: str,
-) -> Tuple[bool, str, Optional[YelpBookingsHoldsRequest]]:
+) -> Tuple[bool, str, Optional[YelpBookingsHoldsRequestCreditCardNotRequired]]:
     """
-    Validate parameters and create YelpBookingsHoldsRequest object.
+    Validate parameters and create YelpBookingsHoldsRequestCreditCardNotRequired object for credit card not required workflow.
     Provides early validation with user-friendly error messages.
 
     Args:
@@ -334,7 +336,7 @@ def create_holds_request(
         Tuple containing:
         - bool: Success status
         - str: Error message or success message
-        - Optional[YelpBookingsHoldsRequest]: Request object or None
+        - Optional[YelpBookingsHoldsRequestCreditCardNotRequired]: Request object or None
     """
     errors = []
 
@@ -351,7 +353,7 @@ def create_holds_request(
 
     # Create request object
     try:
-        request_obj = YelpBookingsHoldsRequest(
+        request_obj = YelpBookingsHoldsRequestCreditCardNotRequired(
             business_id_or_alias=business_id_or_alias,
             covers=covers,
             date=date,
@@ -363,10 +365,10 @@ def create_holds_request(
         return False, f"Failed to create hold request: {str(e)}", None
 
 
-def create_reservation_from_hold(
+def create_reservation_from_hold_creditcard_not_required(
     bearer_token: YelpAccessToken,
-    holds_response: YelpBookingsHoldsResponse,
-    holds_request: YelpBookingsHoldsRequest,
+    holds_response: YelpBookingsHoldsResponseCreditCardNotRequired,
+    holds_request: YelpBookingsHoldsRequestCreditCardNotRequired,
     first_name: str,
     last_name: str,
     phone: str,
@@ -374,7 +376,7 @@ def create_reservation_from_hold(
     notes: Optional[str] = None,
 ) -> Tuple[bool, str, Optional[Any]]:
     """
-    Create reservation directly from hold data in one go.
+    Create reservation directly from hold data for credit card not required workflow.
     """
 
     errors = []
@@ -393,7 +395,7 @@ def create_reservation_from_hold(
 
     try:
         # Create request object
-        request_obj = YelpBookingsReservationsRequest(
+        request_obj = YelpBookingsReservationsRequestCreditCardNotRequired(
             business_id_or_alias=holds_request.business_id_or_alias,
             covers=holds_request.covers,
             date=holds_request.date,
@@ -408,7 +410,7 @@ def create_reservation_from_hold(
         )
 
         # Make API call directly
-        reservation_response = create_reservation(
+        reservation_response = create_reservation_creditcard_not_required(
             bearer_token=bearer_token, request_params=request_obj
         )
 
@@ -509,23 +511,29 @@ def format_waitlist_status_for_llm(
     return "\n".join(result_lines)
 
 
-def create_open_api_availability_request(
+def create_openings_request_creditcard_required(
     business_id_or_alias: str,
     covers: int,
     date: str,
     time: str,
+    biz_id: str,
+    biz_lat: str,
+    biz_long: str,
     num_results_after: Optional[int] = None,
     num_results_before: Optional[int] = None,
-) -> Tuple[bool, str, Optional[OpenApiAvailabilityRequest]]:
+) -> Tuple[bool, str, Optional[YelpBookingsOpeningsRequestCreditCardRequired]]:
     """
-    Validate parameters and create OpenApiAvailabilityRequest object.
+    Validate parameters and create YelpBookingsOpeningsRequestCreditCardRequired object for credit card required workflow.
     Provides early validation with user-friendly error messages.
 
     Args:
-        business_id_or_alias: The business ID or alias to determine restaurant-specific parameters
+        business_id_or_alias: The business ID or alias for the restaurant
         covers: Number of people for the reservation
         date: Date in YYYY-mm-dd format
         time: Time in HH:MM format (MUST be exactly HH:MM, nothing else)
+        biz_id: Business-specific ID parameter for the API
+        biz_lat: Business latitude parameter for the API
+        biz_long: Business longitude parameter for the API
         num_results_after: Set to 0 if user wants to know the openings before the current result, otherwise don't include this field
         num_results_before: Set to 0 if user wants to know the openings after the current result, otherwise don't include this field
 
@@ -533,7 +541,7 @@ def create_open_api_availability_request(
         Tuple containing:
         - bool: Success status
         - str: Error message or success message
-        - Optional[OpenApiAvailabilityRequest]: Request object or None
+        - Optional[YelpBookingsOpeningsRequestCreditCardRequired]: Request object or None
     """
     errors = []
 
@@ -562,21 +570,17 @@ def create_open_api_availability_request(
     # Convert time format from HH:MM to HH:MM:SS for the endpoint
     time_formatted = f"{time}:00"
 
-    # Set business-specific parameters based on business_id_or_alias
-    if business_id_or_alias == "din-tai-fung-new-york-3":
-        biz_id = "Y5TqZhNxPC6BWnM7zsCSjA"
-        biz_lat = "40"
-        biz_long = "-75"
-    elif business_id_or_alias == "little-star-pizza-san-francisco-4":
-        biz_id = "OoyK7MyuPtKOQAXmEmyM5g"
-        biz_lat = "37.7"
-        biz_long = "-122.4"
-    else:
-        return False, f"Unsupported business_id_or_alias: {business_id_or_alias}", None
+    # Validate that required business parameters are provided
+    if not biz_id or not biz_lat or not biz_long:
+        return (
+            False,
+            "Business parameters (biz_id, biz_lat, biz_long) are required for credit card required workflow",
+            None,
+        )
 
     # Create request object
     try:
-        request_obj = OpenApiAvailabilityRequest(
+        request_obj = YelpBookingsOpeningsRequestCreditCardRequired(
             covers=covers,
             date=date,
             time=time_formatted,  # This will be HH:MM:SS format
@@ -591,15 +595,15 @@ def create_open_api_availability_request(
         return False, f"Failed to create request: {str(e)}", None
 
 
-def format_open_api_availability_for_llm(
-    availability_response: OpenApiAvailabilityResponse,
+def format_openings_for_llm_creditcard_required(
+    availability_response: YelpBookingsOpeningsResponseCreditCardRequired,
 ) -> str:
     """
-    Format the Din Tai Fung availability response into a human-readable string for display.
+    Format the credit card required availability response into a human-readable string for display.
     Prominently highlights the closest available time based on user's requested time.
 
     Args:
-        availability_response: Parsed Din Tai Fung availability response object
+        availability_response: Parsed credit card required availability response object
 
     Returns:
         str: Formatted string representation of available reservation times with recommendation
@@ -607,7 +611,7 @@ def format_open_api_availability_for_llm(
     if not availability_response.success or not availability_response.availability_data:
         return "No availability found for the requested time."
 
-    result_lines = ["Available Reservation Times for Din Tai Fung:"]
+    result_lines = ["Available Reservation Times:"]
 
     for availability_group in availability_response.availability_data:
         date_str = availability_group.date
@@ -644,14 +648,14 @@ def format_open_api_availability_for_llm(
     return "\n".join(result_lines)
 
 
-def get_open_api_reservation_url(
-    availability_response: OpenApiAvailabilityResponse,
+def get_reservation_url_creditcard_required(
+    availability_response: YelpBookingsOpeningsResponseCreditCardRequired,
 ) -> Tuple[bool, str, Optional[str]]:
     """
-    Extract the reservation URL from Din Tai Fung availability response.
+    Extract the reservation URL from credit card required availability response.
 
     Args:
-        availability_response: Parsed Din Tai Fung availability response object
+        availability_response: Parsed credit card required availability response object
 
     Returns:
         Tuple containing:

@@ -4,33 +4,33 @@ from tools.yelp_tool._apis._utils import (
     connect_yelp_api,
 )
 from tools.yelp_tool.classes import (
-    OpenApiAvailabilityRequest,
-    OpenApiAvailabilityResponse,
     YelpAccessToken,
     YelpAccessTokenRequest,
     YelpAccessTokenResponse,
-    YelpBookingsHoldsRequest,
-    YelpBookingsHoldsResponse,
-    YelpBookingsOpeningsRequest,
-    YelpBookingsOpeningsResponse,
-    YelpBookingsReservationsRequest,
-    YelpBookingsReservationsResponse,
+    YelpBookingsHoldsRequestCreditCardNotRequired,
+    YelpBookingsHoldsResponseCreditCardNotRequired,
+    YelpBookingsOpeningsRequestCreditCardNotRequired,
+    YelpBookingsOpeningsRequestCreditCardRequired,
+    YelpBookingsOpeningsResponseCreditCardNotRequired,
+    YelpBookingsOpeningsResponseCreditCardRequired,
+    YelpBookingsReservationsRequestCreditCardNotRequired,
+    YelpBookingsReservationsResponseCreditCardNotRequired,
     YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
 from utils.log import logger
 
 
-def get_openings(
+def get_openings_creditcard_not_required(
     bearer_token: YelpAccessToken,
-    request_params: YelpBookingsOpeningsRequest,
-) -> YelpBookingsOpeningsResponse:
+    request_params: YelpBookingsOpeningsRequestCreditCardNotRequired,
+) -> YelpBookingsOpeningsResponseCreditCardNotRequired:
     """
-    Get available reservation times for a restaurant using the Yelp Bookings API.
+    Get available reservation times for a restaurant using the Yelp Bookings API (credit card not required workflow).
 
     This endpoint returns available reservation times around the requested timeslot
     and across several days (typically 4 days: day before, current day, and 2 days after).
-    Currently, only openings with "credit_card_required": false are returned.
+    This workflow supports direct reservation completion without requiring credit card entry.
 
     Args:
         bearer_token: Yelp bearer token for authentication
@@ -53,12 +53,6 @@ def get_openings(
     if request_params.get_covers_range is not None:
         query_params["get_covers_range"] = str(request_params.get_covers_range).lower()
 
-    if request_params.num_results_after == 0:
-        query_params["num_results_after"] = "0"
-
-    if request_params.num_results_before == 0:
-        query_params["num_results_before"] = "0"
-
     response = connect_yelp_api(
         http_method="GET",
         api_function=api_function,
@@ -73,7 +67,9 @@ def get_openings(
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
     try:
-        return YelpBookingsOpeningsResponse(**response.decoded_body)
+        return YelpBookingsOpeningsResponseCreditCardNotRequired(
+            **response.decoded_body
+        )
     except Exception as e:
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
@@ -132,12 +128,12 @@ def get_yelp_bearer_token(
         raise Exception(f"Failed to parse Yelp Partner API response: {str(e)}") from e
 
 
-def create_hold(
+def create_hold_creditcard_not_required(
     bearer_token: YelpAccessToken,
-    request_params: YelpBookingsHoldsRequest,
-) -> YelpBookingsHoldsResponse:
+    request_params: YelpBookingsHoldsRequestCreditCardNotRequired,
+) -> YelpBookingsHoldsResponseCreditCardNotRequired:
     """
-    Create a temporary hold on a reservation time slot using the Yelp Bookings API.
+    Create a temporary hold on a reservation time slot using the Yelp Bookings API (credit card not required workflow).
 
     This endpoint places a temporary hold on the requested time slot so that the partner
     can request all the required reservation information from the user. Holds are only
@@ -180,24 +176,23 @@ def create_hold(
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
     try:
-        return YelpBookingsHoldsResponse(**response.decoded_body)
+        return YelpBookingsHoldsResponseCreditCardNotRequired(**response.decoded_body)
     except Exception as e:
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
-def create_reservation(
+def create_reservation_creditcard_not_required(
     bearer_token: YelpAccessToken,
-    request_params: YelpBookingsReservationsRequest,
-) -> YelpBookingsReservationsResponse:
+    request_params: YelpBookingsReservationsRequestCreditCardNotRequired,
+) -> YelpBookingsReservationsResponseCreditCardNotRequired:
     """
-    Create a physical reservation at a restaurant using the Yelp Bookings API.
+    Create a physical reservation at a restaurant using the Yelp Bookings API (credit card not required workflow).
 
     This endpoint places a physical reservation at a restaurant with all the information
     provided. This endpoint will take an optional hold id if the partner previously
-    placed a hold. If the restaurant requires a credit card hold, you will not be able
-    to place a reservation and the API will return an error.
+    placed a hold. This workflow supports direct reservation completion without credit card requirements.
 
     In this case, you should use the reserve_url provided in the hold endpoint or the
     opening endpoint to prompt the user for a reservation.
@@ -248,7 +243,9 @@ def create_reservation(
         raise Exception(f"Yelp API error: {response.status} {response.reason}")
 
     try:
-        return YelpBookingsReservationsResponse(**response.decoded_body)
+        return YelpBookingsReservationsResponseCreditCardNotRequired(
+            **response.decoded_body
+        )
     except Exception as e:
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
@@ -300,15 +297,16 @@ def get_waitlist_status(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
-def get_open_api_availability(
+def get_openings_creditcard_required(
     business_id_or_alias: str,
-    request_params: OpenApiAvailabilityRequest,
-) -> OpenApiAvailabilityResponse:
+    request_params: YelpBookingsOpeningsRequestCreditCardRequired,
+) -> YelpBookingsOpeningsResponseCreditCardRequired:
     """
-    Get available reservation times for restaurants using their open API search endpoint.
+    Get available reservation times for restaurants using their open API search endpoint (credit card required workflow).
 
     This endpoint uses the restaurant's specific availability API that returns time slots
-    in their custom format with form actions for direct reservation.
+    in their custom format with form actions for direct reservation. This workflow always
+    requires completing the reservation on Yelp's website with credit card information.
 
     Note: This API is not stable and may fail with connection errors. Implements retry logic with 6 attempts.
 
@@ -370,7 +368,9 @@ def get_open_api_availability(
                 raise Exception(f"Open API error: {response.status} {response.reason}")
 
             try:
-                return OpenApiAvailabilityResponse(**response.decoded_body)
+                return YelpBookingsOpeningsResponseCreditCardRequired(
+                    **response.decoded_body
+                )
             except Exception as e:
                 logger.debug(f"Failed to parse Open API response: {str(e)}")
                 logger.debug(f"Response data: {response.decoded_body}")

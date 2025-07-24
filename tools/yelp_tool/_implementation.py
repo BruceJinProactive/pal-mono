@@ -2,6 +2,7 @@ import traceback
 import uuid
 from datetime import datetime
 from functools import cached_property
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
@@ -12,9 +13,9 @@ from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.utils.ordering._llm import llm_call
 from tools.yelp_tool._apis import (
-    create_hold,
-    get_open_api_availability,
-    get_openings,
+    create_hold_creditcard_not_required,
+    get_openings_creditcard_not_required,
+    get_openings_creditcard_required,
     get_waitlist_status,
     get_yelp_bearer_token,
 )
@@ -25,18 +26,19 @@ from tools.yelp_tool._prompt_constants import (
     RESERVATION_EXTRACTION_USER_PROMPT,
 )
 from tools.yelp_tool._utils import (
-    create_holds_request,
-    create_open_api_availability_request,
-    create_openings_request,
-    create_reservation_from_hold,
+    create_holds_request_creditcard_not_required,
+    create_openings_request_creditcard_not_required,
+    create_openings_request_creditcard_required,
+    create_reservation_from_hold_creditcard_not_required,
     create_waitlist_status_request,
-    format_open_api_availability_for_llm,
-    format_openings_for_llm,
+    format_openings_for_llm_creditcard_not_required,
+    format_openings_for_llm_creditcard_required,
     format_waitlist_status_for_llm,
-    get_open_api_reservation_url,
+    get_reservation_url_creditcard_required,
 )
 from tools.yelp_tool.classes import (
     OpeningsQuery,
+    OpeningsQueryWithoutCreditCard,
     ReservationQuery,
     YelpAccessToken,
     YelpAccessTokenRequest,
@@ -50,27 +52,78 @@ class YelpTool(Toolkit):
         self,
         business_id_or_alias: str,
         tool_metadata: ToolMetadata,
+        credit_card_required: bool,
+        use_creditcard_workflow: Optional[bool] = None,
+        biz_id: Optional[str] = None,
+        biz_lat: Optional[str] = None,
+        biz_long: Optional[str] = None,
     ):
+        """
+        Initialize YelpTool with configurable workflow parameters.
+
+        Args:
+            business_id_or_alias: The Yelp business ID or alias
+            tool_metadata: Tool metadata containing session information
+            credit_card_required: Whether this business actually requires credit card for reservations
+            use_creditcard_workflow: Force use of credit card workflow (overrides credit_card_required).
+                                   If None, defaults to credit_card_required value.
+            biz_id: Business-specific ID parameter (required if using credit card workflow)
+            biz_lat: Business latitude parameter (required if using credit card workflow)
+            biz_long: Business longitude parameter (required if using credit card workflow)
+
+        Raises:
+            ValueError: If using credit card workflow but biz_id, biz_lat, or biz_long are not provided
+        """
         super().__init__(name="yelp_tool")
 
         self.business_id_or_alias = business_id_or_alias
         self.tool_metadata = tool_metadata
 
-        if self.business_id_or_alias in [
-            "din-tai-fung-new-york-3",
-            "little-star-pizza-san-francisco-4",
-        ]:
-            self.register(self.get_openings_open_api)
-            self.register(self.make_reservation_open_api)
+        # Set credit card requirement
+        self.credit_card_required = credit_card_required
+
+        # Determine which workflow to use
+        if use_creditcard_workflow is None:
+            # Default behavior: use workflow based on credit_card_required
+            self.use_creditcard_workflow = credit_card_required
         else:
-            self.register(self.get_restaurant_openings)
-            self.register(self.make_reservation)
+            # Explicit override: use the specified workflow
+            self.use_creditcard_workflow = use_creditcard_workflow
+
+        # Validate business-specific parameters for credit card workflow
+        if self.use_creditcard_workflow:
+            if not biz_id or not biz_lat or not biz_long:
+                missing_params = []
+                if not biz_id:
+                    missing_params.append("biz_id")
+                if not biz_lat:
+                    missing_params.append("biz_lat")
+                if not biz_long:
+                    missing_params.append("biz_long")
+                raise ValueError(
+                    f"Credit card workflow needs these parameters: {', '.join(missing_params)}"
+                )
+            self.biz_id = biz_id
+            self.biz_lat = biz_lat
+            self.biz_long = biz_long
+        else:
+            self.biz_id = None
+            self.biz_lat = None
+            self.biz_long = None
+
+        # Register appropriate tools based on workflow choice
+        if self.use_creditcard_workflow:
+            self.register(self.get_openings_open_api_creditcard_required)
+            self.register(self.make_reservation_creditcard_required)
+        else:
+            self.register(self.get_restaurant_openings_creditcard_not_required)
+            self.register(self.make_reservation_creditcard_not_required)
             self.register(self.get_waitlist_status)
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
         logger.debug(
-            f"YelpTool instance created: business id={self.business_id_or_alias}"
+            f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={self.credit_card_required}, use_creditcard_workflow={self.use_creditcard_workflow}"
         )
 
     def _get_current_date(self) -> str:
@@ -165,7 +218,9 @@ class YelpTool(Toolkit):
         return chat_history
 
     @tool
-    def get_restaurant_openings(self, latest_user_message: str) -> str:
+    def get_restaurant_openings_creditcard_not_required(
+        self, latest_user_message: str
+    ) -> str:
         """
         Get available reservation times for a restaurant using the Yelp Bookings API.
 
@@ -192,11 +247,11 @@ class YelpTool(Toolkit):
                 prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
                 ),
-                response_format=OpeningsQuery,
+                response_format=OpeningsQueryWithoutCreditCard,
                 reasoning=False,
             )
 
-            if not isinstance(openings_query, OpeningsQuery):
+            if not isinstance(openings_query, OpeningsQueryWithoutCreditCard):
                 return "I couldn't understand your reservation search request. Please specify the number of people, date, and time you'd like to search for."
 
             # Validate required fields
@@ -215,25 +270,27 @@ class YelpTool(Toolkit):
 
                 return f"To search for available times, I need the following information: {', '.join(missing_fields)}. Please provide these details."
 
-            success, message, request_obj = create_openings_request(
-                business_id_or_alias=self.business_id_or_alias,
-                covers=openings_query.covers,
-                date=openings_query.date,
-                time=openings_query.time,
-                get_covers_range=openings_query.get_covers_range,
-                num_results_after=(0 if openings_query.before else None),
-                num_results_before=(0 if openings_query.after else None),
+            success, message, request_obj = (
+                create_openings_request_creditcard_not_required(
+                    business_id_or_alias=self.business_id_or_alias,
+                    covers=openings_query.covers,
+                    date=openings_query.date,
+                    time=openings_query.time,
+                    get_covers_range=openings_query.get_covers_range,
+                )
             )
 
             if not success or not request_obj:
                 return f"Invalid request parameters: {message}"
 
-            response = get_openings(
+            response = get_openings_creditcard_not_required(
                 bearer_token=bearer_token,
                 request_params=request_obj,
             )
 
-            formatted_response = format_openings_for_llm(response)
+            formatted_response = format_openings_for_llm_creditcard_not_required(
+                response
+            )
             return formatted_response
 
         except Exception as e:
@@ -244,7 +301,7 @@ class YelpTool(Toolkit):
             return "Failed to get restaurant openings. Please try again."
 
     @tool
-    def make_reservation(self, latest_user_message: str) -> str:
+    def make_reservation_creditcard_not_required(self, latest_user_message: str) -> str:
         """
         Make a reservation for a restaurant using the Yelp Bookings API.
 
@@ -309,19 +366,21 @@ class YelpTool(Toolkit):
                     return f"I need your {', '.join(missing_fields[:-1])}, and {missing_fields[-1]}."
 
             # Create hold
-            hold_success, hold_message, hold_request = create_holds_request(
-                business_id_or_alias=self.business_id_or_alias,
-                covers=reservation_query.covers,  # type: ignore
-                date=reservation_query.date,  # type: ignore
-                time=reservation_query.time,  # type: ignore
-                unique_id=str(uuid.uuid4()),
+            hold_success, hold_message, hold_request = (
+                create_holds_request_creditcard_not_required(
+                    business_id_or_alias=self.business_id_or_alias,
+                    covers=reservation_query.covers,  # type: ignore
+                    date=reservation_query.date,  # type: ignore
+                    time=reservation_query.time,  # type: ignore
+                    unique_id=str(uuid.uuid4()),
+                )
             )
 
             if not hold_success or not hold_request:
                 return f"Failed to create hold: {hold_message}"
 
             try:
-                hold_response = create_hold(
+                hold_response = create_hold_creditcard_not_required(
                     bearer_token=bearer_token, request_params=hold_request
                 )
                 if not hold_response or not hold_response.hold_id:
@@ -350,7 +409,7 @@ class YelpTool(Toolkit):
 
             # Create reservation directly
             reservation_success, reservation_message, reservation_response = (
-                create_reservation_from_hold(
+                create_reservation_from_hold_creditcard_not_required(
                     bearer_token=bearer_token,
                     holds_response=hold_response,
                     holds_request=hold_request,
@@ -419,7 +478,9 @@ class YelpTool(Toolkit):
             return "Failed to get waitlist status. Please try again."
 
     @tool
-    def get_openings_open_api(self, latest_user_message: str) -> str:
+    def get_openings_open_api_creditcard_required(
+        self, latest_user_message: str
+    ) -> str:
         """
         Get available reservation times for restaurants using their open API search endpoint.
 
@@ -468,11 +529,14 @@ class YelpTool(Toolkit):
                 return f"To search for available times, I need the following information: {', '.join(missing_fields)}. Please provide these details."
 
             # Create request object
-            success, message, request_obj = create_open_api_availability_request(
+            success, message, request_obj = create_openings_request_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
                 covers=openings_query.covers,  # type: ignore
                 date=openings_query.date,  # type: ignore
                 time=openings_query.time,  # type: ignore
+                biz_id=self.biz_id,  # type: ignore
+                biz_lat=self.biz_lat,  # type: ignore
+                biz_long=self.biz_long,  # type: ignore
                 num_results_after=(0 if openings_query.before else None),
                 num_results_before=(0 if openings_query.after else None),
             )
@@ -481,13 +545,13 @@ class YelpTool(Toolkit):
                 return f"Invalid request parameters: {message}"
 
             # Make API call
-            response = get_open_api_availability(
+            response = get_openings_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
                 request_params=request_obj,
             )
 
             # Format response for display
-            formatted_response = format_open_api_availability_for_llm(response)
+            formatted_response = format_openings_for_llm_creditcard_required(response)
             return formatted_response
 
         except Exception as e:
@@ -496,7 +560,7 @@ class YelpTool(Toolkit):
             return "Failed to get restaurant openings. Please try again."
 
     @tool
-    def make_reservation_open_api(self, latest_user_message: str) -> str:
+    def make_reservation_creditcard_required(self, latest_user_message: str) -> str:
         """
         Make a reservation for restaurants using their open API workflow.
 
@@ -542,11 +606,14 @@ class YelpTool(Toolkit):
                 return f"To make a reservation, I need the following information: {', '.join(missing_fields)}. Please provide these details."
 
             # Create request object
-            success, message, request_obj = create_open_api_availability_request(
+            success, message, request_obj = create_openings_request_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
                 covers=openings_query.covers,  # type: ignore
                 date=openings_query.date,  # type: ignore
                 time=openings_query.time,  # type: ignore
+                biz_id=self.biz_id,  # type: ignore
+                biz_lat=self.biz_lat,  # type: ignore
+                biz_long=self.biz_long,  # type: ignore
                 num_results_after=(0 if openings_query.before else None),
                 num_results_before=(0 if openings_query.after else None),
             )
@@ -555,14 +622,14 @@ class YelpTool(Toolkit):
                 return f"Invalid request parameters: {message}"
 
             # Get availability data
-            response = get_open_api_availability(
+            response = get_openings_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
                 request_params=request_obj,
             )
 
             # Extract reservation URL
-            url_success, url_message, reservation_url = get_open_api_reservation_url(
-                response
+            url_success, url_message, reservation_url = (
+                get_reservation_url_creditcard_required(response)
             )
 
             if not url_success or not reservation_url:
