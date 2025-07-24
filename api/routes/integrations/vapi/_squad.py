@@ -144,7 +144,6 @@ def _create_assistant_config(
         "backgroundSound": background_sound,
         "silenceTimeoutSeconds": 60,
         "backgroundDenoisingEnabled": True,
-        "prompt": system_content,
     }
 
 
