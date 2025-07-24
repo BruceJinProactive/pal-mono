@@ -4,43 +4,12 @@ import os
 from utils.log import logger
 
 from ._constants import LANGUAGE_SAY_CONFIGS, LANGUAGE_VOICE_CONFIGS, SPORTSMAN_VOICE_ID
+from ._squad import _get_language_configurations
 from ._utils import _get_transcriber_and_voice_config, add_voice_speed_if_supported
 
 # ============================================================================
 # MULTILINGUAL WORKFLOW FUNCTIONS
 # ============================================================================
-
-
-def _get_language_configurations(
-    agent_config, account_display_name: str, language_voice_configs: dict
-) -> dict:
-    """
-    Generate language-specific configurations for the multilingual workflow.
-
-    Args:
-        agent_config: The agent configuration object
-        account_display_name: The account display name
-
-    Returns:
-        dict: Language configurations for English, Spanish, and Chinese
-    """
-    return {
-        "english": {
-            **language_voice_configs["english"],
-            "system_content": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
-            "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
-        },
-        "spanish": {
-            **language_voice_configs["spanish"],
-            "system_content": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. {agent_config.persona.description} Mantén las respuestas concisas y útiles.",
-            "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
-        },
-        "chinese": {
-            **language_voice_configs["chinese"],
-            "system_content": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。必须使用中文回答。",
-            "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。必须使用中文回答。",
-        },
-    }
 
 
 def _build_workflow_nodes(

@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Literal, Optional
 
@@ -7,7 +8,60 @@ from utils.log import logger
 
 from ._constants import FIRST_MESSAGES, LANGUAGE_VOICE_CONFIGS, SPORTSMAN_VOICE_ID
 from ._utils import _get_transcriber_and_voice_config, add_voice_speed_if_supported
-from ._workflow import _get_language_configurations
+
+
+def _get_language_configurations(
+    agent_config, account_display_name: str, language_voice_configs: dict
+) -> dict:
+    """
+    Generate language-specific configurations for the multilingual workflow.
+
+    Args:
+        agent_config: The agent configuration object
+        account_display_name: The account display name
+
+    Returns:
+        dict: Language configurations for English, Spanish, and Chinese
+    """
+    # Language switching instructions for each assistant
+    english_switching_instructions = """LANGUAGE SWITCHING INSTRUCTIONS:
+- If the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support, transfer them to spanish_assistant.
+- If the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support, transfer them to chinese_assistant.
+- You can seamlessly transfer customers between language assistants when they indicate a language preference.
+
+"""
+
+    spanish_switching_instructions = """INSTRUCCIONES PARA CAMBIO DE IDIOMA:
+- Si el cliente solicita ayuda explícitamente en inglés, cambia al inglés, o indica que prefiere el soporte en inglés, transfiérelo a english_assistant.
+- Si el cliente solicita ayuda explícitamente en chino, dice '中文', usa caracteres/frases en chino, o indica que prefiere el soporte en chino, transfiérelo a chinese_assistant.
+- Puedes transferir sin problemas a los clientes entre asistentes de idiomas cuando indiquen una preferencia de idioma.
+
+"""
+
+    chinese_switching_instructions = """语言切换指令：
+- 如果客户明确要求英语帮助，切换到英语，或表示他们更喜欢英语支持，请将他们转移到english_assistant。
+- 如果客户明确要求西班牙语帮助，说'español'，使用西班牙语短语，或表示他们更喜欢西班牙语支持，请将他们转移到spanish_assistant。
+- 当客户表示语言偏好时，您可以在语言助手之间无缝转移客户。
+
+"""
+
+    return {
+        "english": {
+            **language_voice_configs["english"],
+            "system_content": f"{english_switching_instructions}You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
+            "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
+        },
+        "spanish": {
+            **language_voice_configs["spanish"],
+            "system_content": f"{spanish_switching_instructions}Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. {agent_config.persona.description} Mantén las respuestas concisas y útiles.",
+            "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
+        },
+        "chinese": {
+            **language_voice_configs["chinese"],
+            "system_content": f"{chinese_switching_instructions}您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。必须使用中文回答。",
+            "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。必须使用中文回答。",
+        },
+    }
 
 
 class VAPIAssistant(BaseModel):
@@ -97,12 +151,12 @@ def _create_assistant_config(
     return {
         "firstMessage": first_message,
         "transcriber": transcriber,
-        # "model": {
-        #     "provider": "custom-llm",
-        #     "url": f"{api_url}/v1",
-        #     "model": json.dumps(caller_info),
-        #     "messages": [{"role": "system", "content": system_content}],
-        # },
+        "model": {
+            "provider": "custom-llm",
+            "url": f"{api_url}/v1",
+            "model": json.dumps(caller_info),
+            "messages": [{"role": "system", "content": system_content}],
+        },
         "voice": voice_config,
         "backgroundSound": background_sound,
         "silenceTimeoutSeconds": 60,
