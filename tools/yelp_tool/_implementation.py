@@ -579,10 +579,10 @@ class YelpTool(Toolkit):
             # Extract using OpeningsQuery class for basic parameters
             current_date = self._get_current_date()
             openings_query = llm_call(
-                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT.format(
+                system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT.format(
                     current_date=current_date
                 ),
-                prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
+                prompt=RESERVATION_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
                 ),
                 response_format=OpeningsQuery,
