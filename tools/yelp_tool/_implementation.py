@@ -568,7 +568,7 @@ class YelpTool(Toolkit):
             if not url_success or not reservation_url:
                 return url_message
 
-            return f"I found availability for {openings_query.covers} people on {openings_query.date}.\n\nThe closest available time is {response.closest_match.formatted_time if response.closest_match else 'N/A'}.\n\nPlease complete your reservation through this link: {reservation_url}. The link will be sent to you via a text message to confirm the reservation and you should follow the link to provide credit card details."
+            return f"I found availability for {openings_query.covers} people on {openings_query.date}.\n\nThe closest available time is {response.closest_match.formatted_time if response.closest_match else 'N/A'}.\n\nPlease complete your reservation through this link: {reservation_url}"
 
         except Exception as e:
             logger.debug(f"[YelpTool.make_reservation_open_api] Error: {e}")
