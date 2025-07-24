@@ -301,6 +301,7 @@ def get_waitlist_status(
 
 
 def get_open_api_availability(
+    business_id_or_alias: str,
     request_params: OpenApiAvailabilityRequest,
 ) -> OpenApiAvailabilityResponse:
     """
@@ -312,6 +313,7 @@ def get_open_api_availability(
     Note: This API is not stable and may fail with connection errors. Implements retry logic with 6 attempts.
 
     Args:
+        business_id_or_alias: The business ID or alias for the restaurant
         request_params: OpenApiAvailabilityRequest object containing the search parameters
 
     Returns:
@@ -338,7 +340,7 @@ def get_open_api_availability(
     if request_params.num_results_before == 0:
         query_params["num_results_before"] = "0"
 
-    api_function = "/reservations/din-tai-fung-new-york-3/search_availability"
+    api_function = f"/reservations/{business_id_or_alias}/search_availability"
 
     extra_headers = {
         "X-Requested-With": "XMLHttpRequest",

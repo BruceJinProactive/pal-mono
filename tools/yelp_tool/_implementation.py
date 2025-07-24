@@ -480,7 +480,10 @@ class YelpTool(Toolkit):
                 return f"Invalid request parameters: {message}"
 
             # Make API call
-            response = get_open_api_availability(request_params=request_obj)
+            response = get_open_api_availability(
+                business_id_or_alias=self.business_id_or_alias,
+                request_params=request_obj,
+            )
 
             # Format response for display
             formatted_response = format_open_api_availability_for_llm(response)
@@ -550,7 +553,10 @@ class YelpTool(Toolkit):
                 return f"Invalid request parameters: {message}"
 
             # Get availability data
-            response = get_open_api_availability(request_params=request_obj)
+            response = get_open_api_availability(
+                business_id_or_alias=self.business_id_or_alias,
+                request_params=request_obj,
+            )
 
             # Extract reservation URL
             url_success, url_message, reservation_url = get_open_api_reservation_url(
