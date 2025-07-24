@@ -105,7 +105,11 @@ class PromptRepository:
                         channel_enums.append(channel_enum)
                         break
             if channel_enums:
-                query = query.filter(Prompt.channel.overlap(channel_enums))
+                query = query.filter(
+                    (Prompt.channel.is_(None))
+                    | (Prompt.channel == [])
+                    | (Prompt.channel.overlap(channel_enums))
+                )
 
         return query.order_by(Prompt.created_at.desc()).all()
 
