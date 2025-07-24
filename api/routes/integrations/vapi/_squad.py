@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Literal, Optional
 
@@ -15,11 +14,11 @@ class VAPIAssistant(BaseModel):
     name: str
     firstMessage: str
     transcriber: dict
-    model: dict | str
     voice: dict
     backgroundSound: str
     silenceTimeoutSeconds: int = 60
     backgroundDenoisingEnabled: bool = True
+    model: dict | str | None = None
 
     # Allow not defined fields to be added to the assistant config
     model_config = ConfigDict(extra="allow")
@@ -98,12 +97,12 @@ def _create_assistant_config(
     return {
         "firstMessage": first_message,
         "transcriber": transcriber,
-        "model": {
-            "provider": "custom-llm",
-            "url": f"{api_url}/v1",
-            "model": json.dumps(caller_info),
-            "messages": [{"role": "system", "content": system_content}],
-        },
+        # "model": {
+        #     "provider": "custom-llm",
+        #     "url": f"{api_url}/v1",
+        #     "model": json.dumps(caller_info),
+        #     "messages": [{"role": "system", "content": system_content}],
+        # },
         "voice": voice_config,
         "backgroundSound": background_sound,
         "silenceTimeoutSeconds": 60,
