@@ -117,17 +117,6 @@ def _get_transcriber_and_voice_config(
             "provider": "cartesia",
             "voiceId": voice_id or SPORTSMAN_VOICE_ID,
             "model": "sonic",
-            "chunkPlan": {
-                "enabled": True,
-                "minCharacters": 30,
-                "punctuationBoundaries": [
-                    ",",
-                    ".",
-                    "!",
-                    "?",
-                    ";",
-                ],
-            },
         }
 
     # Add speed if provider supports it
