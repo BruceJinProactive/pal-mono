@@ -510,6 +510,7 @@ def format_waitlist_status_for_llm(
 
 
 def create_open_api_availability_request(
+    business_id_or_alias: str,
     covers: int,
     date: str,
     time: str,
@@ -521,6 +522,7 @@ def create_open_api_availability_request(
     Provides early validation with user-friendly error messages.
 
     Args:
+        business_id_or_alias: The business ID or alias to determine restaurant-specific parameters
         covers: Number of people for the reservation
         date: Date in YYYY-mm-dd format
         time: Time in HH:MM format (MUST be exactly HH:MM, nothing else)
@@ -557,8 +559,20 @@ def create_open_api_availability_request(
     if len(time_parts) != 2:
         return False, "Time must be in HH:MM format", None
 
-    # Convert time format from HH:MM to HH:MM:SS for the Din Tai Fung endpoint
+    # Convert time format from HH:MM to HH:MM:SS for the endpoint
     time_formatted = f"{time}:00"
+
+    # Set business-specific parameters based on business_id_or_alias
+    if business_id_or_alias == "din-tai-fung-new-york-3":
+        biz_id = "Y5TqZhNxPC6BWnM7zsCSjA"
+        biz_lat = "40"
+        biz_long = "-75"
+    elif business_id_or_alias == "little-star-pizza-san-francisco-4":
+        biz_id = "OoyK7MyuPtKOQAXmEmyM5g"
+        biz_lat = "37.7"
+        biz_long = "-122.4"
+    else:
+        return False, f"Unsupported business_id_or_alias: {business_id_or_alias}", None
 
     # Create request object
     try:
@@ -566,6 +580,9 @@ def create_open_api_availability_request(
             covers=covers,
             date=date,
             time=time_formatted,  # This will be HH:MM:SS format
+            biz_id=biz_id,
+            biz_lat=biz_lat,
+            biz_long=biz_long,
             num_results_after=num_results_after,
             num_results_before=num_results_before,
         )

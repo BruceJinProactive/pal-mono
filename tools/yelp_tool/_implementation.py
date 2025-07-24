@@ -469,6 +469,7 @@ class YelpTool(Toolkit):
 
             # Create request object
             success, message, request_obj = create_open_api_availability_request(
+                business_id_or_alias=self.business_id_or_alias,
                 covers=openings_query.covers,  # type: ignore
                 date=openings_query.date,  # type: ignore
                 time=openings_query.time,  # type: ignore
@@ -542,6 +543,7 @@ class YelpTool(Toolkit):
 
             # Create request object
             success, message, request_obj = create_open_api_availability_request(
+                business_id_or_alias=self.business_id_or_alias,
                 covers=openings_query.covers,  # type: ignore
                 date=openings_query.date,  # type: ignore
                 time=openings_query.time,  # type: ignore

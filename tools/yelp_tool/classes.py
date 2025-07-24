@@ -461,9 +461,9 @@ class OpenApiAvailabilityRequest(BaseModel):
     )
     days_before: str = Field(default="0", description="Days before to search")
     days_after: str = Field(default="0", description="Days after to search")
-    biz_id: str = Field(default="Y5TqZhNxPC6BWnM7zsCSjA", description="Business ID")
-    biz_lat: str = Field(default="40", description="Business latitude")
-    biz_long: str = Field(default="-75", description="Business longitude")
+    biz_id: str = Field(description="Business ID")
+    biz_lat: str = Field(description="Business latitude")
+    biz_long: str = Field(description="Business longitude")
     num_results_after: Optional[int] = Field(
         default=None,
         description="Set to 0 if user wants to know the openings before the current result, otherwise don't include this field",
