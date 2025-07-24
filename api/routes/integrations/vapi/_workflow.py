@@ -3,7 +3,7 @@ import os
 
 from utils.log import logger
 
-from ._constants import LANGUAGE_SAY_CONFIGS, LANGUAGE_VOICE_CONFIGS, SPORTSMAN_VOICE_ID
+from ._constants import LANGUAGE_SAY_CONFIGS, SPORTSMAN_VOICE_ID
 from ._squad import _get_language_configurations
 from ._utils import _get_transcriber_and_voice_config, add_voice_speed_if_supported
 
@@ -36,9 +36,7 @@ def _build_workflow_nodes(
     Returns:
         list: Complete list of workflow nodes
     """
-    language_configs = _get_language_configurations(
-        agent_config, account_display_name, LANGUAGE_VOICE_CONFIGS
-    )
+    language_configs = _get_language_configurations(agent_config, account_display_name)
 
     nodes = [
         # Starting message node

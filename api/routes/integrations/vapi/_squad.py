@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Literal, Optional
 
@@ -10,9 +9,7 @@ from ._constants import FIRST_MESSAGES, LANGUAGE_VOICE_CONFIGS, SPORTSMAN_VOICE_
 from ._utils import _get_transcriber_and_voice_config, add_voice_speed_if_supported
 
 
-def _get_language_configurations(
-    agent_config, account_display_name: str, language_voice_configs: dict
-) -> dict:
+def _get_language_configurations(agent_config, account_display_name: str) -> dict:
     """
     Generate language-specific configurations for the multilingual workflow.
 
@@ -21,43 +18,29 @@ def _get_language_configurations(
         account_display_name: The account display name
 
     Returns:
-        dict: Language configurations for English, Spanish, and Chinese
+        dict: Language configurations for English and Chinese
     """
     # Language switching instructions for each assistant
     english_switching_instructions = """LANGUAGE SWITCHING INSTRUCTIONS:
-- If the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support, transfer them to spanish_assistant.
 - If the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support, transfer them to chinese_assistant.
 - You can seamlessly transfer customers between language assistants when they indicate a language preference.
 
 """
 
-    spanish_switching_instructions = """INSTRUCCIONES PARA CAMBIO DE IDIOMA:
-- Si el cliente solicita ayuda explícitamente en inglés, cambia al inglés, o indica que prefiere el soporte en inglés, transfiérelo a english_assistant.
-- Si el cliente solicita ayuda explícitamente en chino, dice '中文', usa caracteres/frases en chino, o indica que prefiere el soporte en chino, transfiérelo a chinese_assistant.
-- Puedes transferir sin problemas a los clientes entre asistentes de idiomas cuando indiquen una preferencia de idioma.
-
-"""
-
     chinese_switching_instructions = """语言切换指令：
 - 如果客户明确要求英语帮助，切换到英语，或表示他们更喜欢英语支持，请将他们转移到english_assistant。
-- 如果客户明确要求西班牙语帮助，说'español'，使用西班牙语短语，或表示他们更喜欢西班牙语支持，请将他们转移到spanish_assistant。
 - 当客户表示语言偏好时，您可以在语言助手之间无缝转移客户。
 
 """
 
     return {
         "english": {
-            **language_voice_configs["english"],
+            **LANGUAGE_VOICE_CONFIGS["english"],
             "system_content": f"{english_switching_instructions}You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
             "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
         },
-        "spanish": {
-            **language_voice_configs["spanish"],
-            "system_content": f"{spanish_switching_instructions}Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. {agent_config.persona.description} Mantén las respuestas concisas y útiles.",
-            "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
-        },
         "chinese": {
-            **language_voice_configs["chinese"],
+            **LANGUAGE_VOICE_CONFIGS["chinese"],
             "system_content": f"{chinese_switching_instructions}您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。必须使用中文回答。",
             "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。必须使用中文回答。",
         },
@@ -152,21 +135,21 @@ def _create_assistant_config(
         "firstMessage": first_message,
         "transcriber": transcriber,
         "model": {
-            "provider": "custom-llm",
-            "url": f"{api_url}/v1",
-            "model": json.dumps(caller_info),
+            "provider": "openai",
+            # "url": f"{api_url}/v1",
+            "model": "gpt-4o",
             "messages": [{"role": "system", "content": system_content}],
         },
         "voice": voice_config,
         "backgroundSound": background_sound,
         "silenceTimeoutSeconds": 60,
         "backgroundDenoisingEnabled": True,
+        "prompt": system_content,
     }
 
 
 def _create_language_assistant(
     name: str,
-    language: str,
     language_config: dict,
     agent_config,
     transcriber: dict,
@@ -248,47 +231,25 @@ def create_multilingual_squad_demo(
 
         # Get language-specific configurations
         language_configs = _get_language_configurations(
-            agent_config, account_display_name, LANGUAGE_VOICE_CONFIGS
+            agent_config, account_display_name
         )
 
         # Create multilingual greeting for the main assistant
-        multilingual_greeting = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or Chinese. How can I assist you today?"
+        multilingual_greeting = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English or Chinese. How can I assist you today?"
 
         # Create assistant destinations for each language assistant
 
-        # For English assistant: can transfer to Spanish and Chinese
+        # For English assistant: can transfer to Chinese
         english_destinations = [
             AssistantDestination(
-                assistantName="spanish_assistant",
-                message="¡Perfecto! Te conecto con nuestro soporte en español.",
-                description="Transfer to Spanish-speaking assistant when the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-            AssistantDestination(
                 assistantName="chinese_assistant",
-                message="好的！让我为您连接到我们的中文客服。",
+                message="Great, let me connect you with our Chinese support.",
                 description="Transfer to Chinese-speaking assistant when the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support.",
                 transferMode="swap-system-message-in-history",
             ),
         ]
 
-        # For Spanish assistant: can transfer to English and Chinese
-        spanish_destinations = [
-            AssistantDestination(
-                assistantName="english_assistant",
-                message="Perfect! I'll connect you with our English support.",
-                description="Transfer to English-speaking assistant when the customer explicitly requests help in English, switches to English, or indicates they prefer English language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-            AssistantDestination(
-                assistantName="chinese_assistant",
-                message="好的！让我为您连接到我们的中文客服。",
-                description="Transfer to Chinese-speaking assistant when the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-        ]
-
-        # For Chinese assistant: can transfer to English and Spanish
+        # For Chinese assistant: can transfer to English
         chinese_destinations = [
             AssistantDestination(
                 assistantName="english_assistant",
@@ -296,18 +257,11 @@ def create_multilingual_squad_demo(
                 description="Transfer to English-speaking assistant when the customer explicitly requests help in English, switches to English, or indicates they prefer English language support.",
                 transferMode="swap-system-message-in-history",
             ),
-            AssistantDestination(
-                assistantName="spanish_assistant",
-                message="¡Perfecto! Te conecto con nuestro soporte en español.",
-                description="Transfer to Spanish-speaking assistant when the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support.",
-                transferMode="swap-system-message-in-history",
-            ),
         ]
 
         # Create assistants using helper functions
         english_assistant = _create_language_assistant(
             name="english_assistant",
-            language="english",
             language_config=language_configs["english"],
             agent_config=agent_config,
             transcriber=transcriber,
@@ -318,24 +272,8 @@ def create_multilingual_squad_demo(
             first_message=multilingual_greeting,
         )
 
-        spanish_assistant = _create_language_assistant(
-            name="spanish_assistant",
-            language="spanish",
-            language_config=language_configs["spanish"],
-            agent_config=agent_config,
-            transcriber=transcriber,
-            background_sound=background_sound,
-            caller_info=caller_info,
-            api_url=api_url,
-            speech_rate=speech_rate,
-            first_message=FIRST_MESSAGES["spanish"](
-                agent_config.persona.name, account_display_name
-            ),
-        )
-
         chinese_assistant = _create_language_assistant(
             name="chinese_assistant",
-            language="chinese",
             language_config=language_configs["chinese"],
             agent_config=agent_config,
             transcriber=transcriber,
@@ -355,10 +293,6 @@ def create_multilingual_squad_demo(
                 SquadMember(
                     assistant=english_assistant,
                     assistantDestinations=english_destinations,
-                ),
-                SquadMember(
-                    assistant=spanish_assistant,
-                    assistantDestinations=spanish_destinations,
                 ),
                 SquadMember(
                     assistant=chinese_assistant,
