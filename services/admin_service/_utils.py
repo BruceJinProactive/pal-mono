@@ -29,19 +29,50 @@ def get_knowledge_settings(
 
 
 def generate_password(length: int = 12) -> str:
+    # Allowed special characters from the requirements
+    allowed_specials = r"^$*.[]{}()?\-\"!@#%&/\\,><':;|_~`+="
+    # allowed_specials_set = set(allowed_specials)
+    # Add space as a special character (not leading or trailing)
     if length < 8:
         raise ValueError("Password length should be at least 8")
-    chars = [
-        random.choice(string.ascii_lowercase),
-        random.choice(string.ascii_uppercase),
-        random.choice(string.digits),
-        random.choice(string.punctuation),
-    ]
-    chars += random.choices(
-        string.ascii_letters + string.digits + string.punctuation, k=length - 4
-    )
+
+    # Character pools
+    lower = random.choice(string.ascii_lowercase)
+    upper = random.choice(string.ascii_uppercase)
+    digit = random.choice(string.digits)
+    special = random.choice(allowed_specials)
+
+    # Optionally include a space (not leading or trailing)
+    include_space = random.choice([True, False]) and length > 8
+
+    # Build the rest of the password
+    pool = string.ascii_letters + string.digits + allowed_specials
+    remaining_length = length - 4 - (1 if include_space else 0)
+    chars = [lower, upper, digit, special]
+    chars += random.choices(pool, k=remaining_length)
+    if include_space:
+        # Insert a space not at the start or end
+        insert_pos = random.randint(1, len(chars) - 1)
+        chars.insert(insert_pos, " ")
     random.shuffle(chars)
-    return "".join(chars)
+    password = "".join(chars)
+    # Ensure no leading or trailing space
+    if password[0] == " " or password[-1] == " ":
+        # Move space to a valid position if needed
+        space_idx = password.find(" ")
+        if space_idx == 0:
+            new_idx = random.randint(1, length - 2)
+            chars = list(password)
+            chars.pop(0)
+            chars.insert(new_idx, " ")
+            password = "".join(chars)
+        elif space_idx == length - 1:
+            new_idx = random.randint(1, length - 2)
+            chars = list(password)
+            chars.pop()
+            chars.insert(new_idx, " ")
+            password = "".join(chars)
+    return password
 
 
 def _get_project_knowledge_settings(
