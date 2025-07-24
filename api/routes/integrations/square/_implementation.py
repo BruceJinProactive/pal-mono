@@ -1,6 +1,6 @@
 import binascii
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 from fastapi import Request, status
@@ -128,8 +128,6 @@ async def callback(request: Request):
         # Parse expires_at if provided
         parsed_expires_at = None
         if expires_at:
-            from datetime import datetime
-
             parsed_expires_at = datetime.fromisoformat(
                 expires_at.replace("Z", "+00:00")
             )
@@ -206,7 +204,7 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
     errors = []
 
     # Calculate the expiration threshold
-    expiration_threshold = datetime.now() + timedelta(days=days_threshold)
+    expiration_threshold = datetime.now(timezone.utc) + timedelta(days=days_threshold)
 
     for integration in square_integrations:
         try:
