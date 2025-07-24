@@ -169,11 +169,20 @@ class AgnoAgent:
                         ],
                     )
 
-                    result = await self._agent.arun(
-                        message,
-                        messages=messages,
-                        stream=input.stream,
-                    )
+                    agent_model_info = self._agent.model
+                    with LLMObs.llm(
+                        model_name=(
+                            agent_model_info.name if agent_model_info else "custom"
+                        ),
+                        model_provider=(
+                            agent_model_info.provider if agent_model_info else "custom"
+                        ),
+                    ):
+                        result = await self._agent.arun(
+                            message,
+                            messages=messages,
+                            stream=input.stream,
+                        )
 
                     logger.debug(
                         f"[AgnoAgent] called with {len(messages) if messages else 'None'} messages, streaming={input.stream}, return_type:{type(result)} at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
