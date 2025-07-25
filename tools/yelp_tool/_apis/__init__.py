@@ -1,12 +1,6 @@
-from tools.yelp_tool._apis._utils import (
-    YELP_API_HOST,
-    YELP_PARTNER_API_HOST,
-    connect_yelp_api,
-)
+from tools.yelp_tool._apis._utils import YELP_API_HOST, connect_yelp_api
 from tools.yelp_tool.classes import (
     YelpAccessToken,
-    YelpAccessTokenRequest,
-    YelpAccessTokenResponse,
     YelpBookingsHoldsRequestCreditCardNotRequired,
     YelpBookingsHoldsResponseCreditCardNotRequired,
     YelpBookingsOpeningsRequestCreditCardNotRequired,
@@ -64,7 +58,9 @@ def get_openings_creditcard_not_required(
     if response.status != 200:
         logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
         logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(f"Yelp API error: {response.status} {response.reason}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
 
     try:
         return YelpBookingsOpeningsResponseCreditCardNotRequired(
@@ -74,58 +70,6 @@ def get_openings_creditcard_not_required(
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
-
-
-def get_yelp_bearer_token(
-    request_params: YelpAccessTokenRequest,
-) -> YelpAccessTokenResponse:
-    """
-    Get an access token from the Yelp Partner API using an authorization code.
-
-    This endpoint exchanges an authorization code for an access token that can be used
-    to make authorized requests to Yelp APIs on behalf of a business user.
-
-    Args:
-        request_params: YelpAccessTokenRequest object containing the token request parameters
-
-    Returns:
-        YelpAccessTokenResponse object containing the access token and related information
-
-    Raises:
-        Exception: If the API request fails or returns an error
-    """
-    api_function = "/token/v1"
-
-    payload = {
-        "client_id": request_params.client_id,
-        "client_secret": request_params.client_secret,
-        "code": request_params.code,
-        "grant_type": request_params.grant_type,
-    }
-
-    if request_params.redirect_uri is not None:
-        payload["redirect_uri"] = request_params.redirect_uri
-
-    response = connect_yelp_api(
-        http_method="POST",
-        api_function=api_function,
-        api_host=YELP_PARTNER_API_HOST,
-        payload=payload,
-    )
-
-    if response.status != 200:
-        logger.debug(
-            f"Yelp Partner API returned error: {response.status} {response.reason}"
-        )
-        logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(f"Yelp Partner API error: {response.status} {response.reason}")
-
-    try:
-        return YelpAccessTokenResponse(**response.decoded_body)
-    except Exception as e:
-        logger.debug(f"Failed to parse Yelp Partner API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
-        raise Exception(f"Failed to parse Yelp Partner API response: {str(e)}") from e
 
 
 def create_hold_creditcard_not_required(
@@ -173,7 +117,9 @@ def create_hold_creditcard_not_required(
     if response.status != 200:
         logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
         logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(f"Yelp API error: {response.status} {response.reason}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
 
     try:
         return YelpBookingsHoldsResponseCreditCardNotRequired(**response.decoded_body)
@@ -214,7 +160,7 @@ def create_reservation_creditcard_not_required(
     api_function = f"/v3/bookings/{request_params.business_id_or_alias}/reservations"
 
     payload = {
-        "covers": str(request_params.covers),
+        "covers": int(request_params.covers),
         "date": request_params.date,
         "time": request_params.time,
         "first_name": request_params.first_name,
@@ -240,7 +186,9 @@ def create_reservation_creditcard_not_required(
     if response.status != 200:
         logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
         logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(f"Yelp API error: {response.status} {response.reason}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
 
     try:
         return YelpBookingsReservationsResponseCreditCardNotRequired(
@@ -287,7 +235,9 @@ def get_waitlist_status(
     if response.status != 200:
         logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
         logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(f"Yelp API error: {response.status} {response.reason}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
 
     try:
         return YelpWaitlistStatusResponse(**response.decoded_body)

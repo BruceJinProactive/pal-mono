@@ -417,18 +417,7 @@ def create_reservation_from_hold_creditcard_not_required(
         return True, "Reservation created successfully", reservation_response
 
     except Exception as e:
-        error_msg = str(e).lower()
-
-        # Determine error prefix based on error type
-        if "covers_value_out_of_range" in error_msg:
-            error_prefix = f"This restaurant doesn't accept reservations for {holds_request.covers} people."
-        elif "invalid_date_time_range" in error_msg:
-            error_prefix = f"The date/time {holds_request.date} at {holds_request.time} is invalid."
-        else:
-            error_prefix = f"Sorry, {holds_request.time} on {holds_request.date} is not available for {holds_request.covers} people."
-
-            # Return simple error message
-        return False, error_prefix, None
+        return False, str(e), None
 
 
 def create_waitlist_status_request(

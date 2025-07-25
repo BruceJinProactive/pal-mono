@@ -17,7 +17,6 @@ from tools.yelp_tool._apis import (
     get_openings_creditcard_not_required,
     get_openings_creditcard_required,
     get_waitlist_status,
-    get_yelp_bearer_token,
 )
 from tools.yelp_tool._prompt_constants import (
     OPENINGS_EXTRACTION_SYSTEM_PROMPT,
@@ -41,7 +40,6 @@ from tools.yelp_tool.classes import (
     OpeningsQueryWithoutCreditCard,
     ReservationQuery,
     YelpAccessToken,
-    YelpAccessTokenRequest,
 )
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
@@ -57,6 +55,7 @@ class YelpTool(Toolkit):
         biz_id: Optional[str] = None,
         biz_lat: Optional[str] = None,
         biz_long: Optional[str] = None,
+        yelp_api_key: Optional[str] = None,
     ):
         """
         Initialize YelpTool with configurable workflow parameters.
@@ -121,10 +120,11 @@ class YelpTool(Toolkit):
         else:
             self.register(self.get_restaurant_openings_creditcard_not_required)
             self.register(self.make_reservation_creditcard_not_required)
-            self.register(self.get_waitlist_status)
+            # self.register(self.get_waitlist_status) # TODO: need to find a way to store and retrieve the correct reservation id to get waitlist status
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
+        self.yelp_api_key = yelp_api_key
         logger.debug(
             f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={self.credit_card_required}, yelp_integration_api={self.yelp_integration_api}, use_creditcard_workflow={self.use_creditcard_workflow}"
         )
@@ -162,22 +162,12 @@ class YelpTool(Toolkit):
 
     @cached_property
     def _yelp_bearer_token(self) -> YelpAccessToken:
-        client_id = get_client_secret_with_fallback("YELP_CLIENT_ID")
-        client_secret = get_client_secret_with_fallback("YELP_CLIENT_SECRET")
+        api_key = self.yelp_api_key or get_client_secret_with_fallback("YELP_API_KEY")
 
-        bearer_token = get_yelp_bearer_token(
-            request_params=YelpAccessTokenRequest(
-                client_id=client_id,
-                client_secret=client_secret,
-                code="PLACEHOLDER",
-                grant_type="PLACEHOLDER",
-            )
-        )
+        if not api_key:
+            raise Exception("Failed to obtain Yelp API key")
 
-        if not bearer_token:
-            raise Exception("Failed to obtain Yelp access token")
-
-        return YelpAccessToken(**bearer_token.model_dump())
+        return YelpAccessToken(access_token=api_key, token_type="Bearer")
 
     @retrieval
     def _get_chat_history(self, latest_user_message: str) -> str:

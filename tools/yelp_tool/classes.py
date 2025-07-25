@@ -249,52 +249,6 @@ class YelpBookingsReservationsResponseCreditCardNotRequired(BaseModel):
 ######### YELP BOOKINGS API CLASSES END (CREDIT CARD NOT REQUIRED) ############
 
 
-######### YELP PARTNER API CLASSES START ############
-
-
-class YelpAccessTokenRequest(BaseModel):
-    """Request parameters for Yelp Partner API access token endpoint"""
-
-    client_id: str = Field(
-        description="ID assigned by Yelp for the third-party system that will make user-authorized requests to Yelp."
-    )
-    client_secret: str = Field(
-        description="Client secret assigned by Yelp for the third-party system that will make user-authorized requests to Yelp."
-    )
-    code: str = Field(
-        description="A unique code that will be used by the client to redeem an access token."
-    )
-    grant_type: str = Field(
-        description="The grant being presented in order to exchange for an access token. For example, when redeeming the authorization code for an access token, this value will be authorization_code."
-    )
-    redirect_uri: Optional[str] = Field(
-        default=None,
-        description="The client-provided redirect endpoint URL. If no redirect_uri was provided during authorization, it is optional here.",
-    )
-
-
-class YelpAccessTokenResponse(BaseModel):
-    """Response from Yelp Partner API access token endpoint"""
-
-    access_token: str = Field(
-        description="The access token that can be used to make authorized requests to Yelp APIs"
-    )
-    token_type: str = Field(description="The type of token, typically 'Bearer'")
-    expires_in: Optional[int] = Field(
-        default=None, description="The lifetime in seconds of the access token"
-    )
-    refresh_token: Optional[str] = Field(
-        default=None,
-        description="The refresh token that can be used to obtain new access tokens",
-    )
-    scope: Optional[str] = Field(
-        default=None, description="The scope of the access token"
-    )
-
-
-######### YELP PARTNER API CLASSES END ############
-
-
 ######### YELP WAITLIST API CLASSES START ############
 
 

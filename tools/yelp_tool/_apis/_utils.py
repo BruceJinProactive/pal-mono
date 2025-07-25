@@ -8,7 +8,6 @@ from utils.log import logger
 
 # Yelp API configuration
 YELP_API_HOST = "api.yelp.com"
-YELP_PARTNER_API_HOST = "partner-api.yelp.com"
 DEFAULT_TIMEOUT = 30  # 30 seconds default timeout
 
 
