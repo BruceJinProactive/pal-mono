@@ -58,7 +58,13 @@ def _create_transcriber_config(
             "model": "nova-3",
         }
         if language:
-            config["language"] = language
+            if language == "multi":
+                config["language"] = "multi"
+            else:
+                config["language"] = language
+                config["model"] = "nova-2"
+        else:
+            config["language"] = "en-US"
         return config
     else:
         raise ValueError(f"Unsupported transcriber type: {transcriber_type}")
@@ -331,9 +337,9 @@ def _create_all_assistants(
 
     # Create language assistants with cleaner config
     language_assistant_configs = [
-        ("english", ENGLISH_ASSISTANT_NAME, "deepgram", "multi"),
-        ("spanish", SPANISH_ASSISTANT_NAME, "deepgram", "multi"),
-        ("chinese", CHINESE_ASSISTANT_NAME, "google", None),
+        ("english", ENGLISH_ASSISTANT_NAME, "deepgram", "en-US"),
+        ("spanish", SPANISH_ASSISTANT_NAME, "deepgram", "es"),
+        ("chinese", CHINESE_ASSISTANT_NAME, "deepgram", "zh-CN"),
     ]
 
     for (
