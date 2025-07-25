@@ -48,6 +48,6 @@ LANGUAGE_SAY_CONFIGS = {
 # Language-specific first messages for squad assistants
 FIRST_MESSAGES = {
     "english": "Hey! Let me know how I can help.",
-    "spanish": "¡Qué onda! ¿En qué te puedo ayudar?",
-    "chinese": "嘿！有啥需要我帮忙的不？",
+    "spanish": "Hola, ¿en qué puedo ayudarte?",
+    "chinese": "嗨，有什么我能帮您?",
 }

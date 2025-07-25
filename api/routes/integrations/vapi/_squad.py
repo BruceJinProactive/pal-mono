@@ -306,7 +306,7 @@ def _create_triage_destinations() -> List[AssistantDestination]:
         ),
         AssistantDestination(
             assistantName=CHINESE_ASSISTANT_NAME,
-            message="好的，我帮您转接到会说中文的同事。稍等一下。",
+            message="好的，正在为您安排中文服务，请稍候片刻。",
             description="Transfer to Chinese-speaking assistant when customer prefers Chinese, says '中文', uses Chinese characters, or indicates Chinese language preference.",
             transferMode=TRANSFER_MODE,
         ),
