@@ -228,7 +228,7 @@ IMPORTANT TRANSFER RULES:
 
 DO NOT attempt to help with their actual request - only identify language preference and transfer immediately."""
 
-    first_message = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or 中文. Please let me know which language you prefer, and I'll connect you with the right specialist."
+    first_message = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or 中文. Please let me know which language you prefer, and I'll connect you with the right folk."
 
     model_config = {
         "provider": "openai",
@@ -354,9 +354,7 @@ def _create_assistants(
         caller_info=caller_info,
         api_url=api_url,
         speech_rate=speech_rate,
-        first_message=FIRST_MESSAGES["english"](
-            agent_config.persona.name, account_display_name
-        ),
+        first_message=FIRST_MESSAGES["english"],
     )
 
     spanish_assistant = _create_language_assistant(
@@ -368,9 +366,7 @@ def _create_assistants(
         caller_info=caller_info,
         api_url=api_url,
         speech_rate=speech_rate,
-        first_message=FIRST_MESSAGES["spanish"](
-            agent_config.persona.name, account_display_name
-        ),
+        first_message=FIRST_MESSAGES["spanish"],
     )
 
     chinese_assistant = _create_language_assistant(
@@ -382,9 +378,7 @@ def _create_assistants(
         caller_info=caller_info,
         api_url=api_url,
         speech_rate=speech_rate,
-        first_message=FIRST_MESSAGES["chinese"](
-            agent_config.persona.name, account_display_name
-        ),
+        first_message=FIRST_MESSAGES["chinese"],
     )
 
     return triage_assistant, english_assistant, spanish_assistant, chinese_assistant
