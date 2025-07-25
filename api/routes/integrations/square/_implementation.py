@@ -246,7 +246,7 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
                 continue
 
             # Use the refresh_square_token function
-            result = refresh_square_token(account.name, session)
+            result = refresh_square_token(account.name, integration.id, session)
             if result["success"]:
                 logger.info(
                     f"Successfully refreshed token for integration {integration.id}"

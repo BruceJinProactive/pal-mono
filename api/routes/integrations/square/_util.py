@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from datetime import datetime
 
 import requests
@@ -7,7 +8,6 @@ import requests
 import db
 from db.repositories.account_repository import AccountRepository
 from db.repositories.integration_repository import IntegrationRepository
-from db.tables.types import IntegrationProvider, IntegrationType
 from services.integration_service._utils import update_integration_credentials
 from services.integration_service.schema import IntegrationCredentials
 from utils import secret
@@ -37,12 +37,15 @@ def get_square_client_secret() -> str:
     return value
 
 
-def refresh_square_token(account_name: str, session=None) -> dict:
+def refresh_square_token(
+    account_name: str, integration_id: uuid.UUID, session=None
+) -> dict:
     """
     Refreshes the Square access token for the given account.
 
     Args:
         account_name: Name of the account to refresh token for
+        integration_id: ID of the integration to refresh token for
         session: Database session (optional, will create new one if not provided)
 
     Returns:
@@ -60,20 +63,18 @@ def refresh_square_token(account_name: str, session=None) -> dict:
             return {"success": False, "error": f"Account {account_name} not found"}
 
         integration_repository = IntegrationRepository(session)
-        integrations = integration_repository.get_integrations_by_provider_and_type(
-            account.id, IntegrationProvider.square, IntegrationType.pos
+        integration = integration_repository.get_integration_by_id(
+            account.id, integration_id
         )
-        if not integrations:
+        if not integration:
             return {
                 "success": False,
-                "error": f"No Square integration found for account '{account_name}'",
+                "error": f"No Square integration found for account '{account_name}' with id '{integration_id}'",
             }
-
-        integration = integrations[0]
         if not integration.secret_key:
             return {
                 "success": False,
-                "error": f"Integration for account '{account_name}' does not have a secret_key",
+                "error": f"Integration for account '{account_name}' with id '{integration_id}' does not have a secret_key",
             }
 
         secrets_json = get_client_secret(integration.secret_key)
@@ -82,7 +83,7 @@ def refresh_square_token(account_name: str, session=None) -> dict:
         if not refresh_token:
             return {
                 "success": False,
-                "error": f"No refresh token found in secret manager for account '{account_name}'",
+                "error": f"No refresh token found in secret manager for account '{account_name}' with id '{integration_id}'",
             }
 
         SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
@@ -127,16 +128,20 @@ def refresh_square_token(account_name: str, session=None) -> dict:
                 expires_at.replace("Z", "+00:00")
             )
             logger.info(
-                f"Updated expires_at to {integration.expires_at} for account '{account_name}'"
+                f"Updated expires_at to {integration.expires_at} for account '{account_name}' with id '{integration_id}'"
             )
 
         session.commit()
-        logger.info(f"Successfully refreshed Square token for account '{account_name}'")
+        logger.info(
+            f"Successfully refreshed Square token for account '{account_name}' with id '{integration_id}'"
+        )
         return {"success": True}
 
     except Exception as e:
         session.rollback()
-        logger.error(f"Error refreshing Square token for account '{account_name}': {e}")
+        logger.error(
+            f"Error refreshing Square token for account '{account_name}' with id '{integration_id}': {e}"
+        )
         return {"success": False, "error": str(e)}
     finally:
         if close_session:
