@@ -27,7 +27,7 @@ LANGUAGE_VOICE_CONFIGS = {
         "voice_model": "sonic-2",
     },
     "chinese": {
-        "voice_id": "3a63e2d1-1c1e-425d-8e79-5100bc910e90",  # chinese call center woman
+        "voice_id": "7a5d4663-88ae-47b7-808e-8f9b9ee4127b",  # Chen
         "voice_model": "sonic-2",
     },
 }

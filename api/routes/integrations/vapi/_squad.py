@@ -83,7 +83,7 @@ def _create_language_system_content(
     templates = {
         "english": f"You are {agent_name}, English customer support representative for {account_name}. {agent_description} Keep responses concise and helpful.",
         "spanish": f"Eres {agent_name}, representante de soporte al cliente en español para {account_name}. {agent_description} Mantén las respuestas concisas y útiles.",
-        "chinese": f"您是{agent_name}，{account_name}的中文客服代表。{agent_description} \n请保持回答简洁有用。必须使用中文回答。",
+        "chinese": f"你是{agent_name}，{account_name}的中文客服代表。{agent_description} \n\n保持回答简洁有用。从现在开始必须用中文回复， 否则用户听不懂。",
     }
     return templates.get(language, templates["english"])
 
@@ -228,7 +228,7 @@ IMPORTANT TRANSFER RULES:
 
 DO NOT attempt to help with their actual request - only identify language preference and transfer immediately."""
 
-    first_message = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or Chinese/中文. Please let me know which language you prefer, and I'll connect you with the right specialist."
+    first_message = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or 中文. Please let me know which language you prefer, and I'll connect you with the right specialist."
 
     model_config = {
         "provider": "openai",
