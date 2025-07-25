@@ -4,7 +4,17 @@ from typing import Any, Dict, List, Optional
 
 from utils.log import logger
 
-from ._constants import FIRST_MESSAGES, LANGUAGE_VOICE_CONFIGS
+from ._constants import (
+    CHINESE_ASSISTANT_NAME,
+    DEFAULT_API_URL,
+    DEFAULT_SILENCE_TIMEOUT,
+    ENGLISH_ASSISTANT_NAME,
+    FIRST_MESSAGES,
+    LANGUAGE_VOICE_CONFIGS,
+    SPANISH_ASSISTANT_NAME,
+    TRANSFER_MODE,
+    TRIAGE_ASSISTANT_NAME,
+)
 from ._utils import add_voice_speed_if_supported
 from .schema import (
     AssistantDestination,
@@ -13,23 +23,6 @@ from .schema import (
     SquadMember,
     VAPIAssistant,
 )
-
-# ============================================================================
-# CONSTANTS
-# ============================================================================
-
-DEFAULT_SILENCE_TIMEOUT = 60
-DEFAULT_API_URL = "https://lat-api.palona.ai"
-
-# Transfer modes
-TRANSFER_MODE = "swap-system-message-in-history"
-
-# Assistant names
-TRIAGE_ASSISTANT_NAME = "language_triage_assistant"
-ENGLISH_ASSISTANT_NAME = "english_assistant"
-SPANISH_ASSISTANT_NAME = "spanish_assistant"
-CHINESE_ASSISTANT_NAME = "chinese_assistant"
-
 
 # ============================================================================
 # TRANSCRIBER CONFIGURATION
@@ -206,12 +199,12 @@ def _create_base_assistant_config(
 def _create_triage_assistant(
     agent_config: Any,
     account_display_name: str,
-    transcriber: Dict[str, Any],
     background_sound: str,
     speech_rate: Any,
 ) -> VAPIAssistant:
     """Create the language triage assistant for initial language detection."""
 
+    transcriber = _create_transcriber_config("google")
     voice_config = _create_voice_config(LANGUAGE_VOICE_CONFIGS["english"], speech_rate)
 
     system_content = f"""You are {agent_config.persona.name}, the initial contact for {account_display_name}. 
@@ -252,13 +245,13 @@ DO NOT attempt to help with their actual request - only identify language prefer
 def _create_language_assistant(
     name: str,
     language_config: Dict[str, Any],
-    agent_config: Any,
     transcriber: Dict[str, Any],
+    first_message: str,
     background_sound: str,
+    speech_rate: Any,
     caller_info: CallerInfo,
     api_url: str,
-    speech_rate: Any,
-    first_message: str,
+    agent_config: Any,
 ) -> VAPIAssistant:
     """Create a language-specific support assistant."""
 
@@ -318,70 +311,52 @@ def _create_triage_destinations() -> List[AssistantDestination]:
 # ============================================================================
 
 
-def _create_assistants(
+def _create_all_assistants(
     agent_config: Any,
     account_display_name: str,
     background_sound: str,
     speech_rate: Any,
     caller_info: CallerInfo,
     api_url: str,
-    language_configs: Dict[str, Dict[str, Any]],
-) -> tuple[VAPIAssistant, VAPIAssistant, VAPIAssistant, VAPIAssistant]:
+) -> Dict[str, VAPIAssistant]:
     """Create all four assistants for the squad."""
+    language_configs = _get_language_configurations(agent_config, account_display_name)
 
-    # Create transcriber configurations
-    triage_transcriber = _create_transcriber_config("google")
-    english_transcriber = _create_transcriber_config("deepgram", "multi")
-    spanish_transcriber = _create_transcriber_config("deepgram", "multi")
-    chinese_transcriber = _create_transcriber_config("google")
+    assistants = {}
 
     # Create triage assistant
-    triage_assistant = _create_triage_assistant(
-        agent_config=agent_config,
-        account_display_name=account_display_name,
-        transcriber=triage_transcriber,
-        background_sound=background_sound,
-        speech_rate=speech_rate,
+    assistants["triage"] = _create_triage_assistant(
+        agent_config, account_display_name, background_sound, speech_rate
     )
 
-    # Create language assistants
-    english_assistant = _create_language_assistant(
-        name=ENGLISH_ASSISTANT_NAME,
-        language_config=language_configs["english"],
-        agent_config=agent_config,
-        transcriber=english_transcriber,
-        background_sound=background_sound,
-        caller_info=caller_info,
-        api_url=api_url,
-        speech_rate=speech_rate,
-        first_message=FIRST_MESSAGES["english"],
-    )
+    # Create language assistants with cleaner config
+    language_assistant_configs = [
+        ("english", ENGLISH_ASSISTANT_NAME, "deepgram", "multi"),
+        ("spanish", SPANISH_ASSISTANT_NAME, "deepgram", "multi"),
+        ("chinese", CHINESE_ASSISTANT_NAME, "google", None),
+    ]
 
-    spanish_assistant = _create_language_assistant(
-        name=SPANISH_ASSISTANT_NAME,
-        language_config=language_configs["spanish"],
-        agent_config=agent_config,
-        transcriber=spanish_transcriber,
-        background_sound=background_sound,
-        caller_info=caller_info,
-        api_url=api_url,
-        speech_rate=speech_rate,
-        first_message=FIRST_MESSAGES["spanish"],
-    )
+    for (
+        lang_key,
+        assistant_name,
+        transcriber_type,
+        transcriber_lang,
+    ) in language_assistant_configs:
+        transcriber = _create_transcriber_config(transcriber_type, transcriber_lang)
 
-    chinese_assistant = _create_language_assistant(
-        name=CHINESE_ASSISTANT_NAME,
-        language_config=language_configs["chinese"],
-        agent_config=agent_config,
-        transcriber=chinese_transcriber,
-        background_sound=background_sound,
-        caller_info=caller_info,
-        api_url=api_url,
-        speech_rate=speech_rate,
-        first_message=FIRST_MESSAGES["chinese"],
-    )
+        assistants[lang_key] = _create_language_assistant(
+            name=assistant_name,
+            language_config=language_configs[lang_key],
+            transcriber=transcriber,
+            first_message=FIRST_MESSAGES[lang_key],
+            background_sound=background_sound,
+            speech_rate=speech_rate,
+            caller_info=caller_info,
+            api_url=api_url,
+            agent_config=agent_config,
+        )
 
-    return triage_assistant, english_assistant, spanish_assistant, chinese_assistant
+    return assistants
 
 
 def create_multilingual_squad_demo(
@@ -392,9 +367,9 @@ def create_multilingual_squad_demo(
 ) -> Dict[str, Any]:
     """
     Create a multilingual squad configuration with 4 assistants:
-    1. Language triage assistant (OpenAI GPT-4o, Google transcriber, Sportsman voice)
-    2. English assistant (Deepgram transcriber with language "en")
-    3. Spanish assistant (Deepgram transcriber with language "es")
+    1. Language triage assistant (OpenAI GPT-4o, Google transcriber)
+    2. English assistant (Deepgram transcriber)
+    3. Spanish assistant (Deepgram transcriber)
     4. Chinese assistant (Google transcriber)
 
     Args:
@@ -407,7 +382,7 @@ def create_multilingual_squad_demo(
         Squad configuration ready to be returned to VAPI
     """
     try:
-        # Extract and validate configuration
+        # Extract configuration
         api_url = os.environ.get("PAL_API_URL", DEFAULT_API_URL)
         speech_rate = getattr(agent_config.voice_config, "speech_rate", None)
         background_sound = _get_background_sound(agent_config)
@@ -419,25 +394,15 @@ def create_multilingual_squad_demo(
             call_id=call_id,
         )
 
-        # Get language configurations
-        language_configs = _get_language_configurations(
-            agent_config, account_display_name
+        # Create assistants and destinations
+        assistants = _create_all_assistants(
+            agent_config,
+            account_display_name,
+            background_sound,
+            speech_rate,
+            structured_caller_info,
+            api_url,
         )
-
-        # Create all assistants
-        triage_assistant, english_assistant, spanish_assistant, chinese_assistant = (
-            _create_assistants(
-                agent_config=agent_config,
-                account_display_name=account_display_name,
-                background_sound=background_sound,
-                speech_rate=speech_rate,
-                caller_info=structured_caller_info,
-                api_url=api_url,
-                language_configs=language_configs,
-            )
-        )
-
-        # Create triage destinations
         triage_destinations = _create_triage_destinations()
 
         # Build squad configuration
@@ -445,12 +410,12 @@ def create_multilingual_squad_demo(
             name=f"{account_display_name} Multilingual Support Squad",
             members=[
                 SquadMember(
-                    assistant=triage_assistant,
+                    assistant=assistants["triage"],
                     assistantDestinations=triage_destinations,
                 ),
-                SquadMember(assistant=english_assistant),
-                SquadMember(assistant=spanish_assistant),
-                SquadMember(assistant=chinese_assistant),
+                SquadMember(assistant=assistants["english"]),
+                SquadMember(assistant=assistants["spanish"]),
+                SquadMember(assistant=assistants["chinese"]),
             ],
         )
 

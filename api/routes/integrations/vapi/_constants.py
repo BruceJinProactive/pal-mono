@@ -1,13 +1,21 @@
 from db.tables.agents import SpeechRate
 
-# VAPI Headers
+# ============================================================================
+# GENERAL VAPI CONSTANTS (used across multiple files)
+# ============================================================================
+
+# VAPI Headers (_utils.py, _implementation.py)
 VAPI_SECRET_HEADER = "X-VAPI-SIGNATURE"
 VAPI_TIMESTAMP_HEADER = "X-VAPI-TIMESTAMP"
 
-# Default Voice ID
+# Default Voice ID (_utils.py, _squad.py, _workflow.py)
 SPORTSMAN_VOICE_ID = "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
 
-# Cartesia voice speed mapping
+# Default API settings (_squad.py, _workflow.py)
+DEFAULT_SILENCE_TIMEOUT = 60
+DEFAULT_API_URL = "https://lat-api.palona.ai"
+
+# Cartesia voice speed mapping (_utils.py)
 CARTESIA_SPEED_MAPPING = {
     SpeechRate.slowest: "slowest",
     SpeechRate.slower: "slow",
@@ -15,6 +23,10 @@ CARTESIA_SPEED_MAPPING = {
     SpeechRate.faster: "fast",
     SpeechRate.fastest: "fastest",
 }
+
+# ============================================================================
+# LANGUAGE CONFIGURATIONS (used by _squad.py and _workflow.py)
+# ============================================================================
 
 # Language-specific voice IDs and configurations
 LANGUAGE_VOICE_CONFIGS = {
@@ -32,6 +44,30 @@ LANGUAGE_VOICE_CONFIGS = {
     },
 }
 
+# Language-specific first messages for squad assistants (_squad.py)
+FIRST_MESSAGES = {
+    "english": "Let me know how I can help.",
+    "spanish": "Hola, ¿en qué puedo ayudarte?",
+    "chinese": "Hello，有什么我能帮您?",
+}
+
+# ============================================================================
+# SQUAD CONSTANTS (_squad.py)
+# ============================================================================
+
+# Transfer modes
+TRANSFER_MODE = "swap-system-message-in-history"
+
+# Assistant names
+TRIAGE_ASSISTANT_NAME = "language_triage_assistant"
+ENGLISH_ASSISTANT_NAME = "english_assistant"
+SPANISH_ASSISTANT_NAME = "spanish_assistant"
+CHINESE_ASSISTANT_NAME = "chinese_assistant"
+
+# ============================================================================
+# WORKFLOW CONSTANTS (_workflow.py)
+# ============================================================================
+
 # Language-specific say node configurations
 LANGUAGE_SAY_CONFIGS = {
     "english": {
@@ -43,11 +79,4 @@ LANGUAGE_SAY_CONFIGS = {
     "chinese": {
         "prompt": "好的！让我为您连接到我们的中文客服。",
     },
-}
-
-# Language-specific first messages for squad assistants
-FIRST_MESSAGES = {
-    "english": "Hey! Let me know how I can help.",
-    "spanish": "Hola, ¿en qué puedo ayudarte?",
-    "chinese": "Hello，有什么我能帮您?",
 }
