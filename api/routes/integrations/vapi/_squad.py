@@ -1,112 +1,135 @@
+import json
 import os
-from typing import Literal, Optional
-
-from pydantic import BaseModel, ConfigDict, model_validator
+from typing import Any, Dict, List, Optional
 
 from utils.log import logger
 
-from ._constants import FIRST_MESSAGES, LANGUAGE_VOICE_CONFIGS, SPORTSMAN_VOICE_ID
-from ._utils import _get_transcriber_and_voice_config, add_voice_speed_if_supported
+from ._constants import FIRST_MESSAGES, LANGUAGE_VOICE_CONFIGS
+from ._utils import add_voice_speed_if_supported
+from .schema import (
+    AssistantDestination,
+    CallerInfo,
+    SquadConfig,
+    SquadMember,
+    VAPIAssistant,
+)
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+DEFAULT_SILENCE_TIMEOUT = 60
+DEFAULT_API_URL = "https://lat-api.palona.ai"
+
+# Transfer modes
+TRANSFER_MODE = "swap-system-message-in-history"
+
+# Assistant names
+TRIAGE_ASSISTANT_NAME = "language_triage_assistant"
+ENGLISH_ASSISTANT_NAME = "english_assistant"
+SPANISH_ASSISTANT_NAME = "spanish_assistant"
+CHINESE_ASSISTANT_NAME = "chinese_assistant"
 
 
-def _get_language_configurations(agent_config, account_display_name: str) -> dict:
+# ============================================================================
+# TRANSCRIBER CONFIGURATION
+# ============================================================================
+
+
+def _create_transcriber_config(
+    transcriber_type: str, language: Optional[str] = None
+) -> Dict[str, Any]:
     """
-    Generate language-specific configurations for the multilingual workflow.
+    Create transcriber configuration based on type and language.
 
     Args:
-        agent_config: The agent configuration object
-        account_display_name: The account display name
+        transcriber_type: Either "google" or "deepgram"
+        language: Language code for deepgram (e.g., "en", "es")
 
     Returns:
-        dict: Language configurations for English and Chinese
+        Transcriber configuration dictionary
+
+    Raises:
+        ValueError: If transcriber_type is not supported
     """
-    # Language switching instructions for each assistant
-    english_switching_instructions = """LANGUAGE SWITCHING INSTRUCTIONS:
-- If the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support, transfer them to spanish_assistant.
-- If the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support, transfer them to chinese_assistant.
-- You can seamlessly transfer customers between language assistants when they indicate a language preference.
+    if transcriber_type == "google":
+        return {
+            "provider": "google",
+            "model": "gemini-2.5-flash",
+            "language": "Multilingual",
+        }
+    elif transcriber_type == "deepgram":
+        config = {
+            "provider": "deepgram",
+            "model": "nova-3",
+        }
+        if language:
+            config["language"] = language
+        return config
+    else:
+        raise ValueError(f"Unsupported transcriber type: {transcriber_type}")
 
-"""
 
-    spanish_switching_instructions = """INSTRUCCIONES PARA CAMBIO DE IDIOMA:
-- Si el cliente solicita ayuda explícitamente en inglés, cambia al inglés, o indica que prefiere el soporte en inglés, transfiérelo a english_assistant.
-- Si el cliente solicita ayuda explícitamente en chino, dice '中文', usa caracteres/frases en chino, o indica que prefiere el soporte en chino, transfiérelo a chinese_assistant.
-- Puedes transferir sin problemas a los clientes entre asistentes de idiomas cuando indiquen una preferencia de idioma.
+# ============================================================================
+# LANGUAGE CONFIGURATION
+# ============================================================================
 
-"""
 
-    chinese_switching_instructions = """语言切换指令：
-- 如果客户明确要求英语帮助，切换到英语，或表示他们更喜欢英语支持，请将他们转移到english_assistant。
-- 如果客户明确要求西班牙语帮助，说'español'，使用西班牙语短语，或表示他们更喜欢西班牙语支持，请将他们转移到spanish_assistant。
-- 当客户表示语言偏好时，您可以在语言助手之间无缝转移客户。
+def _create_language_system_content(
+    agent_name: str, account_name: str, agent_description: str, language: str
+) -> str:
+    """Create language-specific system content without switching instructions."""
+    templates = {
+        "english": f"You are {agent_name}, English customer support representative for {account_name}. {agent_description} Keep responses concise and helpful.",
+        "spanish": f"Eres {agent_name}, representante de soporte al cliente en español para {account_name}. {agent_description} Mantén las respuestas concisas y útiles.",
+        "chinese": f"您是{agent_name}，{account_name}的中文客服代表。{agent_description} \n请保持回答简洁有用。必须使用中文回答。",
+    }
+    return templates.get(language, templates["english"])
 
-"""
 
+def _get_language_configurations(
+    agent_config: Any, account_display_name: str
+) -> Dict[str, Dict[str, Any]]:
+    """Generate clean language-specific configurations without transfer instructions."""
     return {
         "english": {
             **LANGUAGE_VOICE_CONFIGS["english"],
-            "system_content": f"{english_switching_instructions}You are {agent_config.persona.name}, English customer support representative for {account_display_name}. {agent_config.persona.description} Keep responses concise and helpful.",
-            "prompt": f"You are {agent_config.persona.name}, English customer support representative for {account_display_name}. TONE: Direct, friendly, professional. Solution-focused, provide clear steps. Keep responses concise while being thorough and helpful.",
+            "system_content": _create_language_system_content(
+                agent_config.persona.name,
+                account_display_name,
+                agent_config.persona.description,
+                "english",
+            ),
         },
         "spanish": {
             **LANGUAGE_VOICE_CONFIGS["spanish"],
-            "system_content": f"{spanish_switching_instructions}Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. {agent_config.persona.description} Mantén las respuestas concisas y útiles.",
-            "prompt": f"Eres {agent_config.persona.name}, representante de soporte al cliente en español para {account_display_name}. TONO: Cálido, respetuoso y paciente. Usa usted formalmente al principio, luego adapta según la preferencia del cliente. Mantén las respuestas concisas mientras eres completa y útil.",
+            "system_content": _create_language_system_content(
+                agent_config.persona.name,
+                account_display_name,
+                agent_config.persona.description,
+                "spanish",
+            ),
         },
         "chinese": {
             **LANGUAGE_VOICE_CONFIGS["chinese"],
-            "system_content": f"{chinese_switching_instructions}您是{agent_config.persona.name}，{account_display_name}的中文客服代表。{agent_config.persona.description} \n请保持回答简洁有用。必须使用中文回答。",
-            "prompt": f"您是{agent_config.persona.name}，{account_display_name}的中文客服代表。语调：温和、尊重和耐心。使用适当的中文礼貌用语。请保持回答简洁的同时做到完整和有用。必须使用中文回答。",
+            "system_content": _create_language_system_content(
+                agent_config.persona.name,
+                account_display_name,
+                agent_config.persona.description,
+                "chinese",
+            ),
         },
     }
 
 
-class VAPIAssistant(BaseModel):
-    name: str
-    firstMessage: str
-    transcriber: dict
-    voice: dict
-    backgroundSound: str
-    silenceTimeoutSeconds: int = 60
-    backgroundDenoisingEnabled: bool = True
-    model: dict | str | None = None
-
-    # Allow not defined fields to be added to the assistant config
-    model_config = ConfigDict(extra="allow")
+# ============================================================================
+# VOICE AND ASSISTANT CONFIGURATION
+# ============================================================================
 
 
-class AssistantDestination(BaseModel):
-    assistantName: str
-    message: (
-        str  # This is spoken to the customer before connecting them to the destination.
-    )
-    description: str  # This is the description of the destination, used by the AI to choose when and how to transfer the call.
-    transferMode: Literal["rolling-history", "swap-system-message-in-history"]
-    type: Literal["assistant"] = "assistant"
-
-
-class SquadMember(BaseModel):
-    assistantId: Optional[str] = None  # For existing assistants
-    assistant: Optional[VAPIAssistant] = None  # For transient assistants
-    assistantDestinations: Optional[list[AssistantDestination]] = (
-        None  # Transfer destinations for this member
-    )
-
-    @model_validator(mode="after")
-    def validate_assistant_or_assistant_id(self):
-        if self.assistant is None and self.assistantId is None:
-            raise ValueError("Either assistant or assistantId must be provided")
-        return self
-
-
-class SquadConfig(BaseModel):
-    name: str
-    members: list[
-        SquadMember
-    ]  # This is the list of squad members that make up the squad.
-
-
-def _create_voice_config(language_config: dict, speech_rate) -> dict:
+def _create_voice_config(
+    language_config: Dict[str, Any], speech_rate: Any
+) -> Dict[str, Any]:
     """Create voice configuration with optional speech rate."""
     voice_config = {
         "provider": "cartesia",
@@ -120,8 +143,8 @@ def _create_voice_config(language_config: dict, speech_rate) -> dict:
     return voice_config
 
 
-def _add_background_denoising_if_available(
-    assistant_config: dict, agent_config
+def _add_background_denoising(
+    assistant_config: Dict[str, Any], agent_config: Any
 ) -> None:
     """Add background speech denoising configuration if available."""
     if (
@@ -135,228 +158,304 @@ def _add_background_denoising_if_available(
         )
 
 
-def _create_assistant_config(
+def _get_background_sound(agent_config: Any) -> str:
+    """Determine background sound setting."""
+    return (
+        "office"
+        if hasattr(agent_config.voice_config, "background_noise")
+        and agent_config.voice_config.background_noise
+        else "off"
+    )
+
+
+def _create_base_assistant_config(
+    name: str,
     first_message: str,
-    transcriber: dict,
-    system_content: str,
-    voice_config: dict,
+    transcriber: Dict[str, Any],
+    voice_config: Dict[str, Any],
     background_sound: str,
-    caller_info: dict,
-    api_url: str,
-) -> dict:
-    """Create base assistant configuration."""
-    return {
+    system_content: str,
+    model_config: Dict[str, Any],
+    agent_config: Any,
+) -> Dict[str, Any]:
+    """Create base assistant configuration with common settings."""
+    config = {
+        "name": name,
         "firstMessage": first_message,
         "transcriber": transcriber,
-        "model": {
-            "provider": "openai",
-            # "url": f"{api_url}/v1",
-            "model": "gpt-4o",
-            "messages": [{"role": "system", "content": system_content}],
-        },
         "voice": voice_config,
         "backgroundSound": background_sound,
-        "silenceTimeoutSeconds": 60,
+        "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
         "backgroundDenoisingEnabled": True,
+        "model": {
+            **model_config,
+            "messages": [{"role": "system", "content": system_content}],
+        },
     }
+
+    _add_background_denoising(config, agent_config)
+    return config
+
+
+# ============================================================================
+# ASSISTANT CREATION
+# ============================================================================
+
+
+def _create_triage_assistant(
+    agent_config: Any,
+    account_display_name: str,
+    transcriber: Dict[str, Any],
+    background_sound: str,
+    speech_rate: Any,
+) -> VAPIAssistant:
+    """Create the language triage assistant for initial language detection."""
+
+    voice_config = _create_voice_config(LANGUAGE_VOICE_CONFIGS["english"], speech_rate)
+
+    system_content = f"""You are {agent_config.persona.name}, the initial contact for {account_display_name}. 
+
+Your ONLY responsibility is to:
+1. Greet the customer warmly
+2. Identify their preferred language (English, Spanish, or Chinese)
+3. Transfer them to the appropriate language specialist
+
+IMPORTANT TRANSFER RULES:
+- For English speakers or English requests → transfer to {ENGLISH_ASSISTANT_NAME}
+- For Spanish speakers, "español", or Spanish requests → transfer to {SPANISH_ASSISTANT_NAME}  
+- For Chinese speakers, "中文", Chinese characters, or Chinese requests → transfer to {CHINESE_ASSISTANT_NAME}
+
+DO NOT attempt to help with their actual request - only identify language preference and transfer immediately."""
+
+    first_message = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or Chinese/中文. Please let me know which language you prefer, and I'll connect you with the right specialist."
+
+    model_config = {
+        "provider": "openai",
+        "model": "gpt-4o",
+    }
+
+    config = _create_base_assistant_config(
+        name=TRIAGE_ASSISTANT_NAME,
+        first_message=first_message,
+        transcriber=transcriber,
+        voice_config=voice_config,
+        background_sound=background_sound,
+        system_content=system_content,
+        model_config=model_config,
+        agent_config=agent_config,
+    )
+
+    return VAPIAssistant(**config)
 
 
 def _create_language_assistant(
     name: str,
-    language_config: dict,
-    agent_config,
-    transcriber: dict,
+    language_config: Dict[str, Any],
+    agent_config: Any,
+    transcriber: Dict[str, Any],
     background_sound: str,
-    caller_info: dict,
+    caller_info: CallerInfo,
     api_url: str,
-    speech_rate,
+    speech_rate: Any,
     first_message: str,
 ) -> VAPIAssistant:
-    """Create a complete language-specific assistant."""
-    # Create voice configuration
+    """Create a language-specific support assistant."""
+
     voice_config = _create_voice_config(language_config, speech_rate)
 
-    # Create base assistant configuration
-    assistant_config = _create_assistant_config(
+    model_config = {
+        "provider": "custom-llm",
+        "url": f"{api_url}/v1",
+        "model": json.dumps(caller_info.__dict__),
+    }
+
+    config = _create_base_assistant_config(
+        name=name,
         first_message=first_message,
         transcriber=transcriber,
-        system_content=language_config["system_content"],
         voice_config=voice_config,
+        background_sound=background_sound,
+        system_content=language_config["system_content"],
+        model_config=model_config,
+        agent_config=agent_config,
+    )
+
+    return VAPIAssistant(**config)
+
+
+# ============================================================================
+# DESTINATION CREATION
+# ============================================================================
+
+
+def _create_triage_destinations() -> List[AssistantDestination]:
+    """Create transfer destinations for the triage assistant."""
+    return [
+        AssistantDestination(
+            assistantName=ENGLISH_ASSISTANT_NAME,
+            message="Perfect! Let me connect you with our English specialist.",
+            description="Transfer to English-speaking assistant when customer prefers English or uses English language.",
+            transferMode=TRANSFER_MODE,
+        ),
+        AssistantDestination(
+            assistantName=SPANISH_ASSISTANT_NAME,
+            message="¡Perfecto! Te conecto con nuestro especialista en español.",
+            description="Transfer to Spanish-speaking assistant when customer prefers Spanish, says 'español', or uses Spanish language.",
+            transferMode=TRANSFER_MODE,
+        ),
+        AssistantDestination(
+            assistantName=CHINESE_ASSISTANT_NAME,
+            message="好的！让我为您连接到我们的中文专家。",
+            description="Transfer to Chinese-speaking assistant when customer prefers Chinese, says '中文', uses Chinese characters, or indicates Chinese language preference.",
+            transferMode=TRANSFER_MODE,
+        ),
+    ]
+
+
+# ============================================================================
+# MAIN SQUAD CREATION
+# ============================================================================
+
+
+def _create_assistants(
+    agent_config: Any,
+    account_display_name: str,
+    background_sound: str,
+    speech_rate: Any,
+    caller_info: CallerInfo,
+    api_url: str,
+    language_configs: Dict[str, Dict[str, Any]],
+) -> tuple[VAPIAssistant, VAPIAssistant, VAPIAssistant, VAPIAssistant]:
+    """Create all four assistants for the squad."""
+
+    # Create transcriber configurations
+    triage_transcriber = _create_transcriber_config("google")
+    english_transcriber = _create_transcriber_config("deepgram", "en")
+    spanish_transcriber = _create_transcriber_config("deepgram", "es")
+    chinese_transcriber = _create_transcriber_config("google")
+
+    # Create triage assistant
+    triage_assistant = _create_triage_assistant(
+        agent_config=agent_config,
+        account_display_name=account_display_name,
+        transcriber=triage_transcriber,
+        background_sound=background_sound,
+        speech_rate=speech_rate,
+    )
+
+    # Create language assistants
+    english_assistant = _create_language_assistant(
+        name=ENGLISH_ASSISTANT_NAME,
+        language_config=language_configs["english"],
+        agent_config=agent_config,
+        transcriber=english_transcriber,
         background_sound=background_sound,
         caller_info=caller_info,
         api_url=api_url,
+        speech_rate=speech_rate,
+        first_message=FIRST_MESSAGES["english"](
+            agent_config.persona.name, account_display_name
+        ),
     )
 
-    # Add background speech denoising if available
-    _add_background_denoising_if_available(assistant_config, agent_config)
+    spanish_assistant = _create_language_assistant(
+        name=SPANISH_ASSISTANT_NAME,
+        language_config=language_configs["spanish"],
+        agent_config=agent_config,
+        transcriber=spanish_transcriber,
+        background_sound=background_sound,
+        caller_info=caller_info,
+        api_url=api_url,
+        speech_rate=speech_rate,
+        first_message=FIRST_MESSAGES["spanish"](
+            agent_config.persona.name, account_display_name
+        ),
+    )
 
-    # Add name
-    assistant_config["name"] = name
+    chinese_assistant = _create_language_assistant(
+        name=CHINESE_ASSISTANT_NAME,
+        language_config=language_configs["chinese"],
+        agent_config=agent_config,
+        transcriber=chinese_transcriber,
+        background_sound=background_sound,
+        caller_info=caller_info,
+        api_url=api_url,
+        speech_rate=speech_rate,
+        first_message=FIRST_MESSAGES["chinese"](
+            agent_config.persona.name, account_display_name
+        ),
+    )
 
-    return VAPIAssistant(**assistant_config)
+    return triage_assistant, english_assistant, spanish_assistant, chinese_assistant
 
 
 def create_multilingual_squad_demo(
-    agent_config,
+    agent_config: Any,
     account_display_name: str,
-    caller_info: dict,
+    caller_info: Dict[str, Any],
     call_id: str,
-) -> dict:
+) -> Dict[str, Any]:
     """
-    Create a multilingual squad configuration for VAPI.
-
-    This function creates a squad with multiple assistants - one for each supported
-    language (English, Spanish, Chinese) with appropriate voice configurations.
+    Create a multilingual squad configuration with 4 assistants:
+    1. Language triage assistant (OpenAI GPT-4o, Google transcriber, Sportsman voice)
+    2. English assistant (Deepgram transcriber with language "en")
+    3. Spanish assistant (Deepgram transcriber with language "es")
+    4. Chinese assistant (Google transcriber)
 
     Args:
         agent_config: The agent configuration object
         account_display_name: The account display name
-        caller_info: Information about the caller (sender_identifier, recipient_identifier, call_id)
+        caller_info: Information about the caller
         call_id: The call ID
 
     Returns:
-        dict: Squad configuration ready to be returned to VAPI
+        Squad configuration ready to be returned to VAPI
     """
     try:
-        # Extract configuration parameters
-        api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
-        caller_info = {
-            "sender_identifier": caller_info["sender_identifier"],
-            "recipient_identifier": caller_info["recipient_identifier"],
-            "call_id": call_id,
-        }
-
-        # Get voice and transcriber configuration
-        voice_id = agent_config.voice_config.voice_id or SPORTSMAN_VOICE_ID
+        # Extract and validate configuration
+        api_url = os.environ.get("PAL_API_URL", DEFAULT_API_URL)
         speech_rate = getattr(agent_config.voice_config, "speech_rate", None)
-        transcriber, _ = _get_transcriber_and_voice_config(
-            agent_config, voice_id, speech_rate
+        background_sound = _get_background_sound(agent_config)
+
+        # Structure caller info
+        structured_caller_info = CallerInfo(
+            sender_identifier=caller_info["sender_identifier"],
+            recipient_identifier=caller_info["recipient_identifier"],
+            call_id=call_id,
         )
 
-        # Get background sound setting
-        if (
-            hasattr(agent_config.voice_config, "background_noise")
-            and agent_config.voice_config.background_noise
-        ):
-            background_sound = "office"
-        else:
-            background_sound = "off"
-
-        # Get language-specific configurations
+        # Get language configurations
         language_configs = _get_language_configurations(
             agent_config, account_display_name
         )
 
-        # Create multilingual greeting for the main assistant
-        multilingual_greeting = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or Chinese. How can I assist you today?"
-
-        # Create assistant destinations for each language assistant
-
-        # For English assistant: can transfer to Spanish and Chinese
-        english_destinations = [
-            AssistantDestination(
-                assistantName="spanish_assistant",
-                message="¡Perfecto! Te conecto con nuestro soporte en español.",
-                description="Transfer to Spanish-speaking assistant when the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-            AssistantDestination(
-                assistantName="chinese_assistant",
-                message="好的！让我为您连接到我们的中文客服。",
-                description="Transfer to Chinese-speaking assistant when the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-        ]
-
-        # For Spanish assistant: can transfer to English and Chinese
-        spanish_destinations = [
-            AssistantDestination(
-                assistantName="english_assistant",
-                message="Perfect! I'll connect you with our English support.",
-                description="Transfer to English-speaking assistant when the customer explicitly requests help in English, switches to English, or indicates they prefer English language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-            AssistantDestination(
-                assistantName="chinese_assistant",
-                message="好的！让我为您连接到我们的中文客服。",
-                description="Transfer to Chinese-speaking assistant when the customer explicitly requests help in Chinese, says '中文', uses Chinese characters/phrases, or indicates they prefer Chinese language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-        ]
-
-        # For Chinese assistant: can transfer to English and Spanish
-        chinese_destinations = [
-            AssistantDestination(
-                assistantName="english_assistant",
-                message="Perfect! I'll connect you with our English support.",
-                description="Transfer to English-speaking assistant when the customer explicitly requests help in English, switches to English, or indicates they prefer English language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-            AssistantDestination(
-                assistantName="spanish_assistant",
-                message="¡Perfecto! Te conecto con nuestro soporte en español.",
-                description="Transfer to Spanish-speaking assistant when the customer explicitly requests help in Spanish, says 'español', uses Spanish phrases, or indicates they prefer Spanish language support.",
-                transferMode="swap-system-message-in-history",
-            ),
-        ]
-
-        # Create assistants using helper functions
-        english_assistant = _create_language_assistant(
-            name="english_assistant",
-            language_config=language_configs["english"],
-            agent_config=agent_config,
-            transcriber=transcriber,
-            background_sound=background_sound,
-            caller_info=caller_info,
-            api_url=api_url,
-            speech_rate=speech_rate,
-            first_message=multilingual_greeting,
+        # Create all assistants
+        triage_assistant, english_assistant, spanish_assistant, chinese_assistant = (
+            _create_assistants(
+                agent_config=agent_config,
+                account_display_name=account_display_name,
+                background_sound=background_sound,
+                speech_rate=speech_rate,
+                caller_info=structured_caller_info,
+                api_url=api_url,
+                language_configs=language_configs,
+            )
         )
 
-        spanish_assistant = _create_language_assistant(
-            name="spanish_assistant",
-            language_config=language_configs["spanish"],
-            agent_config=agent_config,
-            transcriber=transcriber,
-            background_sound=background_sound,
-            caller_info=caller_info,
-            api_url=api_url,
-            speech_rate=speech_rate,
-            first_message=FIRST_MESSAGES["spanish"](
-                agent_config.persona.name, account_display_name
-            ),
-        )
+        # Create triage destinations
+        triage_destinations = _create_triage_destinations()
 
-        chinese_assistant = _create_language_assistant(
-            name="chinese_assistant",
-            language_config=language_configs["chinese"],
-            agent_config=agent_config,
-            transcriber=transcriber,
-            background_sound=background_sound,
-            caller_info=caller_info,
-            api_url=api_url,
-            speech_rate=speech_rate,
-            first_message=FIRST_MESSAGES["chinese"](
-                agent_config.persona.name, account_display_name
-            ),
-        )
-
-        # Create squad configuration
+        # Build squad configuration
         squad_config = SquadConfig(
             name=f"{account_display_name} Multilingual Support Squad",
             members=[
                 SquadMember(
-                    assistant=english_assistant,
-                    assistantDestinations=english_destinations,
+                    assistant=triage_assistant,
+                    assistantDestinations=triage_destinations,
                 ),
-                SquadMember(
-                    assistant=spanish_assistant,
-                    assistantDestinations=spanish_destinations,
-                ),
-                SquadMember(
-                    assistant=chinese_assistant,
-                    assistantDestinations=chinese_destinations,
-                ),
+                SquadMember(assistant=english_assistant),
+                SquadMember(assistant=spanish_assistant),
+                SquadMember(assistant=chinese_assistant),
             ],
         )
 

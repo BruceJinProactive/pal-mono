@@ -325,7 +325,12 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             "call_id": call_id,  # Adding call_id for future reference
         }
 
+        # ================= Step 3: Construct assistant(s) =================
+
+        #########################################################
         # Check if multilingual squad should be used
+        #########################################################
+
         if config.persona.multilingual_squad and config.voice_config.enabled:
             logger.debug(f"Creating multilingual squad for call {call_id}")
             return create_multilingual_squad_demo(
@@ -335,7 +340,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 call_id=call_id,
             )
 
+        #########################################################
         # Check if multilingual workflow should be used
+        #########################################################
+
         if config.persona.multilingual_workflow and config.voice_config.enabled:
             logger.debug(f"Creating multilingual workflow for call {call_id}")
             return create_multilingual_workflow_demo(
@@ -345,7 +353,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 call_id=call_id,
             )
 
+        #########################################################
         # Continue with existing single-language assistant configuration
+        #########################################################
+
         dynamic_vapi_config = config.voice_config.enabled
 
         greeting = f"Hi this is {config.persona.name} from {account_display_name}. How can I help you today?"
