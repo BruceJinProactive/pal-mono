@@ -58,11 +58,13 @@ def _create_transcriber_config(
             "model": "nova-3",
         }
         if language:
-            if language == "multi":
-                config["language"] = "multi"
+            # Use nova-3 for multi-language and english
+            if language == "multi" or language == "en-US" or language == "en":
+                config["language"] = language
             else:
                 config["language"] = language
                 config["model"] = "nova-2"
+
         else:
             config["language"] = "en-US"
         return config
