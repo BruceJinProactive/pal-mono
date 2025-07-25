@@ -44,7 +44,7 @@ def _create_transcriber_config(
 
     Args:
         transcriber_type: Either "google" or "deepgram"
-        language: Language code for deepgram (e.g., "en", "es")
+        language: Language code for deepgram (e.g., "en", "es") or language name for google (e.g., "English", "Spanish")
 
     Returns:
         Transcriber configuration dictionary
@@ -53,11 +53,12 @@ def _create_transcriber_config(
         ValueError: If transcriber_type is not supported
     """
     if transcriber_type == "google":
-        return {
+        config = {
             "provider": "google",
             "model": "gemini-2.5-flash",
-            "language": "Multilingual",
+            "language": language if language else "Multilingual",
         }
+        return config
     elif transcriber_type == "deepgram":
         config = {
             "provider": "deepgram",
@@ -330,9 +331,9 @@ def _create_assistants(
 
     # Create transcriber configurations
     triage_transcriber = _create_transcriber_config("google")
-    english_transcriber = _create_transcriber_config("deepgram", "en")
-    spanish_transcriber = _create_transcriber_config("deepgram", "es")
-    chinese_transcriber = _create_transcriber_config("google")
+    english_transcriber = _create_transcriber_config("google", "English")
+    spanish_transcriber = _create_transcriber_config("google", "Spanish")
+    chinese_transcriber = _create_transcriber_config("google", "Chinese")
 
     # Create triage assistant
     triage_assistant = _create_triage_assistant(
