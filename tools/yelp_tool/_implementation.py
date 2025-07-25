@@ -417,7 +417,7 @@ class YelpTool(Toolkit):
             if not reservation_success or not reservation_response:
                 return f"Failed to create reservation: {reservation_message}"
 
-            return f"Reservation confirmed! Your reservation ID is: {reservation_response.reservation_id}"
+            return f"Reservation confirmed! Here is the reservation details: {reservation_response}"
 
         except Exception as e:
             logger.debug(f"[YelpTool.make_reservation] Error: {e}")
