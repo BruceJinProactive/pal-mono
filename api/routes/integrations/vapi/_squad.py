@@ -294,19 +294,19 @@ def _create_triage_destinations() -> List[AssistantDestination]:
     return [
         AssistantDestination(
             assistantName=ENGLISH_ASSISTANT_NAME,
-            message="Perfect! Let me connect you with our English specialist.",
+            message="Got it! Let me connect you with someone who can help you in English. Just a sec.",
             description="Transfer to English-speaking assistant when customer prefers English or uses English language.",
             transferMode=TRANSFER_MODE,
         ),
         AssistantDestination(
             assistantName=SPANISH_ASSISTANT_NAME,
-            message="¡Perfecto! Te conecto con nuestro especialista en español.",
+            message="Perfecto, te conecto con alguien que te puede ayudar en español. Un momentito.",
             description="Transfer to Spanish-speaking assistant when customer prefers Spanish, says 'español', or uses Spanish language.",
             transferMode=TRANSFER_MODE,
         ),
         AssistantDestination(
             assistantName=CHINESE_ASSISTANT_NAME,
-            message="好的！让我为您连接到我们的中文专家。",
+            message="好的，我帮您转接到会说中文的同事。稍等一下。",
             description="Transfer to Chinese-speaking assistant when customer prefers Chinese, says '中文', uses Chinese characters, or indicates Chinese language preference.",
             transferMode=TRANSFER_MODE,
         ),
@@ -331,9 +331,9 @@ def _create_assistants(
 
     # Create transcriber configurations
     triage_transcriber = _create_transcriber_config("google")
-    english_transcriber = _create_transcriber_config("google", "English")
-    spanish_transcriber = _create_transcriber_config("google", "Spanish")
-    chinese_transcriber = _create_transcriber_config("google", "Chinese")
+    english_transcriber = _create_transcriber_config("deepgram", "multi")
+    spanish_transcriber = _create_transcriber_config("deepgram", "multi")
+    chinese_transcriber = _create_transcriber_config("google")
 
     # Create triage assistant
     triage_assistant = _create_triage_assistant(
