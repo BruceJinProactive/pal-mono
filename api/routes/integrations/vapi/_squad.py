@@ -294,7 +294,7 @@ def _create_triage_destinations() -> List[AssistantDestination]:
     return [
         AssistantDestination(
             assistantName=ENGLISH_ASSISTANT_NAME,
-            message="Got it! Let me connect you with someone who can help you in English. Just a sec.",
+            message="Got it!",
             description="Transfer to English-speaking assistant when customer prefers English or uses English language.",
             transferMode=TRANSFER_MODE,
         ),

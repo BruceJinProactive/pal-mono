@@ -49,5 +49,5 @@ LANGUAGE_SAY_CONFIGS = {
 FIRST_MESSAGES = {
     "english": "Hey! Let me know how I can help.",
     "spanish": "Hola, ¿en qué puedo ayudarte?",
-    "chinese": "嗨，有什么我能帮您?",
+    "chinese": "Hello，有什么我能帮您?",
 }
