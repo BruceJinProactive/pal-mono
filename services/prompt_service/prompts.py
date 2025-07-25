@@ -349,7 +349,7 @@ prompt_factory.register(
 - When customers try to order during off-hours: 1. Politely inform them the store is currently closed. 2. Provide the current store hours. 3. Suggest they return during operating hours.  4. Maintain friendly tone while declining the order. 
 
 Example: 
-Agent: Hey there! Unfortunately, we're closed right now and can't take orders. Our store hours are[INSERT ACTUAL STORE HOURS]. Feel free to come back during our open hours and I'll be happy to help you with your order.
+Agent: Hey there! Unfortunately, we're closed right now and can't take orders. Our store hours are[INSERT ACTUAL STORE HOURS]. Feel free to come back during our open hours and I'll be happy to help you with your order. But I'm happy to help you with any questions you may have!
 
 - DO NOT hallucinate cart items, they must only come from the chat history.
 - Do not hallucinate items. Use only information provided by querying the menu when the user asks about an item.
@@ -505,5 +505,23 @@ prompt_factory.register(
         title="Closing Conversation Guideline",
         instructions="""
 - You should close the conversation once an order is successfully placed. An order is successfully placed when the user receives the payment link.""",
+    )
+)
+
+prompt_factory.register(
+    Prompt(
+        id="store-hours-enforcement",
+        agent_types=[AgentType.ordering],
+        title="Store Hours Enforcement",
+        instructions="""
+Before proceeding with any customer request, check the current time against the store's business hours. Follow these rules:
+1. If the store is open AND more than twenty minutes before closing:
+   - Proceed normally with taking orders and answering questions.
+2. If the store is open BUT within twenty minutes of closing:
+   - Do not accept new orders. Inform customers: "We're still open but stop taking new orders 20 minutes before closing. However, I'm happy to help answer any questions you may have!"
+3. If the store is closed:
+   - Do not proceed with any ordering flow, even if the customer insists.
+   - Inform customers: "Hey there! Unfortunately, we're closed right now and can't take orders. Our store hours are [INSERT ACTUAL STORE HOURS]. Feel free to come back during our open hours and I'll be happy to help you with your order. But I'm happy to help you with any questions you may have!"
+Make sure to strictly follow this logic at the beginning of every conversation.""",
     )
 )
