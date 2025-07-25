@@ -47,7 +47,7 @@ LANGUAGE_SAY_CONFIGS = {
 
 # Language-specific first messages for squad assistants
 FIRST_MESSAGES = {
-    "english": lambda agent_name, account_name: "Hey! Let me know how I can help.",
-    "spanish": lambda agent_name, account_name: "¡Qué onda! ¿En qué te puedo ayudar?",
-    "chinese": lambda agent_name, account_name: "嘿！有啥需要我帮忙的不？",
+    "english": "Hey! Let me know how I can help.",
+    "spanish": "¡Qué onda! ¿En qué te puedo ayudar?",
+    "chinese": "嘿！有啥需要我帮忙的不？",
 }
