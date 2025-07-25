@@ -1065,29 +1065,30 @@ def create_account_user(
                 {"Name": "name", "Value": user_name},
                 {"Name": "custom:account_name", "Value": account_name},
             ],
-            DesiredDeliveryMediums=["EMAIL"],
+            # DesiredDeliveryMediums=["EMAIL"],
         )
         logger.info(f"Created user account for {user_email} using AdminCreateUser")
         try:
-            if user_email.endswith("@proactiveailab.com"):
-                email_service.send_email_with_template(
-                    to_email=user_email,
-                    template_id=40701112,  # TODO: take it from env? or from input?
-                    template_model={
-                        "name": user_name,
-                        "account_name": account_name,
-                        "product_name": "Palona AI",
-                        "password": password,
-                        "login_url": (
-                            "https://manage-app.palona.ai/signin"
-                            if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                            else f"https://{os.getenv('RUNTIME_ENV','lat')}-manage-app.palona.ai/signin"
-                        ),
-                        "sender_name": "Support Team",
-                    },
-                    # from_email can be omitted to use default
-                )
-                logger.info(f"Welcome email sent to {user_email}")
+            # if user_email.endswith("@proactiveailab.com"):
+            email_service.send_email_with_template(
+                to_email=user_email,
+                template_id=40701112,  # TODO: take it from env? or from input?
+                template_model={
+                    "name": user_name,
+                    "email": user_email,
+                    "account_name": account_name,
+                    "product_name": "Palona AI",
+                    "password": password,
+                    "login_url": (
+                        "https://manage-app.palona.ai/signin"
+                        if os.getenv("RUNTIME_ENV", "prd") == "prd"
+                        else f"https://{os.getenv('RUNTIME_ENV','lat')}-manage-app.palona.ai/signin"
+                    ),
+                    "sender_name": "Support Team",
+                },
+                # from_email can be omitted to use default
+            )
+            logger.info(f"Welcome email sent to {user_email}")
         except Exception as e:
             logger.error(f"Failed to send welcome email via Postmark: {e}")
         return CognitoUser(
