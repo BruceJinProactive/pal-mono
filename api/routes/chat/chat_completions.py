@@ -205,7 +205,7 @@ def _get_simple_filler(recipient_identifier: str) -> str:
     # Ensure output is at least 10 characters, adding spaces before if needed
     if len(selected_filler) < 10:
         spaces_needed = 10 - len(selected_filler)
-        selected_filler = " " * spaces_needed + selected_filler
+        selected_filler = " " * spaces_needed + selected_filler + " <flush />"
 
     logger.debug(f"[SimpleFiller] Selected filler: '{selected_filler}' for query")
 
