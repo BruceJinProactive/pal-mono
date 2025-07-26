@@ -111,6 +111,9 @@ def _get_transcriber_and_voice_config(
             "provider": "cartesia",
             "voiceId": voice_id or SPORTSMAN_VOICE_ID,
             "model": "sonic-2",
+            "chunkPlan": {
+                "minCharacters": 8,
+            },
         }
     else:
         transcriber = {
@@ -121,6 +124,9 @@ def _get_transcriber_and_voice_config(
             "provider": "cartesia",
             "voiceId": voice_id or SPORTSMAN_VOICE_ID,
             "model": "sonic",
+            "chunkPlan": {
+                "minCharacters": 8,
+            },
         }
 
     # Add speed if provider supports it
