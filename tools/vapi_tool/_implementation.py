@@ -58,7 +58,12 @@ class VapiTool(Toolkit):
             control_url = conversation.vapi_control_url
             if not control_url:
                 error_msg = "No Vapi control URL available for this conversation. Call transfer is not possible."
-                logger.error(f"[VapiTool.call_transfer] {error_msg}")
+                logger.error(
+                    f"[VapiTool.call_transfer] {error_msg}",
+                    extra={
+                        "conversation_id": conversation_id,
+                    },
+                )
                 return error_msg
 
         except Exception as e:
