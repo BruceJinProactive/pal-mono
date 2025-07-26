@@ -212,6 +212,22 @@ class AgnoAgent:
                             },
                         )
 
+                        # Output chat filler words if configured
+                        filler_words = self._get_chat_filler()
+                        if filler_words:
+                            logger.debug(
+                                f"[AgnoAgent] chat filler outputted: {filler_words}",
+                                extra={
+                                    "agent_id": self.config.metadata.agent_id,
+                                    "account_name": self.config.metadata.account_name,
+                                },
+                            )
+                            yield Output(
+                                content=filler_words,
+                                documents=[],
+                                images=[],
+                            )
+
                         chunk_index = 0
                         async for chunk in result:
                             if isinstance(chunk, RunResponseContentEvent):
@@ -379,3 +395,25 @@ class AgnoAgent:
                 messages = messages[:-1]
         messages.append(Message(role="user", content=input.get_prompt()))
         return messages
+
+    def _get_chat_filler(self) -> str:
+        """
+        Generate a chat filler phrase from configured options.
+
+        Returns:
+            A chat filler string with flush directive, or empty string if no fillers configured
+        """
+
+        chat_filler_words = self.config.voice_config.chat_filler_words
+        if not chat_filler_words:
+            logger.debug("[AgnoAgent] No chat filler words configured")
+            return ""
+
+        # Select a random filler from the configured options
+        selected_filler = random.choice(chat_filler_words)
+        logger.debug(f"[AgnoAgent] Selected filler: '{selected_filler}'")
+
+        # Empty string in config to control the probability
+        if not selected_filler:
+            return ""
+        return selected_filler + " <flush />"

@@ -1,8 +1,5 @@
-import asyncio
 import datetime
 import json
-import os
-import random
 import uuid
 from typing import Any, Dict, List, Literal, Optional
 
@@ -164,50 +161,6 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
             }
         ],
     }
-
-
-def _get_simple_filler(recipient_identifier: str) -> str:
-    """
-    Generate a simple filler phrase.
-
-    Args:
-        user_message: The user's original message
-
-    Returns:
-        A simple filler string
-    """
-
-    enabled_recipients = os.environ.get("SMART_FILLER_ENABLED_RECIPIENTS", "")
-
-    if not enabled_recipients:
-        return ""
-
-    enabled_list = [r.strip() for r in enabled_recipients.split(",") if r.strip()]
-
-    if recipient_identifier not in enabled_list:
-        return ""
-
-    if random.random() * 100 < 30:
-        logger.debug("[SimpleFiller] Skipping filler due to skip rate")
-        return ""
-
-    simple_fillers = [
-        "Sure.",
-        "Yeah.",
-        "Alright.",
-        "Okay.",
-        "Got it.",
-        "One moment.",
-        "Just a sec.",
-        "Hold on.",
-        "Give me a moment.",
-    ]
-
-    # Use simple filler
-    selected_filler = random.choice(simple_fillers) + " <flush />"
-    logger.debug(f"[SimpleFiller] Selected filler: '{selected_filler}' for query")
-
-    return selected_filler
 
 
 def _create_response_data(model: str, content: str, is_chunk: bool = False) -> dict:
@@ -401,7 +354,6 @@ async def chat_completions_agno(
 
                     collected_content = []
                     if response_stream:
-                        filler_text = _get_simple_filler(recipient_identifier)
                         chunk_count = 0
                         url_filter = create_url_filter()
                         send_dd_histogram_metrics(
@@ -414,42 +366,6 @@ async def chat_completions_agno(
                                 f"recipient_identifier:{recipient_identifier}",
                             ],
                         )
-                        if filler_text:
-                            chunk_count += 1
-                            # Create a simple filler chunk
-                            filler_chunk = _create_response_data(
-                                model, filler_text, True
-                            )
-                            yield f"data: {json.dumps(filler_chunk)}\n\n"
-                            collected_content.append(filler_text)
-                            logger.debug(
-                                f"First stream chunk: {json.dumps(filler_chunk)}"
-                            )
-                            time_diff = (
-                                datetime.datetime.now(datetime.timezone.utc)
-                                - request_context.request_time
-                            ).total_seconds() * 1000
-                            logger.debug(
-                                f"[ChatCompletions] TTFT is {time_diff}",
-                                extra={
-                                    "recipient_identifier": recipient_identifier,
-                                    "sender_identifier": sender_identifier,
-                                },
-                            )
-
-                            send_dd_histogram_metrics(
-                                "chat_completions.sent_first_chunk",
-                                request_context.request_time,
-                                [
-                                    "path:agno",
-                                    "streaming:true",
-                                    f"sender_identifier:{sender_identifier}",
-                                    f"recipient_identifier:{recipient_identifier}",
-                                ],
-                            )
-
-                            # Add delay before real response
-                            await asyncio.sleep(0.7)
 
                         async for chunk in response_stream:
                             chunk_count += 1

@@ -106,6 +106,9 @@ class RawConfig:
                     tool_calling_filler_words=self.agent.raw_config.get(
                         "tool_calling_filler_words", []
                     ),
+                    chat_filler_words=self.agent.raw_config.get(
+                        "chat_filler_words", []
+                    ),
                 ),
             )
         except ValueError as e:
