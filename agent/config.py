@@ -66,6 +66,7 @@ class VoiceConfig(BaseModel):
     background_noise: bool
     background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
     language: Language
+    tool_calling_filler_words: list[str] = []
 
 
 class AgentConfig(BaseModel):

@@ -103,6 +103,9 @@ class RawConfig:
                     background_noise=self.agent.background_noise,
                     background_speech_denoising_plan=self._get_background_speech_denoising_plan(),
                     language=self.agent.language,
+                    tool_calling_filler_words=self.agent.raw_config.get(
+                        "tool_calling_filler_words", []
+                    ),
                 ),
             )
         except ValueError as e:

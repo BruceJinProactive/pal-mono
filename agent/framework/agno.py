@@ -1,12 +1,13 @@
 import asyncio
 import datetime
+import random
 import time
 import uuid
 from typing import AsyncIterator, Optional
 
 import agno.agent.agent
 from agno.models.message import Message
-from agno.run.response import RunResponseContentEvent
+from agno.run.response import RunResponseContentEvent, ToolCallStartedEvent
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
 from pydantic import BaseModel, Field
@@ -254,6 +255,37 @@ class AgnoAgent:
                                     documents=[],
                                     images=[],
                                 )
+                            elif isinstance(chunk, ToolCallStartedEvent):
+                                # Output filler words when tool execution starts (if configured)
+                                if self.config.voice_config.tool_calling_filler_words:
+                                    filler_words = random.choice(
+                                        self.config.voice_config.tool_calling_filler_words
+                                    )
+                                    logger.debug(
+                                        f"[AgnoAgent] tool call started, outputting filler words: {filler_words}",
+                                        extra={
+                                            "agent_id": self.config.metadata.agent_id,
+                                            "account_name": self.config.metadata.account_name,
+                                            "tool_name": (
+                                                chunk.tool.tool_name
+                                                if chunk.tool
+                                                else "unknown"
+                                            ),
+                                        },
+                                    )
+                                    yield Output(
+                                        content=filler_words + " <flush />",
+                                        documents=[],
+                                        images=[],
+                                    )
+                                else:
+                                    logger.debug(
+                                        "[AgnoAgent] not respond to ToolCallStartedEvent type chunk",
+                                        extra={
+                                            "agent_id": self.config.metadata.agent_id,
+                                            "account_name": self.config.metadata.account_name,
+                                        },
+                                    )
                             else:
                                 logger.debug(
                                     f"[AgnoAgent] received non ResponseContent type chunk: {type(chunk)}",
