@@ -314,7 +314,6 @@ async def get_chat_response_stream(
                 "message_service.start_streaming",
                 request_context.request_time,
                 [
-                    "streaming:true",
                     f"agent_id:{agent_id}",
                     f"account_name:{account_name}",
                 ],
@@ -332,7 +331,6 @@ async def get_chat_response_stream(
                         "message_service.waiting_first_chunk",
                         request_context.request_time,
                         [
-                            "streaming:true",
                             f"agent_id:{agent_id}",
                             f"account_name:{account_name}",
                         ],
@@ -344,7 +342,6 @@ async def get_chat_response_stream(
                                 "message_service.received_first_chunk",
                                 request_context.request_time,
                                 [
-                                    "streaming:true",
                                     f"agent_id:{agent_id}",
                                     f"account_name:{account_name}",
                                 ],

@@ -89,15 +89,16 @@ statsd = DogStatsd(
 )
 
 
-def dd_histogram_duration(name: str, duration_ms: float, tags: list):
+def dd_histogram_duration(name: str, duration_ms: float, tags: Optional[list] = None):
     env = os.getenv("RUNTIME_ENV", "none")
     base_tags = [f"env:{env}"]
-    base_tags.extend(tags)
+    if tags:
+        base_tags.extend(tags)
     statsd.histogram(name, duration_ms, tags=base_tags)
 
 
 def send_dd_histogram_metrics(
-    metrics_name: str, start_time: datetime.datetime, tags: list[str]
+    metrics_name: str, start_time: datetime.datetime, tags: Optional[list[str]] = None
 ):
     current_time = datetime.datetime.now(datetime.timezone.utc)
     duration_ms = (current_time - start_time).total_seconds() * 1000

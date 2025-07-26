@@ -139,7 +139,6 @@ class Agent:
                         "agent.start_streaming",
                         input.request_context.request_time,
                         [
-                            "streaming:true",
                             f"agent_id:{self._metadata.agent_id}",
                             f"account_name:{self._metadata.account_name}",
                         ],
@@ -162,7 +161,6 @@ class Agent:
                         "agent.waiting_first_chunk",
                         input.request_context.request_time,
                         [
-                            "streaming:true",
                             f"agent_id:{self._metadata.agent_id}",
                             f"account_name:{self._metadata.account_name}",
                         ],
@@ -176,7 +174,6 @@ class Agent:
                                 "agent.received_first_chunk",
                                 input.request_context.request_time,
                                 [
-                                    "streaming:true",
                                     f"agent_id:{self._metadata.agent_id}",
                                     f"account_name:{self._metadata.account_name}",
                                 ],

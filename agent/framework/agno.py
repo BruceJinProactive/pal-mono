@@ -163,7 +163,6 @@ class AgnoAgent:
                         "framework_agent.start_streaming",
                         input.request_context.request_time,
                         [
-                            "streaming:true",
                             "agent:agno",
                             f"agent_id:{self.config.metadata.agent_id}",
                             f"account_name:{self.config.metadata.account_name}",
@@ -198,7 +197,6 @@ class AgnoAgent:
                             "framework_agent.waiting_first_chunk",
                             input.request_context.request_time,
                             [
-                                "streaming:true",
                                 "agent:agno",
                                 f"agent_id:{self.config.metadata.agent_id}",
                                 f"account_name:{self.config.metadata.account_name}",
@@ -250,7 +248,6 @@ class AgnoAgent:
                                         "framework_agent.received_first_chunk",
                                         input.request_context.request_time,
                                         [
-                                            "streaming:true",
                                             "agent:agno",
                                             f"agent_id:{self.config.metadata.agent_id}",
                                             f"account_name:{self.config.metadata.account_name}",

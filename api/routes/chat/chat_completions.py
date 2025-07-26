@@ -341,9 +341,7 @@ async def chat_completions_agno(
                     # Log stream start
                     logger.info(f"Starting streaming response for model={model}")
                     send_dd_histogram_metrics(
-                        "chat_completions.start_streaming",
-                        request_context.request_time,
-                        ["path:agno", "streaming:true"],
+                        "chat_completions.start_streaming", request_context.request_time
                     )
 
                     response_stream = await get_chat_response_stream(
@@ -360,8 +358,6 @@ async def chat_completions_agno(
                             "chat_completions.waiting_first_chunk",
                             request_context.request_time,
                             [
-                                "path:agno",
-                                "streaming:true",
                                 f"sender_identifier:{sender_identifier}",
                                 f"recipient_identifier:{recipient_identifier}",
                             ],
@@ -408,8 +404,6 @@ async def chat_completions_agno(
                                         "chat_completions.sent_first_chunk",
                                         request_context.request_time,
                                         [
-                                            "path:agno",
-                                            "streaming:true",
                                             f"sender_identifier:{sender_identifier}",
                                             f"recipient_identifier:{recipient_identifier}",
                                         ],
