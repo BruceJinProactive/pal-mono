@@ -187,6 +187,10 @@ def _get_simple_filler(recipient_identifier: str) -> str:
     if recipient_identifier not in enabled_list:
         return ""
 
+    if random.random() * 100 < 30:
+        logger.debug("[SimpleFiller] Skipping filler due to skip rate")
+        return ""
+
     simple_fillers = [
         "Sure.",
         "Yeah.",
@@ -199,14 +203,8 @@ def _get_simple_filler(recipient_identifier: str) -> str:
         "Give me a moment.",
     ]
 
-    # Always use simple filler
-    selected_filler = random.choice(simple_fillers)
-
-    # Ensure output is at least 10 characters, adding spaces before if needed
-    if len(selected_filler) < 10:
-        spaces_needed = 10 - len(selected_filler)
-        selected_filler = " " * spaces_needed + selected_filler + " <flush />"
-
+    # Use simple filler
+    selected_filler = random.choice(simple_fillers) + " <flush />"
     logger.debug(f"[SimpleFiller] Selected filler: '{selected_filler}' for query")
 
     return selected_filler
