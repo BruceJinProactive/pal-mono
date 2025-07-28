@@ -1,5 +1,7 @@
 import binascii
+import json
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -17,6 +19,7 @@ from services.integration_service.schema import (
 )
 from services.service_utils import get_server_url
 from utils.log import logger
+from utils.secret import get_client_secret
 
 from ._util import get_square_client_id, get_square_client_secret, refresh_square_token
 from ._valid import _oauth_state, valid_request
@@ -157,11 +160,13 @@ async def callback(request: Request):
                 "integration_id": str(created_integration.id),
             }
         )
+
     except Exception as e:
-        logger.error(f"[DEBUG] Failed to create integration: {e}")
+        session.rollback()
+        logger.error(f"Error creating Square integration: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"error": f"Failed to create integration: {e}"},
+            content={"error": f"Failed to create integration: {str(e)}"},
         )
     finally:
         session.close()
@@ -280,3 +285,93 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
 
     logger.info(f"Token refresh summary: {result}")
     return result
+
+
+def get_merchant_locations(
+    session, account_name: str, integration_id: uuid.UUID
+) -> dict:
+    """
+    Get all locations for a Square merchant.
+
+    Args:
+        session: Database session
+        account_name: Name of the account
+        integration_id: UUID of the Square integration
+
+    Returns:
+        dict: Response with locations data or error message
+    """
+    try:
+        # Get account
+        account_repository = AccountRepository(session)
+        account = account_repository.get_account(account_name)
+        if not account:
+            return {"success": False, "error": f"Account {account_name} not found"}
+
+        # Get integration
+        integration_repository = IntegrationRepository(session)
+        integration = integration_repository.get_integration_by_id(
+            account.id, integration_id
+        )
+        if not integration:
+            return {
+                "success": False,
+                "error": f"Integration {integration_id} not found for account {account_name}",
+            }
+
+        # Verify it's a Square integration
+        if integration.provider != IntegrationProvider.square:
+            return {
+                "success": False,
+                "error": f"Integration {integration_id} is not a Square integration",
+            }
+
+        # Get access token from secret manager
+        if not integration.secret_key:
+            return {
+                "success": False,
+                "error": f"Integration {integration_id} does not have a secret_key",
+            }
+
+        secrets_json = get_client_secret(integration.secret_key)
+        secrets = json.loads(secrets_json)
+        access_token = secrets.get("access_token")
+        if not access_token:
+            return {
+                "success": False,
+                "error": f"No access token found in secret manager for integration {integration_id}",
+            }
+
+        # Call Square Locations API
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Square-Version": "2025-05-21",
+            "Content-Type": "application/json",
+        }
+
+        # Determine if we should use production or sandbox
+        use_production = True  # You might want to make this configurable
+        base_url = (
+            "connect.squareup.com" if use_production else "connect.squareupsandbox.com"
+        )
+
+        response = requests.get(f"https://{base_url}/v2/locations", headers=headers)
+
+        if response.status_code != 200:
+            logger.error(f"Failed to get Square locations: {response.text}")
+            return {
+                "success": False,
+                "error": f"Failed to get Square locations: {response.text}",
+            }
+
+        locations_data = response.json()
+
+        return {
+            "success": True,
+            "locations": locations_data.get("locations", []),
+            "total_locations": len(locations_data.get("locations", [])),
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting Square locations for account {account_name}: {e}")
+        return {"success": False, "error": f"Error getting Square locations: {str(e)}"}

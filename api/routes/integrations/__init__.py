@@ -1,4 +1,5 @@
 import html
+import uuid
 
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,6 +100,30 @@ async def square_refresh_expiring():
     try:
         result = square_implementation.check_and_refresh_expiring_square_tokens(
             session=session, days_threshold=7
+        )
+        return result
+    finally:
+        session.close()
+
+
+@integrations_router.get(
+    "/square/{account_name}/{integration_id}/locations", status_code=status.HTTP_200_OK
+)
+async def get_square_locations(account_name: str, integration_id: uuid.UUID):
+    """
+    Get all locations for a Square merchant.
+
+    Args:
+        account_name: Name of the account
+        integration_id: UUID of the Square integration
+
+    Returns:
+        List of locations for the merchant
+    """
+    session = next(db.get_db())
+    try:
+        result = square_implementation.get_merchant_locations(
+            session=session, account_name=account_name, integration_id=integration_id
         )
         return result
     finally:
