@@ -24,9 +24,8 @@ from services import agent_service, project_service, user_service
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
-from ._squad import create_multilingual_squad_demo
-from ._utils import _get_transcriber_and_voice_config, validate_vapi_request
-from ._workflow import create_multilingual_workflow_demo
+from ._squad import create_multilingual_squad
+from ._utils import get_transcriber_and_voice_config, validate_vapi_request
 
 
 def send_dd_latency(
@@ -331,22 +330,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         # Check if multilingual squad should be used
         #########################################################
 
-        if config.persona.multilingual_squad and config.voice_config.enabled:
+        if config.multiling_squad_config and config.voice_config.enabled:
             logger.debug(f"Creating multilingual squad for call {call_id}")
-            return create_multilingual_squad_demo(
-                agent_config=config,
-                account_display_name=account_display_name,
-                caller_info=caller_info,
-                call_id=call_id,
-            )
-
-        #########################################################
-        # Check if multilingual workflow should be used
-        #########################################################
-
-        if config.persona.multilingual_workflow and config.voice_config.enabled:
-            logger.debug(f"Creating multilingual workflow for call {call_id}")
-            return create_multilingual_workflow_demo(
+            return create_multilingual_squad(
                 agent_config=config,
                 account_display_name=account_display_name,
                 caller_info=caller_info,
@@ -378,7 +364,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             speech_rate = SpeechRate.normal
 
         # Get transcriber and voice configuration
-        transcriber, voice = _get_transcriber_and_voice_config(
+        transcriber, voice = get_transcriber_and_voice_config(
             config, voice_id, speech_rate
         )
 

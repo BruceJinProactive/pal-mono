@@ -22,10 +22,15 @@ from agent import (
     ToolIdentifier,
     ToolMetadata,
 )
-from agent.config import BackgroundSpeechDenoisingPlan, VoiceConfig
+from agent.config import (
+    BackgroundSpeechDenoisingPlan,
+    MultilingualSquadConfig,
+    VoiceConfig,
+)
 from agent.knowledge import KnowledgeConfigSettings
 from agent.memory import MemoryProvider
 from agent.model import ModelProvider
+from api.routes.integrations.vapi._constants import DEFAULT_MULTILINGUAL_SQUAD_CONFIG
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
 from services.integration_service.schema import IntegrationDetail
@@ -110,11 +115,46 @@ class RawConfig:
                         "chat_filler_words", []
                     ),
                 ),
+                multiling_squad_config=self._get_multilingual_squad_config(),
             )
         except ValueError as e:
             raise ValueError(f"Invalid RawConfig: {e}") from e
         except Exception as e:
             raise ValueError(f"Failed to convert to AgentConfig: {e}") from e
+
+    def _get_multilingual_squad_config(self) -> MultilingualSquadConfig | None:
+        """
+        Get the multilingual squad configuration.
+
+        This method handles three cases for the 'multilingual_squad_config' value:
+        1. A boolean `True`: Returns the default squad configuration.
+        2. A dictionary: Validates and returns the custom squad configuration.
+        3. `False`, `None`, or invalid: Returns `None`.
+        """
+        raw_config = self.agent.raw_config.get("multilingual_squad_config")
+
+        config_to_validate = None
+        if raw_config is True:
+            # Use the default configuration if the flag is True
+            config_to_validate = DEFAULT_MULTILINGUAL_SQUAD_CONFIG
+        elif isinstance(raw_config, dict):
+            # Use the provided dictionary for custom configuration
+            config_to_validate = raw_config
+
+        if config_to_validate is None:
+            # Handles cases where the config is None, False, or an invalid type
+            return None
+
+        try:
+            # Validate the selected configuration
+            return MultilingualSquadConfig.model_validate(config_to_validate)
+        except ValidationError as e:
+            logger.error(
+                "Invalid multilingual squad config",
+                extra={"agent_id": self.agent.id, "error": str(e)},
+            )
+            # Fallback to None if validation fails
+            return None
 
     def _get_agent_persona(self, channel: Channel) -> AgentPersona:
         # Extract the persona section of the raw config
@@ -142,8 +182,6 @@ class RawConfig:
         voice_id = raw_persona.get("voice_id") or None
         multilingual = raw_persona.get("multilingual") or False
         model_mode = raw_persona.get("model_mode") or None
-        multilingual_workflow = raw_persona.get("multilingual_workflow") or False
-        multilingual_squad = raw_persona.get("multilingual_squad") or False
 
         return AgentPersona(
             name=name,
@@ -152,8 +190,6 @@ class RawConfig:
             voice_id=voice_id,
             multilingual=multilingual,
             model_mode=model_mode,
-            multilingual_workflow=multilingual_workflow,
-            multilingual_squad=multilingual_squad,
         )
 
     def _get_agent_knowledge(self) -> KnowledgeConfig:

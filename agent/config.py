@@ -23,8 +23,6 @@ class AgentPersona(BaseModel):
     voice_id: Optional[str] = None
     multilingual: bool = False
     model_mode: Optional[str] = None
-    multilingual_workflow: bool = False
-    multilingual_squad: bool = False
 
 
 class AgentMetadata(BaseModel):
@@ -70,6 +68,69 @@ class VoiceConfig(BaseModel):
     chat_filler_words: list[str] = []
 
 
+# ============================================================================
+# MULTILINGUAL SQUAD CONFIGURATION SCHEMAS
+# ============================================================================
+
+
+class MultilingualTranscriberConfig(BaseModel):
+    """Transcriber configuration for multilingual squad."""
+
+    provider: str
+    model: str
+    language: str
+
+
+class MultilingualVoiceConfig(BaseModel):
+    """Voice configuration for multilingual squad."""
+
+    voice_id: str
+    voice_model: str
+    provider: str
+    description: Optional[str] = None
+
+
+class MultilingualModelConfig(BaseModel):
+    """Model configuration for multilingual squad."""
+
+    provider: str
+    model: str
+
+
+class TriageAssistantConfig(BaseModel):
+    """Configuration for the triage assistant."""
+
+    name: str
+    transcriber: MultilingualTranscriberConfig
+    voice: MultilingualVoiceConfig
+    model: MultilingualModelConfig
+    first_message: str
+    transfer_mode: str = "swap-system-message-in-history"
+
+
+class LanguageAssistantMultilingConfig(BaseModel):
+    """Configuration for a specific language assistant in multilingual squad."""
+
+    assistant_name: str
+    transcriber: MultilingualTranscriberConfig
+    voice: MultilingualVoiceConfig
+    first_message: str
+    transfer_message: str
+    transfer_description: str
+
+
+class MultilingualSquadConfig(BaseModel):
+    """Complete multilingual squad configuration."""
+
+    triage_assistant: TriageAssistantConfig
+    language_assistants: dict[str, LanguageAssistantMultilingConfig]
+
+
+# ============================================================================
+# AGENT CONFIGURATION
+# ============================================================================
+
+
 class AgentConfig(BaseModel):
     persona: AgentPersona
 
@@ -85,3 +146,6 @@ class AgentConfig(BaseModel):
     stream: bool = False
     # Additional context added to the end of the system message.
     additional_context: Optional[str] = None
+    # Multilingual squad configuration for VAPI integration
+    # This is resolved in RawConfigService, so the final type is clean.
+    multiling_squad_config: Optional[MultilingualSquadConfig] = None

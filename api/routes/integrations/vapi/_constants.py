@@ -13,7 +13,6 @@ SPORTSMAN_VOICE_ID = "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
 
 # Default API settings (_squad.py, _workflow.py)
 DEFAULT_SILENCE_TIMEOUT = 60
-DEFAULT_API_URL = "https://lat-api.palona.ai"
 
 # Cartesia voice speed mapping (_utils.py)
 CARTESIA_SPEED_MAPPING = {
@@ -24,59 +23,85 @@ CARTESIA_SPEED_MAPPING = {
     SpeechRate.fastest: "fastest",
 }
 
-# ============================================================================
-# LANGUAGE CONFIGURATIONS (used by _squad.py and _workflow.py)
-# ============================================================================
-
-# Language-specific voice IDs and configurations
-LANGUAGE_VOICE_CONFIGS = {
-    "english": {
-        "voice_id": "ed81fd13-2016-4a49-8fe3-c0d2761695fc",  # sportsman voice
-        "voice_model": "sonic-2",
-    },
-    "spanish": {
-        "voice_id": "db832ebd-3cb6-42e7-9d47-912b425adbaa",  # young spanish-speaking woman
-        "voice_model": "sonic-2",
-    },
-    "chinese": {
-        "voice_id": "7a5d4663-88ae-47b7-808e-8f9b9ee4127b",  # Chen
-        "voice_model": "sonic-2",
-    },
-}
-
-# Language-specific first messages for squad assistants (_squad.py)
-FIRST_MESSAGES = {
-    "english": "Let me know how I can help.",
-    "spanish": "Hola, ¿en qué puedo ayudarte?",
-    "chinese": "Hello，有什么我能帮您?",
-}
 
 # ============================================================================
-# SQUAD CONSTANTS (_squad.py)
+# ASSISTANT NAMES
 # ============================================================================
 
-# Transfer modes
-TRANSFER_MODE = "swap-system-message-in-history"
-
-# Assistant names
-TRIAGE_ASSISTANT_NAME = "language_triage_assistant"
+TRIAGE_ASSISTANT_NAME = "triage_assistant"
 ENGLISH_ASSISTANT_NAME = "english_assistant"
 SPANISH_ASSISTANT_NAME = "spanish_assistant"
 CHINESE_ASSISTANT_NAME = "chinese_assistant"
 
 # ============================================================================
-# WORKFLOW CONSTANTS (_workflow.py)
+# DEFAULT MULTILINGUAL SQUAD CONFIGURATION
 # ============================================================================
 
-# Language-specific say node configurations
-LANGUAGE_SAY_CONFIGS = {
-    "english": {
-        "prompt": "Perfect! Let me connect you to our English support.",
+# Default multilingual squad configuration
+DEFAULT_MULTILINGUAL_SQUAD_CONFIG = {
+    "triage_assistant": {
+        "name": TRIAGE_ASSISTANT_NAME,
+        "transcriber": {
+            "provider": "google",
+            "model": "gemini-2.5-flash",
+            "language": "Multilingual",
+        },
+        "voice": {
+            "voice_id": SPORTSMAN_VOICE_ID,
+            "voice_model": "sonic-2",
+            "provider": "cartesia",
+        },
+        "model": {"provider": "openai", "model": "gpt-4o"},
+        "first_message": "Hello! I can help you in English, español, or 中文. Please let me know which language you prefer, and I'll connect you with the right specialist.",
     },
-    "spanish": {
-        "prompt": "¡Perfecto! Te conecto con nuestro soporte en español.",
-    },
-    "chinese": {
-        "prompt": "好的！让我为您连接到我们的中文客服。",
+    "language_assistants": {
+        "english": {
+            "assistant_name": ENGLISH_ASSISTANT_NAME,
+            "transcriber": {
+                "provider": "deepgram",
+                "model": "nova-3",
+                "language": "en-US",
+            },
+            "voice": {
+                "voice_id": "ed81fd13-2016-4a49-8fe3-c0d2761695fc",
+                "voice_model": "sonic-2",
+                "provider": "cartesia",
+            },
+            "first_message": "Let me know how I can help.",
+            "transfer_message": "Got it!",
+            "transfer_description": "Transfer to English-speaking assistant when customer prefers English or uses English language.",
+        },
+        "spanish": {
+            "assistant_name": SPANISH_ASSISTANT_NAME,
+            "transcriber": {
+                "provider": "deepgram",
+                "model": "nova-2",
+                "language": "es",
+            },
+            "voice": {
+                "voice_id": "db832ebd-3cb6-42e7-9d47-912b425adbaa",
+                "voice_model": "sonic-2",
+                "provider": "cartesia",
+            },
+            "first_message": "Hola, ¿en qué puedo ayudarte?",
+            "transfer_message": "Perfecto, te conecto con alguien que te puede ayudar en español. Un momentito.",
+            "transfer_description": "Transfer to Spanish-speaking assistant when customer prefers Spanish, says 'español', or uses Spanish language.",
+        },
+        "chinese": {
+            "assistant_name": CHINESE_ASSISTANT_NAME,
+            "transcriber": {
+                "provider": "deepgram",
+                "model": "nova-2",
+                "language": "zh-CN",
+            },
+            "voice": {
+                "voice_id": "7a5d4663-88ae-47b7-808e-8f9b9ee4127b",
+                "voice_model": "sonic-2",
+                "provider": "cartesia",
+            },
+            "first_message": "Hello，有什么我能帮您?",
+            "transfer_message": "正在为您安排中文服务，请稍候片刻。",
+            "transfer_description": "Transfer to Chinese-speaking assistant when customer prefers Chinese, says '中文', uses Chinese characters, or indicates Chinese language preference.",
+        },
     },
 }

@@ -9,15 +9,6 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 
 @dataclass
-class TranscriberConfig:
-    """Configuration for transcriber settings."""
-
-    provider: str
-    model: str
-    language: Optional[str] = None
-
-
-@dataclass
 class CallerInfo:
     """Structured caller information."""
 

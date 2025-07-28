@@ -1,6 +1,17 @@
 from agent.agent import Agent
 from agent.client import ClientConfig
-from agent.config import AgentConfig, AgentFramework, AgentMetadata, AgentPersona
+from agent.config import (
+    AgentConfig,
+    AgentFramework,
+    AgentMetadata,
+    AgentPersona,
+    LanguageAssistantMultilingConfig,
+    MultilingualModelConfig,
+    MultilingualSquadConfig,
+    MultilingualTranscriberConfig,
+    MultilingualVoiceConfig,
+    TriageAssistantConfig,
+)
 from agent.knowledge import (
     KnowledgeConfig,
     KnowledgeProvider,

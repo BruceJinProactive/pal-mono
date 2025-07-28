@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import Request
 
@@ -15,8 +15,8 @@ from ._constants import (
 
 
 def add_voice_speed_if_supported(
-    voice_config: Dict[str, Any], speech_rate: SpeechRate
-) -> Dict[str, Any]:
+    voice_config: dict[str, Any], speech_rate: SpeechRate
+) -> dict[str, Any]:
     """
     Add speed parameter to voice config if the provider supports it.
     Currently only supports Cartesia provider.
@@ -84,7 +84,7 @@ def validate_vapi_request(request: Request) -> bool:
     return True
 
 
-def _get_transcriber_and_voice_config(
+def get_transcriber_and_voice_config(
     agent_config, voice_id: str | None, speech_rate
 ) -> tuple[dict, dict]:
     """Get transcriber and voice configuration based on agent config."""

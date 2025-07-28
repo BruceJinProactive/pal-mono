@@ -1,20 +1,15 @@
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, List
 
+from agent.config import (
+    AgentConfig,
+    LanguageAssistantMultilingConfig,
+    MultilingualSquadConfig,
+)
 from utils.log import logger
 
-from ._constants import (
-    CHINESE_ASSISTANT_NAME,
-    DEFAULT_API_URL,
-    DEFAULT_SILENCE_TIMEOUT,
-    ENGLISH_ASSISTANT_NAME,
-    FIRST_MESSAGES,
-    LANGUAGE_VOICE_CONFIGS,
-    SPANISH_ASSISTANT_NAME,
-    TRANSFER_MODE,
-    TRIAGE_ASSISTANT_NAME,
-)
+from ._constants import DEFAULT_MULTILINGUAL_SQUAD_CONFIG, DEFAULT_SILENCE_TIMEOUT
 from ._utils import add_voice_speed_if_supported
 from .schema import (
     AssistantDestination,
@@ -25,197 +20,127 @@ from .schema import (
 )
 
 # ============================================================================
-# TRANSCRIBER CONFIGURATION
+# EXCEPTIONS
 # ============================================================================
 
 
-def _create_transcriber_config(
-    transcriber_type: str, language: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Create transcriber configuration based on type and language.
+class SquadCreationError(Exception):
+    """Exception raised when squad creation fails."""
 
-    Args:
-        transcriber_type: Either "google" or "deepgram"
-        language: Language code for deepgram (e.g., "en", "es") or language name for google (e.g., "English", "Spanish")
-
-    Returns:
-        Transcriber configuration dictionary
-
-    Raises:
-        ValueError: If transcriber_type is not supported
-    """
-    if transcriber_type == "google":
-        config = {
-            "provider": "google",
-            "model": "gemini-2.5-flash",
-            "language": language if language else "Multilingual",
-        }
-        return config
-    elif transcriber_type == "deepgram":
-        config = {
-            "provider": "deepgram",
-            "model": "nova-3",
-        }
-        if language:
-            # Use nova-3 for multi-language and english
-            if language == "multi" or language == "en-US" or language == "en":
-                config["language"] = language
-            else:
-                config["language"] = language
-                config["model"] = "nova-2"
-
-        else:
-            config["language"] = "en-US"
-        return config
-    else:
-        raise ValueError(f"Unsupported transcriber type: {transcriber_type}")
+    pass
 
 
 # ============================================================================
-# LANGUAGE CONFIGURATION
+# ASSISTANT FACTORIES
 # ============================================================================
 
 
-def _create_language_system_content(
-    agent_name: str, account_name: str, agent_description: str, language: str
-) -> str:
-    """Create language-specific system content without switching instructions."""
-    templates = {
-        "english": f"You are {agent_name}, English customer support representative for {account_name}. {agent_description} Keep responses concise and helpful.",
-        "spanish": f"Eres {agent_name}, representante de soporte al cliente en español para {account_name}. {agent_description} Mantén las respuestas concisas y útiles.",
-        "chinese": f"你是{agent_name}，{account_name}的中文客服代表。{agent_description} \n\n保持回答简洁有用。从现在开始必须用中文回复， 否则用户听不懂。",
-    }
-    return templates.get(language, templates["english"])
+class BaseAssistantFactory:
+    """Base factory for creating VAPI assistants."""
 
+    def __init__(self, agent_config: AgentConfig):
+        self.agent_config = agent_config
 
-def _get_language_configurations(
-    agent_config: Any, account_display_name: str
-) -> Dict[str, Dict[str, Any]]:
-    """Generate clean language-specific configurations without transfer instructions."""
-    return {
-        "english": {
-            **LANGUAGE_VOICE_CONFIGS["english"],
-            "system_content": _create_language_system_content(
-                agent_config.persona.name,
-                account_display_name,
-                agent_config.persona.description,
-                "english",
-            ),
-        },
-        "spanish": {
-            **LANGUAGE_VOICE_CONFIGS["spanish"],
-            "system_content": _create_language_system_content(
-                agent_config.persona.name,
-                account_display_name,
-                agent_config.persona.description,
-                "spanish",
-            ),
-        },
-        "chinese": {
-            **LANGUAGE_VOICE_CONFIGS["chinese"],
-            "system_content": _create_language_system_content(
-                agent_config.persona.name,
-                account_display_name,
-                agent_config.persona.description,
-                "chinese",
-            ),
-        },
-    }
-
-
-# ============================================================================
-# VOICE AND ASSISTANT CONFIGURATION
-# ============================================================================
-
-
-def _create_voice_config(
-    language_config: Dict[str, Any], speech_rate: Any
-) -> Dict[str, Any]:
-    """Create voice configuration with optional speech rate."""
-    voice_config = {
-        "provider": "cartesia",
-        "voiceId": language_config["voice_id"],
-        "model": language_config["voice_model"],
-    }
-
-    if speech_rate:
-        voice_config = add_voice_speed_if_supported(voice_config, speech_rate)
-
-    return voice_config
-
-
-def _add_background_denoising(
-    assistant_config: Dict[str, Any], agent_config: Any
-) -> None:
-    """Add background speech denoising configuration if available."""
-    if (
-        hasattr(agent_config.voice_config, "background_speech_denoising_plan")
-        and agent_config.voice_config.background_speech_denoising_plan
-    ):
-        assistant_config["backgroundSpeechDenoisingPlan"] = (
-            agent_config.voice_config.background_speech_denoising_plan.model_dump(
-                exclude_none=True
-            )
+    def _get_background_sound(self) -> str:
+        """Determine background sound setting."""
+        return (
+            "office"
+            if hasattr(self.agent_config.voice_config, "background_noise")
+            and self.agent_config.voice_config.background_noise
+            else "off"
         )
 
-
-def _get_background_sound(agent_config: Any) -> str:
-    """Determine background sound setting."""
-    return (
-        "office"
-        if hasattr(agent_config.voice_config, "background_noise")
-        and agent_config.voice_config.background_noise
-        else "off"
-    )
-
-
-def _create_base_assistant_config(
-    name: str,
-    first_message: str,
-    transcriber: Dict[str, Any],
-    voice_config: Dict[str, Any],
-    background_sound: str,
-    system_content: str,
-    model_config: Dict[str, Any],
-    agent_config: Any,
-) -> Dict[str, Any]:
-    """Create base assistant configuration with common settings."""
-    config = {
-        "name": name,
-        "firstMessage": first_message,
-        "transcriber": transcriber,
-        "voice": voice_config,
-        "backgroundSound": background_sound,
-        "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
-        "backgroundDenoisingEnabled": True,
-        "model": {
-            **model_config,
-            "messages": [{"role": "system", "content": system_content}],
-        },
-    }
-
-    _add_background_denoising(config, agent_config)
-    return config
+    def _add_background_denoising(self, assistant_config: dict[str, Any]) -> None:
+        """Add background speech denoising configuration if available."""
+        if (
+            hasattr(self.agent_config.voice_config, "background_speech_denoising_plan")
+            and self.agent_config.voice_config.background_speech_denoising_plan
+        ):
+            assistant_config["backgroundSpeechDenoisingPlan"] = (
+                self.agent_config.voice_config.background_speech_denoising_plan.model_dump(
+                    exclude_none=True
+                )
+            )
 
 
-# ============================================================================
-# ASSISTANT CREATION
-# ============================================================================
+class TriageAssistantFactory(BaseAssistantFactory):
+    """Factory for creating triage assistants."""
 
+    def create(
+        self,
+        squad_config: MultilingualSquadConfig,
+        account_display_name: str,
+        speech_rate: Any,
+    ) -> VAPIAssistant:
+        """Create a triage assistant."""
+        triage_config = squad_config.triage_assistant
+        name = triage_config.name
+        transcriber = {
+            "provider": triage_config.transcriber.provider,
+            "model": triage_config.transcriber.model,
+            "language": triage_config.transcriber.language,
+        }
+        voice_config = {
+            "provider": "cartesia",
+            "voiceId": triage_config.voice.voice_id,
+            "model": triage_config.voice.voice_model,
+        }
+        first_message = triage_config.first_message
 
-def _create_triage_assistant(
-    agent_config: Any,
-    account_display_name: str,
-    background_sound: str,
-    speech_rate: Any,
-) -> VAPIAssistant:
-    """Create the language triage assistant for initial language detection."""
+        # Add speech rate if provided
+        if speech_rate:
+            voice_config = add_voice_speed_if_supported(voice_config, speech_rate)
 
-    transcriber = _create_transcriber_config("google")
-    voice_config = _create_voice_config(LANGUAGE_VOICE_CONFIGS["english"], speech_rate)
+        background_sound = self._get_background_sound()
+        system_content = self._create_system_content(squad_config, account_display_name)
 
-    system_content = f"""You are {agent_config.persona.name}, the initial contact for {account_display_name}. 
+        assistant_config = {
+            "name": name,
+            "firstMessage": first_message,
+            "transcriber": transcriber,
+            "voice": voice_config,
+            "backgroundSound": background_sound,
+            "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
+            "backgroundDenoisingEnabled": True,
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4o",
+                "messages": [{"role": "system", "content": system_content}],
+            },
+        }
+
+        self._add_background_denoising(assistant_config)
+        return VAPIAssistant(**assistant_config)
+
+    def _create_system_content(
+        self, squad_config: MultilingualSquadConfig, account_display_name: str
+    ) -> str:
+        """Create system content for triage assistant."""
+        agent_name = self.agent_config.persona.name
+
+        # Validate that the required languages for the hardcoded prompt exist
+        required_languages = ["english", "spanish", "chinese"]
+        missing_languages = [
+            lang
+            for lang in required_languages
+            if lang not in squad_config.language_assistants
+        ]
+        if missing_languages:
+            raise SquadCreationError(
+                f"Missing required language configurations for triage assistant prompt: {', '.join(missing_languages)}"
+            )
+
+        english_assistant_name = squad_config.language_assistants[
+            "english"
+        ].assistant_name
+        spanish_assistant_name = squad_config.language_assistants[
+            "spanish"
+        ].assistant_name
+        chinese_assistant_name = squad_config.language_assistants[
+            "chinese"
+        ].assistant_name
+
+        return f"""You are {agent_name}, the initial contact for {account_display_name}. 
 
 Your ONLY responsibility is to:
 1. Greet the customer warmly
@@ -223,162 +148,199 @@ Your ONLY responsibility is to:
 3. Transfer them to the appropriate language specialist
 
 IMPORTANT TRANSFER RULES:
-- For English speakers or English requests → transfer to {ENGLISH_ASSISTANT_NAME}
-- For Spanish speakers, "español", or Spanish requests → transfer to {SPANISH_ASSISTANT_NAME}  
-- For Chinese speakers, "中文", Chinese characters, or Chinese requests → transfer to {CHINESE_ASSISTANT_NAME}
+- For English speakers or English requests → transfer to {english_assistant_name}
+- For Spanish speakers, "español", or Spanish requests → transfer to {spanish_assistant_name}  
+- For Chinese speakers, "中文", Chinese characters, or Chinese requests → transfer to {chinese_assistant_name}
 
 DO NOT attempt to help with their actual request - only identify language preference and transfer immediately."""
 
-    first_message = f"Hello! This is {agent_config.persona.name} from {account_display_name}. I can help you in English, español, or 中文. Please let me know which language you prefer, and I'll connect you with the right folk."
 
-    model_config = {
-        "provider": "openai",
-        "model": "gpt-4o",
-    }
+class LanguageAssistantFactory(BaseAssistantFactory):
+    """Factory for creating language-specific assistants."""
 
-    config = _create_base_assistant_config(
-        name=TRIAGE_ASSISTANT_NAME,
-        first_message=first_message,
-        transcriber=transcriber,
-        voice_config=voice_config,
-        background_sound=background_sound,
-        system_content=system_content,
-        model_config=model_config,
-        agent_config=agent_config,
-    )
+    def create(
+        self,
+        language_config: LanguageAssistantMultilingConfig,
+        language: str,
+        account_display_name: str,
+        speech_rate: Any,
+        caller_info: CallerInfo,
+        api_url: str,
+    ) -> VAPIAssistant:
+        """Create a language-specific assistant."""
+        name = language_config.assistant_name
+        transcriber = {
+            "provider": language_config.transcriber.provider,
+            "model": language_config.transcriber.model,
+            "language": language_config.transcriber.language,
+        }
+        voice_config = {
+            "provider": "cartesia",
+            "voiceId": language_config.voice.voice_id,
+            "model": language_config.voice.voice_model,
+        }
+        first_message = language_config.first_message
 
-    return VAPIAssistant(**config)
+        # Add speech rate if provided
+        if speech_rate:
+            voice_config = add_voice_speed_if_supported(voice_config, speech_rate)
 
+        background_sound = self._get_background_sound()
+        system_content = self._create_system_content(language, account_display_name)
 
-def _create_language_assistant(
-    name: str,
-    language_config: Dict[str, Any],
-    transcriber: Dict[str, Any],
-    first_message: str,
-    background_sound: str,
-    speech_rate: Any,
-    caller_info: CallerInfo,
-    api_url: str,
-    agent_config: Any,
-) -> VAPIAssistant:
-    """Create a language-specific support assistant."""
+        assistant_config = {
+            "name": name,
+            "firstMessage": first_message,
+            "transcriber": transcriber,
+            "voice": voice_config,
+            "backgroundSound": background_sound,
+            "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
+            "backgroundDenoisingEnabled": True,
+            "model": {
+                "provider": "custom-llm",
+                "url": f"{api_url}/v1",
+                "model": json.dumps(caller_info.__dict__),
+                "messages": [{"role": "system", "content": system_content}],
+            },
+        }
 
-    voice_config = _create_voice_config(language_config, speech_rate)
+        self._add_background_denoising(assistant_config)
+        return VAPIAssistant(**assistant_config)
 
-    model_config = {
-        "provider": "custom-llm",
-        "url": f"{api_url}/v1",
-        "model": json.dumps(caller_info.__dict__),
-    }
+    def _create_system_content(self, language: str, account_display_name: str) -> str:
+        """Create language-specific system content."""
+        agent_name = self.agent_config.persona.name
+        agent_description = self.agent_config.persona.description or ""
 
-    config = _create_base_assistant_config(
-        name=name,
-        first_message=first_message,
-        transcriber=transcriber,
-        voice_config=voice_config,
-        background_sound=background_sound,
-        system_content=language_config["system_content"],
-        model_config=model_config,
-        agent_config=agent_config,
-    )
+        templates = {
+            "english": f"You are {agent_name}, English customer support representative for {account_display_name}. {agent_description} \n\nKeep responses concise and helpful.",
+            "spanish": f"Eres {agent_name}, representante de soporte al cliente en español para {account_display_name}. {agent_description} \n\nMantén las respuestas concisas y útiles.",
+            "chinese": f"你是{agent_name}，{account_display_name}的中文客服代表。{agent_description} \n\n保持回答简洁有用。从现在开始必须用中文回复， 否则用户听不懂。",
+        }
 
-    return VAPIAssistant(**config)
-
-
-# ============================================================================
-# DESTINATION CREATION
-# ============================================================================
-
-
-def _create_triage_destinations() -> List[AssistantDestination]:
-    """Create transfer destinations for the triage assistant."""
-    return [
-        AssistantDestination(
-            assistantName=ENGLISH_ASSISTANT_NAME,
-            message="Got it!",
-            description="Transfer to English-speaking assistant when customer prefers English or uses English language.",
-            transferMode=TRANSFER_MODE,
-        ),
-        AssistantDestination(
-            assistantName=SPANISH_ASSISTANT_NAME,
-            message="Perfecto, te conecto con alguien que te puede ayudar en español. Un momentito.",
-            description="Transfer to Spanish-speaking assistant when customer prefers Spanish, says 'español', or uses Spanish language.",
-            transferMode=TRANSFER_MODE,
-        ),
-        AssistantDestination(
-            assistantName=CHINESE_ASSISTANT_NAME,
-            message="好的，正在为您安排中文服务，请稍候片刻。",
-            description="Transfer to Chinese-speaking assistant when customer prefers Chinese, says '中文', uses Chinese characters, or indicates Chinese language preference.",
-            transferMode=TRANSFER_MODE,
-        ),
-    ]
+        return templates.get(language, templates["english"])
 
 
 # ============================================================================
-# MAIN SQUAD CREATION
+# SQUAD BUILDER
 # ============================================================================
 
 
-def _create_all_assistants(
-    agent_config: Any,
-    account_display_name: str,
-    background_sound: str,
-    speech_rate: Any,
-    caller_info: CallerInfo,
-    api_url: str,
-) -> Dict[str, VAPIAssistant]:
-    """Create all four assistants for the squad."""
-    language_configs = _get_language_configurations(agent_config, account_display_name)
+class SquadBuilder:
+    """Builder for creating complete squad configurations."""
 
-    assistants = {}
+    def __init__(self, agent_config: AgentConfig):
+        self.agent_config = agent_config
+        self.squad_config = (
+            agent_config.multiling_squad_config
+            or MultilingualSquadConfig.model_validate(DEFAULT_MULTILINGUAL_SQUAD_CONFIG)
+        )
+        self.triage_factory = TriageAssistantFactory(agent_config)
+        self.language_factory = LanguageAssistantFactory(agent_config)
 
-    # Create triage assistant
-    assistants["triage"] = _create_triage_assistant(
-        agent_config, account_display_name, background_sound, speech_rate
-    )
+    def build(
+        self, account_display_name: str, caller_info: CallerInfo, api_url: str
+    ) -> SquadConfig:
+        """Build complete squad configuration."""
+        try:
+            speech_rate = getattr(self.agent_config.voice_config, "speech_rate", None)
 
-    # Create language assistants with cleaner config
-    language_assistant_configs = [
-        ("english", ENGLISH_ASSISTANT_NAME, "deepgram", "en-US"),
-        ("spanish", SPANISH_ASSISTANT_NAME, "deepgram", "es"),
-        ("chinese", CHINESE_ASSISTANT_NAME, "deepgram", "zh-CN"),
-    ]
+            # Create all assistants
+            assistants = self._create_all_assistants(
+                account_display_name, speech_rate, caller_info, api_url
+            )
 
-    for (
-        lang_key,
-        assistant_name,
-        transcriber_type,
-        transcriber_lang,
-    ) in language_assistant_configs:
-        transcriber = _create_transcriber_config(transcriber_type, transcriber_lang)
+            # Create transfer destinations
+            destinations = self._create_transfer_destinations()
 
-        assistants[lang_key] = _create_language_assistant(
-            name=assistant_name,
-            language_config=language_configs[lang_key],
-            transcriber=transcriber,
-            first_message=FIRST_MESSAGES[lang_key],
-            background_sound=background_sound,
-            speech_rate=speech_rate,
-            caller_info=caller_info,
-            api_url=api_url,
-            agent_config=agent_config,
+            # Build squad configuration
+            members = [
+                SquadMember(
+                    assistant=assistants["triage"], assistantDestinations=destinations
+                )
+            ]
+            for language_name in self.squad_config.language_assistants:
+                members.append(SquadMember(assistant=assistants[language_name]))
+
+            return SquadConfig(
+                name=f"{account_display_name} Multilingual Support Squad",
+                members=members,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to build squad configuration: {str(e)}")
+            raise SquadCreationError(f"Failed to build squad: {str(e)}") from e
+
+    def _create_all_assistants(
+        self,
+        account_display_name: str,
+        speech_rate: Any,
+        caller_info: CallerInfo,
+        api_url: str,
+    ) -> dict[str, VAPIAssistant]:
+        """Create all assistants for the squad."""
+        assistants = {}
+
+        # Create triage assistant
+        assistants["triage"] = self.triage_factory.create(
+            self.squad_config, account_display_name, speech_rate
         )
 
-    return assistants
+        # Create language assistants
+        for (
+            language_name,
+            language_config,
+        ) in self.squad_config.language_assistants.items():
+            assistants[language_name] = self.language_factory.create(
+                language_config,
+                language_name,
+                account_display_name,
+                speech_rate,
+                caller_info,
+                api_url,
+            )
+
+        return assistants
+
+    def _create_transfer_destinations(self) -> List[AssistantDestination]:
+        """Create transfer destinations for the triage assistant."""
+        destinations = []
+        transfer_mode = self.squad_config.triage_assistant.transfer_mode
+
+        for language_name in self.squad_config.language_assistants:
+            config = self.squad_config.language_assistants[language_name]
+            destinations.append(
+                AssistantDestination(
+                    assistantName=config.assistant_name,
+                    message=config.transfer_message or "Connecting you now...",
+                    description=config.transfer_description
+                    or f"Transfer to {language_name} assistant",
+                    transferMode=transfer_mode,  # type: ignore
+                )
+            )
+
+        return destinations
 
 
-def create_multilingual_squad_demo(
-    agent_config: Any,
+# ============================================================================
+# PUBLIC FUNCTIONS
+# ============================================================================
+
+
+def create_multilingual_squad(
+    agent_config: AgentConfig,
     account_display_name: str,
-    caller_info: Dict[str, Any],
+    caller_info: dict[str, Any],
     call_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
-    Create a multilingual squad configuration with 4 assistants:
+    Create a multilingual squad configuration with a triage assistant and language-specific assistants.
+    By default, this supports English, Spanish, and Chinese. The supported languages can be configured
+    via the `multiling_squad_config` in the agent configuration.
+
+    The squad consists of:
     1. Language triage assistant (OpenAI GPT-4o, Google transcriber)
-    2. English assistant (Deepgram transcriber)
-    3. Spanish assistant (Deepgram transcriber)
-    4. Chinese assistant (Google transcriber)
+    2. Language-specific assistants (e.g., for English, Spanish, and Chinese)
 
     Args:
         agent_config: The agent configuration object
@@ -391,9 +353,7 @@ def create_multilingual_squad_demo(
     """
     try:
         # Extract configuration
-        api_url = os.environ.get("PAL_API_URL", DEFAULT_API_URL)
-        speech_rate = getattr(agent_config.voice_config, "speech_rate", None)
-        background_sound = _get_background_sound(agent_config)
+        api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
 
         # Structure caller info
         structured_caller_info = CallerInfo(
@@ -402,33 +362,17 @@ def create_multilingual_squad_demo(
             call_id=call_id,
         )
 
-        # Create assistants and destinations
-        assistants = _create_all_assistants(
-            agent_config,
-            account_display_name,
-            background_sound,
-            speech_rate,
-            structured_caller_info,
-            api_url,
-        )
-        triage_destinations = _create_triage_destinations()
-
-        # Build squad configuration
-        squad_config = SquadConfig(
-            name=f"{account_display_name} Multilingual Support Squad",
-            members=[
-                SquadMember(
-                    assistant=assistants["triage"],
-                    assistantDestinations=triage_destinations,
-                ),
-                SquadMember(assistant=assistants["english"]),
-                SquadMember(assistant=assistants["spanish"]),
-                SquadMember(assistant=assistants["chinese"]),
-            ],
+        # Build squad using the builder pattern
+        squad_builder = SquadBuilder(agent_config)
+        squad_config = squad_builder.build(
+            account_display_name, structured_caller_info, api_url
         )
 
         return {"squad": squad_config.model_dump()}
 
+    except SquadCreationError:
+        # Re-raise squad creation errors as-is
+        raise
     except Exception as e:
-        logger.error(f"Error creating multilingual squad config: {str(e)}")
+        logger.error(f"Unexpected error creating multilingual squad: {str(e)}")
         return {"error": f"Error creating multilingual squad: {str(e)}"}
