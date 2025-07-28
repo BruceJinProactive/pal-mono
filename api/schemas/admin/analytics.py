@@ -3,7 +3,7 @@ from enum import Enum
 from pydantic import BaseModel
 
 # Valid channel names used across the analytics system
-VALID_CHANNELS = ["api", "instagram", "internal_app", "sms", "voice", "whatsapp"]
+VALID_CHANNELS = ["api", "instagram", "sms", "voice", "whatsapp"]
 
 
 class Event(str, Enum):
@@ -36,7 +36,6 @@ class ChannelData(BaseModel):
 
     api: int
     instagram: int
-    internal_app: int
     sms: int
     voice: int
     whatsapp: int

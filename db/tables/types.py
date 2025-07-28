@@ -8,7 +8,6 @@ import enum
 class Channel(str, enum.Enum):
     API = "api"
     INSTAGRAM = "instagram"
-    INTERNAL_APP = "internal_app"
     SMS = "sms"
     VOICE = "voice"
     WHATSAPP = "whatsapp"
