@@ -87,12 +87,12 @@ def validate_vapi_request(request: Request) -> bool:
 def get_transcriber_and_voice_config(
     agent_config, voice_id: str | None, speech_rate
 ) -> tuple[dict, dict]:
-    """Get transcriber and voice configuration based on agent config."""
-    if (
-        agent_config.persona.multilingual
-        or agent_config.persona.multilingual_workflow
-        or agent_config.persona.multilingual_squad
-    ):
+    """
+    Get transcriber and voice configuration for a single assistant.
+    Note: Multilingual squad configurations are handled in the _squad.py module.
+    """
+    # This configures a single assistant.
+    if agent_config.persona.multilingual:
         if agent_config.persona.model_mode == "google":
             transcriber = {
                 "provider": "google",
@@ -113,6 +113,7 @@ def get_transcriber_and_voice_config(
             "model": "sonic-2",
         }
     else:
+        # Default single-language setup
         transcriber = {
             "provider": "deepgram",
             "model": "nova-3",
