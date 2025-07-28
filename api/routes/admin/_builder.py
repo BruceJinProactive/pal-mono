@@ -67,6 +67,7 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         notes=account.notes,
         phone_number=account.phone_number,
         channels=account.channels,
+        created_at=int(account.created_at.timestamp()),
     )
 
 
