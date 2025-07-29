@@ -2,11 +2,13 @@ import os
 import shutil
 import uuid
 from datetime import datetime
+from functools import lru_cache
 
-from llama_index.core import SimpleDirectoryReader
+from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import TextNode
 from llama_index.embeddings.cohere import CohereEmbedding
+from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
 
 from db.tables.types import IntegrationProvider
@@ -14,6 +16,7 @@ from services.knowledge_service.schema import KnowledgeFile
 from utils.log import logger
 
 
+@lru_cache()
 def _get_pinecone_api_key() -> str:
     """Retrieve and validate Pinecone API key."""
     api_key = os.getenv("PINECONE_API_KEY")
@@ -22,8 +25,11 @@ def _get_pinecone_api_key() -> str:
     return api_key
 
 
+@lru_cache()
 def _get_cohere_api_key() -> str:
-    """Retrieve and validate Cohere API key."""
+    """
+    Get Cohere API key from environment variables.
+    """
     api_key = os.getenv("COHERE_API_KEY")
     if not api_key:
         raise ValueError("COHERE_API_KEY environment variable not set")
@@ -203,6 +209,25 @@ def delete_namespace(
         raise Exception(f"Failed to delete namespace: {str(e)}")
 
 
+@lru_cache()
+def _get_retriever(index_name: str, namespace: str, similarity_top_k: int):
+    """
+    Get a LlamaIndex retriever for a given Pinecone index and namespace.
+    The result is cached.
+    """
+    cohere_api_key = _get_cohere_api_key()
+    embed_model = CohereEmbedding(
+        api_key=cohere_api_key,
+        model_name="embed-english-v3.0",
+    )
+    index = _get_index(index_name)
+    vector_store = PineconeVectorStore(pinecone_index=index, namespace=namespace)
+    vector_store_index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store, embed_model=embed_model
+    )
+    return vector_store_index.as_retriever(similarity_top_k=similarity_top_k)
+
+
 def query_vector_database(
     index_name: str,
     namespace: str,
@@ -225,18 +250,6 @@ def query_vector_database(
         Exception: If there is an error accessing the Pinecone index or querying the vectors.
     """
     try:
-        # Get Cohere API key for embedding generation
-        cohere_api_key = _get_cohere_api_key()
-
-        # Initialize Cohere embeddings
-        embed_model = CohereEmbedding(
-            api_key=cohere_api_key,
-            model_name="embed-english-v3.0",
-        )
-
-        # Get Pinecone index
-        index = _get_index(index_name)
-
         logger.debug(
             "About to query vector database",
             extra={
@@ -247,18 +260,9 @@ def query_vector_database(
             },
         )
 
-        # Generate embedding for the query
-        query_embedding = embed_model.get_text_embedding(query)
+        retriever = _get_retriever(index_name, namespace, top_k)
+        matches = retriever.retrieve(query)
 
-        # Query the index
-        response = index.query(
-            vector=query_embedding,
-            namespace=namespace,
-            top_k=top_k,
-            include_metadata=True,
-        )
-
-        matches = response.matches  # type: ignore
         logger.debug(
             "Successfully queried vector database",
             extra={
@@ -272,10 +276,14 @@ def query_vector_database(
         try:
             serializable_matches = []
             for match in matches:
+                metadata = dict(match.node.metadata)
+                if "text" not in metadata:
+                    metadata["text"] = match.node.get_content()
+
                 serializable_match = {
-                    "id": str(match.get("id", "")),
-                    "score": float(match.get("score", 0.0)),
-                    "metadata": dict(match.get("metadata", {})),
+                    "id": str(match.node.id_),
+                    "score": float(match.score or 0.0),
+                    "metadata": metadata,
                 }
                 serializable_matches.append(serializable_match)
             return serializable_matches
@@ -292,7 +300,11 @@ def query_vector_database(
         raise Exception(f"Failed to query vector database: {str(e)}")
 
 
+@lru_cache()
 def _get_index(index_name: str):
+    """
+    Get a Pinecone index object.
+    """
     pinecone_api_key = _get_pinecone_api_key()
     pc = Pinecone(pinecone_api_key)
     index = pc.Index(index_name)
