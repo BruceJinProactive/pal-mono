@@ -287,6 +287,42 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
     return result
 
 
+def transform_square_location_to_store_location(
+    square_location: dict, integration_id: str
+) -> dict:
+    """
+    Transform Square location data to match manage-app's StoreLocation interface.
+
+    Args:
+        square_location: Raw location data from Square API
+        integration_id: The integration ID to include in the response
+
+    Returns:
+        dict: Transformed location data matching StoreLocation interface
+    """
+    address = square_location.get("address", {})
+
+    address_parts = []
+    if address.get("address_line_1"):
+        address_parts.append(address["address_line_1"])
+    if address.get("address_line_2"):
+        address_parts.append(address["address_line_2"])
+
+    return {
+        "id": square_location.get("id", ""),
+        "name": square_location.get("name", ""),
+        "address": ", ".join(address_parts) if address_parts else "",
+        "city": address.get("locality", ""),
+        "state": address.get("administrative_district_level_1", ""),
+        "zip_code": address.get("postal_code", ""),
+        "phone_number": square_location.get("phone_number"),
+        "store_id": square_location.get("id", ""),
+        "integration_id": str(integration_id),
+        "created_at": square_location.get("created_at", ""),
+        "updated_at": square_location.get("updated_at"),
+    }
+
+
 def get_merchant_locations(
     session, account_name: str, integration_id: uuid.UUID
 ) -> dict:
@@ -366,10 +402,16 @@ def get_merchant_locations(
 
         locations_data = response.json()
 
+        raw_locations = locations_data.get("locations", [])
+        transformed_locations = [
+            transform_square_location_to_store_location(location, str(integration_id))
+            for location in raw_locations
+        ]
+
         return {
             "success": True,
-            "locations": locations_data.get("locations", []),
-            "total_locations": len(locations_data.get("locations", [])),
+            "locations": transformed_locations,
+            "total_locations": len(transformed_locations),
         }
 
     except Exception as e:
