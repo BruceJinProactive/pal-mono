@@ -17,22 +17,18 @@ Text generation includes:
 - Location-specific availability notes
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from utils.log import logger
 
 
 def generate_item_text(
     item: Dict[str, Any],
-    location_name: Optional[str] = None,
-    include_location_in_text: bool = True,
 ) -> str:
     """Generate readable text for a single menu item.
 
     Args:
         item: Menu item data dictionary
-        location_name: Optional location name to include in text
-        include_location_in_text: Whether to include location context
 
     Returns:
         str: Formatted text description of the menu item
@@ -42,10 +38,6 @@ def generate_item_text(
     # Item name and basic info
     item_name = item.get("name", "Unknown Item")
     text_parts.append(f"Menu Item: {item_name}")
-
-    # Location context
-    if include_location_in_text and location_name:
-        text_parts.append(f"Available at: {location_name}")
 
     # Description - preserve full description without truncation
     if item.get("description"):
@@ -83,40 +75,27 @@ def generate_item_text(
 
 def format_consolidated_menu(
     menu_data: Dict[str, Any],
-    include_location_in_doc_name: bool = False,
 ) -> Dict[str, str]:
     """Format complete menu data into consolidated text documents.
 
     Args:
         menu_data: Complete menu data from Square API
-        include_location_in_doc_name: Whether to include location in document names
 
     Returns:
         dict: Mapping of document names to formatted text content
     """
     documents = {}
 
-    location_name = menu_data.get("location_name", None)
     menu_items = menu_data.get("menu_items", [])
 
-    logger.debug(
-        f"Formatting consolidated menu for {location_name} with {len(menu_items)} items"
-    )
+    logger.debug(f"Formatting consolidated menu with {len(menu_items)} items")
 
     # Create main menu document
-    doc_name = (
-        f"{len(menu_items)} Items - {location_name}"
-        if include_location_in_doc_name
-        else f"{len(menu_items)} Items"
-    )
-
+    doc_name = f"{menu_data.get('location_id')}_menu_{len(menu_items)}_items"
     menu_text_parts = []
 
     # Header - focus on item count and location info
-    if location_name:
-        menu_text_parts.append(f"{len(menu_items)} Items - {location_name.upper()}")
-    else:
-        menu_text_parts.append(f"{len(menu_items)} Items")
+    menu_text_parts.append(f"{len(menu_items)} Items")
 
     menu_text_parts.append("=" * 50)
     menu_text_parts.append("")
@@ -136,16 +115,22 @@ def format_consolidated_menu(
 
         # No technical IDs in customer-facing consolidated menu
 
-        # Modifier summary - follow test file structure
+        # Modifier details - show all available options (no IDs)
         modifiers = item.get("modifiers", [])
         if modifiers:
-            modifier_count = sum(
-                len(mod_group.get("modifiers", [])) for mod_group in modifiers
-            )
-            group_count = len(modifiers)
-            menu_text_parts.append(
-                f"   Customization: {group_count} option groups, {modifier_count} total options"
-            )
+            menu_text_parts.append("   Customization Options:")
+            for mod_group in modifiers:
+                group_name = mod_group.get("list_name", "Options")
+                menu_text_parts.append(f"     {group_name}:")
+
+                group_modifiers = mod_group.get("modifiers", [])
+                if group_modifiers:
+                    for modifier in group_modifiers:
+                        mod_name = modifier.get("name", "Unknown Option")
+                        price_info = modifier.get("price_info", "")
+                        menu_text_parts.append(f"       - {mod_name}{price_info}")
+                else:
+                    menu_text_parts.append("       - No options available")
         else:
             menu_text_parts.append("   Customization: No options available")
 

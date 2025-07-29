@@ -46,8 +46,6 @@ def index_to_pinecone(
     pinecone_index_name: str,
     pinecone_namespace: str,
     location_id: str,
-    location_name: Optional[str] = None,
-    restaurant_name: str = "ume",
 ) -> Dict[str, Any]:
     """Index Square menu documents to Pinecone vector store.
 
@@ -55,10 +53,8 @@ def index_to_pinecone(
         documents: Dictionary mapping document names to text content
         menu_data: Original menu data for metadata
         pinecone_index_name: Name of the Pinecone index to use
-        pinecone_namespace: Base namespace for the index
+        pinecone_namespace: Namespace to store the data in (used directly)
         location_id: Square location ID for metadata
-        location_name: Optional location name for metadata
-        restaurant_name: Restaurant name for namespace creation
 
     Returns:
         dict: Indexing results including success status and statistics
@@ -82,9 +78,8 @@ def index_to_pinecone(
         pinecone_api_key = _get_pinecone_api_key()
         cohere_api_key = _get_cohere_api_key()
 
-        # Create timestamped namespace following the notebook pattern
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        final_namespace = f"{restaurant_name}_{location_name or location_id}_{location_id}_{current_date}"
+        # Use the provided namespace directly (matching Adora pattern)
+        final_namespace = pinecone_namespace
 
         logger.debug(f"Using namespace: {final_namespace}")
 
@@ -112,7 +107,7 @@ def index_to_pinecone(
                 text=content,
                 metadata={
                     "source": "square_menu",
-                    "location": location_name or location_id,
+                    "location": location_id,
                     "location_id": location_id,
                     "document_type": "menu",
                     "document_name": doc_name,
@@ -120,7 +115,7 @@ def index_to_pinecone(
                     "total_objects": menu_data.get("total_objects", 0),
                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     "size_bytes": len(content.encode("utf-8")),
-                    "file_name": f"{restaurant_name}_{location_name or location_id}_{doc_name.lower().replace(' ', '_')}_{current_date}.json",
+                    "file_name": f"square_{location_id}_{doc_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y-%m-%d')}.json",
                 },
             )
             llama_documents.append(doc)
@@ -151,8 +146,6 @@ def index_to_pinecone(
             "pinecone_index": pinecone_index_name,
             "pinecone_namespace": final_namespace,
             "location_id": location_id,
-            "location_name": location_name,
-            "restaurant_name": restaurant_name,
             "nodes_created": len(nodes),
             "index_object": index,  # Return index for potential queries
         }
@@ -167,18 +160,14 @@ def index_individual_items_to_pinecone(
     pinecone_index_name: str,
     pinecone_namespace: str,
     location_id: str,
-    location_name: Optional[str] = None,
-    restaurant_name: str = "ume",
 ) -> Dict[str, Any]:
     """Index individual Square menu items to Pinecone following the notebook pattern.
 
     Args:
         menu_data: Processed menu data with individual items
         pinecone_index_name: Name of the Pinecone index to use
-        pinecone_namespace: Base namespace for the index
+        pinecone_namespace: Namespace to store the data in (used directly)
         location_id: Square location ID
-        location_name: Optional location name
-        restaurant_name: Restaurant name for namespace creation
 
     Returns:
         dict: Indexing results including success status and statistics
@@ -205,9 +194,8 @@ def index_individual_items_to_pinecone(
         pinecone_api_key = _get_pinecone_api_key()
         cohere_api_key = _get_cohere_api_key()
 
-        # Create timestamped namespace
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        final_namespace = f"{restaurant_name}_{location_name or location_id}_{location_id}_{current_date}"
+        # Use the provided namespace directly
+        final_namespace = pinecone_namespace
 
         logger.debug(f"Using namespace: {final_namespace}")
 
@@ -256,13 +244,13 @@ def index_individual_items_to_pinecone(
                 text=item_text,
                 metadata={
                     "source": "modifier_menu",
-                    "location": location_name or location_id,
+                    "location": location_id,
                     "location_id": location_id,
                     "type": "menu_item",
                     "item_name": item_name,
-                    "item_id": item.get("id"),
-                    "variation_id": item.get("_variation_id"),
-                    "file_name": f"{restaurant_name}_{location_name or location_id}_{item_name.replace(' ', '_').lower()}_{current_date}.json",
+                    "item_id": item.get("id") or "unknown",
+                    "variation_id": item.get("_variation_id") or "none",
+                    "file_name": f"square_{location_id}_{item_name.replace(' ', '_').lower()}.json",
                 },
             )
             documents.append(doc)
@@ -291,8 +279,6 @@ def index_individual_items_to_pinecone(
             "pinecone_index": pinecone_index_name,
             "pinecone_namespace": final_namespace,
             "location_id": location_id,
-            "location_name": location_name,
-            "restaurant_name": restaurant_name,
             "nodes_created": len(nodes),
             "index_object": index,
         }
@@ -304,17 +290,15 @@ def index_individual_items_to_pinecone(
 
 def delete_location_vectors(
     pinecone_index_name: str,
+    pinecone_namespace: str,
     location_id: str,
-    location_name: Optional[str] = None,
-    restaurant_name: str = "ume",
 ) -> Dict[str, Any]:
-    """Delete all vectors for a specific Square location.
+    """Delete all vectors for a specific Square location namespace.
 
     Args:
         pinecone_index_name: Name of the Pinecone index
-        location_id: Square location ID to delete
-        location_name: Optional location name
-        restaurant_name: Restaurant name for namespace pattern
+        pinecone_namespace: Specific namespace to delete
+        location_id: Square location ID for reference
 
     Returns:
         dict: Deletion results including success status
@@ -323,7 +307,9 @@ def delete_location_vectors(
         RuntimeError: If deletion fails
     """
     try:
-        logger.debug(f"Deleting vectors for Square location {location_id}")
+        logger.debug(
+            f"Deleting vectors for Square location {location_id} in namespace {pinecone_namespace}"
+        )
 
         # Get API key
         pinecone_api_key = _get_pinecone_api_key()
@@ -332,26 +318,21 @@ def delete_location_vectors(
         pc = Pinecone(api_key=pinecone_api_key)
         pinecone_index = pc.Index(pinecone_index_name)
 
-        # Create namespace pattern - delete all namespaces for this location
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        namespace_pattern = f"{restaurant_name}_{location_name or location_id}_{location_id}_{current_date}"
-
-        # Delete the namespace (this deletes all vectors in that namespace)
+        # Delete the specified namespace (this deletes all vectors in that namespace)
         try:
-            pinecone_index.delete(delete_all=True, namespace=namespace_pattern)
+            pinecone_index.delete(delete_all=True, namespace=pinecone_namespace)
             vectors_deleted = (
                 "all"  # Pinecone doesn't return exact count for namespace deletion
             )
         except Exception as e:
-            logger.warning(f"Error deleting namespace {namespace_pattern}: {e}")
+            logger.warning(f"Error deleting namespace {pinecone_namespace}: {e}")
             vectors_deleted = 0
 
         logger.debug(f"Successfully deleted vectors for Square location {location_id}")
         return {
             "success": True,
             "location_id": location_id,
-            "location_name": location_name,
-            "namespace_deleted": namespace_pattern,
+            "namespace_deleted": pinecone_namespace,
             "vectors_deleted": vectors_deleted,
         }
 
@@ -362,17 +343,15 @@ def delete_location_vectors(
 
 def get_indexing_stats(
     pinecone_index_name: str,
+    pinecone_namespace: Optional[str] = None,
     location_id: Optional[str] = None,
-    location_name: Optional[str] = None,
-    restaurant_name: str = "ume",
 ) -> Dict[str, Any]:
     """Get statistics about indexed Square menu data.
 
     Args:
         pinecone_index_name: Name of the Pinecone index
-        location_id: Optional location ID to filter results
-        location_name: Optional location name
-        restaurant_name: Restaurant name for namespace pattern
+        pinecone_namespace: Optional specific namespace to get stats for
+        location_id: Optional location ID for reference
 
     Returns:
         dict: Statistics about indexed vectors
@@ -393,24 +372,20 @@ def get_indexing_stats(
         # Get index stats
         index_stats = pinecone_index.describe_index_stats()
 
-        # If location is specified, try to get namespace-specific stats
+        # If namespace is specified, try to get namespace-specific stats
         namespace_stats = None
-        if location_id:
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            namespace = f"{restaurant_name}_{location_name or location_id}_{location_id}_{current_date}"
-
+        if pinecone_namespace:
             if (
                 hasattr(index_stats, "namespaces")
-                and namespace in index_stats.namespaces
+                and pinecone_namespace in index_stats.namespaces
             ):
-                namespace_stats = index_stats.namespaces[namespace]
+                namespace_stats = index_stats.namespaces[pinecone_namespace]
 
         return {
             "success": True,
             "index_name": pinecone_index_name,
             "location_filter": location_id,
-            "location_name": location_name,
-            "restaurant_name": restaurant_name,
+            "namespace_filter": pinecone_namespace,
             "index_stats": index_stats,
             "namespace_stats": namespace_stats,
         }

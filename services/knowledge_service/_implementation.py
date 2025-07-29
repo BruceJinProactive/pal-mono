@@ -378,6 +378,56 @@ def update_agent_kb(
 
             return result
 
+        elif pos_provider == IntegrationProvider.square:
+            from services.knowledge_service.square import SquareMenuProcessor
+
+            # Map existing parameters to Square parameters
+            square_access_token = client_secret  # Use client_secret as access_token
+            square_location_id = store_id  # Use store_id as location_id
+
+            # Validate required Square parameters
+            if not square_access_token:
+                raise ValueError(
+                    "client_secret (access_token) is required for Square integration"
+                )
+            if not square_location_id:
+                raise ValueError(
+                    "store_id (location_id) is required for Square integration"
+                )
+
+            processor = SquareMenuProcessor(debug=debug)
+            result = processor.process_and_index_menu(
+                access_token=square_access_token,
+                location_id=square_location_id,
+                pinecone_index_name=pinecone_index_name,
+                pinecone_namespace=pinecone_namespace,
+                include_location_in_doc_name=include_category_in_doc_name,
+            )
+
+            logger.info(
+                "Successfully updated knowledge base for Square agent",
+                extra={
+                    "location_id": square_location_id,
+                    "processed_items": result.get("processing_summary", {}).get(
+                        "menu_items_processed", 0
+                    ),
+                    "final_namespace": pinecone_namespace,
+                },
+            )
+
+            if debug:
+                square_debug_info = {
+                    "pos_provider": pos_provider,
+                    "store_id": store_id,
+                    "client_secret": (
+                        client_secret[:10] + "..." if client_secret else None
+                    ),
+                    "location_id": square_location_id,
+                }
+                result["debug"] = square_debug_info
+
+            return result
+
         else:
             raise ValueError(f"Unsupported POS provider: {pos_provider}")
 

@@ -30,7 +30,6 @@ from utils.log import logger
 def download_menu(
     access_token: str,
     location_id: str,
-    location_name: Optional[str] = None,
     default_currency: str = "USD",
 ) -> Dict[str, Any]:
     """Downloads menu data from Square Catalog API.
@@ -38,7 +37,6 @@ def download_menu(
     Args:
         access_token: The Square access token for authentication
         location_id: The Square location ID to filter menu items
-        location_name: Optional location name for logging (defaults to location_id)
         default_currency: Default currency code to use when none is specified (defaults to "USD")
 
     Returns:
@@ -48,8 +46,6 @@ def download_menu(
         RuntimeError: If menu download fails
         ValueError: If menu data is invalid
     """
-    if not location_name:
-        location_name = location_id
 
     square_token = SquareAccessToken(access_token=access_token, token_type="Bearer")
 
@@ -97,7 +93,6 @@ def download_menu(
 
         return {
             "location_id": location_id,
-            "location_name": location_name,
             "total_objects": len(all_catalog_objects),
             "menu_items": processed_menu,
             "item_count": len(processed_menu),

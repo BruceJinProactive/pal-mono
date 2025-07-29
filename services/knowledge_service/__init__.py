@@ -141,46 +141,42 @@ def update_agent_kb(
     debug: bool = False,
     include_category_in_doc_name: bool = False,
 ) -> dict:
-    """
-    Update the knowledge base for an agent.
+    """Update the knowledge base for an agent based on the POS provider.
+
+    Provides a unified interface for different POS systems:
+    - Adora: Uses all parameters as specified
+    - Square: Maps client_secret → access_token, store_id → location_id
 
     Args:
-        pos_provider (IntegrationProvider): The POS provider to use to update the knowledge base. Example: ADORA, TOAST, SQUARE, OLO.
-        store_id (str): The ID of the store to update the knowledge base for.
-        client_id (str): The ID of the client to update the knowledge base for.
-        client_secret (str): The secret of the client to update the knowledge base for.
-        token_api_endpoint (str): The complete URL for the token endpoint (e.g., "https://identity.adorapos.net/connect/token"). Required.
-        general_api_endpoint (str): The complete URL for the menu endpoint (e.g., "https://public.api.adorapos.net/api/v1/OrderHub/menu"). Required.
-        pinecone_namespace (str): The namespace to upsert the knowledge base to.
-        pinecone_index_name (str): The name of the Pinecone index to use.
-        debug (bool): Whether to enable debug mode.
-        include_category_in_doc_name (bool): Whether to include category name in document names. Defaults to False.
+        pos_provider: The POS integration provider (Adora or Square)
+        store_id: Store/location identifier (maps to location_id for Square)
+        client_id: Client identifier for authentication
+        client_secret: Client secret for authentication (maps to access_token for Square)
+        token_api_endpoint: API endpoint for token operations
+        general_api_endpoint: API endpoint for general operations
+        pinecone_namespace: Namespace for vector storage
+        pinecone_index_name: Name of the Pinecone index
+        debug: Enable debug logging
+        include_category_in_doc_name: Include category in document names
 
     Returns:
-        dict: A dictionary of the following:
-            - system prompt menu: Menu information added to project config
-            - pinecone namespace name: The namespace name in Pinecone the menu is upserted to
+        dict: Results of the knowledge base update operation
 
-    When debug is enabled, the endpoint will return the following:
-    - debug:
-        - pos_provider: POS provider name
-        - store_id: Store ID
-        - client_id: Client ID
-        - client_secret: Client secret
-        - token_api_endpoint: Token API endpoint URL
-        - general_api_endpoint: General API endpoint URL
+    Raises:
+        ValueError: If required parameters are missing or invalid
+        RuntimeError: If the update operation fails
     """
     return _implementation.update_agent_kb(
-        pos_provider,
-        store_id,
-        client_id,
-        client_secret,
-        token_api_endpoint,
-        general_api_endpoint,
-        pinecone_namespace,
-        pinecone_index_name,
-        debug,
-        include_category_in_doc_name,
+        pos_provider=pos_provider,
+        store_id=store_id,
+        client_id=client_id,
+        client_secret=client_secret,
+        token_api_endpoint=token_api_endpoint,
+        general_api_endpoint=general_api_endpoint,
+        pinecone_namespace=pinecone_namespace,
+        pinecone_index_name=pinecone_index_name,
+        debug=debug,
+        include_category_in_doc_name=include_category_in_doc_name,
     )
 
 
