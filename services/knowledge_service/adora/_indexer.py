@@ -43,20 +43,20 @@ def index_to_pinecone(
     pinecone_index_name: str,
     pinecone_namespace: str,
     debug: bool = False,
-) -> str:
-    """Index individual menu items to Pinecone.
+) -> int:
+    """Index individual menu items to Pinecone vector store.
 
     Args:
-        individual_items: List of dictionaries where each dict contains one key-value pair.
-                        Key format: "item_{index}_{item_name}" if category is already in item name,
-                        or "item_{index}_{item_name} {category_name}" if category is not in item name.
-                        Value: The formatted item text.
-        pinecone_index_name: Name of the Pinecone index
-        pinecone_namespace: Namespace for the Pinecone index
-        debug: Whether to enable debug logging
+        individual_items: Menu items as key-value dictionaries with formatted text
+        pinecone_index_name: Pinecone index name
+        pinecone_namespace: Pinecone namespace for indexing
+        debug: Enable debug logging
 
     Returns:
-        str: The final namespace with timestamp
+        int: Number of documents indexed
+
+    Raises:
+        Exception: If indexing fails
     """
     # Get API keys from centralized functions
     pinecone_api_key = _get_pinecone_api_key()
@@ -111,4 +111,4 @@ def index_to_pinecone(
             f"Successfully indexed to Pinecone namespace: {pinecone_namespace}"
         )
 
-    return pinecone_namespace
+    return len(documents)

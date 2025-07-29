@@ -45,11 +45,8 @@ from ._utils import parse_item_data
 class AdoraMenuProcessor:
     """Processes Adora menu data and indexes it to Pinecone.
 
-    This class orchestrates the entire menu processing pipeline:
-    1. Authentication with Adora API
-    2. Menu data download
-    3. Text generation and formatting
-    4. Pinecone indexing
+    Controls the complete menu processing pipeline from API authentication
+    to vector store indexing.
     """
 
     def __init__(self, debug: bool = False):
@@ -75,17 +72,17 @@ class AdoraMenuProcessor:
         """Process Adora menu and index it to Pinecone.
 
         Args:
-            store_id: The store ID to process menu for
-            client_id: The client ID for authentication
-            client_secret: The client secret for authentication
-            pinecone_index_name: The name of the Pinecone index to use
-            pinecone_namespace: The namespace to store the menu data in
-            token_api_endpoint: The complete URL for the token endpoint
-            general_api_endpoint: The complete URL for the general API endpoint
-            include_category_in_doc_name: Whether to include category name in document names. Defaults to False.
+            store_id: Store ID to process menu for
+            client_id: Client ID for authentication
+            client_secret: Client secret for authentication
+            pinecone_index_name: Pinecone index name
+            pinecone_namespace: Pinecone namespace for menu data
+            token_api_endpoint: Complete URL for token endpoint
+            general_api_endpoint: Complete URL for general API endpoint
+            include_category_in_doc_name: Whether to include category in document names
 
         Returns:
-            dict: Processing results including menu data and indexing information
+            dict: Processing results with menu data and indexing information
         """
         try:
             if self.debug:
@@ -150,7 +147,7 @@ class AdoraMenuProcessor:
                 individual_items=individual_items
             )
             # Step 5: Index to Pinecone
-            final_namespace = index_to_pinecone(
+            document_count = index_to_pinecone(
                 individual_items=individual_items,
                 pinecone_index_name=pinecone_index_name,
                 pinecone_namespace=pinecone_namespace,
@@ -160,12 +157,15 @@ class AdoraMenuProcessor:
                 logger.debug(
                     f"[adora._implementation.process_and_index_menu] Processing complete. Total items: {len(individual_items)}"
                 )
+                logger.debug(
+                    f"[adora._implementation.process_and_index_menu] Indexed {document_count} documents to namespace: {pinecone_namespace}"
+                )
 
             return {
                 "system_prompt_menu": consolidated_menu,
-                "pinecone_namespace": final_namespace,
+                "pinecone_namespace": pinecone_namespace,
                 "pinecone_index_name": pinecone_index_name,
-                "processed_items": len(individual_items),
+                "processed_items": document_count,
                 "store_id": store_id,
             }
 

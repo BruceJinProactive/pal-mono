@@ -1240,33 +1240,22 @@ async def update_agent_kb(
     context: UserContext = Depends(authenticate_user),
     db_session: Session = Depends(db.get_db),
 ) -> dict:
-    # TODO: Ask user to review the parsed menu document and system prompt menu, then user can confirm or reject the menu document. Once confirmed, update the agent's config in db, and upsert the menu document to pinecone.
-    # TODO: Once menu is parsed and upserted, let user review the menu document and system prompt menu, then user can confirm or reject the menu document. Once confirmed, update the agent's config in db, and upsert the menu document to pinecone; if rejected, delete the menu document from pinecone.
-    # TODO: namespace example: {project_name}_{pos_provider}_{store}_{store_id}_{timestamp YYYY-MM-DD_HH:MM}
     """
-    Update the knowledge base for an agent.
-
-    The endpoint returns a dictionary of the following:
-    - system_prompt_menu: Menu information added to project config
-    - pinecone_namespace: Pinecone namespace name
-    - pinecone_index_name: Pinecone index name
-
-    When debug is enabled, the endpoint will return the following:
-    - debug:
-        - pos_provider: POS provider name
-        - store_id: Store ID
-        - client_id: Client ID
-        - client_secret: Client secret
-        - token_api_endpoint: Token API endpoint
-        - general_api_endpoint: General API endpoint
-
-
-    If the knowledge base is not updated successfully, the endpoint returns 400 Bad Request.
+    Update the knowledge base for an agent by downloading menu data, generating embeddings, and storing in Pinecone.
 
     Args:
-        timestamp: Optional timestamp in YYYY-MM-DD_HH:MM format to append to namespace.
-                  If not provided, will search in database or use current time.
-        include_category_in_doc_name: Whether to include category name in document names. Defaults to False.
+        account_name: Account name
+        project_id: Project UUID
+        pinecone_index_name: Pinecone index name for storing embeddings
+        debug: Enable debug mode to return additional metadata
+        include_category_in_doc_name: Include category name in document names
+
+    Returns:
+        dict: Contains system_prompt_menu, pinecone_namespace, and pinecone_index_name.
+              When debug=True, also includes POS integration details.
+
+    Raises:
+        HTTPException: 400 for validation errors, 500 for processing errors
     """
     # Integration details and API endpoints are now retrieved from the project's integrations and raw config
     return await _knowledge.update_agent_kb(

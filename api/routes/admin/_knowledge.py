@@ -154,22 +154,23 @@ async def update_agent_kb(
     include_category_in_doc_name: bool = False,
 ) -> dict:
     """
-    Update the knowledge base for an agent.
-
-    This includes:
-    - Downloading the menu from the store through the API endpoint
-    - Generating embeddings for the menu items
-    - Storing the embeddings in Pinecone
-    - Updating the agent config with the new concatenated menu
-
-    Returns:
-        - system prompt menu: Menu information added to project config
-        - pinecone namespace name: The namespace name in Pinecone the menu is upserted to
+    Update the knowledge base for an agent by downloading menu data, generating embeddings, and storing in Pinecone.
 
     Args:
-        timestamp: Optional timestamp in YYYY-MM-DD_HH:MM format to append to namespace.
-                  If not provided, will search in database or use current time.
-        include_category_in_doc_name: Whether to include category name in document names. Defaults to False.
+        context: User authentication context
+        session: Database session
+        account_name: Account name
+        project_id: Project UUID
+        pinecone_index_name: Pinecone index name for storing embeddings
+        debug: Enable debug mode to return additional metadata
+        include_category_in_doc_name: Include category name in document names
+
+    Returns:
+        dict: Contains system_prompt_menu, pinecone_namespace, and pinecone_index_name.
+              When debug=True, also includes POS integration details.
+
+    Raises:
+        HTTPException: 400 for validation errors, 500 for processing errors
     """
     try:
         # Authorize the user's access to the admin resource

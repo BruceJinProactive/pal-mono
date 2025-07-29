@@ -32,16 +32,15 @@ def get_bearer_token(
     client_secret: str,
     token_api_endpoint: str,
 ) -> str:
-    """Gets bearer token from Adora API.
+    """Get bearer token from Adora API.
 
     Args:
-        client_id: The client ID for authentication
-        client_secret: The client secret for authentication
-        token_api_endpoint: The complete URL for the token endpoint
-            (e.g., "https://identity.adorapos.net/connect/token")
+        client_id: Client ID for authentication
+        client_secret: Client secret for authentication
+        token_api_endpoint: Complete URL for the token endpoint
 
     Returns:
-        str: The bearer token for API authentication
+        str: Bearer token for API authentication
 
     Raises:
         RuntimeError: If token retrieval fails
