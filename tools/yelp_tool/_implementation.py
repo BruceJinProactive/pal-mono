@@ -14,6 +14,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.utils.ordering._llm import llm_call
 from tools.yelp_tool._apis import (
     create_hold_creditcard_not_required,
+    create_waitlist_on_my_way,
     get_openings_creditcard_not_required,
     get_openings_creditcard_required,
     get_waitlist_info,
@@ -24,17 +25,22 @@ from tools.yelp_tool._prompt_constants import (
     OPENINGS_EXTRACTION_USER_PROMPT,
     RESERVATION_EXTRACTION_SYSTEM_PROMPT,
     RESERVATION_EXTRACTION_USER_PROMPT,
+    WAITLIST_ON_MY_WAY_EXTRACTION_SYSTEM_PROMPT,
+    WAITLIST_ON_MY_WAY_EXTRACTION_USER_PROMPT,
 )
 from tools.yelp_tool._utils import (
+    check_waitlist_on_my_way_required_fields,
     create_holds_request_creditcard_not_required,
     create_openings_request_creditcard_not_required,
     create_openings_request_creditcard_required,
     create_reservation_from_hold_creditcard_not_required,
     create_waitlist_info_request,
+    create_waitlist_on_my_way_request,
     create_waitlist_status_request,
     format_openings_for_llm_creditcard_not_required,
     format_openings_for_llm_creditcard_required,
     format_waitlist_info_for_llm,
+    format_waitlist_on_my_way_response_for_llm,
     format_waitlist_status_for_llm,
     get_reservation_url_creditcard_required,
 )
@@ -42,6 +48,7 @@ from tools.yelp_tool.classes import (
     OpeningsQuery,
     OpeningsQueryWithoutCreditCard,
     ReservationQuery,
+    WaitlistOnMyWayQuery,
     YelpAccessToken,
 )
 from utils.log import logger
@@ -125,7 +132,8 @@ class YelpTool(Toolkit):
             self.register(self.make_reservation_creditcard_not_required)
 
         # Register waitlist tools (independent of credit card workflow)
-        # self.register(self.get_waitlist_status)  # commented out for now
+        # self.register(self.create_waitlist_on_my_way_visit)
+        # self.register(self.get_waitlist_status)
         # self.register(self.get_waitlist_info)
 
         # Initialize query messages tool
@@ -537,6 +545,113 @@ class YelpTool(Toolkit):
             logger.debug(f"[YelpTool.get_waitlist_info] Error: {str(e).lower()}")
             logger.debug(traceback.format_exc())
             return "Failed to get waitlist configuration. Please try again."
+
+    @tool
+    def create_waitlist_on_my_way_visit(self, latest_user_message: str) -> str:
+        """
+        Create a waitlist on-my-way visit at a restaurant using the Yelp Waitlist API.
+
+        Use when: User wants to join the waitlist and indicates they are coming/on their way to the restaurant.
+
+        This allows customers to notify the restaurant that they are coming and will arrive within
+        a specific time window (1-30 minutes). This helps restaurants manage their waitlist more effectively.
+
+        Required info: patron's name, phone number, party size, and estimated arrival time range (both min and max, 1-30 minutes).
+
+        Do NOT use for:
+        - Making reservations (use make_reservation instead)
+        - Checking wait times (use get_waitlist_status instead)
+        - Getting restaurant information
+        - Just browsing or inquiring about waitlist
+
+        Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
+
+        Returns:
+            str: Confirmation of waitlist on-my-way visit creation with visit details, or error message
+        """
+        try:
+            bearer_token = self._yelp_bearer_token
+
+            # Validate bearer token before proceeding
+            if not bearer_token:
+                logger.debug(
+                    "[YelpTool.create_waitlist_on_my_way_visit] Failed to obtain Yelp bearer token"
+                )
+                return "Unable to authenticate with Yelp. Please verify your API credentials."
+
+            # Get chat history and extract waitlist parameters
+            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+
+            # Extract using WaitlistOnMyWayQuery class
+            waitlist_query = llm_call(
+                system_prompt=WAITLIST_ON_MY_WAY_EXTRACTION_SYSTEM_PROMPT,
+                prompt=WAITLIST_ON_MY_WAY_EXTRACTION_USER_PROMPT.format(
+                    chat_history=chat_history
+                ),
+                response_format=WaitlistOnMyWayQuery,
+                reasoning=False,
+            )
+
+            if not isinstance(waitlist_query, WaitlistOnMyWayQuery):
+                return "I couldn't understand your waitlist request. Please provide your name, phone number, party size, and expected arrival time."
+
+            # Check for required fields and provide specific feedback
+            all_present, missing_prompts = check_waitlist_on_my_way_required_fields(
+                business_id=self.business_id_or_alias,
+                phone=waitlist_query.phone,
+                party_size=waitlist_query.party_size,
+                name=waitlist_query.name,
+                arrival_range_max=waitlist_query.arrival_range_max,
+                arrival_range_min=waitlist_query.arrival_range_min,
+            )
+
+            if not all_present:
+                # Filter out business_id from user-facing messages
+                user_prompts = [
+                    prompt for prompt in missing_prompts if prompt != "business_id"
+                ]
+                if len(user_prompts) == 1:
+                    return user_prompts[0]
+                elif len(user_prompts) == 2:
+                    return f"{user_prompts[0]} Also, {user_prompts[1].lower()}"
+                else:
+                    return f"{'. '.join(user_prompts[:-1])}. Also, {user_prompts[-1].lower()}"
+
+            # Create waitlist on-my-way request
+            success, message, request_obj = create_waitlist_on_my_way_request(
+                business_id=self.business_id_or_alias,
+                phone=waitlist_query.phone,  # type: ignore
+                party_size=waitlist_query.party_size,  # type: ignore
+                name=waitlist_query.name,  # type: ignore
+                arrival_range_max=waitlist_query.arrival_range_max,  # type: ignore
+                arrival_range_min=waitlist_query.arrival_range_min,  # type: ignore
+                party_notes=waitlist_query.party_notes,
+            )
+
+            if not success or not request_obj:
+                logger.debug(
+                    f"[YelpTool.create_waitlist_on_my_way_visit] Request validation failed: {message}"
+                )
+                return f"Invalid request parameters: {message}"
+
+            # Make API call to create waitlist on-my-way visit
+            response = create_waitlist_on_my_way(
+                bearer_token=bearer_token,
+                request_params=request_obj,
+            )
+
+            # Format and return the success response
+            formatted_response = format_waitlist_on_my_way_response_for_llm(response)
+            return formatted_response
+
+        except Exception as e:
+            logger.debug(f"[YelpTool.create_waitlist_on_my_way_visit] Error: {str(e)}")
+            logger.debug(traceback.format_exc())
+
+            return f"Failed to create waitlist on-my-way visit. {str(e)}"
 
     @tool
     def get_openings_open_api_creditcard_required(

@@ -529,6 +529,40 @@ class ReservationQuery(BaseModel):
     )
 
 
+class WaitlistOnMyWayQuery(BaseModel):
+    """Extracted parameters for creating a waitlist on-my-way visit"""
+
+    name: Optional[str] = Field(
+        default=None,
+        description="Patron's full name for the waitlist",
+    )
+    phone: Optional[str] = Field(
+        default=None,
+        description="Patron's phone number in E.164 format (e.g., +15551234567)",
+    )
+    party_size: Optional[int] = Field(
+        default=None,
+        description="Number of people in the party",
+        gt=0,
+    )
+    arrival_range_min: Optional[int] = Field(
+        default=None,
+        description="Minimum expected arrival time in minutes from now (1-30)",
+        ge=1,
+        le=30,
+    )
+    arrival_range_max: Optional[int] = Field(
+        default=None,
+        description="Maximum expected arrival time in minutes from now (1-30)",
+        ge=1,
+        le=30,
+    )
+    party_notes: Optional[str] = Field(
+        default=None,
+        description="Additional notes or special requests from the patron",
+    )
+
+
 ######### LLM EXTRACTION CLASSES END ############
 
 
