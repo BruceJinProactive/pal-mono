@@ -14,6 +14,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsReservationsRequestCreditCardNotRequired,
     YelpWaitlistInfoRequest,
     YelpWaitlistInfoResponse,
+    YelpWaitlistOnMyWayRequest,
+    YelpWaitlistOnMyWayResponse,
     YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
@@ -195,6 +197,198 @@ def _validate_name(name: str, field_name: str) -> List[str]:
         errors.append(f"{field_name} must be provided")
 
     return errors
+
+
+def _validate_phone_e164(phone: str) -> List[str]:
+    """
+    Validate phone number for E.164 format requirements.
+
+    Args:
+        phone: Phone number to validate
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    if not phone:
+        errors.append("Phone number must be provided")
+        return errors
+
+    # Remove spaces, dashes, parentheses for basic validation
+    cleaned_phone = re.sub(r"[\s\-\(\)]", "", phone)
+
+    # Check if it's already in E.164 format
+    e164_pattern = r"^\+[1-9]\d{1,14}$"
+    if re.match(e164_pattern, phone):
+        return errors  # Already valid E.164
+
+    # Check if it's a US number that can be converted to E.164
+    us_pattern = r"^(\+?1)?[2-9]\d{2}[2-9]\d{2}\d{4}$"
+    if re.match(us_pattern, cleaned_phone):
+        return errors  # Can be converted to E.164
+
+    # Check for basic phone number structure
+    if len(cleaned_phone) < 7 or len(cleaned_phone) > 15:
+        errors.append("Phone number must be between 7 and 15 digits")
+    elif not cleaned_phone.isdigit() and not phone.startswith("+"):
+        errors.append(
+            "Phone number can only contain digits, spaces, dashes, parentheses, and + symbol"
+        )
+
+    return errors
+
+
+def _validate_party_size(party_size: int) -> List[str]:
+    """
+    Validate party size for waitlist.
+
+    Args:
+        party_size: Number of people in the party
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    if party_size < 1:
+        errors.append("Party size must be at least 1 person")
+
+    # Most restaurants have practical limits, but API doesn't specify a max
+    if party_size > 20:
+        errors.append("Party size seems unusually large (over 20 people)")
+
+    return errors
+
+
+def _validate_arrival_time(arrival_time: int, field_name: str) -> List[str]:
+    """
+    Validate arrival time range for waitlist on-my-way.
+
+    Args:
+        arrival_time: Arrival time in minutes from now
+        field_name: Name of the field for error messages
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    if arrival_time < 1:
+        errors.append(f"{field_name} must be at least 1 minute")
+    elif arrival_time > 30:
+        errors.append(f"{field_name} must be 30 minutes or less")
+
+    return errors
+
+
+def _normalize_phone_to_e164(phone: str) -> str:
+    """
+    Convert phone number to E.164 format.
+
+    Args:
+        phone: Phone number in various formats
+
+    Returns:
+        Phone number in E.164 format
+
+    Raises:
+        ValueError: If the phone number is invalid
+    """
+    if not phone or not phone.strip():
+        raise ValueError("Phone number cannot be empty")
+
+    # Remove all non-digit characters except +
+    cleaned = re.sub(r"[^\d+]", "", phone)
+
+    # Extract digits only
+    digits_only = re.sub(r"[^\d]", "", cleaned)
+
+    # Basic length validation
+    if len(digits_only) < 7 or len(digits_only) > 15:
+        raise ValueError(f"Invalid phone number length: {len(digits_only)} digits")
+
+    # If already in E.164 format, return as-is
+    if cleaned.startswith("+"):
+        return cleaned
+
+    # Handle US numbers
+    if len(digits_only) == 10:
+        return f"+1{digits_only}"
+    elif len(digits_only) == 11 and digits_only.startswith("1"):
+        return f"+{digits_only}"
+
+    # For other numbers, add + prefix
+    return f"+{digits_only}"
+
+
+def check_waitlist_on_my_way_required_fields(
+    business_id: Optional[str] = None,
+    phone: Optional[str] = None,
+    party_size: Optional[int] = None,
+    name: Optional[str] = None,
+    arrival_range_max: Optional[int] = None,
+    arrival_range_min: Optional[int] = None,
+) -> Tuple[bool, List[str]]:
+    """
+    Check which required fields are missing for waitlist on-my-way creation.
+    All fields including arrival times are required by the API.
+
+    Args:
+        business_id: Yelp business ID
+        phone: Patron's phone number
+        party_size: Number of people in the party
+        name: Patron's full name
+        arrival_range_max: Maximum expected arrival time in minutes (REQUIRED)
+        arrival_range_min: Minimum expected arrival time in minutes (REQUIRED)
+
+    Returns:
+        Tuple containing:
+        - bool: True if all required fields are present, False otherwise
+        - List[str]: List of missing required fields with user-friendly prompts
+    """
+    missing_fields = []
+
+    if not business_id:
+        missing_fields.append("business_id")
+
+    if not name or not name.strip():
+        missing_fields.append("What name should I put for the waitlist?")
+
+    if not phone:
+        missing_fields.append("What phone number should I use for the waitlist?")
+
+    if not party_size or party_size < 1:
+        missing_fields.append("How many people are in your party?")
+
+    if arrival_range_min is None or arrival_range_min < 1:
+        missing_fields.append(
+            "What is the minimum time it might take you to arrive? Please provide a time estimate (e.g., 15 minutes, 10-20 minutes)"
+        )
+
+    if arrival_range_max is None or arrival_range_max < 1:
+        # Only add this if min is provided but max is missing
+        if arrival_range_min is not None and arrival_range_min >= 1:
+            missing_fields.append(
+                "What's the maximum time it might take you to arrive?"
+            )
+
+    # If both arrival times are missing, just ask once
+    if (arrival_range_min is None or arrival_range_min < 1) and (
+        arrival_range_max is None or arrival_range_max < 1
+    ):
+        # Remove individual arrival time prompts and add a single one
+        missing_fields = [
+            field
+            for field in missing_fields
+            if not field.startswith("How long until")
+            and not field.startswith("What's the maximum")
+        ]
+        missing_fields.append(
+            "How long until you arrive? Please provide a time estimate (e.g., 15 minutes, 10-20 minutes)"
+        )
+
+    return len(missing_fields) == 0, missing_fields
 
 
 def create_openings_request_creditcard_not_required(
@@ -569,6 +763,114 @@ def format_waitlist_info_for_llm(
             result_lines.append(f"  {area_code}: {area_name}")
     else:
         result_lines.append("\nNo specific seating areas available")
+
+    return "\n".join(result_lines)
+
+
+def create_waitlist_on_my_way_request(
+    business_id: str,
+    phone: str,
+    party_size: int,
+    name: str,
+    arrival_range_max: int,
+    arrival_range_min: int,
+    party_notes: Optional[str] = None,
+) -> Tuple[bool, str, Optional[YelpWaitlistOnMyWayRequest]]:
+    """
+    Validate parameters and create YelpWaitlistOnMyWayRequest object.
+    Provides early validation with user-friendly error messages.
+
+    Args:
+        business_id: Yelp business ID (REQUIRED)
+        phone: Patron's phone number (REQUIRED - will be normalized to E.164 format)
+        party_size: Number of people in the party (REQUIRED)
+        name: Patron's full name (REQUIRED)
+        arrival_range_max: Maximum expected arrival time in minutes (REQUIRED - 1-30 minutes)
+        arrival_range_min: Minimum expected arrival time in minutes (REQUIRED - 1-30 minutes)
+        party_notes: Optional notes from the patron
+
+    Returns:
+        Tuple containing:
+        - bool: Success status
+        - str: Error message or success message
+        - Optional[YelpWaitlistOnMyWayRequest]: Request object or None
+    """
+    errors = []
+
+    # Validate all required parameters
+    errors.extend(_validate_business_id_or_alias(business_id))
+    errors.extend(_validate_phone_e164(phone))
+    errors.extend(_validate_party_size(party_size))
+    errors.extend(_validate_name(name, "Patron name"))
+    errors.extend(_validate_arrival_time(arrival_range_max, "Maximum arrival time"))
+    errors.extend(_validate_arrival_time(arrival_range_min, "Minimum arrival time"))
+
+    # Validate arrival time range logic
+    if arrival_range_min > arrival_range_max:
+        errors.append(
+            "Minimum arrival time cannot be greater than maximum arrival time"
+        )
+
+    # Return early if validation fails
+    if errors:
+        return False, "; ".join(errors), None
+
+    # Normalize phone number to E.164 format
+    try:
+        normalized_phone = _normalize_phone_to_e164(phone)
+    except Exception as e:
+        return False, f"Failed to normalize phone number: {str(e)}", None
+
+    # Create request object
+    try:
+        request_obj = YelpWaitlistOnMyWayRequest(
+            business_id=business_id,
+            phone=normalized_phone,
+            party_size=party_size,
+            name=name.strip(),
+            arrival_range_max=arrival_range_max,
+            arrival_range_min=arrival_range_min,
+            party_notes=party_notes.strip() if party_notes else None,
+        )
+        return True, "Waitlist on-my-way request created successfully", request_obj
+    except Exception as e:
+        return False, f"Failed to create waitlist on-my-way request: {str(e)}", None
+
+
+def format_waitlist_on_my_way_response_for_llm(
+    response: YelpWaitlistOnMyWayResponse,
+) -> str:
+    """
+    Format the waitlist on-my-way response into a human-readable string for display.
+
+    Args:
+        response: Parsed waitlist on-my-way response object
+
+    Returns:
+        str: Formatted string representation of the waitlist visit confirmation
+    """
+    result_lines = ["✅ Waitlist On-My-Way Visit Created Successfully!"]
+
+    result_lines.append(f"Visit ID: {response.visit_id}")
+    result_lines.append(
+        f"Party Size: {response.party_size} {'person' if response.party_size == 1 else 'people'}"
+    )
+
+    # Format arrive by time
+    try:
+        arrive_by_datetime = datetime.fromtimestamp(response.arrive_by_time)
+        formatted_time = arrive_by_datetime.strftime("%I:%M %p")
+        formatted_date = arrive_by_datetime.strftime("%A, %B %d")
+        result_lines.append(f"Please arrive by: {formatted_time} on {formatted_date}")
+    except (ValueError, OSError):
+        result_lines.append(f"Please arrive by: {response.arrive_by_time} (timestamp)")
+
+    result_lines.append(
+        "\n📱 The restaurant has been notified that you're on your way!"
+    )
+    result_lines.append(
+        "💡 Make sure to arrive within your estimated time window to maintain your place in line."
+    )
 
     return "\n".join(result_lines)
 

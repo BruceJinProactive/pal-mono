@@ -87,3 +87,67 @@ RESERVATION_EXTRACTION_USER_PROMPT = """
 
 Extract the complete reservation details from the conversation above. Include all information needed to make a reservation. Pay special attention to the user's final time selection if they chose from available options.
 """
+
+WAITLIST_ON_MY_WAY_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting waitlist on-my-way visit parameters from conversation history.
+
+Your task is to extract the following information for creating a waitlist on-my-way visit:
+- Patron's name: Full name of the person joining the waitlist (REQUIRED)
+- Phone number: Patron's phone number in E.164 format (REQUIRED - e.g., +1234567890, +33123456789)
+- Party size: Number of people in the party (REQUIRED - 1 or more)
+- Arrival time range: Minimum and maximum expected arrival time in minutes from now (REQUIRED for API - 1-30 minutes each)
+- Special notes: Any additional information or requests (optional)
+
+# INSTRUCTIONS:
+1. Extract only explicitly mentioned information - do not fabricate data
+2. For phone numbers, extract in E.164 format when possible:
+   - If user provides "+1234567890" or "+33123456789" → use as-is
+   - If user provides US format "555-123-4567", "(555) 123-4567" → convert to "+15551234567"
+   - If user provides international without +, assume it needs country code
+   - Always ensure the final format starts with + and contains only digits after the +
+3. For names, extract the full name as provided by the user
+4. Party size should be a positive integer
+5. Arrival times are required by the API but can be null during extraction if not provided
+6. If arrival time range is not specified, leave both min and max as null (will need to be collected later)
+7. Special notes should capture any dietary restrictions, celebrations, accessibility needs, etc.
+
+# ARRIVAL TIME EXTRACTION RULES:
+- If user says "I'll be there in 15 minutes", set both min and max to 15
+- If user says "I'll be there in 10-20 minutes", set min to 10 and max to 20
+- If user says "I'll be there soon" or "I'll be there shortly", leave both as null
+- If user gives a single time estimate, use that for both min and max
+- Times must be between 1 and 30 minutes when specified (API limitation)
+- If no specific time is mentioned, leave arrival times as null
+
+# VALIDATION RULES:
+- name: non-empty string (REQUIRED)
+- phone: valid E.164 format starting with + and 7-15 total digits (REQUIRED)
+- party_size: positive integer (REQUIRED)
+- arrival_range_min: integer between 1 and 30 (REQUIRED by API - null during extraction if not specified)
+- arrival_range_max: integer between 1 and 30 (REQUIRED by API - null during extraction if not specified)
+- party_notes: optional string
+
+# EXTRACTION BEHAVIOR:
+- Extract all available information from the conversation
+- Arrival times can be null if not explicitly provided by the user
+- The system will handle requesting missing arrival times before making the API call
+- Arrival range is the time from NOW until arrival, not a specific time of day
+"""
+
+WAITLIST_ON_MY_WAY_EXTRACTION_USER_PROMPT = """
+# Chat History:
+{chat_history}
+
+Extract the waitlist on-my-way visit parameters from the conversation above.
+
+REQUIRED BY API (but can be null during extraction):
+- Patron's name (full name)
+- Phone number (E.164 format: +country_code followed by digits, e.g., +15551234567, +33123456789)
+- Party size (number of people)
+- Arrival range minimum (1-30 minutes from now)
+- Arrival range maximum (1-30 minutes from now)
+
+OPTIONAL FIELDS:
+- Party notes (special requests, dietary restrictions, etc.)
+
+For arrival times: Extract specific times if mentioned, leave as null if not provided or if vague terms like "soon" or "shortly" are used. The system will request these if missing before making the API call.
+"""
