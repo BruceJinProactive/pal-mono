@@ -16,6 +16,7 @@ from tools.yelp_tool._apis import (
     create_hold_creditcard_not_required,
     get_openings_creditcard_not_required,
     get_openings_creditcard_required,
+    get_waitlist_info,
     get_waitlist_status,
 )
 from tools.yelp_tool._prompt_constants import (
@@ -29,9 +30,11 @@ from tools.yelp_tool._utils import (
     create_openings_request_creditcard_not_required,
     create_openings_request_creditcard_required,
     create_reservation_from_hold_creditcard_not_required,
+    create_waitlist_info_request,
     create_waitlist_status_request,
     format_openings_for_llm_creditcard_not_required,
     format_openings_for_llm_creditcard_required,
+    format_waitlist_info_for_llm,
     format_waitlist_status_for_llm,
     get_reservation_url_creditcard_required,
 )
@@ -120,7 +123,10 @@ class YelpTool(Toolkit):
         else:
             self.register(self.get_restaurant_openings_creditcard_not_required)
             self.register(self.make_reservation_creditcard_not_required)
+
+        # Register waitlist tools (independent of credit card workflow)
         # self.register(self.get_waitlist_status)  # commented out for now
+        # self.register(self.get_waitlist_info)
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -471,6 +477,66 @@ class YelpTool(Toolkit):
             logger.debug(f"[YelpTool.get_waitlist_status] Error: {str(e).lower()}")
             logger.debug(traceback.format_exc())
             return "Failed to get waitlist status. Please try again."
+
+    @tool
+    def get_waitlist_info(self) -> str:
+        """
+        Get waitlist configuration information for a restaurant using the Yelp Waitlist API.
+
+        This endpoint returns configuration fields for the restaurant's waitlist system, including
+        operational parameters and available options for customers.
+
+        Use when: User asks about:
+        - Maximum join radius (how close users need to be to join the waitlist)
+        - Maximum party size allowed on the waitlist
+        - Available seating area options (e.g. "First Available", "Bar", "Patio", etc.)
+        - Waitlist configuration settings or operational parameters
+        - Whether the restaurant supports waitlist functionality
+
+        Do NOT use for:
+        - Current wait times or estimated wait duration
+        - Current waitlist status (open/closed/on_my_way)
+        - Joining the waitlist or managing waitlist entries
+        - Making reservations or checking reservation availability
+
+        Returns:
+            str: Waitlist configuration including join radius, maximum party size, and available seating areas, or error message
+        """
+        try:
+            bearer_token = self._yelp_bearer_token
+
+            # Validate bearer token before proceeding
+            if not bearer_token:
+                logger.debug(
+                    "[YelpTool.get_waitlist_info] Failed to obtain Yelp bearer token"
+                )
+                return "Unable to authenticate with Yelp. Please verify your API credentials."
+
+            # Create waitlist info request
+            success, message, request_obj = create_waitlist_info_request(
+                business_id_or_alias=self.business_id_or_alias,
+            )
+
+            if not success or not request_obj:
+                logger.debug(
+                    f"[YelpTool.get_waitlist_info] Request validation failed: {message}"
+                )
+                return f"Invalid request parameters: {message}"
+
+            # Get waitlist info from Yelp API
+            response = get_waitlist_info(
+                bearer_token=bearer_token,
+                request_params=request_obj,
+            )
+
+            # Format and return the waitlist configuration information
+            formatted_response = format_waitlist_info_for_llm(response)
+            return formatted_response
+
+        except Exception as e:
+            logger.debug(f"[YelpTool.get_waitlist_info] Error: {str(e).lower()}")
+            logger.debug(traceback.format_exc())
+            return "Failed to get waitlist configuration. Please try again."
 
     @tool
     def get_openings_open_api_creditcard_required(
