@@ -1830,15 +1830,16 @@ async def search_places(
 
 
 @admin_router.get(
-    "/square/{account_name}/{integration_id}/locations", status_code=status.HTTP_200_OK
+    "/accounts/{account_name}/integrations/{integration_id}/locations",
+    status_code=status.HTTP_200_OK,
 )
-async def get_square_locations(
+async def get_merchant_locations(
     account_name: str,
     integration_id: uuid.UUID,
     context: UserContext = Depends(authenticate_user),
 ):
     """
-    Get all locations for a Square merchant.
+    Get all locations for a merchant.
     """
     session = next(db.get_db())
     return _implementation.get_merchant_locations(session, account_name, integration_id)
