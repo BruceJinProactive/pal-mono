@@ -120,7 +120,7 @@ class YelpTool(Toolkit):
         else:
             self.register(self.get_restaurant_openings_creditcard_not_required)
             self.register(self.make_reservation_creditcard_not_required)
-            # self.register(self.get_waitlist_status) # TODO: need to find a way to store and retrieve the correct reservation id to get waitlist status
+        # self.register(self.get_waitlist_status)  # commented out for now
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)

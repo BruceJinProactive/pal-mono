@@ -469,12 +469,14 @@ def format_waitlist_status_for_llm(
     result_lines = ["Waitlist Status Information:"]
 
     # Basic status information
-    result_lines.append(f"Business ID: {waitlist_response.business_id}")
     result_lines.append(f"Waitlist State: {waitlist_response.state}")
 
     # Closed reason if applicable
     if waitlist_response.closed_reason:
         result_lines.append(f"Closed Reason: {waitlist_response.closed_reason}")
+        result_lines.append(
+            f"Description: {waitlist_response.closed_reason.get_description()}"
+        )
     else:
         result_lines.append("Status: Accepting waitlist entries")
 
