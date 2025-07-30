@@ -11,6 +11,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsReservationsResponseCreditCardNotRequired,
     YelpWaitlistInfoRequest,
     YelpWaitlistInfoResponse,
+    YelpWaitlistJoinQueueRequest,
+    YelpWaitlistJoinQueueResponse,
     YelpWaitlistOnMyWayRequest,
     YelpWaitlistOnMyWayResponse,
     YelpWaitlistStatusRequest,
@@ -357,6 +359,78 @@ def create_waitlist_on_my_way(
 
     try:
         return YelpWaitlistOnMyWayResponse(**response.decoded_body)
+    except Exception as e:
+        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
+        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
+
+
+def join_waitlist_queue(
+    bearer_token: YelpAccessToken,
+    request_params: YelpWaitlistJoinQueueRequest,
+) -> YelpWaitlistJoinQueueResponse:
+    """
+    Join the waitlist queue for a restaurant using the Yelp Waitlist API.
+
+    This endpoint adds a customer to the restaurant's waitlist queue when there is
+    currently a wait. The customer will receive estimated seating times and can
+    track their position in the queue.
+
+    Prior to making a call to this endpoint, the restaurant must currently be on a wait,
+    or the API caller will receive a 422 CURRENTLY_NO_WAIT response. Enqueuing the first
+    party on the waitlist can be achieved by using the Yelp Guest Manager app.
+
+    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+
+    Args:
+        bearer_token: Yelp bearer token for authentication
+        request_params: YelpWaitlistJoinQueueRequest object containing the queue parameters
+
+    Returns:
+        YelpWaitlistJoinQueueResponse object containing the queue confirmation details
+
+    Raises:
+        Exception: If the API request fails or returns an error. Common error scenarios:
+            - 422: Validation errors (phone already in line, no current wait, etc.)
+            - 401: Authentication issues
+            - 404: Business not found
+    """
+    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/visits"
+
+    payload = {
+        "phone": request_params.phone,
+        "party_size": request_params.party_size,
+        "name": request_params.name,
+    }
+
+    # Add optional parameters if provided
+    if request_params.seating_area_preference is not None:
+        payload["seating_area_preference"] = request_params.seating_area_preference
+
+    if request_params.party_notes is not None:
+        payload["party_notes"] = request_params.party_notes
+
+    if request_params.idempotency_token is not None:
+        payload["idempotency_token"] = request_params.idempotency_token
+
+    response = connect_yelp_api(
+        http_method="POST",
+        api_function=api_function,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
+        payload=payload,
+        extra_headers={"Content-Type": "application/json"},
+    )
+
+    if response.status != 201:
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
+
+    try:
+        return YelpWaitlistJoinQueueResponse(**response.decoded_body)
     except Exception as e:
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
