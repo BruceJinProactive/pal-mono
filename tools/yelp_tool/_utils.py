@@ -14,6 +14,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsReservationsRequestCreditCardNotRequired,
     YelpWaitlistInfoRequest,
     YelpWaitlistInfoResponse,
+    YelpWaitlistJoinQueueRequest,
+    YelpWaitlistJoinQueueResponse,
     YelpWaitlistOnMyWayRequest,
     YelpWaitlistOnMyWayResponse,
     YelpWaitlistStatusRequest,
@@ -865,11 +867,182 @@ def format_waitlist_on_my_way_response_for_llm(
     except (ValueError, OSError):
         result_lines.append(f"Please arrive by: {response.arrive_by_time} (timestamp)")
 
+    result_lines.append("\nThe restaurant has been notified that you're on your way!")
     result_lines.append(
-        "\n📱 The restaurant has been notified that you're on your way!"
+        "Make sure to arrive within your estimated time window to maintain your place in line."
+    )
+
+    return "\n".join(result_lines)
+
+
+def check_waitlist_join_queue_required_fields(
+    business_id: Optional[str] = None,
+    phone: Optional[str] = None,
+    party_size: Optional[int] = None,
+    name: Optional[str] = None,
+) -> Tuple[bool, List[str]]:
+    """
+    Check which required fields are missing for waitlist join queue.
+
+    Args:
+        business_id: Yelp business ID
+        phone: Patron's phone number
+        party_size: Number of people in the party
+        name: Patron's full name
+
+    Returns:
+        Tuple containing:
+        - bool: True if all required fields are present, False otherwise
+        - List[str]: List of missing required fields with user-friendly prompts
+    """
+    missing_fields = []
+
+    if not business_id:
+        missing_fields.append("business_id")
+
+    if not name or not name.strip():
+        missing_fields.append("What name should I put for the waitlist?")
+
+    if not phone:
+        missing_fields.append("What phone number should I use for the waitlist?")
+
+    if not party_size or party_size < 1:
+        missing_fields.append("How many people are in your party?")
+
+    return len(missing_fields) == 0, missing_fields
+
+
+def create_waitlist_join_queue_request(
+    business_id: str,
+    phone: str,
+    party_size: int,
+    name: str,
+    seating_area_preference: Optional[str] = None,
+    party_notes: Optional[str] = None,
+    idempotency_token: Optional[str] = None,
+) -> Tuple[bool, str, Optional[YelpWaitlistJoinQueueRequest]]:
+    """
+    Validate parameters and create YelpWaitlistJoinQueueRequest object.
+    Provides early validation with user-friendly error messages.
+
+    Args:
+        business_id: Yelp business ID (REQUIRED)
+        phone: Patron's phone number (REQUIRED - will be normalized to E.164 format)
+        party_size: Number of people in the party (REQUIRED)
+        name: Patron's full name (REQUIRED)
+        seating_area_preference: Optional preferred seating area
+        party_notes: Optional notes from the patron
+        idempotency_token: Optional token to prevent duplicate requests
+
+    Returns:
+        Tuple containing:
+        - bool: Success status
+        - str: Error message or success message
+        - Optional[YelpWaitlistJoinQueueRequest]: Request object or None
+    """
+    errors = []
+
+    # Validate all required parameters
+    errors.extend(_validate_business_id_or_alias(business_id))
+    errors.extend(_validate_phone_e164(phone))
+    errors.extend(_validate_party_size(party_size))
+    errors.extend(_validate_name(name, "Patron name"))
+
+    # Return early if validation fails
+    if errors:
+        return False, "; ".join(errors), None
+
+    # Normalize phone number to E.164 format
+    try:
+        normalized_phone = _normalize_phone_to_e164(phone)
+    except Exception as e:
+        return False, f"Failed to normalize phone number: {str(e)}", None
+
+    # Create request object
+    try:
+        request_obj = YelpWaitlistJoinQueueRequest(
+            business_id=business_id,
+            phone=normalized_phone,
+            party_size=party_size,
+            name=name.strip(),
+            seating_area_preference=(
+                seating_area_preference.strip() if seating_area_preference else None
+            ),
+            party_notes=party_notes.strip() if party_notes else None,
+            idempotency_token=idempotency_token.strip() if idempotency_token else None,
+        )
+        return True, "Waitlist join queue request created successfully", request_obj
+    except Exception as e:
+        return False, f"Failed to create waitlist join queue request: {str(e)}", None
+
+
+def format_waitlist_join_queue_response_for_llm(
+    response: YelpWaitlistJoinQueueResponse,
+) -> str:
+    """
+    Format the waitlist join queue response into a human-readable string for display.
+
+    Args:
+        response: Parsed waitlist join queue response object
+
+    Returns:
+        str: Formatted string representation of the waitlist queue confirmation
+    """
+    result_lines = ["🎉 Successfully Joined the Waitlist Queue!"]
+
+    result_lines.append(f"Visit ID: {response.visit_id}")
+    result_lines.append(
+        f"Party Size: {response.party_size} {'person' if response.party_size == 1 else 'people'}"
+    )
+
+    # Format queue time
+    try:
+        queue_datetime = datetime.fromtimestamp(response.queue_time)
+        formatted_queue_time = queue_datetime.strftime("%I:%M %p")
+        result_lines.append(f"Joined queue at: {formatted_queue_time}")
+    except (ValueError, OSError):
+        result_lines.append(f"Joined queue at: {response.queue_time} (timestamp)")
+
+    # Format arrive by time
+    try:
+        arrive_by_datetime = datetime.fromtimestamp(response.arrive_by_time)
+        formatted_time = arrive_by_datetime.strftime("%I:%M %p")
+        formatted_date = arrive_by_datetime.strftime("%A, %B %d")
+        result_lines.append(f"Please arrive by: {formatted_time} on {formatted_date}")
+    except (ValueError, OSError):
+        result_lines.append(f"Please arrive by: {response.arrive_by_time} (timestamp)")
+
+    # Format expected seating time range
+    try:
+        min_seating = datetime.fromtimestamp(response.expected_seating_time_min)
+        max_seating = datetime.fromtimestamp(response.expected_seating_time_max)
+        min_time = min_seating.strftime("%I:%M %p")
+        max_time = max_seating.strftime("%I:%M %p")
+
+        if min_seating.date() == max_seating.date():
+            # Same day
+            result_lines.append(f"Expected seating time: {min_time} - {max_time}")
+        else:
+            # Different days
+            min_date = min_seating.strftime("%a %m/%d")
+            max_date = max_seating.strftime("%a %m/%d")
+            result_lines.append(
+                f"Expected seating time: {min_time} ({min_date}) - {max_time} ({max_date})"
+            )
+    except (ValueError, OSError):
+        result_lines.append(
+            f"Expected seating: {response.expected_seating_time_min} - {response.expected_seating_time_max} (timestamps)"
+        )
+
+    # Add seating area preference if provided
+    if response.seating_area_preference:
+        result_lines.append(f"Seating preference: {response.seating_area_preference}")
+
+    result_lines.append(
+        "\nYou're now in the queue! The restaurant will notify you when your table is ready."
     )
     result_lines.append(
-        "💡 Make sure to arrive within your estimated time window to maintain your place in line."
+        "Make sure to arrive by the specified time to secure your table."
     )
 
     return "\n".join(result_lines)

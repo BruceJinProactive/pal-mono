@@ -151,3 +151,68 @@ OPTIONAL FIELDS:
 
 For arrival times: Extract specific times if mentioned, leave as null if not provided or if vague terms like "soon" or "shortly" are used. The system will request these if missing before making the API call.
 """
+
+WAITLIST_JOIN_QUEUE_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting waitlist join queue parameters from conversation history.
+
+Your task is to extract the following information for joining a restaurant waitlist queue:
+- Patron's name: Full name of the person joining the waitlist (REQUIRED)
+- Phone number: Patron's phone number in E.164 format (REQUIRED - e.g., +1234567890, +33123456789)
+- Party size: Number of people in the party (REQUIRED - 1 or more)
+- Seating area preference: Preferred seating area like "bar", "patio", "dining room", etc. (optional)
+- Special notes: Any additional information or requests (optional)
+- Idempotency token: Unique identifier to prevent duplicate requests (optional - usually system generated)
+
+# INSTRUCTIONS:
+1. Extract only explicitly mentioned information - do not fabricate data
+2. For phone numbers, extract in E.164 format when possible:
+   - If user provides "+1234567890" or "+33123456789" → use as-is
+   - If user provides US format "555-123-4567", "(555) 123-4567" → convert to "+15551234567"
+   - If user provides international without +, assume it needs country code
+   - Always ensure the final format starts with + and contains only digits after the +
+3. For names, extract the full name as provided by the user
+4. Party size should be a positive integer
+5. Seating area preferences should be extracted if mentioned (e.g., "I'd like to sit on the patio", "bar seating preferred")
+6. Special notes should capture any dietary restrictions, celebrations, accessibility needs, special requests, etc.
+7. Idempotency tokens are typically system-generated and rarely mentioned by users - leave as null unless explicitly provided
+
+# SEATING AREA EXTRACTION RULES:
+- Look for mentions of specific areas: "bar", "patio", "outdoor", "indoor", "dining room", "booth", "table", "counter", etc.
+- If user says "outside" or "outdoor seating" → extract as "patio" or "outdoor"
+- If user says "at the bar" or "bar seating" → extract as "bar"
+- If user mentions "booth" or "table" → extract as mentioned
+- If no seating preference is mentioned, leave as null
+
+# VALIDATION RULES:
+- name: non-empty string (REQUIRED)
+- phone: valid E.164 format starting with + and 7-15 total digits (REQUIRED)
+- party_size: positive integer (REQUIRED)
+- seating_area_preference: optional string
+- party_notes: optional string
+- idempotency_token: optional string (rarely used in conversations)
+
+# EXTRACTION BEHAVIOR:
+- Extract all available information from the conversation
+- Join queue is for when there IS currently a wait at the restaurant
+- This is different from "on-my-way" visits which are for when there is NO current wait
+- Focus on the core required fields: name, phone, party size
+- Optional fields enhance the experience but are not required for basic queue joining
+"""
+
+WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT = """
+# Chat History:
+{chat_history}
+
+Extract the waitlist join queue parameters from the conversation above.
+
+REQUIRED BY API:
+- Patron's name (full name)
+- Phone number (E.164 format: +country_code followed by digits, e.g., +15551234567, +33123456789)
+- Party size (number of people)
+
+OPTIONAL FIELDS:
+- Seating area preference (bar, patio, dining room, booth, etc.)
+- Party notes (special requests, dietary restrictions, celebrations, etc.)
+- Idempotency token (usually system-generated, rarely mentioned by users)
+
+This is for joining the actual waitlist queue when the restaurant currently has a wait. Extract specific seating preferences if mentioned and any special notes that would help the restaurant staff.
+"""
