@@ -19,6 +19,7 @@ import db
 from agent import AgentConfig
 from api.routes.admin._utils import SortOrder, UserContext
 from api.routes.endpoints import endpoints
+from api.routes.integrations.square import _implementation
 from api.schemas.admin.account import (
     Account,
     AccountStatisticsResponse,
@@ -1823,3 +1824,21 @@ async def search_places(
     Search for places by name using Google Maps Places API.
     """
     return await search_places_by_name(context, request)
+
+
+"""Square Integration Endpoints"""
+
+
+@admin_router.get(
+    "/square/{account_name}/{integration_id}/locations", status_code=status.HTTP_200_OK
+)
+async def get_square_locations(
+    account_name: str,
+    integration_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+):
+    """
+    Get all locations for a Square merchant.
+    """
+    session = next(db.get_db())
+    return _implementation.get_merchant_locations(session, account_name, integration_id)
