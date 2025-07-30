@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -252,22 +253,54 @@ class YelpBookingsReservationsResponseCreditCardNotRequired(BaseModel):
 ######### YELP WAITLIST API CLASSES START ############
 
 
+class WaitlistState(str, Enum):
+    """Possible states for the waitlist"""
+
+    OPEN = "OPEN"
+    ON_MY_WAY = "ON_MY_WAY"
+    CLOSED = "CLOSED"
+
+
+class WaitlistClosedReason(str, Enum):
+    """Possible reasons why the waitlist is closed"""
+
+    RESTO_CLOSED = "resto_closed"
+    WAITLIST_CLOSED = "waitlist_closed"
+    NO_CURRENT_WAIT = "no_current_wait"
+    SPECIAL_EVENT = "special_event"
+    REMOTE_ENTRY_DISABLED = "remote_entry_disabled"
+
+    def get_description(self) -> str:
+        """Get human-readable description for the closed reason"""
+        descriptions = {
+            "resto_closed": "The restaurant is out of the business hour",
+            "waitlist_closed": "The waitlist is closed for the restaurant",
+            "no_current_wait": "There is currently no wait for the restaurant",
+            "special_event": "The restaurant is closed for a special event",
+            "remote_entry_disabled": "Remote entry feature is disabled for the restaurant",
+        }
+        return descriptions.get(self.value, "Description not available")
+
+
 class YelpWaitlistStatusRequest(BaseModel):
     """Request parameters for Yelp Waitlist Status endpoint"""
 
     # Path parameter
-    business_id: str = Field(description="Encrypted Yelp business identifier")
+    business_id: str = Field(
+        description="Encrypted Yelp business identifier", min_length=1, max_length=255
+    )
 
 
 class WaitEstimate(BaseModel):
     """Wait time estimates for a specific party size range"""
 
-    est_wait: int = Field(description="Estimated wait time in minutes")
-    min_wait: int = Field(description="Minimum wait time in minutes")
+    est_wait: int = Field(description="Estimated wait time in minutes", ge=0)
+    min_wait: int = Field(description="Minimum wait time in minutes", ge=0)
     wait_range: str = Field(description="Wait range as a string representation")
     max_wait: Optional[int] = Field(
         default=None,
         description="Maximum wait time in minutes (not present for 7+ party size)",
+        ge=0,
     )
 
 
@@ -275,9 +308,10 @@ class YelpWaitlistStatusResponse(BaseModel):
     """Response from Yelp Waitlist Status endpoint"""
 
     business_id: str = Field(description="Yelp business identifier")
-    state: str = Field(description="Current state of the waitlist (e.g., 'ON_MY_WAY')")
-    closed_reason: Optional[str] = Field(
-        default=None, description="Reason why the waitlist is closed, if applicable"
+    state: WaitlistState = Field(description="Current state of the waitlist")
+    closed_reason: Optional[WaitlistClosedReason] = Field(
+        default=None,
+        description="Reason why the waitlist is closed, if applicable (only present when state is CLOSED)",
     )
     wait_estimates: dict[str, WaitEstimate] = Field(
         description="Wait time estimates for different party size ranges (e.g., '1-2', '3-4', '5-6', '7+')"
