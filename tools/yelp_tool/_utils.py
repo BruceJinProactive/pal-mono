@@ -917,7 +917,6 @@ def create_waitlist_join_queue_request(
     phone: str,
     party_size: int,
     name: str,
-    seating_area_preference: Optional[str] = None,
     party_notes: Optional[str] = None,
     idempotency_token: Optional[str] = None,
 ) -> Tuple[bool, str, Optional[YelpWaitlistJoinQueueRequest]]:
@@ -930,8 +929,7 @@ def create_waitlist_join_queue_request(
         phone: Patron's phone number (REQUIRED - will be normalized to E.164 format)
         party_size: Number of people in the party (REQUIRED)
         name: Patron's full name (REQUIRED)
-        seating_area_preference: Optional preferred seating area
-        party_notes: Optional notes from the patron
+        party_notes: Notes from the patron (OPTIONAL)
         idempotency_token: Optional token to prevent duplicate requests
 
     Returns:
@@ -965,9 +963,6 @@ def create_waitlist_join_queue_request(
             phone=normalized_phone,
             party_size=party_size,
             name=name.strip(),
-            seating_area_preference=(
-                seating_area_preference.strip() if seating_area_preference else None
-            ),
             party_notes=party_notes.strip() if party_notes else None,
             idempotency_token=idempotency_token.strip() if idempotency_token else None,
         )
@@ -1033,10 +1028,6 @@ def format_waitlist_join_queue_response_for_llm(
         result_lines.append(
             f"Expected seating: {response.expected_seating_time_min} - {response.expected_seating_time_max} (timestamps)"
         )
-
-    # Add seating area preference if provided
-    if response.seating_area_preference:
-        result_lines.append(f"Seating preference: {response.seating_area_preference}")
 
     result_lines.append(
         "\nYou're now in the queue! The restaurant will notify you when your table is ready."

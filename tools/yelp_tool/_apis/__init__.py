@@ -404,9 +404,6 @@ def join_waitlist_queue(
     }
 
     # Add optional parameters if provided
-    if request_params.seating_area_preference is not None:
-        payload["seating_area_preference"] = request_params.seating_area_preference
-
     if request_params.party_notes is not None:
         payload["party_notes"] = request_params.party_notes
 

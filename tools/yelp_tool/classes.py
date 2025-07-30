@@ -394,10 +394,6 @@ class YelpWaitlistJoinQueueRequest(BaseModel):
     )
     party_size: int = Field(description="Number of guests in the party", gt=0)
     name: str = Field(description="Patron's name", min_length=1)
-    seating_area_preference: Optional[str] = Field(
-        default=None,
-        description="Preferred seating area of the visit",
-    )
     party_notes: Optional[str] = Field(
         default=None,
         description="Notes from the patron. Will be visible to the host in the host app.",
@@ -424,9 +420,6 @@ class YelpWaitlistJoinQueueResponse(BaseModel):
     )
     expected_seating_time_max: int = Field(
         description="Unix timestamp (seconds) upper bound of estimated seating time"
-    )
-    seating_area_preference: str = Field(
-        description="The seating area preference indicated by the guest"
     )
 
 
@@ -654,10 +647,6 @@ class WaitlistJoinQueueQuery(BaseModel):
         default=None,
         description="Number of people in the party",
         gt=0,
-    )
-    seating_area_preference: Optional[str] = Field(
-        default=None,
-        description="Preferred seating area (e.g., bar, patio, dining room)",
     )
     party_notes: Optional[str] = Field(
         default=None,

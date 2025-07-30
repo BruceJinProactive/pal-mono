@@ -19,27 +19,33 @@ from tools.yelp_tool._apis import (
     get_openings_creditcard_required,
     get_waitlist_info,
     get_waitlist_status,
+    join_waitlist_queue,
 )
 from tools.yelp_tool._prompt_constants import (
     OPENINGS_EXTRACTION_SYSTEM_PROMPT,
     OPENINGS_EXTRACTION_USER_PROMPT,
     RESERVATION_EXTRACTION_SYSTEM_PROMPT,
     RESERVATION_EXTRACTION_USER_PROMPT,
+    WAITLIST_JOIN_QUEUE_EXTRACTION_SYSTEM_PROMPT,
+    WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT,
     WAITLIST_ON_MY_WAY_EXTRACTION_SYSTEM_PROMPT,
     WAITLIST_ON_MY_WAY_EXTRACTION_USER_PROMPT,
 )
 from tools.yelp_tool._utils import (
+    check_waitlist_join_queue_required_fields,
     check_waitlist_on_my_way_required_fields,
     create_holds_request_creditcard_not_required,
     create_openings_request_creditcard_not_required,
     create_openings_request_creditcard_required,
     create_reservation_from_hold_creditcard_not_required,
     create_waitlist_info_request,
+    create_waitlist_join_queue_request,
     create_waitlist_on_my_way_request,
     create_waitlist_status_request,
     format_openings_for_llm_creditcard_not_required,
     format_openings_for_llm_creditcard_required,
     format_waitlist_info_for_llm,
+    format_waitlist_join_queue_response_for_llm,
     format_waitlist_on_my_way_response_for_llm,
     format_waitlist_status_for_llm,
     get_reservation_url_creditcard_required,
@@ -48,6 +54,7 @@ from tools.yelp_tool.classes import (
     OpeningsQuery,
     OpeningsQueryWithoutCreditCard,
     ReservationQuery,
+    WaitlistJoinQueueQuery,
     WaitlistOnMyWayQuery,
     YelpAccessToken,
 )
@@ -135,6 +142,7 @@ class YelpTool(Toolkit):
         # self.register(self.create_waitlist_on_my_way_visit)
         # self.register(self.get_waitlist_status)
         # self.register(self.get_waitlist_info)
+        # self.register(self.join_waitlist_queue)
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -652,6 +660,111 @@ class YelpTool(Toolkit):
             logger.debug(traceback.format_exc())
 
             return f"Failed to create waitlist on-my-way visit. {str(e)}"
+
+    @tool
+    def join_waitlist_queue(self, latest_user_message: str) -> str:
+        """
+        Join the waitlist queue for a restaurant using the Yelp Waitlist API.
+
+        Use when: User wants to join the actual waitlist queue when the restaurant currently has a wait.
+
+        This allows customers to join the restaurant's waitlist queue when there is currently a wait.
+        They will receive estimated seating times and can track their position in the queue.
+
+        Required info: patron's name, phone number, and party size.
+        Optional info: seating area preference (bar, patio, dining room, etc.) and special notes.
+
+        Do NOT use for:
+        - Making reservations (use make_reservation instead)
+        - Checking wait times (use get_waitlist_status instead)
+        - "On-my-way" visits when there's no current wait (use create_waitlist_on_my_way_visit instead)
+        - Getting restaurant information
+
+        Note: Prior to calling this endpoint, the restaurant must currently be on a wait,
+        or the API will return a 422 CURRENTLY_NO_WAIT error.
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
+
+        Returns:
+            str: Confirmation of waitlist queue join with visit details and expected seating times, or error message
+        """
+        try:
+            bearer_token = self._yelp_bearer_token
+
+            # Validate bearer token before proceeding
+            if not bearer_token:
+                logger.debug(
+                    "[YelpTool.join_waitlist_queue] Failed to obtain Yelp bearer token"
+                )
+                return "Unable to authenticate with Yelp. Please verify your API credentials."
+
+            # Get chat history and extract waitlist parameters
+            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+
+            # Extract using WaitlistJoinQueueQuery class
+            waitlist_query = llm_call(
+                system_prompt=WAITLIST_JOIN_QUEUE_EXTRACTION_SYSTEM_PROMPT,
+                prompt=WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT.format(
+                    chat_history=chat_history
+                ),
+                response_format=WaitlistJoinQueueQuery,
+                reasoning=False,
+            )
+
+            if not isinstance(waitlist_query, WaitlistJoinQueueQuery):
+                return "I couldn't understand your waitlist request. Please provide your name, phone number, and party size to join the queue."
+
+            # Check for required fields and provide specific feedback
+            all_present, missing_prompts = check_waitlist_join_queue_required_fields(
+                business_id=self.business_id_or_alias,
+                phone=waitlist_query.phone,
+                party_size=waitlist_query.party_size,
+                name=waitlist_query.name,
+            )
+
+            if not all_present:
+                # Filter out business_id from user-facing messages
+                user_prompts = [
+                    prompt for prompt in missing_prompts if prompt != "business_id"
+                ]
+                if len(user_prompts) == 1:
+                    return user_prompts[0]
+                elif len(user_prompts) == 2:
+                    return f"{user_prompts[0]} Also, {user_prompts[1].lower()}"
+                else:
+                    return f"{'. '.join(user_prompts[:-1])}. Also, {user_prompts[-1].lower()}"
+
+            # Create waitlist join queue request
+            success, message, request_obj = create_waitlist_join_queue_request(
+                business_id=self.business_id_or_alias,
+                phone=waitlist_query.phone,  # type: ignore
+                party_size=waitlist_query.party_size,  # type: ignore
+                name=waitlist_query.name,  # type: ignore
+                party_notes=waitlist_query.party_notes,
+                idempotency_token=waitlist_query.idempotency_token,
+            )
+
+            if not success or not request_obj:
+                logger.debug(
+                    f"[YelpTool.join_waitlist_queue] Request validation failed: {message}"
+                )
+                return f"Invalid request parameters: {message}"
+
+            # Make API call to join waitlist queue
+            response = join_waitlist_queue(
+                bearer_token=bearer_token,
+                request_params=request_obj,
+            )
+
+            # Format and return the success response
+            formatted_response = format_waitlist_join_queue_response_for_llm(response)
+            return formatted_response
+
+        except Exception as e:
+            logger.debug(f"[YelpTool.join_waitlist_queue] Error: {str(e)}")
+            logger.debug(traceback.format_exc())
+            return f"Failed to join the waitlist queue. {str(e)}"
 
     @tool
     def get_openings_open_api_creditcard_required(

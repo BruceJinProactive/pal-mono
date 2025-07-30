@@ -158,8 +158,7 @@ Your task is to extract the following information for joining a restaurant waitl
 - Patron's name: Full name of the person joining the waitlist (REQUIRED)
 - Phone number: Patron's phone number in E.164 format (REQUIRED - e.g., +1234567890, +33123456789)
 - Party size: Number of people in the party (REQUIRED - 1 or more)
-- Seating area preference: Preferred seating area like "bar", "patio", "dining room", etc. (optional)
-- Special notes: Any additional information or requests (optional)
+- Special notes: ANY additional information, preferences, or requests (OPTIONAL - consolidate ALL preferences here)
 - Idempotency token: Unique identifier to prevent duplicate requests (optional - usually system generated)
 
 # INSTRUCTIONS:
@@ -171,23 +170,32 @@ Your task is to extract the following information for joining a restaurant waitl
    - Always ensure the final format starts with + and contains only digits after the +
 3. For names, extract the full name as provided by the user
 4. Party size should be a positive integer
-5. Seating area preferences should be extracted if mentioned (e.g., "I'd like to sit on the patio", "bar seating preferred")
-6. Special notes should capture any dietary restrictions, celebrations, accessibility needs, special requests, etc.
+5. CONSOLIDATE ALL PREFERENCES AND NOTES into party_notes field (OPTIONAL):
+   - Seating preferences (bar, patio, dining room, booth, outdoor, etc.)
+   - Dietary restrictions or allergies
+   - Special occasions (birthday, anniversary, etc.)
+   - Accessibility needs
+   - Any other special requests or notes
+   - If no specific preferences mentioned, leave as null
+6. Do NOT create separate seating_area_preference field - put everything in party_notes
 7. Idempotency tokens are typically system-generated and rarely mentioned by users - leave as null unless explicitly provided
 
-# SEATING AREA EXTRACTION RULES:
-- Look for mentions of specific areas: "bar", "patio", "outdoor", "indoor", "dining room", "booth", "table", "counter", etc.
-- If user says "outside" or "outdoor seating" → extract as "patio" or "outdoor"
-- If user says "at the bar" or "bar seating" → extract as "bar"
-- If user mentions "booth" or "table" → extract as mentioned
-- If no seating preference is mentioned, leave as null
+# CONSOLIDATION RULES FOR PARTY_NOTES:
+- If user mentions seating: "Prefers patio seating"
+- If user mentions dietary needs: "Vegetarian options needed"
+- If multiple preferences: "Prefers bar seating, vegetarian options needed, celebrating anniversary"
+- If user says "outside" or "outdoor seating" → include as "Prefers outdoor/patio seating"
+- If user says "at the bar" or "bar seating" → include as "Prefers bar seating"
+- If user mentions "booth" or "table" → include as "Prefers booth seating" or "Prefers table seating"
+- If NO preferences mentioned: leave as null
+- Combine all notes into a single, clear sentence or list
 
 # VALIDATION RULES:
 - name: non-empty string (REQUIRED)
 - phone: valid E.164 format starting with + and 7-15 total digits (REQUIRED)
 - party_size: positive integer (REQUIRED)
-- seating_area_preference: optional string
-- party_notes: optional string
+- party_notes: optional string (consolidates ALL preferences and special requests)
+- seating_area_preference: should be null (don't use this field)
 - idempotency_token: optional string (rarely used in conversations)
 
 # EXTRACTION BEHAVIOR:
@@ -195,7 +203,9 @@ Your task is to extract the following information for joining a restaurant waitl
 - Join queue is for when there IS currently a wait at the restaurant
 - This is different from "on-my-way" visits which are for when there is NO current wait
 - Focus on the core required fields: name, phone, party size
-- Optional fields enhance the experience but are not required for basic queue joining
+- Consolidate ALL additional information into party_notes for restaurant staff
+- Do NOT split preferences into separate fields - keep everything together in party_notes
+- If no specific preferences are mentioned, leave party_notes as null
 """
 
 WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT = """
@@ -210,9 +220,19 @@ REQUIRED BY API:
 - Party size (number of people)
 
 OPTIONAL FIELDS:
-- Seating area preference (bar, patio, dining room, booth, etc.)
-- Party notes (special requests, dietary restrictions, celebrations, etc.)
+- Party notes (consolidate ALL preferences and special requests here):
+  * Seating preferences (bar, patio, dining room, booth, outdoor, etc.)
+  * Dietary restrictions or allergies
+  * Special occasions (birthday, anniversary, celebration, etc.)
+  * Accessibility needs
+  * Any other special requests or notes
+  * If no specific preferences mentioned, leave as null
 - Idempotency token (usually system-generated, rarely mentioned by users)
 
-This is for joining the actual waitlist queue when the restaurant currently has a wait. Extract specific seating preferences if mentioned and any special notes that would help the restaurant staff.
+IMPORTANT: 
+- Put ALL additional information, preferences, and requests into the party_notes field
+- Do NOT use seating_area_preference - consolidate everything into party_notes
+- This ensures restaurant staff can see all customer preferences in one place
+
+This is for joining the actual waitlist queue when the restaurant currently has a wait.
 """
