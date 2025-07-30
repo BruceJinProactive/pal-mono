@@ -12,6 +12,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsOpeningsResponseCreditCardNotRequired,
     YelpBookingsOpeningsResponseCreditCardRequired,
     YelpBookingsReservationsRequestCreditCardNotRequired,
+    YelpWaitlistInfoRequest,
+    YelpWaitlistInfoResponse,
     YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
@@ -498,6 +500,75 @@ def format_waitlist_status_for_llm(
 
     else:
         result_lines.append("\nNo wait time estimates available")
+
+    return "\n".join(result_lines)
+
+
+def create_waitlist_info_request(
+    business_id_or_alias: str,
+) -> Tuple[bool, str, Optional[YelpWaitlistInfoRequest]]:
+    """
+    Create a waitlist info request for the Yelp Waitlist API.
+
+    Args:
+        business_id_or_alias: Yelp business ID or alias to get waitlist information for
+
+    Returns:
+        Tuple containing:
+        - bool: Success status
+        - str: Error message or success message
+        - Optional[YelpWaitlistInfoRequest]: Request object or None
+    """
+    errors = []
+
+    # Validate business_id_or_alias
+    errors.extend(_validate_business_id_or_alias(business_id_or_alias))
+
+    # Return early if validation fails
+    if errors:
+        return False, "; ".join(errors), None
+
+    # Create waitlist info request object
+    try:
+        request_obj = YelpWaitlistInfoRequest(
+            business_id=business_id_or_alias,
+        )
+        return True, "Waitlist info request created successfully", request_obj
+    except Exception as e:
+        return False, f"Failed to create waitlist info request: {str(e)}", None
+
+
+def format_waitlist_info_for_llm(
+    waitlist_info_response: YelpWaitlistInfoResponse,
+) -> str:
+    """
+    Format the waitlist info response into a human-readable string for display.
+
+    Args:
+        waitlist_info_response: Parsed waitlist info response object
+
+    Returns:
+        str: Formatted string representation of the waitlist configuration
+    """
+    result_lines = ["Waitlist Configuration Information:"]
+
+    # Join radius information
+    result_lines.append(
+        f"Join Radius: {waitlist_info_response.join_radius} {waitlist_info_response.join_radius_unit.lower()}"
+    )
+
+    # Maximum party size
+    result_lines.append(
+        f"Maximum Party Size: {waitlist_info_response.max_party_size} people"
+    )
+
+    # Seating areas
+    if waitlist_info_response.seating_areas:
+        result_lines.append("\nAvailable Seating Areas:")
+        for area_code, area_name in waitlist_info_response.seating_areas.items():
+            result_lines.append(f"  {area_code}: {area_name}")
+    else:
+        result_lines.append("\nNo specific seating areas available")
 
     return "\n".join(result_lines)
 
