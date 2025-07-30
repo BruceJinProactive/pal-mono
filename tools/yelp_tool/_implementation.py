@@ -429,11 +429,12 @@ class YelpTool(Toolkit):
         """
         Get waitlist status for a restaurant using the Yelp Waitlist API.
 
-        Use when: User asks about wait times or walk-in availability.
+        Use when: User asks about wait times or walk-in availability for restaurants.
         Do NOT use for: Making reservations or checking reservation times.
 
         Returns:
-            str: Formatted string containing waitlist status information, or error message
+            str: Current waitlist state (OPEN/ON_MY_WAY/CLOSED), wait estimates by party size,
+                 closure reasons if applicable, or error message
         """
         try:
             bearer_token = self._yelp_bearer_token
@@ -443,7 +444,7 @@ class YelpTool(Toolkit):
                 logger.debug(
                     "[YelpTool.get_waitlist_status] Failed to obtain Yelp bearer token"
                 )
-                return "Unable to authenticate with Yelp. Please try again later."
+                return "Unable to authenticate with Yelp. Please verify your API credentials."
 
             # Create waitlist status request
             success, message, request_obj = create_waitlist_status_request(
@@ -451,6 +452,9 @@ class YelpTool(Toolkit):
             )
 
             if not success or not request_obj:
+                logger.debug(
+                    f"[YelpTool.get_waitlist_status] Request validation failed: {message}"
+                )
                 return f"Invalid request parameters: {message}"
 
             # Get waitlist status from Yelp API
@@ -464,9 +468,7 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(
-                f"[YelpTool.get_waitlist_status] Error getting waitlist status: {e}"
-            )
+            logger.debug(f"[YelpTool.get_waitlist_status] Error: {str(e).lower()}")
             logger.debug(traceback.format_exc())
             return "Failed to get waitlist status. Please try again."
 
