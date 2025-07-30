@@ -9,6 +9,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsOpeningsResponseCreditCardRequired,
     YelpBookingsReservationsRequestCreditCardNotRequired,
     YelpBookingsReservationsResponseCreditCardNotRequired,
+    YelpWaitlistInfoRequest,
+    YelpWaitlistInfoResponse,
     YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
@@ -241,6 +243,53 @@ def get_waitlist_status(
 
     try:
         return YelpWaitlistStatusResponse(**response.decoded_body)
+    except Exception as e:
+        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
+        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
+
+
+def get_waitlist_info(
+    bearer_token: YelpAccessToken,
+    request_params: YelpWaitlistInfoRequest,
+) -> YelpWaitlistInfoResponse:
+    """
+    Get waitlist information for a business using the Yelp Waitlist API.
+
+    This endpoint returns waitlist configuration information about a specific business
+    including the maximum join radius, maximum party size, and seating areas supported
+    by the restaurant.
+
+    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+
+    Args:
+        bearer_token: Yelp bearer token for authentication
+        request_params: YelpWaitlistInfoRequest object containing the business_id
+
+    Returns:
+        YelpWaitlistInfoResponse object containing waitlist configuration information
+
+    Raises:
+        Exception: If the API request fails or returns an error
+    """
+    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/info"
+
+    response = connect_yelp_api(
+        http_method="GET",
+        api_function=api_function,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
+    )
+
+    if response.status != 200:
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
+
+    try:
+        return YelpWaitlistInfoResponse(**response.decoded_body)
     except Exception as e:
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
