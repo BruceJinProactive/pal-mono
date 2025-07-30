@@ -318,6 +318,26 @@ class YelpWaitlistStatusResponse(BaseModel):
     )
 
 
+class YelpWaitlistInfoRequest(BaseModel):
+    """Request parameters for Yelp Waitlist Info endpoint"""
+
+    # Path parameter
+    business_id: str = Field(
+        description="Encrypted Yelp business identifier", min_length=1, max_length=255
+    )
+
+
+class YelpWaitlistInfoResponse(BaseModel):
+    """Response from Yelp Waitlist Info endpoint"""
+
+    join_radius: int = Field(description="The maximum join radius", ge=0)
+    join_radius_unit: str = Field(description="Join radius unit (miles or kilometers)")
+    max_party_size: int = Field(description="The maximum party size", gt=0)
+    seating_areas: dict[str, str] = Field(
+        description="The seating areas supported by the restaurant (key-value pairs where key is the area code and value is the display name)"
+    )
+
+
 ######### YELP WAITLIST API CLASSES END ############
 
 
