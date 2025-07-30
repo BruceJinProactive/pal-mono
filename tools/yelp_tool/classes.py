@@ -338,6 +338,92 @@ class YelpWaitlistInfoResponse(BaseModel):
     )
 
 
+class YelpWaitlistOnMyWayRequest(BaseModel):
+    """Request parameters for Yelp Waitlist On-My-Way endpoint"""
+
+    # Path parameter
+    business_id: str = Field(
+        description="Encrypted Yelp business identifier", min_length=1, max_length=255
+    )
+
+    # Body parameters
+    phone: str = Field(
+        description="Patron's phone number in E.164 format (e.g., +19050000000)",
+        pattern=r"^\+[1-9]\d{1,14}$",
+    )
+    party_size: int = Field(description="Number of guests in the party", gt=0)
+    name: str = Field(description="Patron's name", min_length=1)
+    arrival_range_max: int = Field(
+        description="Patron's expected maximum arrival time (in minutes). Must be 30 minutes from now or earlier. Should be the upper bound of the arrival estimate selected.",
+        ge=1,
+        le=30,
+    )
+    arrival_range_min: int = Field(
+        description="Patron's expected minimum arrival time (in minutes). Must be 30 minutes from now or earlier.",
+        ge=1,
+        le=30,
+    )
+    party_notes: Optional[str] = Field(
+        default=None,
+        description="Notes from the patron. Will be visible to the host in the host app.",
+    )
+
+
+class YelpWaitlistOnMyWayResponse(BaseModel):
+    """Response from Yelp Waitlist On-My-Way endpoint"""
+
+    visit_id: str = Field(description="Encrypted visit identifier")
+    party_size: int = Field(description="The number of the guests in the visit", gt=0)
+    arrive_by_time: int = Field(
+        description="Unix timestamp (seconds) when the guest should be told to arrive at the restaurant"
+    )
+
+
+class WaitlistValidationErrorCode(str, Enum):
+    """Error codes for 422 validation errors in waitlist API responses"""
+
+    ALREADY_IN_LINE = "ALREADY_IN_LINE"
+    INVALID_ETA = "INVALID_ETA"
+    CURRENTLY_HAS_WAIT = "CURRENTLY_HAS_WAIT"
+    PARTY_SIZE_TOO_LARGE = "PARTY_SIZE_TOO_LARGE"
+    RESTAURANT_NOT_OPEN = "RESTAURANT_NOT_OPEN"
+    REMOTE_ENTRY_DENIED = "REMOTE_ENTRY_DENIED"
+    SCHEDULE_CONFLICT = "SCHEDULE_CONFLICT"
+
+    def get_description(self) -> str:
+        """Get human-readable description for the 422 validation error code"""
+        descriptions = {
+            "ALREADY_IN_LINE": "Invalid state. The phone number is already in line",
+            "INVALID_ETA": "Expected arrival time too far in the past or future. Must be 30 minutes from now or earlier",
+            "CURRENTLY_HAS_WAIT": "On My Way visit creation is ineligible, there is currently a wait for the restaurant",
+            "PARTY_SIZE_TOO_LARGE": "Party size too large",
+            "RESTAURANT_NOT_OPEN": "Restaurant is not open",
+            "REMOTE_ENTRY_DENIED": "Restaurant does not allow remote entry",
+            "SCHEDULE_CONFLICT": "Special event at restaurant",
+        }
+        return descriptions.get(self.value, "Description not available")
+
+
+class YelpWaitlistError(BaseModel):
+    """Error object within Yelp Waitlist error responses"""
+
+    code: str = Field(description="The error code")
+    description: str = Field(description="The description of the error")
+
+    @classmethod
+    def for_validation_error(
+        cls, error_code: WaitlistValidationErrorCode
+    ) -> "YelpWaitlistError":
+        """Create error object for 422 validation errors"""
+        return cls(code=error_code.value, description=error_code.get_description())
+
+
+class YelpWaitlistErrorResponse(BaseModel):
+    """Error response from Yelp Waitlist endpoints"""
+
+    error: YelpWaitlistError = Field(description="Error details")
+
+
 ######### YELP WAITLIST API CLASSES END ############
 
 
