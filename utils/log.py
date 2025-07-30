@@ -7,6 +7,9 @@ from pythonjsonlogger import jsonlogger
 # Exclude watchdog DEBUG and INFO logs
 logging.getLogger("watchdog").setLevel(logging.WARNING)
 
+# Exclude httpx DEBUG and INFO logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 def configure_global_logger():
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()

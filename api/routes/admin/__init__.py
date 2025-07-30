@@ -113,6 +113,11 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
+from services.google_maps_service import search_places_by_name
+from services.google_maps_service.schemas import (
+    GoogleMapsSearchRequest,
+    GoogleMapsSearchResponse,
+)
 
 from . import (
     _account,
@@ -1801,3 +1806,20 @@ def get_system_prompts(
     return _prompt.get_system_prompts(
         context, session, account_name, resource_type, resource_id, search, channels
     )
+
+
+"""
+---------- Google Maps Endpoints ----------
+------------------------------------
+"""
+
+
+@admin_router.post("/google-maps/search", status_code=status.HTTP_200_OK)
+async def search_places(
+    request: GoogleMapsSearchRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> GoogleMapsSearchResponse:
+    """
+    Search for places by name using Google Maps Places API.
+    """
+    return await search_places_by_name(context, request)

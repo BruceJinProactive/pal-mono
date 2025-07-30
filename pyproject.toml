@@ -12,6 +12,7 @@ dependencies = [
   "uvloop==0.21.0",
   "python-multipart==0.0.19",
   "httpcore==1.0.9",
+  "httpx>=0.24.0",
   "cryptography==44.0.2",
   "stripe>=12,<13",
 
