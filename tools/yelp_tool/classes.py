@@ -379,6 +379,82 @@ class YelpWaitlistOnMyWayResponse(BaseModel):
     )
 
 
+class YelpWaitlistJoinQueueRequest(BaseModel):
+    """Request parameters for Yelp Waitlist Join Queue endpoint"""
+
+    # Path parameter
+    business_id: str = Field(
+        description="Encrypted Yelp business identifier", min_length=1, max_length=255
+    )
+
+    # Body parameters
+    phone: str = Field(
+        description="Patron's phone number in E.164 format (e.g., +19050000000)",
+        pattern=r"^\+[1-9]\d{1,14}$",
+    )
+    party_size: int = Field(description="Number of guests in the party", gt=0)
+    name: str = Field(description="Patron's name", min_length=1)
+    seating_area_preference: Optional[str] = Field(
+        default=None,
+        description="Preferred seating area of the visit",
+    )
+    party_notes: Optional[str] = Field(
+        default=None,
+        description="Notes from the patron. Will be visible to the host in the host app.",
+    )
+    idempotency_token: Optional[str] = Field(
+        default=None,
+        description="Idempotency token to uniquely identify request",
+    )
+
+
+class YelpWaitlistJoinQueueResponse(BaseModel):
+    """Response from Yelp Waitlist Join Queue endpoint"""
+
+    visit_id: str = Field(description="Encrypted visit identifier")
+    queue_time: int = Field(
+        description="Unix timestamp (seconds) when the visit was enqueued"
+    )
+    party_size: int = Field(description="The number of guests in the visit", gt=0)
+    arrive_by_time: int = Field(
+        description="Unix timestamp (seconds) when guest should be told to arrive at restaurant"
+    )
+    expected_seating_time_min: int = Field(
+        description="Unix timestamp (seconds) lower bound of estimated seating time"
+    )
+    expected_seating_time_max: int = Field(
+        description="Unix timestamp (seconds) upper bound of estimated seating time"
+    )
+    seating_area_preference: str = Field(
+        description="The seating area preference indicated by the guest"
+    )
+
+
+class WaitlistJoinQueueErrorCode(str, Enum):
+    """Error codes for 422 validation errors in waitlist join queue API responses"""
+
+    INVALID_SEATING_PREFERENCE = "INVALID_SEATING_PREFERENCE"
+    ALREADY_IN_LINE = "ALREADY_IN_LINE"
+    CURRENTLY_NO_WAIT = "CURRENTLY_NO_WAIT"
+    PARTY_SIZE_TOO_LARGE = "PARTY_SIZE_TOO_LARGE"
+    RESTAURANT_NOT_OPEN = "RESTAURANT_NOT_OPEN"
+    REMOTE_ENTRY_DENIED = "REMOTE_ENTRY_DENIED"
+    SCHEDULE_CONFLICT = "SCHEDULE_CONFLICT"
+
+    def get_description(self) -> str:
+        """Get human-readable description for the 422 validation error code"""
+        descriptions = {
+            "INVALID_SEATING_PREFERENCE": "Invalid seating area preference or seating area preference is not supported by the restaurant",
+            "ALREADY_IN_LINE": "Invalid state. Phone number is already in line",
+            "CURRENTLY_NO_WAIT": "Join-queue is ineligible, there is currently no wait for the restaurant",
+            "PARTY_SIZE_TOO_LARGE": "Party size too large",
+            "RESTAURANT_NOT_OPEN": "Restaurant is not open",
+            "REMOTE_ENTRY_DENIED": "Restaurant does not allow remote entry",
+            "SCHEDULE_CONFLICT": "Special event at restaurant",
+        }
+        return descriptions.get(self.value, "Description not available")
+
+
 class WaitlistValidationErrorCode(str, Enum):
     """Error codes for 422 validation errors in waitlist API responses"""
 
@@ -560,6 +636,36 @@ class WaitlistOnMyWayQuery(BaseModel):
     party_notes: Optional[str] = Field(
         default=None,
         description="Additional notes or special requests from the patron",
+    )
+
+
+class WaitlistJoinQueueQuery(BaseModel):
+    """Extracted parameters for joining a restaurant waitlist queue"""
+
+    name: Optional[str] = Field(
+        default=None,
+        description="Patron's full name for the waitlist",
+    )
+    phone: Optional[str] = Field(
+        default=None,
+        description="Patron's phone number in E.164 format (e.g., +15551234567)",
+    )
+    party_size: Optional[int] = Field(
+        default=None,
+        description="Number of people in the party",
+        gt=0,
+    )
+    seating_area_preference: Optional[str] = Field(
+        default=None,
+        description="Preferred seating area (e.g., bar, patio, dining room)",
+    )
+    party_notes: Optional[str] = Field(
+        default=None,
+        description="Additional notes or special requests from the patron",
+    )
+    idempotency_token: Optional[str] = Field(
+        default=None,
+        description="Unique token to prevent duplicate requests",
     )
 
 
