@@ -11,6 +11,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsReservationsResponseCreditCardNotRequired,
     YelpWaitlistInfoRequest,
     YelpWaitlistInfoResponse,
+    YelpWaitlistOnMyWayRequest,
+    YelpWaitlistOnMyWayResponse,
     YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
@@ -290,6 +292,71 @@ def get_waitlist_info(
 
     try:
         return YelpWaitlistInfoResponse(**response.decoded_body)
+    except Exception as e:
+        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
+        logger.debug(f"Response data: {response.decoded_body}")
+        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
+
+
+def create_waitlist_on_my_way(
+    bearer_token: YelpAccessToken,
+    request_params: YelpWaitlistOnMyWayRequest,
+) -> YelpWaitlistOnMyWayResponse:
+    """
+    Create a waitlist on-my-way visit at a restaurant using the Yelp Waitlist API.
+
+    This endpoint creates an "on-my-way" visit in the restaurant's waitlist system,
+    allowing customers to indicate they are coming to the restaurant and will arrive
+    within a specified time range. This helps restaurants manage their waitlist
+    and reduce wait times.
+
+    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+    The restaurant must allow remote entry and not have any special events or conflicts.
+
+    Args:
+        bearer_token: Yelp bearer token for authentication
+        request_params: YelpWaitlistOnMyWayRequest object containing the visit parameters
+
+    Returns:
+        YelpWaitlistOnMyWayResponse object containing the visit confirmation details
+
+    Raises:
+        Exception: If the API request fails or returns an error. Common error scenarios:
+            - 409: Visit limit reached (max 9 active on-my-way visits per restaurant)
+            - 422: Validation errors (phone already in line, invalid arrival time, etc.)
+            - 401: Authentication issues
+    """
+    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/on-my-way"
+
+    payload = {
+        "phone": request_params.phone,
+        "party_size": request_params.party_size,
+        "name": request_params.name,
+        "arrival_range_max": request_params.arrival_range_max,
+        "arrival_range_min": request_params.arrival_range_min,
+    }
+
+    if request_params.party_notes is not None:
+        payload["party_notes"] = request_params.party_notes
+
+    response = connect_yelp_api(
+        http_method="POST",
+        api_function=api_function,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
+        payload=payload,
+        extra_headers={"Content-Type": "application/json"},
+    )
+
+    if response.status != 201:
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
+
+    try:
+        return YelpWaitlistOnMyWayResponse(**response.decoded_body)
     except Exception as e:
         logger.debug(f"Failed to parse Yelp API response: {str(e)}")
         logger.debug(f"Response data: {response.decoded_body}")
