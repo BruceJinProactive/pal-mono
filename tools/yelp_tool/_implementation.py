@@ -73,6 +73,8 @@ class YelpTool(Toolkit):
         biz_lat: Optional[str] = None,
         biz_long: Optional[str] = None,
         yelp_api_key: Optional[str] = None,
+        waitlist_enabled: bool = False,
+        reservation_enabled: bool = True,
     ):
         """
         Initialize YelpTool with configurable workflow parameters.
@@ -131,18 +133,21 @@ class YelpTool(Toolkit):
             self.biz_long = None
 
         # Register appropriate tools based on workflow choice
-        if self.use_creditcard_workflow:
-            self.register(self.get_openings_open_api_creditcard_required)
-            self.register(self.make_reservation_creditcard_required)
-        else:
-            self.register(self.get_restaurant_openings_creditcard_not_required)
-            self.register(self.make_reservation_creditcard_not_required)
+        if reservation_enabled:
+            if self.use_creditcard_workflow:
+                self.register(self.get_openings_open_api_creditcard_required)
+                self.register(self.make_reservation_creditcard_required)
+            else:
+                self.register(self.get_restaurant_openings_creditcard_not_required)
+                self.register(self.make_reservation_creditcard_not_required)
 
         # Register waitlist tools (independent of credit card workflow)
-        # self.register(self.create_waitlist_on_my_way_visit)
-        # self.register(self.get_waitlist_status)
-        # self.register(self.get_waitlist_info)
-        # self.register(self.join_waitlist_queue)
+
+        if waitlist_enabled:
+            # self.register(self.create_waitlist_on_my_way_visit)
+            self.register(self.get_waitlist_status)
+            # self.register(self.get_waitlist_info)
+            self.register(self.join_waitlist_queue)
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -449,10 +454,22 @@ class YelpTool(Toolkit):
     @tool
     def get_waitlist_status(self) -> str:
         """
-        Get waitlist status for a restaurant using the Yelp Waitlist API.
+        Get current waitlist status and wait times for a restaurant using the Yelp Waitlist API.
+        This endpoint returns real-time waitlist status including current wait estimates by party size,
+        waitlist state (OPEN/ON_MY_WAY/CLOSED), and closure reasons if the waitlist is closed.
 
-        Use when: User asks about wait times or walk-in availability for restaurants.
-        Do NOT use for: Making reservations or checking reservation times.
+        Use when: User asks about:
+        - Current wait times at the restaurant ("How long is the wait?", "What's the current wait time?")
+        - Whether the restaurant currently has a wait ("Is there a wait right now?")
+        - How long they'll have to wait for their party size ("How long for a party of 4?")
+        - If the restaurant is accepting waitlist entries ("Can I join the waitlist?")
+        - Why the waitlist might be closed ("Why can't I join the waitlist?")
+        - Current waitlist state or status
+
+        Do NOT use for:
+        - Restaurant waitlist configuration/settings (use get_waitlist_info instead)
+        - Joining the waitlist (use join_waitlist_queue)
+        - General restaurant information
 
         Returns:
             str: Current waitlist state (OPEN/ON_MY_WAY/CLOSED), wait estimates by party size,
@@ -497,23 +514,21 @@ class YelpTool(Toolkit):
     @tool
     def get_waitlist_info(self) -> str:
         """
-        Get waitlist configuration information for a restaurant using the Yelp Waitlist API.
-
-        This endpoint returns configuration fields for the restaurant's waitlist system, including
-        operational parameters and available options for customers.
+        This endpoint returns waitlist configuration fields including operational parameters and
+        available options for customers. This is static configuration data, not real-time status.
 
         Use when: User asks about:
-        - Maximum join radius (how close users need to be to join the waitlist)
-        - Maximum party size allowed on the waitlist
-        - Available seating area options (e.g. "First Available", "Bar", "Patio", etc.)
-        - Waitlist configuration settings or operational parameters
-        - Whether the restaurant supports waitlist functionality
+        - Maximum party size allowed on waitlist ("What's the largest party size you accept?")
+        - Available seating area options ("What seating areas can I choose from?", "Do you have patio seating?")
+        - Join radius requirements ("How close do I need to be to join the waitlist?")
+        - Waitlist configuration or settings ("What are your waitlist options?")
+        - Whether specific seating areas are supported ("Do you have bar seating available?")
+        - Waitlist operational parameters and capabilities
 
         Do NOT use for:
-        - Current wait times or estimated wait duration
-        - Current waitlist status (open/closed/on_my_way)
-        - Joining the waitlist or managing waitlist entries
-        - Making reservations or checking reservation availability
+        - Current wait times or real-time status (use get_waitlist_status instead)
+        - Joining the waitlist (use join_waitlist_queue)
+        - Checking if there's currently a wait (use get_waitlist_status instead)
 
         Returns:
             str: Waitlist configuration including join radius, maximum party size, and available seating areas, or error message
@@ -666,28 +681,43 @@ class YelpTool(Toolkit):
         """
         Join the waitlist queue for a restaurant using the Yelp Waitlist API.
 
-        Use when: User wants to join the actual waitlist queue when the restaurant currently has a wait.
+        This endpoint allows customers to join the restaurant's waitlist queue when there is currently
+        a wait. Users will receive estimated seating times, arrival instructions, and a visit ID to
+        track their position in the queue.
 
-        This allows customers to join the restaurant's waitlist queue when there is currently a wait.
-        They will receive estimated seating times and can track their position in the queue.
+        Use when: User asks to:
+        - Join the waitlist queue ("Put me on the waitlist", "Add me to the waitlist")
+        - Get in line at a restaurant ("Can I get in line?", "I want to join the queue")
+        - Add their party to the wait ("Put us on the list for a table")
+        - Join the wait when they know there's currently a wait time
+        - Get a spot in the restaurant's queue system
 
-        Required info: patron's name, phone number, and party size.
-        Optional info: seating area preference (bar, patio, dining room, etc.) and special notes.
+        Required Information:
+        - Patron's full name (for the waitlist entry)
+        - Phone number in E.164 format (for notifications and identification)
+        - Party size (number of people in the group)
+
+        Optional Information:
+        - Special notes or preferences (dietary restrictions, accessibility needs, celebrations, etc.)
+        - Idempotency token (usually system-generated for duplicate prevention)
 
         Do NOT use for:
-        - Making reservations (use make_reservation instead)
-        - Checking wait times (use get_waitlist_status instead)
-        - "On-my-way" visits when there's no current wait (use create_waitlist_on_my_way_visit instead)
-        - Getting restaurant information
+        - Checking current wait times (use get_waitlist_status instead)
+        - Getting waitlist configuration info, such as maximum party size, seating areas, etc. (use get_waitlist_info instead)
+        - General restaurant information
 
-        Note: Prior to calling this endpoint, the restaurant must currently be on a wait,
-        or the API will return a 422 CURRENTLY_NO_WAIT error.
+        Important Notes:
+        - Restaurant must currently have a wait for this to work
+        - If no wait exists, API returns CURRENTLY_NO_WAIT error with friendly message
+        - Users get visit ID, expected seating times, and arrival instructions
+        - Phone number used for restaurant notifications when table is ready
 
         Args:
             latest_user_message (str): The latest user message in the chat history.
 
         Returns:
-            str: Confirmation of waitlist queue join with visit details and expected seating times, or error message
+            str: Confirmation of waitlist queue join with visit details, expected seating times,
+                 and arrival instructions, or user-friendly error message
         """
         try:
             bearer_token = self._yelp_bearer_token
@@ -764,6 +794,20 @@ class YelpTool(Toolkit):
         except Exception as e:
             logger.debug(f"[YelpTool.join_waitlist_queue] Error: {str(e)}")
             logger.debug(traceback.format_exc())
+
+            # Handle specific error cases with user-friendly messages
+            error_str = str(e).lower()
+            if "currently_no_wait" in error_str:
+                return "Great news! This restaurant doesn't currently have a wait. You can just go directly to the restaurant. No need to join a waitlist!"
+            elif "already_in_line" in error_str:
+                return "It looks like this phone number is already in the waitlist queue. Please check if you're already on the list."
+            elif "remote_entry_denied" in error_str:
+                return "This restaurant doesn't allow remote waitlist entries. You'll need to join the waitlist in person at the restaurant."
+            elif "restaurant_not_open" in error_str:
+                return "The restaurant is currently not open for waitlist entries."
+            elif "party_size_too_large" in error_str:
+                return "Your party size is too large for this restaurant's waitlist. Please try calling the restaurant directly."
+
             return f"Failed to join the waitlist queue. {str(e)}"
 
     @tool

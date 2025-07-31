@@ -1030,10 +1030,7 @@ def format_waitlist_join_queue_response_for_llm(
         )
 
     result_lines.append(
-        "\nYou're now in the queue! The restaurant will notify you when your table is ready."
-    )
-    result_lines.append(
-        "Make sure to arrive by the specified time to secure your table."
+        "\nIMPORTANT: Please save your Visit ID above for your records. You may need it to check your status or make changes to your waitlist entry."
     )
 
     return "\n".join(result_lines)
