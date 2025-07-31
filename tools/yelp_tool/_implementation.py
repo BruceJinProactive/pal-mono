@@ -74,8 +74,8 @@ class YelpTool(Toolkit):
         self,
         business_id_or_alias: str,
         tool_metadata: ToolMetadata,
-        credit_card_required: bool,
-        yelp_integration_api: bool = False,
+        credit_card_required: bool = False,
+        yelp_integration_api: bool = True,
         biz_id: Optional[str] = None,
         biz_lat: Optional[str] = None,
         biz_long: Optional[str] = None,
@@ -103,49 +103,49 @@ class YelpTool(Toolkit):
         self.business_id_or_alias = business_id_or_alias
         self.tool_metadata = tool_metadata
 
-        # Set credit card requirement
-        self.credit_card_required = credit_card_required
+        # Determine workflow: use credit card workflow if required OR if not using integration API
+        self.use_creditcard_workflow = credit_card_required or not yelp_integration_api
 
-        # Determine which workflow to use
-        if not yelp_integration_api:
-            # Use Yelp integration API workflow (credit card required workflow)
-            self.use_creditcard_workflow = True
-        else:
-            # Use standard booking API workflow based on credit_card_required
-            self.use_creditcard_workflow = credit_card_required
-
-        # Store the API choice for reference
-        self.yelp_integration_api = yelp_integration_api
-
-        # Validate business-specific parameters for credit card workflow
-        if self.use_creditcard_workflow:
-            if not biz_id or not biz_lat or not biz_long:
-                missing_params = []
-                if not biz_id:
-                    missing_params.append("biz_id")
-                if not biz_lat:
-                    missing_params.append("biz_lat")
-                if not biz_long:
-                    missing_params.append("biz_long")
-                raise ValueError(
-                    f"Yelp integration API workflow needs these parameters: {', '.join(missing_params)}"
-                )
-            self.biz_id = biz_id
-            self.biz_lat = biz_lat
-            self.biz_long = biz_long
-        else:
-            self.biz_id = None
-            self.biz_lat = None
-            self.biz_long = None
-
-        # Register appropriate tools based on workflow choice
+        # Register reservation tools
         if reservation_enabled:
+            # Set business parameters based on workflow (only needed for reservations)
             if self.use_creditcard_workflow:
+                # Validate required parameters for credit card workflow
+                missing_params = [
+                    param
+                    for param, value in [
+                        ("biz_id", biz_id),
+                        ("biz_lat", biz_lat),
+                        ("biz_long", biz_long),
+                    ]
+                    if not value
+                ]
+                if missing_params:
+                    raise ValueError(
+                        f"Credit card workflow requires: {', '.join(missing_params)}"
+                    )
+
+                self.biz_id = biz_id
+                self.biz_lat = biz_lat
+                self.biz_long = biz_long
+
+                # Register credit card workflow tools
                 self.register(self.get_openings_open_api_creditcard_required)
                 self.register(self.make_reservation_creditcard_required)
             else:
+                # Non-credit card workflow doesn't need business parameters
+                self.biz_id = None
+                self.biz_lat = None
+                self.biz_long = None
+
+                # Register non-credit card workflow tools
                 self.register(self.get_restaurant_openings_creditcard_not_required)
                 self.register(self.make_reservation_creditcard_not_required)
+        else:
+            # No reservations enabled - set business parameters to None
+            self.biz_id = None
+            self.biz_lat = None
+            self.biz_long = None
 
         # Register waitlist tools (independent of credit card workflow)
 
@@ -159,7 +159,7 @@ class YelpTool(Toolkit):
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
         logger.debug(
-            f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={self.credit_card_required}, yelp_integration_api={self.yelp_integration_api}, use_creditcard_workflow={self.use_creditcard_workflow}"
+            f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={credit_card_required}, yelp_integration_api={yelp_integration_api}, use_creditcard_workflow={self.use_creditcard_workflow}, waitlist_enabled={waitlist_enabled}, reservation_enabled={reservation_enabled}"
         )
 
     def _get_current_date(self) -> str:
