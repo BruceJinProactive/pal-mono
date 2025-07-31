@@ -153,7 +153,7 @@ class YelpTool(Toolkit):
         if waitlist_enabled:
             # self.register(self.create_waitlist_on_my_way_visit)
             self.register(self.get_waitlist_status)
-            # self.register(self.get_waitlist_info)
+            self.register(self.get_waitlist_info)
             self.register(self.join_waitlist_queue)
             self.register(self.cancel_visit)
 
