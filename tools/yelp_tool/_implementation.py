@@ -13,6 +13,7 @@ from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.utils.ordering._llm import llm_call
 from tools.yelp_tool._apis import (
+    cancel_visit,
     create_hold_creditcard_not_required,
     create_waitlist_on_my_way,
     get_openings_creditcard_not_required,
@@ -22,6 +23,8 @@ from tools.yelp_tool._apis import (
     join_waitlist_queue,
 )
 from tools.yelp_tool._prompt_constants import (
+    CANCEL_VISIT_EXTRACTION_SYSTEM_PROMPT,
+    CANCEL_VISIT_EXTRACTION_USER_PROMPT,
     OPENINGS_EXTRACTION_SYSTEM_PROMPT,
     OPENINGS_EXTRACTION_USER_PROMPT,
     RESERVATION_EXTRACTION_SYSTEM_PROMPT,
@@ -32,8 +35,10 @@ from tools.yelp_tool._prompt_constants import (
     WAITLIST_ON_MY_WAY_EXTRACTION_USER_PROMPT,
 )
 from tools.yelp_tool._utils import (
+    check_cancel_visit_required_fields,
     check_waitlist_join_queue_required_fields,
     check_waitlist_on_my_way_required_fields,
+    create_cancel_visit_request,
     create_holds_request_creditcard_not_required,
     create_openings_request_creditcard_not_required,
     create_openings_request_creditcard_required,
@@ -42,6 +47,7 @@ from tools.yelp_tool._utils import (
     create_waitlist_join_queue_request,
     create_waitlist_on_my_way_request,
     create_waitlist_status_request,
+    format_cancel_visit_response_for_llm,
     format_openings_for_llm_creditcard_not_required,
     format_openings_for_llm_creditcard_required,
     format_waitlist_info_for_llm,
@@ -51,6 +57,7 @@ from tools.yelp_tool._utils import (
     get_reservation_url_creditcard_required,
 )
 from tools.yelp_tool.classes import (
+    CancelVisitQuery,
     OpeningsQuery,
     OpeningsQueryWithoutCreditCard,
     ReservationQuery,
@@ -148,6 +155,7 @@ class YelpTool(Toolkit):
             self.register(self.get_waitlist_status)
             # self.register(self.get_waitlist_info)
             self.register(self.join_waitlist_queue)
+            self.register(self.cancel_visit)
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -974,3 +982,106 @@ class YelpTool(Toolkit):
             logger.debug(f"[YelpTool.make_reservation_open_api] Error: {e}")
             logger.debug(traceback.format_exc())
             return "Failed to make reservation. Please try again."
+
+    @tool
+    def cancel_visit(self, latest_user_message: str) -> str:
+        """
+        Cancel a waitlist visit using the Yelp Waitlist API.
+
+        This endpoint allows customers to cancel their existing waitlist visit when they no longer
+        need the reservation. The visit will be removed from the queue and they will stop receiving
+        notifications for that waitlist entry.
+
+        Use when: User asks to:
+        - Cancel their waitlist entry ("Cancel my waitlist", "Remove me from the waitlist")
+        - Cancel their visit ("Cancel my visit", "I don't need the table anymore")
+        - Remove themselves from the queue ("Take me off the list", "Remove my name")
+        - Cancel their reservation from the waitlist system
+
+        Required Information:
+        - Visit ID (the encrypted identifier from when they joined the waitlist)
+
+        Do NOT use for:
+        - Joining the waitlist (use join_waitlist_queue instead)
+        - Checking wait times (use get_waitlist_status instead)
+        - Getting waitlist info (use get_waitlist_info instead)
+        - Making new reservations (use make_reservation instead)
+
+        Important Notes:
+        - Visit ID is required and was provided when they originally joined the waitlist
+        - Once canceled, they cannot rejoin using the same Visit ID
+        - They can create a new waitlist entry if they change their mind
+        - Cancellation is immediate and cannot be undone
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
+
+        Returns:
+            str: Confirmation of visit cancellation or user-friendly error message
+        """
+        try:
+            bearer_token = self._yelp_bearer_token
+
+            # Validate bearer token before proceeding
+            if not bearer_token:
+                logger.debug(
+                    "[YelpTool.cancel_visit] Failed to obtain Yelp bearer token"
+                )
+                return "Unable to authenticate with Yelp. Please verify your API credentials."
+
+            # Get chat history and extract visit cancellation parameters
+            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+
+            # Extract using CancelVisitQuery class
+            cancel_query = llm_call(
+                system_prompt=CANCEL_VISIT_EXTRACTION_SYSTEM_PROMPT,
+                prompt=CANCEL_VISIT_EXTRACTION_USER_PROMPT.format(
+                    chat_history=chat_history
+                ),
+                response_format=CancelVisitQuery,
+                reasoning=False,
+            )
+
+            if not isinstance(cancel_query, CancelVisitQuery):
+                return "I couldn't understand your cancellation request. Please provide your Visit ID to cancel your waitlist entry."
+
+            # Check for required fields and provide specific feedback
+            all_present, missing_prompts = check_cancel_visit_required_fields(
+                visit_id=cancel_query.visit_id,
+            )
+
+            if not all_present:
+                if len(missing_prompts) == 1:
+                    return missing_prompts[0]
+                else:
+                    return "; ".join(missing_prompts)
+
+            # Create cancel visit request - visit_id is guaranteed to be present after validation
+            if not cancel_query.visit_id:
+                return "Visit ID is required to cancel your waitlist entry."
+
+            success, message, request_obj = create_cancel_visit_request(
+                visit_id=cancel_query.visit_id,
+            )
+
+            if not success or not request_obj:
+                logger.debug(
+                    f"[YelpTool.cancel_visit] Request validation failed: {message}"
+                )
+                return f"Invalid request parameters: {message}"
+
+            # Make API call to cancel visit
+            response = cancel_visit(
+                bearer_token=bearer_token,
+                request_params=request_obj,
+            )
+
+            # Format and return the success response
+            formatted_response = format_cancel_visit_response_for_llm(response)
+            return formatted_response
+
+        except Exception as e:
+            logger.debug(f"[YelpTool.cancel_visit] Error: {str(e)}")
+            logger.debug(traceback.format_exc())
+
+            return f"Failed to cancel the visit. {str(e)}"
