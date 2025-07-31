@@ -18,6 +18,7 @@ from tools.toast_tool._apis import (
     get_menu_inventory,
     get_online_ordering_status,
     get_order_prices,
+    get_ordering_schedule,
     get_store_info,
     get_toast_access_token,
     submit_order,
@@ -71,7 +72,8 @@ class ToastTool(Toolkit):
         self.register(self.checkout_order)
         self.register(self.check_address)
 
-        # Do not register get_menu_inventory_tool for now
+        # Do not register get_menu_inventory_tool and get_ordering_schedule_tool for now
+        # self.register(self.get_ordering_schedule_tool)
         # self.register(self.get_menu_inventory_tool)
 
         # Retrieval tools
@@ -232,6 +234,41 @@ class ToastTool(Toolkit):
                 f"Error in checking online ordering status: {e}"
             )
             return "Failed to check the online ordering status, please try again."
+
+    # TODO: Decide if we want to register this tool
+    def get_ordering_schedule_tool(self) -> str:
+        """
+        Retrieves the online ordering schedule for a restaurant location.
+        Returns information about when the restaurant accepts online orders,
+        including service periods, overrides, and scheduling configurations.
+
+        Returns:
+            str: A JSON-formatted string containing ordering schedule information including:
+                - Service periods with day/time ranges for different dining options
+                - Override schedules for special dates (holidays, closures, etc.)
+                - Last order configuration (until closing time or with prep time cutoff)
+                - Maximum days orders can be placed into the future
+                - Restaurant time zone information
+        """
+        try:
+            if not self._toast_bearer_token:
+                return (
+                    "Failed to authenticate ordering tool. Please reach out to our "
+                    "support team at help@palona.ai for assistance."
+                )
+
+            schedule_response = get_ordering_schedule(
+                bearer_token=self._toast_bearer_token,
+                store_id=self.store_id,
+            )
+
+            return schedule_response.model_dump_json(indent=2)
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool.get_ordering_schedule_tool] Error retrieving ordering schedule: {e}"
+            )
+            return "Failed to retrieve ordering schedule information, please try again."
 
     # TODO: Decide if we want to register this tool
     def get_menu_inventory_tool(self, status: Optional[str] = None) -> str:

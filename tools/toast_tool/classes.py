@@ -282,6 +282,74 @@ class InventoryResponse(BaseModel):
     items: List[InventoryItem] = Field(description="List of inventory items")
 
 
+class LastOrderConfiguration(str, Enum):
+    """Enum for last order configuration options"""
+
+    UNTIL_CLOSING_TIME = "UNTIL_CLOSING_TIME"
+    UNTIL_PREPTIME_CUTOFF = "UNTIL_PREPTIME_CUTOFF"
+
+
+class OverrideTimeRanges(BaseModel):
+    """Time range when the override starts and ends"""
+
+    startTime: Optional[str] = Field(None, description="Start time of the override")
+    endTime: Optional[str] = Field(None, description="End time of the override")
+
+
+class DateOverride(BaseModel):
+    """Override object that contains information about planned overrides"""
+
+    businessDate: int = Field(
+        description="The day when the override applies in YYYYMMDD format"
+    )
+    description: Optional[str] = Field(
+        None, description="Description of the planned override"
+    )
+    diningOptionBehavior: List[DiningBehavior] = Field(
+        description="The diningOptionBehavior the override applies to (TAKE_OUT or DELIVERY or both)"
+    )
+    timeRanges: List[OverrideTimeRanges] = Field(
+        description="The time range when the override starts and ends"
+    )
+
+
+class DayPeriod(BaseModel):
+    """Day period object that contains information about specific day and time range"""
+
+    dayOfWeek: Optional[str] = Field(None, description="Day of the week")
+    startTime: Optional[str] = Field(None, description="Start time for the day period")
+    endTime: Optional[str] = Field(None, description="End time for the day period")
+
+
+class ServicePeriod(BaseModel):
+    """Service period object that contains information about days and times when restaurant accepts online orders"""
+
+    dayPeriods: List[DayPeriod] = Field(
+        description="Array of DayPeriods objects with information about specific day and time range"
+    )
+    diningOptionBehavior: DiningBehavior = Field(
+        description="The dining option behavior the online ordering schedule is returned for (TAKE_OUT or DELIVERY)"
+    )
+
+
+class OrderingScheduleResponse(BaseModel):
+    """Response from the Toast ordering schedule API"""
+
+    lastOrderConfiguration: LastOrderConfiguration = Field(
+        description="Allows guests to place online orders until closing time or closing time minus prep time"
+    )
+    overrides: List[DateOverride] = Field(
+        description="Array of override objects that contain information about planned overrides"
+    )
+    scheduledOrderMaxDays: int = Field(
+        description="Number of days an online order can be placed into the future"
+    )
+    servicePeriods: List[ServicePeriod] = Field(
+        description="Array of servicePeriods objects with information about days and times when restaurant accepts online orders"
+    )
+    timeZoneId: str = Field(description="The time zone of the restaurant location")
+
+
 ########### TOAST API CLASS END ############
 
 

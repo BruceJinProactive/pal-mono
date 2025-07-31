@@ -7,6 +7,7 @@ from tools.toast_tool.classes import (
     DiningOption,
     InventoryResponse,
     Order,
+    OrderingScheduleResponse,
     OrderInput,
     RestaurantInfo,
     RestaurantOrderingStatus,
@@ -393,4 +394,55 @@ def get_menu_inventory(
         )
         raise ValueError(
             f"Inventory retrieval failed with status {response.status}: {response.decoded_body}"
+        )
+
+
+def get_ordering_schedule(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+) -> OrderingScheduleResponse:
+    """
+    Retrieves online ordering schedule information from the Toast API.
+    Returns information about when the restaurant accepts online orders,
+    including service periods, overrides, and scheduling configurations.
+
+    Args:
+        bearer_token (ToastAccessToken): The Toast access token.
+        store_id (str): The external ID of the restaurant.
+
+    Returns:
+        OrderingScheduleResponse: Contains online ordering schedule information including:
+            - Service periods with day/time ranges
+            - Override schedules for special dates
+            - Last order configuration settings
+            - Maximum days for scheduled orders
+            - Restaurant time zone
+    """
+    try:
+        # The Toast ordering schedule API requires the store_id as a header parameter
+        extra_headers = {"Toast-Restaurant-External-ID": store_id}
+
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function="/ordermgmt-config/v1/published/orderingSchedule",
+            store_id=store_id,
+            extra_headers=extra_headers,
+            query_params=None,
+            payload=None,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_ordering_schedule] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        # Convert the JSON string to an OrderingScheduleResponse object
+        return OrderingScheduleResponse.model_validate_json(response.decoded_body)
+    else:
+        logger.error(
+            f"Ordering schedule retrieval failed with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Ordering schedule retrieval failed with status {response.status}: {response.decoded_body}"
         )
