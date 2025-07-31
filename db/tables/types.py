@@ -34,13 +34,6 @@ class SubscriptionStatus(str, enum.Enum):
     deleted = "deleted"
 
 
-# Do not use this, it is deprecated
-class OrderIntegrationVendor(str, enum.Enum):
-    olo = "olo"
-    toast = "toast"
-    adora = "adora"
-
-
 class Language(str, enum.Enum):
     english = "english"
     multilingual = "multilingual"

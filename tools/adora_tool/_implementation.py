@@ -16,7 +16,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from db.session import SyncSessionLocal
 from db.tables.orders import Order as DBOrder
-from db.tables.types import OrderIntegrationVendor
+from db.tables.types import IntegrationProvider
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraLatestOrderResponse,
@@ -458,7 +458,7 @@ class AdoraTool(Toolkit):
                 store_id=self.store_id,
                 tracking_link=None,  # Tracking link will be updated later when available
                 status="pending",
-                vendor=OrderIntegrationVendor.adora,
+                vendor=IntegrationProvider.adora,
                 order_date=datetime.now(),
             )
 
