@@ -3,6 +3,7 @@ import json
 import textwrap
 import traceback
 from functools import cached_property
+from typing import Optional
 
 import polyline
 from agno.tools.toolkit import Toolkit
@@ -13,9 +14,14 @@ from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.toast_tool._apis import get_online_ordering_status, get_order_prices
-from tools.toast_tool._apis import get_store_info as get_store_info_api
-from tools.toast_tool._apis import get_toast_access_token, submit_order
+from tools.toast_tool._apis import (
+    get_menu_inventory,
+    get_online_ordering_status,
+    get_order_prices,
+    get_store_info,
+    get_toast_access_token,
+    submit_order,
+)
 from tools.toast_tool._prompt_constants import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
@@ -65,6 +71,9 @@ class ToastTool(Toolkit):
         self.register(self.checkout_order)
         self.register(self.check_address)
 
+        # Do not register get_menu_inventory_tool for now
+        # self.register(self.get_menu_inventory_tool)
+
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
         self.query_engine = create_query_engine(
@@ -75,6 +84,7 @@ class ToastTool(Toolkit):
         # loop = asyncio.get_running_loop()
         # loop.create_task(asyncio.to_thread(lambda: self._toast_bearer_token))
 
+    # TODO: Decide how to check and refresh the bearer token when it expires
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
@@ -181,7 +191,7 @@ class ToastTool(Toolkit):
                     "for assistance."
                 )
 
-            store_info = get_store_info_api(
+            store_info = get_store_info(
                 self._toast_bearer_token, self.store_id
             ).model_dump_json()
 
@@ -222,6 +232,51 @@ class ToastTool(Toolkit):
                 f"Error in checking online ordering status: {e}"
             )
             return "Failed to check the online ordering status, please try again."
+
+    # TODO: Decide if we want to register this tool
+    def get_menu_inventory_tool(self, status: Optional[str] = None) -> str:
+        """
+        Retrieves current inventory information for menu items from the Toast API.
+        Returns inventory details for items that have OUT_OF_STOCK or QUANTITY status.
+
+        Inventory information is not returned for menu items with IN_STOCK status,
+        because they are not considered at risk for going out of stock.
+
+        Args:
+            status (str, optional): Filter by stock status. Must be either 'OUT_OF_STOCK' or 'QUANTITY'.
+                                  If not provided, returns items with both statuses.
+
+        Returns:
+            str: A JSON-formatted string containing inventory information including:
+                - Item GUID and validity information
+                - Current stock status (OUT_OF_STOCK, QUANTITY, etc.)
+                - Available quantity for items with quantity tracking
+                - Multi-location and version identifiers
+        """
+        try:
+            if not self._toast_bearer_token:
+                return (
+                    "Failed to authenticate ordering tool. Please reach out to our "
+                    "support team at help@palona.ai for assistance."
+                )
+
+            # Validate status parameter if provided
+            if status and status not in ["OUT_OF_STOCK", "QUANTITY"]:
+                return "Invalid status parameter. Status must be either 'OUT_OF_STOCK' or 'QUANTITY'."
+
+            inventory_response = get_menu_inventory(
+                bearer_token=self._toast_bearer_token,
+                store_id=self.store_id,
+                status=status,
+            )
+
+            return inventory_response.model_dump_json(indent=2)
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool.get_menu_inventory_tool] Error retrieving inventory: {e}"
+            )
+            return "Failed to retrieve menu inventory information, please try again."
 
     # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
     @tool

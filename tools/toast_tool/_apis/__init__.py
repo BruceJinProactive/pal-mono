@@ -5,6 +5,7 @@ from typing import Optional
 from tools.toast_tool._apis._utils import connect_toast_order_hub
 from tools.toast_tool.classes import (
     DiningOption,
+    InventoryResponse,
     Order,
     OrderInput,
     RestaurantInfo,
@@ -340,4 +341,56 @@ def submit_order(
         )
         raise ValueError(
             f"Order submission failed with status {response.status}: {response.decoded_body}"
+        )
+
+
+def get_menu_inventory(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    status: Optional[str] = None,
+) -> InventoryResponse:
+    """
+    Retrieves menu inventory information from the Toast API.
+    Returns inventory information for all menu items that have an OUT_OF_STOCK or QUANTITY status.
+
+    Args:
+        bearer_token (ToastAccessToken): The Toast access token.
+        store_id (str): The external ID of the restaurant.
+        status (Optional[str]): Filter by stock status (OUT_OF_STOCK or QUANTITY).
+                               If None, returns items with both statuses.
+
+    Returns:
+        InventoryResponse: Contains list of inventory items with their stock information.
+    """
+    # Prepare query parameters
+    query_params = {}
+    if status:
+        if status not in ["OUT_OF_STOCK", "QUANTITY"]:
+            raise ValueError("Status must be either 'OUT_OF_STOCK' or 'QUANTITY'")
+        query_params["status"] = status
+
+    try:
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function="/stock/v1/inventory",
+            store_id=store_id,
+            query_params=query_params if query_params else None,
+            payload=None,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_menu_inventory] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        # Convert the JSON string to an InventoryResponse object
+        inventory_data = json.loads(response.decoded_body)
+        return InventoryResponse(items=inventory_data)
+    else:
+        logger.error(
+            f"Inventory retrieval failed with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Inventory retrieval failed with status {response.status}: {response.decoded_body}"
         )

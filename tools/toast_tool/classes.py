@@ -267,6 +267,21 @@ class Order(OrderInput):
         extra = "allow"
 
 
+class InventoryItem(BaseModel):
+    guid: str = Field(description="Unique identifier for the menu item")
+    itemGuidValidityId: str = Field(description="Validity ID for the item GUID")
+    status: str = Field(
+        description="Stock status (e.g., IN_STOCK, OUT_OF_STOCK, QUANTITY)"
+    )
+    quantity: int = Field(description="Available quantity of the item")
+    multiLocationId: str = Field(description="Multi-location identifier")
+    versionId: str = Field(description="Version identifier for the item")
+
+
+class InventoryResponse(BaseModel):
+    items: List[InventoryItem] = Field(description="List of inventory items")
+
+
 ########### TOAST API CLASS END ############
 
 
