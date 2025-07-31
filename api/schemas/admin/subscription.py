@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import AnyHttpUrl, BaseModel, EmailStr, PositiveInt, field_validator
 
 from api.schemas.admin.project import ProjectSummary
-from db.tables.types import PaymentMethod, PlanTier, SubscriptionStatus
+from db.tables.types import PaymentMethod, SubscriptionStatus, TargetTier
 from services.subscription_service.schema import (
     SubscriptionParams,
     SubscriptionPlanParams,
@@ -17,7 +17,7 @@ class SubscriptionPlan(BaseModel):
     id: uuid.UUID
     name: str
     description: Optional[str]
-    tier: PlanTier
+    tier: TargetTier
     features_included: list[str]
     features_excluded: list[str]
     call_quota: Optional[int]
@@ -37,7 +37,7 @@ class SubscriptionPlan(BaseModel):
 class CreateSubscriptionPlanRequest(BaseModel):
     name: str
     description: Optional[str] = None
-    tier: PlanTier
+    tier: TargetTier
     features_included: list[str] = []
     features_excluded: list[str] = []
     call_quota: Optional[int] = None
@@ -73,7 +73,7 @@ class CreateSubscriptionPlanRequest(BaseModel):
 class UpdateSubscriptionPlanRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    tier: Optional[PlanTier] = None
+    tier: Optional[TargetTier] = None
     features_included: Optional[list[str]] = None
     features_excluded: Optional[list[str]] = None
     call_quota: Optional[int] = None

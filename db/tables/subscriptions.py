@@ -12,7 +12,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import Boolean, DateTime, Enum, Integer, String
 
 from .base import Base
-from .types import PaymentMethod, PlanTier, SubscriptionStatus
+from .types import PaymentMethod, SubscriptionStatus, TargetTier
 
 if TYPE_CHECKING:
     from .accounts import Account
@@ -30,7 +30,7 @@ class SubscriptionPlan(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    tier: Mapped[PlanTier] = mapped_column(Enum(PlanTier), nullable=False)
+    tier: Mapped[TargetTier] = mapped_column(Enum(TargetTier), nullable=False)
     features_included: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=True, server_default=text("'{}'")
     )

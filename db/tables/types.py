@@ -20,13 +20,6 @@ class AgentType(str, enum.Enum):
     sales = "sales"
 
 
-class PlanTier(str, enum.Enum):
-    t1 = "t1"
-    t2 = "t2"
-    enterprise = "enterprise"
-
-
-# to be deleted, bad name
 class TargetTier(str, enum.Enum):
     t1 = "t1"
     t2 = "t2"

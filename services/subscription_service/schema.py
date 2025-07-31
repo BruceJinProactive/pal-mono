@@ -4,12 +4,12 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from db.tables.types import PaymentMethod, PlanTier, SubscriptionStatus
+from db.tables.types import PaymentMethod, SubscriptionStatus, TargetTier
 
 
 class SubscriptionPlanParams(BaseModel):
     name: str | None = None
-    tier: PlanTier | None = None
+    tier: TargetTier | None = None
     description: Optional[str] = None
     features_included: Optional[List[str]] = None
     features_excluded: Optional[List[str]] = None
