@@ -689,6 +689,15 @@ class WaitlistJoinQueueQuery(BaseModel):
     )
 
 
+class CancelVisitQuery(BaseModel):
+    """Extracted parameters for canceling a waitlist visit"""
+
+    visit_id: Optional[str] = Field(
+        default=None,
+        description="Visit ID from the waitlist confirmation (encrypted identifier)",
+    )
+
+
 ######### LLM EXTRACTION CLASSES END ############
 
 

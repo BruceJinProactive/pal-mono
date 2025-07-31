@@ -236,3 +236,53 @@ IMPORTANT:
 
 This is for joining the actual waitlist queue when the restaurant currently has a wait.
 """
+
+
+CANCEL_VISIT_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting visit cancellation parameters from conversation history.
+
+Your task is to extract the following information for canceling a waitlist visit:
+- Visit ID: The encrypted visit identifier provided when the user joined the waitlist (REQUIRED)
+
+# INSTRUCTIONS:
+1. Extract only explicitly mentioned information - do not fabricate data
+2. Look for Visit ID in various formats:
+   - "Visit ID: fVNjtTuQn4bLn-RoYc8ZdA"
+   - "My visit ID is fVNjtTuQn4bLn-RoYc8ZdA"
+   - "The ID they gave me was fVNjtTuQn4bLn-RoYc8ZdA"
+   - "My confirmation ID is fVNjtTuQn4bLn-RoYc8ZdA"
+   - "fVNjtTuQn4bLn-RoYc8ZdA" (if clearly referring to their waitlist entry)
+3. Visit IDs are typically alphanumeric strings of varying length
+4. Do NOT confuse with:
+   - Phone numbers (contain digits with dashes/parentheses)
+   - Business IDs (different context)
+   - Reservation confirmation numbers (different system)
+
+# VALIDATION RULES:
+- visit_id: non-empty string (REQUIRED for cancellation)
+- Visit ID should be the encrypted identifier from their waitlist confirmation
+- If no Visit ID mentioned, leave as null and the system will prompt for it
+
+# EXTRACTION BEHAVIOR:
+- Extract the Visit ID from any mention of their waitlist entry identifier
+- This is for canceling an existing waitlist visit
+- The Visit ID was provided when they originally joined the waitlist
+- If user says they want to cancel but doesn't provide Visit ID, extract as null
+"""
+
+
+CANCEL_VISIT_EXTRACTION_USER_PROMPT = """
+# Chat History:
+{chat_history}
+
+Extract the visit cancellation parameters from the conversation above.
+
+REQUIRED BY API:
+- Visit ID (the encrypted identifier from when they joined the waitlist, ex: fVNjtTuQn4bLn-RoYc8ZdA)
+
+IMPORTANT:
+- The Visit ID is the unique identifier they received when joining the waitlist
+- It's different from phone numbers, business IDs, or reservation numbers
+- If they mention wanting to cancel but don't provide the Visit ID, leave it as null
+
+This is for canceling an existing waitlist visit using the Visit ID from their original confirmation.
+"""

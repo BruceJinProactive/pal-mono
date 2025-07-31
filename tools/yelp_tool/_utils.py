@@ -12,6 +12,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsOpeningsResponseCreditCardNotRequired,
     YelpBookingsOpeningsResponseCreditCardRequired,
     YelpBookingsReservationsRequestCreditCardNotRequired,
+    YelpCancelVisitRequest,
+    YelpCancelVisitResponse,
     YelpWaitlistInfoRequest,
     YelpWaitlistInfoResponse,
     YelpWaitlistJoinQueueRequest,
@@ -1204,3 +1206,91 @@ def get_reservation_url_creditcard_required(
         f"Reservation URL generated for {closest_match.formatted_time}",
         reservation_url,
     )
+
+
+def check_cancel_visit_required_fields(
+    visit_id: Optional[str] = None,
+) -> Tuple[bool, List[str]]:
+    """
+    Check which required fields are missing for cancel visit.
+
+    Args:
+        visit_id: Visit ID from the waitlist confirmation
+
+    Returns:
+        Tuple containing:
+        - bool: True if all required fields are present, False otherwise
+        - List[str]: List of missing required fields with user-friendly prompts
+    """
+    missing_fields = []
+
+    if not visit_id or not visit_id.strip():
+        missing_fields.append(
+            "What is your Visit ID? (You should have received this when you joined the waitlist)"
+        )
+
+    return len(missing_fields) == 0, missing_fields
+
+
+def create_cancel_visit_request(
+    visit_id: str,
+) -> Tuple[bool, str, Optional[YelpCancelVisitRequest]]:
+    """
+    Validate parameters and create YelpCancelVisitRequest object.
+    Provides early validation with user-friendly error messages.
+
+    Args:
+        visit_id: Visit ID from the waitlist confirmation (REQUIRED)
+
+    Returns:
+        Tuple containing:
+        - bool: Success status
+        - str: Error message or success message
+        - Optional[YelpCancelVisitRequest]: Request object or None
+    """
+    errors = []
+
+    # Validate visit ID
+    if not visit_id or not visit_id.strip():
+        errors.append("Visit ID is required")
+    elif len(visit_id.strip()) < 3:
+        errors.append("Visit ID appears to be too short - please check your Visit ID")
+    elif len(visit_id.strip()) > 255:
+        errors.append("Visit ID appears to be too long - please check your Visit ID")
+
+    # Return early if validation fails
+    if errors:
+        return False, "; ".join(errors), None
+
+    # Create request object
+    try:
+        request_obj = YelpCancelVisitRequest(
+            visit_id=visit_id.strip(),
+        )
+        return True, "Cancel visit request created successfully", request_obj
+    except Exception as e:
+        return False, f"Failed to create cancel visit request: {str(e)}", None
+
+
+def format_cancel_visit_response_for_llm(
+    response: YelpCancelVisitResponse,
+) -> str:
+    """
+    Format the cancel visit response into a human-readable string for display.
+
+    Args:
+        response: Parsed cancel visit response object
+
+    Returns:
+        str: Formatted string representation of the cancellation confirmation
+    """
+    result_lines = ["✅ Your waitlist visit has been successfully canceled!"]
+    result_lines.append("\nYour spot in the waitlist queue has been removed.")
+    result_lines.append(
+        "You will no longer receive notifications for this reservation."
+    )
+    result_lines.append(
+        "\nIf you change your mind, you can rejoin the waitlist by starting a new request."
+    )
+
+    return "\n".join(result_lines)
