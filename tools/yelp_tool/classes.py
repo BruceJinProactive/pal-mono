@@ -423,6 +423,37 @@ class YelpWaitlistJoinQueueResponse(BaseModel):
     )
 
 
+class YelpCancelVisitRequest(BaseModel):
+    """Request parameters for Yelp Cancel Visit endpoint"""
+
+    # Path parameter
+    visit_id: str = Field(
+        description="Encrypted Yelp visit identifier", min_length=1, max_length=255
+    )
+
+
+class YelpCancelVisitResponse(BaseModel):
+    """Response from Yelp Cancel Visit endpoint"""
+
+    success: bool = Field(
+        default=True,
+        description="Whether the visit was successfully canceled (204 response means success)",
+    )
+
+
+class CancelVisitErrorCode(str, Enum):
+    """Error codes for 409 conflict errors in cancel visit API responses"""
+
+    VISIT_ALREADY_IN_TERMINAL_STATE = "VISIT_ALREADY_IN_TERMINAL_STATE"
+
+    def get_description(self) -> str:
+        """Get human-readable description for the 409 conflict error code"""
+        descriptions = {
+            "VISIT_ALREADY_IN_TERMINAL_STATE": "This visit was already in a terminal state or the customer is not in queue",
+        }
+        return descriptions.get(self.value, "Description not available")
+
+
 class WaitlistJoinQueueErrorCode(str, Enum):
     """Error codes for 422 validation errors in waitlist join queue API responses"""
 
