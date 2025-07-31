@@ -79,7 +79,6 @@ class YelpTool(Toolkit):
         biz_id: Optional[str] = None,
         biz_lat: Optional[str] = None,
         biz_long: Optional[str] = None,
-        yelp_api_key: Optional[str] = None,
         waitlist_enabled: bool = False,
         reservation_enabled: bool = True,
     ):
@@ -159,7 +158,6 @@ class YelpTool(Toolkit):
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
-        self.yelp_api_key = yelp_api_key
         logger.debug(
             f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={self.credit_card_required}, yelp_integration_api={self.yelp_integration_api}, use_creditcard_workflow={self.use_creditcard_workflow}"
         )
@@ -197,7 +195,7 @@ class YelpTool(Toolkit):
 
     @cached_property
     def _yelp_bearer_token(self) -> YelpAccessToken:
-        api_key = self.yelp_api_key or get_client_secret_with_fallback("YELP_API_KEY")
+        api_key = get_client_secret_with_fallback("YELP_API_KEY")
 
         if not api_key:
             raise Exception("Failed to obtain Yelp API key")
