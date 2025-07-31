@@ -9,6 +9,8 @@ from tools.yelp_tool.classes import (
     YelpBookingsOpeningsResponseCreditCardRequired,
     YelpBookingsReservationsRequestCreditCardNotRequired,
     YelpBookingsReservationsResponseCreditCardNotRequired,
+    YelpCancelVisitRequest,
+    YelpCancelVisitResponse,
     YelpWaitlistInfoRequest,
     YelpWaitlistInfoResponse,
     YelpWaitlistJoinQueueRequest,
@@ -526,3 +528,50 @@ def get_openings_creditcard_required(
     raise Exception(
         f"Open API failed after {max_retries + 1} attempts. Last error: {last_exception}"
     ) from last_exception
+
+
+def cancel_visit(
+    bearer_token: YelpAccessToken,
+    request_params: YelpCancelVisitRequest,
+) -> YelpCancelVisitResponse:
+    """
+    Cancel a visit from the waitlist using the Yelp Waitlist API.
+
+    This endpoint allows a customer to cancel their visit from the waitlist.
+    This is useful if they change their mind or if they are no longer able to
+    make it to the restaurant.
+
+    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+
+    Args:
+        bearer_token: Yelp bearer token for authentication
+        request_params: YelpCancelVisitRequest object containing the visit_id
+
+    Returns:
+        YelpCancelVisitResponse object containing the cancellation confirmation
+
+    Raises:
+        Exception: If the API request fails or returns an error. Common error scenarios:
+            - 404: Visit not found
+            - 409: Visit already in terminal state
+            - 401: Authentication issues
+    """
+    api_function = f"/v3/visits/{request_params.visit_id}/cancel"
+
+    response = connect_yelp_api(
+        http_method="POST",
+        api_function=api_function,
+        api_host=YELP_API_HOST,
+        bearer_token=bearer_token,
+        extra_headers={"Content-Type": "application/json"},
+    )
+
+    if response.status != 204:
+        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
+        logger.debug(f"Response body: {response.decoded_body}")
+        raise Exception(
+            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+        )
+
+    # 204 No Content response means success - return success response
+    return YelpCancelVisitResponse(success=True)
