@@ -96,47 +96,45 @@ class AgnoAgent:
 
     @agent(name="AgnoAgent")
     async def _arun_with_workflow(self, input: Input) -> Output:
-        with trace_block("Agno Core Agent Processing"):
+        message, messages = await self._build_model_inputs(input)
 
-            message, messages = await self._build_model_inputs(input)
+        result = await self._agent.arun(
+            message,
+            messages=messages,
+            stream=input.stream,
+        )
+        # Handle non-streaming case
+        response_format = result.content
 
-            result = await self._agent.arun(
-                message,
-                messages=messages,
-                stream=input.stream,
-            )
-            # Handle non-streaming case
-            response_format = result.content
-
-            if not isinstance(response_format, ResponseModel):
-                logger.error(
-                    (
-                        f"Error with getting proper response format:{response_format}\n"
-                        f"response type: {type(response_format)}\n"
-                        f"agent stream: {self._agent.stream}\n"
-                        f"response model: {self._agent.response_model}"
-                    )
+        if not isinstance(response_format, ResponseModel):
+            logger.error(
+                (
+                    f"Error with getting proper response format:{response_format}\n"
+                    f"response type: {type(response_format)}\n"
+                    f"agent stream: {self._agent.stream}\n"
+                    f"response model: {self._agent.response_model}"
                 )
-                return Output(content="")
-
-            content = response_format.content
-            escalated = response_format.escalated
-            closing_conversation = response_format.closing_conversation
-
-            documents = []
-            images = []
-
-            return (
-                Output(
-                    content=content,
-                    documents=documents,
-                    images=images,
-                    escalated=escalated,
-                    closing_conversation=closing_conversation,
-                )
-                if content is not None
-                else Output(content="", documents=documents, images=images)
             )
+            return Output(content="")
+
+        content = response_format.content
+        escalated = response_format.escalated
+        closing_conversation = response_format.closing_conversation
+
+        documents = []
+        images = []
+
+        return (
+            Output(
+                content=content,
+                documents=documents,
+                images=images,
+                escalated=escalated,
+                closing_conversation=closing_conversation,
+            )
+            if content is not None
+            else Output(content="", documents=documents, images=images)
+        )
 
     def _create_traced_stream_iterator(self, input: Input) -> AsyncIterator[Output]:
         async def stream_wrapper() -> AsyncIterator[Output]:
@@ -150,17 +148,50 @@ class AgnoAgent:
                 )
 
                 output_content = ""
-                with trace_block("Agno Core Agent Processing"):
-                    message, messages = await self._build_model_inputs(input)
-                    logger.debug(
-                        f"[AgnoAgent] start getting called at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
-                        extra={
-                            "agent_id": self.config.metadata.agent_id,
-                            "account_name": self.config.metadata.account_name,
-                        },
+                message, messages = await self._build_model_inputs(input)
+                logger.debug(
+                    f"[AgnoAgent] start getting called at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                    extra={
+                        "agent_id": self.config.metadata.agent_id,
+                        "account_name": self.config.metadata.account_name,
+                    },
+                )
+                send_dd_histogram_metrics(
+                    "framework_agent.start_streaming",
+                    input.request_context.request_time,
+                    [
+                        "agent:agno",
+                        f"agent_id:{self.config.metadata.agent_id}",
+                        f"account_name:{self.config.metadata.account_name}",
+                    ],
+                )
+
+                agent_model_info = self._agent.model
+                with LLMObs.llm(
+                    model_name=(
+                        agent_model_info.name if agent_model_info else "custom"
+                    ),
+                    model_provider=(
+                        agent_model_info.provider if agent_model_info else "custom"
+                    ),
+                ):
+                    result = await self._agent.arun(
+                        message,
+                        messages=messages,
+                        stream=input.stream,
                     )
+
+                logger.debug(
+                    f"[AgnoAgent] called with {len(messages) if messages else 'None'} messages, streaming={input.stream}, return_type:{type(result)} at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                    extra={
+                        "agent_id": self.config.metadata.agent_id,
+                        "account_name": self.config.metadata.account_name,
+                    },
+                )
+
+                try:
                     send_dd_histogram_metrics(
-                        "framework_agent.start_streaming",
+                        "framework_agent.waiting_first_chunk",
                         input.request_context.request_time,
                         [
                             "agent:agno",
@@ -168,140 +199,59 @@ class AgnoAgent:
                             f"account_name:{self.config.metadata.account_name}",
                         ],
                     )
-
-                    agent_model_info = self._agent.model
-                    with LLMObs.llm(
-                        model_name=(
-                            agent_model_info.name if agent_model_info else "custom"
-                        ),
-                        model_provider=(
-                            agent_model_info.provider if agent_model_info else "custom"
-                        ),
-                    ):
-                        result = await self._agent.arun(
-                            message,
-                            messages=messages,
-                            stream=input.stream,
-                        )
-
                     logger.debug(
-                        f"[AgnoAgent] called with {len(messages) if messages else 'None'} messages, streaming={input.stream}, return_type:{type(result)} at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                        f"[AgnoAgent] waiting_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
                         extra={
                             "agent_id": self.config.metadata.agent_id,
                             "account_name": self.config.metadata.account_name,
                         },
                     )
 
-                    try:
-                        send_dd_histogram_metrics(
-                            "framework_agent.waiting_first_chunk",
-                            input.request_context.request_time,
-                            [
-                                "agent:agno",
-                                f"agent_id:{self.config.metadata.agent_id}",
-                                f"account_name:{self.config.metadata.account_name}",
-                            ],
-                        )
+                    # Output chat filler words if configured
+                    filler_words = self._get_chat_filler()
+                    if filler_words:
                         logger.debug(
-                            f"[AgnoAgent] waiting_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
+                            f"[AgnoAgent] chat filler outputted: {filler_words}",
                             extra={
                                 "agent_id": self.config.metadata.agent_id,
                                 "account_name": self.config.metadata.account_name,
                             },
                         )
+                        yield Output(
+                            content=filler_words,
+                            documents=[],
+                            images=[],
+                        )
 
-                        # Output chat filler words if configured
-                        filler_words = self._get_chat_filler()
-                        if filler_words:
-                            logger.debug(
-                                f"[AgnoAgent] chat filler outputted: {filler_words}",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                },
-                            )
-                            yield Output(
-                                content=filler_words,
-                                documents=[],
-                                images=[],
-                            )
-
-                        chunk_index = 0
-                        async for chunk in result:
-                            if isinstance(chunk, RunResponseContentEvent):
-                                # Skip chunks without valid content
-                                content = getattr(chunk, "content", None)
-                                if not content:
-                                    logger.debug(
-                                        "[AgnoAgent] skipping chunk with empty/None content",
-                                        extra={
-                                            "agent_id": self.config.metadata.agent_id,
-                                            "account_name": self.config.metadata.account_name,
-                                            "chunk": chunk,
-                                        },
-                                    )
-                                    continue
-
-                                chunk_index += 1
-                                if chunk_index == 1:
-                                    send_dd_histogram_metrics(
-                                        "framework_agent.received_first_chunk",
-                                        input.request_context.request_time,
-                                        [
-                                            "agent:agno",
-                                            f"agent_id:{self.config.metadata.agent_id}",
-                                            f"account_name:{self.config.metadata.account_name}",
-                                        ],
-                                    )
-                                    logger.debug(
-                                        f"[AgnoAgent] received_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
-                                        extra={
-                                            "agent_id": self.config.metadata.agent_id,
-                                            "account_name": self.config.metadata.account_name,
-                                            "chunk": chunk,
-                                        },
-                                    )
-
-                                output_content += content
-                                yield Output(
-                                    content=content,
-                                    documents=[],
-                                    images=[],
-                                )
-                            elif isinstance(chunk, ToolCallStartedEvent):
-                                # Output filler words when tool execution starts (if configured)
-                                if self.config.voice_config.tool_calling_filler_words:
-                                    filler_words = random.choice(
-                                        self.config.voice_config.tool_calling_filler_words
-                                    )
-                                    logger.debug(
-                                        f"[AgnoAgent] tool call started, outputting filler words: {filler_words}",
-                                        extra={
-                                            "agent_id": self.config.metadata.agent_id,
-                                            "account_name": self.config.metadata.account_name,
-                                            "tool_name": (
-                                                chunk.tool.tool_name
-                                                if chunk.tool
-                                                else "unknown"
-                                            ),
-                                        },
-                                    )
-                                    yield Output(
-                                        content=filler_words + " <flush />",
-                                        documents=[],
-                                        images=[],
-                                    )
-                                else:
-                                    logger.debug(
-                                        "[AgnoAgent] not respond to ToolCallStartedEvent type chunk",
-                                        extra={
-                                            "agent_id": self.config.metadata.agent_id,
-                                            "account_name": self.config.metadata.account_name,
-                                        },
-                                    )
-                            else:
+                    chunk_index = 0
+                    async for chunk in result:
+                        if isinstance(chunk, RunResponseContentEvent):
+                            # Skip chunks without valid content
+                            content = getattr(chunk, "content", None)
+                            if not content:
                                 logger.debug(
-                                    f"[AgnoAgent] received non ResponseContent type chunk: {type(chunk)}",
+                                    "[AgnoAgent] skipping chunk with empty/None content",
+                                    extra={
+                                        "agent_id": self.config.metadata.agent_id,
+                                        "account_name": self.config.metadata.account_name,
+                                        "chunk": chunk,
+                                    },
+                                )
+                                continue
+
+                            chunk_index += 1
+                            if chunk_index == 1:
+                                send_dd_histogram_metrics(
+                                    "framework_agent.received_first_chunk",
+                                    input.request_context.request_time,
+                                    [
+                                        "agent:agno",
+                                        f"agent_id:{self.config.metadata.agent_id}",
+                                        f"account_name:{self.config.metadata.account_name}",
+                                    ],
+                                )
+                                logger.debug(
+                                    f"[AgnoAgent] received_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
                                     extra={
                                         "agent_id": self.config.metadata.agent_id,
                                         "account_name": self.config.metadata.account_name,
@@ -309,9 +259,57 @@ class AgnoAgent:
                                     },
                                 )
 
-                    except Exception as e:
-                        logger.error(f"Error streaming output: {e}")
-                        yield Output(content="Error streaming output")
+                            output_content += content
+                            yield Output(
+                                content=content,
+                                documents=[],
+                                images=[],
+                            )
+                        elif isinstance(chunk, ToolCallStartedEvent):
+                            # Output filler words when tool execution starts (if configured)
+                            if self.config.voice_config.tool_calling_filler_words:
+                                filler_words = random.choice(
+                                    self.config.voice_config.tool_calling_filler_words
+                                )
+                                logger.debug(
+                                    f"[AgnoAgent] tool call started, outputting filler words: {filler_words}",
+                                    extra={
+                                        "agent_id": self.config.metadata.agent_id,
+                                        "account_name": self.config.metadata.account_name,
+                                        "tool_name": (
+                                            chunk.tool.tool_name
+                                            if chunk.tool
+                                            else "unknown"
+                                        ),
+                                    },
+                                )
+                                yield Output(
+                                    content=filler_words + " <flush />",
+                                    documents=[],
+                                    images=[],
+                                )
+                            else:
+                                logger.debug(
+                                    "[AgnoAgent] not respond to ToolCallStartedEvent type chunk",
+                                    extra={
+                                        "agent_id": self.config.metadata.agent_id,
+                                        "account_name": self.config.metadata.account_name,
+                                    },
+                                )
+                        else:
+                            logger.debug(
+                                f"[AgnoAgent] received non ResponseContent type chunk: {type(chunk)}",
+                                extra={
+                                    "agent_id": self.config.metadata.agent_id,
+                                    "account_name": self.config.metadata.account_name,
+                                    "chunk": chunk,
+                                },
+                            )
+
+                except Exception as e:
+                    logger.error(f"Error streaming output: {e}")
+                    yield Output(content="Error streaming output")
+
                 LLMObs.annotate(output_data=output_content)
 
             async for item in process_stream():
