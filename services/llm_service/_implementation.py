@@ -1,10 +1,8 @@
 import os
 from typing import AsyncIterator
 
-from agno.models.openai.like import OpenAILike
+from agno.models.openai.chat import OpenAIChat
 from portkey_ai import AsyncPortkey
-from portkey_ai.api_resources.apis.create_headers import createHeaders
-from portkey_ai.api_resources.global_constants import PORTKEY_BASE_URL
 from portkey_ai.api_resources.types.chat_complete_type import (
     ChatCompletionChunk,
     ChatCompletions,
@@ -53,18 +51,7 @@ async def call_llm_stream(
         raise e
 
 
-def build_agno_model(model_option: ModelOptions) -> OpenAILike:
-    portkey_config_id = os.getenv(model_option.env_key)
-    if not portkey_config_id:
-        raise ValueError("Portkey configuration not found.")
-    portkey_api_key = os.getenv("PORTKEY_API_KEY")
-    if not portkey_api_key:
-        raise ValueError("Portkey API key not found.")
-    return OpenAILike(
-        id=model_option.model_name,
-        api_key="placeholder",  # Required, real API key in header
-        base_url=PORTKEY_BASE_URL,
-        default_headers=createHeaders(
-            api_key=portkey_api_key, config=portkey_config_id
-        ),
+def build_agno_model(model_option: ModelOptions) -> OpenAIChat:
+    return OpenAIChat(
+        id="gpt-4o",
     )

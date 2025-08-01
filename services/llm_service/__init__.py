@@ -1,6 +1,6 @@
 from typing import AsyncIterator
 
-from agno.models.openai.like import OpenAILike
+from agno.models.openai.chat import OpenAIChat
 from portkey_ai.api_resources.types.chat_complete_type import (
     ChatCompletionChunk,
     ChatCompletions,
@@ -40,7 +40,7 @@ async def call_llm_stream(
     return await implementation.call_llm_stream(model_option, params)
 
 
-def build_agno_model(model_option: ModelOptions) -> OpenAILike:
+def build_agno_model(model_option: ModelOptions) -> OpenAIChat:
     """
     Returns an Agno agent model that calls Portkey to make LLM requests.
     """
