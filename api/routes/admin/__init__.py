@@ -73,7 +73,11 @@ from api.schemas.admin.lead import (
     ListLeadsResponse,
     UpdateLeadRequest,
 )
-from api.schemas.admin.onboarding import OnboardingRequest
+from api.schemas.admin.onboarding import (
+    GenerateAgentPromptsRequest,
+    GenerateAgentPromptsResponse,
+    OnboardingRequest,
+)
 from api.schemas.admin.phone_number import (
     ReleaseProjectNumberRequest,
     ReserveProjectNumberRequest,
@@ -133,6 +137,7 @@ from . import (
     _integration,
     _knowledge,
     _lead,
+    _onboarding,
     _phone_number,
     _projects,
     _prompt,
@@ -140,7 +145,6 @@ from . import (
     _users,
 )
 from ._auth import authenticate_user
-from ._onboarding import create_onboarding
 
 """
 ######################################################
@@ -1439,6 +1443,17 @@ async def delete_lead(
 """
 
 
+@admin_router.post("/onboarding/generate_prompts", status_code=status.HTTP_200_OK)
+async def generate_agent_prompts_api(
+    request: GenerateAgentPromptsRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> GenerateAgentPromptsResponse:
+    """
+    Generate agent prompts for a new account.
+    """
+    return await _onboarding.generate_agent_prompts_api(request, context)
+
+
 @admin_router.post("/onboarding", status_code=status.HTTP_201_CREATED)
 async def onboard(
     request: OnboardingRequest,
@@ -1448,7 +1463,7 @@ async def onboard(
     """
     Onboard a new account with agents and projects in a single transaction.
     """
-    return await create_onboarding(request, context, session)
+    return await _onboarding.create_onboarding(request, context, session)
 
 
 """

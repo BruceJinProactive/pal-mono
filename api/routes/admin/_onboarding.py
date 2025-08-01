@@ -1,12 +1,16 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.schemas.admin.onboarding import OnboardingRequest
+from api.schemas.admin.onboarding import (
+    GenerateAgentPromptsRequest,
+    GenerateAgentPromptsResponse,
+    OnboardingRequest,
+)
 from services import admin_service
 from services.admin_service import ProjectSetup
 from services.admin_service.schema import CognitoUser
 
-from ._auth import authorize_user_account
+from ._auth import authorize_admin
 from ._utils import UserContext
 
 
@@ -22,7 +26,7 @@ async def create_onboarding(
     in a single transaction. If any part of the process fails, the entire transaction
     is rolled back.
     """
-    authorize_user_account(context, request.account.name)
+    authorize_admin(context)
 
     account_params = request.account.to_account_params()
 
@@ -60,5 +64,47 @@ async def create_onboarding(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def generate_agent_prompts_api(
+    request: GenerateAgentPromptsRequest,
+    context: UserContext,
+) -> GenerateAgentPromptsResponse:
+    """
+    Generate agent prompts using the AI prompt generation service.
+
+    This endpoint handles the generation of customized agent prompts based on
+    restaurant information, agent configuration, and additional context.
+    """
+    authorize_admin(context)
+
+    try:
+        prompt_sections = await admin_service.generate_agent_prompts(
+            restaurant_name=request.restaurant_name,
+            agent_name=request.agent_name,
+            agent_type=request.agent_type,
+            keywords=request.keywords,
+            specific_instructions=request.specific_instructions or "",
+            menu_content=request.menu_content or "",
+            additional_urls=request.additional_urls or [],
+        )
+
+        return GenerateAgentPromptsResponse(
+            persona=prompt_sections["persona"],
+            interaction_guidelines=prompt_sections["interaction_guidelines"],
+        )
+
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate agent prompts: {str(err)}",
             headers={"Content-Type": "application/json"},
         )

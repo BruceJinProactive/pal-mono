@@ -11,7 +11,7 @@ from services.account_service import AccountParams
 
 from ..agent_service import AgentParams
 from ..knowledge_service import KnowledgeFile
-from . import _implementation
+from . import _implementation, agent_prompt_generation
 from .schema import (
     CognitoUser,
     LeadFilters,
@@ -377,6 +377,44 @@ def onboard_new_account(
     )
 
 
+async def generate_agent_prompts(
+    restaurant_name: str,
+    agent_name: str,
+    agent_type: str,
+    keywords: str,
+    specific_instructions: str = "",
+    menu_content: str = "",
+    additional_urls: list[str] | None = None,
+) -> dict:
+    """
+    Generate agent prompts using Portkey LLM service based on restaurant and agent information.
+
+    Args:
+        restaurant_name (str): Name of the restaurant
+        agent_name (str): Name of the agent
+        agent_type (str): Type of agent ('general' or 'ordering')
+        keywords (str): Personality keywords for the agent
+        specific_instructions (str): Specific instructions for the agent
+        menu_content (str): Menu content for the restaurant
+        additional_urls (list[str] | None): Additional URLs to scrape for context
+
+    Returns:
+        dict: Dictionary with persona and interaction_guidelines
+
+    Raises:
+        ValueError: If there's an error generating the prompts
+    """
+    return await agent_prompt_generation.generate_agent_prompts(
+        restaurant_name=restaurant_name,
+        agent_name=agent_name,
+        agent_type=agent_type,
+        keywords=keywords,
+        specific_instructions=specific_instructions,
+        menu_content=menu_content,
+        additional_urls=additional_urls or [],
+    )
+
+
 def upload_knowledge_file(
     session: Session,
     context: UserContext,
@@ -674,6 +712,7 @@ __all__ = [
     "get_session_count_by_user_and_status",
     "get_escalated_session_count_by_users",
     "onboard_new_account",
+    "generate_agent_prompts",
     "list_knowledge_files",
     "upload_knowledge_file",
     "delete_knowledge_file",
