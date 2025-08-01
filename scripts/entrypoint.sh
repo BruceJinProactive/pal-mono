@@ -46,7 +46,10 @@ fi
 if [[ "$MIGRATE_DB" = true || "$MIGRATE_DB" = True ]]; then
   echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
   echo "Migrating Database"
-  alembic -c db/alembic.ini upgrade head
+  if ! alembic -c db/alembic.ini upgrade head; then
+    echo "ERROR: Database migration failed!"
+    exit 1
+  fi
   echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 fi
 
