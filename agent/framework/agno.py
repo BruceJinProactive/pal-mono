@@ -7,6 +7,7 @@ from typing import AsyncIterator, Optional
 
 import agno.agent.agent
 from agno.models.message import Message
+from agno.models.openai.chat import OpenAIChat
 from agno.run.response import RunResponseContentEvent, ToolCallStartedEvent
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
@@ -51,6 +52,7 @@ class AgnoAgent:
         ]  # Construct tools based on configuration (memory and knowledge tools are conditionally added)
 
         model = self._get_agent_model(config)
+        model = OpenAIChat(id="gpt-4o")
 
         with trace_block("Agno Core Agent Creation"):
             agent = agno.agent.agent.Agent(
