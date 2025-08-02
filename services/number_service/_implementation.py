@@ -154,7 +154,7 @@ class NumberService:
         try:
             twilio_number = self.twilio_client.incoming_phone_numbers.create(
                 phone_number=number.phone_number,
-                friendly_name=self._get_friendly_name(merchant_name),
+                friendly_name=self._get_friendly_name(merchant_name) + "_INACTIVATED",
             )
             if not twilio_number.phone_number:
                 raise ValueError("Failed to get toll-free phone number from Twilio")
@@ -189,6 +189,7 @@ class NumberService:
         toll_free: bool,
         merchant_name: str,
         assistant_config: Optional[AssistantConfig] = None,
+        purchase_number: bool = False,
     ) -> NumberResponse:
         """Set up a phone number with optional Vapi assistant integration.
 
@@ -227,18 +228,31 @@ class NumberService:
         merchant_name = (
             assistant_config["merchant_name"] if assistant_config else merchant_name
         )
-        # Purchase number
-        if toll_free:
-            number_response = self.purchase_toll_free_number(
-                country_code, merchant_name
-            )
+        approved_numbers = self.get_approved_numbers()
+        if purchase_number or len(approved_numbers) == 0:
+            # Purchase number
+            if toll_free:
+                number_response = self.purchase_toll_free_number(
+                    country_code, merchant_name
+                )
+            else:
+                number_response = self.purchase_number(country_code, merchant_name)
+
+            if not number_response or not number_response.number:
+                raise ValueError("Failed to get phone number from Twilio")
+            phone_number = number_response.number
         else:
-            number_response = self.purchase_number(country_code, merchant_name)
-
-        if not number_response or not number_response.number:
-            raise ValueError("Failed to get phone number from Twilio")
-        phone_number = number_response.number
-
+            phone_number = approved_numbers[0]
+            number_details = self.get_number_details(phone_number)
+            if not number_details:
+                raise ValueError("Failed to get phone number from Twilio")
+            number_details.update(friendly_name=self._get_friendly_name(merchant_name))
+            number_response = NumberResponse(
+                number=phone_number,
+                merchant_name=self._get_friendly_name(merchant_name),
+                country_code=country_code,
+                toll_free=toll_free,
+            )
         # Import number to Vapi
         try:
             self.vapi_client.phone_numbers.create(
@@ -326,10 +340,29 @@ class NumberService:
                 return
             for n in numbers:
                 if n.phone_number == number:
-                    n.delete()
+                    if n.friendly_name and "INACTIVATED" in n.friendly_name:
+                        n.delete()
+                    else:
+                        n.update(friendly_name="RELEASED")
                     break
         except Exception as e:
             raise ValueError(f"Failed to release number from Twilio: {e}") from e
+
+    def activate_number(self, number: str):
+        """Manually activate a phone number from after it has been verified by Twilio.
+
+        Args:
+            number: The phone number to activate
+        """
+        number_details = self.get_number_details(number)
+        if not number_details or not number_details.friendly_name:
+            raise ValueError("Number not found")
+        if "INACTIVATED" in number_details.friendly_name:
+            number_details.update(
+                friendly_name=number_details.friendly_name.replace("_INACTIVATED", "")
+            )
+        else:
+            raise ValueError("Number is already activated")
 
     def release_number(self, number: str):
         """Release a phone number from both Vapi and Twilio.
@@ -350,3 +383,48 @@ class NumberService:
     def _get_friendly_name(self, business_name: str) -> str:
         stage = os.environ.get("RUNTIME_ENV") or "dev"
         return f"{stage}:{business_name}"
+
+    def get_available_numbers(self):
+        number_pool = {}
+        numlist = self.twilio_client.incoming_phone_numbers.list()
+        for num in numlist:
+            if not num.friendly_name:
+                continue
+            tollfree_verifications = (
+                self.twilio_client.messaging.v1.tollfree_verifications.list(
+                    tollfree_phone_number_sid=num.sid, limit=1
+                )
+            )
+            for record in tollfree_verifications:
+                number_pool[num.phone_number] = {
+                    "friendly_name": num.friendly_name,
+                    "status": record.status,
+                }
+        return number_pool
+
+    def get_approved_numbers(self):
+        number_pool = self.get_available_numbers()
+        approved_numbers = []
+        for number, name_statue in number_pool.items():
+            if (
+                "approved" in name_statue["status"].lower()
+                and "RELEASED" in name_statue["friendly_name"]
+            ):
+                approved_numbers.append(number)
+        return approved_numbers
+
+    def get_rejected_numbers(self):
+        number_pool = self.get_available_numbers()
+        rejected_numbers = []
+        for number, name_statue in number_pool.items():
+            if "rejected" in name_statue["status"].lower():
+                rejected_numbers.append(number)
+        return rejected_numbers
+
+    def get_inreview_numbers(self):
+        number_pool = self.get_available_numbers()
+        inreview_numbers = []
+        for number, name_statue in number_pool.items():
+            if "review" in name_statue["status"].lower():
+                inreview_numbers.append(number)
+        return inreview_numbers
