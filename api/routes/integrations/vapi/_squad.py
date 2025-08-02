@@ -124,12 +124,6 @@ class TriageAssistantFactory(BaseAssistantFactory):
         if not languages:
             raise SquadCreationError("No languages provided in the squad configuration")
 
-        # Enforce that English is one of the languages (case-insensitive)
-        if not any(lang.lower() == "english" for lang in languages):
-            raise SquadCreationError(
-                "English must be one of the languages in the squad configuration"
-            )
-
         language_list = (
             ", ".join(languages[:-1]) + f", or {languages[-1]}"
             if len(languages) > 1
@@ -137,22 +131,10 @@ class TriageAssistantFactory(BaseAssistantFactory):
         )
 
         transfer_rules = []
-        english_assistant_name = None
-
         for language, config in squad_config.language_assistants.items():
             assistant_name = config.assistant_name
             transfer_rules.append(
                 f"- For {language.title()} speakers or {language.title()} requests → transfer to {assistant_name}"
-            )
-
-            # Store English assistant name for fallback
-            if language.lower() == "english":
-                english_assistant_name = assistant_name
-
-        # Handle other languages with proper English assistant name
-        if english_assistant_name:
-            transfer_rules.append(
-                f"- For any other language speakers or requests → transfer to {english_assistant_name}"
             )
 
         transfer_rules_text = "\n".join(transfer_rules)
