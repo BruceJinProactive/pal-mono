@@ -118,39 +118,54 @@ class TriageAssistantFactory(BaseAssistantFactory):
         """Create system content for triage assistant."""
         agent_name = self.agent_config.persona.name
 
-        # Validate that the required languages for the hardcoded prompt exist
-        required_languages = ["english", "spanish", "chinese"]
-        missing_languages = [
-            lang
-            for lang in required_languages
-            if lang not in squad_config.language_assistants
-        ]
-        if missing_languages:
+        # Build language list and transfer rules dynamically
+        languages = list(squad_config.language_assistants.keys())
+
+        if not languages:
+            raise SquadCreationError("No languages provided in the squad configuration")
+
+        # Enforce that English is one of the languages (case-insensitive)
+        if not any(lang.lower() == "english" for lang in languages):
             raise SquadCreationError(
-                f"Missing required language configurations for triage assistant prompt: {', '.join(missing_languages)}"
+                "English must be one of the languages in the squad configuration"
             )
 
-        english_assistant_name = squad_config.language_assistants[
-            "english"
-        ].assistant_name
-        spanish_assistant_name = squad_config.language_assistants[
-            "spanish"
-        ].assistant_name
-        chinese_assistant_name = squad_config.language_assistants[
-            "chinese"
-        ].assistant_name
+        language_list = (
+            ", ".join(languages[:-1]) + f", or {languages[-1]}"
+            if len(languages) > 1
+            else languages[0]
+        )
+
+        transfer_rules = []
+        english_assistant_name = None
+
+        for language, config in squad_config.language_assistants.items():
+            assistant_name = config.assistant_name
+            transfer_rules.append(
+                f"- For {language.title()} speakers or {language.title()} requests → transfer to {assistant_name}"
+            )
+
+            # Store English assistant name for fallback
+            if language.lower() == "english":
+                english_assistant_name = assistant_name
+
+        # Handle other languages with proper English assistant name
+        if english_assistant_name:
+            transfer_rules.append(
+                f"- For any other language speakers or requests → transfer to {english_assistant_name}"
+            )
+
+        transfer_rules_text = "\n".join(transfer_rules)
 
         return f"""You are {agent_name}, the initial contact for {account_display_name}. 
 
 Your ONLY responsibility is to:
 1. Greet the customer warmly
-2. Identify their preferred language (English, Spanish, or Chinese)
+2. Identify their preferred language ({language_list})
 3. Transfer them to the appropriate language specialist
 
 IMPORTANT TRANSFER RULES:
-- For English speakers or English requests → transfer to {english_assistant_name}
-- For Spanish speakers, "español", or Spanish requests → transfer to {spanish_assistant_name}  
-- For Chinese speakers, "中文", Chinese characters, or Chinese requests → transfer to {chinese_assistant_name}
+{transfer_rules_text}
 
 DO NOT attempt to help with their actual request - only identify language preference and transfer immediately."""
 
@@ -216,9 +231,10 @@ class LanguageAssistantFactory(BaseAssistantFactory):
             "english": f"You are {agent_name}, English customer support representative for {account_display_name}. {agent_description} \n\nKeep responses concise and helpful.",
             "spanish": f"Eres {agent_name}, representante de soporte al cliente en español para {account_display_name}. {agent_description} \n\nMantén las respuestas concisas y útiles.",
             "chinese": f"你是{agent_name}，{account_display_name}的中文客服代表。{agent_description} \n\n保持回答简洁有用。从现在开始必须用中文回复， 否则用户听不懂。",
+            "general": f"You are {agent_name}, customer support representative for {account_display_name}. {agent_description} \n\nCommunicate in {language.title()} and keep responses concise and helpful.",
         }
 
-        return templates.get(language, templates["english"])
+        return templates.get(language, templates["general"])
 
 
 # ============================================================================
