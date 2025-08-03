@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import random
 import time
@@ -14,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from agent.config import AgentConfig
 from agent.input_output import Input, Output
-from agent.memory import MemoryProvider
 from agent.memory._implementation import get_all_memories
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
@@ -329,25 +327,15 @@ class AgnoAgent:
     ) -> tuple[Optional[str], Optional[list[Message]]]:
         current_time = datetime.datetime.now(datetime.timezone.utc)
 
-        if (
-            self.config.memory.enabled
-            and self.config.memory.provider == MemoryProvider.PROMPT
-        ):
-            # Run both operations concurrently - memory operation in thread pool to avoid blocking
-            messages, mem_content = await asyncio.gather(
-                self.get_history_messages(input),
-                asyncio.to_thread(lambda: asyncio.run(get_all_memories(self.config.metadata.user_id))),  # type: ignore
-            )
-            if mem_content:
-                mem_message = Message(role="developer", content=mem_content)
-                messages.append(mem_message)
-                logger.debug(f"[PalMemory]: Find user info from memory: {mem_content}")
-            else:
-                logger.debug(
-                    f"[PalMemory]: No user info from memory for user: {self.config.metadata.user_id}"
-                )
+        messages = await self.get_history_messages(input)
+
+        mem_content = await get_all_memories(self.config.metadata.user_id)  # type: ignore
+        if mem_content and mem_content.strip():
+            mem_message = Message(role="developer", content=mem_content)
+            messages.append(mem_message)
+            logger.debug(f"[PalMemory]: Find user info from memory: {mem_content}")
         else:
-            messages = await self.get_history_messages(input)
+            logger.debug("[PalMemory]: No memory content found")
 
         send_dd_histogram_metrics(
             "framework_agent.query_history_messages_time_spent",

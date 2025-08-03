@@ -1,8 +1,7 @@
 from agno.tools.toolkit import Toolkit
 
 from agent.knowledge import KnowledgeConfig
-from agent.memory import MemoryConfig, MemoryProvider
-from agent.tool.internal.memory_tool import MemoryTool
+from agent.memory import MemoryConfig
 from agent.tool.internal.query_knowledge_tool import QueryKnowledgeTool
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from utils.log import logger
@@ -36,10 +35,6 @@ def get_tools(
             tools.append(tool_registry.get_tool(identifier, tool_config.metadata))
         except Exception:
             logger.exception(f"Tool {identifier} failed to load.")
-
-    # Add memory tool if enabled in memory configuration
-    if memory_config.enabled and memory_config.provider == MemoryProvider.DEFAULT:
-        tools.append(MemoryTool(user_id=user_id))
 
     # Add knowledge tool if enabled in knowledge configuration
     if knowledge_config.enabled:
