@@ -331,7 +331,7 @@ class AgnoAgent:
 
         mem_content = await get_all_memories(self.config.metadata.user_id)  # type: ignore
         if mem_content and mem_content.strip():
-            mem_message = Message(role="developer", content=mem_content)
+            mem_message = Message(role="user", content=mem_content)
             messages.append(mem_message)
             logger.debug(f"[PalMemory]: Find user info from memory: {mem_content}")
         else:
