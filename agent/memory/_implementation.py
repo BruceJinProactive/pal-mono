@@ -31,13 +31,6 @@ def _set_cached_memories(user_id: str, memories: str) -> None:
     logger.debug(f"Cached memories for user {user_id}")
 
 
-def _clear_user_cache(user_id: str) -> None:
-    """Remove cached memories for user."""
-    if user_id in _cache:
-        del _cache[user_id]
-        logger.debug(f"Cleared cache for user {user_id}")
-
-
 @task(name="Memory Update")
 async def update_memory(
     user_id: str,
@@ -59,8 +52,6 @@ async def update_memory(
         model="gpt-4o-mini",
     )
 
-    # Clear cache since memory was updated
-    _clear_user_cache(user_id)
     logger.debug(f"Successfully added memory for user {user_id}")
 
 
