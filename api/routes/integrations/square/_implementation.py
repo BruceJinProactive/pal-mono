@@ -17,6 +17,7 @@ from services.integration_service.schema import (
     CreateIntegrationParams,
     IntegrationCredentials,
 )
+from services.service_utils import get_server_url
 from utils.log import logger
 from utils.secret import get_client_secret
 
@@ -42,7 +43,7 @@ async def install(request: Request):
 
     client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
-    redirect_uri = "https://palona.ai/integration/successful"
+    redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
     auth_url = (
         f"{SQUARE_AUTH_URL}?client_id={client_id}"
         f"&scope={scopes}"
@@ -79,8 +80,7 @@ async def callback(request: Request):
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": str(e)},
         )
-
-    redirect_uri = "https://palona.ai/integration/successful"
+    redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
 
     # Exchange code for access token
     data = {
@@ -144,19 +144,14 @@ async def callback(request: Request):
             expires_at=parsed_expires_at,
         )
 
-        created_integration = create_integration(
+        create_integration(
             session=session,
             account=account,
             params=integration_params,
         )
 
-        return JSONResponse(
-            {
-                "message": "Integration created successfully!",
-                "merchant_id": merchant_id,
-                "integration_id": str(created_integration.id),
-            }
-        )
+        # Redirect to success page after creating integration
+        return RedirectResponse(url="https://palona.ai/integration/successful")
 
     except Exception as e:
         session.rollback()
