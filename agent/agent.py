@@ -102,7 +102,6 @@ class Agent:
             )
             safe = await guardrail_task
             if not safe:
-                agent_task.cancel()
                 return Output(
                     content="We cannot process your input. Please try again with a different input."
                 )
