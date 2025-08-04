@@ -11,6 +11,7 @@ def connect_toast_order_hub(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
+    general_api_endpoint: str | None = None,
 ) -> GenericHubResponse:
     """
     Make a request to the Toast Order Hub API using the generic connect function.
@@ -23,6 +24,7 @@ def connect_toast_order_hub(
         query_params: Optional query parameters
         extra_headers: Optional additional headers
         payload: Optional request payload
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
         GenericHubResponse: The API response
@@ -39,4 +41,5 @@ def connect_toast_order_hub(
         extra_headers=extra_headers,
         payload=payload,
         store_id=store_id,
+        general_api_endpoint=general_api_endpoint,
     )

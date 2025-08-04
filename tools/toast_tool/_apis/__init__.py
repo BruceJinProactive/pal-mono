@@ -1,5 +1,6 @@
 import http.client
 import json
+import urllib.parse
 from typing import Optional
 
 from tools.toast_tool._apis._utils import connect_toast_order_hub
@@ -22,6 +23,7 @@ BASE_URL = "ws-sandbox-api.eng.toasttab.com"
 def get_toast_access_token(
     client_id: str,
     client_secret: str,
+    token_api_endpoint: str | None = None,
 ) -> Optional[ToastAccessToken]:
     """
     Obtains an access token from the Toast Authentication API.
@@ -29,7 +31,7 @@ def get_toast_access_token(
     Args:
         client_id: Your Toast API client identifier
         client_secret: Your Toast API client secret
-        logging_enabled: Whether to log the authentication process
+        token_api_endpoint: Optional custom token API endpoint
 
     Returns:
         `ToastAccessToken` object if successful, None otherwise
@@ -48,8 +50,32 @@ def get_toast_access_token(
     logger.debug(
         f"[ToastAPI.get_toast_access_token] Authenticating with Toast API using client ID: {'*' * 8}{client_id[-4:] if len(client_id) > 4 else '*' * 4}"
     )
+
+    # Determine which endpoint to use
+    if token_api_endpoint:
+        # Validate custom endpoint if provided
+        try:
+            # Handle cases where scheme might already be included
+            if "://" in token_api_endpoint:
+                parsed = urllib.parse.urlparse(token_api_endpoint)
+                if parsed.scheme != "https":
+                    raise ValueError("Only HTTPS endpoints are allowed")
+            else:
+                parsed = urllib.parse.urlparse(f"https://{token_api_endpoint}")
+
+            if not parsed.netloc:
+                raise ValueError("Invalid endpoint format")
+
+        except Exception as e:
+            raise ValueError(f"Invalid token_api_endpoint: {token_api_endpoint}") from e
+
+        # Return the netloc only to ensure consistency
+        endpoint = parsed.netloc
+    else:
+        endpoint = BASE_URL
+
     try:
-        conn = http.client.HTTPSConnection(BASE_URL, timeout=30)
+        conn = http.client.HTTPSConnection(endpoint, timeout=30)
         conn.request(
             "POST",
             "/authentication/v1/authentication/login",
@@ -96,6 +122,7 @@ def get_store_info(
     bearer_token: ToastAccessToken,
     store_id: str,
     include_archived: bool = False,
+    general_api_endpoint: str | None = None,
 ) -> RestaurantInfo:
     """
     Get restaurant information from the Toast API.
@@ -104,9 +131,10 @@ def get_store_info(
         bearer_token: Toast access token
         store_id: External ID for the restaurant
         include_archived: Whether to include archived restaurants
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
-        RestaurantInfo object or None if request failed
+        RestaurantInfo object
     """
     query_params = {"includeArchived": str(include_archived).lower()}
     try:
@@ -118,6 +146,7 @@ def get_store_info(
             query_params=query_params,
             extra_headers=None,
             payload=None,
+            general_api_endpoint=general_api_endpoint,
         )
     except Exception as e:
         # Will handle the exception at LLM level
@@ -142,6 +171,7 @@ def get_store_info(
 def get_online_ordering_status(
     bearer_token: ToastAccessToken,
     store_id: str,
+    general_api_endpoint: str | None = None,
 ) -> RestaurantOrderingStatus:
     """
     Get the online ordering availability status for a Toast restaurant.
@@ -149,6 +179,7 @@ def get_online_ordering_status(
     Args:
         bearer_token: Toast access token
         store_id: External ID for the restaurant
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
         RestaurantOrderingStatus object containing the availability status
@@ -163,6 +194,7 @@ def get_online_ordering_status(
             query_params=None,
             extra_headers=None,
             payload=None,
+            general_api_endpoint=general_api_endpoint,
         )
     except Exception as e:
         raise Exception(
@@ -187,6 +219,7 @@ def get_order_prices(
     bearer_token: ToastAccessToken,
     store_id: str,
     order_data: OrderInput,
+    general_api_endpoint: str | None = None,
 ) -> Order:
     """
     Calculates the check price amounts, tax amounts, and service charges for an OrderInput object.
@@ -195,6 +228,7 @@ def get_order_prices(
         bearer_token: Toast access token
         store_id: External ID for the restaurant
         order_data: OrderInput object containing the order details
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
         `Order` object with the base price, tax amount, and total price of each `check` object. The returned `Order` object will be used to submit the order to the Toast API.
@@ -208,6 +242,7 @@ def get_order_prices(
             store_id=store_id,
             query_params=None,
             payload=order_data.model_dump(exclude_none=True),
+            general_api_endpoint=general_api_endpoint,
         )
     except Exception as e:
         raise Exception(
@@ -307,18 +342,22 @@ def get_dining_option(
 
 
 def submit_order(
-    bearer_token: ToastAccessToken, store_id: str, order: OrderInput
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    order: OrderInput,
+    general_api_endpoint: str | None = None,
 ) -> Order:
     """
     Submits an order to the Toast API.
 
     Args:
-        bearer_token (ToastAccessToken): The Toast access token.
-        store_id (str): The external ID of the restaurant.
-        order (OrderInput): The OrderInput object to be submitted.
+        bearer_token: The Toast access token
+        store_id: The external ID of the restaurant
+        order: The OrderInput object to be submitted
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
-        `Order` object that has been persisted in Toast.
+        Order object that has been persisted in Toast.
     """
     try:
         response = connect_toast_order_hub(
@@ -327,6 +366,7 @@ def submit_order(
             api_function="/orders/v2/orders",
             store_id=store_id,
             payload=order.model_dump(exclude_none=True),
+            general_api_endpoint=general_api_endpoint,
         )
     except Exception as e:
         raise Exception(

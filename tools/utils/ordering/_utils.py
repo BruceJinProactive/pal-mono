@@ -10,6 +10,11 @@ from ddtrace.llmobs import LLMObs
 from pydantic import BaseModel, ValidationError
 
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from tools.utils.ordering._constants import (
+    VALID_DATE_PATTERN,
+    VALID_EMAIL_PATTERN,
+    VALID_PHONE_PATTERN,
+)
 from tools.utils.ordering._llm import llm_call
 from tools.utils.ordering._query_engine import BaseQueryEngine
 from tools.utils.ordering.classes import (
@@ -22,27 +27,6 @@ from utils.log import logger
 
 T = TypeVar("T", bound=BaseModel)
 S = TypeVar("S", bound=SubQueries)
-
-# Constants for validation
-VALID_PHONE_PATTERN = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
-VALID_EMAIL_PATTERN = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-VALID_DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
-
-# Base URL mapping for each API provider
-API_BASE_URLS: Dict[ApiProvider, Dict[str, str]] = {
-    ApiProvider.OLO: {
-        "production": "ordering.api.olosandbox.com",
-        "sandbox": "ordering.api.olosandbox.com",  # Using sandbox as default for now
-    },
-    ApiProvider.ADORA: {
-        "production": "public.api.adorapos.net",
-        "qa": "adora-qa-api-public.azurewebsites.net",
-    },
-    ApiProvider.TOAST: {
-        "production": "ws-sandbox-api.eng.toasttab.com",
-        "sandbox": "ws-sandbox-api.eng.toasttab.com",  # Using sandbox as default for now
-    },
-}
 
 
 # TODO: Do not pass latest_user_message as an argument. It is not needed.
@@ -251,26 +235,54 @@ def construct_order(
         return f"{error_prefix}: {e}"
 
 
-def _build_base_url(provider: ApiProvider, qa_store: bool) -> tuple[str, str]:
+def _build_base_url(
+    provider: ApiProvider, qa_store: bool, general_api_endpoint: Optional[str] = None
+) -> tuple[str, str]:
     """
     Build the base URL and path for the given provider.
 
     Args:
         provider: The API provider
         qa_store: Whether to use QA environment (for Adora API)
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
         tuple[str, str]: (base_url, path_prefix)
     """
+    # Handle custom endpoint if provided
+    if general_api_endpoint:
+        try:
+            # Handle cases where scheme might already be included
+            if "://" in general_api_endpoint:
+                parsed = urllib.parse.urlparse(general_api_endpoint)
+                if parsed.scheme != "https":
+                    raise ValueError("Only HTTPS endpoints are allowed")
+            else:
+                parsed = urllib.parse.urlparse(f"https://{general_api_endpoint}")
+
+            if not parsed.netloc:
+                raise ValueError("Invalid endpoint format")
+
+        except Exception as e:
+            raise ValueError(
+                f"Invalid general_api_endpoint: {general_api_endpoint}"
+            ) from e
+
+        # Return the netloc only to ensure consistency
+        return parsed.netloc, parsed.path if parsed.path else ""
+
+    # Default endpoints for each provider
     if provider == ApiProvider.OLO:
-        base_url = API_BASE_URLS[provider]["sandbox"]  # or "production"
+        base_url = "ordering.api.olosandbox.com"
         path_prefix = ""
     elif provider == ApiProvider.ADORA:
-        environment = "qa" if qa_store else "production"
-        base_url = API_BASE_URLS[provider][environment]
+        if qa_store:
+            base_url = "adora-qa-api-public.azurewebsites.net"
+        else:
+            base_url = "public.api.adorapos.net"
         path_prefix = "/api/v1/OrderHub/"
     elif provider == ApiProvider.TOAST:
-        base_url = API_BASE_URLS[provider]["sandbox"]  # or "production"
+        base_url = "ws-sandbox-api.eng.toasttab.com"
         path_prefix = ""
     else:
         raise ValueError(f"Unsupported API provider: {provider}")
@@ -370,6 +382,7 @@ def connect_order_hub(
     payload: Optional[Union[Dict[str, Any], str]] = None,
     store_id: Optional[str] = None,  # Required for Toast API
     qa_store: bool = False,  # Required for Adora API
+    general_api_endpoint: Optional[str] = None,  # Optional custom API endpoint
 ) -> GenericHubResponse:
     """
     Unified function to connect to different order hub APIs (Olo, Adora, Toast).
@@ -384,6 +397,7 @@ def connect_order_hub(
         payload: Optional request payload
         store_id: Store ID (required for Toast API)
         qa_store: Whether to use QA environment (for Adora API)
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
         GenericHubResponse: The API response
@@ -400,7 +414,7 @@ def connect_order_hub(
     )
 
     # Build base URL and path
-    base_url, path_prefix = _build_base_url(provider, qa_store)
+    base_url, path_prefix = _build_base_url(provider, qa_store, general_api_endpoint)
     path = path_prefix + api_function
 
     # Build headers

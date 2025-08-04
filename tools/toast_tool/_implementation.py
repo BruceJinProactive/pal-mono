@@ -55,32 +55,52 @@ class ToastTool(Toolkit):
         self,
         store_id: str,
         namespace: str,
-        index_name: str,
         tool_metadata: ToolMetadata,
+        index_name: str | None = None,
+        loyalty_enabled: bool = False,
+        coupons_enabled: bool = False,
+        default_coupon_id: str | None = None,
+        token_api_endpoint: str | None = None,
+        general_api_endpoint: str | None = None,
     ):
         super().__init__(name="toast_tool")
 
+        # Log instance creation with built-in id
+        instance_id = id(self)
+        logger.debug(f"ToastTool instance created: id={instance_id}")
+
+        # Configs
         self.store_id = store_id
         self.namespace = namespace
         self.index_name = index_name
         self.tool_metadata = tool_metadata
+        self.loyalty_enabled = loyalty_enabled
+        self.coupons_enabled = coupons_enabled
+        self.default_coupon_id = default_coupon_id
+        self.token_api_endpoint = token_api_endpoint
+        self.general_api_endpoint = general_api_endpoint
         self._cached_store_info: str | None = None
 
         # Register tools
-        self.register(self.check_online_ordering_status)
         self.register(self.get_store_info_tool)
         self.register(self.checkout_order)
         self.register(self.check_address)
 
         # Do not register get_menu_inventory_tool and get_ordering_schedule_tool for now
+        # TODO: Figure out how to check if the store is open for online ordering
+        # self.register(self.check_online_ordering_status)
         # self.register(self.get_ordering_schedule_tool)
+        # TODO: Figure out how to check if an item is out of stock or has low quantity
         # self.register(self.get_menu_inventory_tool)
 
         # Retrieval tools
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
-        self.query_engine = create_query_engine(
-            namespace=self.namespace, index_name=self.index_name
-        )
+        if self.index_name:
+            self.query_engine = create_query_engine(
+                namespace=self.namespace, index_name=self.index_name
+            )
+        else:
+            self.query_engine = None
 
         # TODO: See if the following lines are needed
         # loop = asyncio.get_running_loop()
@@ -92,7 +112,9 @@ class ToastTool(Toolkit):
         with LLMObs.task(name="get_toast_bearer_token"):
             api_key = get_client_secret_with_fallback("TOAST_CLIENT_ID")
             api_secret = get_client_secret_with_fallback("TOAST_CLIENT_SECRET")
-            bearer_token = get_toast_access_token(api_key, api_secret)
+            bearer_token = get_toast_access_token(
+                api_key, api_secret, token_api_endpoint=self.token_api_endpoint
+            )
             return bearer_token
 
     @tool
@@ -194,7 +216,9 @@ class ToastTool(Toolkit):
                 )
 
             store_info = get_store_info(
-                self._toast_bearer_token, self.store_id
+                self._toast_bearer_token,
+                self.store_id,
+                general_api_endpoint=self.general_api_endpoint,
             ).model_dump_json()
 
             # Cache store info
@@ -223,7 +247,9 @@ class ToastTool(Toolkit):
                 )
 
             status = get_online_ordering_status(
-                self._toast_bearer_token, self.store_id
+                self._toast_bearer_token,
+                self.store_id,
+                general_api_endpoint=self.general_api_endpoint,
             ).model_dump_json()
 
             return status
@@ -380,6 +406,10 @@ class ToastTool(Toolkit):
 
     @retrieval
     def _get_relevant_docs(self, chat_history: str) -> str:
+        # Check if query engine is available
+        if self.query_engine is None:
+            return "Menu information is not available for this store."
+
         # Decompose chat history into multiple sub-queries
         sub_queries = llm_call(
             system_prompt=RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
@@ -394,6 +424,7 @@ class ToastTool(Toolkit):
         logger.debug(f"Sub-queries identified: {sub_queries.queries}")
 
         async def run_all_queries():
+            assert self.query_engine is not None  # Already checked above
             tasks = [
                 asyncio.create_task(self.query_engine.aquery(query))
                 for query in sub_queries.queries
@@ -472,6 +503,7 @@ class ToastTool(Toolkit):
     def _construct_order(self, latest_user_message: str) -> OrderInput | str:
         chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
+
         order = llm_call(
             system_prompt=EXTRACTOR_SYSTEM_PROMPT,
             prompt=EXTRACTOR_USER_PROMPT.format(
@@ -617,7 +649,12 @@ class ToastTool(Toolkit):
         # First let toast API fill in the prices
         try:
             # order = get_order_prices(toast_bearer_token, self.store_id, order)
-            order = submit_order(toast_bearer_token, self.store_id, order)
+            order = submit_order(
+                toast_bearer_token,
+                self.store_id,
+                order,
+                general_api_endpoint=self.general_api_endpoint,
+            )
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
             logger.debug(
@@ -643,7 +680,12 @@ class ToastTool(Toolkit):
                 "for assistance."
             )
         try:
-            order = get_order_prices(toast_bearer_token, self.store_id, order)
+            order = get_order_prices(
+                toast_bearer_token,
+                self.store_id,
+                order,
+                general_api_endpoint=self.general_api_endpoint,
+            )
             return Price(
                 amount=order.checks[0].amount,
                 taxAmount=order.checks[0].taxAmount,
