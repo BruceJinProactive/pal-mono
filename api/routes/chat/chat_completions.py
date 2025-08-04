@@ -221,7 +221,7 @@ async def _send_urls_via_sms(
 
         # Check for multiple URLs and log error if found
         if len(urls) > 1:
-            logger.error(
+            logger.warning(
                 f"Multiple URLs found in content: {urls}. Only using the first URL: {urls[0]}"
             )
 
@@ -230,10 +230,12 @@ async def _send_urls_via_sms(
         try:
             # Create a prompt for summarization
             prompt = f"""
-Please create a short, SMS-friendly summary of the following content. DO NOT write out or paraphrase the full URL. Instead, insert the placeholder [INSERT_URL_HERE] where the link should go.
+Please create a short, SMS-friendly summary of the following content. DO NOT write out or paraphrase the full URL. Instead, insert the EXACT placeholder [INSERT_URL_HERE] where we will insert the link manually ourselves.
 
 Content:
 {full_content}
+
+CRITICAL INSTRUCTION: You MUST use the exact text [INSERT_URL_HERE] as the placeholder. Do NOT use variations like [here], [click here], [link], or any other text. Use EXACTLY: [INSERT_URL_HERE]
 
 Instructions:
 - If the content is about a pending-payment order:
@@ -253,11 +255,13 @@ Instructions:
   - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Order here: [INSERT_URL_HERE]")
 - Do not write the actual URL
 - Use line breaks for clarity
+
+REMEMBER: Use the EXACT placeholder [INSERT_URL_HERE] - no variations!
 """
 
             chat_complete_params = {
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.3,
+                "temperature": 0.1,  # Lower temperature for more consistent placeholder usage
                 "max_tokens": 100,
             }
             response = await call_llm_default(
@@ -287,10 +291,12 @@ Instructions:
                 f"The summarized content is empty from original content {full_content}"
             )
         else:
-            # Ignore potential format conflict (consider as str, not list)
-            summary_content = summary_content.replace(  # type: ignore
-                "[INSERT_URL_HERE]", str(first_url)
-            )
+            # Replace placeholder if found, otherwise append payment link
+            if "[INSERT_URL_HERE]" in summary_content:
+                summary_content = summary_content.replace("[INSERT_URL_HERE]", first_url)  # type: ignore
+            else:
+                summary_content = summary_content + f"\n{first_url}"  # type: ignore
+
             logger.debug(f"Post processed SMS summary to {summary_content}")
 
             # Create a Message object and send it via relay service
