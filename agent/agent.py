@@ -91,14 +91,24 @@ class Agent:
         # Update memory with the user's input
         self._update_memory(input.content)
 
-        if os.getenv("AWS_BEDROCK_GUARDRAIL_ID", ""):
-            safe = check_input_bedrock(prompt=input.content)
+        # Start agent task
+        agent_task = asyncio.create_task(self._agent.arun(input))  # type: ignore
+
+        # Run guardrail check if enabled
+        guardrail_id = os.getenv("AWS_BEDROCK_GUARDRAIL_ID", "")
+        if guardrail_id:
+            guardrail_task = asyncio.create_task(
+                asyncio.to_thread(check_input_bedrock, input.content)
+            )
+            safe = await guardrail_task
             if not safe:
+                agent_task.cancel()
                 return Output(
                     content="We cannot process your input. Please try again with a different input."
                 )
 
-        output = await self._agent.arun(input)  # type: ignore
+        output = await agent_task
+
         if isinstance(output, _AsyncIterator):
             # This should never happen in non-streaming mode
             LLMObs.annotate(
