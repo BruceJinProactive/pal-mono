@@ -20,21 +20,27 @@ def parse_agent_prompt_sections(generated_prompt: str) -> dict:
     Returns:
         dict: Dictionary with persona and interaction_guidelines
     """
-    # Split on the main section headers
-    persona_match = re.search(
-        r"## Persona\s*\n(.*?)(?=## Interaction Guidelines|$)",
-        generated_prompt,
-        re.DOTALL,
-    )
+    # Split on interaction guidelines - everything before is persona
     guidelines_match = re.search(
-        r"## Interaction Guidelines\s*\n(.*?)$", generated_prompt, re.DOTALL
+        r"(?:#{1,4}\s*|\*{1,2}|^)\s*Interaction Guidelines\*{0,2}[\s:]*\n(.*?)$",
+        generated_prompt,
+        re.DOTALL | re.MULTILINE,
     )
 
+    if guidelines_match:
+        # Find where interaction guidelines starts
+        guidelines_start = guidelines_match.start()
+        persona_content = generated_prompt[:guidelines_start].strip()
+        # Include the header in the guidelines content
+        guidelines_content = generated_prompt[guidelines_start:].strip()
+    else:
+        # No interaction guidelines found - everything is persona
+        persona_content = generated_prompt.strip()
+        guidelines_content = ""
+
     return {
-        "persona": persona_match.group(1).strip() if persona_match else "",
-        "interaction_guidelines": (
-            guidelines_match.group(1).strip() if guidelines_match else ""
-        ),
+        "persona": persona_content,
+        "interaction_guidelines": guidelines_content,
     }
 
 
@@ -356,7 +362,9 @@ Base the prompt on:
 
 ## Persona
 
-Begin with a character description:
+**IMPORTANT: Start your response directly with the ## Persona header shown above, then immediately include the character description below it.**
+
+Character description:
 {"You are " + agent_name + ", [dynamically create a role description using the actual personality traits provided: " + keywords + ". Vary your phrasing - could be 'a [keyword] server', 'the [keyword] hospitality specialist', '[keyword] team member', or other creative combinations that fit the specific keywords given] for " + restaurant_name + ". [Then create a natural character description that reflects the essence of these specific personality traits and any geographical/cultural background found in keywords, based on provided context]" if agent_name else "You are [dynamically create a role description using the actual personality traits provided: " + keywords + ". Vary your phrasing - could be 'a [keyword] server', 'the [keyword] hospitality specialist', '[keyword] team member', or other creative combinations that fit the specific keywords given] for " + restaurant_name + ". [Then create a natural character description that reflects the essence of these specific personality traits and any geographical/cultural background found in keywords, based on provided context]"}
 
 ### Voice & Tone
