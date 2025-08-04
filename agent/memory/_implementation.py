@@ -60,24 +60,34 @@ async def get_all_memories(user_id: str) -> str:
     """
     Get all memories about a user. The memories are limited to the user's personal
     preferences and some of their personal information.
-    Uses simple 5-minute TTL cache.
+    Uses simple 5-minute TTL cache. Returns empty string if not cached to avoid blocking.
     """
     # Check cache first
     cached_memories = _get_cached_memories(user_id)
     if cached_memories is not None:
         return cached_memories
 
-    # Cache miss - fetch from mem0
-    start_time = time.perf_counter()
-    client = AsyncMemoryClient()
-    memories = await client.get_all(user_id=user_id)
-    memories_string = ", ".join([item["memory"] for item in memories])
-    elapsed_time = time.perf_counter() - start_time
+    # Cache miss - start background task to populate cache, return empty string immediately
+    import asyncio
 
-    # Cache the result
-    _set_cached_memories(user_id, memories_string)
+    asyncio.create_task(_fetch_and_cache_memories(user_id))
+    logger.debug(f"Cache miss for user {user_id} - started background fetch")
+    return ""
 
-    logger.debug(
-        f"Cache miss for user {user_id} - fetched memories ({elapsed_time:.4f}s): {memories_string}"
-    )
-    return memories_string
+
+async def _fetch_and_cache_memories(user_id: str) -> None:
+    """Background task to fetch and cache memories without blocking."""
+    try:
+        start_time = time.perf_counter()
+        client = AsyncMemoryClient()
+        memories = await client.get_all(user_id=user_id)
+        memories_string = ", ".join([item["memory"] for item in memories])
+        elapsed_time = time.perf_counter() - start_time
+
+        # Cache the result
+        _set_cached_memories(user_id, memories_string)
+        logger.debug(
+            f"Background fetch completed for user {user_id} ({elapsed_time:.4f}s): {memories_string}"
+        )
+    except Exception as e:
+        logger.error(f"Background memory fetch failed for user {user_id}: {e}")
