@@ -50,16 +50,50 @@ class Input(BaseModel):
 
     def get_prompt(self):
         """
-        Constructs a simple XML message for the LLM.
+        Constructs a simple XML message for the LLM with instructions on how to use the provided information.
         """
         parts = []
+
+        # Build instructions
+        instructions = []
+        is_phone_channel = self.channel and self.channel.lower() in [
+            "sms",
+            "voice",
+            "whatsapp",
+        ]
+
+        if self.sender_identifier:
+            if is_phone_channel:
+                instructions.append(
+                    "You have access to the user's phone number. Use this information when the user asks about their phone number or contact details."
+                )
+            else:
+                instructions.append(
+                    "You have access to the user's identifier. Use this information when the user asks about their account or identity."
+                )
+
+        if self.channel:
+            instructions.append(
+                f"The user is communicating via {self.channel}. Consider this context when responding."
+            )
+
+        if self.context:
+            instructions.append(
+                "Additional context information is provided. Use this to better understand the user's situation and provide more personalized responses."
+            )
+
+        if instructions:
+            parts.append(f"<instructions>\n{' '.join(instructions)}\n</instructions>")
+
+        # Add message content
         parts.append(f"<message>{self.content}</message>")
 
+        # Add context data
         if self.channel:
             parts.append(f"<channel>{self.channel}</channel>")
 
         if self.sender_identifier:
-            if self.channel and self.channel.lower() in ["sms", "voice", "whatsapp"]:
+            if is_phone_channel:
                 parts.append(f"<user_phone>{self.sender_identifier}</user_phone>")
             else:
                 parts.append(
