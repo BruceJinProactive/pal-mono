@@ -50,19 +50,26 @@ class Input(BaseModel):
 
     def get_prompt(self):
         """
-        Constructs a model message from the content and context.
-
-        str
-            A formatted string containing the content and context.
+        Constructs a simple XML message for the LLM.
         """
+        parts = []
+        parts.append(f"<message>{self.content}</message>")
 
-        # TODO: Update prompts here
-        return (
-            f"<content>{self.content}</content>\n\n"
-            + f"<context>{self.context}</context>\n\n"
-            + f"<channel>{self.channel}</channel>\n\n"
-            + f"<sender_identifier>{self.sender_identifier}</sender_identifier>\n\n"
-        )
+        if self.channel:
+            parts.append(f"<channel>{self.channel}</channel>")
+
+        if self.sender_identifier:
+            if self.channel and self.channel.lower() in ["sms", "voice", "whatsapp"]:
+                parts.append(f"<user_phone>{self.sender_identifier}</user_phone>")
+            else:
+                parts.append(
+                    f"<user_sender_identifier>{self.sender_identifier}</user_sender_identifier>"
+                )
+
+        if self.context:
+            parts.append(f"<context>{self.context}</context>")
+
+        return "\n".join(parts)
 
 
 class Output(BaseModel):
