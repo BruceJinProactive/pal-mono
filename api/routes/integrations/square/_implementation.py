@@ -17,7 +17,6 @@ from services.integration_service.schema import (
     CreateIntegrationParams,
     IntegrationCredentials,
 )
-from services.service_utils import get_server_url
 from utils.log import logger
 from utils.secret import get_client_secret
 
@@ -43,8 +42,7 @@ async def install(request: Request):
 
     client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
-    # Build the redirect URI dynamically
-    redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
+    redirect_uri = "https://palona.ai/integration/successful"
     auth_url = (
         f"{SQUARE_AUTH_URL}?client_id={client_id}"
         f"&scope={scopes}"
@@ -82,8 +80,7 @@ async def callback(request: Request):
             content={"error": str(e)},
         )
 
-    # Always build the redirect_uri dynamically for token exchange
-    redirect_uri = f"{get_server_url()}/v1/integrations/square/callback"
+    redirect_uri = "https://palona.ai/integration/successful"
 
     # Exchange code for access token
     data = {
