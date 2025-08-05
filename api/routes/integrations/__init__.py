@@ -91,12 +91,12 @@ async def square_callback(request: Request):
     return await square_implementation.callback(request)
 
 
+@integrations_router.post("/square/refresh-expiring", status_code=status.HTTP_200_OK)
 @integrations_router.get("/square/refresh-expiring", status_code=status.HTTP_200_OK)
-async def square_refresh_expiring():
+async def square_refresh_expiring(session=Depends(db.get_db)):
     """
     Check all Square integrations and refresh tokens that are expiring within 7 days.
     """
-    session = next(db.get_db())
     try:
         result = square_implementation.check_and_refresh_expiring_square_tokens(
             session=session, days_threshold=7
