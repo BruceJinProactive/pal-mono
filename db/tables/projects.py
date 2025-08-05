@@ -49,6 +49,10 @@ class Project(Base):
     timezone: Mapped[str | None] = mapped_column(
         String, nullable=True, server_default="America/Los_Angeles"
     )
+    transfer_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    transfer_phone_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    reservation_link: Mapped[str | None] = mapped_column(String, nullable=True)
+    ordering_link: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(
