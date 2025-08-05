@@ -20,6 +20,10 @@ class Project(BaseModel):
     product_info: str | None = None
     service_instruction: str | None = None
     timezone: str | None = None
+    transfer_message: str | None = None
+    transfer_phone_number: str | None = None
+    reservation_link: str | None = None
+    ordering_link: str | None = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -48,6 +52,10 @@ class UpdateProjectRequest(BaseModel):
     product_info: str | None = None
     service_instruction: str | None = None
     timezone: str | None = None
+    transfer_message: str | None = None
+    transfer_phone_number: str | None = None
+    reservation_link: str | None = None
+    ordering_link: str | None = None
 
     def to_project_params(self):
         return ProjectParams(
@@ -60,6 +68,10 @@ class UpdateProjectRequest(BaseModel):
             product_info=self.product_info,
             service_instruction=self.service_instruction,
             timezone=self.timezone,
+            transfer_message=self.transfer_message,
+            transfer_phone_number=self.transfer_phone_number,
+            reservation_link=self.reservation_link,
+            ordering_link=self.ordering_link,
         )
 
 

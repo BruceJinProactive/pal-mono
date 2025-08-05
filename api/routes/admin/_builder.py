@@ -115,6 +115,10 @@ def build_project(project: db.Project) -> Project:
         product_info=project.product_info,
         service_instruction=project.service_instruction,
         timezone=project.timezone,
+        transfer_message=project.transfer_message,
+        transfer_phone_number=project.transfer_phone_number,
+        reservation_link=project.reservation_link,
+        ordering_link=project.ordering_link,
         created_at=int(project.created_at.timestamp()),
         updated_at=int(project.updated_at.timestamp() if project.updated_at else 0),
     )
