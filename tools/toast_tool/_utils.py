@@ -272,23 +272,48 @@ def readable_hours(service_period: Dict[str, Any]) -> str:
     if not service_period or "dayPeriods" not in service_period:
         return ""
 
+    # Get dining option for display
+    dining_option = _format_dining_option(
+        service_period.get("diningOptionBehavior", "")
+    )
+
     # Group days by their time ranges for efficiency
     time_range_to_days: Dict[str, List[str]] = defaultdict(list)
 
     for day_period in service_period["dayPeriods"]:
-        day_name = day_period["day"].capitalize()
+        # Handle both data structures: new format with dayOfWeek and old format with day
+        day_name = None
+        if "dayOfWeek" in day_period and day_period["dayOfWeek"] is not None:
+            day_name = day_period["dayOfWeek"].capitalize()
+        elif "day" in day_period:
+            day_name = day_period["day"].capitalize()
 
-        for time_range in day_period.get("timeRanges", []):
-            time_range_str = _format_time_range(time_range)
-            time_range_to_days[time_range_str].append(day_name)
+        if not day_name:
+            continue
+
+        # Handle new format with startTime/endTime
+        if "startTime" in day_period and "endTime" in day_period:
+            start_time = day_period.get("startTime")
+            end_time = day_period.get("endTime")
+            if start_time is not None and end_time is not None:
+                time_range_str = f"{start_time} - {end_time}"
+                time_range_to_days[time_range_str].append(day_name)
+
+        # Handle old format with timeRanges
+        elif "timeRanges" in day_period:
+            for time_range in day_period.get("timeRanges", []):
+                time_range_str = _format_time_range(time_range)
+                if time_range_str:
+                    time_range_to_days[time_range_str].append(day_name)
 
     if not time_range_to_days:
-        return ""
+        return (
+            f"{dining_option} Hours: Not available"
+            if dining_option
+            else "Hours: Not available"
+        )
 
     # Build output
-    dining_option = _format_dining_option(
-        service_period.get("diningOptionBehavior", "")
-    )
     output_lines = [f"{dining_option} Hours:"] if dining_option else ["Hours:"]
 
     # Process each time range and group consecutive days
@@ -357,12 +382,13 @@ def parse_service_periods(service_periods: List[Dict[str, Any]]) -> str:
     """
     if not service_periods:
         return ""
-
-    # Filter out empty periods and process in one pass
+    # Process all periods - readable_hours now handles invalid data gracefully
     formatted_periods = [
         readable_hours(period)
         for period in service_periods
-        if period and readable_hours(period)
+        if period  # Only filter out completely None/empty periods
     ]
 
+    # Filter out any empty responses
+    formatted_periods = [fp for fp in formatted_periods if fp]
     return "\n".join(formatted_periods)

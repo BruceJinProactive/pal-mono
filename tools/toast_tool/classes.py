@@ -313,12 +313,18 @@ class DateOverride(BaseModel):
     )
 
 
+class TimeRange(BaseModel):
+    """Time range with start and end times"""
+
+    start: str = Field(description="Start time")
+    end: str = Field(description="End time")
+
+
 class DayPeriod(BaseModel):
     """Day period object that contains information about specific day and time range"""
 
-    dayOfWeek: Optional[str] = Field(None, description="Day of the week")
-    startTime: Optional[str] = Field(None, description="Start time for the day period")
-    endTime: Optional[str] = Field(None, description="End time for the day period")
+    day: str = Field(description="Day of the week")
+    timeRanges: List[TimeRange] = Field(description="Array of time ranges for this day")
 
 
 class ServicePeriod(BaseModel):

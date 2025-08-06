@@ -30,6 +30,7 @@ from tools.toast_tool._prompt_constants import (
 )
 from tools.toast_tool._utils import (
     add_lat_long_to_address,
+    parse_service_periods,
     validate_item_modifier_quantity,
 )
 from tools.toast_tool.classes import (
@@ -220,7 +221,7 @@ class ToastTool(Toolkit):
                 self.store_id,
                 general_api_endpoint=self.general_api_endpoint,
             ).model_dump_json()
-
+            print(f"Store info: {store_info}")
             # Cache store info
             self._cached_store_info = store_info
             return store_info
@@ -288,7 +289,9 @@ class ToastTool(Toolkit):
                 store_id=self.store_id,
             )
 
-            return schedule_response.model_dump_json(indent=2)
+            return parse_service_periods(
+                schedule_response.model_dump()["servicePeriods"]
+            )
 
         except Exception as e:
             logger.error(
