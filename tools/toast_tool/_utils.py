@@ -2,13 +2,25 @@
 import datetime
 import os
 import re
-from typing import Any, Tuple
+from collections import defaultdict
+from typing import Any, Dict, List, Tuple
 
 from geopy.geocoders import Nominatim
 
 from tools.toast_tool.classes import DeliveryAddress, DiningBehavior
 from utils.log import logger
 
+# Constants for better performance and maintainability
+_WEEKDAYS = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
+_DAY_TO_INDEX = {day: i for i, day in enumerate(_WEEKDAYS)}
 VALID_PHONE_PATTERN = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
 VALID_EMAIL_PATTERN = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 
@@ -160,13 +172,7 @@ def add_lat_long_to_address(
 
 def parse_menu(json_data: dict[str, Any], save_to_file: bool = False) -> dict:
     """
-    Parse the menu JSON data and return a dictionary with item names as keys and formatted strings as values.
-    Args:
-        json_data (dict): The JSON data containing menu information returned from the Toast API.
-        save_to_file (bool): Whether to save the parsed menu to files.
-
-    Returns:
-        dict: A dictionary with item names as keys and formatted strings as values.
+    LEGACY CODE. DO NOT USE.
     """
     menu_data = {}
 
@@ -234,3 +240,129 @@ def parse_menu(json_data: dict[str, Any], save_to_file: bool = False) -> dict:
                 f.write(information)
 
     return menu_data
+
+
+def _format_dining_option(dining_option: str) -> str:
+    """Format dining option behavior string for display."""
+    return dining_option.replace("_", " ").title()
+
+
+def _format_time_range(time_range_dict: Dict[str, str]) -> str:
+    """Format time range dictionary to readable string."""
+    if (
+        not time_range_dict
+        or "start" not in time_range_dict
+        or "end" not in time_range_dict
+    ):
+        raise ValueError(f"Invalid time range dictionary: {time_range_dict}")
+
+    return f'{time_range_dict["start"]}–{time_range_dict["end"]}'
+
+
+def readable_hours(service_period: Dict[str, Any]) -> str:
+    """
+    Convert service period data to human-readable hours format.
+
+    Args:
+        service_period: Dictionary containing service period information
+
+    Returns:
+        Formatted string with dining option and hours
+    """
+    if not service_period or "dayPeriods" not in service_period:
+        return ""
+
+    # Group days by their time ranges for efficiency
+    time_range_to_days: Dict[str, List[str]] = defaultdict(list)
+
+    for day_period in service_period["dayPeriods"]:
+        day_name = day_period["day"].capitalize()
+
+        for time_range in day_period.get("timeRanges", []):
+            time_range_str = _format_time_range(time_range)
+            time_range_to_days[time_range_str].append(day_name)
+
+    if not time_range_to_days:
+        return ""
+
+    # Build output
+    dining_option = _format_dining_option(
+        service_period.get("diningOptionBehavior", "")
+    )
+    output_lines = [f"{dining_option} Hours:"] if dining_option else ["Hours:"]
+
+    # Process each time range and group consecutive days
+    for time_range_str, days in time_range_to_days.items():
+        grouped_days = _group_consecutive_days(days)
+        for day_group in grouped_days:
+            output_lines.append(f"{day_group}: {time_range_str}")
+
+    return "\n".join(output_lines)
+
+
+def _group_consecutive_days(days: List[str]) -> List[str]:
+    """
+    Group consecutive days into ranges (e.g., ['Monday', 'Tuesday'] -> 'Monday–Tuesday').
+
+    Args:
+        days: List of day names to group
+
+    Returns:
+        List of formatted day ranges
+    """
+    if not days:
+        return []
+
+    if len(days) == 1:
+        return days
+
+    # Sort days by weekday order and get their indices
+    day_indices = sorted([_DAY_TO_INDEX[day] for day in days if day in _DAY_TO_INDEX])
+
+    if not day_indices:
+        return days  # Return original if no valid days found
+
+    # Group consecutive indices
+    groups = []
+    current_group = [day_indices[0]]
+
+    for i in range(1, len(day_indices)):
+        if day_indices[i] == day_indices[i - 1] + 1:
+            current_group.append(day_indices[i])
+        else:
+            groups.append(current_group)
+            current_group = [day_indices[i]]
+    groups.append(current_group)
+
+    # Format groups back to day names
+    formatted_groups = []
+    for group in groups:
+        if len(group) == 1:
+            formatted_groups.append(_WEEKDAYS[group[0]])
+        else:
+            formatted_groups.append(f"{_WEEKDAYS[group[0]]}–{_WEEKDAYS[group[-1]]}")
+
+    return formatted_groups
+
+
+def parse_service_periods(service_periods: List[Dict[str, Any]]) -> str:
+    """
+    Parse multiple service periods into a readable format.
+
+    Args:
+        service_periods: List of service period dictionaries
+
+    Returns:
+        Formatted string with all service periods
+    """
+    if not service_periods:
+        return ""
+
+    # Filter out empty periods and process in one pass
+    formatted_periods = [
+        readable_hours(period)
+        for period in service_periods
+        if period and readable_hours(period)
+    ]
+
+    return "\n".join(formatted_periods)

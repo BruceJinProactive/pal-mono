@@ -89,7 +89,7 @@ class ToastTool(Toolkit):
         # Do not register get_menu_inventory_tool and get_ordering_schedule_tool for now
         # TODO: Figure out how to check if the store is open for online ordering
         # self.register(self.check_online_ordering_status)
-        # self.register(self.get_ordering_schedule_tool)
+        self.register(self.get_ordering_schedule_tool)
         # TODO: Figure out how to check if an item is out of stock or has low quantity
         # self.register(self.get_menu_inventory_tool)
 
