@@ -108,9 +108,9 @@ def get_transcriber_and_voice_config(
             }
 
         voice = {
-            "provider": agent_config.voice_config.voice_provider or "cartesia",
+            "provider": "cartesia",
             "voiceId": voice_id or SPORTSMAN_VOICE_ID,
-            "model": agent_config.voice_config.voice_model or "sonic-2",
+            "model": "sonic-2",
         }
     else:
         # Default single-language setup
