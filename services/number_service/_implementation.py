@@ -15,6 +15,8 @@ from utils.log import logger
 from ..service_utils import get_server_url
 from ._utils import AssistantConfig, NumberResponse
 
+RELEASED_LABEL = "RELEASED"
+
 
 class NumberService:
     """Service for managing phone numbers and Vapi assistants.
@@ -343,7 +345,8 @@ class NumberService:
                     if n.friendly_name and "INACTIVATED" in n.friendly_name:
                         n.delete()
                     else:
-                        n.update(friendly_name="RELEASED")
+
+                        n.update(friendly_name=self._get_friendly_name(RELEASED_LABEL))
                     break
         except Exception as e:
             raise ValueError(f"Failed to release number from Twilio: {e}") from e
@@ -380,9 +383,9 @@ class NumberService:
         self._release_number_from_vapi(number)
         self._release_number_from_twilio(number)
 
-    def _get_friendly_name(self, business_name: str) -> str:
+    def _get_friendly_name(self, name: str) -> str:
         stage = os.environ.get("RUNTIME_ENV") or "dev"
-        return f"{stage}:{business_name}"
+        return f"{stage}:{name}"
 
     def get_available_numbers(self):
         number_pool = {}
@@ -405,10 +408,11 @@ class NumberService:
     def get_approved_numbers(self):
         number_pool = self.get_available_numbers()
         approved_numbers = []
+        released_name = self._get_friendly_name(RELEASED_LABEL)
         for number, name_statue in number_pool.items():
             if (
                 "approved" in name_statue["status"].lower()
-                and "RELEASED" in name_statue["friendly_name"]
+                and name_statue["friendly_name"] == released_name
             ):
                 approved_numbers.append(number)
         return approved_numbers

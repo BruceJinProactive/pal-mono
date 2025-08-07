@@ -31,6 +31,10 @@ source ~/.venvs/aienv/bin/activate
 pip3 install docker
 pip3 install agno
 pip3 install agno.docker
+pip3 install black==24.8.0
+pip3 install isort==5.13.2
+pip3 install pyright==1.1.382
+pip3 install ruff==0.6.2
 ag init
 ag ws setup
 ```
