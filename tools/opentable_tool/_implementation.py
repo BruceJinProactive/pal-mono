@@ -1,5 +1,8 @@
+import re
+import urllib.parse
 from functools import cached_property
 
+import requests
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
@@ -9,7 +12,6 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.opentable_tool._apis import (
     get_availability_metadata as get_availability_metadata_api,
 )
-from tools.opentable_tool._apis import get_opentable_access_token, make_reservation
 from tools.opentable_tool._apis import search_availability as search_availability_api
 from tools.opentable_tool._prompt_constants import (
     RESERVATION_EXTRACTOR_SYSTEM_PROMPT,
@@ -19,7 +21,6 @@ from tools.opentable_tool._utils import (
     extract_booking_url,
     format_availability_metadata,
     format_availability_results,
-    prepare_reservation_parameters,
     validate_search_parameters,
 )
 from tools.opentable_tool.classes import (
@@ -61,16 +62,51 @@ class OpenTableTool(Toolkit):
 
     @cached_property
     def _opentable_bearer_token(self) -> OpenTableAccessToken | None:
-        """Get and cache the OpenTable bearer token"""
-        with LLMObs.task(name="get_opentable_bearer_token"):
-            bearer_token = get_opentable_access_token(
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-                use_production=self.use_production,
+        """Get and cache the OpenTable bearer token by fetching authToken from HTML page"""
+        try:
+            # Make GET request to the OpenTable restaurant page
+            url = "https://www.opentable.com/restref/client/?rid=1"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+
+            # Extract authToken from the HTML content using regex
+            html_content = response.text
+
+            # Look for authToken in the HTML - it's typically in a script tag or data attribute
+            auth_token_pattern = r'"authToken":\s*"([^"]+)"'  # Exact JSON format
+
+            auth_token = None
+            match = re.search(auth_token_pattern, html_content)
+            if match:
+                auth_token = match.group(1)
+
+            if not auth_token:
+                logger.error("Could not find authToken in OpenTable HTML response")
+                return None
+
+            # Log successful token extraction (first 20 chars for debugging)
+            logger.info(
+                f"Successfully extracted OpenTable auth token: {auth_token[:20]}..."
             )
-            if not bearer_token:
-                logger.error("Failed to obtain OpenTable access token", exc_info=True)
-            return bearer_token
+
+            # Create OpenTableAccessToken object
+            return OpenTableAccessToken(
+                access_token=auth_token,
+                token_type="Bearer",
+                expires_in=3600,  # Assume 1 hour expiration
+                scope=None,
+            )
+
+        except requests.RequestException as e:
+            logger.error(f"Error fetching OpenTable auth token: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error in _opentable_bearer_token: {str(e)}")
+            return None
 
     @tool
     def search_availability(
@@ -323,58 +359,23 @@ class OpenTableTool(Toolkit):
                     )
                     return f"I need to know {formatted_fields}. Could you please provide this information?"
 
-            # Prepare reservation parameters using utility function
-            reservation_params = prepare_reservation_parameters(
-                access_token=bearer_token.access_token,  # type: ignore
-                restaurant_id=restaurant_id,
-                party_size=reservation_data.party_size,  # type: ignore
-                datetime_iso=reservation_data.date_time.isoformat(),  # type: ignore
-                first_name=reservation_data.first_name,  # type: ignore
-                last_name=reservation_data.last_name or "",
-                email_address=reservation_data.email_address,  # type: ignore
-                phone=reservation_data.phone,  # type: ignore
-                reservation_attribute=(
-                    reservation_data.table_preference.value
-                    if reservation_data.table_preference
-                    else "default"
-                ),
-                environment=(
-                    reservation_data.environment_preference.value
-                    if reservation_data.environment_preference
-                    else None
-                ),
-                special_request=reservation_data.special_request,
-                restaurant_email_marketing_opt_in=reservation_data.restaurant_email_marketing_opt_in
-                or False,
-                sms_notifications_opt_in=reservation_data.sms_notifications_opt_in
-                or False,
-                use_production=self.use_production,
-            )
+            # Generate the direct booking link
+            date_time_str = reservation_data.date_time.isoformat()  # type: ignore
+            party_size = reservation_data.party_size  # type: ignore
 
-            # Check if prepare_reservation_parameters returned an error
-            if isinstance(reservation_params, str):
-                return f"Unable to make reservation: {reservation_params}"
+            # URL encode the dateTime parameter to match OpenTable's format
+            encoded_date_time = urllib.parse.quote(date_time_str)
 
-            # Create the reservation
-            with LLMObs.task(name="make_opentable_reservation"):
-                reservation_result = make_reservation(**reservation_params)
+            # Create the booking URL with the extracted parameters
+            booking_url = f"https://www.opentable.com/booking/details?dateTime={encoded_date_time}&partySize={party_size}&rid={restaurant_id}"
 
-            # Format successful response
-            response = "Reservation confirmed!\n\n"
-            response += (
-                f"Confirmation Number: {reservation_result.confirmation_number}\n"
-            )
-            response += f"Date & Time: {reservation_result.date_time}\n"
-            response += f"Party Size: {reservation_result.party_size}\n"
-            response += f"Guest: {reservation_data.first_name} {reservation_data.last_name or ''}\n"
-
-            if reservation_result.notes:
-                response += f"Notes: {reservation_result.notes}\n"
-
-            response += f"\nTo manage your reservation: {reservation_result.manage_reservation_url}\n"
-
-            if reservation_result.message:
-                response += f"\nImportant Information:\n{reservation_result.message}"
+            # Format the response with the booking link
+            response = "I've prepared your reservation request!\n\n"
+            response += f"Date & Time: {reservation_data.date_time}\n"  # type: ignore
+            response += f"Party Size: {party_size}\n"
+            response += f"Restaurant ID: {restaurant_id}\n\n"
+            response += f"Click here to complete your reservation: {booking_url}\n\n"
+            response += "This link will take you directly to OpenTable's booking page where you can select your preferred seating and complete your reservation."
 
             return response
 

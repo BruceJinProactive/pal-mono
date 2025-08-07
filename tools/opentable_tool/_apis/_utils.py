@@ -42,8 +42,13 @@ def connect_opentable_api(
     Returns:
         OpenTableResponse object containing the response data
     """
-    # Determine the appropriate host based on the use_production flag
-    host = PRODUCTION_HOST if use_production else PREPROD_HOST
+    # Determine the appropriate host based on the endpoint
+    if api_function.startswith("/restref/"):
+        # Use the main OpenTable domain for restref endpoints
+        host = "www.opentable.com"
+    else:
+        # Use API subdomain for other endpoints
+        host = PRODUCTION_HOST if use_production else PREPROD_HOST
 
     # Build the query string if query parameters are provided
     query_string = ""
@@ -53,11 +58,19 @@ def connect_opentable_api(
     # Set up the connection with timeout
     conn = http.client.HTTPSConnection(host, timeout=timeout)
 
-    # Set up headers
+    # Set up headers to match Postman
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {bearer_token.access_token}",
+        "User-Agent": "PostmanRuntime/7.45.0",
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
     }
+
+    # Add cookies for restref endpoints
+    if api_function.startswith("/restref/"):
+        headers["Cookie"] = "OT-Locale=en-US"
 
     # Add extra headers if provided
     if extra_headers:

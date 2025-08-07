@@ -108,23 +108,22 @@ def search_availability(
         AvailabilitySearchResponse object or raises an exception if request fails
     """
     # Construct API endpoint
-    api_function = f"/v2/availability/{restaurant_id}"
+    api_function = "/restref/api/availability"
 
-    # Convert search parameters to query parameters
-    # keep aliases & drop Nones in one shot
-    query_params: Dict[str, str] = {
-        k: (",".join(v) if isinstance(v, list) else str(v))
-        for k, v in search_params.model_dump(
-            by_alias=True, exclude_none=True, exclude_unset=True
-        ).items()
+    # Create the request body with the required fields
+    request_body = {
+        "rid": restaurant_id,
+        "dateTime": search_params.start_date_time,
+        "partySize": search_params.party_size,
+        "transformOutdoorToDefault": True,
     }
 
-    # Call the OpenTable API
+    # Call the OpenTable API with POST request
     response = connect_opentable_api(
-        http_method=HttpMethod.GET,
+        http_method=HttpMethod.POST,
         bearer_token=bearer_token,
         api_function=api_function,
-        query_params=query_params,
+        payload=request_body,
         use_production=use_production,
     )
 
