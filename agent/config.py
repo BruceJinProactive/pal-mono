@@ -66,6 +66,9 @@ class VoiceConfig(BaseModel):
     language: Language
     tool_calling_filler_words: list[str] = []
     chat_filler_words: list[str] = []
+    # Custom voice configuration for multilingual mode
+    voice_provider: Optional[str] = None
+    voice_model: Optional[str] = None
 
 
 # ============================================================================
