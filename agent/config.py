@@ -1,7 +1,7 @@
 from enum import StrEnum, auto
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from agent.client import ClientConfig
 from agent.knowledge import KnowledgeConfig
@@ -79,6 +79,9 @@ class MultilingualTranscriberConfig(BaseModel):
     provider: str
     model: str
     language: str
+
+    # Allow for extra parameters
+    model_config = ConfigDict(extra="allow")
 
 
 class MultilingualVoiceConfig(BaseModel):
