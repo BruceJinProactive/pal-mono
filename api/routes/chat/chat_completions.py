@@ -15,8 +15,9 @@ from api.routes.chat.chat import chat_router
 from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
-from services.llm_service import call_llm_default
-from services.llm_service.schema import ModelOptions
+
+# from services.llm_service import call_llm_default
+# from services.llm_service.schema import ModelOptions
 from services.message_service import get_chat_response_async, get_chat_response_stream
 from services.relay_service import send_message
 from utils.dd import send_dd_histogram_metrics
@@ -229,58 +230,7 @@ async def _send_urls_via_sms(
 
         try:
             # Create a prompt for summarization
-            prompt = f"""
-Please create a short, SMS-friendly summary of the following content. DO NOT write out or paraphrase the full URL. Instead, insert the EXACT placeholder [INSERT_URL_HERE] where we will insert the link manually ourselves.
-
-Content:
-{full_content}
-
-CRITICAL INSTRUCTION: You MUST use the exact text [INSERT_URL_HERE] as the placeholder. Do NOT use variations like [here], [click here], [link], or any other text. Use EXACTLY: [INSERT_URL_HERE]
-
-Instructions:
-- If the content is about a pending-payment order:
-  - **IMPORTANT: Only include a detailed "Order Summary" if ALL necessary order details (items, subtotal, sales tax, discount, order total) are explicitly available in the provided Content.**
-    - If ALL necessary order details ARE available:
-        - Start with a sentence stating the order status (e.g., "Your order is pending")
-        - Include the title: "Order Summary:"
-        - List each ordered item on a new line, prefixed with a dash (-) and using the exact item name
-        - Include a breakdown: Subtotal, Sales Tax, Discount, and Order Total, each on its own line
-        - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay here: [INSERT_URL_HERE]")
-    - **If ANY necessary order detail (item names, subtotal, taxes, discount, or order total) is MISSING or incomplete in the Content:**
-        - Start with a sentence stating the order status (e.g., "Your order is pending")
-        - Provide a **general** call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay for your order here: [INSERT_URL_HERE]")
-        - **DO NOT include a detailed "Order Summary:" section or list individual items/prices if details are missing.**
-- If the content is not about a pending-payment order:
-  - Provide a clear, short summary of the main point
-  - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Order here: [INSERT_URL_HERE]")
-- Do not write the actual URL
-- Use line breaks for clarity
-
-REMEMBER: Use the EXACT placeholder [INSERT_URL_HERE] - no variations!
-"""
-
-            chat_complete_params = {
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,  # Lower temperature for more consistent placeholder usage
-                "max_tokens": 100,
-            }
-            response = await call_llm_default(
-                model_option=ModelOptions.GPT_4O, params=chat_complete_params
-            )
-
-            if (
-                not response.choices
-                or not response.choices[0]
-                or not response.choices[0].message
-            ):
-                raise RuntimeError(
-                    f"No response from LLM: {response.model_dump_json()}"
-                )
-            summary_content = response.choices[0].message.content
-            logger.debug(
-                f"Generated SMS summary: {summary_content} from original content {full_content}"
-            )
-
+            return
         except Exception as e:
             logger.error(f"Error generating SMS summary with OpenAI: {str(e)}")
             # Fall back to original content if OpenAI fails

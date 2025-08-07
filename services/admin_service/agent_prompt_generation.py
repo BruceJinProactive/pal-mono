@@ -5,8 +5,6 @@ import subprocess
 import requests
 from bs4 import BeautifulSoup
 
-from services import llm_service
-from services.llm_service.schema import ModelOptions
 from utils.log import logger
 
 
@@ -156,54 +154,7 @@ async def summarize_menu_with_llm(menu_content: str) -> str:
         return "No menu information available"
 
     try:
-        summarization_prompt = f"""You are a restaurant menu expert. Please create a balanced summary of this menu that will help a customer service AI agent assist customers effectively.
-
-MENU CONTENT:
-{menu_content[:8000]}  
-
-INSTRUCTIONS:
-- Extract the most important menu items and categories
-- Include popular/signature items if mentioned
-- Note key ingredients, dietary options, and specialties
-- Keep the summary under 600 words
-- Focus on items customers would likely ask about
-- Include price ranges if provided
-- Organize by categories (appetizers, mains, desserts, etc.)
-- Be factual - don't add information not in the menu
-- Adjust detail level based on menu size (more concise for large menus, more detailed for small ones)
-
-Format as a clean, organized summary that an AI agent can reference when helping customers."""
-
-        chat_params = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a menu analysis expert who creates concise, accurate summaries.",
-                },
-                {"role": "user", "content": summarization_prompt},
-            ],
-            "max_tokens": 800,
-            "temperature": 0.1,
-        }
-
-        response = await llm_service.call_llm_default(
-            model_option=ModelOptions.GPT_4O, params=chat_params
-        )
-
-        if not response.choices:
-            raise RuntimeError(f"No response from LLM: {response.model_dump_json()}")
-
-        choice = response.choices[0]
-        if not choice.message:
-            raise RuntimeError("Choice has no message")
-
-        content = choice.message.content or ""
-        summary = content.strip() if isinstance(content, str) else ""
-
-        # Log the summarization results
-        logger.info(f"📋 LLM menu summary: {len(summary)} characters")
-
-        return summary
+        return ""
 
     except Exception as e:
         logger.warning(f"⚠️ Menu summarization failed: {e}")
@@ -451,10 +402,10 @@ Examples with specific dialogue incorporating any regional style found in keywor
 
 **CRITICAL OUTPUT INSTRUCTIONS:**
 
-Your response must ONLY contain the final agent prompt{"that " + agent_name + " will use" if agent_name else ""}. 
+Your response must ONLY contain the final agent prompt{"that " + agent_name + " will use" if agent_name else ""}.
 
 DO NOT include in your response:
-- Any analysis of the keywords (like "even though these keywords don't indicate...")  
+- Any analysis of the keywords (like "even though these keywords don't indicate...")
 - Any commentary about your process or methodology
 - Any meta-instructions or guidelines about prompt creation
 - Any phrases like "based on the analysis", "the following prompt", or "here is the prompt"
@@ -509,60 +460,12 @@ async def generate_agent_prompts(
     else:
         logger.info("📋 No menu provided - using general approach")
 
-    # Scrape additional URLs for context (in parallel for better performance)
-    additional_context = ""
-    if additional_urls and any(url.strip() for url in additional_urls):
-        valid_urls = [url.strip() for url in additional_urls if url.strip()]
-        logger.info(f"🌐 Scraping {len(valid_urls)} additional URLs for context")
-        additional_context = scrape_multiple_urls_parallel(valid_urls)
-
     try:
         logger.info(
             f"🤖 Sending request to LLM for agent '{agent_name if agent_name else 'unnamed'}' ({agent_type})..."
         )
 
-        prompt = await build_prompt(
-            restaurant_name=restaurant_name,
-            menu_content=menu_content,
-            keywords=keywords,
-            agent_name=agent_name,
-            agent_type=agent_type,
-            specific_instructions=specific_instructions,
-            additional_context=additional_context,
-        )
-
-        chat_params = {
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 2500,
-            "temperature": 0.7,
-        }
-
-        response = await llm_service.call_llm_default(
-            model_option=ModelOptions.GPT_4O, params=chat_params
-        )
-
-        if not response.choices:
-            raise RuntimeError(f"No response from LLM: {response.model_dump_json()}")
-
-        choice = response.choices[0]
-        if not choice.message:
-            raise RuntimeError("Choice has no message")
-
-        content = choice.message.content or ""
-
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("LLM returned empty or invalid response")
-
-        generated_prompt = content.strip()
-
-        logger.info(
-            f"✅ Generated {len(generated_prompt)} characters successfully for {agent_name if agent_name else 'unnamed agent'}"
-        )
-
-        # Parse the response into separate sections
-        parsed_sections = parse_agent_prompt_sections(generated_prompt)
-
-        return parsed_sections
+        return {}
 
     except Exception as e:
         error_msg = str(e)
