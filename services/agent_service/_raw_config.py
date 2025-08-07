@@ -39,7 +39,6 @@ from utils.log import logger
 
 
 class RawConfig:
-
     def __init__(
         self,
         agent: db.Agent,
@@ -241,6 +240,32 @@ class RawConfig:
 
         return result
 
+    def _populate_vapi_tool_args(self, tool_args: dict) -> dict:
+        """
+        Populate VAPI tool arguments with transfer settings from project columns.
+
+        Auto-populates 'transfer_message' and 'destination_number' from project fields
+        if the respective project fields are not empty. Overwrites existing values.
+
+        Args:
+            tool_args: Existing tool arguments dictionary
+
+        Returns:
+            Updated tool arguments with project transfer settings
+        """
+        updated_args = tool_args.copy()
+        # Check if both transfer fields are populated in the project
+        has_transfer_phone = self.project.transfer_phone_number
+        has_transfer_message = self.project.transfer_message
+
+        # auto-populate if fields are not empty
+        if has_transfer_message:
+            updated_args["transfer_message"] = self.project.transfer_message
+        if has_transfer_phone:
+            updated_args["destination_number"] = self.project.transfer_phone_number
+
+        return updated_args
+
     def _get_agent_tools(self) -> ToolConfig:
         metadata = ToolMetadata(
             agent_id=self.agent.id,
@@ -281,6 +306,10 @@ class RawConfig:
                 }  # shallow merge
                 access_metadata = tool_override.get("access_metadata", access_metadata)
 
+            # Auto-populate VAPI tool args from project columns
+            if tool_name == "vapi_tool":
+                tool_args = self._populate_vapi_tool_args(tool_args)
+
             final_identifiers.append(
                 ToolIdentifier(
                     tool_name=tool_name,
@@ -293,10 +322,16 @@ class RawConfig:
         # Add new tools from project config that weren't in agent config
         for tool_name, overrides in project_tool_overrides.items():
             if tool_name not in seen_tools:
+                tool_args = overrides.get("tool_args", {})
+
+                # Auto-populate VAPI tool args from project columns for new tools too
+                if tool_name == "vapi_tool":
+                    tool_args = self._populate_vapi_tool_args(tool_args)
+
                 final_identifiers.append(
                     ToolIdentifier(
                         tool_name=tool_name,
-                        args=overrides.get("tool_args", {}),
+                        args=tool_args,
                         access_metadata=overrides.get("access_metadata", False),
                     )
                 )
