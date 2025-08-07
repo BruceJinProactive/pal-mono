@@ -113,6 +113,9 @@ class RawConfig:
                     chat_filler_words=self.agent.raw_config.get(
                         "chat_filler_words", []
                     ),
+                    voice_provider=self.agent.raw_config.get(
+                        "voice_provider", "cartesia"
+                    ),
                 ),
                 multiling_squad_config=self._get_multilingual_squad_config(),
             )

@@ -107,11 +107,18 @@ def get_transcriber_and_voice_config(
                 "language": "multi",
             }
 
-        voice = {
-            "provider": "cartesia",
-            "voiceId": voice_id or SPORTSMAN_VOICE_ID,
-            "model": "sonic-2",
-        }
+        if agent_config.voice_config.voice_provider == "openai":
+            voice = {
+                "provider": "openai",
+                "voiceId": voice_id or "alloy",
+                "model": "tts-1",
+            }
+        else:
+            voice = {
+                "provider": "cartesia",
+                "voiceId": voice_id or SPORTSMAN_VOICE_ID,
+                "model": "sonic-2",
+            }
     else:
         # Default single-language setup
         transcriber = {
