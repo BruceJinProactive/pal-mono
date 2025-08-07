@@ -1,5 +1,6 @@
 # from typing import AsyncIterator
 
+import portkey_ai  # pyright: ignore
 from agno.models.openai import OpenAIChat
 
 from . import _implementation as implementation
