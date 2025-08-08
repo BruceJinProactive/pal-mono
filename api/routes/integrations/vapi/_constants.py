@@ -53,6 +53,7 @@ DEFAULT_MULTILINGUAL_SQUAD_CONFIG = {
         },
         "model": {"provider": "openai", "model": "gpt-4o"},
         "first_message": "Hello! I can help you in English, español, or 中文. Please let me know which language you prefer, and I'll connect you with the right specialist.",
+        "transfer_mode": "swap-system-message-in-history",
     },
     "language_assistants": {
         "english": {

@@ -112,7 +112,7 @@ class TriageAssistantConfig(BaseModel):
         default="swap-system-message-in-history", alias="transferMode"
     )
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
 class LanguageAssistantMultilingConfig(BaseModel):
