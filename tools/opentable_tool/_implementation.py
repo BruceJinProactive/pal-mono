@@ -40,16 +40,12 @@ class OpenTableTool(Toolkit):
 
     def __init__(
         self,
-        client_id: str,
-        client_secret: str,
+        restaurant_id: int,
         tool_metadata: ToolMetadata,
-        use_production: bool = False,
     ):
         super().__init__(name="opentable_tool")
 
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.use_production = use_production
+        self.restaurant_id = restaurant_id
         self.tool_metadata = tool_metadata
 
         # Initialize QueryMessagesTool for chat history retrieval
@@ -111,7 +107,6 @@ class OpenTableTool(Toolkit):
     @tool
     def search_availability(
         self,
-        restaurant_id: int,
         party_size: int,
         start_date_time: str | None = None,
         forward_minutes: int = 120,
@@ -127,7 +122,6 @@ class OpenTableTool(Toolkit):
         Returns a formatted list of available times.
 
         Args:
-            restaurant_id: The OpenTable ID (rid) of the restaurant
             party_size: Number of people in the party
             start_date_time: The local date and time to search (ISO 8601 format, e.g. "2023-10-31T19:00")
                              Must be aligned with 15-minute intervals (00, 15, 30, 45)
@@ -149,10 +143,6 @@ class OpenTableTool(Toolkit):
         bearer_token = self._opentable_bearer_token
         if not bearer_token:
             return "Error: Unable to authenticate with OpenTable"
-
-        # Validate restaurant_id
-        if not restaurant_id or not isinstance(restaurant_id, int):
-            return "Error: restaurant_id is required and must be a valid integer"
 
         # Validate search parameters
         is_valid, error_message, validated_params = validate_search_parameters(
@@ -189,13 +179,12 @@ class OpenTableTool(Toolkit):
             with LLMObs.task(name="search_opentable_availability"):
                 result = search_availability_api(
                     bearer_token=bearer_token,
-                    restaurant_id=restaurant_id,
+                    restaurant_id=self.restaurant_id,
                     search_params=search_params,
-                    use_production=self.use_production,
                 )
         except Exception as e:
             logger.error(f"Error searching availability: {str(e)}", exc_info=True)
-            return f"Error searching availability for restaurant ID {restaurant_id}: {str(e)}"
+            return f"Error searching availability for restaurant ID {self.restaurant_id}: {str(e)}"
 
         # If no times available, provide a clear message
         if not result.times and not result.times_available:
@@ -204,7 +193,7 @@ class OpenTableTool(Toolkit):
                 ", ".join(reason.value for reason in no_availability_reasons)
                 or "No available times"
             )
-            return f"No availability found for restaurant ID {restaurant_id} (Party of {party_size}). Reason: {reasons}"
+            return f"No availability found for restaurant ID {self.restaurant_id} (Party of {party_size}). Reason: {reasons}"
 
         # Format the results in a human-readable way
         formatted_result = format_availability_results(result)
@@ -233,14 +222,12 @@ class OpenTableTool(Toolkit):
     @tool
     def get_availability_metadata(
         self,
-        restaurant_id: int,
     ) -> str:
         """
         Get detailed availability metadata for an OpenTable restaurant.
         Returns information about dining areas, table attributes, and environments.
 
         Args:
-            restaurant_id: The OpenTable ID (rid) of the restaurant
 
         Returns:
             Formatted string with restaurant availability options and attributes
@@ -250,29 +237,24 @@ class OpenTableTool(Toolkit):
         if not bearer_token:
             return "Error: Unable to authenticate with OpenTable"
 
-        # Validate restaurant_id
-        if not restaurant_id or not isinstance(restaurant_id, int):
-            return "Error: restaurant_id is required and must be a valid integer"
-
         try:
             # Get availability metadata
             with LLMObs.task(name="get_opentable_availability_metadata"):
                 result = get_availability_metadata_api(
                     bearer_token=bearer_token,
-                    restaurant_id=restaurant_id,
-                    use_production=self.use_production,
+                    restaurant_id=self.restaurant_id,
                 )
         except Exception as e:
             logger.error(
                 f"Error getting availability metadata: {str(e)}", exc_info=True
             )
-            return f"Error retrieving availability options for restaurant ID {restaurant_id}: {str(e)}"
+            return f"Error retrieving availability options for restaurant ID {self.restaurant_id}: {str(e)}"
 
-        # Format the results in a human-readable way
+        # Format the results human-readable way
         return format_availability_metadata(result)
 
     @tool
-    def make_reservation(self, latest_user_message: str, restaurant_id: int) -> str:
+    def make_reservation(self, latest_user_message: str) -> str:
         """
         Creates a restaurant reservation by extracting structured reservation data from chat
         history and using OpenTable tools to resolve the necessary information.
@@ -281,7 +263,6 @@ class OpenTableTool(Toolkit):
 
         Args:
             latest_user_message (str): The latest user message in the chat history.
-            restaurant_id (int): The OpenTable restaurant ID (rid) for the restaurant.
 
         Returns:
             str: The reservation confirmation details including confirmation number and manage URL.
@@ -292,10 +273,6 @@ class OpenTableTool(Toolkit):
             if not bearer_token:
                 return "Error: Unable to authenticate with OpenTable"
 
-            # Validate restaurant_id
-            if not restaurant_id or not isinstance(restaurant_id, int):
-                return "Error: restaurant_id is required and must be a valid integer"
-
             # Get chat history
             chat_history = str(
                 self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
@@ -305,8 +282,7 @@ class OpenTableTool(Toolkit):
             try:
                 metadata_result = get_availability_metadata_api(
                     bearer_token=bearer_token,
-                    restaurant_id=restaurant_id,
-                    use_production=self.use_production,
+                    restaurant_id=self.restaurant_id,
                 )
                 metadata_context = format_availability_metadata(metadata_result)
             except Exception as e:
@@ -367,13 +343,13 @@ class OpenTableTool(Toolkit):
             encoded_date_time = urllib.parse.quote(date_time_str)
 
             # Create the booking URL with the extracted parameters
-            booking_url = f"https://www.opentable.com/booking/details?dateTime={encoded_date_time}&partySize={party_size}&rid={restaurant_id}"
+            booking_url = f"https://www.opentable.com/booking/details?dateTime={encoded_date_time}&partySize={party_size}&rid={self.restaurant_id}"
 
             # Format the response with the booking link
             response = "I've prepared your reservation request!\n\n"
             response += f"Date & Time: {reservation_data.date_time}\n"  # type: ignore
             response += f"Party Size: {party_size}\n"
-            response += f"Restaurant ID: {restaurant_id}\n\n"
+            response += f"Restaurant ID: {self.restaurant_id}\n\n"
             response += f"Click here to complete your reservation: {booking_url}\n\n"
             response += "This link will take you directly to OpenTable's booking page where you can select your preferred seating and complete your reservation."
 

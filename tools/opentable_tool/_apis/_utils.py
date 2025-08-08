@@ -10,9 +10,6 @@ from tools.opentable_tool.classes import (
 )
 from utils.log import logger
 
-# Production and pre-production API hosts
-PRODUCTION_HOST = "api.opentable.com"
-PREPROD_HOST = "api-pp.opentable.com"
 DEFAULT_TIMEOUT = 30  # 30 seconds default timeout
 
 
@@ -24,7 +21,6 @@ def connect_opentable_api(
     extra_headers: Optional[Dict[str, str]] = None,
     payload: Optional[dict] = None,
     timeout: int = DEFAULT_TIMEOUT,
-    use_production: bool = False,
 ) -> OpenTableResponse:
     """
     Makes a request to the OpenTable API.
@@ -37,18 +33,12 @@ def connect_opentable_api(
         extra_headers: Additional headers to include in the request
         payload: JSON payload to include in the request
         timeout: Connection and read timeout in seconds (default: 30)
-        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         OpenTableResponse object containing the response data
     """
     # Determine the appropriate host based on the endpoint
-    if api_function.startswith("/restref/"):
-        # Use the main OpenTable domain for restref endpoints
-        host = "www.opentable.com"
-    else:
-        # Use API subdomain for other endpoints
-        host = PRODUCTION_HOST if use_production else PREPROD_HOST
+    host = "www.opentable.com"
 
     # Build the query string if query parameters are provided
     query_string = ""
@@ -67,10 +57,7 @@ def connect_opentable_api(
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
     }
-
-    # Add cookies for restref endpoints
-    if api_function.startswith("/restref/"):
-        headers["Cookie"] = "OT-Locale=en-US"
+    headers["Cookie"] = "OT-Locale=en-US"
 
     # Add extra headers if provided
     if extra_headers:

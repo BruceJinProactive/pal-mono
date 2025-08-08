@@ -18,8 +18,6 @@ from tools.opentable_tool.classes import (
     PhoneObject,
     ReservationRequest,
     ReservationResponse,
-    SlotLockRequest,
-    SlotLockResponse,
     TableAttribute,
 )
 from utils.log import logger
@@ -28,7 +26,6 @@ from utils.log import logger
 def get_opentable_access_token(
     client_id: str,
     client_secret: str,
-    use_production: bool = False,
 ) -> Optional[OpenTableAccessToken]:
     """
     Obtains an access token from the OpenTable Authentication API.
@@ -36,7 +33,6 @@ def get_opentable_access_token(
     Args:
         client_id: Your OpenTable API client identifier
         client_secret: Your OpenTable API client secret
-        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         `OpenTableAccessToken` object if successful, None otherwise
@@ -47,7 +43,7 @@ def get_opentable_access_token(
         encoded_credentials = base64.b64encode(credentials.encode()).decode()
 
         # Set up connection to OpenTable auth server
-        host = "oauth.opentable.com" if use_production else "oauth-pp.opentable.com"
+        host = "oauth.opentable.com"
         conn = http.client.HTTPSConnection(host)
 
         # Set headers with basic auth
@@ -93,7 +89,6 @@ def search_availability(
     bearer_token: OpenTableAccessToken,
     restaurant_id: int,
     search_params: AvailabilitySearchRequest,
-    use_production: bool = False,
 ) -> AvailabilitySearchResponse:
     """
     Search for reservation availability for a specific restaurant.
@@ -102,7 +97,6 @@ def search_availability(
         bearer_token: OpenTable access token
         restaurant_id: Restaurant ID
         search_params: Search parameters for availability
-        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         AvailabilitySearchResponse object or raises an exception if request fails
@@ -124,7 +118,6 @@ def search_availability(
         bearer_token=bearer_token,
         api_function=api_function,
         payload=request_body,
-        use_production=use_production,
     )
 
     # Handle the response
@@ -177,7 +170,6 @@ def search_availability(
 def get_availability_metadata(
     bearer_token: OpenTableAccessToken,
     restaurant_id: int,
-    use_production: bool = False,
 ) -> AvailabilityMetadataResponse:
     """
     Get availability metadata for a specific restaurant.
@@ -185,7 +177,6 @@ def get_availability_metadata(
     Args:
         bearer_token: OpenTable access token
         restaurant_id: Restaurant ID
-        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         AvailabilityMetadataResponse object or raises an exception if request fails
@@ -198,7 +189,6 @@ def get_availability_metadata(
         http_method=HttpMethod.GET,
         bearer_token=bearer_token,
         api_function=api_function,
-        use_production=use_production,
     )
 
     # Handle the response
@@ -225,139 +215,6 @@ def get_availability_metadata(
     return AvailabilityMetadataResponse(**data)
 
 
-def get_cancellation_policy(
-    bearer_token: OpenTableAccessToken,
-    restaurant_id: int,
-    cancellation_id: str,
-    use_production: bool = False,
-) -> CancellationPolicyDetails:
-    """
-    Get cancellation policy details for a specific reservation.
-
-    Args:
-        bearer_token: OpenTable access token
-        restaurant_id: Restaurant ID
-        cancellation_id: Cancellation policy ID (obtained from the availability search response)
-        use_production: Whether to use production (True) or pre-production (False) environment
-
-    Returns:
-        CancellationPolicyDetails object or raises an exception if request fails
-    """
-    # Construct API endpoint
-    api_function = f"/v2/cancellation-policies/{restaurant_id}/{cancellation_id}"
-
-    # Call the OpenTable API
-    response = connect_opentable_api(
-        http_method=HttpMethod.GET,
-        bearer_token=bearer_token,
-        api_function=api_function,
-        use_production=use_production,
-    )
-
-    # Handle the response
-    if response.status != 200:
-        logger.error(
-            f"OpenTable API returned error: {response.status} {response.reason}"
-        )
-        logger.error(f"Response body: {response.decoded_body}")
-        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
-
-    # Parse response body - ensure it's a dictionary
-    data = response.decoded_body
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON response: {data}")
-            data = {}
-
-    if not isinstance(data, dict):
-        data = {}
-
-    # Construct and return the CancellationPolicyDetails
-    return CancellationPolicyDetails(**data)
-
-
-def create_slot_lock(
-    bearer_token: OpenTableAccessToken,
-    restaurant_id: int,
-    party_size: int,
-    date_time: str,
-    reservation_attribute: Optional[TableAttribute] = TableAttribute.DEFAULT,
-    experience: Optional[Experience] = None,
-    dining_area_id: Optional[int] = None,
-    environment: Optional[EnvironmentType] = None,
-    use_production: bool = False,
-) -> SlotLockResponse:
-    """
-    Create a slot lock for a reservation at a specific restaurant.
-
-    Args:
-        bearer_token: OpenTable access token
-        restaurant_id: Restaurant ID
-        party_size: Number of people in the reservation party
-        date_time: Date and time of the reservation in ISO 8601 format
-        reservation_attribute: Type or attribute of the reservation (e.g., default)
-        experience: Details about the dining experience (Optional)
-        dining_area_id: Identifier for the dining area (Optional)
-        environment: Type of environment (e.g., Indoor, Outdoor) (Optional)
-        use_production: Whether to use production (True) or pre-production (False) environment
-
-    Returns:
-        SlotLockResponse object containing expires_at and reservation_token
-    """
-    # Construct API endpoint
-    api_function = f"/v2/booking/{restaurant_id}/slot_locks"
-
-    # Build request using SlotLockRequest model
-    request = SlotLockRequest(
-        party_size=party_size,
-        date_time=date_time,
-        reservation_attribute=reservation_attribute,
-        experience=experience,
-        dining_area_id=dining_area_id,
-        environment=environment,
-    )
-
-    # Convert to dictionary for API call
-    payload = request.model_dump(exclude_none=True, by_alias=True)
-
-    # Call the OpenTable API
-    response = connect_opentable_api(
-        http_method=HttpMethod.POST,
-        bearer_token=bearer_token,
-        api_function=api_function,
-        payload=payload,
-        use_production=use_production,
-    )
-
-    # Handle the response
-    if response.status != 200:
-        logger.error(
-            f"OpenTable API returned error: {response.status} {response.reason}"
-        )
-        logger.error(f"Response body: {response.decoded_body}")
-        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
-
-    # Parse response body - ensure it's a dictionary
-    data = response.decoded_body
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON response: {data}")
-            data = {}
-
-    if not isinstance(data, dict):
-        data = {}
-
-    # Return SlotLockResponse object
-    return SlotLockResponse(
-        expires_at=data.get("expires_at", ""),
-        reservation_token=data.get("reservation_token", ""),
-    )
-
-
 def make_reservation(
     bearer_token: OpenTableAccessToken,
     restaurant_id: int,
@@ -375,7 +232,6 @@ def make_reservation(
     experience: Optional[Experience] = None,
     credit_card: Optional[CreditCardObject] = None,
     login_name: Optional[str] = None,
-    use_production: bool = False,
 ) -> ReservationResponse:
     """
     Create a reservation at a specific restaurant.
@@ -397,7 +253,6 @@ def make_reservation(
         experience: Experience details for the reservation (id, version, party_size_per_price_type, add_ons)
         credit_card: Credit card details (token and last4)
         login_name: Used for concierge/referral details
-        use_production: Whether to use production (True) or pre-production (False) environment
 
     Returns:
         ReservationResponse object containing confirmation details
@@ -432,7 +287,6 @@ def make_reservation(
         bearer_token=bearer_token,
         api_function=api_function,
         payload=payload,
-        use_production=use_production,
     )
 
     # Handle the response
