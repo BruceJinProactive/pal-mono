@@ -75,16 +75,15 @@ class TriageAssistantFactory(BaseAssistantFactory):
         """Create a triage assistant."""
         triage_config = squad_config.triage_assistant
         name = triage_config.name
-        transcriber = {
-            "provider": triage_config.transcriber.provider,
-            "model": triage_config.transcriber.model,
-            "language": triage_config.transcriber.language,
-        }
-        voice_config = {
-            "provider": "cartesia",
-            "voiceId": triage_config.voice.voice_id,
-            "model": triage_config.voice.voice_model,
-        }
+        # Use model_dump to preserve all fields including extra ones like 'endpointed'
+        transcriber = triage_config.transcriber.model_dump(exclude_none=True)
+        # Use model_dump to preserve all voice fields including provider
+        voice_config = triage_config.voice.model_dump(exclude_none=True)
+        # Map field names to match VAPI expectations
+        if "voice_id" in voice_config:
+            voice_config["voiceId"] = voice_config.pop("voice_id")
+        if "voice_model" in voice_config:
+            voice_config["model"] = voice_config.pop("voice_model")
         first_message = triage_config.first_message
 
         # Add speech rate if provided
@@ -166,16 +165,15 @@ class LanguageAssistantFactory(BaseAssistantFactory):
     ) -> VAPIAssistant:
         """Create a language-specific assistant."""
         name = language_config.assistant_name
-        transcriber = {
-            "provider": language_config.transcriber.provider,
-            "model": language_config.transcriber.model,
-            "language": language_config.transcriber.language,
-        }
-        voice_config = {
-            "provider": "cartesia",
-            "voiceId": language_config.voice.voice_id,
-            "model": language_config.voice.voice_model,
-        }
+        # Use model_dump to preserve all fields including extra ones like 'endpointed'
+        transcriber = language_config.transcriber.model_dump(exclude_none=True)
+        # Use model_dump to preserve all voice fields including provider
+        voice_config = language_config.voice.model_dump(exclude_none=True)
+        # Map field names to match VAPI expectations
+        if "voice_id" in voice_config:
+            voice_config["voiceId"] = voice_config.pop("voice_id")
+        if "voice_model" in voice_config:
+            voice_config["model"] = voice_config.pop("voice_model")
         first_message = language_config.first_message
 
         # Add speech rate if provided

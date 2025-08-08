@@ -80,7 +80,6 @@ class MultilingualTranscriberConfig(BaseModel):
     provider: str
     model: str
     language: str
-
     # Allow for extra parameters
     model_config = ConfigDict(extra="allow")
 
@@ -91,7 +90,6 @@ class MultilingualVoiceConfig(BaseModel):
     voice_id: str
     voice_model: str
     provider: str
-    description: Optional[str] = None
 
 
 class MultilingualModelConfig(BaseModel):
@@ -111,6 +109,8 @@ class TriageAssistantConfig(BaseModel):
     first_message: str
     transfer_mode: str = "swap-system-message-in-history"
 
+    model_config = ConfigDict(extra="allow")
+
 
 class LanguageAssistantMultilingConfig(BaseModel):
     """Configuration for a specific language assistant in multilingual squad."""
@@ -121,6 +121,8 @@ class LanguageAssistantMultilingConfig(BaseModel):
     first_message: str
     transfer_message: str
     transfer_description: str
+
+    model_config = ConfigDict(extra="allow")
 
 
 class MultilingualSquadConfig(BaseModel):
