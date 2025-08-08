@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -8,8 +7,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 # ============================================================================
 
 
-@dataclass
-class CallerInfo:
+class CallerInfo(BaseModel):
     """Structured caller information."""
 
     sender_identifier: str

@@ -1,7 +1,7 @@
 from enum import StrEnum, auto
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent.client import ClientConfig
 from agent.knowledge import KnowledgeConfig
@@ -92,11 +92,12 @@ class MultilingualVoiceConfig(BaseModel):
     provider: str
 
 
+# TODO: Enable custom triage assistant model. If we use custom LLM for triage assistant, we could remove this class
 class MultilingualModelConfig(BaseModel):
     """Model configuration for multilingual squad."""
 
-    provider: str
-    model: str
+    provider: str = Field(default="openai")
+    model: str = Field(default="gpt-4o")
 
 
 class TriageAssistantConfig(BaseModel):
@@ -107,7 +108,9 @@ class TriageAssistantConfig(BaseModel):
     voice: MultilingualVoiceConfig
     model: MultilingualModelConfig
     first_message: str
-    transfer_mode: str = "swap-system-message-in-history"
+    transfer_mode: str = Field(
+        default="swap-system-message-in-history", alias="transferMode"
+    )
 
     model_config = ConfigDict(extra="allow")
 

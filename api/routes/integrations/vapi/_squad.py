@@ -62,6 +62,64 @@ class BaseAssistantFactory:
                 )
             )
 
+    def _process_transcriber_config(self, transcriber_config: Any) -> dict[str, Any]:
+        """Process transcriber configuration to preserve all fields."""
+        return transcriber_config.model_dump(exclude_none=True)
+
+    def _process_voice_config(
+        self, voice_config: Any, speech_rate: Any = None
+    ) -> dict[str, Any]:
+        """Process voice configuration with field mapping and speech rate."""
+        # Use model_dump to preserve all voice fields including provider
+        processed_voice = voice_config.model_dump(exclude_none=True)
+
+        # Map field names to match VAPI expectations
+        if "voice_id" in processed_voice:
+            processed_voice["voiceId"] = processed_voice.pop("voice_id")
+        if "voice_model" in processed_voice:
+            processed_voice["model"] = processed_voice.pop("voice_model")
+
+        # Add speech rate if provided
+        if speech_rate:
+            processed_voice = add_voice_speed_if_supported(processed_voice, speech_rate)
+
+        return processed_voice
+
+    def _apply_extra_config(
+        self, assistant_config: dict[str, Any], model_extra: dict[str, Any] | None
+    ) -> None:
+        """Apply extra configuration fields that are not defined in the model schema."""
+        if model_extra:
+            # model_extra only contains fields not defined in the schema,
+            # so it's safe to apply directly without filtering
+            assistant_config.update(model_extra)
+
+    def _build_base_assistant_config(
+        self,
+        name: str,
+        first_message: str,
+        transcriber_config: dict[str, Any],
+        voice_config: dict[str, Any],
+        system_content: str,
+        model_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build base assistant configuration with common fields."""
+        background_sound = self._get_background_sound()
+
+        return {
+            "name": name,
+            "firstMessage": first_message,
+            "transcriber": transcriber_config,
+            "voice": voice_config,
+            "backgroundSound": background_sound,
+            "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
+            "backgroundDenoisingEnabled": True,
+            "model": {
+                **model_config,
+                "messages": [{"role": "system", "content": system_content}],
+            },
+        }
+
 
 class TriageAssistantFactory(BaseAssistantFactory):
     """Factory for creating triage assistants."""
@@ -74,39 +132,30 @@ class TriageAssistantFactory(BaseAssistantFactory):
     ) -> VAPIAssistant:
         """Create a triage assistant."""
         triage_config = squad_config.triage_assistant
-        name = triage_config.name
-        # Use model_dump to preserve all fields including extra ones like 'endpointed'
-        transcriber = triage_config.transcriber.model_dump(exclude_none=True)
-        # Use model_dump to preserve all voice fields including provider
-        voice_config = triage_config.voice.model_dump(exclude_none=True)
-        # Map field names to match VAPI expectations
-        if "voice_id" in voice_config:
-            voice_config["voiceId"] = voice_config.pop("voice_id")
-        if "voice_model" in voice_config:
-            voice_config["model"] = voice_config.pop("voice_model")
-        first_message = triage_config.first_message
 
-        # Add speech rate if provided
-        if speech_rate:
-            voice_config = add_voice_speed_if_supported(voice_config, speech_rate)
-
-        background_sound = self._get_background_sound()
+        # Process configurations using base class methods
+        transcriber_config = self._process_transcriber_config(triage_config.transcriber)
+        voice_config = self._process_voice_config(triage_config.voice, speech_rate)
         system_content = self._create_system_content(squad_config, account_display_name)
 
-        assistant_config = {
-            "name": name,
-            "firstMessage": first_message,
-            "transcriber": transcriber,
-            "voice": voice_config,
-            "backgroundSound": background_sound,
-            "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
-            "backgroundDenoisingEnabled": True,
-            "model": {
-                "provider": "openai",
-                "model": "gpt-4o",
-                "messages": [{"role": "system", "content": system_content}],
-            },
+        # Build model configuration specific to triage assistant
+        model_config = {
+            "provider": triage_config.model.provider,
+            "model": triage_config.model.model,
         }
+
+        # Build base assistant configuration
+        assistant_config = self._build_base_assistant_config(
+            name=triage_config.name,
+            first_message=triage_config.first_message,
+            transcriber_config=transcriber_config,
+            voice_config=voice_config,
+            system_content=system_content,
+            model_config=model_config,
+        )
+
+        # Add extra fields from config
+        self._apply_extra_config(assistant_config, triage_config.model_extra)
 
         self._add_background_denoising(assistant_config)
         return VAPIAssistant(**assistant_config)
@@ -164,40 +213,32 @@ class LanguageAssistantFactory(BaseAssistantFactory):
         api_url: str,
     ) -> VAPIAssistant:
         """Create a language-specific assistant."""
-        name = language_config.assistant_name
-        # Use model_dump to preserve all fields including extra ones like 'endpointed'
-        transcriber = language_config.transcriber.model_dump(exclude_none=True)
-        # Use model_dump to preserve all voice fields including provider
-        voice_config = language_config.voice.model_dump(exclude_none=True)
-        # Map field names to match VAPI expectations
-        if "voice_id" in voice_config:
-            voice_config["voiceId"] = voice_config.pop("voice_id")
-        if "voice_model" in voice_config:
-            voice_config["model"] = voice_config.pop("voice_model")
-        first_message = language_config.first_message
-
-        # Add speech rate if provided
-        if speech_rate:
-            voice_config = add_voice_speed_if_supported(voice_config, speech_rate)
-
-        background_sound = self._get_background_sound()
+        # Process configurations using base class methods
+        transcriber_config = self._process_transcriber_config(
+            language_config.transcriber
+        )
+        voice_config = self._process_voice_config(language_config.voice, speech_rate)
         system_content = self._create_system_content(language, account_display_name)
 
-        assistant_config = {
-            "name": name,
-            "firstMessage": first_message,
-            "transcriber": transcriber,
-            "voice": voice_config,
-            "backgroundSound": background_sound,
-            "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
-            "backgroundDenoisingEnabled": True,
-            "model": {
-                "provider": "custom-llm",
-                "url": f"{api_url}/v1",
-                "model": json.dumps(caller_info.__dict__),
-                "messages": [{"role": "system", "content": system_content}],
-            },
+        # Build model configuration specific to language assistant
+        model_config = {
+            "provider": "custom-llm",
+            "url": f"{api_url}/v1",
+            "model": json.dumps(caller_info.model_dump(exclude_none=True)),
         }
+
+        # Build base assistant configuration
+        assistant_config = self._build_base_assistant_config(
+            name=language_config.assistant_name,
+            first_message=language_config.first_message,
+            transcriber_config=transcriber_config,
+            voice_config=voice_config,
+            system_content=system_content,
+            model_config=model_config,
+        )
+
+        # Add extra fields from config
+        self._apply_extra_config(assistant_config, language_config.model_extra)
 
         self._add_background_denoising(assistant_config)
         return VAPIAssistant(**assistant_config)
@@ -210,7 +251,7 @@ class LanguageAssistantFactory(BaseAssistantFactory):
         templates = {
             "english": f"You are {agent_name}, English customer support representative for {account_display_name}. {agent_description} \n\nKeep responses concise and helpful.",
             "spanish": f"Eres {agent_name}, representante de soporte al cliente en español para {account_display_name}. {agent_description} \n\nMantén las respuestas concisas y útiles.",
-            "chinese": f"你是{agent_name}，{account_display_name}的中文客服代表。{agent_description} \n\n保持回答简洁有用。从现在开始必须用中文回复， 否则用户听不懂。",
+            "chinese": f"你是{agent_name}，{account_display_name}的中文客服代表。{agent_description} \n\n保持回答简洁有用。从现在开始必须用中文回复。",
             "general": f"You are {agent_name}, customer support representative for {account_display_name}. {agent_description} \n\nCommunicate in {language.title()} and keep responses concise and helpful.",
         }
 
@@ -335,7 +376,7 @@ def create_multilingual_squad(
     via the `multiling_squad_config` in the agent configuration.
 
     The squad consists of:
-    1. Language triage assistant (OpenAI GPT-4o, Google transcriber)
+    1. Language triage assistant (configurable model and transcriber, default to OpenAI GPT-4o and Google transcriber)
     2. Language-specific assistants (e.g., for English, Spanish, and Chinese)
 
     Args:
