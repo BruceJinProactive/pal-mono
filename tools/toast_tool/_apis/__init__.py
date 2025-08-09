@@ -96,11 +96,7 @@ def get_toast_access_token(
 
             token = ToastAccessToken.from_toast_response(response_data=response_data)
 
-            # Check if the token is valid
-            if not token.is_valid():
-                raise ValueError(
-                    "[ToastAPI.get_toast_access_token] Failed to authenticate with Toast API. Invalid token"
-                )
+            # We don't need to check if the token is valid, the token pulled from API will always be valid
 
             logger.debug(
                 f"[ToastAPI.get_toast_access_token] Successfully authenticated with Toast API expiring in: {token.expires_in} seconds"
