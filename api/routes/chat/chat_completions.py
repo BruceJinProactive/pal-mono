@@ -419,13 +419,17 @@ async def chat_completions_agno(
                         logger.info(
                             f"Completed streaming response after {chunk_count} chunks."
                         )
+                        yield "data: [DONE]\n\n"
 
                         # Send URLs via SMS if any are found in the collected content
-                        await _send_urls_via_sms(
-                            collected_content, sender_identifier, recipient_identifier
-                        )
-
-                        yield "data: [DONE]\n\n"
+                        try:
+                            await _send_urls_via_sms(
+                                collected_content,
+                                sender_identifier,
+                                recipient_identifier,
+                            )
+                        except Exception as sms_err:
+                            logger.error(f"Error sending URLs via SMS: {sms_err}")
 
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
