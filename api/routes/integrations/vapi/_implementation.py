@@ -402,6 +402,14 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 )
             )
 
+        # Add start speaking plan configuration if available
+        if dynamic_vapi_config and config.voice_config.start_speaking_plan:
+            assistant_config["startSpeakingPlan"] = (
+                config.voice_config.start_speaking_plan.model_dump(
+                    exclude_none=True, by_alias=True
+                )
+            )
+
         return {"assistant": assistant_config}
     except Exception as e:
         logger.error(f"Error in handle_assistant_request: {str(e)}")

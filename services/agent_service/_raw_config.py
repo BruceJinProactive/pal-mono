@@ -27,6 +27,7 @@ from agent import (
 from agent.config import (
     BackgroundSpeechDenoisingPlan,
     MultilingualSquadConfig,
+    StartSpeakingPlan,
     VoiceConfig,
 )
 from agent.knowledge import KnowledgeConfigSettings
@@ -117,6 +118,7 @@ class RawConfig:
                     ),
                     voice_decoder=self._get_voice_decoder_config(),
                     transcriber=self._get_transcriber_config(),
+                    start_speaking_plan=self._get_start_speaking_plan(),
                 ),
                 multiling_squad_config=self._get_multilingual_squad_config(),
             )
@@ -543,10 +545,10 @@ class RawConfig:
             # Fallback to original message if template rendering fails
             return self.agent.greeting_message
 
-    def _get_transcriber_config(self) -> TranscriberConfig:
+    def _get_transcriber_config(self) -> Optional[TranscriberConfig]:
         transcriber_raw = self.agent.raw_config.get("transcriber")
         if not transcriber_raw:
-            return self._get_default_transcriber_config()
+            return None
 
         try:
             return TranscriberConfig.model_validate(transcriber_raw)
@@ -555,12 +557,12 @@ class RawConfig:
                 f"Invalid transcriber config in agent.raw_config: {e}",
                 extra={"agent_id": self.agent.id},
             )
-            return self._get_default_transcriber_config()
+            return None
 
-    def _get_voice_decoder_config(self) -> VoiceDecoderConfig:
+    def _get_voice_decoder_config(self) -> Optional[VoiceDecoderConfig]:
         voice_decoder_raw = self.agent.raw_config.get("voice_decoder")
         if not voice_decoder_raw:
-            return self._get_default_voice_decoder_config()
+            return None
 
         try:
             return VoiceDecoderConfig.model_validate(voice_decoder_raw)
@@ -569,24 +571,21 @@ class RawConfig:
                 f"Invalid voice_decoder config in agent.raw_config: {e}",
                 extra={"agent_id": self.agent.id},
             )
-            return self._get_default_voice_decoder_config()
+            return None
 
-    def _get_default_transcriber_config(self) -> TranscriberConfig:
+    def _get_start_speaking_plan(self) -> Optional[StartSpeakingPlan]:
         """
-        Get default transcriber configuration.
+        Get start speaking plan configuration from agent raw_config.
         """
-        return TranscriberConfig(
-            provider="deepgram",
-            model="nova-3",
-            language="en",
-        )
+        start_speaking_raw = self.agent.raw_config.get("start_speaking_plan")
+        if not start_speaking_raw:
+            return None
 
-    def _get_default_voice_decoder_config(self) -> VoiceDecoderConfig:
-        """
-        Get default voice decoder configuration.
-        """
-        return VoiceDecoderConfig(
-            voice_id="ed81fd13-2016-4a49-8fe3-c0d2761695fc",  # SPORTSMAN_VOICE_ID
-            voice_model="sonic",
-            provider="cartesia",
-        )
+        try:
+            return StartSpeakingPlan.model_validate(start_speaking_raw)
+        except ValidationError as e:
+            logger.warning(
+                f"Invalid start_speaking_plan config in agent.raw_config: {e}",
+                extra={"agent_id": self.agent.id},
+            )
+            return None

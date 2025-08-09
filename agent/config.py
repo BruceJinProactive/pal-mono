@@ -69,10 +69,11 @@ class VoiceConfig(BaseModel):
     chat_filler_words: list[str] = Field(default_factory=list)
     voice_decoder: Optional[VoiceDecoderConfig] = None
     transcriber: Optional[TranscriberConfig] = None
+    start_speaking_plan: Optional[StartSpeakingPlan] = None
 
 
 class TranscriberConfig(BaseModel):
-    """Transcriber configuration for multilingual squad."""
+    """Transcriber configuration"""
 
     provider: str
     model: str
@@ -90,8 +91,74 @@ class ChunkPlan(BaseModel):
     punctuationBoundaries: Optional[list[str]] = None
 
 
+# ============================================================================
+# START SPEAKING PLAN CONFIGURATION SCHEMAS
+# ============================================================================
+
+
+class TranscriptionEndpointingPlan(BaseModel):
+    """Configuration for transcription-based endpointing."""
+
+    on_punctuation_seconds: Optional[float] = Field(
+        default=0.1, ge=0, le=3, alias="onPunctuationSeconds"
+    )
+    on_no_punctuation_seconds: Optional[float] = Field(
+        default=1.5, ge=0, le=10, alias="onNoPunctuationSeconds"
+    )
+    on_number_seconds: Optional[float] = Field(
+        default=0.5, ge=0, le=10, alias="onNumberSeconds"
+    )
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+
+class SmartEndpointingProvider(StrEnum):
+    LIVEKIT = "livekit"
+    VAPI = "vapi"
+
+
+class VapiSmartEndpointing(BaseModel):
+    """Configuration for Vapi smart endpointing."""
+
+    provider: SmartEndpointingProvider = SmartEndpointingProvider.VAPI
+    model_config = ConfigDict(extra="allow")
+
+
+class LivekitSmartEndpointing(BaseModel):
+    """Configuration for LiveKit smart endpointing."""
+
+    provider: SmartEndpointingProvider = SmartEndpointingProvider.LIVEKIT
+    wait_function: Optional[str] = Field(
+        default="20 + 500 * sqrt(x) + 2500 * x^3", alias="waitFunction"
+    )
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+
+class SmartEndpointingPlan(BaseModel):
+    """Smart endpointing plan configuration. Pick between Vapi or LiveKit."""
+
+    # Use discriminated union to support either Vapi or LiveKit
+    vapi: Optional[VapiSmartEndpointing] = None
+    livekit: Optional[LivekitSmartEndpointing] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class StartSpeakingPlan(BaseModel):
+    """Configuration for when the assistant should start talking."""
+
+    smart_endpointing_plan: Optional[SmartEndpointingPlan] = Field(
+        default=None, alias="smartEndpointingPlan"
+    )
+    transcription_endpointing_plan: Optional[TranscriptionEndpointingPlan] = Field(
+        default=None, alias="transcriptionEndpointingPlan"
+    )
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+
 class VoiceDecoderConfig(BaseModel):
-    """Voice configuration for multilingual squad."""
+    """Voice configuration."""
 
     voice_id: str
     voice_model: Optional[str] = None
