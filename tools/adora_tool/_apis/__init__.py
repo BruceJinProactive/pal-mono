@@ -54,12 +54,15 @@ def get_adora_pos_auth_token(
         else:
             conn = http.client.HTTPSConnection("identity.adorapos.net")
 
-    conn.request("POST", "/connect/token", payload, headers)
-    res = conn.getresponse()
-    data = res.read()
-    bearer_token_json = data.decode("utf-8")
+    try:
+        conn.request("POST", "/connect/token", payload, headers)
+        res = conn.getresponse()
+        data = res.read()
+        bearer_token_json = data.decode("utf-8")
 
-    return _utils.parse_json(AdoraAccessToken, bearer_token_json)
+        return _utils.parse_json(AdoraAccessToken, bearer_token_json)
+    finally:
+        conn.close()
 
 
 def _get_loyalty_status(customer_info: dict) -> bool:

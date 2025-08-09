@@ -154,7 +154,6 @@ def build_validate_address_payload(
     lat_lon_was_added, message = add_lat_long_to_address(canonical_address)  # type: ignore
 
     if lat_lon_was_added:
-        assert isinstance(canonical_address, DeliveryAddress)
         lat, long = canonical_address.lat, canonical_address.lng
         logger.debug(f"Latitude and longitude extracted: {lat}, {long}")
     else:

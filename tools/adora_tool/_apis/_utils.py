@@ -59,35 +59,42 @@ def connect_adora_order_hub(
         else:
             conn = http.client.HTTPSConnection("public.api.adorapos.net")
 
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": auth_token.get_token_header_value(),
-    }
-    if extra_headers:
-        headers.update(extra_headers)
+    try:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": auth_token.get_token_header_value(),
+        }
+        if extra_headers:
+            headers.update(extra_headers)
 
-    path_plus_params = "/api/v1/OrderHub/" + api_function
+        path_plus_params = "/api/v1/OrderHub/" + api_function
 
-    if query_params:
-        path_plus_params = path_plus_params + "?" + urllib.parse.urlencode(query_params)
+        if query_params:
+            path_plus_params = (
+                path_plus_params + "?" + urllib.parse.urlencode(query_params)
+            )
 
-    if http_method == "GET":
-        conn.request("GET", path_plus_params, payload, headers)
-    elif http_method == "POST":
-        conn.request("POST", path_plus_params, payload, headers)
-    else:
-        assert False, "Invalid HTTP method for Adora Pos API"
+        if http_method == "GET":
+            conn.request("GET", path_plus_params, payload, headers)
+        elif http_method == "POST":
+            conn.request("POST", path_plus_params, payload, headers)
+        else:
+            raise ValueError(
+                "Invalid HTTP method for Adora POS API (expected 'GET' or 'POST')"
+            )
 
-    res = conn.getresponse()
-    data = res.read()
-    response_body = data.decode("utf-8")
+        res = conn.getresponse()
+        data = res.read()
+        response_body = data.decode("utf-8")
 
-    order_hub_response = AdoraHubResponse(
-        status=res.status, reason=res.reason, decoded_body=response_body
-    )
+        order_hub_response = AdoraHubResponse(
+            status=res.status, reason=res.reason, decoded_body=response_body
+        )
 
-    logger.debug(
-        f"[AdoraTool._apis._utils.connect_adora_order_hub] Response: {order_hub_response}"
-    )
+        logger.debug(
+            f"[AdoraTool._apis._utils.connect_adora_order_hub] Response: {order_hub_response}"
+        )
 
-    return order_hub_response
+        return order_hub_response
+    finally:
+        conn.close()
