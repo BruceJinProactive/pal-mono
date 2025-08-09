@@ -8,9 +8,9 @@ from agent.config import (
     LanguageAssistantMultilingConfig,
     MultilingualModelConfig,
     MultilingualSquadConfig,
-    MultilingualTranscriberConfig,
-    MultilingualVoiceConfig,
+    TranscriberConfig,
     TriageAssistantConfig,
+    VoiceDecoderConfig,
 )
 from agent.knowledge import (
     KnowledgeConfig,

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import StrEnum, auto
 from typing import Optional
 
@@ -21,7 +23,6 @@ class AgentPersona(BaseModel):
     role: str
     description: Optional[str] = None
     voice_id: Optional[str] = None
-    multilingual: bool = False
     model_mode: Optional[str] = None
 
 
@@ -64,32 +65,44 @@ class VoiceConfig(BaseModel):
     background_noise: bool
     background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
     language: Language
-    tool_calling_filler_words: list[str] = []
-    chat_filler_words: list[str] = []
-    voice_provider: Optional[str] = None
+    tool_calling_filler_words: list[str] = Field(default_factory=list)
+    chat_filler_words: list[str] = Field(default_factory=list)
+    voice_decoder: Optional[VoiceDecoderConfig] = None
+    transcriber: Optional[TranscriberConfig] = None
 
 
-# ============================================================================
-# MULTILINGUAL SQUAD CONFIGURATION SCHEMAS
-# ============================================================================
-
-
-class MultilingualTranscriberConfig(BaseModel):
+class TranscriberConfig(BaseModel):
     """Transcriber configuration for multilingual squad."""
 
     provider: str
     model: str
     language: str
+    fallbackPlan: Optional[list[TranscriberConfig]] = None
     # Allow for extra parameters
     model_config = ConfigDict(extra="allow")
 
 
-class MultilingualVoiceConfig(BaseModel):
+class ChunkPlan(BaseModel):
+    """Configuration for chunking model output before sending to voice provider."""
+
+    enabled: bool = True
+    minCharacters: Optional[float] = 30
+    punctuationBoundaries: Optional[list[str]] = None
+
+
+class VoiceDecoderConfig(BaseModel):
     """Voice configuration for multilingual squad."""
 
     voice_id: str
     voice_model: str
     provider: str
+    chunkPlan: Optional[ChunkPlan] = None
+    fallbackPlan: Optional[list[VoiceDecoderConfig]] = None
+
+
+# ============================================================================
+# MULTILINGUAL SQUAD CONFIGURATION SCHEMAS
+# ============================================================================
 
 
 # TODO: Enable custom triage assistant model. If we use custom LLM for triage assistant, we could remove this class
@@ -104,8 +117,8 @@ class TriageAssistantConfig(BaseModel):
     """Configuration for the triage assistant."""
 
     name: str
-    transcriber: MultilingualTranscriberConfig
-    voice: MultilingualVoiceConfig
+    transcriber: TranscriberConfig
+    voice: VoiceDecoderConfig
     model: MultilingualModelConfig
     first_message: str
     transfer_mode: str = Field(
@@ -119,8 +132,8 @@ class LanguageAssistantMultilingConfig(BaseModel):
     """Configuration for a specific language assistant in multilingual squad."""
 
     assistant_name: str
-    transcriber: MultilingualTranscriberConfig
-    voice: MultilingualVoiceConfig
+    transcriber: TranscriberConfig
+    voice: VoiceDecoderConfig
     first_message: str
     transfer_message: str
     transfer_description: str

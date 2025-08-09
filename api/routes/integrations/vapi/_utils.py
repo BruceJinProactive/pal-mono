@@ -91,40 +91,63 @@ def get_transcriber_and_voice_config(
     Get transcriber and voice configuration for a single assistant.
     Note: Multilingual squad configurations are handled in the _squad.py module.
     """
-    # This configures a single assistant.
-    if agent_config.persona.multilingual:
-        if agent_config.persona.model_mode == "google":
-            transcriber = {
-                "provider": "google",
-                "model": "gemini-2.5-flash",
-                "language": "Multilingual",
-            }
-        else:
-            # Default multilingual setup (Deepgram)
-            transcriber = {
-                "provider": "deepgram",
-                "model": "nova-3",
-                "language": "multi",
-            }
+    # Use transcriber config from agent_config if available
+    if agent_config.voice_config.transcriber:
+        transcriber_config = agent_config.voice_config.transcriber
+        transcriber = {
+            "provider": transcriber_config.provider,
+            "model": transcriber_config.model,
+            "language": transcriber_config.language,
+        }
 
-        if agent_config.voice_config.voice_provider == "openai":
-            voice = {
-                "provider": "openai",
-                "voiceId": voice_id or "alloy",
-                "model": "tts-1",
-            }
-        else:
-            voice = {
-                "provider": "cartesia",
-                "voiceId": voice_id or SPORTSMAN_VOICE_ID,
-                "model": "sonic-2",
-            }
+        # Include fallbackPlan if it exists
+        if transcriber_config.fallbackPlan:
+            transcriber["fallbackPlan"] = [
+                {
+                    "provider": plan.provider,
+                    "model": plan.model,
+                    "language": plan.language,
+                }
+                for plan in transcriber_config.fallbackPlan
+            ]
     else:
         # Default single-language setup
         transcriber = {
             "provider": "deepgram",
             "model": "nova-3",
         }
+
+    # Use voice_decoder config from agent_config if available
+    if agent_config.voice_config.voice_decoder:
+        voice_config = agent_config.voice_config.voice_decoder
+        voice = {
+            "provider": voice_config.provider,
+            "voiceId": voice_config.voice_id or voice_id,
+            "model": voice_config.voice_model,
+        }
+
+        # Include chunkPlan if it exists
+        if voice_config.chunkPlan:
+            voice["chunkPlan"] = {
+                "enabled": voice_config.chunkPlan.enabled,
+                "minCharacters": voice_config.chunkPlan.minCharacters,
+            }
+            if voice_config.chunkPlan.punctuationBoundaries:
+                voice["chunkPlan"][
+                    "punctuationBoundaries"
+                ] = voice_config.chunkPlan.punctuationBoundaries
+
+        # Include fallbackPlan if it exists
+        if voice_config.fallbackPlan:
+            voice["fallbackPlan"] = [
+                {
+                    "provider": plan.provider,
+                    "voiceId": plan.voice_id,
+                    "model": plan.voice_model,
+                }
+                for plan in voice_config.fallbackPlan
+            ]
+    else:
         voice = {
             "provider": "cartesia",
             "voiceId": voice_id or SPORTSMAN_VOICE_ID,
