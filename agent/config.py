@@ -94,7 +94,7 @@ class VoiceDecoderConfig(BaseModel):
     """Voice configuration for multilingual squad."""
 
     voice_id: str
-    voice_model: str
+    voice_model: Optional[str] = None
     provider: str
     chunkPlan: Optional[ChunkPlan] = None
     fallbackPlan: Optional[list[VoiceDecoderConfig]] = None

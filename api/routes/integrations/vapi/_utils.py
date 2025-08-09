@@ -123,8 +123,9 @@ def get_transcriber_and_voice_config(
         voice = {
             "provider": voice_config.provider,
             "voiceId": voice_config.voice_id or voice_id,
-            "model": voice_config.voice_model,
         }
+        if voice_config.voice_model:
+            voice["model"] = voice_config.voice_model
 
         # Include chunkPlan if it exists
         if voice_config.chunkPlan:
@@ -139,14 +140,25 @@ def get_transcriber_and_voice_config(
 
         # Include fallbackPlan if it exists
         if voice_config.fallbackPlan:
-            voice["fallbackPlan"] = [
-                {
+            voice["fallbackPlan"] = []
+            for plan in voice_config.fallbackPlan:
+                plan_dict = {
                     "provider": plan.provider,
                     "voiceId": plan.voice_id,
-                    "model": plan.voice_model,
                 }
-                for plan in voice_config.fallbackPlan
-            ]
+                if plan.voice_model:
+                    plan_dict["model"] = plan.voice_model
+                if plan.chunkPlan:
+                    plan_dict["chunkPlan"] = {
+                        "enabled": plan.chunkPlan.enabled,
+                        "minCharacters": plan.chunkPlan.minCharacters,
+                    }
+                    if plan.chunkPlan.punctuationBoundaries:
+                        plan_dict["chunkPlan"][
+                            "punctuationBoundaries"
+                        ] = plan.chunkPlan.punctuationBoundaries
+
+                voice["fallbackPlan"].append(plan_dict)
     else:
         voice = {
             "provider": "cartesia",
