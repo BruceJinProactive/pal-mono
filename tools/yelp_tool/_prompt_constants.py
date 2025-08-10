@@ -14,14 +14,38 @@ Your task is to extract the following information from the chat history:
 4. If party size is not mentioned, do not guess - leave it empty
 5. If information is missing, output null for that field
 6. Assume the year as that of the current date {current_date} unless otherwise specified.
+7. For "next available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them with time pushed forward by 30 minutes
+8. For "earlier available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them with time pushed back by 30 minutes
+
+# MEAL TIME DEFAULTS:
+When users request reservations for meals without specifying exact times, use these default time ranges:
+- "lunch" or "lunch time": Use 11:30 as the time and set after=true to search for any availability during lunch hours (11:30-13:30)
+- "dinner" or "dinner time": Use 18:00 as the time and set after=true to search for any availability during dinner hours (18:00-21:00)
+- "breakfast" or "breakfast time": Use 08:00 as the time and set after=true to search for any availability during breakfast hours (08:00-11:00)
+- "brunch" or "brunch time": Use 10:00 as the time and set after=true to search for any availability during brunch hours (10:00-14:00)
+
+IMPORTANT: If a meal term is combined with an explicit time, always use the explicit time and ignore meal defaults.
+
+Examples:
+- "Do you have lunch reservations available?" → time="11:30", after=true
+- "Any dinner spots open?" → time="18:00", after=true
+- "Looking for brunch availability" → time="10:00", after=true
+- "Lunch at 1:00 PM" → time="13:00", after=null, before=null (explicit time overrides meal default)
+- "Dinner reservation at 7:30" → time="19:30", after=null, before=null (explicit time overrides meal default)
+- After searching for 7:00 PM: "Check next available time" → time="19:30", after=true, before=true, reuse same party size and date
+- After searching for 7:00 PM: "Check earlier available time" → time="18:30", after=true, before=true, reuse same party size and date
 
 # TIME FILTERING RULES:
 - If user asks for "openings after [time]", set the time to that time AND set after to true
 - If user asks for "openings before [time]", set the time to that time AND set before to true
 - If user asks for "later times" or "later slots", set after to true (but keep the original time if specified)
 - If user asks for "earlier times" or "earlier slots", set before to true (but keep the original time if specified)
+- If user asks for meal-based times (lunch, dinner, etc.), use the meal defaults above
+- If a meal term is combined with an explicit time (e.g., "lunch at 1:00", "dinner reservation at 7:30"), use the explicit time and do not apply meal defaults or set after/before unless explicitly requested
+- If user asks for "next available time" or "check next availability" after a previous search, automatically push the time forward by 30 minutes from the last searched time and set both after=true and before=true, reuse the same party size and date from the previous search
+- If user asks for "earlier available time" or "check earlier availability" after a previous search, automatically push the time back by 30 minutes from the last searched time and set both after=true and before=true, reuse the same party size and date from the previous search
 - If no time filtering is mentioned, leave both after and before as null
-- IMPORTANT: Never set both after and before to true at the same time
+- IMPORTANT: Never set both after and before to true at the same time, EXCEPT for "next/earlier available time" requests where both should be true to search in all directions
 
 # RULES:
 - covers must be between 1 and 10
@@ -30,6 +54,8 @@ Your task is to extract the following information from the chat history:
 - get_covers_range is optional and defaults to false
 - after: set to true only when user wants results AFTER a certain time, otherwise null
 - before: set to true only when user wants results BEFORE a certain time, otherwise null
+- For "next available time" or "earlier available time" requests, all required fields should be inferred from previous search context - do not leave them null
+- For both "next" and "earlier" available time requests, set both after=true and before=true to search in all directions from the adjusted time
 """
 
 OPENINGS_EXTRACTION_USER_PROMPT = """
@@ -37,6 +63,11 @@ OPENINGS_EXTRACTION_USER_PROMPT = """
 {chat_history}
 
 Extract the reservation search parameters from the conversation above. Only include information that was explicitly mentioned by the user. You must identify the correct reservation search parameters that the user is looking for.
+
+IMPORTANT: 
+- If the user asks for meal-based reservations (lunch, dinner, breakfast, brunch) without specifying an exact time, use the meal time defaults and set appropriate filtering to search for availability during those meal periods.
+- If the user asks for "next available time" or "check next availability", look at the previous search in the conversation history, reuse the same party size and date, but push the time forward by 30 minutes and set both after=true and before=true.
+- If the user asks for "earlier available time" or "check earlier availability", look at the previous search in the conversation history, reuse the same party size and date, but push the time back by 30 minutes and set both after=true and before=true.
 """
 
 RESERVATION_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting complete reservation details from conversation history.
@@ -63,6 +94,22 @@ Your task is to extract the following information:
 2. If the user initially asks for a time range (e.g., "after 5pm") but then selects a specific time, use the selected time, NOT the range boundary
 3. Pay close attention to the user's final time choice - this takes precedence over initial search parameters
 4. Convert all times to 24-hour format (e.g., "5:45 PM" becomes "17:45", "7:30 PM" becomes "19:30")
+
+# MEAL TIME DEFAULTS:
+When users request reservations for meals without specifying exact times, use these default times:
+- "lunch" or "lunch time": Use 11:30 (best time within lunch hours 11:30-13:30)
+- "dinner" or "dinner time": Use 18:00 (best time within dinner hours 18:00-21:00)
+- "breakfast" or "breakfast time": Use 08:00 (best time within breakfast hours 08:00-11:00)
+- "brunch" or "brunch time": Use 10:00 (best time within brunch hours 10:00-14:00)
+
+IMPORTANT: If a meal term is combined with an explicit time, always use the explicit time and ignore meal defaults.
+
+Examples:
+- "Book us for lunch" → time="11:30"
+- "Make a dinner reservation" → time="18:00"
+- "Reserve a brunch table" → time="10:00"
+- "Book lunch at 1:00 PM" → time="13:00" (explicit time overrides meal default)
+- "Dinner reservation for 7:30" → time="19:30" (explicit time overrides meal default)
 
 # VALIDATION RULES:
 - covers: integer between 1 and 10

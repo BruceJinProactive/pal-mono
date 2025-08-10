@@ -447,7 +447,7 @@ def get_openings_creditcard_required(
     in their custom format with form actions for direct reservation. This workflow always
     requires completing the reservation on Yelp's website with credit card information.
 
-    Note: This API is not stable and may fail with connection errors. Implements retry logic with 6 attempts.
+    Note: This API is not stable and may fail with connection errors. Implements retry logic with 11 attempts.
 
     Args:
         business_id_or_alias: The business ID or alias for the restaurant
@@ -484,10 +484,10 @@ def get_openings_creditcard_required(
     }
 
     # Retry configuration
-    max_retries = 5  # 6 total attempts (0-5)
+    max_retries = 10
     last_exception = None
 
-    for attempt in range(max_retries + 1):  # 0, 1, 2, 3, 4, 5 (6 total attempts)
+    for attempt in range(max_retries):  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
         try:
             # Use the existing connect_yelp_api utility
             response = connect_yelp_api(
