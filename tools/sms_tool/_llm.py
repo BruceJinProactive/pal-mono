@@ -42,7 +42,7 @@ def generate_order_summary(chat_history: str) -> Optional[str]:
         response = llm_call(
             system_prompt=ORDER_SUMMARY_SYSTEM_PROMPT,
             prompt=ORDER_SUMMARY_USER_PROMPT.format(chat_history=chat_history),
-            reasoning=False,
+            openai=False,
         )
 
         if not response:

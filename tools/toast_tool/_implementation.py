@@ -139,7 +139,7 @@ class ToastTool(Toolkit):
             system_prompt="Extract the address into the given output format.",
             prompt=address,
             response_format=DeliveryAddress,
-            reasoning=False,
+            openai=False,
         )
 
         if not isinstance(delivery_address, DeliveryAddress):
@@ -418,7 +418,7 @@ class ToastTool(Toolkit):
             system_prompt=RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
             prompt=chat_history,
             response_format=SubQueries,
-            reasoning=False,
+            openai=False,
         )
 
         if not isinstance(sub_queries, SubQueries):
@@ -513,7 +513,7 @@ class ToastTool(Toolkit):
                 context=context, chat_history=chat_history
             ),
             response_format=OrderInput,
-            reasoning=False,
+            openai=False,
         )
 
         # Check if the order is a string and convert it to an OrderInput object, catching any errors

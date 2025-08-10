@@ -296,7 +296,7 @@ class OpenTableTool(Toolkit):
                     context=metadata_context, chat_history=chat_history
                 ),
                 response_format=ReservationExtractedData,
-                reasoning=False,
+                openai=False,
             )
 
             if not isinstance(reservation_data, ReservationExtractedData):

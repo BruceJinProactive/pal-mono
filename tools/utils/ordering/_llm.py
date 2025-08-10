@@ -17,7 +17,7 @@ def llm_call(
     prompt: str,
     response_format: type[T],
     name: str = "tool",
-    reasoning: bool = True,
+    openai: bool = False,
 ) -> T | None: ...
 
 
@@ -27,7 +27,7 @@ def llm_call(
     prompt: str,
     response_format: None = None,
     name: str = "tool",
-    reasoning: bool = True,
+    openai: bool = False,
 ) -> str | None: ...
 
 
@@ -37,7 +37,7 @@ def llm_call(
     prompt: str,
     response_format: type[T] | None = None,
     name: str = "tool",
-    reasoning: bool = True,
+    openai: bool = False,
 ) -> T | str | None:
     """
     Makes a call to a language model and returns either a structured or raw response.
@@ -47,7 +47,7 @@ def llm_call(
         prompt: The user prompt to send to the LLM.
         response_format: Optional Pydantic model class to structure the response.
         name: Name identifier for the tool, used in agent_id.
-        reasoning: Whether to use a model optimized for reasoning.
+        openai: Whether to use OpenAI model instead of Llama.
 
     Returns:
         If response_format is provided, returns an instance of that model or None on failure.
@@ -58,9 +58,7 @@ def llm_call(
     """
     # existing implementation follows…
 
-    model_name = (
-        "deepseek-r1-distill-qwen-32b" if reasoning else "llama-3.3-70b-versatile"
-    )
+    model_name = "openai/gpt-oss-20b" if openai else "llama-3.3-70b-versatile"
     client = Groq(id=model_name)
 
     if response_format:
@@ -70,10 +68,10 @@ Structure your response as a valid JSON object, do not include "json" in the beg
 of the response.
 """
 
-    # Deepseek models works better if everything is passed in the user prompt
-    if "deepseek" in model_name:
-        prompt = "\n\n".join([system_prompt, prompt])
-        system_prompt = ""
+    # # Deepseek models works better if everything is passed in the user prompt
+    # if "deepseek" in model_name:
+    #     prompt = "\n\n".join([system_prompt, prompt])
+    #     system_prompt = ""
 
     agent = Agent(
         model=client,

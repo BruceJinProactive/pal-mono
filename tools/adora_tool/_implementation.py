@@ -293,7 +293,7 @@ class AdoraTool(Toolkit):
             system_prompt="Extract the address into the given output format.",
             prompt=address,
             response_format=DeliveryAddress,
-            reasoning=False,
+            openai=False,
         )
 
         if not isinstance(delivery_address, DeliveryAddress):
@@ -375,7 +375,7 @@ class AdoraTool(Toolkit):
             system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
             prompt=chat_history,
             response_format=SubQueries,
-            reasoning=False,
+            openai=False,
         )
 
         if not isinstance(sub_queries, SubQueries):
@@ -827,7 +827,7 @@ class AdoraTool(Toolkit):
                     context=context, chat_history=chat_history
                 ),
                 response_format=Order,
-                reasoning=False,
+                openai=False,
             )
 
             if not isinstance(order, Order):

@@ -85,7 +85,7 @@ def get_relevant_docs(
         system_prompt=system_prompt,
         prompt=chat_history,
         response_format=response_format,
-        reasoning=False,
+        openai=False,
     )
 
     if not isinstance(sub_queries, response_format):
@@ -199,7 +199,7 @@ def construct_order(
             system_prompt=system_prompt,
             prompt=user_prompt,
             response_format=response_format,
-            reasoning=False,
+            openai=False,
         )
 
         if response is None:

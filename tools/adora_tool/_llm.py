@@ -78,7 +78,7 @@ def llm_call(
     prompt: str,
     response_format: type[T],
     name: str = "tool",
-    reasoning: bool = True,
+    openai: bool = False,
 ) -> T | None: ...
 
 
@@ -88,7 +88,7 @@ def llm_call(
     prompt: str,
     response_format: None = None,
     name: str = "tool",
-    reasoning: bool = True,
+    openai: bool = False,
 ) -> str | None: ...
 
 
@@ -98,11 +98,9 @@ def llm_call(
     prompt: str,
     response_format: type[T] | None = None,
     name: str = "tool",
-    reasoning: bool = True,
+    openai: bool = False,
 ) -> T | str | None:
-    model_name = (
-        "deepseek-r1-distill-qwen-32b" if reasoning else "llama-3.3-70b-versatile"
-    )
+    model_name = "openai/gpt-oss-20b" if openai else "llama-3.3-70b-versatile"
     client = Groq(id=model_name)
 
     if response_format:
@@ -112,10 +110,8 @@ def llm_call(
         of the response.
         """
 
-    # Deepseek models works better if everything is passed in the user prompt
-    if "deepseek" in model_name:
-        prompt = "\n\n".join([system_prompt, prompt])
-        system_prompt = ""
+    # OpenAI models work better with separate system and user prompts
+    # No special handling needed for OpenAI models
 
     agent = Agent(
         model=client,
