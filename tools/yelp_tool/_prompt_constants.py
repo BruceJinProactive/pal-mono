@@ -1,3 +1,34 @@
+WEEKDAY_CONVERSION_RULES = """**MANDATORY: You MUST deduce the exact date from the weekday based on the current date and current weekday provided in {{current_date}}.**
+
+**WEEKDAY CONVERSION PROCESS:**
+- **STEP 1**: Parse the current date {{current_date}} to understand what day today is (e.g., "2025-01-13 (Monday)" means today is Monday, January 13th, 2025)
+- **STEP 2**: Calculate the exact target date by counting days forward from today to reach the requested weekday
+
+**WEEKDAY CONVERSION RULES:**
+- "this [weekday]" = the next occurrence of that weekday counting forward from today (including today if today is that weekday). Calculate as: days_to_add = (target_weekday - current_weekday) % 7, where weekdays are numbered 0-6 (Monday=0, Tuesday=1, ..., Sunday=6)
+- "next [weekday]" = the occurrence of that weekday in the following week. Calculate as: days_to_add = ((target_weekday - current_weekday) % 7) + 7. This ensures you always get the next week's occurrence
+- "[weekday]" (without "this" or "next") = the very next occurrence of that weekday counting forward from today. Same calculation as "this [weekday]": days_to_add = (target_weekday - current_weekday) % 7
+- **SAME DAY RULE**: If today is the same weekday requested (e.g., today is Thursday and user says "Thursday" or "this Thursday"), interpret as today (0 days forward)
+- **ALWAYS VERIFY**: The final calculated date must actually fall on the requested weekday (e.g., if user says "Wednesday", the date must be a Wednesday)
+
+**CALCULATION EXAMPLES** (assuming current date is "2025-01-13 (Monday)"):
+**METHOD**: Parse "2025-01-13 (Monday)" → Today is Monday (weekday 0), January 13th, 2025.
+
+**Modular Arithmetic Calculations:**
+- Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6
+
+**Examples:**
+- "this Wednesday" → target=2, current=0 → (2-0)%7 = 2 days → 2025-01-15 (verify: January 15th is a Wednesday ✓)
+- "next Wednesday" → target=2, current=0 → ((2-0)%7)+7 = 9 days → 2025-01-22 (verify: January 22nd is a Wednesday ✓)
+- "Wednesday" → target=2, current=0 → (2-0)%7 = 2 days → 2025-01-15 (next occurrence)
+- "this Friday" → target=4, current=0 → (4-0)%7 = 4 days → 2025-01-17 (verify: January 17th is a Friday ✓)
+- "next Friday" → target=4, current=0 → ((4-0)%7)+7 = 11 days → 2025-01-24 (verify: January 24th is a Friday ✓)
+- "Friday" → target=4, current=0 → (4-0)%7 = 4 days → 2025-01-17 (next occurrence)
+- "this Saturday" → target=5, current=0 → (5-0)%7 = 5 days → 2025-01-18 (verify: January 18th is a Saturday ✓)
+- "next Saturday" → target=5, current=0 → ((5-0)%7)+7 = 12 days → 2025-01-25 (verify: January 25th is a Saturday ✓)
+- "Monday" or "this Monday" → target=0, current=0 → (0-0)%7 = 0 days → 2025-01-13 (today)
+- "this Thursday" → target=3, current=0 → (3-0)%7 = 3 days → 2025-01-16 (verify: January 16th is a Thursday ✓)"""
+
 OPENINGS_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting reservation search parameters from conversation history.
 
 Your task is to extract the following information from the chat history:
@@ -9,11 +40,10 @@ Your task is to extract the following information from the chat history:
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not make assumptions
-2. If date is mentioned relative to "today", "tomorrow", or weekday names, you must convert it to YYYY-MM-DD format with respect to the current date {current_date}. For weekday conversions:
-   - "this [weekday]" = the next occurrence of that weekday within the current week (if today is Monday and user says "this Thursday", use this week's Thursday)
-   - "next [weekday]" = the occurrence of that weekday in the following week (if today is Monday and user says "next Thursday", use next week's Thursday)
-   - "[weekday]" (without "this" or "next") = the very next occurrence of that weekday (if today is Thursday and user says "Monday", use next Monday)
-   - If today is the same weekday requested (e.g., today is Thursday and user says "Thursday"), interpret as today unless context suggests otherwise
+2. If date is mentioned relative to "today", "tomorrow", or weekday names, you must convert it to YYYY-MM-DD format with respect to the current date {current_date}. Follow these weekday conversion rules:
+
+{weekday_conversion_rules}
+
 3. Convert time to 24-hour format (e.g., "7 PM" becomes "19:00")
 4. If party size is not mentioned, do not guess - leave it empty
 5. If information is missing, output null for that field
@@ -41,18 +71,6 @@ Examples:
 - After searching for lunch on 8/15: "Any later available time?" → time="11:30", after=true, before=null, date=8/15, covers=2
 - After searching for lunch on 8/15: "On the same day" → time="11:30", date=8/15, covers=2 (never change date)
 - After searching for 7:00 PM: "Check earlier available time" → time="19:00", before=true, after=null, date=8/15, covers=2
-
-# WEEKDAY CONVERSION EXAMPLES:
-Assuming current date is "2024-12-18 (Wednesday)":
-- "this Thursday" → date="2024-12-19" (this week's Thursday)
-- "next Thursday" → date="2024-12-26" (next week's Thursday)
-- "Thursday" → date="2024-12-19" (next occurrence, which is this week's Thursday)
-- "this Monday" → date="2024-12-23" (next week's Monday, since this week's Monday already passed)
-- "next Monday" → date="2024-12-30" (the Monday after next week's Monday)
-- "Monday" → date="2024-12-23" (next occurrence, which is next week's Monday)
-- "Wednesday" → date="2024-12-18" (today, since it's the same weekday)
-- "this Saturday" → date="2024-12-21" (this week's Saturday)
-- "next Saturday" → date="2024-12-28" (next week's Saturday)
 
 # TIME FILTERING RULES:
 - If user asks for "openings after [time]", set the time to that time AND set after to true
@@ -101,11 +119,9 @@ Your task is to extract the following information:
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not fabricate data
-2. If date is mentioned relative to "today", "tomorrow", or weekday names, you must convert it to YYYY-MM-DD format with respect to the current date {current_date}. For weekday conversions:
-   - "this [weekday]" = the next occurrence of that weekday within the current week (if today is Monday and user says "this Thursday", use this week's Thursday)
-   - "next [weekday]" = the occurrence of that weekday in the following week (if today is Monday and user says "next Thursday", use next week's Thursday)
-   - "[weekday]" (without "this" or "next") = the very next occurrence of that weekday (if today is Thursday and user says "Monday", use next Monday)
-   - If today is the same weekday requested (e.g., today is Thursday and user says "Thursday"), interpret as today unless context suggests otherwise
+2. If date is mentioned relative to "today", "tomorrow", or weekday names, you must convert it to YYYY-MM-DD format with respect to the current date {current_date}. Follow these weekday conversion rules:
+
+{weekday_conversion_rules}
 3. For names, extract first and last name separately
 4. Phone numbers should be in standard format (e.g., "555-123-4567")
 5. Email addresses must be valid format
@@ -135,15 +151,7 @@ Examples:
 - "Book lunch at 1:00 PM" → time="13:00" (explicit time overrides meal default)
 - "Dinner reservation for 7:30" → time="19:30" (explicit time overrides meal default)
 
-# WEEKDAY CONVERSION EXAMPLES:
-Assuming current date is "2024-12-18 (Wednesday)":
-- "Book a table for this Thursday" → date="2024-12-19"
-- "Make a reservation for next Thursday" → date="2024-12-26"
-- "I want to reserve for Thursday" → date="2024-12-19"
-- "Reserve a table for this Monday" → date="2024-12-23" (next week's Monday)
-- "Next Monday reservation" → date="2024-12-30"
-- "Saturday night reservation" → date="2024-12-21" (this Saturday)
-- "Book for Wednesday" → date="2024-12-18" (today)
+
 
 # VALIDATION RULES:
 - covers: integer between 1 and 10

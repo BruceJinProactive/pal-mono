@@ -33,6 +33,7 @@ from tools.yelp_tool._prompt_constants import (
     WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT,
     WAITLIST_ON_MY_WAY_EXTRACTION_SYSTEM_PROMPT,
     WAITLIST_ON_MY_WAY_EXTRACTION_USER_PROMPT,
+    WEEKDAY_CONVERSION_RULES,
 )
 from tools.yelp_tool._utils import (
     check_cancel_visit_required_fields,
@@ -269,7 +270,10 @@ class YelpTool(Toolkit):
             current_date = self._get_current_date()
             openings_query = llm_call(
                 system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT.format(
-                    current_date=current_date
+                    current_date=current_date,
+                    weekday_conversion_rules=WEEKDAY_CONVERSION_RULES.format(
+                        current_date=current_date
+                    ),
                 ),
                 prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
@@ -355,7 +359,10 @@ class YelpTool(Toolkit):
             current_date = self._get_current_date()
             reservation_query = llm_call(
                 system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT.format(
-                    current_date=current_date
+                    current_date=current_date,
+                    weekday_conversion_rules=WEEKDAY_CONVERSION_RULES.format(
+                        current_date=current_date
+                    ),
                 ),
                 prompt=RESERVATION_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
@@ -840,7 +847,10 @@ class YelpTool(Toolkit):
             current_date = self._get_current_date()
             openings_query = llm_call(
                 system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT.format(
-                    current_date=current_date
+                    current_date=current_date,
+                    weekday_conversion_rules=WEEKDAY_CONVERSION_RULES.format(
+                        current_date=current_date
+                    ),
                 ),
                 prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
@@ -917,7 +927,10 @@ class YelpTool(Toolkit):
             current_date = self._get_current_date()
             openings_query = llm_call(
                 system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT.format(
-                    current_date=current_date
+                    current_date=current_date,
+                    weekday_conversion_rules=WEEKDAY_CONVERSION_RULES.format(
+                        current_date=current_date
+                    ),
                 ),
                 prompt=RESERVATION_EXTRACTION_USER_PROMPT.format(
                     chat_history=chat_history
