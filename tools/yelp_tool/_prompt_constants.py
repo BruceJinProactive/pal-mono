@@ -9,18 +9,17 @@ Your task is to extract the following information from the chat history:
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not make assumptions
-2. If date is mentioned relative to "today", "tomorrow", etc., you must convert it to YYYY-MM-DD format with respect to the current date {current_date}.
+2. If date is mentioned relative to "today", "tomorrow", or weekday names, you must convert it to YYYY-MM-DD format with respect to the current date {current_date}. For weekday conversions:
+   - "this [weekday]" = the next occurrence of that weekday within the current week (if today is Monday and user says "this Thursday", use this week's Thursday)
+   - "next [weekday]" = the occurrence of that weekday in the following week (if today is Monday and user says "next Thursday", use next week's Thursday)
+   - "[weekday]" (without "this" or "next") = the very next occurrence of that weekday (if today is Thursday and user says "Monday", use next Monday)
+   - If today is the same weekday requested (e.g., today is Thursday and user says "Thursday"), interpret as today unless context suggests otherwise
 3. Convert time to 24-hour format (e.g., "7 PM" becomes "19:00")
 4. If party size is not mentioned, do not guess - leave it empty
 5. If information is missing, output null for that field
 6. Assume the year as that of the current date {current_date} unless otherwise specified.
-7. For "next available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them with time pushed forward by 30 minutes
-8. For "earlier available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them with time pushed back by 30 minutes
-9. **CONTEXT PRESERVATION**: If the user asks about a different date (e.g., "what about tomorrow", "the day after tomorrow", "next week") without specifying party size or time, automatically reuse the party size and time from the most recent search in the conversation history
-7. For "next available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them EXACTLY. Search for times AFTER the originally requested time on the SAME DATE ONLY.
-8. For "earlier available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them EXACTLY. Search for times BEFORE the originally requested time on the SAME DATE ONLY.
-9. When user says "on the same day" or "same day", ALWAYS use the date from the previous search in the conversation - NEVER change to a different date.
-10. For follow-up questions like "when is the next available time", maintain ALL context from the previous search (party size, date, meal preference) and only search within that same day.
+7. **CONTEXT PRESERVATION**: If the user asks about a different date (e.g., "what about tomorrow", "the day after tomorrow", "next week") without specifying party size or time, automatically reuse the party size and time from the most recent search in the conversation history
+8. **FOLLOW-UP AVAILABILITY REQUESTS**: For "next available time", "later available time", or "earlier available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them EXACTLY. Never adjust the original time - use filtering instead as defined in TIME FILTERING RULES section below.
 
 # MEAL TIME DEFAULTS:
 When users request reservations for meals without specifying exact times, use these default time ranges:
@@ -43,6 +42,18 @@ Examples:
 - After searching for lunch on 8/15: "On the same day" → time="11:30", date=8/15, covers=2 (never change date)
 - After searching for 7:00 PM: "Check earlier available time" → time="19:00", before=true, after=null, date=8/15, covers=2
 
+# WEEKDAY CONVERSION EXAMPLES:
+Assuming current date is "2024-12-18 (Wednesday)":
+- "this Thursday" → date="2024-12-19" (this week's Thursday)
+- "next Thursday" → date="2024-12-26" (next week's Thursday)
+- "Thursday" → date="2024-12-19" (next occurrence, which is this week's Thursday)
+- "this Monday" → date="2024-12-23" (next week's Monday, since this week's Monday already passed)
+- "next Monday" → date="2024-12-30" (the Monday after next week's Monday)
+- "Monday" → date="2024-12-23" (next occurrence, which is next week's Monday)
+- "Wednesday" → date="2024-12-18" (today, since it's the same weekday)
+- "this Saturday" → date="2024-12-21" (this week's Saturday)
+- "next Saturday" → date="2024-12-28" (next week's Saturday)
+
 # TIME FILTERING RULES:
 - If user asks for "openings after [time]", set the time to that time AND set after to true
 - If user asks for "openings before [time]", set the time to that time AND set before to true
@@ -50,12 +61,12 @@ Examples:
 - If user asks for "earlier times" or "earlier slots", set before to true (but keep the original time if specified)
 - If user asks for meal-based times (lunch, dinner, etc.), use the meal defaults above
 - If a meal term is combined with an explicit time (e.g., "lunch at 1:00", "dinner reservation at 7:30"), use the explicit time and do not apply meal defaults or set after/before unless explicitly requested
-- If user asks for "next available time" or "check next availability" after a previous search, reuse the EXACT same party size and date from the previous search. Use the originally requested time (not adjusted by 30 minutes) and set after=true, before=true to search for ALL available times on the SAME DAY ONLY.
-- If user asks for "later available time" or "any later time" after a previous search, reuse the EXACT same party size and date from the previous search. Use the originally requested time and set after=true, before=null to search for later times only on the SAME DAY ONLY.
-- If user asks for "earlier available time" or "check earlier availability" after a previous search, reuse the EXACT same party size and date from the previous search. Use the originally requested time and set before=true, after=null to search for earlier times on the SAME DAY ONLY.
+- **FOLLOW-UP AVAILABILITY SEARCHES**: For follow-up availability requests after a previous search:
+  * "next available time" or "check next availability": reuse EXACT same party size and date, use original time, set after=true, before=true to search ALL available times on the SAME DAY ONLY
+  * "later available time" or "any later time": reuse EXACT same party size and date, use original time, set after=true, before=null for later times only on the SAME DAY ONLY  
+  * "earlier available time" or "check earlier availability": reuse EXACT same party size and date, use original time, set before=true, after=null for earlier times on the SAME DAY ONLY
 - CRITICAL: When user says "same day" or asks follow-up questions about availability, NEVER change the date from the original search. Always maintain the same date context.
 - If no time filtering is mentioned, leave both after and before as null
-- IMPORTANT: For "next available time" requests, set both after=true and before=true to search ALL available times on the same day. For "later available time" requests, use after=true and before=null to search for later times only. For "earlier available time" requests, use before=true and after=null to search for earlier times only.
 
 # RULES:
 - covers must be between 1 and 10
@@ -64,10 +75,7 @@ Examples:
 - get_covers_range is optional and defaults to false
 - after: set to true only when user wants results AFTER a certain time, otherwise null
 - before: set to true only when user wants results BEFORE a certain time, otherwise null
-- For "next available time", "later available time", or "earlier available time" requests, all required fields should be inferred from previous search context - do not leave them null. Always maintain the same date and party size.
-- For "next available time" requests, set after=true and before=true to search for ALL available times on the same day.
-- For "later available time" requests, set after=true and before=null to search for later times only on the same day.
-- For "earlier available time" requests, set before=true and after=null to search for earlier times on the same day only.
+- For follow-up availability requests, all required fields should be inferred from previous search context - do not leave them null. Follow TIME FILTERING RULES above for specific after/before settings.
 """
 
 OPENINGS_EXTRACTION_USER_PROMPT = """
@@ -78,9 +86,7 @@ Extract the reservation search parameters from the conversation above. Only incl
 
 IMPORTANT: 
 - If the user asks for meal-based reservations (lunch, dinner, breakfast, brunch) without specifying an exact time, use the meal time defaults and set appropriate filtering to search for availability during those meal periods. Never suggest times outside the appropriate meal hours (e.g., never suggest 10:30 AM for lunch).
-- If the user asks for "next available time" or "check next availability", look at the previous search in the conversation history, reuse the EXACT same party size and date, use the originally requested time (not adjusted), and set after=true, before=true to search for ALL available times on the SAME DAY ONLY.
-- If the user asks for "later available time" or "any later time", look at the previous search in the conversation history, reuse the EXACT same party size and date, use the originally requested time, and set after=true, before=null to search for later times only on the SAME DAY ONLY.
-- If the user asks for "earlier available time" or "check earlier availability", look at the previous search in the conversation history, reuse the EXACT same party size and date, use the originally requested time, and set before=true, after=null to search for earlier times on the SAME DAY ONLY.
+- For follow-up availability requests ("next available time", "later available time", "earlier available time"), follow the TIME FILTERING RULES defined in the system prompt above.
 - CRITICAL: When user mentions "same day" or asks follow-up questions, ALWAYS maintain the original search date. Never suggest different dates unless explicitly requested.
 """
 
@@ -95,7 +101,11 @@ Your task is to extract the following information:
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not fabricate data
-2. If date is mentioned relative to "today", "tomorrow", etc., you must convert it to YYYY-MM-DD format with respect to the current date {current_date}.
+2. If date is mentioned relative to "today", "tomorrow", or weekday names, you must convert it to YYYY-MM-DD format with respect to the current date {current_date}. For weekday conversions:
+   - "this [weekday]" = the next occurrence of that weekday within the current week (if today is Monday and user says "this Thursday", use this week's Thursday)
+   - "next [weekday]" = the occurrence of that weekday in the following week (if today is Monday and user says "next Thursday", use next week's Thursday)
+   - "[weekday]" (without "this" or "next") = the very next occurrence of that weekday (if today is Thursday and user says "Monday", use next Monday)
+   - If today is the same weekday requested (e.g., today is Thursday and user says "Thursday"), interpret as today unless context suggests otherwise
 3. For names, extract first and last name separately
 4. Phone numbers should be in standard format (e.g., "555-123-4567")
 5. Email addresses must be valid format
@@ -124,6 +134,16 @@ Examples:
 - "Reserve a brunch table" → time="10:00"
 - "Book lunch at 1:00 PM" → time="13:00" (explicit time overrides meal default)
 - "Dinner reservation for 7:30" → time="19:30" (explicit time overrides meal default)
+
+# WEEKDAY CONVERSION EXAMPLES:
+Assuming current date is "2024-12-18 (Wednesday)":
+- "Book a table for this Thursday" → date="2024-12-19"
+- "Make a reservation for next Thursday" → date="2024-12-26"
+- "I want to reserve for Thursday" → date="2024-12-19"
+- "Reserve a table for this Monday" → date="2024-12-23" (next week's Monday)
+- "Next Monday reservation" → date="2024-12-30"
+- "Saturday night reservation" → date="2024-12-21" (this Saturday)
+- "Book for Wednesday" → date="2024-12-18" (today)
 
 # VALIDATION RULES:
 - covers: integer between 1 and 10
