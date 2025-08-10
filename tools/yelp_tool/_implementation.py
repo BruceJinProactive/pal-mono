@@ -12,16 +12,16 @@ from ddtrace.llmobs.decorators import retrieval, tool
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.utils.ordering._llm import llm_call
+from tools.yelp_tool._apis import cancel_visit as api_cancel_visit
 from tools.yelp_tool._apis import (
-    cancel_visit,
     create_hold_creditcard_not_required,
     create_waitlist_on_my_way,
     get_openings_creditcard_not_required,
     get_openings_creditcard_required,
     get_waitlist_info,
     get_waitlist_status,
-    join_waitlist_queue,
 )
+from tools.yelp_tool._apis import join_waitlist_queue as api_join_waitlist_queue
 from tools.yelp_tool._prompt_constants import (
     CANCEL_VISIT_EXTRACTION_SYSTEM_PROMPT,
     CANCEL_VISIT_EXTRACTION_USER_PROMPT,
@@ -788,7 +788,7 @@ class YelpTool(Toolkit):
                 return f"Invalid request parameters: {message}"
 
             # Make API call to join waitlist queue
-            response = join_waitlist_queue(
+            response = api_join_waitlist_queue(
                 bearer_token=bearer_token,
                 request_params=request_obj,
             )
@@ -1069,7 +1069,7 @@ class YelpTool(Toolkit):
                 return f"Invalid request parameters: {message}"
 
             # Make API call to cancel visit
-            response = cancel_visit(
+            response = api_cancel_visit(
                 bearer_token=bearer_token,
                 request_params=request_obj,
             )

@@ -695,21 +695,6 @@ class YelpBookingsOpeningsResponseCreditCardRequired(BaseModel):
     closest_match: Optional[YelpBookingsOpeningsSlotCreditCardRequired] = Field(
         default=None, description="Closest available time to the requested time"
     )
-    notify_me_message: Optional[str] = Field(
-        default=None, description="Message for notify me functionality"
-    )
-    notify_me_url: Optional[str] = Field(
-        default=None, description="URL for notify me functionality"
-    )
-    enable_next_available: bool = Field(
-        default=False, description="Whether next available feature is enabled"
-    )
-    motivational_content: Optional[str] = Field(
-        default=None, description="Motivational content for booking"
-    )
-    recovery_profile: Optional[str] = Field(
-        default="none", description="Recovery profile for booking"
-    )
 
 
 # YELP CREDIT CARD REQUIRED API CLASSES END
