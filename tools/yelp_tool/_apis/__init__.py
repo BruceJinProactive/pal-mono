@@ -1,3 +1,5 @@
+import time
+
 from tools.yelp_tool._apis._utils import YELP_API_HOST, connect_yelp_api
 from tools.yelp_tool.classes import (
     YelpAccessToken,
@@ -484,10 +486,10 @@ def get_openings_creditcard_required(
     }
 
     # Retry configuration
-    max_retries = 10
+    max_retries = 15
     last_exception = None
 
-    for attempt in range(max_retries):  # 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+    for attempt in range(max_retries):
         try:
             # Use the existing connect_yelp_api utility
             response = connect_yelp_api(
@@ -521,8 +523,11 @@ def get_openings_creditcard_required(
                 logger.debug(f"Open API failed after {attempt + 1} attempts: {e}")
                 break
 
-            # Retry immediately without delay
-            logger.debug(f"Open API attempt {attempt + 1} failed ({e}).")
+            # Add 0.2 second delay between retries
+            logger.debug(
+                f"Open API attempt {attempt + 1} failed ({e}). Retrying in 0.2s..."
+            )
+            time.sleep(0.2)
 
     # If we get here, all retries failed
     raise Exception(
