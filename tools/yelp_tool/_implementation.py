@@ -279,7 +279,7 @@ class YelpTool(Toolkit):
                     chat_history=chat_history
                 ),
                 response_format=OpeningsQueryWithoutCreditCard,
-                reasoning=True,
+                reasoning=False,
             )
 
             if not isinstance(openings_query, OpeningsQueryWithoutCreditCard):
@@ -368,7 +368,7 @@ class YelpTool(Toolkit):
                     chat_history=chat_history
                 ),
                 response_format=ReservationQuery,
-                reasoning=True,
+                reasoning=False,
             )
 
             if not isinstance(reservation_query, ReservationQuery):
@@ -629,7 +629,7 @@ class YelpTool(Toolkit):
                     chat_history=chat_history
                 ),
                 response_format=WaitlistOnMyWayQuery,
-                reasoning=True,
+                reasoning=False,
             )
 
             if not isinstance(waitlist_query, WaitlistOnMyWayQuery):
@@ -753,7 +753,7 @@ class YelpTool(Toolkit):
                     chat_history=chat_history
                 ),
                 response_format=WaitlistJoinQueueQuery,
-                reasoning=True,
+                reasoning=False,
             )
 
             if not isinstance(waitlist_query, WaitlistJoinQueueQuery):
@@ -856,7 +856,7 @@ class YelpTool(Toolkit):
                     chat_history=chat_history
                 ),
                 response_format=OpeningsQuery,
-                reasoning=True,
+                reasoning=False,
             )
 
             if not isinstance(openings_query, OpeningsQuery):
@@ -936,7 +936,7 @@ class YelpTool(Toolkit):
                     chat_history=chat_history
                 ),
                 response_format=OpeningsQuery,
-                reasoning=True,
+                reasoning=False,
             )
 
             if not isinstance(openings_query, OpeningsQuery):
@@ -1051,7 +1051,7 @@ class YelpTool(Toolkit):
                     chat_history=chat_history
                 ),
                 response_format=CancelVisitQuery,
-                reasoning=True,
+                reasoning=False,
             )
 
             if not isinstance(cancel_query, CancelVisitQuery):
