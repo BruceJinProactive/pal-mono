@@ -16,6 +16,7 @@ Your task is to extract the following information from the chat history:
 6. Assume the year as that of the current date {current_date} unless otherwise specified.
 7. For "next available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them with time pushed forward by 30 minutes
 8. For "earlier available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them with time pushed back by 30 minutes
+9. **CONTEXT PRESERVATION**: If the user asks about a different date (e.g., "what about tomorrow", "the day after tomorrow", "next week") without specifying party size or time, automatically reuse the party size and time from the most recent search in the conversation history
 
 # MEAL TIME DEFAULTS:
 When users request reservations for meals without specifying exact times, use these default time ranges:
@@ -32,8 +33,11 @@ Examples:
 - "Looking for brunch availability" → time="10:00", after=true
 - "Lunch at 1:00 PM" → time="13:00", after=null, before=null (explicit time overrides meal default)
 - "Dinner reservation at 7:30" → time="19:30", after=null, before=null (explicit time overrides meal default)
-- After searching for 7:00 PM: "Check next available time" → time="19:30", after=true, before=true, reuse same party size and date
-- After searching for 7:00 PM: "Check earlier available time" → time="18:30", after=true, before=true, reuse same party size and date
+- After searching for 7:00 PM: "Check next available time" → time="19:30", after=null, before=null, reuse same party size and date
+- After searching for 7:00 PM: "Check earlier available time" → time="18:30", after=null, before=null, reuse same party size and date
+- After searching for lunch (11:30): "what is the next available time" → time="12:00", after=null, before=null, reuse same party size and date
+- After searching for 4 people tomorrow after 6pm: "what about the day after tomorrow" → covers=4, time="18:00", after=true, reuse party size and time from previous search
+- After searching for 2 people Friday at 7:30pm: "what about Saturday" → covers=2, time="19:30", reuse party size and time from previous search
 
 # TIME FILTERING RULES:
 - If user asks for "openings after [time]", set the time to that time AND set after to true
@@ -42,10 +46,9 @@ Examples:
 - If user asks for "earlier times" or "earlier slots", set before to true (but keep the original time if specified)
 - If user asks for meal-based times (lunch, dinner, etc.), use the meal defaults above
 - If a meal term is combined with an explicit time (e.g., "lunch at 1:00", "dinner reservation at 7:30"), use the explicit time and do not apply meal defaults or set after/before unless explicitly requested
-- If user asks for "next available time" or "check next availability" after a previous search, automatically push the time forward by 30 minutes from the last searched time and set both after=true and before=true, reuse the same party size and date from the previous search
-- If user asks for "earlier available time" or "check earlier availability" after a previous search, automatically push the time back by 30 minutes from the last searched time and set both after=true and before=true, reuse the same party size and date from the previous search
+- If user asks for "next available time" or "check next availability" after a previous search, automatically push the time forward by 30 minutes from the last searched time, keep after and before as null (do not set time filtering), reuse the same party size and date from the previous search
+- If user asks for "earlier available time" or "check earlier availability" after a previous search, automatically push the time back by 30 minutes from the last searched time, keep after and before as null (do not set time filtering), reuse the same party size and date from the previous search
 - If no time filtering is mentioned, leave both after and before as null
-- IMPORTANT: Never set both after and before to true at the same time, EXCEPT for "next/earlier available time" requests where both should be true to search in all directions
 
 # RULES:
 - covers must be between 1 and 10
@@ -55,7 +58,13 @@ Examples:
 - after: set to true only when user wants results AFTER a certain time, otherwise null
 - before: set to true only when user wants results BEFORE a certain time, otherwise null
 - For "next available time" or "earlier available time" requests, all required fields should be inferred from previous search context - do not leave them null
-- For both "next" and "earlier" available time requests, set both after=true and before=true to search in all directions from the adjusted time
+- For both "next" and "earlier" available time requests, keep after and before as null (do not set time filtering flags)
+- **CONTEXT PRESERVATION RULES**: When user asks about a different date without mentioning party size or time:
+  - Look for the most recent search in conversation history that has both covers and time defined
+  - Reuse the party size (covers) from that search
+  - Reuse the time and time filtering preferences (after/before) from that search
+  - Only update the date to the new requested date
+  - This applies to queries like "what about tomorrow", "the day after tomorrow", "next Friday", etc.
 """
 
 OPENINGS_EXTRACTION_USER_PROMPT = """
@@ -66,8 +75,9 @@ Extract the reservation search parameters from the conversation above. Only incl
 
 IMPORTANT: 
 - If the user asks for meal-based reservations (lunch, dinner, breakfast, brunch) without specifying an exact time, use the meal time defaults and set appropriate filtering to search for availability during those meal periods.
-- If the user asks for "next available time" or "check next availability", look at the previous search in the conversation history, reuse the same party size and date, but push the time forward by 30 minutes and set both after=true and before=true.
-- If the user asks for "earlier available time" or "check earlier availability", look at the previous search in the conversation history, reuse the same party size and date, but push the time back by 30 minutes and set both after=true and before=true.
+- If the user asks for "next available time" or "check next availability", look at the previous search in the conversation history, reuse the same party size and date, but push the time forward by 30 minutes and keep after and before as null (do not set time filtering).
+- If the user asks for "earlier available time" or "check earlier availability", look at the previous search in the conversation history, reuse the same party size and date, but push the time back by 30 minutes and keep after and before as null (do not set time filtering).
+- **CONTEXT PRESERVATION**: If the user asks about a different date (e.g., "what about tomorrow", "the day after tomorrow", "what about Saturday") without specifying party size or time, automatically preserve the party size and time preferences from the most recent search in the conversation history and only update the date.
 """
 
 RESERVATION_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting complete reservation details from conversation history.
