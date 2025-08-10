@@ -107,7 +107,10 @@ class RawConfig:
                     greeting_message=self._render_greeting_message(),
                     voice_id=self.agent.voice_id,
                     speech_rate=self.agent.speech_rate,
-                    background_noise=self.agent.background_noise,
+                    background_noise=self.agent.raw_config.get(
+                        "background_sound",
+                        "office" if self.agent.background_noise else "off",
+                    ),
                     background_speech_denoising_plan=self._get_background_speech_denoising_plan(),
                     language=self.agent.language,
                     tool_calling_filler_words=self.agent.raw_config.get(

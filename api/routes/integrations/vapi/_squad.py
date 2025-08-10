@@ -41,15 +41,6 @@ class BaseAssistantFactory:
     def __init__(self, agent_config: AgentConfig):
         self.agent_config = agent_config
 
-    def _get_background_sound(self) -> str:
-        """Determine background sound setting."""
-        return (
-            "office"
-            if hasattr(self.agent_config.voice_config, "background_noise")
-            and self.agent_config.voice_config.background_noise
-            else "off"
-        )
-
     def _add_background_denoising(self, assistant_config: dict[str, Any]) -> None:
         """Add background speech denoising configuration if available."""
         if (
@@ -104,14 +95,13 @@ class BaseAssistantFactory:
         model_config: dict[str, Any],
     ) -> dict[str, Any]:
         """Build base assistant configuration with common fields."""
-        background_sound = self._get_background_sound()
 
         return {
             "name": name,
             "firstMessage": first_message,
             "transcriber": transcriber_config,
             "voice": voice_config,
-            "backgroundSound": background_sound,
+            "backgroundSound": self.agent_config.voice_config.background_noise,
             "silenceTimeoutSeconds": DEFAULT_SILENCE_TIMEOUT,
             "backgroundDenoisingEnabled": True,
             "model": {
@@ -187,7 +177,7 @@ class TriageAssistantFactory(BaseAssistantFactory):
 
         transfer_rules_text = "\n".join(transfer_rules)
 
-        return f"""You are {agent_name}, the initial contact for {account_display_name}. 
+        return f"""You are {agent_name}, the initial contact for {account_display_name}.
 
 Your ONLY responsibility is to:
 1. Greet the customer warmly

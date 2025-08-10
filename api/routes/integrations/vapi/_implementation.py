@@ -368,8 +368,8 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             config, voice_id, speech_rate
         )
 
-        if dynamic_vapi_config and config.voice_config.background_noise:
-            background_sound = "office"
+        if dynamic_vapi_config:
+            background_sound = config.voice_config.background_noise
         else:
             background_sound = "off"
 

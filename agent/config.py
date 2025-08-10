@@ -62,7 +62,7 @@ class VoiceConfig(BaseModel):
     greeting_message: str | None
     voice_id: str | None
     speech_rate: SpeechRate
-    background_noise: bool
+    background_noise: str
     background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
     language: Language
     tool_calling_filler_words: list[str] = Field(default_factory=list)
