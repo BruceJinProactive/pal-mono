@@ -164,10 +164,10 @@ class YelpTool(Toolkit):
 
     def _get_current_date(self) -> str:
         """
-        Get the current date in YYYY-MM-DD format based on the timezone from metadata.
+        Get the current date and weekday based on the timezone from metadata.
 
         Returns:
-            str: Current date in YYYY-MM-DD format
+            str: Current date in "YYYY-MM-DD (Weekday)" format (e.g., "2024-12-18 (Wednesday)")
 
         Raises:
             ValueError: If current date cannot be determined due to invalid timezone
@@ -186,7 +186,8 @@ class YelpTool(Toolkit):
                 )
 
             timezone = ZoneInfo(timezone_str)
-            current_date = datetime.now(timezone).strftime("%Y-%m-%d")
+            now = datetime.now(timezone)
+            current_date = now.strftime("%Y-%m-%d (%A)")
 
             return current_date
         except Exception as e:
