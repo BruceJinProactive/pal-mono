@@ -228,16 +228,3 @@ class MenuResponse(BaseModel):
     name: LocalizedName
     successful: bool
     groups: List[MenuGroup]
-
-
-class MenuRequest(BaseModel):
-    """Request parameters for getting menu"""
-
-    merchant_id: str
-
-
-class MenuSifuAccessToken(BaseModel):
-    """MenuSifu API access token configuration"""
-
-    access_token: str
-    base_url: str = "https://assistant.mealkeyway.com/bot"

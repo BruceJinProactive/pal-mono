@@ -67,7 +67,7 @@ def connect_menusifu_api(
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "Authorization": f"Bearer {access_token}",
+                "x-api-key": access_token,
             }
             if extra_headers:
                 headers.update(extra_headers)
