@@ -24,7 +24,7 @@ class VAPIAssistant(BaseModel):
     """VAPI Assistant configuration model."""
 
     name: str
-    firstMessage: str
+    firstMessage: Optional[str] = None
     transcriber: Dict[str, Any]
     voice: Dict[str, Any]
     backgroundSound: str
@@ -39,7 +39,7 @@ class AssistantDestination(BaseModel):
     """Configuration for assistant transfer destinations."""
 
     assistantName: str
-    message: str  # Spoken to customer before connecting
+    message: str = ""  # Spoken to customer before connecting
     description: str  # Used by AI to choose when/how to transfer
     transferMode: Literal["rolling-history", "swap-system-message-in-history"]
     type: Literal["assistant"] = "assistant"

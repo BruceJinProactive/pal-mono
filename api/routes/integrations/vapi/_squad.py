@@ -396,7 +396,8 @@ def create_multilingual_squad(
             account_display_name, structured_caller_info, api_url
         )
 
-        return {"squad": squad_config.model_dump()}
+        # Exclude None values from the squad configuration
+        return {"squad": squad_config.model_dump(exclude_none=True)}
 
     except SquadCreationError:
         # Re-raise squad creation errors as-is
