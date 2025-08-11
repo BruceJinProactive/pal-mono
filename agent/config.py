@@ -166,6 +166,8 @@ class VoiceDecoderConfig(BaseModel):
     chunkPlan: Optional[ChunkPlan] = None
     fallbackPlan: Optional[list[VoiceDecoderConfig]] = None
 
+    model_config = ConfigDict(extra="allow")
+
 
 # ============================================================================
 # MULTILINGUAL SQUAD CONFIGURATION SCHEMAS
