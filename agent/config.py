@@ -204,7 +204,7 @@ class LanguageAssistantMultilingConfig(BaseModel):
     transcriber: TranscriberConfig
     voice: VoiceDecoderConfig
     first_message: Optional[str] = None
-    transfer_message: str
+    transfer_message: str = ""
     transfer_description: str
 
     model_config = ConfigDict(extra="allow")

@@ -340,7 +340,7 @@ class SquadBuilder:
             destinations.append(
                 AssistantDestination(
                     assistantName=config.assistant_name,
-                    message=config.transfer_message or "Connecting you now...",
+                    message=config.transfer_message,
                     description=config.transfer_description
                     or f"Transfer to {language_name} assistant",
                     transferMode=transfer_mode,  # type: ignore
