@@ -1,5 +1,7 @@
 import time
 
+from ddtrace.llmobs.decorators import task
+
 from tools.yelp_tool._apis._utils import YELP_API_HOST, connect_yelp_api
 from tools.yelp_tool.classes import (
     YelpAccessToken,
@@ -25,6 +27,7 @@ from tools.yelp_tool.classes import (
 from utils.log import logger
 
 
+@task(name="get_openings_creditcard_not_required")
 def get_openings_creditcard_not_required(
     bearer_token: YelpAccessToken,
     request_params: YelpBookingsOpeningsRequestCreditCardNotRequired,
@@ -82,6 +85,7 @@ def get_openings_creditcard_not_required(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
+@task(name="create_hold_creditcard_not_required")
 def create_hold_creditcard_not_required(
     bearer_token: YelpAccessToken,
     request_params: YelpBookingsHoldsRequestCreditCardNotRequired,
@@ -139,6 +143,7 @@ def create_hold_creditcard_not_required(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
+@task(name="create_reservation_creditcard_not_required")
 def create_reservation_creditcard_not_required(
     bearer_token: YelpAccessToken,
     request_params: YelpBookingsReservationsRequestCreditCardNotRequired,
@@ -210,6 +215,7 @@ def create_reservation_creditcard_not_required(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
+@task(name="get_waitlist_status")
 def get_waitlist_status(
     bearer_token: YelpAccessToken,
     request_params: YelpWaitlistStatusRequest,
@@ -257,6 +263,7 @@ def get_waitlist_status(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
+@task(name="get_waitlist_info")
 def get_waitlist_info(
     bearer_token: YelpAccessToken,
     request_params: YelpWaitlistInfoRequest,
@@ -304,6 +311,7 @@ def get_waitlist_info(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
+@task(name="create_waitlist_on_my_way")
 def create_waitlist_on_my_way(
     bearer_token: YelpAccessToken,
     request_params: YelpWaitlistOnMyWayRequest,
@@ -369,6 +377,7 @@ def create_waitlist_on_my_way(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
+@task(name="join_waitlist_queue")
 def join_waitlist_queue(
     bearer_token: YelpAccessToken,
     request_params: YelpWaitlistJoinQueueRequest,
@@ -438,6 +447,7 @@ def join_waitlist_queue(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
+@task(name="get_openings_creditcard_required")
 def get_openings_creditcard_required(
     business_id_or_alias: str,
     request_params: YelpBookingsOpeningsRequestCreditCardRequired,
@@ -535,6 +545,7 @@ def get_openings_creditcard_required(
     ) from last_exception
 
 
+@task(name="cancel_visit")
 def cancel_visit(
     bearer_token: YelpAccessToken,
     request_params: YelpCancelVisitRequest,
