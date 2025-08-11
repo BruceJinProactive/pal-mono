@@ -189,7 +189,7 @@ class TriageAssistantConfig(BaseModel):
     transcriber: TranscriberConfig
     voice: VoiceDecoderConfig
     model: MultilingualModelConfig
-    first_message: str
+    first_message: Optional[str] = None
     transfer_mode: str = Field(
         default="swap-system-message-in-history", alias="transferMode"
     )
@@ -203,7 +203,7 @@ class LanguageAssistantMultilingConfig(BaseModel):
     assistant_name: str
     transcriber: TranscriberConfig
     voice: VoiceDecoderConfig
-    first_message: str
+    first_message: Optional[str] = None
     transfer_message: str
     transfer_description: str
 

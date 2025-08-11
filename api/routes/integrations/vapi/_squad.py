@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, List
+from typing import Any, List, Optional
 
 from agent.config import (
     AgentConfig,
@@ -88,11 +88,11 @@ class BaseAssistantFactory:
     def _build_base_assistant_config(
         self,
         name: str,
-        first_message: str,
         transcriber_config: dict[str, Any],
         voice_config: dict[str, Any],
         system_content: str,
         model_config: dict[str, Any],
+        first_message: Optional[str] = None,
     ) -> dict[str, Any]:
         """Build base assistant configuration with common fields."""
 
@@ -183,6 +183,7 @@ Your ONLY responsibility is to:
 1. Greet the customer warmly
 2. Identify their preferred language ({language_list})
 3. Transfer them to the appropriate language specialist
+4. If the user gives an request in English, transfer them to the English-speaking assistant.
 
 IMPORTANT TRANSFER RULES:
 {transfer_rules_text}
