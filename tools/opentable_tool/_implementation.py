@@ -68,6 +68,7 @@ class OpenTableTool(Toolkit):
 
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
+            logger.info("Successful fetch of OpenTable restaurant page")
 
             # Extract authToken from the HTML content using regex
             html_content = response.text
@@ -76,6 +77,7 @@ class OpenTableTool(Toolkit):
             auth_token_pattern = r'"authToken":\s*"([^"]+)"'  # Exact JSON format
 
             auth_token = None
+            logger.info("Looking for authToken in OpenTable HTML response")
             match = re.search(auth_token_pattern, html_content)
             if match:
                 auth_token = match.group(1)
