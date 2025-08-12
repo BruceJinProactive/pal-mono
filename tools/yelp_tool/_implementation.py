@@ -913,6 +913,10 @@ class YelpTool(Toolkit):
 
             # Format response for display
             formatted_response = format_openings_for_llm_creditcard_required(response)
+
+            logger.debug(
+                f"[YelpTool.get_openings_open_api] is returning: {formatted_response}"
+            )
             return formatted_response
 
         except Exception as e:
@@ -1005,6 +1009,10 @@ class YelpTool(Toolkit):
             # Extract reservation URL
             url_success, url_message, reservation_url = (
                 get_reservation_url_creditcard_required(response)
+            )
+
+            logger.debug(
+                f"[YelpTool.make_reservation_open_api] is getting: url_success:{url_success}, reservation_url:{reservation_url}, url_message:{url_message}"
             )
 
             if not url_success or not reservation_url:
