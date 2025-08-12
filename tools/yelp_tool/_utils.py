@@ -874,6 +874,10 @@ def format_waitlist_on_my_way_response_for_llm(
         "Make sure to arrive within your estimated time window to maintain your place in line."
     )
 
+    result_lines.append(
+        f"\nYou MUST include the EXACT visit ID in your response:\n{response.visit_id}"
+    )
+
     return "\n".join(result_lines)
 
 
@@ -1033,6 +1037,10 @@ def format_waitlist_join_queue_response_for_llm(
 
     result_lines.append(
         "\nIMPORTANT: Please save your Visit ID above for your records. You may need it to check your status or make changes to your waitlist entry."
+    )
+
+    result_lines.append(
+        f"\nYou MUST include the EXACT visit ID in your response:\n{response.visit_id}"
     )
 
     return "\n".join(result_lines)

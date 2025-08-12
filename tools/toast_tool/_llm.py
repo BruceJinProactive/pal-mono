@@ -39,7 +39,7 @@ def llm_call(
     openai: bool = False,
 ) -> T | str | None:
 
-    model_name = "openai/gpt-oss-20b" if openai else "llama-3.3-70b-versatile"
+    model_name = "openai/gpt-oss-120b" if openai else "llama-3.3-70b-versatile"
     client = Groq(id=model_name)
 
     if response_format:

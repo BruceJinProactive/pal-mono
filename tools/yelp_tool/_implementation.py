@@ -603,7 +603,7 @@ class YelpTool(Toolkit):
         This allows customers to notify the restaurant that they are coming and will arrive within
         a specific time window (1-30 minutes). This helps restaurants manage their waitlist more effectively.
 
-        Required info: patron's name, phone number, party size, and estimated arrival time range (both min and max, 1-30 minutes).
+        Required information to collect before using this tool: name, phone, party size, and estimated arrival time range (both min and max, 1-30 minutes).
 
         Do NOT use for:
         - Making reservations (use make_reservation instead)
@@ -714,27 +714,8 @@ class YelpTool(Toolkit):
         - Get in line at a restaurant ("Can I get in line?", "I want to join the queue")
         - Add their party to the wait ("Put us on the list for a table")
         - Join the wait when they know there's currently a wait time
-        - Get a spot in the restaurant's queue system
 
-        Required Information:
-        - Patron's full name (for the waitlist entry)
-        - Phone number in E.164 format (for notifications and identification)
-        - Party size (number of people in the group)
-
-        Optional Information:
-        - Special notes or preferences (dietary restrictions, accessibility needs, celebrations, etc.)
-        - Idempotency token (usually system-generated for duplicate prevention)
-
-        Do NOT use for:
-        - Checking current wait times (use get_waitlist_status instead)
-        - Getting waitlist configuration info, such as maximum party size, seating areas, etc. (use get_waitlist_info instead)
-        - General restaurant information
-
-        Important Notes:
-        - Restaurant must currently have a wait for this to work
-        - If no wait exists, API returns CURRENTLY_NO_WAIT error with friendly message
-        - Users get visit ID, expected seating times, and arrival instructions
-        - Phone number used for restaurant notifications when table is ready
+        Required fields to collect before using this tool: name, phone, party size
 
         Args:
             latest_user_message (str): The latest user message in the chat history.
