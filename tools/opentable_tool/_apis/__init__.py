@@ -1,88 +1,14 @@
-import base64
-import http.client
 import json
-from typing import Dict, List, Optional
-from urllib.parse import urlencode
 
 from tools.opentable_tool._apis._utils import connect_opentable_api
 from tools.opentable_tool.classes import (
     AvailabilityMetadataResponse,
     AvailabilitySearchRequest,
     AvailabilitySearchResponse,
-    CancellationPolicyDetails,
-    CreditCardObject,
-    EnvironmentType,
-    Experience,
     HttpMethod,
     OpenTableAccessToken,
-    PhoneObject,
-    ReservationRequest,
-    ReservationResponse,
-    TableAttribute,
 )
 from utils.log import logger
-
-
-def get_opentable_access_token(
-    client_id: str,
-    client_secret: str,
-) -> Optional[OpenTableAccessToken]:
-    """
-    Obtains an access token from the OpenTable Authentication API.
-
-    Args:
-        client_id: Your OpenTable API client identifier
-        client_secret: Your OpenTable API client secret
-
-    Returns:
-        `OpenTableAccessToken` object if successful, None otherwise
-    """
-    try:
-        # Create basic auth credentials
-        credentials = f"{client_id}:{client_secret}"
-        encoded_credentials = base64.b64encode(credentials.encode()).decode()
-
-        # Set up connection to OpenTable auth server
-        host = "oauth.opentable.com"
-        conn = http.client.HTTPSConnection(host)
-
-        # Set headers with basic auth
-        headers = {
-            "Authorization": f"Basic {encoded_credentials}",
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache",
-        }
-
-        # Set query parameters
-        params = urlencode({"grant_type": "client_credentials"})
-
-        # Make the request
-        conn.request("GET", f"/api/v2/oauth/token?{params}", headers=headers)
-
-        # Get the response
-        response = conn.getresponse()
-        data = response.read().decode()
-        conn.close()
-
-        # Parse the response
-        if response.status == 200:
-            response_data = json.loads(data)
-            return OpenTableAccessToken(
-                access_token=response_data.get("access_token", ""),
-                token_type=response_data.get("token_type", ""),
-                expires_in=response_data.get("expires_in", 0),
-                scope=response_data.get("scope"),
-            )
-        else:
-            logger.error(
-                f"Failed to get OpenTable access token: {response.status} {response.reason}"
-            )
-            logger.error(f"Response: {data}")
-            return None
-
-    except Exception as e:
-        logger.error(f"Error getting OpenTable access token: {str(e)}")
-        return None
 
 
 def search_availability(
@@ -109,7 +35,6 @@ def search_availability(
         "rid": restaurant_id,
         "dateTime": search_params.start_date_time,
         "partySize": search_params.party_size,
-        "transformOutdoorToDefault": True,
     }
 
     # Call the OpenTable API with POST request
@@ -213,109 +138,3 @@ def get_availability_metadata(
 
     # Construct and return the AvailabilityMetadataResponse
     return AvailabilityMetadataResponse(**data)
-
-
-def make_reservation(
-    bearer_token: OpenTableAccessToken,
-    restaurant_id: int,
-    reservation_token: str,
-    first_name: str,
-    last_name: str,
-    email_address: str,
-    phone: PhoneObject,
-    dining_area_id: int,
-    environment: EnvironmentType,
-    reservation_attribute: TableAttribute = TableAttribute.DEFAULT,
-    special_request: Optional[str] = None,
-    restaurant_email_marketing_opt_in: bool = False,
-    sms_notifications_opt_in: Optional[bool] = None,
-    experience: Optional[Experience] = None,
-    credit_card: Optional[CreditCardObject] = None,
-    login_name: Optional[str] = None,
-) -> ReservationResponse:
-    """
-    Create a reservation at a specific restaurant.
-
-    Args:
-        bearer_token: OpenTable access token
-        restaurant_id: Restaurant ID
-        reservation_token: Token obtained from slot_lock API
-        first_name: First name of the guest
-        last_name: Last name of the guest
-        email_address: Email address of the guest
-        phone: Phone details of the guest (with number, country_code, and phone_type)
-        dining_area_id: ID of the dining area (required)
-        environment: Type of dining environment (e.g., Indoor, Outdoor) (required)
-        reservation_attribute: Type of table requested (default, hightop, bar, counter, outdoor)
-        special_request: Special requests for the reservation
-        restaurant_email_marketing_opt_in: Whether the guest opts in for restaurant marketing emails
-        sms_notifications_opt_in: Whether the guest opts in for SMS notifications
-        experience: Experience details for the reservation (id, version, party_size_per_price_type, add_ons)
-        credit_card: Credit card details (token and last4)
-        login_name: Used for concierge/referral details
-
-    Returns:
-        ReservationResponse object containing confirmation details
-    """
-    # Construct API endpoint
-    api_function = f"/v2/booking/{restaurant_id}/reservations"
-
-    # Build request using ReservationRequest model
-    request = ReservationRequest(
-        reservation_token=reservation_token,
-        first_name=first_name,
-        last_name=last_name,
-        email_address=email_address,
-        phone=phone,
-        reservation_attribute=reservation_attribute,
-        special_request=special_request,
-        restaurant_email_marketing_opt_in=restaurant_email_marketing_opt_in,
-        sms_notifications_opt_in=sms_notifications_opt_in,
-        dining_area_id=dining_area_id,
-        environment=environment,
-        experience=experience,
-        credit_card=credit_card,
-        login_name=login_name,
-    )
-
-    # Convert to dictionary for API call
-    payload = request.model_dump(exclude_none=True, by_alias=True)
-
-    # Call the OpenTable API
-    response = connect_opentable_api(
-        http_method=HttpMethod.POST,
-        bearer_token=bearer_token,
-        api_function=api_function,
-        payload=payload,
-    )
-
-    # Handle the response
-    if response.status != 200:
-        logger.error(
-            f"OpenTable API returned error: {response.status} {response.reason}"
-        )
-        logger.error(f"Response body: {response.decoded_body}")
-        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
-
-    # Parse response body - ensure it's a dictionary
-    data = response.decoded_body
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON response: {data}")
-            data = {}
-
-    if not isinstance(data, dict):
-        data = {}
-
-    # Return ReservationResponse object
-    return ReservationResponse(
-        message=data.get("message", ""),
-        confirmation_number=data.get("confirmation_number", 0),
-        offer_confirmation_number=data.get("offer_confirmation_number", 0),
-        date_time=data.get("date_time", ""),
-        party_size=data.get("party_size", 0),
-        notes=data.get("notes"),  # Allow None as default
-        manage_reservation_url=data.get("manage_reservation_url", ""),
-    )

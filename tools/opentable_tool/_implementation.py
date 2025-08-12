@@ -63,7 +63,7 @@ class OpenTableTool(Toolkit):
             # Make GET request to the OpenTable restaurant page
             url = f"https://www.opentable.com/restref/client/?rid={self.restaurant_id}"
             restaurant_req = urllib.request.Request(
-                url, headers={"Cookie": "OT-Locale=en-US"}
+                url, headers={"Cookie": "OT-Locale=en-US"}  # type: ignore
             )
 
             # Visit restaurant page

@@ -37,7 +37,6 @@ def connect_opentable_api(
     Returns:
         OpenTableResponse object containing the response data
     """
-    # Determine the appropriate host based on the endpoint
     host = "www.opentable.com"
 
     # Build the query string if query parameters are provided
@@ -48,16 +47,10 @@ def connect_opentable_api(
     # Set up the connection with timeout
     conn = http.client.HTTPSConnection(host, timeout=timeout)
 
-    # Set up headers to match Postman
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {bearer_token.access_token}",
-        "User-Agent": "PostmanRuntime/7.45.0",
-        "Accept": "*/*",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
     }
-    headers["Cookie"] = "OT-Locale=en-US"
 
     # Add extra headers if provided
     if extra_headers:
