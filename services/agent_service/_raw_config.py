@@ -31,7 +31,6 @@ from agent.config import (
     VoiceConfig,
 )
 from agent.knowledge import KnowledgeConfigSettings
-from agent.memory import MemoryProvider
 from agent.model import ModelProvider
 from api.routes.integrations.vapi._constants import DEFAULT_MULTILINGUAL_SQUAD_CONFIG
 from db.tables.accounts import BusinessIndustry
@@ -74,9 +73,6 @@ class RawConfig:
 
             self.client_config = ClientConfig(data=client_data)
 
-            memory_provider = self.agent.raw_config.get(
-                "memory_provider", MemoryProvider.DEFAULT
-            )
             memory_enabled = self.agent.raw_config.get("memory_enabled", True)
 
             return AgentConfig(
@@ -84,7 +80,6 @@ class RawConfig:
                 model=self._get_agent_model_config(),
                 memory=MemoryConfig(
                     enabled=memory_enabled,
-                    provider=memory_provider,
                     identifier=self.account.name,
                     instruction="Don't remember the user's gender.",
                 ),
