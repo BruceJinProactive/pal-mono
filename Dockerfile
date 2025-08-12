@@ -1,5 +1,8 @@
 FROM public.ecr.aws/docker/library/python:3.11-slim
 
+# Update system packages for security patches
+RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 ARG USER=app
 ARG APP_DIR=${USER_LOCAL_DIR}/${USER}
 ENV APP_DIR=${APP_DIR}
