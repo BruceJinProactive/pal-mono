@@ -725,6 +725,9 @@ class YelpTool(Toolkit):
                  and arrival instructions, or user-friendly error message
         """
         try:
+            logger.debug(
+                "[YelpTool.join_waitlist_queue] Starting waitlist queue join request"
+            )
             bearer_token = self._yelp_bearer_token
 
             # Validate bearer token before proceeding
@@ -738,6 +741,9 @@ class YelpTool(Toolkit):
             chat_history = self._get_chat_history(latest_user_message)  # type: ignore
 
             # Extract using WaitlistJoinQueueQuery class
+            logger.debug(
+                "[YelpTool.join_waitlist_queue] Extracting waitlist parameters using LLM"
+            )
             waitlist_query = llm_call(
                 system_prompt=WAITLIST_JOIN_QUEUE_EXTRACTION_SYSTEM_PROMPT,
                 prompt=WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT.format(
@@ -748,9 +754,17 @@ class YelpTool(Toolkit):
             )
 
             if not isinstance(waitlist_query, WaitlistJoinQueueQuery):
+                logger.debug(
+                    f"[YelpTool.join_waitlist_queue] LLM extraction failed - invalid response type: {type(waitlist_query)}"
+                )
                 return "I couldn't understand your waitlist request. Please provide your name, phone number, and party size to join the queue."
 
+            logger.debug(
+                f"[YelpTool.join_waitlist_queue] Extracted parameters - name: {waitlist_query.name}, phone: {waitlist_query.phone}, party_size: {waitlist_query.party_size}, party_notes: {waitlist_query.party_notes}"
+            )
+
             # Check for required fields and provide specific feedback
+            logger.debug("[YelpTool.join_waitlist_queue] Validating required fields")
             all_present, missing_prompts = check_waitlist_join_queue_required_fields(
                 business_id=self.business_id_or_alias,
                 phone=waitlist_query.phone,
@@ -759,6 +773,9 @@ class YelpTool(Toolkit):
             )
 
             if not all_present:
+                logger.debug(
+                    f"[YelpTool.join_waitlist_queue] Missing required fields: {missing_prompts}"
+                )
                 # Filter out business_id from user-facing messages
                 user_prompts = [
                     prompt for prompt in missing_prompts if prompt != "business_id"
@@ -787,13 +804,23 @@ class YelpTool(Toolkit):
                 return f"Invalid request parameters: {message}"
 
             # Make API call to join waitlist queue
+            logger.debug(
+                "[YelpTool.join_waitlist_queue] Making API call to Yelp waitlist endpoint"
+            )
             response = api_join_waitlist_queue(
                 bearer_token=bearer_token,
                 request_params=request_obj,
             )
 
+            logger.debug(
+                f"[YelpTool.join_waitlist_queue] API call successful - response: {response}"
+            )
+
             # Format and return the success response
             formatted_response = format_waitlist_join_queue_response_for_llm(response)
+            logger.debug(
+                f"[YelpTool.join_waitlist_queue] Successfully completed waitlist queue join, formatted response: {formatted_response}"
+            )
             return formatted_response
 
         except Exception as e:
