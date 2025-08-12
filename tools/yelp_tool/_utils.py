@@ -1036,11 +1036,7 @@ def format_waitlist_join_queue_response_for_llm(
         )
 
     result_lines.append(
-        "\nIMPORTANT: Please save your Visit ID above for your records. You may need it to check your status or make changes to your waitlist entry."
-    )
-
-    result_lines.append(
-        f"\nYou MUST include the EXACT visit ID in your response:\n{response.visit_id}"
+        f"\nIMPORTANT: You MUST include the EXACT visit ID in your response:\n{response.visit_id}, do not shorten or modify the id in any way."
     )
 
     return "\n".join(result_lines)
