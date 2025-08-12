@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/python:3.11.5-slim
+FROM public.ecr.aws/docker/library/python:3.11.11-slim
 
 ARG USER=app
 ARG APP_DIR=${USER_LOCAL_DIR}/${USER}
