@@ -29,6 +29,7 @@ from tools.adora_tool.classes import (
     Order,
     SubQueries,
 )
+from tools.utils.transaction_helper import save_transaction
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -468,6 +469,40 @@ class AdoraTool(Toolkit):
             logger.debug(
                 f"[AdoraTool._save_order_to_db] Saved order to database: {db_order.id}"
             )
+
+            # Also save to transactions table for enhanced tracking
+            try:
+                transaction_id = save_transaction(
+                    tool_metadata=self.tool_metadata,
+                    vendor=IntegrationProvider.adora,
+                    external_transaction_id=(
+                        str(validated_order.key) if validated_order.key else ""
+                    ),
+                    external_transaction_number=(
+                        str(validated_order.key) if validated_order.key else ""
+                    ),
+                    store_id=self.store_id,
+                    status="pending",
+                    subtotal=(
+                        validated_order.subTotal
+                        if getattr(validated_order, "subTotal", None) is not None
+                        else None
+                    ),
+                    order_items=order.order_items if order.order_items else None,
+                    order_time=datetime.now(),
+                    notes=order.order_comment if order.order_comment else None,
+                    session=session,  # Reuse the same session
+                )
+                if transaction_id:
+                    logger.debug(
+                        f"[AdoraTool._save_order_to_db] Saved transaction to database: {transaction_id}"
+                    )
+            except Exception as transaction_error:
+                # Log transaction save error but don't fail the entire operation
+                logger.warning(
+                    f"[AdoraTool._save_order_to_db] Failed to save transaction data: {transaction_error}",
+                    exc_info=True,
+                )
         except Exception as e:
             session.rollback()
             logger.error("[AdoraTool._save_order_to_db] Error saving order", exc_info=e)
@@ -815,7 +850,9 @@ class AdoraTool(Toolkit):
             str: The checkout order details including the payment URL.
         """
         try:
+            # fmt: off
             chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
+            # fmt: on
 
             context = self._get_relevant_docs(chat_history)  # type: ignore
 

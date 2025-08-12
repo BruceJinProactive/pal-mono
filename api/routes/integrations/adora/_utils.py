@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +14,8 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from db.tables.orders import Order
-from db.tables.types import Channel
+from db.tables.types import Channel, IntegrationProvider
+from tools.utils.transaction_helper import update_transaction_by_order_number
 from utils.log import logger
 
 from .schemas import AdoraWebhookRequest
@@ -38,7 +41,7 @@ async def update_order_status(
     session: AsyncSession, webhook_request: AdoraWebhookRequest
 ) -> Order:
     """
-    Update the status of an existing order in the database.
+    Update the status of an existing order in both orders and transactions tables.
 
     Args:
         session: The database session
@@ -66,17 +69,51 @@ async def update_order_status(
             f"and order_number: {webhook_request.orderNumber}"
         )
 
-    # Update the order status
+    # Update the order status in orders table
     order.status = webhook_request.event
 
     # If there's a tracking link in the webhook, update it
     if webhook_request.trackingLink:
         order.tracking_link = webhook_request.trackingLink
 
+    # Also update the corresponding transaction in transactions table
+    # Note: Using sync helper function, but the session will be committed later
+    try:
+        success = await asyncio.to_thread(
+            update_transaction_by_order_number,
+            external_transaction_number=order.order_number,
+            store_id=webhook_request.storeId,
+            vendor=IntegrationProvider.adora,
+            new_status=webhook_request.event,
+            tracking_link=webhook_request.trackingLink,
+            session=None,  # Let helper create its own sync session
+        )
+
+        if success:
+            logger.debug(
+                f"[AdoraWebhook] Successfully updated transaction for order {order.order_number}"
+            )
+        else:
+            logger.warning(
+                f"[AdoraWebhook] No transaction found for order {order.order_number} "
+                f"with external_transaction_id {order.transaction_id}"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"[AdoraWebhook] Error updating transaction for order {order.order_number}: {e}",
+            exc_info=True,
+        )
+        # Don't fail the entire operation if transaction update fails
+
     await session.commit()
 
     # Refresh order to ensure we have the latest state from database
     await session.refresh(order)
+
+    logger.info(
+        f"[AdoraWebhook] Successfully updated order {order.order_number} status to {webhook_request.event}"
+    )
 
     # Return the complete order object
     return order
