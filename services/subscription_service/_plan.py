@@ -55,10 +55,7 @@ def create_subscription_plan(
         )
         plan = subscription_plan_repository.create_subscription_plan(**params_map)
 
-    logger.info(
-        f"Created subscription plan: {plan.name}",
-        extra=params_map,
-    )
+    logger.info(f"Created subscription plan: {plan.name}")
     return plan
 
 
@@ -97,7 +94,7 @@ def delete_subscription_plan(
             author=context.email,
             resource_id=str(plan_id),
             old_record=old_plan,
-            auto_commit=False,
+            auto_commit=True,
         ) as ctx:
             if hard_delete:
                 subscription_plan_repository.delete_subscription_plan(plan_id)

@@ -433,7 +433,10 @@ def cancel_account_subscription(
         raise ValueError(f"Account {account_name} does not exist")
 
     account_subscription_repository = AccountSubscriptionRepository(
-        session, auto_commit=True
+        session, auto_commit=False
+    )
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session=session, auto_commit=False
     )
 
     subscription_to_cancel = account_subscription_repository.get_account_subscription(
@@ -471,7 +474,7 @@ def cancel_account_subscription(
             account_id=account.id,
             resource_id=str(external_id),
             old_record=old_subscription,
-            auto_commit=True,
+            auto_commit=False,
         ) as ctx:
             cancelled_subscription = (
                 account_subscription_repository.update_account_subscription_status(
@@ -491,6 +494,26 @@ def cancel_account_subscription(
                 SubscriptionStatus.cancelled,
             )
         )
+
+    # Cancel all the attached project subscriptions
+    project_subscriptions = (
+        project_subscription_repository.get_project_subscriptions_by_subscription_id(
+            external_id
+        )
+    )
+    for project_sub in project_subscriptions:
+        project_subscription_repository.delete_project_subscription(
+            project_sub.project_id, external_id
+        )
+
+    try:
+        session.commit()
+    except Exception as err:
+        session.rollback()
+        logger.error(
+            f"Failed to cancel account subscription! Error: {err}", exc_info=True
+        )
+        raise err
 
     logger.info(
         f"Cancelled subscription for account {account_name}",
