@@ -334,20 +334,31 @@ class YelpTool(Toolkit):
     @tool
     def make_reservation_creditcard_not_required(self, latest_user_message: str) -> str:
         """
-        Make a reservation for a restaurant using the Yelp Bookings API.
+        Make a restaurant reservation using the Yelp Bookings API for restaurants that support
+        instant confirmation without requiring credit card validation.
 
-        Use when: User explicitly wants to book/place/make a reservation with all required details.
-        Required info: number of people, date, time, first name, last name, phone, email.
+        **When to use this tool:**
+        - User explicitly requests to book/place/make a reservation (e.g., "Book a table", "Make a reservation", "Reserve a table for tonight")
+        - User has provided or confirms all required reservation details
 
-        Do NOT use for:
-        - Checking availability or time slots (use get_restaurant_openings instead)
-        - Getting restaurant information
-        - Asking about wait times (use get_waitlist_status instead)
-        - Just browsing or inquiring about reservations
+        **Required fields to collect before using this tool:**
+        - Party size (number of people): e.g., "2", "4 people", "party of 6"
+        - Date: e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"
+        - Time: e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
+        - First name: Customer's first name for the reservation
+        - Last name: Customer's last name for the reservation
+        - Phone number: Valid phone number with area code (e.g., "555-123-4567")
+        - Email address: Valid email address (e.g., "customer@email.com")
 
-        This tool will either:
-        1. Complete the reservation immediately (no credit card required)
-        2. Return a link to complete on Yelp's site (credit card required)
+        **Optional fields:**
+        - Special requests/notes: Dietary restrictions, seating preferences, etc.
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
+
+        Returns:
+            str: Reservation confirmation details with confirmation number, or secure booking link
+                 if credit card is required, or error message if reservation fails.
         """
         try:
             bearer_token = self._yelp_bearer_token
@@ -912,12 +923,23 @@ class YelpTool(Toolkit):
     @tool
     def make_reservation_creditcard_required(self, latest_user_message: str) -> str:
         """
-        Make a reservation for restaurants using their open API workflow.
+        Make a restaurant reservation and completion on Yelp's website.
 
-        Use when: User explicitly wants to book/place/make a reservation at open API restaurants.
-        Required info: number of people, date, time.
+        **When to use this tool:**
+        - User explicitly requests to book/place/make a reservation (e.g., "Book a table", "Make a reservation", "Reserve a table")
+        - User wants to proceed with reservation after seeing availability
 
-        This will return a link to complete the reservation on Yelp's site.
+        **Required fields to collect before using this tool:**
+        - Party size (number of people): e.g., "2", "4 people", "party of 6"
+        - Date: e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"
+        - Time: e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
+
+        Args:
+            latest_user_message (str): The latest user message in the chat history.
+
+        Returns:
+            str: Secure Yelp booking link with reservation details and closest available time,
+                 or error message if no availability or invalid parameters.
         """
         try:
             # Get chat history and extract search parameters
