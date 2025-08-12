@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from tools.yelp_tool._apis import create_reservation_creditcard_not_required
 from tools.yelp_tool.classes import (
@@ -843,12 +844,14 @@ def create_waitlist_on_my_way_request(
 
 def format_waitlist_on_my_way_response_for_llm(
     response: YelpWaitlistOnMyWayResponse,
+    timezone_info: Optional[ZoneInfo] = None,
 ) -> str:
     """
     Format the waitlist on-my-way response into a human-readable string for display.
 
     Args:
         response: Parsed waitlist on-my-way response object
+        timezone_info: Optional ZoneInfo object for time conversion
 
     Returns:
         str: Formatted string representation of the waitlist visit confirmation
@@ -862,7 +865,9 @@ def format_waitlist_on_my_way_response_for_llm(
 
     # Format arrive by time
     try:
-        arrive_by_datetime = datetime.fromtimestamp(response.arrive_by_time)
+        arrive_by_datetime = _convert_timestamp_to_timezone(
+            response.arrive_by_time, timezone_info
+        )
         formatted_time = arrive_by_datetime.strftime("%I:%M %p")
         formatted_date = arrive_by_datetime.strftime("%A, %B %d")
         result_lines.append(f"Please arrive by: {formatted_time} on {formatted_date}")
@@ -977,14 +982,40 @@ def create_waitlist_join_queue_request(
         return False, f"Failed to create waitlist join queue request: {str(e)}", None
 
 
+def _convert_timestamp_to_timezone(
+    timestamp: int, timezone_info: Optional[ZoneInfo] = None
+) -> datetime:
+    """
+    Convert a Unix timestamp to a datetime object in the specified timezone.
+
+    Args:
+        timestamp: Unix timestamp in seconds
+        timezone_info: Optional ZoneInfo object for timezone conversion
+
+    Returns:
+        datetime: Datetime object in the specified timezone or local time if no timezone provided
+    """
+    dt = datetime.fromtimestamp(timestamp)
+    if timezone_info:
+        try:
+            # Convert to the specified timezone using pre-created ZoneInfo object
+            dt = dt.replace(tzinfo=ZoneInfo("UTC")).astimezone(timezone_info)
+        except Exception:
+            # If timezone conversion fails, use the original datetime
+            pass
+    return dt
+
+
 def format_waitlist_join_queue_response_for_llm(
     response: YelpWaitlistJoinQueueResponse,
+    timezone_info: Optional[ZoneInfo] = None,
 ) -> str:
     """
     Format the waitlist join queue response into a human-readable string for display.
 
     Args:
         response: Parsed waitlist join queue response object
+        timezone_info: Optional ZoneInfo object for time conversion
 
     Returns:
         str: Formatted string representation of the waitlist queue confirmation
@@ -998,7 +1029,9 @@ def format_waitlist_join_queue_response_for_llm(
 
     # Format queue time
     try:
-        queue_datetime = datetime.fromtimestamp(response.queue_time)
+        queue_datetime = _convert_timestamp_to_timezone(
+            response.queue_time, timezone_info
+        )
         formatted_queue_time = queue_datetime.strftime("%I:%M %p")
         result_lines.append(f"Joined queue at: {formatted_queue_time}")
     except (ValueError, OSError):
@@ -1006,7 +1039,9 @@ def format_waitlist_join_queue_response_for_llm(
 
     # Format arrive by time
     try:
-        arrive_by_datetime = datetime.fromtimestamp(response.arrive_by_time)
+        arrive_by_datetime = _convert_timestamp_to_timezone(
+            response.arrive_by_time, timezone_info
+        )
         formatted_time = arrive_by_datetime.strftime("%I:%M %p")
         formatted_date = arrive_by_datetime.strftime("%A, %B %d")
         result_lines.append(f"Please arrive by: {formatted_time} on {formatted_date}")
@@ -1015,8 +1050,12 @@ def format_waitlist_join_queue_response_for_llm(
 
     # Format expected seating time range
     try:
-        min_seating = datetime.fromtimestamp(response.expected_seating_time_min)
-        max_seating = datetime.fromtimestamp(response.expected_seating_time_max)
+        min_seating = _convert_timestamp_to_timezone(
+            response.expected_seating_time_min, timezone_info
+        )
+        max_seating = _convert_timestamp_to_timezone(
+            response.expected_seating_time_max, timezone_info
+        )
         min_time = min_seating.strftime("%I:%M %p")
         max_time = max_seating.strftime("%I:%M %p")
 

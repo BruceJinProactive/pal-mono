@@ -103,6 +103,23 @@ class YelpTool(Toolkit):
         self.business_id_or_alias = business_id_or_alias
         self.tool_metadata = tool_metadata
 
+        # Initialize timezone info once during tool creation
+        if self.tool_metadata.timezone:
+            try:
+                self.timezone_info = ZoneInfo(self.tool_metadata.timezone)
+            except Exception:
+                # If timezone is invalid, fall back to UTC
+                self.timezone_info = ZoneInfo("UTC")
+                logger.warning(
+                    f"[YelpTool.__init__] Invalid timezone '{self.tool_metadata.timezone}', falling back to UTC"
+                )
+        else:
+            # If no timezone provided, fall back to UTC
+            self.timezone_info = ZoneInfo("UTC")
+            logger.warning(
+                "[YelpTool.__init__] No timezone available in tool metadata, using UTC as fallback"
+            )
+
         # Determine workflow: use credit card workflow if required OR if not using integration API
         self.use_creditcard_workflow = credit_card_required or not yelp_integration_api
 
@@ -173,20 +190,7 @@ class YelpTool(Toolkit):
             ValueError: If current date cannot be determined due to invalid timezone
         """
         try:
-            # Determine timezone with fallback to UTC
-            timezone_str = None
-
-            if self.tool_metadata and self.tool_metadata.timezone:
-                timezone_str = self.tool_metadata.timezone
-            else:
-                # Fallback to UTC if timezone is not available
-                timezone_str = "UTC"
-                logger.warning(
-                    "[YelpTool._get_current_date] No timezone available in tool metadata, using UTC as fallback"
-                )
-
-            timezone = ZoneInfo(timezone_str)
-            now = datetime.now(timezone)
+            now = datetime.now(self.timezone_info)
             current_date = now.strftime("%Y-%m-%d (%A)")
 
             return current_date
@@ -691,7 +695,10 @@ class YelpTool(Toolkit):
             )
 
             # Format and return the success response
-            formatted_response = format_waitlist_on_my_way_response_for_llm(response)
+            formatted_response = format_waitlist_on_my_way_response_for_llm(
+                response,
+                timezone_info=self.timezone_info,
+            )
             return formatted_response
 
         except Exception as e:
@@ -813,7 +820,10 @@ class YelpTool(Toolkit):
             )
 
             # Format and return the success response
-            formatted_response = format_waitlist_join_queue_response_for_llm(response)
+            formatted_response = format_waitlist_join_queue_response_for_llm(
+                response,
+                timezone_info=self.timezone_info,
+            )
             logger.debug(
                 f"[YelpTool.join_waitlist_queue] Successfully completed waitlist queue join, formatted response: {formatted_response}"
             )
