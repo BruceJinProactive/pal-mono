@@ -62,14 +62,7 @@ class OpenTableTool(Toolkit):
         try:
             # Make GET request to the OpenTable restaurant page
             url = "https://www.opentable.com/restref/client/?rid=1"
-            headers = {
-                "User-Agent": "PostmanRuntime/7.45.0",
-                "Accept": "*/*",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "keep-alive",
-                "Cookie": "OT-Locale=en-US",
-                "Host": "www.opentable.com",
-            }
+            headers = {"Cookie": "OT-Locale=en-US"}
             logger.info("Starting request to OpenTable restaurant page")
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()
