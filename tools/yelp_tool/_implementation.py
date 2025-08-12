@@ -55,7 +55,6 @@ from tools.yelp_tool._utils import (
     format_waitlist_join_queue_response_for_llm,
     format_waitlist_on_my_way_response_for_llm,
     format_waitlist_status_for_llm,
-    get_reservation_url_creditcard_required,
 )
 from tools.yelp_tool.classes import (
     CancelVisitQuery,
@@ -938,12 +937,16 @@ class YelpTool(Toolkit):
         - Date: e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"
         - Time: e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
 
+        **Expected behavior:**
+        - If exact requested time is available: Returns booking URL to complete reservation
+        - If exact requested time is NOT available: Returns all available times and asks user to confirm a different time (does not provide booking URL)
+
         Args:
             latest_user_message (str): The latest user message in the chat history.
 
         Returns:
-            str: Secure Yelp booking link with reservation details and closest available time,
-                 or error message if no availability or invalid parameters.
+            str: Secure Yelp booking link if exact time is available, or list of all available times
+                 asking user to confirm if exact time is not available, or error message if no availability.
         """
         try:
             # Get chat history and extract search parameters
@@ -1006,19 +1009,61 @@ class YelpTool(Toolkit):
                 request_params=request_obj,
             )
 
-            # Extract reservation URL
-            url_success, url_message, reservation_url = (
-                get_reservation_url_creditcard_required(response)
-            )
-
             logger.debug(
-                f"[YelpTool.make_reservation_open_api] is getting: url_success:{url_success}, reservation_url:{reservation_url}, url_message:{url_message}"
+                f"[YelpTool.make_reservation_open_api] is getting: response:{response}"
             )
 
-            if not url_success or not reservation_url:
-                return url_message
+            # Check if we have availability at all
+            if not response.success or not response.availability_data:
+                return "No availability found for the requested time."
 
-            return f"I found availability for {openings_query.covers} people on {openings_query.date}.\n\nThe closest available time is {response.closest_match.formatted_time if response.closest_match else 'N/A'}.\n\nPlease complete your reservation through this link: {reservation_url}"
+                # Check if we have an exact match for the requested time by comparing times ourselves
+            exact_match_slot = None
+            requested_time_24h = openings_query.time  # e.g., "18:15" (24-hour format)
+
+            # Convert 24-hour format to 12-hour format for comparison
+            try:
+                time_obj = datetime.strptime(requested_time_24h, "%H:%M")
+                # Use %I instead of %-I for cross-platform compatibility, then strip leading zero
+                requested_time_12h = time_obj.strftime("%I:%M %p").lstrip("0")
+            except ValueError:
+                # If conversion fails, try to use the time as-is
+                requested_time_12h = requested_time_24h
+
+            # First check if the closest_match is actually an exact match
+            if (
+                response.closest_match
+                and response.closest_match.formatted_time == requested_time_12h
+            ):
+                exact_match_slot = response.closest_match
+            else:
+                # Search through all availability data to find an exact time match
+                for availability_group in response.availability_data:
+                    for slot in availability_group.availability_list:
+                        if slot.formatted_time == requested_time_12h:
+                            exact_match_slot = slot
+                            break
+                    if exact_match_slot:
+                        break
+
+            if exact_match_slot:
+                # We found an exact match - create reservation URL using the slot's form_action
+                base_url = "https://www.yelp.com"
+                reservation_url = f"{base_url}{exact_match_slot.form_action}"
+
+                logger.debug(
+                    f"[YelpTool.make_reservation_open_api] is getting: reservation_url:{reservation_url}"
+                )
+
+                return f"I found availability for {openings_query.covers} people on {openings_query.date} at your requested time {requested_time_12h}.\n\nPlease complete your reservation through this link: {reservation_url}. The complete link must be sent, must not be shortened or modified in any way."
+
+            else:
+                # No exact match - show all available times and ask user to confirm
+                formatted_times = format_openings_for_llm_creditcard_required(response)
+                logger.debug(
+                    f"[YelpTool.make_reservation_open_api] is getting: formatted_times:{formatted_times}"
+                )
+                return f"We cannot find the exact time you requested ({requested_time_12h}) for {openings_query.covers} people on {openings_query.date}.\nCurrent found times:\n{formatted_times}\n\nPlease let me know which time you'd prefer and I'll help you make the reservation."
 
         except Exception as e:
             logger.debug(f"[YelpTool.make_reservation_open_api] Error: {e}")
