@@ -1,8 +1,8 @@
 import re
 import urllib.parse
+import urllib.request
 from functools import cached_property
 
-import requests
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
@@ -61,15 +61,15 @@ class OpenTableTool(Toolkit):
         """Get and cache the OpenTable bearer token by fetching authToken from HTML page"""
         try:
             # Make GET request to the OpenTable restaurant page
-            url = "https://www.opentable.com/restref/client/?rid=1"
-            headers = {"Cookie": "OT-Locale=en-US"}
-            logger.info("Starting request to OpenTable restaurant page")
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
-            logger.info("Successful fetch of OpenTable restaurant page")
+            url = f"https://www.opentable.com/restref/client/?rid={self.restaurant_id}"
+            restaurant_req = urllib.request.Request(
+                url, headers={"Cookie": "OT-Locale=en-US"}
+            )
 
-            # Extract authToken from the HTML content using regex
-            html_content = response.text
+            # Visit restaurant page
+            with urllib.request.urlopen(restaurant_req, timeout=30) as response:
+                html_content = response.read().decode("utf-8")
+                logger.info("Successful fetch of OpenTable restaurant page")
 
             # Look for authToken in the HTML - it's typically in a script tag or data attribute
             auth_token_pattern = r'"authToken":\s*"([^"]+)"'  # Exact JSON format
@@ -97,11 +97,8 @@ class OpenTableTool(Toolkit):
                 scope=None,
             )
 
-        except requests.RequestException as e:
-            logger.error(f"Error fetching OpenTable auth token: {str(e)}")
-            return None
         except Exception as e:
-            logger.error(f"Unexpected error in _opentable_bearer_token: {str(e)}")
+            logger.error(f"Error fetching OpenTable auth token: {str(e)}")
             return None
 
     @tool
