@@ -39,13 +39,32 @@ def connect_opentable_api(
     """
     host = "www.opentable.com"
 
+    # Log the request details
+    logger.info(f"[OpenTable API] Starting request to {host}{api_function}")
+    logger.info(f"[OpenTable API] Method: {http_method.value}")
+    logger.info(f"[OpenTable API] Timeout: {timeout}s")
+    logger.info(f"[OpenTable API] Bearer token: {bearer_token.access_token[:20]}...")
+
+    if query_params:
+        logger.info(f"[OpenTable API] Query params: {query_params}")
+    if payload:
+        logger.info(f"[OpenTable API] Payload: {payload}")
+    if extra_headers:
+        logger.info(f"[OpenTable API] Extra headers: {extra_headers}")
+
     # Build the query string if query parameters are provided
     query_string = ""
     if query_params:
         query_string = f"?{urlencode(query_params)}"
 
+    logger.info(f"[OpenTable API] Final URL: {host}{api_function}{query_string}")
+
     # Set up the connection with timeout
+    logger.info(
+        f"[OpenTable API] Setting up connection to {host} with timeout {timeout}s"
+    )
     conn = http.client.HTTPSConnection(host, timeout=timeout)
+    logger.info("[OpenTable API] Connection established successfully")
 
     headers = {
         "Content-Type": "application/json",
@@ -56,13 +75,20 @@ def connect_opentable_api(
     if extra_headers:
         headers.update(extra_headers)
 
+    logger.info(f"[OpenTable API] Headers: {headers}")
+
     # Convert payload to JSON if provided
     json_payload = None
     if payload:
         json_payload = json.dumps(payload)
 
+    logger.info(f"[OpenTable API] JSON payload: {json_payload}")
+
     try:
         # Make the request
+        logger.info(
+            f"[OpenTable API] Making {http_method.value} request to {host}{api_function}{query_string}"
+        )
         conn.request(
             method=http_method.value,
             url=f"{api_function}{query_string}",
@@ -71,11 +97,13 @@ def connect_opentable_api(
         )
 
         # Get the response
+        logger.info("[OpenTable API] Waiting for response")
         response = conn.getresponse()
         status = response.status
         reason = response.reason
 
         # Read and decode the response body
+        logger.info("[OpenTable API] Reading response body")
         response_data = response.read().decode("utf-8")
 
         # Parse the response if it's JSON
@@ -91,6 +119,8 @@ def connect_opentable_api(
         elif response_data:
             # For non-JSON responses, store the raw data in a structured way
             decoded_body = {"raw_content": response_data}
+
+        logger.info("[OpenTable API] Response completed successfully")
 
         return OpenTableResponse(
             status=status, reason=reason, decoded_body=decoded_body
