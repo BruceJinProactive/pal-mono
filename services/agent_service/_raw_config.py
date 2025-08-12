@@ -77,12 +77,13 @@ class RawConfig:
             memory_provider = self.agent.raw_config.get(
                 "memory_provider", MemoryProvider.DEFAULT
             )
+            memory_enabled = self.agent.raw_config.get("memory_enabled", True)
 
             return AgentConfig(
                 persona=self._get_agent_persona(self.channel),
                 model=self._get_agent_model_config(),
                 memory=MemoryConfig(
-                    enabled=True,
+                    enabled=memory_enabled,
                     provider=memory_provider,
                     identifier=self.account.name,
                     instruction="Don't remember the user's gender.",

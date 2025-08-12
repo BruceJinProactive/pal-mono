@@ -332,14 +332,17 @@ class AgnoAgent:
 
         messages = await self.get_history_messages(input)
 
-        mem_content = await get_all_memories(self.config.metadata.user_id)  # type: ignore
-        if mem_content and mem_content.strip():
-            enhanced_mem_content = f"MEMORY: The following contains important information about your user. Use this context to personalize your responses, remember their preferences, and provide relevant assistance based on their history and needs:\n\n{mem_content}"
-            mem_message = Message(role="user", content=enhanced_mem_content)
-            messages.append(mem_message)
-            logger.debug(f"[PalMemory]: Find user info from memory: {mem_content}")
+        if self.config.memory.enabled:
+            mem_content = await get_all_memories(self.config.metadata.user_id)  # type: ignore
+            if mem_content and mem_content.strip():
+                enhanced_mem_content = f"MEMORY: The following contains important information about your user. Use this context to personalize your responses, remember their preferences, and provide relevant assistance based on their history and needs:\n\n{mem_content}"
+                mem_message = Message(role="user", content=enhanced_mem_content)
+                messages.append(mem_message)
+                logger.debug(f"[PalMemory]: Find user info from memory: {mem_content}")
+            else:
+                logger.debug("[PalMemory]: No memory content found")
         else:
-            logger.debug("[PalMemory]: No memory content found")
+            logger.debug("[PalMemory]: Memory is disabled, skipping memory fetch")
 
         send_dd_histogram_metrics(
             "framework_agent.query_history_messages_time_spent",
