@@ -1047,6 +1047,9 @@ def list_account_users(account_name: str) -> list[CognitoUser]:
         raise ValueError(f"Failed to list Cognito users: {str(e)}")
 
 
+CREATE_USER_TEMPLATE_ID = 40701112
+
+
 def create_account_user(
     account_name: str,
     user_email: str,
@@ -1059,20 +1062,19 @@ def create_account_user(
             UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
             Username=user_email,
             TemporaryPassword=password,
+            MessageAction="SUPPRESS",
             UserAttributes=[
                 {"Name": "email", "Value": user_email},
                 {"Name": "email_verified", "Value": "true"},
                 {"Name": "name", "Value": user_name},
                 {"Name": "custom:account_name", "Value": account_name},
             ],
-            # DesiredDeliveryMediums=["EMAIL"],
         )
         logger.info(f"Created user account for {user_email} using AdminCreateUser")
         try:
-            # if user_email.endswith("@proactiveailab.com"):
             email_service.send_email_with_template(
                 to_email=user_email,
-                template_id=40701112,  # TODO: take it from env? or from input?
+                template_id=CREATE_USER_TEMPLATE_ID,
                 template_model={
                     "name": user_name,
                     "email": user_email,
@@ -1080,13 +1082,12 @@ def create_account_user(
                     "product_name": "Palona AI",
                     "password": password,
                     "login_url": (
-                        "https://manage-app.palona.ai/signin"
+                        "https://console.palona.ai"
                         if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                        else f"https://{os.getenv('RUNTIME_ENV','lat')}-manage-app.palona.ai/signin"
+                        else f"https://{os.getenv('RUNTIME_ENV','lat')}-console.palona.ai"
                     ),
                     "sender_name": "Support Team",
                 },
-                # from_email can be omitted to use default
             )
             logger.info(f"Welcome email sent to {user_email}")
         except Exception as e:
@@ -1125,29 +1126,6 @@ def signup_account_user(
                 {"Name": "custom:account_name", "Value": account_name},
             ],
         )
-        # Customize template_id and template_model as needed
-        try:
-            if user_email.endswith("@proactiveailab.com"):
-                email_service.send_email_with_template(
-                    to_email=user_email,
-                    template_id=40701112,  # TODO: take it from env? or from input?
-                    template_model={
-                        "name": user_name,
-                        "account_name": account_name,
-                        "product_name": "Palona AI",
-                        "password": password,
-                        "login_url": (
-                            "https://manage-app.palona.ai/signin"
-                            if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                            else f"https://{os.getenv('RUNTIME_ENV','lat')}-manage-app.palona.ai/signin"
-                        ),
-                        "sender_name": "Support Team",
-                    },
-                    # from_email can be omitted to use default
-                )
-                logger.info(f"Welcome email sent to {user_email}")
-        except Exception as e:
-            logger.error(f"Failed to send welcome email via Postmark: {e}")
     except ClientError as e:
         error_code = e.response["Error"]["Code"]
         if error_code == "UsernameExistsException":
@@ -1178,28 +1156,6 @@ def signup_account_user(
                 "PASSWORD": password,
             },
         )
-        try:
-            if user_email.endswith("@proactiveailab.com"):
-                email_service.send_email_with_template(
-                    to_email=user_email,
-                    template_id=40701112,  # TODO: take it from env? or from input?
-                    template_model={
-                        "name": user_name,
-                        "account_name": account_name,
-                        "product_name": "Palona AI",
-                        "password": password,
-                        "login_url": (
-                            "https://manage-app.palona.ai/signin"
-                            if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                            else f"https://{os.getenv('RUNTIME_ENV','lat')}-manage-app.palona.ai/signin"
-                        ),
-                        "sender_name": "Support Team",
-                    },
-                    # from_email can be omitted to use default
-                )
-                logger.info(f"Welcome email sent to {user_email}")
-        except Exception as e:
-            logger.error(f"Failed to send welcome email via Postmark: {e}")
         id_token = auth_response["AuthenticationResult"]["IdToken"]
         access_token = auth_response["AuthenticationResult"]["AccessToken"]
         refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
