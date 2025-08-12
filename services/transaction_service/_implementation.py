@@ -42,6 +42,8 @@ def create_transaction(
             store_id=transaction_data.store_id,
             tracking_link=transaction_data.tracking_link,
             status=transaction_data.status,
+            integration_type=transaction_data.integration_type,
+            fulfillment_strategy=transaction_data.fulfillment_strategy,
             notes=transaction_data.notes,
             subtotal=transaction_data.subtotal,
             order_items=transaction_data.order_items,

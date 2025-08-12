@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
 from db.session import SyncSessionLocal
-from db.tables.types import IntegrationProvider
+from db.tables.types import IntegrationProvider, IntegrationType
 from services.transaction_service import (
     OrderTransactionData,
     create_transaction,
@@ -93,6 +93,8 @@ def save_transaction(
     external_transaction_number: Optional[str] = None,
     store_id: Optional[str] = None,
     status: Optional[str] = "pending",
+    integration_type: Optional[IntegrationType] = None,
+    fulfillment_strategy: Optional[str] = None,
     subtotal: Optional[Decimal] = None,
     order_items: Optional[List[Any]] = None,
     order_time: Optional[datetime] = None,
@@ -145,6 +147,8 @@ def save_transaction(
             vendor=vendor,
             store_id=store_id,
             status=status,
+            integration_type=integration_type,
+            fulfillment_strategy=fulfillment_strategy,
             subtotal=subtotal,
             order_items=reconstructed_order_items or [],
             order_time=order_time or datetime.now(),

@@ -16,7 +16,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from db.session import SyncSessionLocal
 from db.tables.orders import Order as DBOrder
-from db.tables.types import IntegrationProvider
+from db.tables.types import IntegrationProvider, IntegrationType
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraLatestOrderResponse,
@@ -483,6 +483,8 @@ class AdoraTool(Toolkit):
                     ),
                     store_id=self.store_id,
                     status="pending",
+                    integration_type=IntegrationType.pos,
+                    fulfillment_strategy=order.order_type,
                     subtotal=(
                         validated_order.subTotal
                         if getattr(validated_order, "subTotal", None) is not None

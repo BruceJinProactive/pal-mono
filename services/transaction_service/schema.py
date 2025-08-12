@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, List, Optional
 
-from db.tables.types import IntegrationProvider
+from db.tables.types import IntegrationProvider, IntegrationType
 
 
 @dataclass
@@ -30,6 +30,8 @@ class TransactionData:
     store_id: Optional[str] = None
     tracking_link: Optional[str] = None
     status: Optional[str] = None
+    integration_type: Optional[IntegrationType] = None
+    fulfillment_strategy: Optional[str] = None
     notes: Optional[str] = None
 
     # Order-specific fields

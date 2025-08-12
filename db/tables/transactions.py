@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy import Enum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -13,10 +13,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Integer, Numeric, String
 
 from .base import Base
-from .types import IntegrationProvider
-
-if TYPE_CHECKING:
-    pass
+from .types import IntegrationProvider, IntegrationType
 
 
 class Transaction(Base):
@@ -57,6 +54,9 @@ class Transaction(Base):
         Enum(IntegrationProvider),
         nullable=True,
     )
+    integration_type: Mapped[IntegrationType | None] = mapped_column(
+        Enum(IntegrationType), nullable=True
+    )
 
     notes: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
@@ -67,6 +67,7 @@ class Transaction(Base):
         nullable=True,
         server_default=text("'[]'::jsonb"),
     )
+    fulfillment_strategy: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
     # Reservation details
     table_size: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)

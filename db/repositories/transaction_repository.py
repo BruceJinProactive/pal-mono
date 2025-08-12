@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from db.tables.transactions import Transaction
-from db.tables.types import IntegrationProvider
+from db.tables.types import IntegrationProvider, IntegrationType
 
 
 class TransactionRepository:
@@ -22,11 +22,13 @@ class TransactionRepository:
         conversation_id: uuid.UUID,
         user_id: uuid.UUID,
         project_id: uuid.UUID,
-        vendor: IntegrationProvider,
+        vendor: Optional[IntegrationProvider] = None,
         external_transaction_number: Optional[str] = None,
         store_id: Optional[str] = None,
         tracking_link: Optional[str] = None,
         status: Optional[str] = None,
+        integration_type: Optional[IntegrationType] = None,
+        fulfillment_strategy: Optional[str] = None,
         notes: Optional[str] = None,
         subtotal: Optional[Decimal] = None,
         order_items: Optional[list] = None,
@@ -46,6 +48,8 @@ class TransactionRepository:
             store_id: Store/location identifier
             tracking_link: Link to track the order/reservation
             status: Current status of the transaction
+            integration_type: Type of integration (pos, loyalty, reservation)
+            fulfillment_strategy: Strategy for fulfilling the transaction
             notes: Additional notes about the transaction
             subtotal: Transaction subtotal amount
             order_items: List of items in the order (for orders)
@@ -61,6 +65,8 @@ class TransactionRepository:
             store_id=store_id,
             tracking_link=tracking_link,
             status=status,
+            integration_type=integration_type,
+            fulfillment_strategy=fulfillment_strategy,
             conversation_id=conversation_id,
             user_id=user_id,
             project_id=project_id,
