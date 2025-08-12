@@ -705,10 +705,6 @@ class YelpTool(Toolkit):
         """
         Join the waitlist queue for a restaurant using the Yelp Waitlist API.
 
-        This endpoint allows customers to join the restaurant's waitlist queue when there is currently
-        a wait. Users will receive estimated seating times, arrival instructions, and a visit ID to
-        track their position in the queue.
-
         Use when: User asks to:
         - Join the waitlist queue ("Put me on the waitlist", "Add me to the waitlist")
         - Get in line at a restaurant ("Can I get in line?", "I want to join the queue")
