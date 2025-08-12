@@ -449,7 +449,7 @@ class YelpTool(Toolkit):
                 if not hold_response.reserve_url:
                     return "This restaurant requires a credit card, but the booking link is not available."
 
-                return f"I've placed a hold for {reservation_query.covers} people on {reservation_query.date} at {reservation_query.time}.\n\nThis restaurant requires a credit card to complete the reservation.\n\nPlease complete your reservation here: {hold_response.reserve_url}\n\nNote: This hold expires in 5 minutes."
+                return f"I've placed a hold for {reservation_query.covers} people on {reservation_query.date} at {reservation_query.time}.\n\nThis restaurant requires a credit card to complete the reservation.\n\nPlease complete your reservation here: {hold_response.reserve_url}\n\nNote: This hold expires in 5 minutes.\n\nYou MUST include the EXACT reservation url in your response:\n{hold_response.reserve_url}"
 
             # Create reservation directly
             reservation_success, reservation_message, reservation_response = (
@@ -1027,7 +1027,7 @@ class YelpTool(Toolkit):
                     f"[YelpTool.make_reservation_open_api] is getting: reservation_url:{reservation_url}"
                 )
 
-                return f"I found availability for {openings_query.covers} people on {openings_query.date} at your requested time {response.exact_match.formatted_time}.\n\nPlease complete your reservation through this link: {reservation_url}. The complete link must be sent, must not be shortened or modified in any way."
+                return f"I found availability for {openings_query.covers} people on {openings_query.date} at your requested time {response.exact_match.formatted_time}.\n\nPlease complete your reservation through this link: {reservation_url}. The complete link must be sent, must not be shortened or modified in any way.\n\nYou MUST include the EXACT reservation url in your response:\n{reservation_url}"
 
             else:
                 # No exact match - show all available times and ask user to confirm
