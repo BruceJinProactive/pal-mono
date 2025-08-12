@@ -1,7 +1,8 @@
-import http.client
 import json
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Dict, Optional
-from urllib.parse import urlencode
 
 from tools.opentable_tool.classes import (
     HttpMethod,
@@ -23,7 +24,7 @@ def connect_opentable_api(
     timeout: int = DEFAULT_TIMEOUT,
 ) -> OpenTableResponse:
     """
-    Makes a request to the OpenTable API.
+    Makes a request to the OpenTable API using urllib.
 
     Args:
         http_method: HTTP method to use (GET, POST, PUT, DELETE)
@@ -38,9 +39,10 @@ def connect_opentable_api(
         OpenTableResponse object containing the response data
     """
     host = "www.opentable.com"
+    base_url = f"https://{host}{api_function}"
 
     # Log the request details
-    logger.info(f"[OpenTable API] Starting request to {host}{api_function}")
+    logger.info(f"[OpenTable API] Starting request to {base_url}")
     logger.info(f"[OpenTable API] Method: {http_method.value}")
     logger.info(f"[OpenTable API] Timeout: {timeout}s")
     logger.info(f"[OpenTable API] Bearer token: {bearer_token.access_token[:20]}...")
@@ -53,18 +55,15 @@ def connect_opentable_api(
         logger.info(f"[OpenTable API] Extra headers: {extra_headers}")
 
     # Build the query string if query parameters are provided
-    query_string = ""
     if query_params:
-        query_string = f"?{urlencode(query_params)}"
+        query_string = "&".join(
+            [f"{k}={urllib.parse.quote(str(v))}" for k, v in query_params.items()]
+        )
+        if not api_function.startswith("?"):
+            base_url += "?"
+        base_url += query_string
 
-    logger.info(f"[OpenTable API] Final URL: {host}{api_function}{query_string}")
-
-    # Set up the connection with timeout
-    logger.info(
-        f"[OpenTable API] Setting up connection to {host} with timeout {timeout}s"
-    )
-    conn = http.client.HTTPSConnection(host, timeout=timeout)
-    logger.info("[OpenTable API] Connection established successfully")
+    logger.info(f"[OpenTable API] Final URL: {base_url}")
 
     headers = {
         "Content-Type": "application/json",
@@ -77,57 +76,95 @@ def connect_opentable_api(
 
     logger.info(f"[OpenTable API] Headers: {headers}")
 
-    # Convert payload to JSON if provided
-    json_payload = None
-    if payload:
-        json_payload = json.dumps(payload)
+    # Prepare request data
+    request_data = None
 
-    logger.info(f"[OpenTable API] JSON payload: {json_payload}")
+    if payload:
+        try:
+            request_data = json.dumps(payload).encode("utf-8")
+            logger.info(f"[OpenTable API] JSON payload: {payload}")
+        except Exception as e:
+            logger.error(f"[OpenTable API] Failed to serialize payload: {str(e)}")
+            return OpenTableResponse(
+                status=500,
+                reason=f"Payload serialization failed: {str(e)}",
+                decoded_body={},
+            )
 
     try:
-        # Make the request
-        logger.info(
-            f"[OpenTable API] Making {http_method.value} request to {host}{api_function}{query_string}"
-        )
-        conn.request(
-            method=http_method.value,
-            url=f"{api_function}{query_string}",
-            body=json_payload,
-            headers=headers,
+        # Create and send the request
+        logger.info(f"[OpenTable API] Making {http_method.value} request...")
+
+        request = urllib.request.Request(
+            url=base_url, data=request_data, headers=headers, method=http_method.value
         )
 
-        # Get the response
-        logger.info("[OpenTable API] Waiting for response")
-        response = conn.getresponse()
-        status = response.status
-        reason = response.reason
+        logger.info("[OpenTable API] Request created, sending...")
 
-        # Read and decode the response body
-        logger.info("[OpenTable API] Reading response body")
-        response_data = response.read().decode("utf-8")
+        # Send the request and get response
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            status = response.status
+            reason = response.reason
 
-        # Parse the response if it's JSON
-        decoded_body = {}  # Default to empty dict
-        if response_data and response.getheader("Content-Type", "").startswith(
-            "application/json"
-        ):
-            try:
-                decoded_body = json.loads(response_data)
-            except json.JSONDecodeError:
-                logger.error(f"Failed to decode JSON response: {response_data}")
-                # Keep the empty dict as decoded_body
-        elif response_data:
-            # For non-JSON responses, store the raw data in a structured way
-            decoded_body = {"raw_content": response_data}
+            logger.info(f"[OpenTable API] Response received: {status} {reason}")
+            logger.info(
+                f"[OpenTable API] Response headers: {dict(response.getheaders())}"
+            )
 
-        logger.info("[OpenTable API] Response completed successfully")
+            # Read and decode the response body
+            logger.info("[OpenTable API] Reading response body...")
+            response_data = response.read().decode("utf-8")
+            logger.info(
+                f"[OpenTable API] Response body length: {len(response_data)} characters"
+            )
+            logger.info(
+                f"[OpenTable API] Response body preview: {response_data[:200]}..."
+            )
+
+            # Parse the response if it's JSON
+            decoded_body = {}  # Default to empty dict
+            content_type = response.getheader("Content-Type", "")
+
+            if response_data and content_type.startswith("application/json"):
+                try:
+                    decoded_body = json.loads(response_data)
+                    logger.info("[OpenTable API] Successfully parsed JSON response")
+                except json.JSONDecodeError as e:
+                    logger.error(f"[OpenTable API] Failed to decode JSON response: {e}")
+                    logger.error(f"[OpenTable API] Raw response: {response_data}")
+                    decoded_body = {"raw_content": response_data, "parse_error": str(e)}
+            elif response_data:
+                # For non-JSON responses, store the raw data in a structured way
+                decoded_body = {"raw_content": response_data}
+                logger.info("[OpenTable API] Stored raw response content")
+
+            logger.info("[OpenTable API] Request completed successfully")
+            return OpenTableResponse(
+                status=status, reason=reason, decoded_body=decoded_body
+            )
+
+    except urllib.error.HTTPError as e:
+        logger.error(f"[OpenTable API] HTTP Error: {e.code} {e.reason}")
+        # Try to read the error response body
+        try:
+            error_body = e.read().decode("utf-8")
+            logger.error(f"[OpenTable API] Error response body: {error_body}")
+            decoded_body = {"error": str(e), "response_body": error_body}
+        except Exception:
+            decoded_body = {"error": str(e)}
 
         return OpenTableResponse(
-            status=status, reason=reason, decoded_body=decoded_body
+            status=e.code, reason=e.reason, decoded_body=decoded_body
         )
-
+    except urllib.error.URLError as e:
+        logger.error(f"[OpenTable API] URL Error: {str(e)}")
+        return OpenTableResponse(
+            status=500, reason=f"URL Error: {str(e)}", decoded_body={"error": str(e)}
+        )
     except Exception as e:
-        logger.error(f"Error connecting to OpenTable API: {str(e)}")
-        return OpenTableResponse(status=500, reason=str(e), decoded_body={})
-    finally:
-        conn.close()
+        logger.error(f"[OpenTable API] Unexpected error: {str(e)}", exc_info=True)
+        return OpenTableResponse(
+            status=500,
+            reason=f"Unexpected error: {str(e)}",
+            decoded_body={"error": str(e)},
+        )
