@@ -373,7 +373,7 @@ class AgnoAgent:
             )
         else:
             if messages[-1].content != input.content:
-                logger.error(
+                logger.warning(
                     f"[AgnoAgent] The latest message: {messages[-1].content} should be the current user input: {input.content}"
                 )
             else:
