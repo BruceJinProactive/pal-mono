@@ -84,7 +84,6 @@ class ToastTool(Toolkit):
         self._cached_store_info: str | None = None
 
         # Register tools
-        self.register(self.get_store_info_tool)
         self.register(self.checkout_order)
         self.register(self.check_address)
 

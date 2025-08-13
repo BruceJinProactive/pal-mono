@@ -133,7 +133,7 @@ class DiningOption(BaseModel):
 
 
 class ItemBase(BaseModel):
-    guid: Optional[str] = Field(description="The GUID of the item")
+    guid: str = Field(description="The GUID of the item", min_length=1)
 
 
 class MenuItem(ItemBase):
@@ -209,9 +209,9 @@ class Payment(BaseModel):
 
 class Customer(BaseModel):
     firstName: str
-    lastName: str
     phone: str
     email: str
+    lastName: str = Field(default="(via PalonaAI)")
 
 
 class Price(BaseModel):
