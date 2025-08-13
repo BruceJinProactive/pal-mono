@@ -26,6 +26,27 @@ from tools.yelp_tool.classes import (
 )
 from utils.log import logger
 
+# Number of results to request when the caller explicitly asks for the full list
+OPENINGS_FULL_LIST_COUNT = 10
+
+
+def normalize_openings_counts(
+    num_results_before: Optional[int],
+    num_results_after: Optional[int],
+) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Normalize openings pagination counts. If both values are explicitly 0,
+    coerce both to OPENINGS_FULL_LIST_COUNT.
+
+    Returns the possibly modified (num_results_before, num_results_after).
+    """
+    if num_results_after == 0 and num_results_before == 0:
+        logger.info(
+            f"[YelpTool.openings] Both num_results_after and num_results_before are 0; setting both to {OPENINGS_FULL_LIST_COUNT} to request full availability list."
+        )
+        return OPENINGS_FULL_LIST_COUNT, OPENINGS_FULL_LIST_COUNT
+    return num_results_before, num_results_after
+
 
 def _validate_business_id_or_alias(business_id_or_alias: str) -> List[str]:
     """
@@ -415,8 +436,8 @@ def create_openings_request_creditcard_not_required(
         date: Date in YYYY-mm-dd format
         time: Time in HH:MM format
         get_covers_range: Whether to include covers range in response
-        num_results_after: Set to 0 if user wants to know the openings before the current result, otherwise don't include this field
-        num_results_before: Set to 0 if user wants to know the openings after the current result, otherwise don't include this field
+        num_results_after: Set to 0 to include openings before the requested time; if both after and before are 0, both will be coerced to OPENINGS_FULL_LIST_COUNT
+        num_results_before: Set to 0 to include openings after the requested time; if both after and before are 0, both will be coerced to OPENINGS_FULL_LIST_COUNT
 
     Returns:
         Tuple containing:
@@ -436,13 +457,10 @@ def create_openings_request_creditcard_not_required(
     if errors:
         return False, "; ".join(errors), None
 
-    # if both are 0, set both to None and log an error
-    if num_results_after == 0 and num_results_before == 0:
-        logger.warning(
-            "num_results_after and num_results_before cannot both be 0, setting both to None"
-        )
-        num_results_after = None
-        num_results_before = None
+    # Normalize counts
+    num_results_before, num_results_after = normalize_openings_counts(
+        num_results_before, num_results_after
+    )
 
     # Create request object
     try:
@@ -1104,8 +1122,8 @@ def create_openings_request_creditcard_required(
         biz_id: Business-specific ID parameter for the API
         biz_lat: Business latitude parameter for the API
         biz_long: Business longitude parameter for the API
-        num_results_after: Set to 0 if user wants to know the openings before the current result, otherwise don't include this field
-        num_results_before: Set to 0 if user wants to know the openings after the current result, otherwise don't include this field
+        num_results_after: Set to 0 to include openings before the requested time; if both after and before are 0, both will be coerced to OPENINGS_FULL_LIST_COUNT
+        num_results_before: Set to 0 to include openings after the requested time; if both after and before are 0, both will be coerced to OPENINGS_FULL_LIST_COUNT
 
     Returns:
         Tuple containing:
@@ -1124,13 +1142,10 @@ def create_openings_request_creditcard_required(
     if errors:
         return False, "; ".join(errors), None
 
-    # Validate mutual exclusion of time filters
-    if num_results_after == 0 and num_results_before == 0:
-        logger.warning(
-            "num_results_after and num_results_before cannot both be 0, setting both to None"
-        )
-        num_results_after = None
-        num_results_before = None
+    # Normalize counts
+    num_results_before, num_results_after = normalize_openings_counts(
+        num_results_before, num_results_after
+    )
 
     # Ensure time is exactly HH:MM format (validation already passed, but be explicit)
     time_parts = time.split(":")

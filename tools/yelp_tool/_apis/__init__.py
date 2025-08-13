@@ -483,11 +483,12 @@ def get_openings_creditcard_required(
         "biz_long": request_params.biz_long,
     }
 
-    if request_params.num_results_after == 0:
-        query_params["num_results_after"] = "0"
+    # Pass through non-null num_results_* values (0 or positive integers)
+    if request_params.num_results_after is not None:
+        query_params["num_results_after"] = str(request_params.num_results_after)
 
-    if request_params.num_results_before == 0:
-        query_params["num_results_before"] = "0"
+    if request_params.num_results_before is not None:
+        query_params["num_results_before"] = str(request_params.num_results_before)
 
     api_function = f"/reservations/{business_id_or_alias}/search_availability"
 
