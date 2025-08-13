@@ -27,7 +27,7 @@ from tools.yelp_tool.classes import (
 from utils.log import logger
 
 # Number of results to request when the caller explicitly asks for the full list
-OPENINGS_FULL_LIST_COUNT = 10
+OPENINGS_FULL_LIST_COUNT = 20
 
 
 def normalize_openings_counts(
