@@ -10,24 +10,30 @@ WEEKDAY_CONVERSION_RULES = """**MANDATORY: You MUST convert weekday references i
 **RULES:**
 - Use a non-negative modulo so the result is always in the range 0..6 (avoid negative remainders across languages)
 - "this [weekday]" → next occurrence counting forward from today (including today if the weekday matches): use days_to_add as above
-- "next [weekday]" → same as above (interpret as the upcoming occurrence, not the following week): use days_to_add as above
+- "next [weekday]" → the occurrence in the next calendar week (Mon-Sun). Let days_to_add_this = ((target-current)+7)%7:
+  - If target == current: days_to_add = 7 (same weekday next week)
+  - If target > current (the upcoming occurrence is still in the current week): days_to_add = days_to_add_this + 7 (skip this week)
+  - If target < current (the upcoming occurrence is already in next week): days_to_add = days_to_add_this
 - "[weekday]" (without qualifiers) → next occurrence counting forward from today: use days_to_add as above
 - **SAME DAY RULE**: If today is the requested weekday, treat it as today (days_to_add = 0).
 - **ALWAYS VERIFY**: Ensure the computed date actually falls on the requested weekday.
 
 **CALCULATION EXAMPLES (with current date = "2025-01-13 (Monday)")**
 - "this Wednesday" → target=2, current=0 → ((2-0)+7)%7 = 2 → 2025-01-15 (Wednesday)
-- "next Wednesday" → target=2, current=0 → ((2-0)+7)%7 = 2 → 2025-01-15 (Wednesday)
+- "next Wednesday" → target(2) > current(0) → days_to_add_this=2 → days_to_add=2+7=9 → 2025-01-22 (Wednesday)
 - "Wednesday" → target=2, current=0 → ((2-0)+7)%7 = 2 → 2025-01-15 (Wednesday)
 - "this Friday" → target=4, current=0 → ((4-0)+7)%7 = 4 → 2025-01-17 (Friday)
-- "next Friday" → target=4, current=0 → ((4-0)+7)%7 = 4 → 2025-01-17 (Friday)
+- "next Friday" → target(4) > current(0) → days_to_add_this=4 → days_to_add=4+7=11 → 2025-01-24 (Friday)
 - "Monday" or "this Monday" → target=0, current=0 → ((0-0)+7)%7 = 0 → 2025-01-13 (Monday)
 
 **ADDITIONAL EXAMPLES**
-- Current date = "2025-08-13 (Wednesday)": "next Tuesday" → target=1, current=2 → ((1-2)+7)%7 = 6 → 2025-08-19 (Tuesday)
-- Current date = "2025-01-14 (Tuesday)": "next Monday" → target=0, current=1 → ((0-1)+7)%7 = 6 → 2025-01-20 (Monday)
- - Current date = "2025-01-17 (Friday)": "next Tuesday" → target=1, current=4 → ((1-4)+7)%7 = 4 → 2025-01-21 (Tuesday)
- - Note on negative differences: if target=1 (Tuesday) and current=2 (Wednesday), raw diff = -1. Using the non-negative modulo yields 6 (days ahead), avoiding -1 from languages where % returns a negative remainder.
+- Current date = "2025-08-13 (Wednesday)":
+  - "this Friday" → ((4-2)+7)%7 = 2 → 2025-08-15 (Friday)
+  - "next Friday" → target(4) > current(2) → days_to_add_this=2 → days_to_add=2+7=9 → 2025-08-22 (Friday)
+  - "next Tuesday" → target(1) < current(2) → days_to_add_this=((1-2)+7)%7=6 → days_to_add=6 → 2025-08-19 (Tuesday)
+- Current date = "2025-01-14 (Tuesday)": "next Monday" → target(0) < current(1) → days_to_add_this=6 → days_to_add=6 → 2025-01-20 (Monday)
+ - Current date = "2025-01-17 (Friday)": "next Tuesday" → target(1) < current(4) → days_to_add_this=4 → days_to_add=4 → 2025-01-21 (Tuesday)
+ - Note on negative differences: if target=1 (Tuesday) and current=2 (Wednesday), raw diff = -1. Using the non-negative modulo yields 6 (days ahead). For "next [weekday]", apply the week-boundary rule above rather than always adding 7.
 """
 
 OPENINGS_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting reservation search parameters from conversation history.
