@@ -136,10 +136,6 @@ class ItemBase(BaseModel):
     guid: Optional[str] = Field(description="The GUID of the item")
 
 
-class OptionGroup(ItemBase):
-    pass
-
-
 class MenuItem(ItemBase):
     pass
 
@@ -148,12 +144,20 @@ class ItemGroup(ItemBase):
     pass
 
 
+class OptionGroup(ItemBase):
+    pass
+
+
 class Modifier(BaseModel):
     optionGroup: OptionGroup = Field(
         description="The option group GUID of the modifier associated with the item. Find the correct group ID corresponding to the item ID."
     )
     item: MenuItem = Field(description="The item ID associated with the modifier")
-    quantity: int = Field(description="The quantity of the modifier")
+    quantity: int = Field(description="The quantity of the modifier", gt=0)
+    modifiers: List["Modifier"] = Field(
+        default_factory=list,
+        description="Nested modifiers for this modifier. Always include as empty array [].",
+    )
     displayName: SkipJsonSchema[Optional[str]] = None
 
 
@@ -165,8 +169,9 @@ class OrderItemFulfillmentStatus(str, Enum):
 
 
 class ItemSelection(BaseModel):
-    itemGroup: ItemGroup = Field(
-        description="The item group associated with the item selection"
+    itemGroup: Optional[ItemGroup] = Field(
+        default=None,
+        description="The item group associated with the item selection. Can be null when treating a modifier as an item.",
     )
     item: ItemBase = Field(description="The item selected")
     quantity: int = Field(description="The quantity of the item selection", gt=0)
@@ -394,3 +399,8 @@ class DeliveryAddress(BaseModel):
         description="Extra field 2", default="", serialization_alias="extraField2"
     )
     zone_id: SkipJsonSchema[int] = Field(default=0, serialization_alias="zoneId")
+
+
+# Rebuild models to resolve forward references
+OptionGroup.model_rebuild()
+Modifier.model_rebuild()

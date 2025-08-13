@@ -35,6 +35,7 @@ from tools.toast_tool._utils import (
 )
 from tools.toast_tool.classes import (
     DeliveryAddress,
+    Modifier,
     OrderInput,
     Price,
     SubQueries,
@@ -221,7 +222,7 @@ class ToastTool(Toolkit):
                 self.store_id,
                 general_api_endpoint=self.general_api_endpoint,
             ).model_dump_json()
-            print(f"Store info: {store_info}")
+
             # Cache store info
             self._cached_store_info = store_info
             return store_info
@@ -481,18 +482,37 @@ class ToastTool(Toolkit):
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
         return context
 
+    def _clean_mods(self, mods: list[Modifier]) -> list[Modifier]:
+        """Recursively clean and validate modifiers at all nesting levels."""
+        cleaned: list[Modifier] = []
+        for m in mods:
+            # Basic validation: require both GUIDs (reject None, "N/A", empty, or whitespace-only)
+            og_guid = getattr(m.optionGroup, "guid", None)
+            it_guid = getattr(m.item, "guid", None)
+
+            def _invalid(g):
+                return g in (None, "N/A", "") or (isinstance(g, str) and not g.strip())
+
+            if _invalid(og_guid) or _invalid(it_guid):
+                continue
+            # Recursively clean nested modifiers
+            nested_mods = getattr(m, "modifiers", None)
+            if nested_mods is not None:
+                m.modifiers = self._clean_mods(nested_mods)
+            else:
+                # Normalize missing nested modifiers to empty list to satisfy Toast API
+                m.modifiers = []
+            cleaned.append(m)
+        return cleaned
+
     def _remove_invalid_modifiers(self, order: OrderInput) -> OrderInput:
         try:
             for check in order.checks:  # type: ignore
                 for selection in check.selections:
-                    # Filter out modifiers with None or 'N/A' GUIDs
                     if selection.modifiers:
-                        selection.modifiers = [
-                            modifier
-                            for modifier in selection.modifiers
-                            if modifier.optionGroup.guid not in (None, "N/A")
-                            and modifier.item.guid not in (None, "N/A")
-                        ]
+                        selection.modifiers = self._clean_mods(
+                            list(selection.modifiers)
+                        )
 
             return order
 
@@ -534,6 +554,7 @@ class ToastTool(Toolkit):
                     f"`order` object: {order}"
                 )
             logger.debug(f"Constructed order: {order}")
+
             return order
         except ValidationError as e:
             logger.warning(e)

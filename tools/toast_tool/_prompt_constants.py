@@ -31,6 +31,32 @@ You will be given the chat history and relevant context. You goal is to convert 
 - The modifier item ID of one item belongs only to the modifier optionGroup ID of the same item. You must identify the correct modifier optionGroup ID and modifier item ID pair of each item. You can find them in the document related to the specific item. 
 - You must not mix up the modifier optionGroup ID and modifier item ID for different items. The modifier item ID of one item must be paired with the modifier optionGroup ID of the same item.
 - If in the item's document there is only a base price, you must not include any size modifier group ID and size modifier item ID of any kind for that item in the selections list. You must NOT use other items' modifier group ID and item ID for that item.
+- If the user orders a modifier multiple times, you must include the modifier multiple times in the selections list instead of specifying the quantity of the modifier. For example, if the user orders 1 item with 3 portions of modifier B, you must include modifier B with quantity 1 three times in the selections list.
+
+# CRITICAL MODIFIER STRUCTURE RULES:
+- EVERY modifier object MUST include a "modifiers" field as an empty array: "modifiers": []
+- This is required by the Toast API even for simple modifiers with no nested modifiers
+- Do NOT omit the "modifiers" field - always include it as an empty array
+
+CORRECT STRUCTURE (always include empty modifiers array):
+```json
+{
+  "optionGroup": { "guid": "option-group-guid" },
+  "item": { "guid": "modifier-item-guid" },
+  "quantity": 1,
+  "modifiers": []  // ✅ REQUIRED: Always include empty array
+}
+```
+
+WRONG STRUCTURE (missing modifiers field):
+```json
+{
+  "optionGroup": { "guid": "option-group-guid" },
+  "item": { "guid": "modifier-item-guid" },
+  "quantity": 1
+  // ❌ WRONG: Missing "modifiers": [] field
+}
+```
 
 # RULES FOR EXTRACTING THE DELIVERY ADDRESS:
 - Extract the last delivery address from the context.
@@ -77,4 +103,6 @@ EXTRACTOR_USER_PROMPT = """
 Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beutify the response. We will parse the JSON object later.
 
 When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. If the user specified any modifiers for an item, select the modifier group id and modifier option item id within that document for the item. The modifier group id and modifier option item id must be found in the same document as the item. If you cannot find the correct document, do NOT use any modifier group id and modifier option item id from any other document because this will break the ordering process.
+
+
 """
