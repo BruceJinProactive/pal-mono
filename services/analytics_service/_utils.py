@@ -9,13 +9,14 @@ from api.schemas.admin.analytics import (
 
 def get_row_value(row, key, default=None):
     """Helper to safely get value from row regardless of result format."""
+    # SQLAlchemy Row objects support both attribute and key access
+    if hasattr(row, key):  # Named tuple or object with attributes
+        return getattr(row, key)
     if hasattr(row, "__getitem__"):  # dict-like or Row object
         try:
             return row[key]
-        except (KeyError, IndexError):
+        except (KeyError, IndexError, TypeError):
             pass
-    if hasattr(row, key):  # Named tuple or object with attributes
-        return getattr(row, key)
     return default
 
 
