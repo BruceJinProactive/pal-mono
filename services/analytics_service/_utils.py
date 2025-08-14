@@ -5,6 +5,7 @@ from api.schemas.admin.analytics import (
     AnalyticsReportType,
     AnalyticsResponse,
 )
+from utils.log import logger
 
 
 def get_row_value(row, key, default=None):
@@ -17,6 +18,12 @@ def get_row_value(row, key, default=None):
             return row[key]
         except (KeyError, IndexError, TypeError):
             pass
+    # Try accessing as tuple index if it's a Row object
+    if hasattr(row, "_fields") and key in row._fields:
+        return row[row._fields.index(key)]
+    # Try accessing as dict keys
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
     return default
 
 
@@ -53,8 +60,11 @@ def process_analytics_results_to_dict(
 
     value_key = str(report_name)
 
-    # Then, fill in actual data from the query results
-    for row in rows:
+    logger.info(
+        f"Analytics: Processing {len(rows)} rows for {report_name}, value_key: '{value_key}'"
+    )
+
+    for i, row in enumerate(rows):
         date_val = get_row_value(row, "date")
         if not date_val:
             continue
@@ -81,6 +91,11 @@ def process_analytics_results_to_dict(
             # Set the value for this project and channel
             raw_value = get_row_value(row, value_key)
             value = raw_value if raw_value is not None else 0
+
+            logger.info(
+                f"Analytics: Row {i+1} - date: {date_str}, channel: {channel_name}, value_key: '{value_key}', raw_value: {raw_value}, final_value: {value}"
+            )
+
             analytics_data[date_str][project_key][channel_name] = value
 
             # Update overall aggregation inline (O(1) operation)

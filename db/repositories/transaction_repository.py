@@ -144,7 +144,7 @@ class TransactionRepository:
                     Transaction.project_id.label("project_id"),
                     Project.name.label("project_name"),
                     func.coalesce(func.sum(Transaction.subtotal), 0).label(
-                        "Order Total"
+                        "order_total"
                     ),
                 )
                 .join(Conversation, Transaction.conversation_id == Conversation.id)

@@ -74,7 +74,9 @@ def get_analytics_reports(
             end_date,
             AnalyticsReportType.MESSAGE_TURNS,
         )
-
+        logger.info(
+            f"Analytics: Processed Message Turns data for account {AnalyticsReportType.MESSAGE_TURNS} from {message_turns_data}"
+        )
         # Fetch order data (contains both value and count)
         order_result = transaction_repo.get_order_value(
             account_id, start_date, end_date
@@ -86,6 +88,9 @@ def get_analytics_reports(
             start_date,
             end_date,
             AnalyticsReportType.ORDER_TOTAL,
+        )
+        logger.info(
+            f"Analytics: Processed Message Turns data for account {AnalyticsReportType.ORDER_TOTAL} from {order_value_data}"
         )
 
         # Create and return reports

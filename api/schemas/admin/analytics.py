@@ -27,10 +27,10 @@ class Event(str, Enum):
 class AnalyticsReportType(str, Enum):
     """Analytics Report Types"""
 
-    DAU = "DAU"
-    MESSAGE_TURNS = "Message Turns"
-    ORDER_TOTAL = "Order Total"
-    ORDER_COUNT = "Order Count"
+    DAU = "dau"
+    MESSAGE_TURNS = "message_turns"
+    ORDER_TOTAL = "order_total"
+    ORDER_COUNT = "order_count"
 
 
 class PerformanceReport(BaseModel):

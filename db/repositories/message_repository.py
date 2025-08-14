@@ -517,7 +517,7 @@ class MessageRepository:
                     channel_expr.label("channel"),
                     Conversation.project_id.label("project_id"),
                     Project.name.label("project_name"),
-                    func.count(func.distinct(Conversation.user_id)).label("DAU"),
+                    func.count(func.distinct(Conversation.user_id)).label("dau"),
                 )
                 .join(Conversation, Message.conversation_id == Conversation.id)
                 .join(User, Conversation.user_id == User.id)
@@ -581,7 +581,7 @@ class MessageRepository:
                     channel_expr.label("channel"),
                     Conversation.project_id.label("project_id"),
                     Project.name.label("project_name"),
-                    func.count(Message.id).label("Message Turns"),
+                    func.count(Message.id).label("message_turns"),
                 )
                 .join(Conversation, Message.conversation_id == Conversation.id)
                 .join(User, Conversation.user_id == User.id)
