@@ -2,7 +2,6 @@ import json
 
 from tools.opentable_tool._apis._utils import connect_opentable_api
 from tools.opentable_tool.classes import (
-    AvailabilityMetadataResponse,
     AvailabilitySearchRequest,
     AvailabilitySearchResponse,
     HttpMethod,
@@ -90,51 +89,3 @@ def search_availability(
         times_available=times_available,
         no_availability_reasons=data.get("no_availability_reasons", []),
     )
-
-
-def get_availability_metadata(
-    bearer_token: OpenTableAccessToken,
-    restaurant_id: int,
-) -> AvailabilityMetadataResponse:
-    """
-    Get availability metadata for a specific restaurant.
-
-    Args:
-        bearer_token: OpenTable access token
-        restaurant_id: Restaurant ID
-
-    Returns:
-        AvailabilityMetadataResponse object or raises an exception if request fails
-    """
-    # Construct API endpoint
-    api_function = f"/v2/availability-metadata/{restaurant_id}"
-
-    # Call the OpenTable API
-    response = connect_opentable_api(
-        http_method=HttpMethod.GET,
-        bearer_token=bearer_token,
-        api_function=api_function,
-    )
-
-    # Handle the response
-    if response.status != 200:
-        logger.error(
-            f"OpenTable API returned error: {response.status} {response.reason}"
-        )
-        logger.error(f"Response body: {response.decoded_body}")
-        raise Exception(f"OpenTable API error: {response.status} {response.reason}")
-
-    # Parse response body - ensure it's a dictionary
-    data = response.decoded_body
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON response: {data}")
-            data = {}
-
-    if not isinstance(data, dict):
-        data = {}
-
-    # Construct and return the AvailabilityMetadataResponse
-    return AvailabilityMetadataResponse(**data)

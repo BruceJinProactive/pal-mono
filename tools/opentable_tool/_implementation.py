@@ -9,9 +9,6 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.opentable_tool._apis import (
-    get_availability_metadata as get_availability_metadata_api,
-)
 from tools.opentable_tool._apis import search_availability as search_availability_api
 from tools.opentable_tool._prompt_constants import (
     RESERVATION_EXTRACTOR_SYSTEM_PROMPT,
@@ -19,7 +16,6 @@ from tools.opentable_tool._prompt_constants import (
 )
 from tools.opentable_tool._utils import (
     extract_booking_url,
-    format_availability_metadata,
     format_availability_results,
     validate_search_parameters,
 )
@@ -53,7 +49,6 @@ class OpenTableTool(Toolkit):
 
         # Register tools
         self.register(self.search_availability)
-        self.register(self.get_availability_metadata)
         self.register(self.make_reservation)
 
     @cached_property
@@ -139,6 +134,9 @@ class OpenTableTool(Toolkit):
         # Get bearer token
         bearer_token = self._opentable_bearer_token
         if not bearer_token:
+            logger.error(
+                "[OpenTable Tool] Error: Unable to authenticate with OpenTable"
+            )
             return "Error: Unable to authenticate with OpenTable"
 
         # Validate search parameters
@@ -150,6 +148,7 @@ class OpenTableTool(Toolkit):
         )
 
         if not is_valid:
+            logger.error(f"[OpenTable Tool] Error: {error_message}")
             return f"Error: {error_message}"
 
         # If require_attributes is provided, validate it
@@ -158,7 +157,10 @@ class OpenTableTool(Toolkit):
             try:
                 table_attribute = TableAttribute(require_attributes.lower())
             except ValueError:
-                return f"Error: Invalid table attribute '{require_attributes}'. Valid options are: default, hightop, bar, counter, outdoor."
+                logger.error(
+                    f"[OpenTable Tool] Error: Invalid table attribute '{require_attributes}'. Valid options are: default, hightop, bar, counter, outdoor."
+                )
+                return f"[OpenTable Tool] Error: Invalid table attribute '{require_attributes}'. Valid options are: default, hightop, bar, counter, outdoor."
 
         # Create search parameters
         search_params = AvailabilitySearchRequest(
@@ -179,8 +181,12 @@ class OpenTableTool(Toolkit):
                     restaurant_id=self.restaurant_id,
                     search_params=search_params,
                 )
+                logger.info(f"[OpenTable Tool] Search availability result: {result}")
         except Exception as e:
-            logger.error(f"Error searching availability: {str(e)}", exc_info=True)
+            logger.error(
+                f"[OpenTable Tool] Error searching availability: {str(e)}",
+                exc_info=True,
+            )
             return f"Error searching availability for restaurant ID {self.restaurant_id}: {str(e)}"
 
         # If no times available, provide a clear message
@@ -189,6 +195,9 @@ class OpenTableTool(Toolkit):
             reasons = (
                 ", ".join(reason.value for reason in no_availability_reasons)
                 or "No available times"
+            )
+            logger.info(
+                f"[OpenTable Tool] No availability found for restaurant ID {self.restaurant_id} (Party of {party_size}). Reason: {reasons}"
             )
             return f"No availability found for restaurant ID {self.restaurant_id} (Party of {party_size}). Reason: {reasons}"
 
@@ -217,40 +226,6 @@ class OpenTableTool(Toolkit):
         return formatted_result
 
     @tool
-    def get_availability_metadata(
-        self,
-    ) -> str:
-        """
-        Get detailed availability metadata for an OpenTable restaurant.
-        Returns information about dining areas, table attributes, and environments.
-
-        Args:
-
-        Returns:
-            Formatted string with restaurant availability options and attributes
-        """
-        # Get bearer token
-        bearer_token = self._opentable_bearer_token
-        if not bearer_token:
-            return "Error: Unable to authenticate with OpenTable"
-
-        try:
-            # Get availability metadata
-            with LLMObs.task(name="get_opentable_availability_metadata"):
-                result = get_availability_metadata_api(
-                    bearer_token=bearer_token,
-                    restaurant_id=self.restaurant_id,
-                )
-        except Exception as e:
-            logger.error(
-                f"Error getting availability metadata: {str(e)}", exc_info=True
-            )
-            return f"Error retrieving availability options for restaurant ID {self.restaurant_id}: {str(e)}"
-
-        # Format the results human-readable way
-        return format_availability_metadata(result)
-
-    @tool
     def make_reservation(self, latest_user_message: str) -> str:
         """
         Creates a restaurant reservation by extracting structured reservation data from chat
@@ -268,6 +243,9 @@ class OpenTableTool(Toolkit):
             # Get bearer token
             bearer_token = self._opentable_bearer_token
             if not bearer_token:
+                logger.error(
+                    "[OpenTable Tool] Error: Unable to authenticate with OpenTable"
+                )
                 return "Error: Unable to authenticate with OpenTable"
 
             # Get chat history
@@ -275,28 +253,20 @@ class OpenTableTool(Toolkit):
                 self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
             )
 
-            # Get restaurant metadata for context
-            try:
-                metadata_result = get_availability_metadata_api(
-                    bearer_token=bearer_token,
-                    restaurant_id=self.restaurant_id,
-                )
-                metadata_context = format_availability_metadata(metadata_result)
-            except Exception as e:
-                logger.debug(f"Failed to get restaurant metadata: {e}")
-                return "Error: Unable to get restaurant metadata"
-
             # Extract reservation data using LLM
             reservation_data = _llm.llm_call(
                 system_prompt=RESERVATION_EXTRACTOR_SYSTEM_PROMPT,
                 prompt=RESERVATION_EXTRACTOR_USER_PROMPT.format(
-                    context=metadata_context, chat_history=chat_history
+                    context="", chat_history=chat_history
                 ),
                 response_format=ReservationExtractedData,
                 openai=False,
             )
 
             if not isinstance(reservation_data, ReservationExtractedData):
+                logger.error(
+                    "[OpenTable Tool] Failed to extract structured reservation data. Please try again."
+                )
                 return (
                     "Failed to extract structured reservation data. Please try again."
                     f"Error: {reservation_data}"
@@ -309,16 +279,6 @@ class OpenTableTool(Toolkit):
                 missing_fields.append("how many people will be dining (party size)")
             if not reservation_data.date_time:
                 missing_fields.append("when you'd like to dine (date and time)")
-            if not reservation_data.first_name:
-                missing_fields.append("a name for the reservation (first name)")
-            if not (reservation_data.phone and reservation_data.phone.number):
-                missing_fields.append("a phone number for the reservation")
-            if not reservation_data.email_address:
-                missing_fields.append("an email address for the reservation")
-
-            # Check for authentication issues
-            if not bearer_token.access_token:
-                return "I'm having trouble authenticating with OpenTable endpoint. Please try again in a moment."
 
             # Return comprehensive error message if any fields are missing
             if missing_fields:
@@ -348,7 +308,7 @@ class OpenTableTool(Toolkit):
             response += f"Party Size: {party_size}\n"
             response += f"Restaurant ID: {self.restaurant_id}\n\n"
             response += f"Click here to complete your reservation: {booking_url}\n\n"
-            response += "This link will take you directly to OpenTable's booking page where you can select your preferred seating and complete your reservation."
+            response += "This link will take you directly to OpenTable's booking page where you can complete your reservation."
 
             return response
 
