@@ -32,6 +32,7 @@ SQUARE_SCOPES = ["ITEMS_READ", "ORDERS_READ", "ORDERS_WRITE", "MERCHANT_PROFILE_
 async def install(request: Request):
     account_name = request.query_params.get("account_name")
     if not account_name:
+        logger.error("[Square OAuth] account_name parameter is required")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": "account_name parameter is required"},
@@ -39,6 +40,7 @@ async def install(request: Request):
 
     # Generate state for CSRF protection and store account context
     state = binascii.b2a_hex(os.urandom(15)).decode("utf-8")
+    logger.info(f"[Square OAuth] state inside install: {state}")
     _oauth_state[state] = account_name
 
     client_id = get_square_client_id()
@@ -58,6 +60,7 @@ async def callback(request: Request):
     # Validate state parameter for CSRF protection and get account_name
     account_name_result = valid_request(request, is_callback=True)
     if not isinstance(account_name_result, str):
+        logger.error("[Square OAuth] Invalid state validation")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": "Invalid state validation"},
@@ -67,6 +70,7 @@ async def callback(request: Request):
     code = request.query_params.get("code")
 
     if not code:
+        logger.error("[Square OAuth] Missing authorization code")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": "Missing authorization code"},
@@ -76,6 +80,7 @@ async def callback(request: Request):
         client_id = get_square_client_id()
         client_secret = get_square_client_secret()
     except ValueError as e:
+        logger.error(f"[Square OAuth] Error getting Square client ID or secret: {e}")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": str(e)},
@@ -93,7 +98,7 @@ async def callback(request: Request):
     headers = {"Content-Type": "application/json"}
     resp = requests.post(SQUARE_TOKEN_URL, json=data, headers=headers)
     if resp.status_code != 200:
-        print(f"[DEBUG] Token exchange failed: {resp.text}")
+        logger.error(f"[DEBUG] Token exchange failed: {resp.text}")
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -108,6 +113,9 @@ async def callback(request: Request):
     expires_at = token_data.get("expires_at")
 
     if not access_token or not refresh_token or not merchant_id or not expires_at:
+        logger.error(
+            "[Square OAuth] Missing access token, refresh token, merchant ID, or expires_at in response"
+        )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -120,6 +128,7 @@ async def callback(request: Request):
         account_repository = db.AccountRepository(session)
         account = account_repository.get_account(account_name)
         if not account:
+            logger.error(f"[Square OAuth] Account {account_name} not found")
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"error": f"Account {account_name} not found"},
@@ -131,7 +140,7 @@ async def callback(request: Request):
             parsed_expires_at = datetime.fromisoformat(
                 expires_at.replace("Z", "+00:00")
             )
-        parsed_expires_at = datetime.now(timezone.utc) + timedelta(days=1)
+        logger.info(f"[Square OAuth] parsed_expires_at: {parsed_expires_at}")
         integration_params = CreateIntegrationParams(
             provider=IntegrationProvider.square,
             integration_type=IntegrationType.pos,
@@ -155,7 +164,7 @@ async def callback(request: Request):
 
     except Exception as e:
         session.rollback()
-        logger.error(f"Error creating Square integration: {e}")
+        logger.error(f"[Square OAuth] Error creating Square integration: {e}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": f"Failed to create integration: {str(e)}"},
@@ -186,7 +195,7 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
     )
 
     if not square_integrations:
-        logger.info("No Square integrations found")
+        logger.info("[Square OAuth] No Square integrations found")
         return {
             "total_checked": 0,
             "total_refreshed": 0,
@@ -194,7 +203,9 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
             "errors": [],
         }
 
-    logger.info(f"Found {len(square_integrations)} Square integrations to check")
+    logger.info(
+        f"[Square OAuth] Found {len(square_integrations)} Square integrations to check"
+    )
 
     total_refreshed = 0
     total_failed = 0
@@ -208,36 +219,36 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
             # Skip integrations without secret_key or expires_at
             if not integration.secret_key:
                 logger.warning(
-                    f"Integration {integration.id} has no secret_key, skipping"
+                    f"[Square OAuth] Integration {integration.id} has no secret_key, skipping"
                 )
                 continue
 
             # Check if expires_at column exists and has a value
             if not hasattr(integration, "expires_at") or integration.expires_at is None:
                 logger.warning(
-                    f"Integration {integration.id} has no expires_at value, skipping"
+                    f"[Square OAuth] Integration {integration.id} has no expires_at value, skipping"
                 )
                 continue
 
             # Check if token expires within the threshold
             if integration.expires_at > expiration_threshold:
                 logger.debug(
-                    f"Integration {integration.id} expires at {integration.expires_at}, not within threshold"
+                    f"[Square OAuth] Integration {integration.id} expires at {integration.expires_at}, not within threshold"
                 )
                 continue
 
             logger.info(
-                f"Integration {integration.id} expires at {integration.expires_at}, refreshing token"
+                f"[Square OAuth] Integration {integration.id} expires at {integration.expires_at}, refreshing token"
             )
 
             # Get account for this integration
             account = account_repository.get_account_by_id(integration.account_id)
             if not account:
                 logger.error(
-                    f"Account {integration.account_id} not found for integration {integration.id}"
+                    f"[Square OAuth] Account {integration.account_id} not found for integration {integration.id}"
                 )
                 errors.append(
-                    f"Account {integration.account_id} not found for integration {integration.id}"
+                    f"[Square OAuth] Account {integration.account_id} not found for integration {integration.id}"
                 )
                 total_failed += 1
                 continue
@@ -246,24 +257,24 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
             result = refresh_square_token(account.name, integration.id, session)
             if result["success"]:
                 logger.info(
-                    f"Successfully refreshed token for integration {integration.id}"
+                    f"[Square OAuth] Successfully refreshed token for integration {integration.id}"
                 )
                 total_refreshed += 1
             else:
                 logger.error(
-                    f"Failed to refresh token for integration {integration.id}: {result['error']}"
+                    f"[Square OAuth] Failed to refresh token for integration {integration.id}: {result['error']}"
                 )
                 errors.append(
-                    f"Failed to refresh token for integration {integration.id}: {result['error']}"
+                    f"[Square OAuth] Failed to refresh token for integration {integration.id}: {result['error']}"
                 )
                 total_failed += 1
 
         except Exception as e:
             logger.error(
-                f"Error refreshing token for integration {integration.id}: {e}"
+                f"[Square OAuth] Error refreshing token for integration {integration.id}: {e}"
             )
             errors.append(
-                f"Error refreshing token for integration {integration.id}: {str(e)}"
+                f"[Square OAuth] Error refreshing token for integration {integration.id}: {str(e)}"
             )
             total_failed += 1
             session.rollback()
@@ -275,7 +286,7 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
         "errors": errors,
     }
 
-    logger.info(f"Token refresh summary: {result}")
+    logger.info(f"[Square OAuth] Token refresh summary: {result}")
     return result
 
 
@@ -386,7 +397,9 @@ def get_merchant_locations(
         response = requests.get(f"https://{base_url}/v2/locations", headers=headers)
 
         if response.status_code != 200:
-            logger.error(f"Failed to get Square locations: {response.text}")
+            logger.error(
+                f"[Square OAuth] Failed to get Square locations: {response.text}"
+            )
             return {
                 "success": False,
                 "error": f"Failed to get Square locations: {response.text}",
@@ -407,5 +420,7 @@ def get_merchant_locations(
         }
 
     except Exception as e:
-        logger.error(f"Error getting Square locations for account {account_name}: {e}")
+        logger.error(
+            f"[Square OAuth] Error getting Square locations for account {account_name}: {e}"
+        )
         return {"success": False, "error": f"Error getting Square locations: {str(e)}"}
