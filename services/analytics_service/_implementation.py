@@ -46,13 +46,7 @@ def get_analytics_reports(
     """
     try:
         # Handle date range validation and defaults
-        start_date, end_date, formatted_range = handle_analytics_date_range(
-            start_date, end_date
-        )
-
-        logger.info(
-            f"Analytics: Fetching analytics for account {account_id} from {formatted_range}"
-        )
+        start_date, end_date = handle_analytics_date_range(start_date, end_date)
         message_repo = db.MessageRepository(session)
         transaction_repo = db.TransactionRepository(session)
 
@@ -73,9 +67,6 @@ def get_analytics_reports(
             start_date,
             end_date,
             AnalyticsReportType.MESSAGE_TURNS,
-        )
-        logger.info(
-            f"Analytics: Processed Message Turns data for account {AnalyticsReportType.MESSAGE_TURNS} from {message_turns_data}"
         )
         # Fetch order data (contains both value and count)
         order_result = transaction_repo.get_order_value(

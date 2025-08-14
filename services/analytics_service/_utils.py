@@ -5,7 +5,6 @@ from api.schemas.admin.analytics import (
     AnalyticsReportType,
     AnalyticsResponse,
 )
-from utils.log import logger
 
 
 def get_row_value(row, key, default=None):
@@ -58,13 +57,9 @@ def process_analytics_results_to_dict(
         analytics_data[date_str] = {}
         current_date += timedelta(days=1)
 
-    value_key = str(report_name)
+    value_key = report_name.value
 
-    logger.info(
-        f"Analytics: Processing {len(rows)} rows for {report_name}, value_key: '{value_key}'"
-    )
-
-    for i, row in enumerate(rows):
+    for _, row in enumerate(rows):
         date_val = get_row_value(row, "date")
         if not date_val:
             continue
@@ -73,14 +68,11 @@ def process_analytics_results_to_dict(
         channel_raw = get_row_value(row, "channel")
         channel_name = (channel_raw or "unknown").lower()
 
-        pid_val = get_row_value(row, "project_id")
-        project_id = str(pid_val) if pid_val else "unknown"
-
         # Only count known channels, ignore unknown ones
         if channel_name in valid_channels:
             # Use project name if available, otherwise fall back to project_id
             project_name = get_row_value(row, "project_name")
-            project_key = project_name or project_id
+            project_key = project_name
 
             # Initialize project if not exists
             if project_key not in analytics_data[date_str]:
@@ -91,10 +83,6 @@ def process_analytics_results_to_dict(
             # Set the value for this project and channel
             raw_value = get_row_value(row, value_key)
             value = raw_value if raw_value is not None else 0
-
-            logger.info(
-                f"Analytics: Row {i+1} - date: {date_str}, channel: {channel_name}, value_key: '{value_key}', raw_value: {raw_value}, final_value: {value}"
-            )
 
             analytics_data[date_str][project_key][channel_name] = value
 
@@ -112,7 +100,7 @@ def handle_analytics_date_range(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
     max_days: int = 365,
-) -> tuple[datetime, datetime, str]:
+) -> tuple[datetime, datetime]:
     """
     Comprehensive date range handler for analytics operations.
 
@@ -127,7 +115,7 @@ def handle_analytics_date_range(
         max_days: Maximum allowed days in the range (default: 365)
 
     Returns:
-        tuple[datetime, datetime, str]: (start_date, end_date, formatted_range_string)
+        tuple[datetime, datetime, str]: (start_date, end_date)
 
     Raises:
         ValueError: If date range is invalid or exceeds max_days
@@ -151,7 +139,4 @@ def handle_analytics_date_range(
     if date_diff.days > max_days:
         raise ValueError(f"Date range cannot exceed {max_days} days")
 
-    # Format date range for logging
-    formatted_range = f"{start_date.strftime('%Y-%m-%d %H:%M:%S')} to {end_date.strftime('%Y-%m-%d %H:%M:%S')}"
-
-    return start_date, end_date, formatted_range
+    return start_date, end_date

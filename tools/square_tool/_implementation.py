@@ -115,6 +115,7 @@ class SquareTool(Toolkit):
         try:
             subtotal_decimal = None
             total_money = getattr(created_order, "total_money", None)
+
             amount_cents = getattr(total_money, "amount", None) if total_money else None
             if amount_cents is not None:
                 subtotal_decimal = Decimal(amount_cents) / Decimal("100")
