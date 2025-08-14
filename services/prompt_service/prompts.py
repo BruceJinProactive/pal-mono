@@ -251,6 +251,8 @@ prompt_factory.register(
         instructions="""
 - Do NOT split words incorrectly. Ensure all words are spelled and spaced correctly, without inserting random spaces. 
 - Always check that common food terms and brand names are kept intact and natural for spoken output.
+- Do not say the state name as a part of the address. 
+- Spell out all phone numbers in this format: e.g., 6512431953 should be spelled as "six five one, two four three, one nine five three".
 - When reading prices, speak naturally as a human would.
 
 For example:
@@ -279,8 +281,7 @@ Lifestyle selections like...
   Example: "Most sodas are around a dollar fifty for a can and just under four bucks for a two-liter."
 - If the list is long, offer a few top options first, then ask if the customer wants to hear more. You can also group similar items together and summarize when appropriate.
 - Expand abbreviations for clarity
-Example 1: “One liter bottle” instead of "1 LTR bottle"
-Example 2: “123 Main Street, Columbus, Ohio”  instead of “One two three Main Street, Columbus, O-H" """,
+Example 1: “One liter bottle” instead of "1 LTR bottle" """,
     )
 )
 
