@@ -27,7 +27,6 @@ dependencies = [
   "agno==1.7.6",
   "openai==1.95.1",
   "google-genai==1.25.0",
-  "pypdf==6.0.0",
   "geopy==2.4.1",
   "pinecone==7.3.0",
   "ShopifyAPI==12.7.0",
