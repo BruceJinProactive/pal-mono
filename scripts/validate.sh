@@ -7,6 +7,7 @@
 # 2. Sort imports using isort
 # 3. Lint using ruff
 # 4. Type check using pyright
+# 5. Sort pyproject.toml with toml-sort
 # Usage:
 #   ./scripts/validate.sh
 ############################################################################
@@ -42,6 +43,9 @@ main() {
     print_heading "Running: pyright ${REPO_ROOT}"
     export PYRIGHT_PYTHON_FORCE_VERSION=latest # ignore latest pyright version warning
     pyright "${REPO_ROOT}"
+
+    print_heading "Running: toml-sort ${REPO_ROOT}/pyproject.toml --sort-inline-arrays --check"
+    toml-sort "${REPO_ROOT}/pyproject.toml" --sort-inline-arrays --check
   else
     print_heading "Running: black ${REPO_ROOT}"
     black "${REPO_ROOT}"
@@ -55,6 +59,9 @@ main() {
     print_heading "Running: pyright ${REPO_ROOT}"
     export PYRIGHT_PYTHON_FORCE_VERSION=latest # ignore latest pyright version warning
     pyright "${REPO_ROOT}"
+
+    print_heading "Running: toml-sort ${REPO_ROOT}/pyproject.toml --sort-inline-arrays --in-place"
+    toml-sort "${REPO_ROOT}/pyproject.toml" --sort-inline-arrays --in-place
   fi
 }
 
