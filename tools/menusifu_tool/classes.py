@@ -126,8 +126,12 @@ class ComboSection(BaseModel):
         alias="comboSectionSaleItems"
     )
     item_selection_rule: int = Field(alias="itemSelectionRule")
-    max_num_of_selection_allowed: int = Field(alias="maxNumOfSelectionAllowed")
-    min_num_of_selection_allowed: int = Field(alias="minNumOfSelectionAllowed")
+    max_num_of_selection_allowed: Optional[int] = Field(
+        None, alias="maxNumOfSelectionAllowed"
+    )
+    min_num_of_selection_allowed: Optional[int] = Field(
+        None, alias="minNumOfSelectionAllowed"
+    )
     price_rule: int = Field(alias="priceRule")
 
     class Config:
@@ -153,7 +157,7 @@ class SaleItem(BaseModel):
 
     # Combo-specific fields
     combo_type: Optional[int] = Field(None, alias="comboType")
-    base_price: Optional[int] = Field(None, alias="basePrice")
+    base_price: Optional[Union[int, float]] = Field(None, alias="basePrice")
     combo_sections: Optional[List[ComboSection]] = Field(None, alias="comboSections")
 
     # Additional fields
