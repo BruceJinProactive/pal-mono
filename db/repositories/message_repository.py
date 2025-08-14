@@ -532,7 +532,9 @@ class MessageRepository:
                         Boolean,
                     ),
                 )
-                .group_by(date_expr, channel_expr, Conversation.project_id)
+                .group_by(
+                    date_expr, channel_expr, Conversation.project_id, Project.name
+                )
                 .order_by(date_expr, channel_expr, Conversation.project_id)
             )
 
@@ -596,7 +598,9 @@ class MessageRepository:
                         Boolean,
                     ),
                 )
-                .group_by(date_expr, channel_expr, Conversation.project_id)
+                .group_by(
+                    date_expr, channel_expr, Conversation.project_id, Project.name
+                )
                 .order_by(date_expr, channel_expr, Conversation.project_id)
             )
 

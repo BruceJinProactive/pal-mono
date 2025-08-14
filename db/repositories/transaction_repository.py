@@ -162,7 +162,7 @@ class TransactionRepository:
                     == IntegrationType.pos,  # Only POS transactions
                     Transaction.status != "pending",  # Exclude pending orders
                 )
-                .group_by(date_expr, channel_expr, Transaction.project_id)
+                .group_by(date_expr, channel_expr, Transaction.project_id, Project.name)
                 .order_by(date_expr, channel_expr, Transaction.project_id)
             )
             result = self.session.execute(query)
