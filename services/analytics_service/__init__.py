@@ -4,10 +4,12 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import Event as AnalyticsEvent
+from api.schemas.admin.analytics import GetAllReportsResponse
 
 from . import _implementation
 
 
+# BRUCETODO: DELETE - Mixpanel related functions after migration to db
 def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict):
     """
     Track an event in Mixpanel.
@@ -23,86 +25,24 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
     return _implementation.track_event(user_id, event_name, event_properties)
 
 
-def get_report_from_mixpanel(
-    report_name: str, account_name: str, start_date: datetime, end_date: datetime
-) -> dict | None:
-    """Fetches insights data from Mixpanel for a given report name and account name.
-
-    Args:
-        report_name (str): The name of the report, used to fetch the corresponding bookmark ID.
-        account_name (str): The name of the account to filter the report data.
-
-    Returns:
-        dict | None: The report data from Mixpanel.
-    """
-    return _implementation.get_report_from_mixpanel(
-        report_name, account_name, start_date, end_date
-    )
-
-
-def get_all_reports_from_mixpanel(
-    account_name: str,
-    start_date: datetime,
-    end_date: datetime,
-) -> list[tuple[str, dict]]:
-    """
-    Fetches all insights data from Mixpanel for all reports defined in BOOKMARK_ID_MAPPING.
-
-    Args:
-        account_name (str): The name of the account to fetch the report data.
-        start_date (datetime): Start date for the report data.
-        end_date (datetime): End date for the report data.
-
-    Returns:
-        list[tuple[str, dict]]: A list of tuples containing report names and their data.
-    """
-    return _implementation.get_all_reports_from_mixpanel(
-        account_name, start_date, end_date
-    )
-
-
-def get_dau(
+def get_analytics_reports(
     session: Session,
     account_id: uuid.UUID,
-    start_date: datetime,
-    end_date: datetime,
-) -> dict[str, dict[str, int]]:
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> GetAllReportsResponse:
     """
-    Calculate Daily Active Users (DAU) for a given account within a date range.
+    Get both DAU and Message Turns analytics data for a given account within a date range.
 
     Args:
         session (Session): Database session
-        account_id (uuid.UUID): The account ID to calculate DAU for
-        start_date (datetime): Start date for the DAU calculation
-        end_date (datetime): End date for the DAU calculation
-
-    Returns:
-        dict[str, dict[str, int]]: Dictionary with date strings as keys and channel DAU counts as values
-    """
-    return _implementation.get_dau(session, account_id, start_date, end_date)
-
-
-def get_daily_message_turns(
-    session: Session,
-    account_id: uuid.UUID,
-    start_date: datetime,
-    end_date: datetime,
-) -> dict[str, dict[str, int]]:
-    """
-    Calculate Daily Message Turns for a given account within a date range.
-
-    A "turn" consists of a user message followed by an agent response.
-    We count agent messages since each represents a completed conversation turn.
-
-    Args:
-        session (Session): Database session
-        account_id (uuid.UUID): The account ID to calculate message turns for
+        account_id (uuid.UUID): The account ID to calculate analytics for
         start_date (datetime): Start date for the calculation
         end_date (datetime): End date for the calculation
 
     Returns:
-        dict[str, dict[str, int]]: Dictionary with date strings as keys and channel turn counts as values
+        dict[str, AnalyticsResponse]: Dictionary with report names as keys and analytics data as values
     """
-    return _implementation.get_daily_message_turns(
+    return _implementation.get_analytics_reports(
         session, account_id, start_date, end_date
     )

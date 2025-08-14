@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.functions import coalesce
 
-from db.tables import Conversation, ConversationStatus, Message, User
+from db.tables import Conversation, ConversationStatus, Message, Project, User
 from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
 
@@ -500,7 +500,7 @@ class MessageRepository:
             end_date (datetime.datetime): End date for the DAU calculation
 
         Returns:
-            list: Raw query results with date, channel, and dau fields
+            list: Raw query results with date, channel, project_id, and dau fields.
         """
         try:
             # Query to get DAU by joining messages -> conversations -> users
@@ -515,10 +515,13 @@ class MessageRepository:
                 select(
                     date_expr.label("date"),
                     channel_expr.label("channel"),
-                    func.count(func.distinct(Conversation.user_id)).label("dau"),
+                    Conversation.project_id.label("project_id"),
+                    Project.name.label("project_name"),
+                    func.count(func.distinct(Conversation.user_id)).label("DAU"),
                 )
                 .join(Conversation, Message.conversation_id == Conversation.id)
                 .join(User, Conversation.user_id == User.id)
+                .join(Project, Conversation.project_id == Project.id)
                 .filter(
                     User.account_id == account_id,
                     Message.created_at >= start_date,
@@ -529,8 +532,8 @@ class MessageRepository:
                         Boolean,
                     ),
                 )
-                .group_by(date_expr, channel_expr)
-                .order_by(date_expr, channel_expr)
+                .group_by(date_expr, channel_expr, Conversation.project_id)
+                .order_by(date_expr, channel_expr, Conversation.project_id)
             )
 
             result = self.session.execute(query)
@@ -561,7 +564,7 @@ class MessageRepository:
             end_date (datetime): End date for the calculation
 
         Returns:
-            list: Raw query results with date, channel, and message_turns fields
+            list: Raw query results with date, channel, project_id, and message_turns fields.
         """
         try:
             # Define expressions for efficient querying
@@ -574,10 +577,13 @@ class MessageRepository:
                 select(
                     date_expr.label("date"),
                     channel_expr.label("channel"),
-                    func.count(Message.id).label("message_turns"),
+                    Conversation.project_id.label("project_id"),
+                    Project.name.label("project_name"),
+                    func.count(Message.id).label("Message Turns"),
                 )
                 .join(Conversation, Message.conversation_id == Conversation.id)
                 .join(User, Conversation.user_id == User.id)
+                .join(Project, Conversation.project_id == Project.id)
                 .where(
                     User.account_id == account_id,
                     Message.created_at >= start_date,
@@ -590,8 +596,8 @@ class MessageRepository:
                         Boolean,
                     ),
                 )
-                .group_by(date_expr, channel_expr)
-                .order_by(date_expr, channel_expr)
+                .group_by(date_expr, channel_expr, Conversation.project_id)
+                .order_by(date_expr, channel_expr, Conversation.project_id)
             )
 
             result = self.session.execute(query)

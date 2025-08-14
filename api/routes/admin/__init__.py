@@ -311,21 +311,8 @@ async def get_account_reports(
 ) -> GetAllReportsResponse:
     """
     Retrieve unified analytics reports for this account.
-    Data is filtered by the specified date range (default: today + 7 days).
+    Data is filtered by the specified date range (default: last 7 days).
     """
-
-    # Set default dates if not provided (today + 7 days)
-
-    if end_date is None:
-        # Set end_date to today at 23:59:59
-        now = datetime.now(UTC)
-        end_date = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-
-    if start_date is None:
-        # Subtract 6 full days to get exactly 7 calendar days
-        start_date = end_date - timedelta(days=6)
-        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-
     # Get unified reports using async session
     return await _analytics.get_reports(
         account_name, context, session, start_date, end_date

@@ -1,9 +1,19 @@
+from decimal import Decimal
 from enum import Enum
+from typing import Union
 
 from pydantic import BaseModel
 
 # Valid channel names used across the analytics system
 VALID_CHANNELS = ["api", "instagram", "internal_app", "sms", "voice", "whatsapp"]
+
+
+class AnalyticsResponse(BaseModel):
+    """Analytics Response with project breakdowns"""
+
+    analytics_data: dict[
+        str, dict[str, dict[str, Union[Decimal, int]]]
+    ]  # {date: {project: {channel: value}}}
 
 
 class Event(str, Enum):
@@ -14,15 +24,18 @@ class Event(str, Enum):
     CRITICAL_ACTION = "Critical Action"
 
 
-class GetReportResponse(BaseModel):
-    """Get Report Response"""
+class AnalyticsReportType(str, Enum):
+    """Analytics Report Types"""
 
-    report_data: dict
+    DAU = "DAU"
+    MESSAGE_TURNS = "Message Turns"
+    ORDER_TOTAL = "Order Total"
+    ORDER_COUNT = "Order Count"
 
 
 class PerformanceReport(BaseModel):
     name: str
-    data: dict
+    data: AnalyticsResponse
 
 
 class GetAllReportsResponse(BaseModel):
