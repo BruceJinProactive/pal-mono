@@ -1,5 +1,7 @@
 import json
 import uuid
+from datetime import datetime
+from decimal import Decimal
 from functools import cached_property
 from typing import Optional
 
@@ -11,7 +13,7 @@ from pydantic import ValidationError
 import db
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from db.tables.types import IntegrationType
+from db.tables.types import IntegrationProvider, IntegrationType
 from services import integration_service
 from tools.square_tool._apis import create_payment_link
 from tools.square_tool._prompt_constants import (
@@ -35,6 +37,7 @@ from tools.utils.ordering._llm import llm_call
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import get_chat_history, get_relevant_docs
 from tools.utils.ordering.classes import SubQueries
+from tools.utils.transaction_helper import save_transaction
 from utils.log import logger
 
 
@@ -94,6 +97,51 @@ class SquareTool(Toolkit):
 
         # Register tools
         self.register(self.create_order_and_payment_link)
+
+    def _save_order_to_db(
+        self,
+        created_order: Order,
+        matched_items: list[dict],
+        payment_url: Optional[str] = None,
+    ) -> None:
+        """
+        Save Square transaction information to `transactions` table only.
+
+        Args:
+            created_order: The Square order object returned by API
+            matched_items: Line items used to construct the order
+            payment_url: Optional payment link to store as tracking link
+        """
+        try:
+            subtotal_decimal = None
+            total_money = getattr(created_order, "total_money", None)
+            amount_cents = getattr(total_money, "amount", None) if total_money else None
+            if amount_cents is not None:
+                subtotal_decimal = Decimal(amount_cents) / Decimal("100")
+            transaction_id = save_transaction(
+                tool_metadata=self.tool_metadata,
+                vendor=IntegrationProvider.square,
+                external_transaction_id=created_order.id or "",
+                external_transaction_number=created_order.id or "",
+                store_id=self.location_id,
+                status="pending",
+                integration_type=IntegrationType.pos,
+                fulfillment_strategy="pickup",
+                subtotal=subtotal_decimal,
+                order_items=matched_items or None,
+                order_time=datetime.now(),
+                tracking_link=payment_url,
+                session=None,
+            )
+            if transaction_id:
+                logger.debug(
+                    f"[SquareTool._save_order_to_db] Saved transaction to database: {transaction_id}"
+                )
+        except Exception as transaction_error:
+            logger.warning(
+                f"[SquareTool._save_order_to_db] Failed to save transaction data: {transaction_error}",
+                exc_info=True,
+            )
 
     def _get_access_token_from_integration(self) -> Optional[str]:
         """
@@ -473,6 +521,15 @@ class SquareTool(Toolkit):
             logger.info("[SquareTool] Step 4: Creating payment link")
             total_quantity = sum(item["quantity"] for item in converted_items)
             payment_url = self._create_payment_link(created_order, total_quantity)
+
+            # Persist order and transaction records
+            try:
+                self._save_order_to_db(created_order, converted_items, payment_url)
+            except Exception as e:
+                logger.error(
+                    "[SquareTool.create_order_and_payment_link] Failed to save order to database, continuing despite DB save failure",
+                    exc_info=e,
+                )
 
             if not payment_url:
                 return f"Order created (ID: {created_order.id}) but failed to create payment link."
