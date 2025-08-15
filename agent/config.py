@@ -197,7 +197,7 @@ class VAPIAssistant(BaseModel):
     firstMessage: Optional[str] = Field(default=None, alias="first_message")
     transcriber: TranscriberConfig
     voice: VoiceDecoderConfig
-    backgroundSound: str = Field(alias="background_sound")
+    backgroundSound: str = Field(alias="background_sound", default="office")
     startSpeakingPlan: StartSpeakingPlan = Field(
         default_factory=StartSpeakingPlan, alias="start_speaking_plan"
     )
@@ -205,7 +205,7 @@ class VAPIAssistant(BaseModel):
     backgroundDenoisingEnabled: bool = Field(
         default=True, alias="background_denoising_enabled"
     )
-    model: Dict[str, Any]
+    model: Dict[str, Any] = Field(default_factory=dict)
     firstMessageInterruptionsEnabled: bool = Field(
         default=False, alias="first_message_interruptions_enabled"
     )
