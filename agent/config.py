@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from enum import StrEnum, auto
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from agent.client import ClientConfig
 from agent.knowledge import KnowledgeConfig
@@ -16,15 +16,6 @@ from db.tables.agents import Language, SpeechRate
 class AgentFramework(StrEnum):
     AGNO = auto()
     PAL_SIMPLE = auto()
-
-
-class TransferMode(StrEnum):
-    ROLLING_HISTORY = "rolling-history"
-    SWAP_SYSTEM_MESSAGE_IN_HISTORY = "swap-system-message-in-history"
-    DELETE_HISTORY = "delete-history"
-    SWAP_SYSTEM_MESSAGE_IN_HISTORY_AND_REMOVE_TRANSFER_TOOL_MESSAGES = (
-        "swap-system-message-in-history-and-remove-transfer-tool-messages"
-    )
 
 
 class AgentPersona(BaseModel):
@@ -129,33 +120,34 @@ class SmartEndpointingProvider(StrEnum):
 class VapiSmartEndpointing(BaseModel):
     """Configuration for Vapi smart endpointing."""
 
-    provider: Literal[SmartEndpointingProvider.VAPI] = SmartEndpointingProvider.VAPI
+    provider: SmartEndpointingProvider = SmartEndpointingProvider.VAPI
     model_config = ConfigDict(extra="allow")
 
 
 class LivekitSmartEndpointing(BaseModel):
     """Configuration for LiveKit smart endpointing."""
 
-    provider: Literal[SmartEndpointingProvider.LIVEKIT] = (
-        SmartEndpointingProvider.LIVEKIT
-    )
+    provider: SmartEndpointingProvider = SmartEndpointingProvider.LIVEKIT
     wait_function: Optional[str] = Field(
         default="20 + 500 * sqrt(x) + 2500 * x^3", alias="waitFunction"
     )
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
-# Apply the discriminator to the SmartEndpointing union type
-SmartEndpointing = Annotated[
-    Union[VapiSmartEndpointing, LivekitSmartEndpointing],
-    Field(discriminator="provider"),
-]
+class SmartEndpointingPlan(BaseModel):
+    """Smart endpointing plan configuration. Pick between Vapi or LiveKit."""
+
+    # Use discriminated union to support either Vapi or LiveKit
+    vapi: Optional[VapiSmartEndpointing] = None
+    livekit: Optional[LivekitSmartEndpointing] = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 class StartSpeakingPlan(BaseModel):
     """Configuration for when the assistant should start talking."""
 
-    smart_endpointing_plan: Optional[SmartEndpointing] = Field(
+    smart_endpointing_plan: Optional[SmartEndpointingPlan] = Field(
         default=None, alias="smartEndpointingPlan"
     )
     transcription_endpointing_plan: Optional[TranscriptionEndpointingPlan] = Field(
@@ -168,113 +160,54 @@ class StartSpeakingPlan(BaseModel):
 class VoiceDecoderConfig(BaseModel):
     """Voice configuration."""
 
-    voice_id: str = Field(alias="voiceId")
-    voice_model: Optional[str] = Field(default=None, alias="model")
+    voice_id: str
+    voice_model: Optional[str] = None
     provider: str
     chunkPlan: Optional[ChunkPlan] = None
     fallbackPlan: Optional[list[VoiceDecoderConfig]] = None
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="allow")
 
 
 # ============================================================================
-# VAPI INTEGRATION SCHEMAS
+# MULTILINGUAL SQUAD CONFIGURATION SCHEMAS
 # ============================================================================
 
 
-class CallerInfo(BaseModel):
-    """Structured caller information."""
+# TODO: Enable custom triage assistant model. If we use custom LLM for triage assistant, we could remove this class
+class MultilingualModelConfig(BaseModel):
+    """Model configuration for multilingual squad."""
 
-    sender_identifier: str
-    recipient_identifier: str
-    call_id: str
-
-
-class VAPIAssistant(BaseModel):
-    """VAPI Assistant configuration model."""
-
-    name: str = Field(alias="assistant_name")
-    firstMessage: Optional[str] = Field(default=None, alias="first_message")
-    transcriber: TranscriberConfig
-    voice: VoiceDecoderConfig
-    backgroundSound: str = Field(alias="background_sound")
-    startSpeakingPlan: StartSpeakingPlan = Field(
-        default_factory=StartSpeakingPlan, alias="start_speaking_plan"
-    )
-    silenceTimeoutSeconds: int = Field(default=60, alias="silence_timeout_seconds")
-    backgroundDenoisingEnabled: bool = Field(
-        default=True, alias="background_denoising_enabled"
-    )
-    model: Dict[str, Any]
-    firstMessageInterruptionsEnabled: bool = Field(
-        default=False, alias="first_message_interruptions_enabled"
-    )
-    firstMessageMode: Literal[
-        "assistant-speaks-first",
-        "assistant-speaks-first-with-model-generated-message",
-        "assistant-waits-for-user",
-    ] = Field(default="assistant-speaks-first", alias="first_message_mode")
-
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    provider: str = Field(default="openai")
+    model: str = Field(default="gpt-4o")
 
 
-class AssistantDestination(BaseModel):
-    """Configuration for assistant transfer destinations."""
-
-    assistantName: str
-    message: str = ""  # Spoken to customer before connecting
-    description: str  # Used by AI to choose when/how to transfer
-    transferMode: TransferMode = Field(
-        default=TransferMode.SWAP_SYSTEM_MESSAGE_IN_HISTORY
-    )
-    type: Literal["assistant"] = "assistant"
-
-
-class SquadMember(BaseModel):
-    """Squad member configuration."""
-
-    assistantId: Optional[str] = None
-    assistant: Optional[VAPIAssistant] = None
-    assistantDestinations: Optional[List[AssistantDestination]] = None
-
-    @model_validator(mode="after")
-    def validate_assistant_or_assistant_id(self):
-        # Exactly one of assistant or assistantId must be provided
-        if (self.assistant is None) == (self.assistantId is None):
-            raise ValueError("Either assistant or assistantId must be provided")
-        return self
-
-
-class SquadConfig(BaseModel):
-    """Complete squad configuration."""
+class TriageAssistantConfig(BaseModel):
+    """Configuration for the triage assistant."""
 
     name: str
-    members: List[SquadMember]
-
-
-# ============================================================================
-# MULTILINGUAL SQUAD CONFIGURATION in Agent Raw Config
-# ============================================================================
-
-
-class TriageAssistantConfig(VAPIAssistant):
-    """Configuration for the triage assistant that extends VAPIAssistant."""
-
-    # Additional fields specific to triage assistant
-    transfer_mode: TransferMode = Field(
-        default=TransferMode.SWAP_SYSTEM_MESSAGE_IN_HISTORY, alias="transferMode"
+    transcriber: TranscriberConfig
+    voice: VoiceDecoderConfig
+    model: MultilingualModelConfig
+    first_message: Optional[str] = None
+    transfer_mode: str = Field(
+        default="swap-system-message-in-history", alias="transferMode"
     )
 
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-class LanguageAssistantMultilingConfig(VAPIAssistant):
-    """Configuration for a specific language assistant in multilingual squad that extends VAPIAssistant."""
 
-    # Additional fields specific to language assistants
+class LanguageAssistantMultilingConfig(BaseModel):
+    """Configuration for a specific language assistant in multilingual squad."""
+
+    assistant_name: str
+    transcriber: TranscriberConfig
+    voice: VoiceDecoderConfig
+    first_message: Optional[str] = None
     transfer_message: str = ""
     transfer_description: str
-    transfer_mode: TransferMode = Field(
-        default=TransferMode.SWAP_SYSTEM_MESSAGE_IN_HISTORY, alias="transferMode"
-    )
+
+    model_config = ConfigDict(extra="allow")
 
 
 class MultilingualSquadConfig(BaseModel):
