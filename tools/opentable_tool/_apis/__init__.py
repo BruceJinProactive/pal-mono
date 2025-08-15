@@ -54,6 +54,7 @@ def search_availability(
 
     # Parse response body - ensure it's a dictionary
     data = response.decoded_body
+    logger.info(f"OpenTable API response: {data}")
     if isinstance(data, str):
         try:
             data = json.loads(data)
@@ -66,7 +67,7 @@ def search_availability(
 
     # Extract relevant data from the response
     dates_available = data.get("availability", {})
-
+    logger.info(f"Dates available: {dates_available}")
     times_available = []
     no_availability_reasons = []
 
@@ -76,8 +77,11 @@ def search_availability(
         if noTimes != []:
             no_availability_reasons.append((date, noTimes))
         time_slots = dates_available[date].get("timeSlots")
+        logger.info(f"Time slots: {time_slots}")
         for time_slot in time_slots:
             times_available.append(time_slot.get("dateTime"))
+            logger.info(f"Time slot: {time_slot}")
+    logger.info(f"Times available: {times_available}")
 
     # Construct and return the AvailabilitySearchResponse
     return AvailabilitySearchResponse(
