@@ -78,9 +78,10 @@ def search_availability(
             no_availability_reasons.append((date, noTimes))
         time_slots = dates_available[date].get("timeSlots")
         logger.info(f"Time slots: {time_slots}")
-        for time_slot in time_slots:
-            times_available.append(time_slot.get("dateTime"))
-            logger.info(f"Time slot: {time_slot}")
+        if time_slots is not None:
+            for time_slot in time_slots:
+                times_available.append(time_slot.get("dateTime"))
+                logger.info(f"Time slot: {time_slot}")
     logger.info(f"Times available: {times_available}")
 
     # Construct and return the AvailabilitySearchResponse
