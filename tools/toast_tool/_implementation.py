@@ -346,20 +346,17 @@ class ToastTool(Toolkit):
 
     # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
     @tool
-    def checkout_order(self, latest_user_message: str) -> str:
+    def checkout_order(self) -> str:
         """
         Validates an order for checkout by extracting structured ordering data from chat
         history. This function absolutely must be invoked when all the required information is collected and the user asks to checkout,
         pay, place the order, etc.
 
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
-
         Returns:
             str: Order checkout confirmation details
         """
         try:
-            order = self._construct_order(latest_user_message)
+            order = self._construct_order()
 
             # If the order is a string, it indicates an error message
             # In this case, return the error message
@@ -379,18 +376,15 @@ class ToastTool(Toolkit):
             return "Please try again."
 
     @retrieval
-    def _get_chat_history(self, latest_user_message: str) -> str:
+    def _get_chat_history(self) -> str:
         """
         Retrieves the chat history from the query messages tool.
-
-        Args:
-            latest_user_message (str): The latest user message to include in the chat history.
 
         Returns:
             str: A string representing the entire chat history.
         """
         # TODO: The query_messages function returns error messages rather than raising exceptions. There is no generic way to verify the validity of the returned chat_history.
-        chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
+        chat_history: str = self.query_messages_tool.query_messages()  # type: ignore
 
         # Basic check for error messages (TEMPORARY workaround)
         error_indicators = [
@@ -522,8 +516,8 @@ class ToastTool(Toolkit):
             )
             raise e
 
-    def _construct_order(self, latest_user_message: str) -> OrderInput | str:
-        chat_history: str = self._get_chat_history(latest_user_message)  # type: ignore
+    def _construct_order(self) -> OrderInput | str:
+        chat_history: str = self._get_chat_history()  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
 
         order = llm_call(
@@ -721,11 +715,9 @@ class ToastTool(Toolkit):
             )
 
     @tool
-    def get_order_prices_tool(self, latest_user_message: str) -> str:
+    def get_order_prices_tool(self) -> str:
         try:
-            order = self._construct_order(
-                latest_user_message,
-            )
+            order = self._construct_order()
 
             # If the order is a string, it indicates an error message
             # In this case, return the error message

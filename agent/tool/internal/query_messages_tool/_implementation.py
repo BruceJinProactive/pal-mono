@@ -19,11 +19,8 @@ class QueryMessagesTool(Toolkit):
         self.metadata = metadata
 
     @tool
-    def query_messages(self, latest_user_message: str) -> str:
+    def query_messages(self) -> str:
         """Use this function to get the chat history.
-
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: A string representing the entire chat history.

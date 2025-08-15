@@ -270,20 +270,20 @@ class SquareTool(Toolkit):
             return None
 
     def _construct_order(
-        self, latest_user_message: str, provided_chat_history: Optional[str] = None
+        self, provided_chat_history: Optional[str] = None
     ) -> ExtractedOrderWithModifiers | str:
         """
         Construct order from chat history using Pinecone retrieval and LLM extraction.
 
         Args:
-            latest_user_message (str): The latest user message.
+            provided_chat_history (Optional[str]): Optional pre-provided chat history to use instead of fetching.
 
         Returns:
             ExtractedOrderWithModifiers | str: Extracted order or error message.
         """
         # Use provided chat history or get it from the standardized functions
 
-        chat_history = get_chat_history(self.query_messages_tool, latest_user_message)
+        chat_history = get_chat_history(self.query_messages_tool)
 
         context = get_relevant_docs(
             self.query_engine,
@@ -435,10 +435,7 @@ class SquareTool(Toolkit):
             return "Failed to get the menu, please try again."
 
     @tool
-    def create_order_and_payment_link(
-        self,
-        latest_user_message: str,
-    ) -> str:
+    def create_order_and_payment_link(self) -> str:
         """
         **WHEN TO USE THIS TOOL:**
         - When the customer has CONFIRMED they want to place/complete their order
@@ -461,9 +458,6 @@ class SquareTool(Toolkit):
         - Customer is just asking about prices or availability
         - You haven't asked for the customer's name and phone number yet
 
-        Args:
-            latest_user_message: The latest message from the user to include in chat history
-
         Returns:
             str: Payment link URL and order details, or error message
         """
@@ -478,7 +472,7 @@ class SquareTool(Toolkit):
             logger.info(
                 "[SquareTool] Step 1: Extracting items with modifiers from chat history using Pinecone retrieval"
             )
-            extracted_order = self._construct_order(latest_user_message)
+            extracted_order = self._construct_order()
 
             if isinstance(extracted_order, str):
                 return extracted_order  # Return error message

@@ -13,6 +13,7 @@ from db.tables.types import Channel
 from services.relay_service import send_message as relay_send_message
 from tools.sms_tool._llm import generate_order_summary
 from tools.sms_tool.classes import Message, MessageType
+from tools.utils.ordering._utils import get_chat_history
 from utils.log import logger
 
 
@@ -40,15 +41,13 @@ class SMSTool(Toolkit):
     @tool
     def send_order_summary(
         self,
-        latest_user_message: str,
         recipient_phone_number: str,
     ) -> str:
         """
         Sends a summary of an order via SMS.
 
         Args:
-            latest_user_message (str): The latest user message to get context from
-            phone_number: Recipient's phone number. If not provided, uses default number.
+            recipient_phone_number: Recipient's phone number.
 
         Returns:
             str: Success or error message
@@ -56,7 +55,7 @@ class SMSTool(Toolkit):
         try:
 
             # Get chat history using query_messages_tool
-            chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
+            chat_history: str = get_chat_history(self.query_messages_tool)
 
             # Generate summary using LLM
             content = generate_order_summary(chat_history)

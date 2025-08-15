@@ -29,21 +29,15 @@ T = TypeVar("T", bound=BaseModel)
 S = TypeVar("S", bound=SubQueries)
 
 
-# TODO: Do not pass latest_user_message as an argument. It is not needed.
-def get_chat_history(
-    query_messages_tool: QueryMessagesTool, latest_user_message: str
-) -> str:
+def get_chat_history(query_messages_tool: QueryMessagesTool) -> str:
     """
     Retrieves the chat history from the query messages tool.
-
-    Args:
-        latest_user_message (str): The latest user message to include in the chat history.
 
     Returns:
         str: A string representing the entire chat history.
     """
     # TODO: The query_messages function returns error messages rather than raising exceptions. There is no generic way to verify the validity of the returned chat_history.
-    chat_history: str = query_messages_tool.query_messages(latest_user_message)  # type: ignore
+    chat_history: str = query_messages_tool.query_messages()  # type: ignore
 
     # Basic check for error messages (TEMPORARY workaround)
     error_indicators = [

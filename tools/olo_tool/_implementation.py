@@ -1,6 +1,5 @@
 import json
 from functools import cached_property
-from typing import Optional
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -212,11 +211,8 @@ class OloTool(Toolkit):
     def _construct_order(
         self,
         billing_schemes_info: list[BillingScheme],
-        latest_user_message: Optional[str] = None,
     ) -> OloProductInput | str:
-        chat_history = get_chat_history(
-            self.query_messages_tool, latest_user_message if latest_user_message else ""
-        )
+        chat_history = get_chat_history(self.query_messages_tool)
         context = get_relevant_docs(
             self.query_engine,
             chat_history,
@@ -236,7 +232,7 @@ class OloTool(Toolkit):
         )
 
     @tool
-    def checkout_order(self, latest_user_message: Optional[str] = None) -> str:
+    def checkout_order(self) -> str:
         """
         Validates an order for checkout by extracting structured ordering data from chat
         history. This function absolutely must be invoked when all the required information is collected and the user asks to checkout,
@@ -255,9 +251,7 @@ class OloTool(Toolkit):
             billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
 
             # Construct the order
-            order_input = self._construct_order(
-                billing_schemes_info, latest_user_message
-            )
+            order_input = self._construct_order(billing_schemes_info)
             # If the order is a string, return it
             if isinstance(order_input, str):
                 return order_input  # Failed to construct order

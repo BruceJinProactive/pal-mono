@@ -208,57 +208,26 @@ class YelpTool(Toolkit):
         return YelpAccessToken(access_token=api_key, token_type="Bearer")
 
     @retrieval
-    def _get_chat_history(self, latest_user_message: str) -> str:
+    def _get_chat_history(self) -> str:
         """
         Retrieves the chat history from the query messages tool.
-
-        Args:
-            latest_user_message (str): The latest user message to include in the chat history.
 
         Returns:
             str: A string representing the entire chat history.
         """
-        try:
-            chat_history = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
-        except Exception as e:
-            logger.warning(
-                f"[YelpTool._get_chat_history] Exception calling query_messages: {e}"
-            )
-            return latest_user_message  # sensible fallback
-
+        chat_history: str = self.query_messages_tool.query_messages()  # type: ignore
         if not chat_history:
             logger.warning("[YelpTool._get_chat_history] Empty chat history returned")
-            return latest_user_message  # sensible fallback
-
-        # ensure string
-        if not isinstance(chat_history, str):
-            chat_history = str(chat_history)
-
-        # Basic check for error messages (TEMPORARY workaround)
-        error_indicators = [
-            "Error in getting chat history",
-            "Conversation history not found",
-            "Agent session not found",
-        ]
-        if any(indicator in chat_history for indicator in error_indicators):
-            logger.warning(
-                f"[YelpTool._get_chat_history] Possible issue with chat history: {chat_history}"
-            )
 
         LLMObs.annotate(output_data=chat_history)
         return chat_history
 
     @tool
-    def get_restaurant_openings_creditcard_not_required(
-        self, latest_user_message: str
-    ) -> str:
+    def get_restaurant_openings_creditcard_not_required(self) -> str:
         """
         Get available reservation times for a restaurant using the Yelp Bookings API.
 
         Use when: User wants to check availability or see time options before booking.
-
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: Formatted string containing available reservation times, or error message
@@ -267,7 +236,7 @@ class YelpTool(Toolkit):
             bearer_token = self._yelp_bearer_token
 
             # Get chat history and extract search parameters
-            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history = self._get_chat_history()  # type: ignore
 
             # Extract using OpeningsQuery class
             current_date = self._get_current_date()
@@ -335,7 +304,7 @@ class YelpTool(Toolkit):
             return "Failed to get restaurant openings. Please try again."
 
     @tool
-    def make_reservation_creditcard_not_required(self, latest_user_message: str) -> str:
+    def make_reservation_creditcard_not_required(self) -> str:
         """
         Make a restaurant reservation using the Yelp Bookings API for restaurants that support
         instant confirmation without requiring credit card validation.
@@ -356,9 +325,6 @@ class YelpTool(Toolkit):
         **Optional fields:**
         - Special requests/notes: Dietary restrictions, seating preferences, etc.
 
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
-
         Returns:
             str: Reservation confirmation details with confirmation number, or secure booking link
                  if credit card is required, or error message if reservation fails.
@@ -369,7 +335,7 @@ class YelpTool(Toolkit):
                 return "Unable to authenticate with Yelp. Please try again later."
 
             # Extract reservation details
-            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history = self._get_chat_history()  # type: ignore
             current_date = self._get_current_date()
             reservation_query = llm_call(
                 system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT.format(
@@ -598,7 +564,7 @@ class YelpTool(Toolkit):
             return "Failed to get waitlist configuration. Please try again."
 
     @tool
-    def create_waitlist_on_my_way_visit(self, latest_user_message: str) -> str:
+    def create_waitlist_on_my_way_visit(self) -> str:
         """
         Create a waitlist on-my-way visit at a restaurant using the Yelp Waitlist API.
 
@@ -617,9 +583,6 @@ class YelpTool(Toolkit):
 
         Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
 
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
-
         Returns:
             str: Confirmation of waitlist on-my-way visit creation with visit details, or error message
         """
@@ -634,7 +597,7 @@ class YelpTool(Toolkit):
                 return "Unable to authenticate with Yelp. Please verify your API credentials."
 
             # Get chat history and extract waitlist parameters
-            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history = self._get_chat_history()  # type: ignore
 
             # Extract using WaitlistOnMyWayQuery class
             waitlist_query = llm_call(
@@ -708,7 +671,7 @@ class YelpTool(Toolkit):
             return f"Failed to create waitlist on-my-way visit. {str(e)}"
 
     @tool
-    def join_waitlist_queue(self, latest_user_message: str) -> str:
+    def join_waitlist_queue(self) -> str:
         """
         Join the waitlist queue for a restaurant using the Yelp Waitlist API.
 
@@ -719,9 +682,6 @@ class YelpTool(Toolkit):
         - Join the wait when they know there's currently a wait time
 
         Required fields to collect before using this tool: name, phone, party size
-
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: Confirmation of waitlist queue join with visit details, expected seating times,
@@ -741,7 +701,7 @@ class YelpTool(Toolkit):
                 return "Unable to authenticate with Yelp. Please verify your API credentials."
 
             # Get chat history and extract waitlist parameters
-            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history = self._get_chat_history()  # type: ignore
 
             # Extract using WaitlistJoinQueueQuery class
             logger.debug(
@@ -849,23 +809,18 @@ class YelpTool(Toolkit):
             return f"Failed to join the waitlist queue. {str(e)}"
 
     @tool
-    def get_openings_open_api_creditcard_required(
-        self, latest_user_message: str
-    ) -> str:
+    def get_openings_open_api_creditcard_required(self) -> str:
         """
         Get available reservation times for restaurants using their open API search endpoint.
 
         Use when: User wants to check availability or see time options for open API restaurants.
-
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: Formatted string containing available reservation times, or error message
         """
         try:
             # Get chat history and extract search parameters
-            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history = self._get_chat_history()  # type: ignore
 
             # Extract using OpeningsQuery class
             current_date = self._get_current_date()
@@ -938,7 +893,7 @@ class YelpTool(Toolkit):
             return "Failed to get restaurant openings. Please try again."
 
     @tool
-    def make_reservation_creditcard_required(self, latest_user_message: str) -> str:
+    def make_reservation_creditcard_required(self) -> str:
         """
         Make a restaurant reservation and completion on Yelp's website.
 
@@ -955,16 +910,13 @@ class YelpTool(Toolkit):
         - If exact requested time is available: Returns booking URL to complete reservation
         - If exact requested time is NOT available: Returns all available times and asks user to confirm a different time (does not provide booking URL)
 
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
-
         Returns:
             str: Secure Yelp booking link if exact time is available, or list of all available times
                  asking user to confirm if exact time is not available, or error message if no availability.
         """
         try:
             # Get chat history and extract search parameters
-            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history = self._get_chat_history()  # type: ignore
 
             # Extract using OpeningsQuery class for basic parameters
             current_date = self._get_current_date()
@@ -1057,7 +1009,7 @@ class YelpTool(Toolkit):
             return "Failed to make reservation. Please try again."
 
     @tool
-    def cancel_visit(self, latest_user_message: str) -> str:
+    def cancel_visit(self) -> str:
         """
         Cancel a waitlist visit using the Yelp Waitlist API.
 
@@ -1086,9 +1038,6 @@ class YelpTool(Toolkit):
         - They can create a new waitlist entry if they change their mind
         - Cancellation is immediate and cannot be undone
 
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
-
         Returns:
             str: Confirmation of visit cancellation or user-friendly error message
         """
@@ -1103,7 +1052,7 @@ class YelpTool(Toolkit):
                 return "Unable to authenticate with Yelp. Please verify your API credentials."
 
             # Get chat history and extract visit cancellation parameters
-            chat_history = self._get_chat_history(latest_user_message)  # type: ignore
+            chat_history = self._get_chat_history()  # type: ignore
 
             # Extract using CancelVisitQuery class
             cancel_query = llm_call(

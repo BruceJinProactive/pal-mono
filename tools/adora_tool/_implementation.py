@@ -841,19 +841,16 @@ class AdoraTool(Toolkit):
             logger.debug("No coupons found")
 
     @tool
-    def checkout_order(self, latest_user_message: str) -> str:
+    def checkout_order(self) -> str:
         """
         Validates an order for checkout by extracting structured ordering data from chat history. This function absolutely must be invoked  either when the order is ready to be placed or when the user asks to checkout, pay, place the order, etc.
-
-        Args:
-            latest_user_message (str): The latest user message in the chat history.
 
         Returns:
             str: The checkout order details including the payment URL.
         """
         try:
             # fmt: off
-            chat_history: str = self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
+            chat_history: str = self.query_messages_tool.query_messages()  # type: ignore
             # fmt: on
 
             context = self._get_relevant_docs(chat_history)  # type: ignore
