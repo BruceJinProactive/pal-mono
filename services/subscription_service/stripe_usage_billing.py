@@ -2,15 +2,7 @@ import os
 from datetime import UTC, datetime
 from typing import Optional
 
-import stripe
-
 from utils.log import logger
-
-stripe.api_key = os.environ.get("STRIPE_API_KEY")
-try:
-    from stripe import StripeClient
-except Exception:
-    StripeClient = None
 
 
 class StripeUsageBillingService:
@@ -22,7 +14,12 @@ class StripeUsageBillingService:
     ORDERS_METER_DISPLAY_NAME = "PAL Orders"
 
     @staticmethod
-    def _get_stripe_client() -> Optional[StripeClient]:  # type: ignore[valid-type]
+    def _get_stripe_client():
+        try:
+            from stripe import StripeClient
+        except Exception:
+            StripeClient = None
+
         api_key = os.environ.get("STRIPE_API_KEY")
         if StripeClient and api_key:
             try:
