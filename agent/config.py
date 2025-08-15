@@ -213,7 +213,9 @@ class TriageAssistantConfig(VAPIAssistant):
 
     # Additional fields specific to triage assistant
     transfer_mode: TransferMode = Field(
-        default=TransferMode.SWAP_SYSTEM_MESSAGE_IN_HISTORY, alias="transferMode"
+        default=TransferMode.SWAP_SYSTEM_MESSAGE_IN_HISTORY,
+        alias="transferMode",
+        exclude=True,
     )
 
 
