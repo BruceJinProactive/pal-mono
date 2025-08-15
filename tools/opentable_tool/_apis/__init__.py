@@ -65,27 +65,24 @@ def search_availability(
         data = {}
 
     # Extract relevant data from the response
-    times_available = data.get("times_available", [])
+    dates_available = data.get("availability", {})
+
+    times_available = []
+    no_availability_reasons = []
 
     # For each times_available entry, ensure diningArea attributes are properly handled
-    for time_slot in times_available:
-        if "availability_types" in time_slot:
-            for avail_type in time_slot["availability_types"]:
-                if "diningArea" in avail_type and isinstance(
-                    avail_type["diningArea"], list
-                ):
-                    for area in avail_type["diningArea"]:
-                        # Ensure attributes is always a list
-                        if "attributes" in area and not isinstance(
-                            area["attributes"], list
-                        ):
-                            area["attributes"] = [area["attributes"]]
+    for date in dates_available:
+        noTimes = dates_available[date].get("allNoTimesReasons")
+        if noTimes != []:
+            no_availability_reasons.append((date, noTimes))
+        time_slots = dates_available[date].get("timeSlots")
+        for time_slot in time_slots:
+            times_available.append(time_slot.get("dateTime"))
 
     # Construct and return the AvailabilitySearchResponse
     return AvailabilitySearchResponse(
         rid=data.get("rid", restaurant_id),
         party_size=data.get("party_size", search_params.party_size),
-        times=data.get("times", []),
         times_available=times_available,
-        no_availability_reasons=data.get("no_availability_reasons", []),
+        no_availability_reasons=no_availability_reasons,
     )

@@ -18,7 +18,11 @@ def format_availability_results(availability: AvailabilitySearchResponse) -> str
     Returns:
         A formatted string with the available times and details
     """
-    if not availability or not hasattr(availability, "times") or not availability.times:
+    if (
+        not availability
+        or not hasattr(availability, "times_available")
+        or not availability.times_available
+    ):
         return "No availability found."
 
     restaurant_id = getattr(availability, "rid", "Unknown")

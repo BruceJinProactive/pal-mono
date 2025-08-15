@@ -157,7 +157,6 @@ class AvailabilitySearchResponse(BaseModel):
 
     rid: int
     party_size: int
-    times: List[str]
     times_available: List[TimeAvailable] = Field(alias="times_available")
     no_availability_reasons: Optional[List[NoAvailabilityReason]] = Field(
         None, alias="no_availability_reasons"

@@ -15,7 +15,6 @@ from tools.opentable_tool._prompt_constants import (
     RESERVATION_EXTRACTOR_USER_PROMPT,
 )
 from tools.opentable_tool._utils import (
-    extract_booking_url,
     format_availability_results,
     validate_search_parameters,
 )
@@ -26,7 +25,6 @@ from tools.opentable_tool.classes import (
     TableAttribute,
 )
 from tools.utils.ordering import _llm
-from tools.utils.ordering._utils import get_chat_history
 from utils.log import logger
 
 
@@ -191,7 +189,7 @@ class OpenTableTool(Toolkit):
             return f"Error searching availability for restaurant ID {self.restaurant_id}: {str(e)}"
 
         # If no times available, provide a clear message
-        if not result.times and not result.times_available:
+        if not result.times_available:
             no_availability_reasons = result.no_availability_reasons or []
             reasons = (
                 ", ".join(reason.value for reason in no_availability_reasons)
@@ -205,29 +203,10 @@ class OpenTableTool(Toolkit):
         # Format the results in a human-readable way
         formatted_result = format_availability_results(result)
 
-        # Add booking URLs if requested
-        if include_booking_urls and result.times_available:
-            booking_urls = []
-            for time_slot in result.times_available:
-                time_str = getattr(time_slot, "time", "Unknown time")
-                url = extract_booking_url(time_slot, is_affiliate)
-                if url:
-                    booking_urls.append(f"• {time_str}: {url}")
-
-            if booking_urls:
-                formatted_result += "\n\nBooking URLs (for direct reservation):\n"
-                formatted_result += "\n".join(
-                    booking_urls[:5]
-                )  # Limit to 5 URLs to avoid overloading
-                if len(booking_urls) > 5:
-                    formatted_result += (
-                        "\n(More booking URLs available - showing first 5 only)"
-                    )
-
         return formatted_result
 
     @tool
-    def make_reservation(self) -> str:
+    def make_reservation(self, latest_user_message: str) -> str:
         """
         Creates a restaurant reservation by extracting structured reservation data from chat
         history and using OpenTable tools to resolve the necessary information.
@@ -247,7 +226,9 @@ class OpenTableTool(Toolkit):
                 return "Error: Unable to authenticate with OpenTable"
 
             # Get chat history
-            chat_history = get_chat_history(self.query_messages_tool)
+            chat_history = str(
+                self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
+            )
 
             # Extract reservation data using LLM
             reservation_data = _llm.llm_call(
