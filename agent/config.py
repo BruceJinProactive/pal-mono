@@ -150,21 +150,21 @@ class CallerInfo(BaseModel):
 class VAPIAssistant(BaseModel):
     """VAPI Assistant configuration model."""
 
-    name: str = Field(alias="assistantName")  # Only alias needed: name → assistantName
-    firstMessage: Optional[str] = Field(default=None)
+    name: str
+    firstMessage: Optional[str] = None
     transcriber: TranscriberConfig
     voice: VoiceDecoderConfig
-    backgroundSound: str = Field(default="office")
-    startSpeakingPlan: StartSpeakingPlan = Field(default_factory=StartSpeakingPlan)
-    silenceTimeoutSeconds: int = Field(default=60)
-    backgroundDenoisingEnabled: bool = Field(default=True)
+    backgroundSound: str = "office"
+    startSpeakingPlan: Optional[StartSpeakingPlan] = None
+    silenceTimeoutSeconds: int = 60
+    backgroundDenoisingEnabled: bool = True
     model: Dict[str, Any] = Field(default_factory=dict)
-    firstMessageInterruptionsEnabled: bool = Field(default=False)
+    firstMessageInterruptionsEnabled: bool = False
     firstMessageMode: Literal[
         "assistant-speaks-first",
         "assistant-speaks-first-with-model-generated-message",
         "assistant-waits-for-user",
-    ] = Field(default="assistant-speaks-first")
+    ] = "assistant-speaks-first"
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
@@ -221,10 +221,12 @@ class LanguageAssistantMultilingConfig(VAPIAssistant):
     """Configuration for a specific language assistant in multilingual squad that extends VAPIAssistant."""
 
     # Additional fields specific to language assistants
-    transfer_message: str = Field(default="", alias="transferMessage")
-    transfer_description: str = Field(alias="transferDescription")
+    transfer_message: str = Field(default="", alias="transferMessage", exclude=True)
+    transfer_description: str = Field(alias="transferDescription", exclude=True)
     transfer_mode: TransferMode = Field(
-        default=TransferMode.SWAP_SYSTEM_MESSAGE_IN_HISTORY, alias="transferMode"
+        default=TransferMode.SWAP_SYSTEM_MESSAGE_IN_HISTORY,
+        alias="transferMode",
+        exclude=True,
     )
 
 
