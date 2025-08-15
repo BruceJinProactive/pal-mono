@@ -159,8 +159,9 @@ class ProjectSubscription(Base):
 
     __table_args__ = (
         Index(
-            "ix_project_id_unique_not_deleted",
+            "ix_project_id_subscription_id_unique_not_deleted",
             "project_id",
+            "subscription_id",
             unique=True,
             postgresql_where=and_(deleted.is_(False)),
         ),
