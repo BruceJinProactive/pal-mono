@@ -6,7 +6,6 @@ from agent.config import (
     AgentMetadata,
     AgentPersona,
     LanguageAssistantMultilingConfig,
-    MultilingualModelConfig,
     MultilingualSquadConfig,
     TranscriberConfig,
     TriageAssistantConfig,

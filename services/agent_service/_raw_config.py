@@ -150,8 +150,10 @@ class RawConfig:
             return None
 
         try:
-            # Validate the selected configuration
-            return MultilingualSquadConfig.model_validate(config_to_validate)
+            # Transform snake_case keys to match Pydantic field expectations
+            transformed_config = self._transform_multilingual_config(config_to_validate)
+            # Validate the transformed configuration
+            return MultilingualSquadConfig.model_validate(transformed_config)
         except ValidationError as e:
             logger.error(
                 "Invalid multilingual squad config",
@@ -159,6 +161,53 @@ class RawConfig:
             )
             # Fallback to None if validation fails
             return None
+
+    def _snake_to_camel(self, snake_str: str) -> str:
+        """Convert snake_case string to camelCase."""
+        components = snake_str.split("_")
+        return components[0] + "".join(word.capitalize() for word in components[1:])
+
+    def _transform_multilingual_config(self, config: dict) -> dict:
+        """
+        Transform raw API configuration snake_case keys to camelCase field names.
+
+        Automatically converts snake_case keys to camelCase, with special handling for 'assistant_name' -> 'name'.
+        """
+
+        def _transform_assistant_keys(assistant_config: dict) -> dict:
+            """Transform snake_case keys to camelCase field names."""
+            transformed = {}
+
+            for key, value in assistant_config.items():
+                # Special case: assistant_name maps to 'name' field in VAPIAssistant
+                if key == "assistant_name":
+                    transformed["name"] = value
+                # Convert other snake_case keys to camelCase
+                elif "_" in key:
+                    camel_key = self._snake_to_camel(key)
+                    transformed[camel_key] = value
+                # Keep keys that are already in the correct format
+                else:
+                    transformed[key] = value
+
+            return transformed
+
+        # Apply field mapping to all assistant configurations
+        transformed_config = {}
+
+        if "triage_assistant" in config:
+            transformed_config["triage_assistant"] = _transform_assistant_keys(
+                config["triage_assistant"]
+            )
+
+        if "language_assistants" in config:
+            transformed_config["language_assistants"] = {}
+            for language, assistant_config in config["language_assistants"].items():
+                transformed_config["language_assistants"][language] = (
+                    _transform_assistant_keys(assistant_config)
+                )
+
+        return transformed_config
 
     def _get_agent_persona(self, channel: Channel) -> AgentPersona:
         # Extract the persona section of the raw config
