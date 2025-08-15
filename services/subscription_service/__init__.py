@@ -1,3 +1,7 @@
+import os
+
+import stripe
+
 from ._plan import (
     create_subscription_plan,
     delete_subscription_plan,
@@ -17,6 +21,9 @@ from ._subscription import (
     update_account_subscription,
     update_account_subscription_status,
 )
+
+# Initialize the Stripe API key once, at module load
+stripe.api_key = os.environ.get("STRIPE_API_KEY")
 
 __all__ = [
     "create_account_subscription",

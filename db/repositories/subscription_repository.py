@@ -299,6 +299,64 @@ class AccountSubscriptionRepository:
             logger.error(f"Error updating account subscription status: {e}")
             raise
 
+    def get_active_account_subscription(
+        self, account_id: uuid.UUID
+    ) -> Optional[AccountSubscription]:
+        """Get the active account subscription for an account."""
+        now = datetime.now(UTC)
+        try:
+            return (
+                self.session.query(AccountSubscription)
+                .options(selectinload(AccountSubscription.subscription_plan))
+                .filter(
+                    and_(
+                        AccountSubscription.account_id == account_id,
+                        or_(
+                            AccountSubscription.status == SubscriptionStatus.active,
+                            AccountSubscription.status == SubscriptionStatus.pending,
+                        ),
+                        AccountSubscription.end_date > now,
+                    )
+                )
+                .order_by(AccountSubscription.start_date.desc())
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving active account subscription: {e}")
+            return None
+
+    def update_account_subscription(
+        self, subscription_id: uuid.UUID, **kwargs
+    ) -> Optional[AccountSubscription]:
+        """Update account subscription with new fields."""
+        try:
+            subscription = (
+                self.session.query(AccountSubscription)
+                .filter(AccountSubscription.id == subscription_id)
+                .first()
+            )
+
+            if not subscription:
+                return None
+
+            for key, value in kwargs.items():
+                if hasattr(subscription, key):
+                    setattr(subscription, key, value)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(subscription)
+            return subscription
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating account subscription: {e}")
+            raise
+
 
 class ProjectSubscriptionRepository:
     def __init__(self, session: Session, auto_commit: bool = True):
@@ -387,4 +445,85 @@ class ProjectSubscriptionRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error deleting project subscription: {e}")
+            raise
+
+    def create_project_subscription_with_prices(
+        self,
+        project_id: uuid.UUID,
+        subscription_id: uuid.UUID,
+        call_price_id: Optional[str] = None,
+        order_price_id: Optional[str] = None,
+    ) -> ProjectSubscription:
+        """Create a new project subscription with price IDs."""
+        try:
+            project_subscription = ProjectSubscription(
+                id=uuid.uuid4(),
+                project_id=project_id,
+                subscription_id=subscription_id,
+                call_price_id=call_price_id,
+                order_price_id=order_price_id,
+                deleted=False,
+            )
+
+            self.session.add(project_subscription)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(project_subscription)
+            return project_subscription
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error creating project subscription with prices: {e}")
+            raise
+
+    def get_project_subscription_by_project_id(
+        self, project_id: uuid.UUID
+    ) -> Optional[ProjectSubscription]:
+        """Get project subscription by project ID."""
+        try:
+            return (
+                self.session.query(ProjectSubscription)
+                .filter(
+                    ProjectSubscription.project_id == project_id,
+                    ProjectSubscription.deleted.is_(False),
+                )
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving project subscription by project ID: {e}")
+            return None
+
+    def update_project_subscription(
+        self, id: uuid.UUID, **kwargs
+    ) -> Optional[ProjectSubscription]:
+        """Update project subscription with new fields."""
+        try:
+            subscription = (
+                self.session.query(ProjectSubscription)
+                .filter(ProjectSubscription.id == id)
+                .first()
+            )
+
+            if not subscription:
+                return None
+
+            for key, value in kwargs.items():
+                if hasattr(subscription, key):
+                    setattr(subscription, key, value)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(subscription)
+            return subscription
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating project subscription: {e}")
             raise

@@ -58,7 +58,6 @@ def create_project(
         )
         ctx.resource_id = str(project.id)
         ctx.new_record = project
-
     return project
 
 

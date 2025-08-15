@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+import db
 from api.routes.admin._auth import authorize_admin, authorize_user_account
 from api.routes.admin._builder import (
     build_project_subscription,
@@ -175,14 +176,16 @@ def create_account_subscription(
     if not account:
         raise not_found_error(f"Account {account_name} does not exist")
 
+    projects = retrieve_projects(session, account.id, request.project_ids)
+
     subscription_params = request.to_subscription_params()
     try:
         db_subscription = subscription_service.create_account_subscription(
             session,
             context,
-            account.id,
+            account,
             subscription_params,
-            project_ids=request.project_ids or [],
+            projects=projects,
         )
     except ValueError as err:
         raise HTTPException(
@@ -497,14 +500,17 @@ def create_project_subscription(
     request: CreateProjectSubscriptionRequest,
 ) -> CreateProjectSubscriptionResponse:
     """Create a new project subscription."""
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
+
+    # Validate project exists
+    project = project_service.get_project(session, request.project_id)
+    if not project:
+        raise ValueError(f"Project {request.project_id} does not exist")
 
     try:
         # Use external_id from path and project_id from request
-        project_subscription, project = (
-            subscription_service.create_project_subscription(
-                session, context, request.project_id, external_id
-            )
+        project_subscription = subscription_service.create_project_subscription(
+            session, project, external_id
         )
 
         # Build response object
@@ -531,26 +537,42 @@ def remove_project_subscription(
     project_id: uuid.UUID,
 ) -> RemoveProjectSubscriptionResponse:
     """Remove a project subscription."""
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
+
+    # Validate project exists
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} does not exist")
 
     try:
         # Use external_id and project_id from path
-        success = subscription_service.remove_project_subscription(
-            session, context, project_id, external_id
+        subscription_service.remove_project_subscription(
+            session, project.id, external_id
         )
-
-        if success:
-            return RemoveProjectSubscriptionResponse(
-                message="Project subscription removed successfully",
-                success=True,
-            )
-        else:
-            return RemoveProjectSubscriptionResponse(
-                message="Failed to remove project subscription",
-                success=False,
-            )
+        return RemoveProjectSubscriptionResponse(
+            message="Project subscription removed successfully",
+            success=True,
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error removing project subscription: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def retrieve_projects(session, account_id, project_ids) -> list[db.Project]:
+    projects = []
+    if project_ids:
+        projects = project_service.get_projects_by_ids(session, project_ids)
+
+    if len(projects) < len(project_ids):
+        found_ids = [p.id for p in projects]
+        not_found_ids = list(set(project_ids) - set(found_ids))
+        raise not_found_error(f"Some project IDs not found: {not_found_ids}")
+    for project in projects:
+        if project.account_id != account_id:
+            raise not_found_error(
+                f"Project does not belong to this account: {project.id}"
+            )
+
+    return projects

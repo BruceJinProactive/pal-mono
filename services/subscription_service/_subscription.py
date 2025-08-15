@@ -17,7 +17,8 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
 from services import account_service, project_service
 from services.history_service import change_log_context
-from services.subscription_service import _stripe
+from services.subscription_service import _stripe_product, _stripe_subscription
+from services.subscription_service._stripe_product import MeterTier
 from services.subscription_service.schema import (
     StripeCheckoutResponse,
     SubscriptionParams,
@@ -30,7 +31,7 @@ def handle_stripe_checkout_success(
     context: UserContext,
     session_id: str,
 ) -> StripeCheckoutResponse | None:
-    response = _stripe.handle_checkout_success(session_id)
+    response = _stripe_subscription.handle_checkout_success(session_id)
     if not response:
         return response
 
@@ -119,9 +120,9 @@ def _extract_subscription_parameters(params: SubscriptionParams, plan):
 def create_account_subscription(
     session: Session,
     context: UserContext,
-    account_id: uuid.UUID,
+    account: db.Account,
     params: SubscriptionParams,
-    project_ids: List[uuid.UUID],
+    projects: List[db.Project],
 ) -> db.AccountSubscription:
     """
     Create a new account subscription according to the specification.
@@ -131,7 +132,7 @@ def create_account_subscription(
     - If subscription type is contract, everything must be listed in the override section
     - Cannot create new subscription if start_date and end_date overlaps with existing active subscription of same type
     - New subscription always has 'active' status
-    - If project_ids are provided, create ProjectSubscription entries for each project
+    - If projects are provided, create ProjectSubscription entries for each project
 
     Date Logic:
     - Trial start_date: now
@@ -139,14 +140,8 @@ def create_account_subscription(
     - Trial end_date: start_date + free_trial_days from plan
     - Monthly end_date: start_date + 7 years (arbitrary and subject to change)
     """
-    if project_ids:
-        _validate_project_ids(session, account_id, project_ids)
-
     subscription_plan_repository = SubscriptionPlanRepository(session)
     account_subscription_repository = AccountSubscriptionRepository(
-        session, auto_commit=False
-    )
-    project_subscription_repository = ProjectSubscriptionRepository(
         session, auto_commit=False
     )
 
@@ -161,7 +156,7 @@ def create_account_subscription(
     subscription_params = _extract_subscription_parameters(params, plan)
     account_subscription = db.AccountSubscription(
         external_id=uuid.uuid4(),
-        account_id=account_id,
+        account_id=account.id,
         subscription_plan_id=plan.id,
         status=SubscriptionStatus.pending,
         payment_method=params.payment_method,
@@ -169,7 +164,7 @@ def create_account_subscription(
     )
 
     if account_subscription_repository.check_subscription_overlap(
-        account_id,
+        account.id,
         account_subscription.start_date,
         account_subscription.end_date,
     ):
@@ -177,11 +172,16 @@ def create_account_subscription(
             "Cannot create subscription: overlaps with existing active subscriptions"
         )
 
+    # Step 1: Create a product on stripe for this account
+    stripe_product_id = _stripe_product.create_product(account.name, plan.name)
+    account_subscription.stripe_product_id = stripe_product_id
+
+    # Step 2: Create the account subscription record
     with change_log_context(
         session=session,
         resource_type=ChangeResourceType.Subscription,
         author=context.email,
-        account_id=account_id,
+        account_id=account.id,
         auto_commit=False,
     ) as ctx:
         subscription = account_subscription_repository.create_account_subscription(
@@ -191,12 +191,12 @@ def create_account_subscription(
         ctx.new_record = subscription
 
     logger.info(
-        f"Created subscription for account {account_id}",
+        f"Created subscription for account {account.id}",
         extra={
-            "account_id": str(account_id),
+            "account_id": str(account.id),
             "subscription_id": str(subscription.id),
             "plan_id": str(plan.id),
-            "project_ids": [str(pid) for pid in project_ids or []],
+            "project_ids": [str(p.id) for p in projects],
             "trial_start_date": (
                 subscription.trial_start_date.isoformat()
                 if subscription.trial_start_date
@@ -207,29 +207,137 @@ def create_account_subscription(
         },
     )
 
-    # Create ProjectSubscription entries if project_ids are provided
-    for project_id in project_ids or []:
-        project_subscription_repository.create_project_subscription(
-            project_id,
-            subscription.external_id,
-        )
+    # Step 3: add each project to the subscription
+    for project in projects:
+        add_project_to_subscription(session, account_subscription, project)
 
-    session.commit()
+    try:
+        session.commit()
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Failed to commit changes due to error: {err}")
+        raise err
+
     return subscription
 
 
-def _validate_project_ids(
-    session: Session, account_id: uuid.UUID, project_ids: list[uuid.UUID]
-):
-    # Validate that all project_ids belong to the account
-    account_projects = project_service.get_projects_by_account_id(session, account_id)
-    account_project_ids = {p.id for p in account_projects}
+def add_project_to_subscription(
+    session: Session, subscription: db.AccountSubscription, project: db.Project
+) -> db.ProjectSubscription:
+    subscription_plan_repository = SubscriptionPlanRepository(session)
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=False
+    )
+    stripe_product_id = subscription.stripe_product_id
+    if not stripe_product_id:
+        raise ValueError("Missing stripe product id in subscription.")
 
-    invalid_project_ids = [pid for pid in project_ids if pid not in account_project_ids]
-    if invalid_project_ids:
-        raise ValueError(
-            f"The following project IDs do not belong to account {account_id}: {invalid_project_ids}"
+    plan = subscription_plan_repository.get_subscription_plan_by_id(
+        subscription.subscription_plan_id
+    )
+    if not plan:
+        raise ValueError("Subscription Plan not found.")
+    project_subscription = project_subscription_repository.create_project_subscription(
+        project.id,
+        subscription.external_id,
+    )
+
+    # Setup call price
+    call_meter_id = _stripe_product.create_billing_meter(
+        f"{project.name} calls",
+        _stripe_product.get_call_meter_event_name(project.id),
+    )
+    call_price_id = _stripe_product.create_product_price(
+        stripe_product_id,
+        call_meter_id,
+        nickname=f"Calls - {project.name}",
+        meter_tiers=_build_call_tiers(plan),
+        project=project,
+    )
+    project_subscription_repository.update_project_subscription(
+        id=project_subscription.id,
+        call_price_id=call_price_id,
+    )
+    if subscription.stripe_subscription_id:
+        _stripe_subscription.add_subscription_item(
+            subscription.stripe_subscription_id,
+            call_price_id,
         )
+
+    # Setup order price if a charge is configured
+    if plan.order_overage_charge and plan.order_overage_charge > 0:
+        order_meter_id = _stripe_product.create_billing_meter(
+            f"{project.name} orders",
+            _stripe_product.get_order_meter_event_name(project.id),
+        )
+        order_price_id = _stripe_product.create_product_price(
+            stripe_product_id,
+            order_meter_id,
+            nickname=f"Orders - {project.name}",
+            meter_tiers=_build_order_tiers(plan),
+            project=project,
+        )
+        project_subscription_repository.update_project_subscription(
+            id=project_subscription.id,
+            order_price_id=order_price_id,
+        )
+        if subscription.stripe_subscription_id:
+            _stripe_subscription.add_subscription_item(
+                subscription.stripe_subscription_id,
+                order_price_id,
+            )
+
+    logger.info(
+        "Created project subscription",
+        extra={
+            "project_id": str(project.id),
+            "subscription_id": str(subscription.external_id),
+            "project_subscription_id": str(project_subscription.id),
+        },
+    )
+    return project_subscription
+
+
+def _build_call_tiers(plan: db.SubscriptionPlan):
+    has_call_quota = plan.call_quota and plan.call_quota > 0
+    tiers = [
+        MeterTier(
+            last_unit=plan.call_quota,
+            flat_fee=plan.monthly_fee,
+            # if has a quota, then base tier usage is covered and should be free
+            per_unit=0 if has_call_quota else (plan.call_overage_charge or 0),
+        )
+    ]
+    if has_call_quota:
+        tiers.append(
+            MeterTier(
+                last_unit=None,
+                flat_fee=None,
+                per_unit=plan.call_overage_charge,
+            )
+        )
+    return tiers
+
+
+def _build_order_tiers(plan: db.SubscriptionPlan):
+    has_order_quota = plan.order_quota and plan.order_quota > 0
+    tiers = [
+        MeterTier(
+            last_unit=plan.order_quota,
+            flat_fee=None,  # no base fee for order yet
+            # if has a quota, then base tier usage is covered and should be free
+            per_unit=0 if has_order_quota else (plan.order_overage_charge or 0),
+        )
+    ]
+    if has_order_quota:
+        tiers.append(
+            MeterTier(
+                last_unit=None,
+                flat_fee=None,
+                per_unit=plan.order_overage_charge,
+            )
+        )
+    return tiers
 
 
 def _get_param_value(override, field_name: str, plan_value):
@@ -447,7 +555,7 @@ def cancel_account_subscription(
 
     # Cancel Stripe subscription first if it exists
     if subscription_to_cancel.stripe_subscription_id:
-        stripe_cancelled = _stripe.cancel_subscription(
+        stripe_cancelled = _stripe_subscription.cancel_subscription(
             subscription_to_cancel.stripe_subscription_id
         )
         if not stripe_cancelled:
@@ -502,9 +610,7 @@ def cancel_account_subscription(
         )
     )
     for project_sub in project_subscriptions:
-        project_subscription_repository.delete_project_subscription(
-            project_sub.project_id, external_id
-        )
+        remove_project_subscription(session, project_sub.project_id, external_id)
 
     try:
         session.commit()
@@ -576,26 +682,111 @@ def create_stripe_checkout_url(
     if subscription.stripe_subscription_id:
         raise ValueError("Subscription already has a Stripe subscription ID")
 
-    # Get subscription plan to get the price_id
-    plan = subscription.subscription_plan
-    if not plan or not plan.stripe_price_id:
-        raise RuntimeError(
-            "Subscription plan does not have a Stripe price ID configured"
-        )
-
+    # Get project subscriptions to collect project-specific prices
     project_subscriptions = (
         project_subscription_repo.get_project_subscriptions_by_subscription_id(
             subscription.external_id
         )
     )
 
-    # Create checkout session
-    checkout_session = _stripe.create_checkout_session(
+    if not project_subscriptions:
+        raise RuntimeError(
+            "No project subscriptions found for this account subscription"
+        )
+
+    # Collect all line items for the checkout session
+    line_items = []
+    price_details = []
+
+    # Add project-specific usage prices
+    for project_subscription in project_subscriptions:
+        # Get project details for better descriptions
+        project = project_service.get_project(session, project_subscription.project_id)
+        project_name = (
+            project.name if project else f"Project {project_subscription.project_id}"
+        )
+        project_display_name = (
+            project.display_name if (project and project.display_name) else project_name
+        )
+
+        # Add call usage price (using existing price ID - price_data doesn't support metered billing)
+        if project_subscription.call_price_id:
+            line_items.append(
+                {
+                    "price": project_subscription.call_price_id,
+                }
+            )
+            price_details.append(
+                {
+                    "project_subscription_id": str(project_subscription.id),
+                    "project_id": str(project_subscription.project_id),
+                    "project_name": project_name,
+                    "project_display_name": project_display_name,
+                    "price_type": "call_usage",
+                    "price_id": project_subscription.call_price_id,
+                    "description": f"Call usage for {project_display_name}",
+                    "pricing_method": "existing_price_id",
+                }
+            )
+
+        # Add order usage price (using existing price ID - price_data doesn't support metered billing)
+        if project_subscription.order_price_id:
+            line_items.append(
+                {
+                    "price": project_subscription.order_price_id,
+                }
+            )
+            price_details.append(
+                {
+                    "project_subscription_id": str(project_subscription.id),
+                    "project_id": str(project_subscription.project_id),
+                    "project_name": project_name,
+                    "project_display_name": project_display_name,
+                    "price_type": "order_usage",
+                    "price_id": project_subscription.order_price_id,
+                    "description": f"Order usage for {project_display_name}",
+                    "pricing_method": "existing_price_id",
+                }
+            )
+
+    if not line_items:
+        raise RuntimeError("No valid price IDs found for checkout session")
+
+    # Count different price types for logging
+    monthly_prices = [p for p in price_details if p["price_type"] == "monthly_plan"]
+    usage_prices = [p for p in price_details if "usage" in p["price_type"]]
+
+    # Log detailed price information for debugging
+    logger.info(
+        "Checkout session price breakdown",
+        extra={
+            "account_id": str(account_id),
+            "subscription_id": str(subscription.external_id),
+            "price_details": price_details,
+            "total_line_items": len(line_items),
+            "monthly_plan_items": len(monthly_prices),
+            "usage_items": len(usage_prices),
+            "projects_count": len(project_subscriptions),
+        },
+    )
+
+    logger.info(
+        f"Creating checkout session: {len(monthly_prices)} monthly plan + {len(usage_prices)} usage items from {len(project_subscriptions)} projects",
+        extra={
+            "account_id": str(account_id),
+            "subscription_id": str(subscription.external_id),
+            "line_items_count": len(line_items),
+            "structure": "existing price IDs",
+            "price_ids": [p["price_id"] for p in price_details if "price_id" in p],
+        },
+    )
+
+    # Create checkout session with project-specific prices
+    checkout_session = _stripe_subscription.create_checkout_session(
         account_id=account_id,
         customer_email=customer_email,
         subscription_external_id=subscription.external_id,
-        price_id=plan.stripe_price_id,
-        quantity=len(project_subscriptions),
+        line_items=line_items,
         redirect_url_prefix=redirect_url_prefix,
         start_date=subscription.start_date,
     )
@@ -638,32 +829,23 @@ def get_project_subscriptions_by_subscription_external_id(
 
 def create_project_subscription(
     session: Session,
-    context: UserContext,
-    project_id: uuid.UUID,
+    project: db.Project,
     subscription_id: uuid.UUID,
-) -> tuple[db.ProjectSubscription, db.Project]:
+) -> db.ProjectSubscription:
     """
     Create a new project subscription.
 
     Args:
         session: Database session
-        context: User context for authorization and logging
-        project_id: ID of the project
+        project: The project to add to subscription
         subscription_id: ID of the subscription
 
     Returns:
-        Tuple of (created project subscription, project)
+        The created project subscription record
     """
-    from services import project_service
-
     project_subscription_repository = ProjectSubscriptionRepository(
         session, auto_commit=False
     )
-
-    # Validate project exists
-    project = project_service.get_project(session, project_id)
-    if not project:
-        raise ValueError(f"Project {project_id} does not exist")
 
     # Validate subscription exists
     subscription = get_account_subscription_by_external_id(session, subscription_id)
@@ -673,84 +855,38 @@ def create_project_subscription(
     # Check if project subscription already exists
     existing_project_subscription = (
         project_subscription_repository.get_project_subscription(
-            project_id, subscription_id
+            project.id, subscription_id
         )
     )
     if existing_project_subscription:
         raise ValueError(
-            f"Project subscription already exists for project {project_id} and subscription {subscription_id}"
+            f"Project subscription already exists for project {project.id} and subscription {subscription_id}"
         )
 
-    # Create the project subscription
-    project_subscription = project_subscription_repository.create_project_subscription(
-        project_id, subscription_id
-    )
+    project_subscription = add_project_to_subscription(session, subscription, project)
 
-    session.commit()
+    try:
+        session.commit()
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Failed to commit db change due to error: {err}")
+        raise err
 
-    # Update Stripe subscription quantity if Stripe subscription exists
-    if subscription.stripe_subscription_id and subscription.subscription_plan:
-        plan = subscription.subscription_plan
-        if plan.stripe_price_id:
-            # Get the current count of active project subscriptions
-            all_project_subscriptions = project_subscription_repository.get_project_subscriptions_by_subscription_id(
-                subscription_id
-            )
-            new_quantity = len(all_project_subscriptions)
-
-            # Update Stripe subscription quantity
-            stripe_updated = _stripe.update_subscription_quantity(
-                subscription.stripe_subscription_id, plan.stripe_price_id, new_quantity
-            )
-
-            if stripe_updated:
-                logger.info(
-                    "Updated Stripe subscription quantity",
-                    extra={
-                        "subscription_id": str(subscription_id),
-                        "stripe_subscription_id": subscription.stripe_subscription_id,
-                        "new_quantity": new_quantity,
-                    },
-                )
-            else:
-                logger.warning(
-                    "Failed to update Stripe subscription quantity",
-                    extra={
-                        "subscription_id": str(subscription_id),
-                        "stripe_subscription_id": subscription.stripe_subscription_id,
-                        "new_quantity": new_quantity,
-                    },
-                )
-
-    logger.info(
-        "Created project subscription",
-        extra={
-            "project_id": str(project_id),
-            "subscription_id": str(subscription_id),
-            "project_subscription_id": str(project_subscription.id),
-        },
-    )
-
-    return project_subscription, project
+    return project_subscription
 
 
 def remove_project_subscription(
     session: Session,
-    context: UserContext,
     project_id: uuid.UUID,
     subscription_id: uuid.UUID,
-) -> bool:
+):
     """
     Remove a project subscription (soft delete).
 
     Args:
         session: Database session
-        context: User context for authorization and logging
-        project_id: ID of the project
+        project_id: Project ID to be removed
         subscription_id: ID of the subscription
-
-    Returns:
-        True if removal was successful, False otherwise
     """
     project_subscription_repository = ProjectSubscriptionRepository(
         session, auto_commit=False
@@ -770,57 +906,35 @@ def remove_project_subscription(
     if not subscription:
         raise ValueError(f"Subscription {subscription_id} does not exist")
 
-    # Remove the project subscription
-    success = project_subscription_repository.delete_project_subscription(
+    # Step 1: Delete subscription items associated with the prices if available
+    if subscription.stripe_subscription_id:
+        if project_subscription.call_price_id:
+            _stripe_subscription.remove_subscription_item(
+                subscription.stripe_subscription_id,
+                project_subscription.call_price_id,
+            )
+        if project_subscription.order_price_id:
+            _stripe_subscription.remove_subscription_item(
+                subscription.stripe_subscription_id,
+                project_subscription.order_price_id,
+            )
+
+    # Step 2: Soft delete the project subscription record
+    project_subscription_repository.delete_project_subscription(
         project_id, subscription_id
     )
 
-    if success:
+    try:
         session.commit()
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Failed to commit db change due to error: {err}")
+        raise err
 
-        # Update Stripe subscription quantity if Stripe subscription exists
-        if subscription.stripe_subscription_id and subscription.subscription_plan:
-            plan = subscription.subscription_plan
-            if plan.stripe_price_id:
-                # Get the current count of active project subscriptions (after removal)
-                all_project_subscriptions = project_subscription_repository.get_project_subscriptions_by_subscription_id(
-                    subscription_id
-                )
-                new_quantity = len(all_project_subscriptions)
-
-                # Update Stripe subscription quantity
-                stripe_updated = _stripe.update_subscription_quantity(
-                    subscription.stripe_subscription_id,
-                    plan.stripe_price_id,
-                    new_quantity,
-                )
-
-                if stripe_updated:
-                    logger.info(
-                        "Updated Stripe subscription quantity after removal",
-                        extra={
-                            "subscription_id": str(subscription_id),
-                            "stripe_subscription_id": subscription.stripe_subscription_id,
-                            "new_quantity": new_quantity,
-                        },
-                    )
-                else:
-                    logger.warning(
-                        "Failed to update Stripe subscription quantity after removal",
-                        extra={
-                            "subscription_id": str(subscription_id),
-                            "stripe_subscription_id": subscription.stripe_subscription_id,
-                            "new_quantity": new_quantity,
-                        },
-                    )
-
-        logger.info(
-            "Removed project subscription",
-            extra={
-                "project_id": str(project_id),
-                "subscription_id": str(subscription_id),
-                "project_subscription_id": str(project_subscription.id),
-            },
-        )
-
-    return success
+    logger.info(
+        "Successfully removed project from subscription!",
+        extra={
+            "project_id": project_id,
+            "account_subscription_id": subscription.external_id,
+        },
+    )

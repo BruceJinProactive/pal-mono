@@ -1,5 +1,4 @@
 import json
-import os
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Dict
@@ -13,8 +12,6 @@ from services.subscription_service.schema import (
 )
 from utils.log import logger
 
-# Initialize the Stripe API key once, at module load
-stripe.api_key = os.environ.get("STRIPE_API_KEY")
 SUBSCRIPTION_EXTERNAL_ID = "subscription_external_id"
 PROJECT_IDS = "project_ids"
 REDIRECT_URL = "redirect_url"
@@ -24,8 +21,7 @@ def create_checkout_session(
     account_id: uuid.UUID,
     customer_email: str | None,
     subscription_external_id: uuid.UUID,
-    price_id: str,
-    quantity: int,
+    line_items: list[dict],
     redirect_url_prefix: str,
     start_date: datetime | None = None,
 ) -> Session:
@@ -35,10 +31,8 @@ def create_checkout_session(
 
     Args:
         account_id: UUID of the account creating the subscription
-        project_ids: List of project UUIDs to associate with the subscription
         customer_email: Optional email for the customer
-        price_id: Stripe price ID for the subscription
-        quantity: Number of projects that need to be subscribed
+        line_items: List of Stripe line items for the checkout session.
         redirect_url_prefix: URL prefix for success/cancel redirects
         start_date: Optional datetime when billing starts and trial ends.
                    If None, subscription begins immediately with no trial.
@@ -46,6 +40,17 @@ def create_checkout_session(
     Returns:
         Stripe checkout session object
     """
+    if not line_items:
+        raise ValueError("line_items cannot be empty")
+
+    for item in line_items:
+        if not isinstance(item, dict):
+            raise ValueError(f"Invalid line_item format: {item}")
+        if "price" not in item and "price_data" not in item:
+            raise ValueError(
+                f"Line item must have either 'price' or 'price_data': {item}"
+            )
+
     redirect_url_prefix = redirect_url_prefix.rstrip("/")
 
     # Build subscription_data
@@ -77,12 +82,7 @@ def create_checkout_session(
     try:
         session_params = {
             "mode": "subscription",
-            "line_items": [
-                {
-                    "price": price_id,
-                    "quantity": quantity,
-                }
-            ],
+            "line_items": line_items,
             "subscription_data": subscription_data_params,
             "client_reference_id": str(account_id),
             "success_url": f"{redirect_url_prefix}?action=payment_success&session_id={{CHECKOUT_SESSION_ID}}",
@@ -92,8 +92,60 @@ def create_checkout_session(
             session_params["customer_email"] = customer_email
 
         return stripe.checkout.Session.create(**session_params)
+    except stripe.InvalidRequestError as e:
+        error_msg = str(e)
+        if "No such price" in error_msg:
+            logger.error(
+                f"Stripe checkout failed due to invalid price ID: {error_msg}",
+                extra={
+                    "account_id": str(account_id),
+                    "subscription_id": str(subscription_external_id),
+                    "line_items": line_items,
+                    "stripe_error": error_msg,
+                },
+            )
+            raise RuntimeError(
+                f"Checkout session creation failed due to invalid Stripe price ID. "
+                f"This usually means the project subscriptions have stale price IDs. "
+                f"Error: {error_msg}"
+            ) from e
+        elif (
+            "Quantity should not be specified where usage_type is `metered`"
+            in error_msg
+        ):
+            logger.error(
+                f"Stripe checkout failed due to quantity parameter on metered price: {error_msg}",
+                extra={
+                    "account_id": str(account_id),
+                    "subscription_id": str(subscription_external_id),
+                    "line_items": line_items,
+                    "stripe_error": error_msg,
+                },
+            )
+            raise RuntimeError(
+                f"Checkout session creation failed because quantity was specified for metered prices. "
+                f"Metered prices are billed based on usage events, not fixed quantities. "
+                f"Error: {error_msg}"
+            ) from e
+        else:
+            logger.error(
+                f"Stripe checkout failed with invalid request: {e}",
+                extra={
+                    "account_id": str(account_id),
+                    "subscription_id": str(subscription_external_id),
+                    "line_items": line_items,
+                },
+            )
+            raise e
     except Exception as e:
-        logger.error(f"Failed to create checkout session with stripe due to error: {e}")
+        logger.error(
+            f"Failed to create checkout session with stripe due to error: {e}",
+            extra={
+                "account_id": str(account_id),
+                "subscription_id": str(subscription_external_id),
+                "line_items": line_items,
+            },
+        )
         raise e
 
 
@@ -385,6 +437,56 @@ def cancel_subscription(subscription_id: str, cancel_immediately: bool = False) 
             },
         )
         return False
+
+
+def add_subscription_item(
+    stripe_subscription_id: str,
+    stripe_price_id: str,
+):
+    try:
+        stripe.SubscriptionItem.create(
+            subscription=stripe_subscription_id,
+            price=stripe_price_id,
+            proration_behavior="create_prorations",
+        )
+    except Exception as err:
+        logger.error(f"Failed to add subscription item due to error: {err}")
+        raise err
+
+
+def remove_subscription_item(
+    stripe_subscription_id: str,
+    stripe_price_id: str,
+):
+    try:
+        # 1. Retrieve subscription to find matching subscription item
+        subscription = stripe.Subscription.retrieve(stripe_subscription_id)
+
+        subscription_item_id = None
+        for item in subscription.items.data:
+            if item.price.id == stripe_price_id:
+                subscription_item_id = item.id
+                break
+
+        if not subscription_item_id:
+            raise ValueError(
+                f"Price {stripe_price_id} not found in subscription {stripe_subscription_id}"
+            )
+
+        # 2. Delete the subscription item
+        stripe.SubscriptionItem.delete(
+            subscription_item_id, proration_behavior="create_prorations"
+        )
+        logger.info(
+            "Successfully removed item from subscription",
+            extra={
+                "price_id": stripe_price_id,
+                "subscription_id": stripe_subscription_id,
+            },
+        )
+    except Exception as err:
+        logger.error(f"Failed to add subscription item due to error: {err}")
+        raise err
 
 
 def update_subscription(

@@ -16,7 +16,7 @@ from api.schemas.admin.agent import AgentSummary
 from api.schemas.admin.user import SignUpRequest
 from db import ConversationStatus
 from db.tables.accounts import AccountStatus
-from services import account_service, admin_service, user_service
+from services import account_service, admin_service, subscription_service, user_service
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
 from utils.log import logger
@@ -109,6 +109,15 @@ async def delete_account(
     session: Session,
 ):
     authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        return
+
+    curr_sub, _ = subscription_service.get_account_subscriptions(session, account.id)
+    if curr_sub:
+        raise ValueError("Account has active subscription and cannot be deleted.")
+
     try:
         account_service.delete_account(session, account_name, hard_delete, context)
     except Exception as e:

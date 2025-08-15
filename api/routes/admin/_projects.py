@@ -8,7 +8,7 @@ from api.schemas.admin.project import (
     Project,
     UpdateProjectRequest,
 )
-from services import account_service, project_service
+from services import account_service, project_service, subscription_service
 from services.admin_service import (
     deauthorize_instagram_access_token,
     get_instagram_connected,
@@ -16,9 +16,10 @@ from services.admin_service import (
     remove_instagram_access_token,
     set_instagram_access_token,
 )
+from utils.log import logger
 
 from . import UserContext, _auth, _utils
-from ._auth import authorize_user_account
+from ._auth import authorize_admin, authorize_user_account
 from ._builder import build_project
 from ._utils import not_found_error
 
@@ -287,7 +288,28 @@ async def delete_project(
     context: UserContext,
     session: Session,
 ):
+    authorize_admin(context)
+
     project = project_service.get_project(session, project_id)
-    if project:
-        authorize_user_account(context, project.account.name)
+    if not project:
+        return
+
+    try:
+        curr_sub, _ = subscription_service.get_account_subscriptions(
+            session, project.account_id
+        )
+        if curr_sub:
+            subscription_service.remove_project_subscription(
+                session, project, curr_sub.external_id
+            )
         project_service.delete_project(session, context, project_id)
+    except Exception as e:
+        logger.error(
+            f"Failed to remove project {project.name} to account subscription: {e}",
+            extra={
+                "project_id": str(project.id),
+                "account_id": str(project.account_id),
+            },
+            exc_info=True,
+        )
+        raise
