@@ -1,6 +1,7 @@
 import json
 import uuid
 from dataclasses import dataclass
+from typing import Optional
 
 import stripe
 
@@ -44,6 +45,40 @@ def get_order_meter_event_name(project_id: uuid.UUID) -> str:
     return f"orders_{str(project_id)}"
 
 
+def find_existing_meter(event_name: str) -> Optional[str]:
+    """
+    Search for an existing billing meter by event_name.
+    """
+    try:
+        # Fetch all meters and filter by event_name, handling pagination
+        starting_after = None
+        while True:
+            if starting_after:
+                existing_meters = stripe.billing.Meter.list(
+                    limit=100, starting_after=starting_after
+                )
+            else:
+                existing_meters = stripe.billing.Meter.list(limit=100)
+
+            # Check current page for matching meter
+            for existing_meter in existing_meters.data:
+                if existing_meter.event_name == event_name:
+                    logger.info(f"Found existing meter with ID: {existing_meter.id}")
+                    return existing_meter.id
+
+            # Check if there are more pages
+            if not existing_meters.has_more:
+                break
+
+            # Get the last meter ID for the next page
+            starting_after = existing_meters.data[-1].id
+        logger.info("No existing meter found")
+        return None
+    except Exception as err:
+        logger.error(f"Failed to search for existing meter: {err}")
+        return None
+
+
 def create_billing_meter(display_name, event_name: str) -> str:
     try:
         meter = stripe.billing.Meter.create(
@@ -56,6 +91,18 @@ def create_billing_meter(display_name, event_name: str) -> str:
             },
         )
         return meter.id
+    except stripe.InvalidRequestError as err:
+        if "An active meter already exists" in str(err):
+            logger.info("Meter already exists, searching for existing one to reuse.")
+        else:
+            logger.warning(f"Unknown error, will try to fetch existing: {err}")
+        # try to find and use existing meter
+        existing_meter_id = find_existing_meter(event_name)
+        if existing_meter_id:
+            logger.info(f"Found existing meter: {existing_meter_id}")
+            return existing_meter_id
+        # otherwise raise the error to prevent silent failure
+        raise err
     except Exception as err:
         logger.error(
             f"Failed to create billing meter: {err}",
