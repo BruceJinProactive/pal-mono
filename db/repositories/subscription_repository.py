@@ -162,6 +162,8 @@ class AccountSubscriptionRepository:
                 self.session.query(AccountSubscription)
                 .filter(
                     and_(
+                        AccountSubscription.status == SubscriptionStatus.active,
+                        AccountSubscription.status == SubscriptionStatus.pending,
                         AccountSubscription.account_id == account_id,
                         or_(
                             AccountSubscription.status == SubscriptionStatus.pending,

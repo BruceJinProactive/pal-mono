@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import db
 from api.routes.admin._utils import get_agent_type
@@ -130,6 +130,7 @@ def build_project_summary(project: db.Project) -> ProjectSummary:
         name=project.name,
         display_name=project.display_name,
         channel_identifiers=project.channel_identifiers,
+        address=project.address,
         timezone=project.timezone,
         created_at=int(project.created_at.timestamp()),
         updated_at=int(project.updated_at.timestamp() if project.updated_at else 0),
@@ -265,6 +266,15 @@ def build_subscription_plan(plan: db.SubscriptionPlan) -> SubscriptionPlan:
 
 
 def build_subscription(subscription: db.AccountSubscription) -> Subscription:
+    in_trial = (
+        (
+            subscription.trial_start_date
+            <= datetime.now(timezone.utc)
+            <= subscription.start_date
+        )
+        if subscription.trial_start_date
+        else False
+    )
     return Subscription(
         id=subscription.id,
         external_id=subscription.external_id,
@@ -273,6 +283,7 @@ def build_subscription(subscription: db.AccountSubscription) -> Subscription:
         subscription_plan=build_subscription_plan(subscription.subscription_plan),
         payment_method=subscription.payment_method,
         status=subscription.status,
+        in_trial=in_trial,
         trial_start_date=subscription.trial_start_date,
         start_date=subscription.start_date,
         end_date=subscription.end_date,

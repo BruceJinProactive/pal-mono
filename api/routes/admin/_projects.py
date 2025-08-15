@@ -303,7 +303,9 @@ async def delete_project(
                 session, project, curr_sub.external_id
             )
         project_service.delete_project(session, context, project_id)
+        session.commit()
     except Exception as e:
+        session.rollback()
         logger.error(
             f"Failed to remove project {project.name} to account subscription: {e}",
             extra={

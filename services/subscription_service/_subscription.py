@@ -37,6 +37,7 @@ def handle_stripe_checkout_success(
 
     data = {
         "stripe_subscription_id": response.stripe_subscription_id,
+        "status": SubscriptionStatus.active,
     }
     update_account_subscription(
         session, context, response.account_id, response.subscription_external_id, data
@@ -210,13 +211,6 @@ def create_account_subscription(
     # Step 3: add each project to the subscription
     for project in projects:
         add_project_to_subscription(session, account_subscription, project)
-
-    try:
-        session.commit()
-    except Exception as err:
-        session.rollback()
-        logger.error(f"Failed to commit changes due to error: {err}")
-        raise err
 
     return subscription
 
@@ -553,25 +547,6 @@ def cancel_account_subscription(
     if not subscription_to_cancel:
         raise ValueError(f"Subscription with external_id {external_id} does not exist")
 
-    # Cancel Stripe subscription first if it exists
-    if subscription_to_cancel.stripe_subscription_id:
-        stripe_cancelled = _stripe_subscription.cancel_subscription(
-            subscription_to_cancel.stripe_subscription_id
-        )
-        if not stripe_cancelled:
-            raise RuntimeError(
-                f"Failed to cancel Stripe subscription {subscription_to_cancel.stripe_subscription_id}. "
-                "Internal subscription will not be cancelled to maintain data consistency."
-            )
-        logger.info(
-            "Successfully cancelled Stripe subscription",
-            extra={
-                "account_id": str(account.id),
-                "subscription_external_id": str(external_id),
-                "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
-            },
-        )
-
     old_subscription = copy.copy(subscription_to_cancel)
 
     try:
@@ -609,17 +584,30 @@ def cancel_account_subscription(
             external_id
         )
     )
-    for project_sub in project_subscriptions:
-        remove_project_subscription(session, project_sub.project_id, external_id)
 
-    try:
-        session.commit()
-    except Exception as err:
-        session.rollback()
-        logger.error(
-            f"Failed to cancel account subscription! Error: {err}", exc_info=True
+    # Cancel Stripe subscription first if it exists
+    if subscription_to_cancel.stripe_subscription_id:
+        stripe_cancelled = _stripe_subscription.cancel_subscription(
+            subscription_to_cancel.stripe_subscription_id
         )
-        raise err
+        if not stripe_cancelled:
+            raise RuntimeError(
+                f"Failed to cancel Stripe subscription {subscription_to_cancel.stripe_subscription_id}. "
+                "Internal subscription will not be cancelled to maintain data consistency."
+            )
+        logger.info(
+            "Successfully cancelled Stripe subscription",
+            extra={
+                "account_id": str(account.id),
+                "subscription_external_id": str(external_id),
+                "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
+            },
+        )
+
+    for project_sub in project_subscriptions:
+        remove_project_subscription(
+            session, project_sub.project_id, external_id, remove_subscription_item=False
+        )
 
     logger.info(
         f"Cancelled subscription for account {account_name}",
@@ -642,6 +630,30 @@ def get_account_subscription_by_external_id(
     )
     return account_subscription_repository.get_account_subscription_by_external_id(
         external_id
+    )
+
+
+def get_account_subscription(
+    session: Session,
+    account_id: uuid.UUID,
+    external_id: uuid.UUID,
+) -> db.AccountSubscription | None:
+    """
+    Get the latest version of an account subscription by account_id and external_id.
+
+    Args:
+        session: Database session
+        account_id: Account ID for authorization
+        external_id: External ID of the subscription
+
+    Returns:
+        Account subscription if found, None otherwise
+    """
+    account_subscription_repository = AccountSubscriptionRepository(
+        session, auto_commit=True
+    )
+    return account_subscription_repository.get_account_subscription(
+        account_id, external_id
     )
 
 
@@ -879,6 +891,7 @@ def remove_project_subscription(
     session: Session,
     project_id: uuid.UUID,
     subscription_id: uuid.UUID,
+    remove_subscription_item=True,
 ):
     """
     Remove a project subscription (soft delete).
@@ -887,6 +900,7 @@ def remove_project_subscription(
         session: Database session
         project_id: Project ID to be removed
         subscription_id: ID of the subscription
+        remove_subscription_item: whether to actively remove the line item from stripe subscription
     """
     project_subscription_repository = ProjectSubscriptionRepository(
         session, auto_commit=False
@@ -907,7 +921,7 @@ def remove_project_subscription(
         raise ValueError(f"Subscription {subscription_id} does not exist")
 
     # Step 1: Delete subscription items associated with the prices if available
-    if subscription.stripe_subscription_id:
+    if remove_subscription_item and subscription.stripe_subscription_id:
         if project_subscription.call_price_id:
             _stripe_subscription.remove_subscription_item(
                 subscription.stripe_subscription_id,
@@ -923,13 +937,6 @@ def remove_project_subscription(
     project_subscription_repository.delete_project_subscription(
         project_id, subscription_id
     )
-
-    try:
-        session.commit()
-    except Exception as err:
-        session.rollback()
-        logger.error(f"Failed to commit db change due to error: {err}")
-        raise err
 
     logger.info(
         "Successfully removed project from subscription!",

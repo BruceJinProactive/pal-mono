@@ -34,6 +34,20 @@ def create_subscription_plan(
         raise ValueError("Plan name is required")
     if not params.tier:
         raise ValueError("Plan tier is required")
+    if (
+        params.call_quota
+        and params.call_quota > 0
+        and (params.call_overage_charge is None or params.call_overage_charge <= 0)
+    ):
+        raise ValueError("Call overage charge must be specified when call quota is set")
+    if (
+        params.order_quota
+        and params.order_quota > 0
+        and (params.order_overage_charge is None or params.order_overage_charge <= 0)
+    ):
+        raise ValueError(
+            "Order overage charge must be specified when order quota is set"
+        )
 
     subscription_plan_repository = SubscriptionPlanRepository(session, auto_commit=True)
     params_map = params.model_dump()

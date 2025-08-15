@@ -1661,15 +1661,16 @@ def handle_subscription_checkout_callback(
     _subscription.handle_subscription_checkout_callback(context, db_session, session_id)
 
 
-@admin_router.get("/subscriptions/{external_id}/projects")
+@admin_router.get("/accounts/{account_name}/subscriptions/{external_id}/projects")
 def list_project_subscriptions_by_subscription_external_id(
+    account_name: str,
     external_id: uuid.UUID,
     context: UserContext = Depends(authenticate_user),
     db_session: Session = Depends(db.get_db),
 ):
     """List all project subscriptions for a given subscription external ID."""
     return _subscription.list_project_subscriptions_by_subscription_external_id(
-        context, db_session, external_id
+        context, db_session, account_name, external_id
     )
 
 

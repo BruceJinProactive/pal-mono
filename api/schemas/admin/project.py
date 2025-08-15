@@ -36,6 +36,7 @@ class ProjectSummary(BaseModel):
     display_name: str | None
     channel_identifiers: list[str] | None
     timezone: str | None = None
+    address: str | None = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 

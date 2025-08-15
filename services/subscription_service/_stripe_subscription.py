@@ -460,11 +460,13 @@ def remove_subscription_item(
 ):
     try:
         # 1. Retrieve subscription to find matching subscription item
-        subscription = stripe.Subscription.retrieve(stripe_subscription_id)
+        subscription = stripe.Subscription.retrieve(
+            stripe_subscription_id, expand=["items.data.price"]
+        )
 
         subscription_item_id = None
-        for item in subscription.items.data:
-            if item.price.id == stripe_price_id:
+        for item in subscription["items"].data:
+            if item and item.price.id == stripe_price_id:
                 subscription_item_id = item.id
                 break
 
@@ -485,7 +487,7 @@ def remove_subscription_item(
             },
         )
     except Exception as err:
-        logger.error(f"Failed to add subscription item due to error: {err}")
+        logger.error(f"Failed to remove subscription item due to error: {err}")
         raise err
 
 

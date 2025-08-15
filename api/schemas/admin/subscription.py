@@ -135,6 +135,7 @@ class Subscription(BaseModel):
     trial_start_date: Optional[datetime] = None
     start_date: datetime
     end_date: datetime
+    in_trial: bool
     stripe_subscription_id: Optional[str] = None
     status: SubscriptionStatus
     created_at: datetime

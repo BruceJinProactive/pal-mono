@@ -176,6 +176,7 @@ def create_account_subscription(
     if not account:
         raise not_found_error(f"Account {account_name} does not exist")
 
+    logger.info("Creating account subscription data")
     projects = retrieve_projects(session, account.id, request.project_ids)
 
     subscription_params = request.to_subscription_params()
@@ -187,7 +188,9 @@ def create_account_subscription(
             subscription_params,
             projects=projects,
         )
+        session.commit()
     except ValueError as err:
+        session.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
@@ -341,33 +344,12 @@ def cancel_account_subscription(
         cancelled_subscription = subscription_service.cancel_account_subscription(
             session, context, account_name, external_id
         )
-
         if cancelled_subscription is None:
             raise not_found_error("Subscription not found")
+        session.commit()
         return {"message": "Subscription cancelled successfully"}
-    except ValueError as err:
-        if "does not exist" in str(err):
-            raise HTTPException(
-                status_code=404,
-                detail=str(err),
-            )
-        if any(
-            phrase in str(err)
-            for phrase in [
-                "Cannot cancel",
-                "Failed to cancel Stripe",
-                "Cannot cancel subscription with status",
-            ]
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail=str(err),
-            )
-        raise HTTPException(
-            status_code=400,
-            detail=str(err),
-        )
     except Exception as err:
+        session.rollback()
         logger.error(f"Error cancelling account subscription: {err}")
         raise HTTPException(
             status_code=500,
@@ -383,7 +365,7 @@ def create_checkout_session(
     request: CreateCheckoutSessionRequest,
 ) -> str:
     """Create a Stripe checkout session for a subscription."""
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
 
     # Get account to validate it exists
     account = account_service.get_account(session, account_name)
@@ -453,10 +435,21 @@ def handle_subscription_checkout_callback(
 def list_project_subscriptions_by_subscription_external_id(
     context: UserContext,
     session: Session,
+    account_name: str,
     external_id: uuid.UUID,
 ) -> ListProjectSubscriptionsResponse:
     """List all project subscriptions for a given subscription external ID."""
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    sub = subscription_service.get_account_subscription(
+        session, account.id, external_id
+    )
+    if not sub:
+        raise not_found_error("Subscription not found")
 
     try:
         project_subscriptions = (
