@@ -9,24 +9,20 @@ def search_availability(
     """
     Search for reservation availability for a specific restaurant.
 
-    Args:
-        restaurant_id: Restaurant ID
-        search_params: Search parameters for availability
-
-    Returns:
-        Dictionary containing availability data or raises an exception if request fails
     """
-    # Construct API endpoint
-    api_function = "/api/availability"
+    api_function = "/weapp/ai/reserve/availiability/check"
 
-    # Create the request body with the required fields
     request_body = {
-        "rid": restaurant_id,
-        "dateTime": search_params.get("start_date_time"),
-        "partySize": search_params.get("party_size"),
+        "merchant_id": str(restaurant_id),
+        "party_size": str(search_params.get("party_size")),
+        "slot_time": [
+            {
+                "start_sec": search_params.get("start_sec", 0),
+                "duration_sec": search_params.get("duration_sec", 3600),
+            }
+        ],
     }
 
-    # Call the MiniTable API with POST request
     response = connect_minitable_api(
         api_function=api_function,
         payload=request_body,
@@ -40,13 +36,10 @@ def search_availability(
         logger.error(f"Response body: {response.decoded_body}")
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
-    # Parse response body
     data = response.decoded_body
-    logger.info(f"MiniTable API response: {data}")
+    logger.debug(f"MiniTable API response: {data}")
 
-    # TODO: Implement proper response parsing
     return {
-        "rid": restaurant_id,
-        "party_size": search_params.get("party_size"),
-        "times_available": [],  # TODO: Extract from actual API response
+        "party_size": data.get("party_size"),
+        "slot_time_availability": data.get("slot_time_availability", []),
     }

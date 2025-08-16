@@ -1,6 +1,14 @@
+import base64
+import json
 from typing import Dict, Optional
 
+import requests
+
 from utils.log import logger
+from utils.secret import get_client_secret_with_fallback
+
+DEFAULT_TIMEOUT = 10
+MINITABLE_HOST = "ai.minitable.link"
 
 
 class MiniTableResponse:
@@ -12,19 +20,12 @@ class MiniTableResponse:
         self.decoded_body = decoded_body
 
 
-class MiniTableAccessToken:
-    """MiniTable access token"""
-
-    def __init__(self, access_token: str):
-        self.access_token = access_token
-
-
 def connect_minitable_api(
     api_function: str,
     payload: Optional[dict] = None,
 ) -> MiniTableResponse:
     """
-    Makes a request to the MiniTable API using urllib.
+    Makes a request to the MiniTable API.
 
     Args:
         api_function: API endpoint to call
@@ -33,12 +34,67 @@ def connect_minitable_api(
     Returns:
         MiniTableResponse object containing the response data
     """
-    # TODO: Implement MiniTable API connection logic
-    logger.info(f"[MiniTable API] Making POST request to {api_function}")
+    # Construct full URL
+    base_url = f"https://{MINITABLE_HOST}/{api_function}"
 
-    # Placeholder response
-    return MiniTableResponse(
-        status=200,
-        reason="OK",
-        decoded_body={"message": "MiniTable API connection - implementation pending"},
-    )
+    logger.debug(f"[MiniTable API] Making POST request to {base_url}")
+
+    try:
+        username = get_client_secret_with_fallback("MINITABLE_USERNAME")
+        password = get_client_secret_with_fallback("MINITABLE_PASSWORD")
+    except Exception as e:
+        logger.error(f"[MiniTable API] Failed to retrieve credentials: {str(e)}")
+        return MiniTableResponse(
+            status=500,
+            reason=f"Failed to retrieve credentials: {str(e)}",
+            decoded_body={},
+        )
+
+    # Create Basic Auth header
+    credentials = f"{username}:{password}"
+    encoded_credentials = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {encoded_credentials}",
+    }
+
+    try:
+        # Make the request using requests library
+        response = requests.post(
+            url=base_url, json=payload, headers=headers, timeout=DEFAULT_TIMEOUT
+        )
+
+        logger.debug(
+            f"[MiniTable API] Response received: {response.status_code} {response.reason}"
+        )
+
+        # Parse the response
+        decoded_body = {}
+        try:
+            decoded_body = response.json()
+            logger.debug("[MiniTable API] Successfully parsed JSON response")
+        except json.JSONDecodeError as e:
+            logger.error(f"[MiniTable API] Failed to decode JSON response: {e}")
+            decoded_body = {"raw_content": response.text, "parse_error": str(e)}
+
+        return MiniTableResponse(
+            status=response.status_code,
+            reason=response.reason,
+            decoded_body=decoded_body,
+        )
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[MiniTable API] Request error: {str(e)}")
+        return MiniTableResponse(
+            status=500,
+            reason=f"Request error: {str(e)}",
+            decoded_body={"error": str(e)},
+        )
+    except Exception as e:
+        logger.error(f"[MiniTable API] Unexpected error: {str(e)}", exc_info=True)
+        return MiniTableResponse(
+            status=500,
+            reason=f"Unexpected error: {str(e)}",
+            decoded_body={"error": str(e)},
+        )

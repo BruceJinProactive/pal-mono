@@ -30,12 +30,22 @@ class MiniTableTool(Toolkit):
             target_time: Target date and time for the reservation (ISO 8601 format)
         """
 
-        logger.info(
+        logger.debug(
             f"[MiniTable] Checking availability for party_size: {party_size}, target_time: {target_time}"
         )
 
         try:
-            search_params = {"start_date_time": target_time, "party_size": party_size}
+            from datetime import datetime
+
+            # Convert target_time to Unix timestamp
+            dt = datetime.fromisoformat(target_time.replace("Z", "+00:00"))
+            start_sec = int(dt.timestamp())
+
+            search_params = {
+                "party_size": party_size,
+                "start_sec": start_sec,
+                "duration_sec": 3600,
+            }
 
             # Call the API
             result = search_availability_api(
@@ -43,7 +53,11 @@ class MiniTableTool(Toolkit):
                 search_params=search_params,
             )
 
-            return f"Available times found: {result.get('times_available', [])}"
+            slot_time_availability = result.get("slot_time_availability", [])
+            available_slots = [
+                slot for slot in slot_time_availability if slot.get("available")
+            ]
+            return f"Available times found: {len(available_slots)} slots - {available_slots}"
 
         except Exception as e:
             logger.error(f"[MiniTable] Error checking availability: {str(e)}")
