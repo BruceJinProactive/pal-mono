@@ -60,7 +60,6 @@ def connect_minitable_api(
     }
 
     try:
-        # Make the request using requests library
         response = requests.post(
             url=base_url, json=payload, headers=headers, timeout=DEFAULT_TIMEOUT
         )
@@ -69,7 +68,6 @@ def connect_minitable_api(
             f"[MiniTable API] Response received: {response.status_code} {response.reason}"
         )
 
-        # Parse the response
         decoded_body = {}
         try:
             decoded_body = response.json()
