@@ -118,11 +118,11 @@ IMPORTANT:
 RESERVATION_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting complete reservation details from conversation history.
 
 Your task is to extract the following information:
-- Number of people (covers): How many people need seating (1-10)
-- Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date}.
-- Time: The desired reservation time in HH:MM format (24-hour format)
-- Guest details: first name, last name, phone number, email address
-- Special notes or requests (optional)
+- Number of people (covers): How many people need seating (1-10) - e.g., "2", "4 people", "party of 6"
+- Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date} - e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"  
+- Time: The desired reservation time in HH:MM format (24-hour format) - e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
+- Guest details: first name, last name, phone number with area code (e.g., "555-123-4567"), email address (e.g., "customer@email.com")
+- Special notes or requests (optional): Dietary restrictions, seating preferences, etc.
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not fabricate data
@@ -251,9 +251,9 @@ For arrival times: Extract specific times if mentioned, leave as null if not pro
 WAITLIST_JOIN_QUEUE_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting waitlist join queue parameters from conversation history.
 
 Your task is to extract the following information for joining a restaurant waitlist queue:
-- Patron's name: Full name of the person joining the waitlist (REQUIRED)
-- Phone number: Patron's phone number in E.164 format (REQUIRED - e.g., +1234567890, +33123456789)
-- Party size: Number of people in the party (REQUIRED - 1 or more)
+- Patron's name: Full name of the person joining the waitlist (REQUIRED) - extract the full name as provided by the user
+- Phone number: Patron's phone number in E.164 format (REQUIRED - e.g., +1234567890, +33123456789) - convert to proper format with area code
+- Party size: Number of people in the party (REQUIRED - 1 or more) - positive integer representing the group size
 - Special notes: ANY additional information, preferences, or requests (OPTIONAL - consolidate ALL preferences here)
 - Idempotency token: Unique identifier to prevent duplicate requests (optional - usually system generated)
 

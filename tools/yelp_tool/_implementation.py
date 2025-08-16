@@ -229,6 +229,9 @@ class YelpTool(Toolkit):
 
         Use when: User wants to check availability or see time options before booking.
 
+        Args:
+            None.
+
         Returns:
             str: Formatted string containing available reservation times, or error message
         """
@@ -313,17 +316,8 @@ class YelpTool(Toolkit):
         - User explicitly requests to book/place/make a reservation (e.g., "Book a table", "Make a reservation", "Reserve a table for tonight")
         - User has provided or confirms all required reservation details
 
-        **Required fields to collect before using this tool:**
-        - Party size (number of people): e.g., "2", "4 people", "party of 6"
-        - Date: e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"
-        - Time: e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
-        - First name: Customer's first name for the reservation
-        - Last name: Customer's last name for the reservation
-        - Phone number: Valid phone number with area code (e.g., "555-123-4567")
-        - Email address: Valid email address (e.g., "customer@email.com")
-
-        **Optional fields:**
-        - Special requests/notes: Dietary restrictions, seating preferences, etc.
+        Args:
+            None.
 
         Returns:
             str: Reservation confirmation details with confirmation number, or secure booking link
@@ -465,6 +459,9 @@ class YelpTool(Toolkit):
         - Joining the waitlist (use join_waitlist_queue)
         - General restaurant information
 
+        Args:
+            None.
+
         Returns:
             str: Current waitlist state (OPEN/ON_MY_WAY/CLOSED), wait estimates by party size,
                  closure reasons if applicable, or error message
@@ -524,6 +521,9 @@ class YelpTool(Toolkit):
         - Joining the waitlist (use join_waitlist_queue)
         - Checking if there's currently a wait (use get_waitlist_status instead)
 
+        Args:
+            None.
+
         Returns:
             str: Waitlist configuration including join radius, maximum party size, and available seating areas, or error message
         """
@@ -582,6 +582,9 @@ class YelpTool(Toolkit):
         - Just browsing or inquiring about waitlist
 
         Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
+
+        Args:
+            None.
 
         Returns:
             str: Confirmation of waitlist on-my-way visit creation with visit details, or error message
@@ -681,7 +684,8 @@ class YelpTool(Toolkit):
         - Add their party to the wait ("Put us on the list for a table")
         - Join the wait when they know there's currently a wait time
 
-        Required fields to collect before using this tool: name, phone, party size
+        Args:
+            None.
 
         Returns:
             str: Confirmation of waitlist queue join with visit details, expected seating times,
@@ -815,6 +819,9 @@ class YelpTool(Toolkit):
 
         Use when: User wants to check availability or see time options for open API restaurants.
 
+        Args:
+            None.
+
         Returns:
             str: Formatted string containing available reservation times, or error message
         """
@@ -901,14 +908,12 @@ class YelpTool(Toolkit):
         - User explicitly requests to book/place/make a reservation (e.g., "Book a table", "Make a reservation", "Reserve a table")
         - User wants to proceed with reservation after seeing availability
 
-        **Required fields to collect before using this tool:**
-        - Party size (number of people): e.g., "2", "4 people", "party of 6"
-        - Date: e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"
-        - Time: e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
-
         **Expected behavior:**
         - If exact requested time is available: Returns booking URL to complete reservation
         - If exact requested time is NOT available: Returns all available times and asks user to confirm a different time (does not provide booking URL)
+
+        Args:
+            None.
 
         Returns:
             str: Secure Yelp booking link if exact time is available, or list of all available times
@@ -1037,6 +1042,9 @@ class YelpTool(Toolkit):
         - Once canceled, they cannot rejoin using the same Visit ID
         - They can create a new waitlist entry if they change their mind
         - Cancellation is immediate and cannot be undone
+
+        Args:
+            None.
 
         Returns:
             str: Confirmation of visit cancellation or user-friendly error message
