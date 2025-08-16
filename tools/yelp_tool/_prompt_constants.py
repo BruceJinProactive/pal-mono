@@ -57,7 +57,6 @@ Your task is to extract the following information from the chat history:
 6. Assume the year as that of the current date {current_date} unless otherwise specified.
 7. **CONTEXT PRESERVATION**: If the user asks about a different date (e.g., "what about tomorrow", "the day after tomorrow", "next week") without specifying party size or time, automatically reuse the party size and time from the most recent search in the conversation history
 8. **FOLLOW-UP AVAILABILITY REQUESTS**: For "next available time", "later available time", or "earlier available time" requests, look at the conversation history to find the previous search parameters (party size, date, time) and reuse them EXACTLY. Never adjust the original time - use filtering instead as defined in TIME FILTERING RULES section below.
-9. **ANY TIME HANDLING**: If the user asks for openings "at any time", "any time", "anytime", or similar general availability requests without specifying a particular time, use "12:30" as the default time AND set both after=true and before=true to retrieve the full list of available openings.
 
 # MEAL TIME DEFAULTS:
 When users request reservations for meals without specifying exact times, use these default time ranges:
@@ -87,11 +86,6 @@ Examples:
 - If user asks for "earlier times" or "earlier slots", set before to true (but keep the original time if specified)
 - If user asks for meal-based times (lunch, dinner, etc.), use the meal defaults above
 - If a meal term is combined with an explicit time (e.g., "lunch at 1:00", "dinner reservation at 7:30"), use the explicit time and do not apply meal defaults or set after/before unless explicitly requested
-- **ANY TIME REQUESTS**: For general availability requests without specific times:
-  * "any time", "at any time", "anytime", "what times are available", "check availability", "show me openings": use time="12:30", after=true, before=true
-  * This ensures the full list of available reservation times is returned centered around 12:30 PM
-  * Examples: "Do you have any openings today?" → time="12:30", after=true, before=true
-  * Examples: "What times are available for dinner?" → time="18:00", after=true (dinner override)
 - **FOLLOW-UP AVAILABILITY SEARCHES**: For follow-up availability requests after a previous search:
   * "next available time" or "check next availability": reuse EXACT same party size and date, use original time, set after=true, before=true to search ALL available times on the SAME DAY ONLY
   * "later available time" or "any later time": reuse EXACT same party size and date, use original time, set after=true, before=null for later times only on the SAME DAY ONLY  
@@ -102,10 +96,10 @@ Examples:
 # RULES:
 - covers must be between 1 and 10
 - date must be in YYYY-MM-DD format
-- time must be in HH:MM format (24-hour). For "any time" requests, use "12:30" as default
+- time must be in HH:MM format (24-hour) and cannot be empty
 - get_covers_range is optional and defaults to false
-- after: set to true only when user wants results AFTER a certain time, or for "any time" requests, otherwise null
-- before: set to true only when user wants results BEFORE a certain time, or for "any time" requests, otherwise null
+- after: set to true only when user wants results AFTER a certain time, otherwise null
+- before: set to true only when user wants results BEFORE a certain time, otherwise null
 - For follow-up availability requests, all required fields should be inferred from previous search context - do not leave them null. Follow TIME FILTERING RULES above for specific after/before settings.
 """
 
@@ -118,7 +112,6 @@ Extract the reservation search parameters from the conversation above. Only incl
 IMPORTANT: 
 - If the user asks for meal-based reservations (lunch, dinner, breakfast, brunch) without specifying an exact time, use the meal time defaults and set appropriate filtering to search for availability during those meal periods. Never suggest times outside the appropriate meal hours (e.g., never suggest 10:30 AM for lunch).
 - For follow-up availability requests ("next available time", "later available time", "earlier available time"), follow the TIME FILTERING RULES defined in the system prompt above.
-- **FOR "ANY TIME" REQUESTS**: When users ask for openings "at any time", "any time", "anytime", or general availability without specifying a time (e.g., "Do you have any openings?", "What times are available?", "Check availability"), use time="12:30", after=true, before=true to retrieve the full list of available times.
 - CRITICAL: When user mentions "same day" or asks follow-up questions, ALWAYS maintain the original search date. Never suggest different dates unless explicitly requested.
 """
 

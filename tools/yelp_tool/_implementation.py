@@ -36,8 +36,6 @@ from tools.yelp_tool._prompt_constants import (
     WEEKDAY_CONVERSION_RULES,
 )
 from tools.yelp_tool._utils import (
-    OPENINGS_ANY_TIME_LIST_COUNT,
-    OPENINGS_DEFAULT_LIST_COUNT,
     check_cancel_visit_required_fields,
     check_waitlist_join_queue_required_fields,
     check_waitlist_on_my_way_required_fields,
@@ -180,40 +178,6 @@ class YelpTool(Toolkit):
         logger.debug(
             f"YelpTool instance created: business id={self.business_id_or_alias}, credit_card_required={credit_card_required}, yelp_integration_api={yelp_integration_api}, use_creditcard_workflow={self.use_creditcard_workflow}, waitlist_enabled={waitlist_enabled}, reservation_enabled={reservation_enabled}"
         )
-
-    def _get_result_limits_for_query(
-        self, openings_query: OpeningsQuery
-    ) -> tuple[Optional[int], Optional[int]]:
-        """
-        Helper method to determine result limits for openings queries.
-        Handles "any time" requests by setting full list retrieval.
-
-        Args:
-            openings_query: The parsed openings query from LLM extraction
-
-        Returns:
-            Tuple of (num_results_before, num_results_after)
-        """
-        # Check if this is an "any time" request (both after and before are true)
-        if openings_query.after and openings_query.before:
-            # Set to retrieve full list of openings (results before and after the default 12:30 PM time)
-            num_results_after = OPENINGS_ANY_TIME_LIST_COUNT
-            num_results_before = OPENINGS_ANY_TIME_LIST_COUNT
-            logger.info(
-                f"[YelpTool] Detected 'any time' request, setting full list retrieval: before={num_results_before}, after={num_results_after}"
-            )
-        else:
-            # Handle normal filtering logic
-            num_results_after = 0 if openings_query.before else None
-            num_results_before = 0 if openings_query.after else None
-
-            # If one value is 0 (filtering) and the other is None, set the None to default count
-            if num_results_after == 0 and num_results_before is None:
-                num_results_before = OPENINGS_DEFAULT_LIST_COUNT
-            elif num_results_before == 0 and num_results_after is None:
-                num_results_after = OPENINGS_DEFAULT_LIST_COUNT
-
-        return num_results_before, num_results_after
 
     def _get_current_date(self) -> str:
         """
@@ -893,11 +857,6 @@ class YelpTool(Toolkit):
 
                 return f"To search for available times, I need the following information: {', '.join(missing_fields)}. Please provide these details."
 
-            # Determine result limits for the openings query
-            num_results_before, num_results_after = self._get_result_limits_for_query(
-                openings_query
-            )
-
             # Create request object
             success, message, request_obj = create_openings_request_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
@@ -907,8 +866,8 @@ class YelpTool(Toolkit):
                 biz_id=self.biz_id,  # type: ignore
                 biz_lat=self.biz_lat,  # type: ignore
                 biz_long=self.biz_long,  # type: ignore
-                num_results_after=num_results_after,
-                num_results_before=num_results_before,
+                num_results_after=(0 if openings_query.before else None),
+                num_results_before=(0 if openings_query.after else None),
             )
 
             if not success or not request_obj:
@@ -994,11 +953,6 @@ class YelpTool(Toolkit):
 
                 return f"To make a reservation, I need the following information: {', '.join(missing_fields)}. Please provide these details."
 
-            # Determine result limits for the openings query
-            num_results_before, num_results_after = self._get_result_limits_for_query(
-                openings_query
-            )
-
             # Create request object
             success, message, request_obj = create_openings_request_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
@@ -1008,8 +962,8 @@ class YelpTool(Toolkit):
                 biz_id=self.biz_id,  # type: ignore
                 biz_lat=self.biz_lat,  # type: ignore
                 biz_long=self.biz_long,  # type: ignore
-                num_results_after=num_results_after,
-                num_results_before=num_results_before,
+                num_results_after=(0 if openings_query.before else None),
+                num_results_before=(0 if openings_query.after else None),
             )
 
             if not success or not request_obj:

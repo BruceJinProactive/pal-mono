@@ -27,8 +27,7 @@ from tools.yelp_tool.classes import (
 from utils.log import logger
 
 # Number of results to request when the caller explicitly asks for the full list
-OPENINGS_DEFAULT_LIST_COUNT = 20
-OPENINGS_ANY_TIME_LIST_COUNT = 100
+OPENINGS_FULL_LIST_COUNT = 20
 
 
 def normalize_openings_counts(
@@ -37,15 +36,15 @@ def normalize_openings_counts(
 ) -> Tuple[Optional[int], Optional[int]]:
     """
     Normalize openings pagination counts. If both values are explicitly 0,
-    coerce both to OPENINGS_DEFAULT_LIST_COUNT.
+    coerce both to OPENINGS_FULL_LIST_COUNT.
 
     Returns the possibly modified (num_results_before, num_results_after).
     """
     if num_results_after == 0 and num_results_before == 0:
         logger.info(
-            f"[YelpTool.openings] Both num_results_after and num_results_before are 0; setting both to {OPENINGS_DEFAULT_LIST_COUNT} to request full availability list."
+            f"[YelpTool.openings] Both num_results_after and num_results_before are 0; setting both to {OPENINGS_FULL_LIST_COUNT} to request full availability list."
         )
-        return OPENINGS_DEFAULT_LIST_COUNT, OPENINGS_DEFAULT_LIST_COUNT
+        return OPENINGS_FULL_LIST_COUNT, OPENINGS_FULL_LIST_COUNT
     return num_results_before, num_results_after
 
 
