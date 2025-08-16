@@ -6,6 +6,7 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from tools.minitable_tool._apis import create_reservation, search_availability
+from tools.minitable_tool.phone_number_validator import validate_and_format_phone
 from utils.log import logger
 
 
@@ -117,7 +118,7 @@ class MiniTableTool(Toolkit):
         Make a reservation at the restaurant.
 
         Args:
-            telephone: Customer phone number
+            telephone: Customer phone number in xxx-xxx-xxxx format (e.g., "123-456-7890")
             customer_name: Customer name
             party_size: Number of people for the reservation
             date: Date for the reservation in YYYY-MM-DD format (e.g., "2024-03-15")
@@ -129,10 +130,13 @@ class MiniTableTool(Toolkit):
         )
 
         try:
+            # Validate and format phone number
+            formatted_telephone = validate_and_format_phone(telephone)
+
             start_sec = self._convert_datetime_to_timestamp(date, time)
 
             reservation_params = {
-                "telephone": telephone,
+                "telephone": formatted_telephone,
                 "customer_name": customer_name,
                 "start_sec": start_sec,
                 "party_size": party_size,
@@ -158,6 +162,12 @@ class MiniTableTool(Toolkit):
 
             return f"Reservation created: booking_id={booking_id}, status={status}"
 
+        except ValueError as e:
+            error_msg = str(e)
+            # Handle phone number validation errors specifically
+            if "phone number" in error_msg.lower():
+                return f"{error_msg}. Please provide a valid US phone number."
+            return f"Validation error: {error_msg}"
         except Exception as e:
             logger.error(f"[MiniTable] Error creating reservation: {str(e)}")
             return f"Error creating reservation: {str(e)}"
