@@ -206,12 +206,15 @@ class OpenTableTool(Toolkit):
         return formatted_result
 
     @tool
-    def make_reservation(self, latest_user_message: str) -> str:
+    def make_reservation(self) -> str:
         """
         Creates a restaurant reservation by extracting structured reservation data from chat
         history and using OpenTable tools to resolve the necessary information.
         This function should be invoked when the user asks to make a reservation,
         book a table, etc.
+
+        Args:
+            None
 
         Returns:
             str: The reservation confirmation details including confirmation number and manage URL.
@@ -227,7 +230,7 @@ class OpenTableTool(Toolkit):
 
             # Get chat history
             chat_history = str(
-                self.query_messages_tool.query_messages(latest_user_message)  # type: ignore
+                self.query_messages_tool.query_messages()  # type: ignore
             )
 
             # Extract reservation data using LLM

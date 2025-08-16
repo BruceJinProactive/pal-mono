@@ -192,6 +192,9 @@ class ToastTool(Toolkit):
         """
         Retrieves detailed configuration information for a specific restaurant.
 
+        Args:
+            None
+
         Returns:
             str: A JSON-formatted string containing:
                 - Basic restaurant information (e.g., name, timezone, GUID)
@@ -234,6 +237,9 @@ class ToastTool(Toolkit):
     def check_online_ordering_status(self) -> str:
         """
         Retrieves the current online ordering availability status of a specified restaurant.
+
+        Args:
+            None
 
         Returns:
             str: A JSON-formatted string containing:
@@ -351,6 +357,9 @@ class ToastTool(Toolkit):
         Validates an order for checkout by extracting structured ordering data from chat
         history. This function absolutely must be invoked when all the required information is collected and the user asks to checkout,
         pay, place the order, etc.
+
+        Args:
+            None
 
         Returns:
             str: Order checkout confirmation details
@@ -716,6 +725,15 @@ class ToastTool(Toolkit):
 
     @tool
     def get_order_prices_tool(self) -> str:
+        """
+        Gets pricing information for the current order.
+
+        Args:
+            None
+
+        Returns:
+            str: JSON string containing order pricing details
+        """
         try:
             order = self._construct_order()
 

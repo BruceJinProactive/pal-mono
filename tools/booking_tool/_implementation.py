@@ -27,7 +27,7 @@ class BookingTool(Toolkit):
         Use this function to book a class.
 
         Args:
-            num_days (int): Number of days in advance to look for.
+            None
 
         Returns:
             str: JSON string of class availability.

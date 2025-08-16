@@ -180,6 +180,9 @@ class AdoraTool(Toolkit):
         """
         Check the online ordering status of the store.
 
+        Args:
+            None
+
         Returns:
             str: The online ordering status of the store.
         """
@@ -845,6 +848,9 @@ class AdoraTool(Toolkit):
         """
         Validates an order for checkout by extracting structured ordering data from chat history. This function absolutely must be invoked  either when the order is ready to be placed or when the user asks to checkout, pay, place the order, etc.
 
+        Args:
+            None
+
         Returns:
             str: The checkout order details including the payment URL.
         """
@@ -1261,6 +1267,9 @@ class AdoraTool(Toolkit):
         - A customer asks about available promotions or discounts
         - A customer wants to see what coupons are currently valid
         - A customer asks about current deals or specials
+
+        Args:
+            None
 
         Returns:
             str: A list of all available coupons with their details including coupon codes,

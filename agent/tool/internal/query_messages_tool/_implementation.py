@@ -22,6 +22,9 @@ class QueryMessagesTool(Toolkit):
     def query_messages(self) -> str:
         """Use this function to get the chat history.
 
+        Args:
+            None
+
         Returns:
             str: A string representing the entire chat history.
         """
