@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
@@ -22,25 +23,48 @@ class MiniTableTool(Toolkit):
         self.register(self.check_availability)
         self.register(self.make_reservation)
 
+    def _convert_datetime_to_timestamp(self, date: str, time: str) -> int:
+        """
+        Convert date and time to Unix timestamp using timezone from tool_metadata.
+
+        Args:
+            date: Date in YYYY-MM-DD format
+            time: Time in HH:MM format (24-hour)
+
+        Returns:
+            Unix timestamp as integer
+
+        Raises:
+            ValueError: If timezone is not available in tool_metadata
+        """
+        if not self.tool_metadata.timezone:
+            raise ValueError(
+                "Timezone information is required but not available in tool_metadata"
+            )
+
+        tz = ZoneInfo(self.tool_metadata.timezone)
+        datetime_str = f"{date} {time}"
+        dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+        dt_with_tz = dt.replace(tzinfo=tz)
+        return int(dt_with_tz.timestamp())
+
     @tool
-    def check_availability(self, party_size: int, target_time: str) -> str:
+    def check_availability(self, party_size: int, date: str, time: str) -> str:
         """
         Check availability for restaurant reservations.
 
         Args:
             party_size: Number of people for the reservation
-            target_time: Target date and time for the reservation (ISO 8601 format)
+            date: Date for the reservation in YYYY-MM-DD format (e.g., "2024-03-15")
+            time: Time for the reservation in HH:MM format (24-hour, e.g., "19:30", "12:00")
         """
 
         logger.debug(
-            f"[MiniTable] Checking availability for party_size: {party_size}, target_time: {target_time}"
+            f"[MiniTable] Checking availability for party_size: {party_size}, date: {date}, time: {time}"
         )
 
         try:
-
-            # Convert target_time to Unix timestamp
-            dt = datetime.fromisoformat(target_time.replace("Z", "+00:00"))
-            start_sec = int(dt.timestamp())
+            start_sec = self._convert_datetime_to_timestamp(date, time)
 
             search_params = {
                 "party_size": party_size,
@@ -85,7 +109,8 @@ class MiniTableTool(Toolkit):
         telephone: str,
         customer_name: str,
         party_size: int,
-        target_time: str,
+        date: str,
+        time: str,
         note: str = "",
     ) -> str:
         """
@@ -95,17 +120,16 @@ class MiniTableTool(Toolkit):
             telephone: Customer phone number
             customer_name: Customer name
             party_size: Number of people for the reservation
-            target_time: Target date and time for the reservation (ISO 8601 format)
+            date: Date for the reservation in YYYY-MM-DD format (e.g., "2024-03-15")
+            time: Time for the reservation in HH:MM format (24-hour, e.g., "19:30", "12:00")
             note: Optional note for the reservation
         """
         logger.debug(
-            f"[MiniTable] Making reservation for {customer_name}, party_size: {party_size}, target_time: {target_time}"
+            f"[MiniTable] Making reservation for {customer_name}, party_size: {party_size}, date: {date}, time: {time}"
         )
 
         try:
-            # Convert target_time to Unix timestamp
-            dt = datetime.fromisoformat(target_time.replace("Z", "+00:00"))
-            start_sec = int(dt.timestamp())
+            start_sec = self._convert_datetime_to_timestamp(date, time)
 
             reservation_params = {
                 "telephone": telephone,
