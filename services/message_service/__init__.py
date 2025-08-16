@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.schemas.chat.message import Message
+from db.tables.types import Channel
 from utils.dd import traced
 from utils.request_context import RequestContext
 
@@ -186,18 +187,24 @@ def get_conversations_by_users(
     )
 
 
-def create_conversation(session: Session, user_id: uuid.UUID) -> db.Conversation | None:
+def create_conversation(
+    session: Session,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
+    channel: Channel | None = None,
+) -> db.Conversation | None:
     """
-    Creates a new conversation for the user
+    Creates a new conversation for the user, optionally tracking voice call usage for Stripe billing.
 
     Args:
         session (Session): The database session.
         user_id (uuid.UUID): The user id associated with the new conversation
+        project_id (uuid.UUID | None): Optional project id - if provided, will track voice call usage for Stripe billing
 
     Returns:
         db.Conversation: A new conversation
     """
-    return _implementation.create_conversation(session, user_id)
+    return _implementation.create_conversation(session, user_id, project_id, channel)
 
 
 __all__ = [

@@ -16,6 +16,7 @@ from ._subscription import (
     get_account_subscription,
     get_account_subscriptions,
     get_project_subscriptions_by_subscription_external_id,
+    get_stripe_customer_id_for_project,
     get_subscription_plan_by_id,
     handle_stripe_checkout_success,
     remove_project_subscription,
@@ -42,4 +43,5 @@ __all__ = [
     "get_project_subscriptions_by_subscription_external_id",
     "create_project_subscription",
     "remove_project_subscription",
+    "get_stripe_customer_id_for_project",
 ]

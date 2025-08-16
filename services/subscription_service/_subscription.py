@@ -945,3 +945,56 @@ def remove_project_subscription(
             "account_subscription_id": subscription.external_id,
         },
     )
+
+
+def get_stripe_customer_id_for_project(
+    session: Session, project_id: uuid.UUID
+) -> str | None:
+    """
+    Get the Stripe customer ID associated with a project's account.
+
+    Args:
+        session: Database session
+        project_id: Project ID to get customer ID for
+
+    Returns:
+        str | None: Stripe customer ID if found, None otherwise
+    """
+    try:
+        project_repo = db.ProjectRepository(session)
+        project = project_repo.get_project(project_id)
+
+        if not project:
+            logger.warning(
+                f"Project {project_id} not found when getting Stripe customer ID",
+                extra={"project_id": str(project_id)},
+            )
+            return None
+
+        account_repo = db.AccountRepository(session)
+        account = account_repo.get_account_by_id(project.account_id)
+
+        if not account:
+            logger.warning(
+                f"Account {project.account_id} not found when getting Stripe customer ID",
+                extra={
+                    "project_id": str(project_id),
+                    "account_id": str(project.account_id),
+                },
+            )
+            return None
+
+        if not account.stripe_customer_id:
+            return None
+
+        return account.stripe_customer_id
+
+    except Exception as e:
+        logger.error(
+            f"Error getting Stripe customer ID for project {project_id}: {e}",
+            extra={
+                "project_id": str(project_id),
+            },
+            exc_info=True,
+        )
+        return None
