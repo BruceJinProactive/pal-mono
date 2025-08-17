@@ -11,7 +11,7 @@ def search_availability(
 
     """
     # Validate required fields
-    required_fields = ["start_sec", "party_size"]
+    required_fields = ["party_size", "start_sec_list"]
     missing_fields = [
         field for field in required_fields if search_params.get(field) is None
     ]
@@ -21,15 +21,19 @@ def search_availability(
 
     api_function = "/weapp/ai/reserve/availiability/check"
 
+    slot_times = []
+    for start_sec in search_params["start_sec_list"]:
+        slot_times.append(
+            {
+                "start_sec": start_sec,
+                "duration_sec": search_params.get("duration_sec", 3600),
+            }
+        )
+
     request_body = {
         "merchant_id": str(restaurant_id),
         "party_size": str(search_params.get("party_size")),
-        "slot_time": [
-            {
-                "start_sec": search_params.get("start_sec", 0),
-                "duration_sec": search_params.get("duration_sec", 3600),
-            }
-        ],
+        "slot_time": slot_times,
     }
 
     response = connect_minitable_api(

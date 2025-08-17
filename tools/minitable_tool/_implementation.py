@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
@@ -49,6 +49,45 @@ class MiniTableTool(Toolkit):
         dt_with_tz = dt.replace(tzinfo=tz)
         return int(dt_with_tz.timestamp())
 
+    def _generate_fuzzy_time_slots(
+        self, time: str, slots_before: int = 6, slots_after: int = 6
+    ) -> list[str]:
+        """
+        Generate fuzzy time slots around the requested time in 15-minute intervals.
+
+        Args:
+            time: Time in HH:MM format
+            slots_before: Number of 15-minute slots to search before requested time
+            slots_after: Number of 15-minute slots to search after requested time
+
+        Returns:
+            List of time strings in HH:MM format for all time slots to search
+        """
+
+        # Parse hour and minute
+        hour, minute = map(int, time.split(":"))
+
+        # Round to nearest 15-minute interval
+        rounded_minute = (minute // 15) * 15
+
+        time_slots = []
+
+        # Generate slots
+        for i in range(-slots_before, slots_after + 1):
+            total_minutes = hour * 60 + rounded_minute + (i * 15)
+
+            # Handle day overflow/underflow
+            if total_minutes < 0:
+                continue  # Skip negative times
+            if total_minutes >= 24 * 60:
+                continue  # Skip times past midnight
+
+            slot_hour = total_minutes // 60
+            slot_minute = total_minutes % 60
+            time_slots.append(f"{slot_hour:02d}:{slot_minute:02d}")
+
+        return time_slots
+
     @tool
     def check_availability(self, party_size: int, date: str, time: str) -> str:
         """
@@ -65,11 +104,18 @@ class MiniTableTool(Toolkit):
         )
 
         try:
-            start_sec = self._convert_datetime_to_timestamp(date, time)
+            # Generate fuzzy time slots as strings
+            fuzzy_time_slots = self._generate_fuzzy_time_slots(time)
+
+            # Convert time slots to timestamps
+            fuzzy_timestamps = [
+                self._convert_datetime_to_timestamp(date, time_slot)
+                for time_slot in fuzzy_time_slots
+            ]
 
             search_params = {
                 "party_size": party_size,
-                "start_sec": start_sec,
+                "start_sec_list": fuzzy_timestamps,
                 "duration_sec": 3600,
             }
 
@@ -80,25 +126,61 @@ class MiniTableTool(Toolkit):
 
             slot_time_availability = result.get("slot_time_availability", [])
             available_slots = []
+            requested_timestamp = self._convert_datetime_to_timestamp(date, time)
+            requested_time_available = False
 
             for slot in slot_time_availability:
                 if slot.get("available"):
                     slot_time = slot.get("slot_time", {})
                     start_sec = slot_time.get("start_sec")
-                    duration_sec = slot_time.get("duration_sec")
 
-                    # Convert epoch time to UTC datetime string
+                    # Convert epoch time to local time using timezone
                     if start_sec:
-                        dt = datetime.fromtimestamp(int(start_sec), tz=timezone.utc)
-                        utc_time = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-                        available_slots.append(
-                            {
-                                "time": utc_time,
-                                "duration_sec": duration_sec,
-                            }
-                        )
+                        if not self.tool_metadata.timezone:
+                            raise ValueError(
+                                "Timezone information is required but not available in tool_metadata"
+                            )
+                        tz = ZoneInfo(self.tool_metadata.timezone)
+                        dt = datetime.fromtimestamp(int(start_sec), tz=tz)
+                        local_time = dt.strftime("%H:%M")
 
-            return f"Available times found: {len(available_slots)} slots - {available_slots}"
+                        # Calculate time difference from requested time
+                        time_diff_minutes = (int(start_sec) - requested_timestamp) // 60
+
+                        if time_diff_minutes == 0:
+                            requested_time_available = True
+                            available_slots.append(
+                                {
+                                    "time": local_time,
+                                    "diff": 0,
+                                    "desc": f"{local_time} (requested time)",
+                                }
+                            )
+                        else:
+                            if time_diff_minutes > 0:
+                                desc = f"{local_time} (+{time_diff_minutes}min)"
+                            else:
+                                desc = f"{local_time} ({time_diff_minutes}min)"
+                            available_slots.append(
+                                {
+                                    "time": local_time,
+                                    "diff": abs(time_diff_minutes),
+                                    "desc": desc,
+                                }
+                            )
+
+            # Check if requested time is available
+            if requested_time_available:
+                return f"Great! Your requested time {time} is available."
+            elif available_slots:
+                # Sort by time difference and suggest closest alternatives
+                available_slots.sort(key=lambda x: x["diff"])
+                suggestions = [
+                    slot["desc"] for slot in available_slots[:3]
+                ]  # Show up to 3 closest
+                return f"Your requested time {time} is not available. Here are the closest available times: {', '.join(suggestions)}"
+            else:
+                return f"Sorry, no available time slots found for {date} around {time}."
 
         except Exception as e:
             logger.error(f"[MiniTable] Error checking availability: {str(e)}")
