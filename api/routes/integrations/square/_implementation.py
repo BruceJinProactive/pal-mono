@@ -26,7 +26,13 @@ from ._valid import _oauth_state, valid_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
-SQUARE_SCOPES = ["ITEMS_READ", "ORDERS_READ", "ORDERS_WRITE", "MERCHANT_PROFILE_READ"]
+SQUARE_SCOPES = [
+    "ITEMS_READ",
+    "ORDERS_READ",
+    "ORDERS_WRITE",
+    "MERCHANT_PROFILE_READ",
+    "PAYMENTS_READ",
+]
 
 
 async def install(request: Request):
@@ -424,3 +430,36 @@ def get_merchant_locations(
             f"[Square OAuth] Error getting Square locations for account {account_name}: {e}"
         )
         return {"success": False, "error": f"Error getting Square locations: {str(e)}"}
+
+
+async def webhook(request: Request) -> JSONResponse:
+    """
+    Simple Square webhook endpoint for testing - just logs incoming data.
+    """
+    try:
+        # Parse the webhook payload
+        body = await request.json()
+
+        # Log everything we receive for testing
+        logger.info(
+            f"[Square Webhook] Received webhook from Square: {json.dumps(body, indent=2)}"
+        )
+
+        # Return success response
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"success": True, "message": "Webhook received successfully"},
+        )
+
+    except json.JSONDecodeError:
+        logger.error("[Square Webhook] Invalid JSON in request body")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": "Invalid JSON in request body"},
+        )
+    except Exception as e:
+        logger.error(f"[Square Webhook] Error processing webhook request: {str(e)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": "Internal server error"},
+        )

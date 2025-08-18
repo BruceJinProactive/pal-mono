@@ -132,3 +132,20 @@ async def get_square_locations(account_name: str, integration_id: uuid.UUID):
         return result
     finally:
         session.close()
+
+
+@integrations_router.post("/square/webhook", status_code=status.HTTP_200_OK)
+async def square_webhook(request: Request):
+    """
+    Handle Square webhook notifications for payment status updates.
+
+    Currently handles:
+    - payment.updated: Payment status changed
+
+    Args:
+        request: FastAPI request object containing the webhook payload
+
+    Returns:
+        JSONResponse: Success or error response
+    """
+    return await square_implementation.webhook(request)
