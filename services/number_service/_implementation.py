@@ -13,7 +13,13 @@ from vapi.types.server import Server
 from utils.log import logger
 
 from ..service_utils import get_server_url
-from ._utils import AssistantConfig, NumberResponse
+from ._utils import (
+    AssistantConfig,
+    NumberResponse,
+    NumberType,
+    UsageType,
+    VerificationStatus,
+)
 
 RELEASED_LABEL = "RELEASED"
 
@@ -275,21 +281,95 @@ class NumberService:
 
         return number_response
 
-    def get_purchased_numbers(
-        self, limit: int = 20
-    ) -> List[IncomingPhoneNumberInstance]:
-        """Retrieve a list of all purchased phone numbers from Twilio.
-
-        Args:
-            limit: Maximum number of numbers to return (default: 20)
+    def get_purchased_numbers(self) -> List[IncomingPhoneNumberInstance]:
+        """Retrieve all purchased phone numbers from Twilio for the current environment.
 
         Returns:
-            List of Twilio IncomingPhoneNumberInstance objects containing:
+            List of Twilio IncomingPhoneNumberInstance objects for current environment:
             - phone_number: The actual number
-            - friendly_name: Current display name
+            - friendly_name: Current display name matching current environment
             - sid: Twilio's unique identifier
         """
-        return self.twilio_client.incoming_phone_numbers.list(limit=limit)
+        # Get current environment
+        env = (os.environ.get("RUNTIME_ENV") or "dev").strip().lower()
+        prefix = f"{env}:"
+
+        # Stream all numbers from Twilio, filtering by environment prefix
+        filtered_numbers: list[IncomingPhoneNumberInstance] = []
+        for number in self.twilio_client.incoming_phone_numbers.stream(limit=None):
+            name_lower = str(number.friendly_name or "").lower()
+            if name_lower.startswith(prefix):
+                filtered_numbers.append(number)
+        return filtered_numbers
+
+    def get_purchased_numbers_by_page(
+        self, page: int = 0, page_size: int = 20
+    ) -> tuple[List[IncomingPhoneNumberInstance], bool]:
+        """
+        Retrieve purchased phone numbers for current environment with pagination.
+
+        Uses Twilio SDK's efficient stream() method with client-side filtering.
+        This approach is memory-efficient and stops fetching once we have enough results.
+
+        Args:
+            page: Page number (0-based indexing, default: 0)
+            page_size: Number of numbers per page (default: 20, max: 100)
+
+        Returns:
+            Tuple containing:
+            - List of Twilio IncomingPhoneNumberInstance objects for current environment
+            - Boolean indicating if there are more pages available
+
+        Raises:
+            ValueError: If page or page_size parameters are invalid
+        """
+        # Validate parameters
+        if page < 0:
+            raise ValueError("page must be >= 0")
+        if not (1 <= page_size <= 100):
+            raise ValueError("page_size must be between 1 and 100")
+
+        # Get current environment
+        env = (os.environ.get("RUNTIME_ENV") or "dev").strip().lower()
+        prefix = f"{env}:"
+
+        # Calculate the target slice for the requested page
+        target_start = page * page_size
+        target_end_exclusive = target_start + page_size
+
+        # We will lazily iterate Twilio results and filter client-side
+        # To determine has_more efficiently, we fetch up to one extra match
+        # beyond the requested window.
+        matched: list[IncomingPhoneNumberInstance] = []
+        max_needed = target_end_exclusive + 1  # one extra to determine has_more
+
+        # Tune Twilio page_size for fewer round-trips while keeping memory modest
+        twilio_page_size = max(30, min(100, page_size * 3))
+
+        try:
+            # stream(...) yields results lazily, fetching additional pages
+            # only as iteration demands. This is much more efficient than REST API approach.
+            for num in self.twilio_client.incoming_phone_numbers.stream(
+                limit=None, page_size=twilio_page_size
+            ):
+                friendly_name = str(num.friendly_name or "").lower()
+                if friendly_name.startswith(prefix):
+                    matched.append(num)
+
+                    # Stop once we have enough to serve the page and know has_more
+                    if len(matched) >= max_needed:
+                        break
+
+        except Exception as e:
+            logger.error(f"Error streaming numbers from Twilio: {e}")
+            raise ValueError(f"Failed to fetch numbers from Twilio: {e}")
+
+        # Slice out the requested page window
+        page_numbers = matched[target_start:target_end_exclusive]
+        # has_more if we collected the extra match beyond the requested window
+        has_more_pages = len(matched) > target_end_exclusive
+
+        return page_numbers, has_more_pages
 
     def get_number_details(self, number: str) -> IncomingPhoneNumberInstance | None:
         """Get details of a specific purchased phone number.
@@ -387,7 +467,74 @@ class NumberService:
         stage = os.environ.get("RUNTIME_ENV") or "dev"
         return f"{stage}:{name}"
 
+    def _get_phone_number_type(self, phone_number: str) -> NumberType:
+        """
+        Get the type of a phone number using prefix-based detection.
+
+        Uses the official North American Numbering Plan (NANPA) toll-free prefixes
+        managed by the FCC to determine if a number is toll-free.
+
+        Args:
+            phone_number: The phone number to check (in E.164 format)
+
+        Returns:
+            NumberType: TOLL_FREE if it's a toll-free number, OTHER otherwise
+        """
+        if not phone_number:
+            return NumberType.OTHER
+
+        # Remove +1 country code if present and check US/Canada toll-free prefixes
+        clean_number = phone_number.replace("+1", "").replace("-", "").replace(" ", "")
+
+        # Official North American toll-free prefixes (FCC/NANPA managed)
+        toll_free_prefixes = ["800", "833", "844", "855", "866", "877", "888"]
+
+        for prefix in toll_free_prefixes:
+            if clean_number.startswith(prefix):
+                return NumberType.TOLL_FREE
+
+        return NumberType.OTHER
+
+    def get_toll_free_verification_status(
+        self, number_sid: str
+    ) -> VerificationStatus | None:
+        """
+        Get the toll-free verification status for a specific phone number.
+
+        Args:
+            number_sid: The Twilio SID of the phone number
+
+        Returns:
+            VerificationStatus: The verification status enum or None if no verification found
+        """
+        try:
+            tollfree_verifications = (
+                self.twilio_client.messaging.v1.tollfree_verifications.list(
+                    tollfree_phone_number_sid=number_sid, limit=1
+                )
+            )
+            if tollfree_verifications:
+                status_str = str(tollfree_verifications[0].status)
+                # Map Twilio status to our enum
+                status_mapping = {
+                    "IN_REVIEW": VerificationStatus.IN_REVIEW,
+                    "TWILIO_APPROVED": VerificationStatus.TWILIO_APPROVED,
+                }
+                return status_mapping.get(status_str, VerificationStatus.UNVERIFIED)
+            return None
+        except Exception as e:
+            logger.warning(
+                f"Failed to get toll-free verification status for {number_sid}: {e}"
+            )
+            return None
+
     def get_available_numbers(self):
+        """
+        Get available numbers with their verification status.
+
+        NOTE: Reverted to original implementation as requested - this only includes
+        toll-free numbers that have verification records, not all toll-free numbers.
+        """
         number_pool = {}
         numlist = self.twilio_client.incoming_phone_numbers.list()
         for num in numlist:
@@ -401,7 +548,7 @@ class NumberService:
             for record in tollfree_verifications:
                 number_pool[num.phone_number] = {
                     "friendly_name": num.friendly_name,
-                    "status": record.status,
+                    "status": str(record.status),
                 }
         return number_pool
 
@@ -432,3 +579,108 @@ class NumberService:
             if "review" in name_statue["status"].lower():
                 inreview_numbers.append(number)
         return inreview_numbers
+
+    def list_phone_numbers_with_details(
+        self, session, page: int = 1, page_size: int = 20
+    ):
+        """
+        Business logic for listing phone numbers with full details including project associations.
+
+        This method handles:
+        - Retrieving paginated phone numbers from Twilio
+        - Determining phone number types (toll-free vs other)
+        - Checking toll-free verification status
+        - Finding associated projects and accounts
+        - Determining usage types (voice/sms/both/unused)
+
+        Args:
+            session: Database session for project lookups
+            page: Page number (1-based)
+            page_size: Number of items per page
+
+        Returns:
+            tuple: (phone_numbers_data, has_more) where phone_numbers_data is a list of dicts
+                   containing all the processed phone number information
+        """
+        from services import project_service
+
+        # Get purchased numbers from Twilio with pagination (convert to 0-based)
+        twilio_numbers, has_more = self.get_purchased_numbers_by_page(
+            page=page - 1, page_size=page_size
+        )
+
+        # Process each phone number with business logic
+        phone_numbers_data = []
+        for twilio_number in twilio_numbers:
+            # Validate required fields from Twilio
+            phone_number = twilio_number.phone_number
+            sid = twilio_number.sid
+            if not phone_number or not sid:
+                logger.warning(
+                    "Skipping Twilio number with missing identifiers",
+                    extra={"sid": sid, "phone_number": phone_number},
+                )
+                continue
+
+            # Determine phone number type
+            number_type = self._get_phone_number_type(phone_number)
+
+            # Check verification status for toll-free numbers
+            status = None
+            if number_type == NumberType.TOLL_FREE:
+                status = self.get_toll_free_verification_status(sid)
+                if status is None:
+                    status = VerificationStatus.UNVERIFIED
+
+            # Find associated projects and accounts
+            projects = project_service.get_projects_by_phone_number(
+                session, phone_number
+            )
+
+            # Determine usage type by checking channel identifiers
+            usage_types = set()
+            for project in projects:
+                for channel_identifier in project.channel_identifiers or []:
+                    clean_identifier = channel_identifier.strip()
+                    if clean_identifier.endswith(f":{phone_number}"):
+                        channel_type = clean_identifier.split(":")[0]
+                        if channel_type in ["voice", "sms"]:
+                            usage_types.add(channel_type)
+
+            # Determine overall usage type
+            if not usage_types:
+                usage_type = UsageType.UNUSED
+            elif len(usage_types) == 1:
+                channel_type = list(usage_types)[0]
+                usage_type = (
+                    UsageType.VOICE if channel_type == "voice" else UsageType.SMS
+                )
+            else:
+                usage_type = UsageType.BOTH
+
+            # Extract project and account information
+            project_ids = [project.id for project in projects] if projects else None
+            project_names = [project.name for project in projects] if projects else None
+            account_ids = (
+                [project.account_id for project in projects] if projects else None
+            )
+            account_names = (
+                [project.account.name for project in projects] if projects else None
+            )
+
+            # Build processed phone number data
+            phone_number_data = {
+                "phone_number": phone_number,
+                "friendly_name": twilio_number.friendly_name,
+                "sid": sid,
+                "status": status,
+                "project_ids": project_ids,
+                "project_names": project_names,
+                "account_ids": account_ids,
+                "account_names": account_names,
+                "usage_type": usage_type,
+                "number_type": number_type,
+            }
+            phone_numbers_data.append(phone_number_data)
+
+        return phone_numbers_data, has_more

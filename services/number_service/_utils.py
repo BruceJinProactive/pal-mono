@@ -1,3 +1,4 @@
+import enum
 from typing import TypedDict
 
 from pydantic import BaseModel, Field
@@ -24,3 +25,34 @@ class AssistantConfig(TypedDict):
     model_url: str
     model_name: str
     server_url: str
+
+
+class NumberChannel(str, enum.Enum):
+    """Channel types for phone number usage."""
+
+    VOICE = "voice"
+    SMS = "sms"
+
+
+class VerificationStatus(str, enum.Enum):
+    """Twilio toll-free verification status values."""
+
+    IN_REVIEW = "IN_REVIEW"
+    TWILIO_APPROVED = "TWILIO_APPROVED"
+    UNVERIFIED = "unverified"
+
+
+class UsageType(str, enum.Enum):
+    """How a phone number is being used."""
+
+    VOICE = "voice"
+    SMS = "sms"
+    BOTH = "both"
+    UNUSED = "unused"
+
+
+class NumberType(str, enum.Enum):
+    """Type of phone number."""
+
+    TOLL_FREE = "toll-free"
+    OTHER = "other"

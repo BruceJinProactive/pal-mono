@@ -229,6 +229,22 @@ def get_project_sync(session: Session, message: Message) -> db.Project:
     return _implementation.get_project_sync(session, message)
 
 
+def get_projects_by_phone_number(
+    session: Session, phone_number: str
+) -> List[db.Project]:
+    """
+    Find all projects associated with a phone number by checking different channel prefixes.
+
+    Args:
+        session (Session): The database connection.
+        phone_number (str): The phone number to search for (e.g., "+15551234567").
+
+    Returns:
+        List of Projects associated with the phone number. Empty list if none found.
+    """
+    return _implementation.get_projects_by_phone_number(session, phone_number)
+
+
 __all__ = [
     "create_project",
     "update_project",
@@ -241,5 +257,6 @@ __all__ = [
     "delete_project",
     "get_project_async",
     "get_project_sync",
+    "get_projects_by_phone_number",
     "ProjectParams",
 ]

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin import UserContext
 from api.schemas.chat.message import Message
+from db.repositories.project_repository import ProjectRepository
 from db.tables.change_log import ChangeResourceType
 from services.history_service import change_log_context
 from services.number_service import NumberService
@@ -233,3 +234,20 @@ def get_project_sync(session: Session, message: Message) -> db.Project:
             f"channel_identifier '{message.recipient_identifier}' not found."
         )
     return project
+
+
+def get_projects_by_phone_number(
+    session: Session, phone_number: str
+) -> List[db.Project]:
+    """
+    Find all projects associated with a phone number by checking different channel prefixes.
+
+    Args:
+        session (Session): The database connection.
+        phone_number (str): The phone number to search for (e.g., "+15551234567").
+
+    Returns:
+        List of Projects associated with the phone number. Empty list if none found.
+    """
+    repository = ProjectRepository(session)
+    return repository.get_projects_by_phone_number(phone_number)

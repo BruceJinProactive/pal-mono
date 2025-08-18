@@ -171,6 +171,43 @@ class ProjectRepository:
         )
         return project
 
+    def get_projects_by_phone_number(self, phone_number: str) -> List[Project]:
+        """
+        Find all projects associated with a phone number by checking different channel prefixes.
+
+        Args:
+            phone_number (str): The phone number to search for (e.g., "+15551234567").
+
+        Returns:
+            List of Projects associated with the phone number. Empty list if none found.
+        """
+        # Query all projects that have this phone number in any channel identifier
+        # Using SQL for efficiency since we need to check multiple prefixes
+        # Use TRIM to handle trailing spaces in stored phone numbers
+        projects = (
+            self.session.query(Project)
+            .filter(
+                text(
+                    """
+                EXISTS (
+                    SELECT 1 FROM unnest(channel_identifiers) AS channel_id 
+                    WHERE TRIM(channel_id) LIKE :voice_pattern 
+                       OR TRIM(channel_id) LIKE :sms_pattern 
+                       OR TRIM(channel_id) LIKE :phone_pattern
+                )
+                """
+                )
+            )
+            .params(
+                voice_pattern=f"voice:{phone_number}",
+                sms_pattern=f"sms:{phone_number}",
+                phone_pattern=f"phone:{phone_number}",
+            )
+            .all()
+        )
+
+        return projects
+
     def update_project_config(self, project_id: uuid.UUID, config: Dict[str, Any]):
         """Update a project's config in the database.
 

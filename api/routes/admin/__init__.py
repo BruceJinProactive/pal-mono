@@ -79,6 +79,7 @@ from api.schemas.admin.onboarding import (
     OnboardingRequest,
 )
 from api.schemas.admin.phone_number import (
+    ListPhoneNumbersResponse,
     ReleaseProjectNumberRequest,
     ReserveProjectNumberRequest,
 )
@@ -921,6 +922,30 @@ async def release_phone_number(
     Release the specified phone number.
     """
     await _phone_number.release_phone_number(project_id, request, context, session)
+
+
+@admin_router.get("/phone_numbers", response_model=ListPhoneNumbersResponse)
+async def list_phone_numbers(
+    page: int = Query(
+        1,
+        ge=1,
+        description="Page number for pagination (1-based, default: 1).",
+    ),
+    page_size: int = Query(
+        20, ge=1, le=100, description="Number of phone numbers per page"
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    List purchased phone numbers from Twilio account for the current environment.
+
+    Returns paginated phone numbers that belong to the current environment (determined by RUNTIME_ENV).
+    Uses 1-based pagination where page=1 returns the first page of results.
+
+    Includes project and account associations for each phone number.
+    """
+    return await _phone_number.list_phone_numbers(context, session, page, page_size)
 
 
 """
