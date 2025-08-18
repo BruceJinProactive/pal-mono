@@ -337,11 +337,11 @@ class OrderCalculationRequest(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    delivery_fee: float = Field(alias="deliveryFee")
+    delivery_fee: Union[int, float] = Field(alias="deliveryFee")
     order_type: OrderType = Field(alias="orderType")
     payment_method: PaymentMethod = Field(alias="paymentMethod")
     selected_items: List[OrderSelectedItem] = Field(alias="selectedItems")
-    total_tips: float = Field(alias="totalTips")
+    total_tips: Union[int, float] = Field(alias="totalTips")
 
 
 class TaxDetail(BaseModel):

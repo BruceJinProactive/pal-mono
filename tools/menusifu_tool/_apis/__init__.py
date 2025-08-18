@@ -1,7 +1,13 @@
-from typing import Optional
+import json
+from typing import Optional, Union
 
 from tools.menusifu_tool._apis._utils import connect_menusifu_api, parse_json
-from tools.menusifu_tool.classes import MenuResponse
+from tools.menusifu_tool.classes import (
+    MenuResponse,
+    OrderCalculationErrorResponse,
+    OrderCalculationRequest,
+    OrderCalculationResponse,
+)
 
 
 def get_merchant_menu(
@@ -24,7 +30,7 @@ def get_merchant_menu(
         ValueError: If the API call fails or response validation fails
     """
     try:
-        # Build API endpoint
+        # Build API endpoint with /bot path
         api_endpoint = f"/bot/merchant/{merchant_id}/menu"
 
         # Make API call
@@ -49,3 +55,84 @@ def get_merchant_menu(
 
     except Exception as e:
         raise ValueError(f"Failed to get merchant menu: {str(e)}") from e
+
+
+def calculate_order_total(
+    access_token: str,
+    merchant_id: str,
+    order_request: OrderCalculationRequest,
+    base_url: str = "assistant.mealkeyway.com",
+) -> Union[OrderCalculationResponse, OrderCalculationErrorResponse]:
+    """
+    Calculate order total for a specific merchant using MenuSifu API.
+
+    Args:
+        access_token (str): MenuSifu API access token
+        merchant_id (str): The merchant ID to calculate order for
+        order_request (OrderCalculationRequest): Order calculation request data
+        base_url (str): Base URL for MenuSifu API (default: assistant.mealkeyway.com)
+
+    Returns:
+        Union[OrderCalculationResponse, OrderCalculationErrorResponse]:
+            Order calculation response or error response
+
+    Raises:
+        ValueError: If the API call fails or response validation fails
+    """
+    try:
+        api_endpoint = f"/bot/merchant/{merchant_id}/order/calc"
+
+        # Convert Pydantic model to JSON string for API call
+        request_data = order_request.model_dump(by_alias=True)
+        payload = json.dumps(request_data)
+
+        # Make API call
+        response = connect_menusifu_api(
+            http_method="POST",
+            access_token=access_token,
+            api_endpoint=api_endpoint,
+            base_url=base_url,
+            payload=payload,
+        )
+
+        # Check for API errors (HTTP level)
+        if response["status"] != 200:
+            error_msg = f"MenuSifu API call failed with status {response['status']} ({response.get('reason', 'Unknown')})"
+            if response["decoded_body"]:
+                error_msg += f"\nResponse body: {response['decoded_body']}"
+            else:
+                error_msg += "\nResponse body: (empty)"
+            raise ValueError(error_msg)
+
+        # Parse JSON response
+        try:
+            response_data = json.loads(response["decoded_body"])
+        except json.JSONDecodeError:
+            raise ValueError(
+                f"Invalid JSON response from MenuSifu API: {response['decoded_body']}"
+            )
+
+        # Check if response indicates success or business logic error
+        if response_data.get("successful", False):
+            # Success response - parse as OrderCalculationResponse
+            calculation_response = parse_json(
+                OrderCalculationResponse, response["decoded_body"]
+            )
+            if calculation_response is None:
+                raise ValueError(
+                    "Failed to parse successful response into OrderCalculationResponse model"
+                )
+            return calculation_response
+        else:
+            # Error response - parse as OrderCalculationErrorResponse
+            error_response = parse_json(
+                OrderCalculationErrorResponse, response["decoded_body"]
+            )
+            if error_response is None:
+                raise ValueError(
+                    "Failed to parse error response into OrderCalculationErrorResponse model"
+                )
+            return error_response
+
+    except Exception as e:
+        raise ValueError(f"Failed to calculate order total: {str(e)}") from e

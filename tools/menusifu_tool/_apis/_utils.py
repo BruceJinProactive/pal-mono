@@ -45,7 +45,7 @@ def connect_menusifu_api(
         query_params: Optional query parameters
         extra_headers: Optional extra headers
         payload: Request payload for POST requests
-        base_url: Base URL for MenuSifu API
+        base_url: Hostname for MenuSifu API (e.g., "assistant.mealkeyway.com")
 
     Returns:
         Dict: Response with status, reason, and decoded_body
@@ -60,8 +60,12 @@ def connect_menusifu_api(
         )
 
     try:
+        # Expect base_url to be just the hostname (e.g., "assistant.mealkeyway.com")
+        hostname = base_url.strip("/")
+        logger.info(f"Creating HTTPS connection to hostname: {hostname}")
+
         # Create connection
-        conn = http.client.HTTPSConnection(base_url)
+        conn = http.client.HTTPSConnection(hostname)
 
         try:
             headers = {
@@ -72,6 +76,7 @@ def connect_menusifu_api(
             if extra_headers:
                 headers.update(extra_headers)
 
+            # Use the API endpoint as the full path
             path_plus_params = api_endpoint
 
             if query_params:
