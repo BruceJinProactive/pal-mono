@@ -202,7 +202,7 @@ class OpenTableTool(Toolkit):
 
         # Format the results in a human-readable way
         formatted_result = format_availability_results(result)
-
+        logger.info(f"[OpenTable Tool] Formatted result: {formatted_result}")
         return formatted_result
 
     @tool

@@ -35,8 +35,14 @@ def format_availability_results(availability: AvailabilitySearchResponse) -> str
     # Format available times
     if hasattr(availability, "times_available") and availability.times_available:
         for time_slot in availability.times_available:
-            # Access the time attribute directly
-            time_str = getattr(time_slot, "time", "")
+            # Handle both string and object formats
+            if isinstance(time_slot, str):
+                # If time_slot is a string (ISO datetime), use it directly
+                time_str = time_slot
+            else:
+                # If time_slot is an object, try to get the time attribute
+                time_str = getattr(time_slot, "time", "")
+
             if time_str:
                 # Convert ISO time to more readable format
                 try:
@@ -45,39 +51,8 @@ def format_availability_results(availability: AvailabilitySearchResponse) -> str
                 except ValueError:
                     formatted_time = time_str
 
-                # Get dining area details
-                areas = []
-                # Access availability_types as an attribute
-                availability_types = getattr(time_slot, "availability_types", [])
-
-                # Track if we have cancellation policy info for this time slot
-                cancellation_info = None
-
-                for avail_type in availability_types:
-                    # Check for cancellation policy
-                    if not cancellation_info and hasattr(
-                        avail_type, "cancellation_policy"
-                    ):
-                        policy = getattr(avail_type, "cancellation_policy")
-                        if policy:
-                            cancellation_info = format_cancellation_policy_for_timeslot(
-                                policy
-                            )
-
-                    # Get dining areas
-                    dining_areas = getattr(avail_type, "dining_area", [])
-                    for area in dining_areas:
-                        area_attrs = ", ".join(getattr(area, "attributes", []))
-                        env = getattr(area, "environment", "")
-                        areas.append(f"{env} ({area_attrs})")
-
                 # Add formatted time slot to results
-                area_info = f" - {', '.join(areas)}" if areas else ""
-                result.append(f"• {formatted_time}{area_info}")
-
-                # Add cancellation policy info if available
-                if cancellation_info:
-                    result.append(f"  {cancellation_info}")
+                result.append(f"• {formatted_time}")
     else:
         # Simpler format if times_available is not present
         for time_str in getattr(availability, "times", []):
