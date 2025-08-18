@@ -76,7 +76,7 @@ def search_availability(
     for date in dates_available:
         noTimes = dates_available[date].get("allNoTimesReasons")
         logger.info(f"No times: {noTimes}")
-        if noTimes != []:
+        if noTimes != [] and noTimes is not None:
             no_availability_reasons.extend(noTimes)
         time_slots = dates_available[date].get("timeSlots")
         logger.info(f"Time slots: {time_slots}")
