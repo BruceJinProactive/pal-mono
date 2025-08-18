@@ -24,7 +24,7 @@ from services import agent_service, project_service, user_service
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
-from ._squad import create_multilingual_squad
+from ._squad import create_multilingual_squad, get_squad_model
 from ._utils import get_transcriber_and_voice_config, validate_vapi_request
 
 
@@ -436,8 +436,19 @@ async def handle_status_update(message_data, session: AsyncSession):
 
         logger.debug(f"Call {call_id} status updated to: {status}")
 
-        assistant_data = call_data.get("assistant", {})
-        model_block = assistant_data.get("model")
+        # if squad is enabled, look for model block in squad members language assistant
+        squad_data = call_data.get("squad", {})
+        model_block = None
+        if squad_data:
+            try:
+                model_block = get_squad_model(squad_data)
+            except Exception as e:
+                logger.error(
+                    f"Failed to extract model from squad data;falling back to assistant: {str(e)}"
+                )
+        if not isinstance(model_block, dict):
+            assistant_data = call_data.get("assistant", {})
+            model_block = assistant_data.get("model")
 
         raw_model_data = None
         if isinstance(model_block, dict):
