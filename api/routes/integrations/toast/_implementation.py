@@ -1,0 +1,58 @@
+import json
+
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+from utils.log import logger
+
+from .schema import ToastWebhookRequest, ToastWebhookResponse
+
+
+async def api_toast_webhook(request: Request) -> JSONResponse:
+    """
+    Process incoming webhook requests from Toast for order status updates.
+    Authentication and validation are handled by AWS API Gateway.
+
+    Args:
+        request: The FastAPI request object
+
+    Returns:
+        JSONResponse: The response to send back to Toast
+
+    Raises:
+        HTTPException: If there's an error processing the request
+    """
+    # Extract body from request
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError) as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": f"Invalid JSON in request body: {str(e)}"},
+        )
+
+    # Validate request body against schema
+    try:
+        webhook_request = ToastWebhookRequest(**body)
+    except ValidationError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": f"Invalid request body: {str(e)}"},
+        )
+
+    # Log the incoming request for debugging
+    logger.debug(
+        "[ToastWebhook]Toast webhook request received",
+        extra={
+            "timestamp": webhook_request.timestamp,
+            "event_category": webhook_request.eventCategory,
+            "event_type": webhook_request.eventType,
+            "guid": webhook_request.guid,
+        },
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=ToastWebhookResponse().model_dump(exclude_none=True),
+    )
