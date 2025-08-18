@@ -8,8 +8,13 @@ import requests
 import db
 from db.repositories.account_repository import AccountRepository
 from db.repositories.integration_repository import IntegrationRepository
+from db.session import SyncSessionLocal
+from db.tables.types import IntegrationProvider, IntegrationType
 from services.integration_service._utils import update_integration_credentials
 from services.integration_service.schema import IntegrationCredentials
+from services.transaction_service import create_transaction
+from services.transaction_service.schema import OrderTransactionData
+from tools.utils.transaction_helper import update_transaction_by_order_number
 from utils import secret
 from utils.log import logger
 from utils.secret import get_client_secret
@@ -146,3 +151,173 @@ def refresh_square_token(
     finally:
         if close_session:
             session.close()
+
+
+async def handle_order_created(webhook_request) -> None:
+    """
+    Handle order.created webhook events.
+
+    Creates a new transaction record using the transaction service directly.
+    Since webhooks don't have conversation context, we create a webhook-specific transaction.
+    This function is only for testing purposes.
+
+    Args:
+        webhook_request: The Square webhook request containing order data
+    """
+    try:
+        # For order.created events, the data is nested under data.object.order_created
+        order_data = (
+            webhook_request.get("data", {}).get("object", {}).get("order_created", {})
+        )
+
+        # Extract required fields from order.created webhook structure
+        order_id = order_data.get("order_id")
+        location_id = order_data.get("location_id")
+        order_created_at = order_data.get("created_at")
+        version = order_data.get("version")
+
+        # Note: order.created webhooks don't include total_money or line_items
+        # These are available in the full order object via Square API if needed
+        order_items = []  # Not available in order.created webhook
+
+        logger.info(
+            "[Square Webhook] Processing order.created event",
+            extra={
+                "order_id": order_id,
+                "location_id": location_id,
+                "order_created_at": order_created_at,
+                "version": version,
+            },
+        )
+
+        # Create transaction using transaction service
+        # Note: Using placeholder UUIDs for webhook context since we don't have conversation/user/project context
+        if order_id and location_id:
+            # Create transaction data
+            transaction_data = OrderTransactionData(
+                external_transaction_id=order_id,
+                external_transaction_number=order_id,  # Use order_id as the number too
+                conversation_id=uuid.uuid4(),  # Placeholder - webhook context
+                user_id=uuid.uuid4(),  # Placeholder - webhook context
+                project_id=uuid.uuid4(),  # Placeholder - webhook context
+                vendor=IntegrationProvider.square,
+                store_id=location_id,
+                status="pending",
+                integration_type=IntegrationType.pos,
+                subtotal=None,  # Not available in order.created webhook
+                order_items=order_items,  # Empty list - not available in order.created webhook
+                order_time=datetime.now(),
+                notes=f"Created from Square webhook - order.created event (version {version})",
+            )
+
+            # Save transaction
+            try:
+                session = SyncSessionLocal()
+                transaction = create_transaction(
+                    session=session,
+                    transaction_data=transaction_data,
+                    auto_commit=True,
+                )
+                logger.info(
+                    f"[Square Webhook] Created transaction {transaction.id} for order {order_id}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"[Square Webhook] Failed to create transaction for order {order_id}: {str(e)}",
+                    exc_info=True,
+                )
+        else:
+            logger.warning(
+                "[Square Webhook] Missing order_id or location_id - cannot create transaction",
+                extra={"order_id": order_id, "location_id": location_id},
+            )
+
+    except Exception as e:
+        logger.error(
+            f"[Square Webhook] Error handling order.created event: {str(e)}",
+            extra={"event_id": getattr(webhook_request, "event_id", "unknown")},
+        )
+
+
+async def handle_payment_updated(webhook_request) -> None:
+    """
+    Handle payment.updated webhook events.
+
+    Updates existing transaction status using update_transaction_by_order_number.
+
+    Args:
+        webhook_request: The Square webhook request containing payment data
+    """
+    try:
+        payment_data = (
+            webhook_request.get("data", {}).get("object", {}).get("payment", {})
+        )
+
+        # Extract required fields
+        payment_id = payment_data.get("id")
+        order_id = payment_data.get("order_id")
+        location_id = payment_data.get("location_id")
+        payment_created_at = payment_data.get("created_at")
+        receipt_url = payment_data.get("receipt_url")
+        payment_status = payment_data.get("status")
+
+        # Extract total money amount
+        total_money = payment_data.get("total_money", {})
+        total_amount = (
+            total_money.get("amount", 0) / 100
+        )  # Convert from cents to dollars
+
+        logger.info(
+            "[Square Webhook] Processing payment.updated event",
+            extra={
+                "payment_id": payment_id,
+                "order_id": order_id,
+                "location_id": location_id,
+                "payment_created_at": payment_created_at,
+                "receipt_url": receipt_url,
+                "payment_status": payment_status,
+                "total_amount": total_amount,
+            },
+        )
+
+        # Update transaction in database if order_id exists
+        if order_id and location_id:
+            # Map Square payment status to our transaction status
+            if payment_status == "COMPLETED":
+                transaction_status = "paid"
+            else:
+                # Default to pending for other statuses or if payment_status is None
+                transaction_status = "pending"
+
+            # Update transaction using transaction helper
+            success = update_transaction_by_order_number(
+                store_id=location_id,
+                vendor=IntegrationProvider.square,
+                new_status=transaction_status,
+                external_transaction_number=order_id,
+                tracking_link=receipt_url,
+            )
+
+            if success:
+                logger.info(
+                    f"[Square Webhook] Successfully updated transaction for order {order_id}"
+                )
+            else:
+                logger.warning(
+                    f"[Square Webhook] Failed to update transaction for order {order_id} - transaction not found"
+                )
+        else:
+            logger.warning(
+                "[Square Webhook] Missing order_id or location_id - cannot update transaction",
+                extra={
+                    "payment_id": payment_id,
+                    "order_id": order_id,
+                    "location_id": location_id,
+                },
+            )
+
+    except Exception as e:
+        logger.error(
+            f"[Square Webhook] Error handling payment.updated event: {str(e)}",
+            extra={"event_id": getattr(webhook_request, "event_id", "unknown")},
+        )

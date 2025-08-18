@@ -21,7 +21,13 @@ from services.service_utils import get_server_url
 from utils.log import logger
 from utils.secret import get_client_secret
 
-from ._util import get_square_client_id, get_square_client_secret, refresh_square_token
+from ._util import (
+    get_square_client_id,
+    get_square_client_secret,
+    handle_order_created,
+    handle_payment_updated,
+    refresh_square_token,
+)
 from ._valid import _oauth_state, valid_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
@@ -434,21 +440,36 @@ def get_merchant_locations(
 
 async def webhook(request: Request) -> JSONResponse:
     """
-    Simple Square webhook endpoint for testing - just logs incoming data.
+    Square webhook endpoint that processes order.created and payment.updated events.
+
     """
     try:
         # Parse the webhook payload
         body = await request.json()
 
-        # Log everything we receive for testing
+        # Extract event type
+        event_type = body.get("type")
+
         logger.info(
-            f"[Square Webhook] Received webhook from Square: {json.dumps(body, indent=2)}"
+            f"[Square Webhook] Received webhook event: {event_type}",
+            extra={"event_id": body.get("event_id"), "event_type": event_type},
         )
+
+        # Only process specific event types
+        if event_type == "order.created":
+            await handle_order_created(body)
+        elif event_type == "payment.updated":
+            await handle_payment_updated(body)
+        else:
+            logger.info(
+                f"[Square Webhook] Ignoring unsupported event type: {event_type}",
+                extra={"event_id": body.get("event_id")},
+            )
 
         # Return success response
         return JSONResponse(
             status_code=status.HTTP_200_OK,
-            content={"success": True, "message": "Webhook received successfully"},
+            content={"success": True, "message": "Webhook processed successfully"},
         )
 
     except json.JSONDecodeError:
