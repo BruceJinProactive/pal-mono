@@ -102,11 +102,6 @@ def parse_iso_datetime(
                 None,
             )
 
-        # Check that the datetime is not in the past
-        now = datetime.datetime.now()
-        if dt < now:
-            return False, f"Datetime is in the past: {date_time_str}", None
-
         return True, "", dt
     except ValueError as e:
         return False, f"Invalid ISO datetime format: {str(e)}", None
