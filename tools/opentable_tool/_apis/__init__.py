@@ -71,11 +71,13 @@ def search_availability(
     times_available = []
     no_availability_reasons = []
 
+    logger.info(f"Dates available: {dates_available}")
     # For each times_available entry, ensure diningArea attributes are properly handled
     for date in dates_available:
         noTimes = dates_available[date].get("allNoTimesReasons")
+        logger.info(f"No times: {noTimes}")
         if noTimes != []:
-            no_availability_reasons.append((date, noTimes))
+            no_availability_reasons.extend(noTimes)
         time_slots = dates_available[date].get("timeSlots")
         logger.info(f"Time slots: {time_slots}")
         if time_slots is not None:
@@ -83,7 +85,7 @@ def search_availability(
                 times_available.append(time_slot.get("dateTime"))
                 logger.info(f"Time slot: {time_slot}")
     logger.info(f"Times available: {times_available}")
-
+    logger.info(f"No availability reasons: {no_availability_reasons}")
     # Construct and return the AvailabilitySearchResponse
     return AvailabilitySearchResponse(
         rid=data.get("rid", restaurant_id),

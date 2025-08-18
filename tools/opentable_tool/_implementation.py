@@ -229,9 +229,7 @@ class OpenTableTool(Toolkit):
                 return "Error: Unable to authenticate with OpenTable"
 
             # Get chat history
-            chat_history = str(
-                self.query_messages_tool.query_messages()  # type: ignore
-            )
+            chat_history = str(self.query_messages_tool.query_messages())
 
             # Extract reservation data using LLM
             reservation_data = _llm.llm_call(
