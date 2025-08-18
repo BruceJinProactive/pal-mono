@@ -1,3 +1,6 @@
+from enum import StrEnum
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -29,3 +32,29 @@ class ToastWebhookMenuDetails(BaseModel):
 
     restaurantGuid: str
     publishedDate: str
+
+
+class ToastStockItemStatus(StrEnum):
+    IN_STOCK = "IN_STOCK"
+    QUANTITY = "QUANTITY"
+
+
+class ToastWebhookStockItemDetails(BaseModel):
+    """Details of the stock item updated event
+    Example:
+    {
+      "itemGuid": "1e199622-ccbf-4ba8-8c37-111519dca13b",
+      "restaurantGuid": "3325cc58-dc6e-4e21-85f9-7de275ffe820",
+      "status": "IN_STOCK",
+      "quantity": 10.0, (optional)
+      "multiLocationId": "100000000171238879",
+      "versionId": "1e199622-ccbf-4ba8-8c37-111519dca13b"
+    }
+    """
+
+    itemGuid: str
+    restaurantGuid: str
+    status: ToastStockItemStatus
+    multiLocationId: str
+    versionId: str
+    quantity: Optional[float] = None
