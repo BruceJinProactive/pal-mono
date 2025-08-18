@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from utils.log import logger
 
+from ._utils import update_menu_content
 from .schema import ToastWebhookRequest, ToastWebhookResponse
 
 
@@ -35,6 +36,19 @@ async def api_toast_webhook(request: Request) -> JSONResponse:
     # Validate request body against schema
     try:
         webhook_request = ToastWebhookRequest(**body)
+
+        # Handle webhook events
+        match webhook_request.eventCategory:
+            case "menus_updated":
+                await update_menu_content(webhook_request)
+            case _:
+                logger.warning(
+                    f"Received unknown Toast webhook event category: {webhook_request.eventCategory}"
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_200_OK,
+                    content=ToastWebhookResponse().model_dump(exclude_none=True),
+                )
     except ValidationError as e:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,

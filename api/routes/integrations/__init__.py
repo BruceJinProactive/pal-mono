@@ -10,6 +10,7 @@ from api.routes.endpoints import endpoints
 from api.routes.integrations.adora import adora_router
 from api.routes.integrations.shopify import _implementation
 from api.routes.integrations.square import _implementation as square_implementation
+from api.routes.integrations.toast import toast_router
 from api.routes.integrations.vapi import vapi_router
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
@@ -21,6 +22,9 @@ integrations_router.include_router(vapi_router)
 
 # Include the Adora router
 integrations_router.include_router(adora_router)
+
+# Include the Toast router
+integrations_router.include_router(toast_router)
 
 
 @integrations_router.get("/shopify/{app_name}/install", status_code=status.HTTP_200_OK)
