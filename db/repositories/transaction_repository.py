@@ -154,14 +154,29 @@ class TransactionRepository:
         try:
             # Define expressions for efficient querying
             date_expr = func.date(Transaction.order_time)
-            channel_expr = Message.body["channel"].astext
-            # Query to get order totals by joining transactions -> conversations -> messages
+
+            # Get channel from the first message in each conversation to avoid duplication
+            # Use a subquery to get the channel for each conversation, ordered deterministically
+            channel_subquery = (
+                select(
+                    Message.conversation_id,
+                    Message.body["channel"].astext.label("channel"),
+                )
+                .where(
+                    Message.body["channel"].isnot(None)
+                )  # Exclude messages without channel
+                .order_by(Message.conversation_id, Message.created_at.asc())
+                .distinct(Message.conversation_id)
+                .subquery()
+            )
+
+            # Query to get order totals by joining transactions -> conversations -> channel_subquery
             # Group by date, channel, and project
             # Only include completed POS orders
             query = (
                 select(
                     date_expr.label("date"),
-                    channel_expr.label("channel"),
+                    channel_subquery.c.channel.label("channel"),
                     Transaction.project_id.label("project_id"),
                     Project.name.label("project_name"),
                     func.coalesce(func.sum(Transaction.subtotal), 0).label(
@@ -169,7 +184,10 @@ class TransactionRepository:
                     ),
                 )
                 .join(Conversation, Transaction.conversation_id == Conversation.id)
-                .join(Message, Conversation.id == Message.conversation_id)
+                .join(
+                    channel_subquery,
+                    Conversation.id == channel_subquery.c.conversation_id,
+                )
                 .join(User, Conversation.user_id == User.id)
                 .join(Project, Transaction.project_id == Project.id)
                 .filter(
@@ -183,8 +201,13 @@ class TransactionRepository:
                     == IntegrationType.pos,  # Only POS transactions
                     Transaction.status != "pending",  # Exclude pending orders
                 )
-                .group_by(date_expr, channel_expr, Transaction.project_id, Project.name)
-                .order_by(date_expr, channel_expr, Transaction.project_id)
+                .group_by(
+                    date_expr,
+                    channel_subquery.c.channel,
+                    Transaction.project_id,
+                    Project.name,
+                )
+                .order_by(date_expr, channel_subquery.c.channel, Transaction.project_id)
             )
             result = self.session.execute(query)
             rows = result.all()
