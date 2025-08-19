@@ -11,8 +11,8 @@ from ._plan import (
 from ._subscription import (
     cancel_account_subscription,
     create_account_subscription,
+    create_custom_checkout_data,
     create_project_subscription,
-    create_stripe_checkout_url,
     get_account_subscription,
     get_account_subscriptions,
     get_project_subscriptions_by_subscription_external_id,
@@ -38,7 +38,7 @@ __all__ = [
     "get_subscription_plan_by_id",
     "update_subscription_plan",
     "delete_subscription_plan",
-    "create_stripe_checkout_url",
+    "create_custom_checkout_data",
     "handle_stripe_checkout_success",
     "get_project_subscriptions_by_subscription_external_id",
     "create_project_subscription",

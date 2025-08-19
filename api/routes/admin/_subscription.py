@@ -13,11 +13,12 @@ from api.routes.admin._builder import (
 )
 from api.routes.admin._utils import UserContext, not_found_error
 from api.schemas.admin.subscription import (
-    CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
     CreateProjectSubscriptionResponse,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    CustomCheckoutRequest,
+    CustomCheckoutResponse,
     ListAccountSubscriptionsResponse,
     ListProjectSubscriptionsResponse,
     RemoveProjectSubscriptionResponse,
@@ -362,9 +363,9 @@ def create_checkout_session(
     session: Session,
     account_name: str,
     external_id: uuid.UUID,
-    request: CreateCheckoutSessionRequest,
-) -> str:
-    """Create a Stripe checkout session for a subscription."""
+    request: CustomCheckoutRequest,
+) -> CustomCheckoutResponse:
+    """Create custom checkout data for Payment Element integration."""
     authorize_user_account(context, account_name)
 
     # Get account to validate it exists
@@ -373,14 +374,13 @@ def create_checkout_session(
         raise not_found_error(f"Account {account_name} not found")
 
     try:
-        checkout_url = subscription_service.create_stripe_checkout_url(
+        checkout_data = subscription_service.create_custom_checkout_data(
             session=session,
             account_id=account.id,
             external_id=external_id,
             customer_email=(
                 str(request.customer_email) if request.customer_email else None
             ),
-            redirect_url_prefix=str(request.redirect_url_prefix),
         )
     except RuntimeError as err:
         logger.exception(str(err))
@@ -394,12 +394,12 @@ def create_checkout_session(
             detail=str(err),
         )
 
-    if not checkout_url:
+    if not checkout_data:
         raise not_found_error(
             f"Subscription {external_id} not found in account: {account_name}"
         )
 
-    return checkout_url
+    return CustomCheckoutResponse(**checkout_data)
 
 
 def handle_subscription_checkout_callback(

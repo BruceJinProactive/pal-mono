@@ -97,10 +97,11 @@ from api.schemas.admin.prompt import (
     UpdatePromptRequest,
 )
 from api.schemas.admin.subscription import (
-    CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    CustomCheckoutRequest,
+    CustomCheckoutResponse,
     ListAccountSubscriptionsResponse,
     Subscription,
     SubscriptionPlan,
@@ -1661,13 +1662,13 @@ def cancel_account_subscription(
 def create_subscription_checkout_session(
     account_name: str,
     external_id: uuid.UUID,
-    request: CreateCheckoutSessionRequest,
+    request: CustomCheckoutRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> str:
+) -> CustomCheckoutResponse:
     """
-    Creates a Stripe checkout session for a subscription.
-    The subscription must be active and not have a stripe_subscription_id.
+    Create custom checkout data for Payment Element integration.
+    Returns structured data for building a custom checkout page with Stripe Payment Element.
     """
     return _subscription.create_checkout_session(
         context, session, account_name, external_id, request

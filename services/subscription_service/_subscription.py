@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, List, Optional
 
+import stripe
 from sqlalchemy.orm import Session
 
 import db
@@ -657,158 +658,6 @@ def get_account_subscription(
     )
 
 
-def create_stripe_checkout_url(
-    session: Session,
-    account_id: uuid.UUID,
-    external_id: uuid.UUID,
-    customer_email: str | None,
-    redirect_url_prefix: str,
-) -> str | None:
-    """
-    Create a Stripe checkout URL for a subscription.
-
-    Args:
-        session: Database session
-        account_id: UUID of the account creating the subscription
-        external_id: External ID of the subscription to create checkout for
-        project_ids: List of project UUIDs to associate with the subscription
-        customer_email: Optional email for the customer
-        redirect_url_prefix: URL prefix for success/cancel redirects
-
-    Returns:
-        Checkout URL string or None if subscription not found
-    """
-    project_subscription_repo = ProjectSubscriptionRepository(session)
-
-    # Get subscription by external_id
-    subscription = get_account_subscription_by_external_id(session, external_id)
-
-    if not subscription or subscription.account_id != account_id:
-        return None
-
-    # Validate subscription status
-    if not subscription.is_valid:
-        raise ValueError(f"Subscription status is invalid: {subscription.status}")
-
-    # Validate subscription doesn't already have a Stripe subscription ID
-    if subscription.stripe_subscription_id:
-        raise ValueError("Subscription already has a Stripe subscription ID")
-
-    # Get project subscriptions to collect project-specific prices
-    project_subscriptions = (
-        project_subscription_repo.get_project_subscriptions_by_subscription_id(
-            subscription.external_id
-        )
-    )
-
-    if not project_subscriptions:
-        raise RuntimeError(
-            "No project subscriptions found for this account subscription"
-        )
-
-    # Collect all line items for the checkout session
-    line_items = []
-    price_details = []
-
-    # Add project-specific usage prices
-    for project_subscription in project_subscriptions:
-        # Get project details for better descriptions
-        project = project_service.get_project(session, project_subscription.project_id)
-        project_name = (
-            project.name if project else f"Project {project_subscription.project_id}"
-        )
-        project_display_name = (
-            project.display_name if (project and project.display_name) else project_name
-        )
-
-        # Add call usage price (using existing price ID - price_data doesn't support metered billing)
-        if project_subscription.call_price_id:
-            line_items.append(
-                {
-                    "price": project_subscription.call_price_id,
-                }
-            )
-            price_details.append(
-                {
-                    "project_subscription_id": str(project_subscription.id),
-                    "project_id": str(project_subscription.project_id),
-                    "project_name": project_name,
-                    "project_display_name": project_display_name,
-                    "price_type": "call_usage",
-                    "price_id": project_subscription.call_price_id,
-                    "description": f"Call usage for {project_display_name}",
-                    "pricing_method": "existing_price_id",
-                }
-            )
-
-        # Add order usage price (using existing price ID - price_data doesn't support metered billing)
-        if project_subscription.order_price_id:
-            line_items.append(
-                {
-                    "price": project_subscription.order_price_id,
-                }
-            )
-            price_details.append(
-                {
-                    "project_subscription_id": str(project_subscription.id),
-                    "project_id": str(project_subscription.project_id),
-                    "project_name": project_name,
-                    "project_display_name": project_display_name,
-                    "price_type": "order_usage",
-                    "price_id": project_subscription.order_price_id,
-                    "description": f"Order usage for {project_display_name}",
-                    "pricing_method": "existing_price_id",
-                }
-            )
-
-    if not line_items:
-        raise RuntimeError("No valid price IDs found for checkout session")
-
-    # Count different price types for logging
-    monthly_prices = [p for p in price_details if p["price_type"] == "monthly_plan"]
-    usage_prices = [p for p in price_details if "usage" in p["price_type"]]
-
-    # Log detailed price information for debugging
-    logger.info(
-        "Checkout session price breakdown",
-        extra={
-            "account_id": str(account_id),
-            "subscription_id": str(subscription.external_id),
-            "price_details": price_details,
-            "total_line_items": len(line_items),
-            "monthly_plan_items": len(monthly_prices),
-            "usage_items": len(usage_prices),
-            "projects_count": len(project_subscriptions),
-        },
-    )
-
-    logger.info(
-        f"Creating checkout session: {len(monthly_prices)} monthly plan + {len(usage_prices)} usage items from {len(project_subscriptions)} projects",
-        extra={
-            "account_id": str(account_id),
-            "subscription_id": str(subscription.external_id),
-            "line_items_count": len(line_items),
-            "structure": "existing price IDs",
-            "price_ids": [p["price_id"] for p in price_details if "price_id" in p],
-        },
-    )
-
-    # Create checkout session with project-specific prices
-    checkout_session = _stripe_subscription.create_checkout_session(
-        account_id=account_id,
-        customer_email=customer_email,
-        subscription_external_id=subscription.external_id,
-        line_items=line_items,
-        redirect_url_prefix=redirect_url_prefix,
-        start_date=subscription.start_date,
-    )
-
-    if not checkout_session or not checkout_session.url:
-        raise RuntimeError("Failed to create checkout session")
-
-    return checkout_session.url
-
-
 def get_project_subscriptions_by_subscription_external_id(
     session: Session,
     context: UserContext,
@@ -945,6 +794,123 @@ def remove_project_subscription(
             "account_subscription_id": subscription.external_id,
         },
     )
+
+
+def create_custom_checkout_data(
+    session: Session,
+    account_id: uuid.UUID,
+    external_id: uuid.UUID,
+    customer_email: str | None,
+) -> dict | None:
+    """
+    Create structured data for custom checkout page with Payment Element.
+
+    Args:
+        session: Database session
+        account_id: UUID of the account creating the subscription
+        external_id: External ID of the subscription to create checkout for
+        customer_email: Optional email for the customer
+
+    Returns:
+        Dict containing all checkout data or None if subscription not found
+    """
+    account_subscription_repository = AccountSubscriptionRepository(
+        session, auto_commit=True
+    )
+    subscription_plan_repository = SubscriptionPlanRepository(session)
+
+    subscription = account_subscription_repository.get_account_subscription(
+        account_id, external_id
+    )
+    if not subscription:
+        return None
+
+    account = account_service.get_account_by_id(session, account_id)
+    if not account:
+        raise ValueError("Account not found")
+
+    plan = subscription_plan_repository.get_subscription_plan_by_id(
+        subscription.subscription_plan_id
+    )
+    if not plan:
+        raise ValueError("Subscription plan not found")
+
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=True
+    )
+    project_subscriptions = (
+        project_subscription_repository.get_project_subscriptions_by_subscription_id(
+            external_id
+        )
+    )
+
+    project_ids = [ps.project_id for ps in project_subscriptions]
+    projects = project_service.get_projects_by_ids(session, project_ids)
+
+    total_amount = len(projects) * (plan.monthly_fee or 0)
+
+    payment_intent_params = {
+        "amount": total_amount,
+        "currency": "usd",
+        "metadata": {
+            "subscription_external_id": str(external_id),
+            "account_id": str(account_id),
+        },
+        "automatic_payment_methods": {"enabled": True},
+    }
+
+    if customer_email:
+        payment_intent_params["receipt_email"] = customer_email
+
+    if account.stripe_customer_id:
+        payment_intent_params["customer"] = account.stripe_customer_id
+
+    try:
+        payment_intent = stripe.PaymentIntent.create(**payment_intent_params)
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to create PaymentIntent: {e}",
+            extra={
+                "account_id": str(account_id),
+                "subscription_id": str(external_id),
+            },
+        )
+        raise
+
+    return {
+        "account": {
+            "id": str(account.id),
+            "name": account.name,
+            "display_name": account.display_name or account.name,
+            "total_projects": len(projects),
+        },
+        "subscription_plan": {
+            "id": str(plan.id),
+            "name": plan.name,
+            "monthly_fee_per_project": plan.monthly_fee or 0,
+            "currency": "USD",
+            "call_quota_per_project": plan.call_quota or 0,
+            "order_quota_per_project": plan.order_quota or 0,
+            "call_overage_charge": plan.call_overage_charge or 0,
+            "order_overage_charge": plan.order_overage_charge or 0,
+        },
+        "projects": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "display_name": p.display_name or p.name,
+            }
+            for p in projects
+        ],
+        "pricing": {
+            "billing_cycle": "monthly",
+            "price_per_project": plan.monthly_fee or 0,
+        },
+        "payment": {
+            "payment_intent_id": payment_intent.id,
+            "client_secret": payment_intent.client_secret,
+        },
+    }
 
 
 def get_stripe_customer_id_for_project(
