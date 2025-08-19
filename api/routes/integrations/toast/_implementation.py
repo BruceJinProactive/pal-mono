@@ -6,13 +6,17 @@ from pydantic import ValidationError
 
 from utils.log import logger
 
-from ._utils import update_menu_content, update_stock_item_status
+from ._utils import (
+    update_menu_content,
+    update_ordering_schedule,
+    update_stock_item_status,
+)
 from .schema import ToastWebhookRequest, ToastWebhookResponse
 
 
 async def api_toast_webhook(request: Request) -> JSONResponse:
     """
-    Process incoming webhook requests from Toast for order status updates.
+    Process incoming webhook requests from Toast.
     Authentication and validation are handled by AWS API Gateway.
 
     Args:
@@ -43,6 +47,8 @@ async def api_toast_webhook(request: Request) -> JSONResponse:
                 await update_menu_content(webhook_request)
             case "stock":
                 await update_stock_item_status(webhook_request)
+            case "ordering_schedule":
+                await update_ordering_schedule(webhook_request)
             case _:
                 logger.warning(
                     f"Received unknown Toast webhook event category: {webhook_request.eventCategory}"

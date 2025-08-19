@@ -58,3 +58,166 @@ class ToastWebhookStockItemDetails(BaseModel):
     multiLocationId: str
     versionId: str
     quantity: Optional[float] = None
+
+
+class TimeRange(BaseModel):
+    """Time range"""
+
+    start: list[int]
+    end: list[int]
+
+
+class DayPeriod(BaseModel):
+    """Day period"""
+
+    day: str
+    timeRanges: list[TimeRange]
+
+
+class ServicePeriod(BaseModel):
+    """Ordering schedule"""
+
+    diningOptionBehavior: str
+    dayPeriods: list[DayPeriod]
+
+
+class Override(BaseModel):
+    """Override"""
+
+    description: str
+    diningOptionBehavior: list[str]
+    businessDate: int
+    timeRanges: list[TimeRange]
+
+
+class OrderingSchedule(BaseModel):
+    """Ordering schedule"""
+
+    servicePeriods: list[ServicePeriod]
+    overrides: list[Override]
+    scheduledOrderMaxDays: int
+    lastOrderConfiguration: str
+
+
+class ToastWebhookOrderingScheduleDetails(BaseModel):
+    """Details of the ordering schedule updated event
+      Example:
+      {
+      "restaurantGuid": "d6bf0376-cea1-47c0-a63c-9fc06638a5a6",
+      "orderingSchedule": {
+        "servicePeriods": [
+          {
+            "diningOptionBehavior": "DELIVERY",
+            "dayPeriods": [
+              {
+                "day": "SATURDAY",
+                "timeRanges": [
+                  {
+                    "start": [
+                      12,
+                      0
+                    ],
+                    "end": [
+                      0,
+                      0
+                    ]
+                  }
+                ]
+              },
+              {
+                "day": "SUNDAY",
+                "timeRanges": [
+                  {
+                    "start": [
+                      11,
+                      0
+                    ],
+                    "end": [
+                      23,
+                      0
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "diningOptionBehavior": "TAKE_OUT",
+            "dayPeriods": [
+              {
+                "day": "TUESDAY",
+                "timeRanges": [
+                  {
+                    "start": [
+                      8,
+                      0
+                    ],
+                    "end": [
+                      20,
+                      0
+                    ]
+                  }
+                ]
+              },
+              {
+                "day": "WEDNESDAY",
+                "timeRanges": [
+                  {
+                    "start": [
+                      10,
+                      0
+                    ],
+                    "end": [
+                      20,
+                      0
+                    ]
+                  }
+                ]
+              },
+              {
+                "day": "THURSDAY",
+                "timeRanges": [
+                  {
+                    "start": [
+                      12,
+                      0
+                    ],
+                    "end": [
+                      21,
+                      0
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "overrides": [
+          {
+            "description": "team party",
+            "diningOptionBehavior": [
+              "DELIVERY"
+            ],
+            "businessDate": 20250531,
+            "timeRanges": [
+              {
+                "start": [
+                  9,
+                  0
+                ],
+                "end": [
+                  21,
+                  0
+                ]
+              }
+            ]
+          }
+        ],
+        "scheduledOrderMaxDays": 3,
+        "lastOrderConfiguration": "UNTIL_CLOSING_TIME"
+      }
+    }
+    """
+
+    restaurantGuid: str
+    orderingSchedule: OrderingSchedule
