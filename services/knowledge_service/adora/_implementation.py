@@ -174,7 +174,9 @@ class AdoraMenuProcessor:
             raise
 
     def _generate_consolidated_menu(
-        self, individual_items: List[Dict[str, str]]
+        self,
+        individual_items: List[Dict[str, str]],
+        include_customizations: bool = True,
     ) -> str:
         """Generate consolidated menu text from individual items.
 
@@ -185,6 +187,7 @@ class AdoraMenuProcessor:
                               or "item_{index}_{item_name} {category_name}" if category is not in item name.
                             - If False: "item_{index}_{item_name}" (category name never included).
                             Value: The formatted item text.
+            include_customizations: Whether to include customization information in the output
 
         Returns:
             str: Consolidated menu text
@@ -200,4 +203,4 @@ class AdoraMenuProcessor:
 
         # Sort and format consolidated menu
         menu_items.sort(key=lambda x: (x["category"], x["name"]))
-        return format_consolidated_menu(menu_items)
+        return format_consolidated_menu(menu_items, include_customizations)

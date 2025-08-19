@@ -109,6 +109,36 @@ def get_modifier_group_name(
     )
 
 
+def _parse_modifier_lines(lines_text: str) -> List[Dict[str, str]]:
+    """Parse modifier lines and extract name and pricing information."""
+    modifiers = []
+    lines = lines_text.strip().split("\n")
+    for line in lines:
+        if line.strip().startswith("- "):
+            # Handle formats: "- Bacon", "- Bacon (modifier_id: 123)", or "- Bacon (modifier_id: 123) (price not available)"
+
+            # Try to match with pricing info first
+            pricing_match = re.match(
+                r"- (.+?)(?:\s*\(modifier_id: \d+\))?\s*(\(price not available\)|\(\+\$[\d.]+.*?\))",
+                line.strip(),
+            )
+
+            if pricing_match:
+                modifier_name = pricing_match.group(1).strip()
+                pricing_text = pricing_match.group(2).strip()
+                modifiers.append({"name": modifier_name, "pricing": pricing_text})
+            else:
+                # No pricing info - just name with optional modifier_id
+                name_match = re.match(
+                    r"- (.+?)(?:\s*\(modifier_id: \d+\))?$", line.strip()
+                )
+                if name_match:
+                    modifier_name = name_match.group(1).strip()
+                    modifiers.append({"name": modifier_name, "pricing": ""})
+
+    return modifiers
+
+
 def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
     """Parse item text to extract structured data.
 
@@ -116,17 +146,22 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
         item_text: The formatted item text string
 
     Returns:
-        dict: Parsed item data with name, id, category, description, prices, and included items
+        dict: Parsed item data with name, id, category, description, prices, included items, and modifier groups
         None: If parsing fails
     """
     # Extract item name and ID from first line
     first_line = item_text.split("\n")[0]
     name_match = re.match(r"# (.+) \(item_id: (\d+)\)", first_line)
     if not name_match:
-        return None
-
-    item_name = name_match.group(1)
-    item_id = name_match.group(2)
+        # Try parsing without item_id (for no_ids format)
+        name_match = re.match(r"# (.+)$", first_line)
+        if not name_match:
+            return None
+        item_name = name_match.group(1)
+        item_id = None
+    else:
+        item_name = name_match.group(1)
+        item_id = name_match.group(2)
 
     # Extract category using general utility
     category = (
@@ -145,31 +180,48 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
         price_lines = price_section.group(1).strip().split("\n")
         for line in price_lines:
             if line.strip().startswith("- "):
+                # Handle both formats: with and without size_id
                 price_match = re.match(
                     r"- (.+?) \(size_id: \d+\): \$(.+)", line.strip()
-                )
+                ) or re.match(r"- (.+?): \$(.+)", line.strip())
                 if price_match:
                     size_name = price_match.group(1)
                     price = price_match.group(2)
                     prices.append(f"${price} ({size_name})")
 
-    # Extract included modifiers
+    # Extract included modifiers and modifier groups
     included_items = []
+    modifier_groups = []
     modifier_section = re.search(r"## Modifiers\n(.*?)$", item_text, re.DOTALL)
     if modifier_section:
         modifier_content = modifier_section.group(1)
-        included_sections = re.findall(
-            r"#### Included in the price\n((?:- .+\n?)*)", modifier_content
+
+        # Parse modifier groups - look for ### followed by space or end, not ####
+        group_sections = re.findall(
+            r"### (.+?)\n(.*?)(?=\n###(?:\s|\Z)|\Z)", modifier_content, re.DOTALL
         )
-        for section in included_sections:
-            lines = section.strip().split("\n")
-            for line in lines:
-                if line.strip().startswith("- "):
-                    modifier_match = re.match(
-                        r"- (.+?) \(modifier_id: \d+\)", line.strip()
-                    )
-                    if modifier_match:
-                        included_items.append(modifier_match.group(1))
+        for group_name, group_content in group_sections:
+            group_data = {"name": group_name.strip(), "included": [], "optional": []}
+
+            # Extract included modifiers
+            included_sections = re.findall(
+                r"#### Included.*?\n((?:- .+\n?)*)", group_content
+            )
+            for section in included_sections:
+                parsed_modifiers = _parse_modifier_lines(section)
+                for mod in parsed_modifiers:
+                    group_data["included"].append(mod)
+                    included_items.append(mod["name"])
+
+            # Extract optional modifiers
+            optional_sections = re.findall(
+                r"#### Optional.*?\n((?:- .+\n?)*)", group_content
+            )
+            for section in optional_sections:
+                parsed_modifiers = _parse_modifier_lines(section)
+                group_data["optional"].extend(parsed_modifiers)
+
+            modifier_groups.append(group_data)
 
     return {
         "name": item_name,
@@ -178,4 +230,5 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
         "description": description,
         "prices": prices,
         "included": included_items,
+        "modifier_groups": modifier_groups,
     }
