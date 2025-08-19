@@ -263,14 +263,23 @@ class YelpTool(Toolkit):
         return chat_history
 
     @tool
-    def get_restaurant_openings_creditcard_not_required(self) -> str:
+    def get_restaurant_openings_creditcard_not_required(
+        self,
+        covers: Optional[int] = None,
+        date: Optional[str] = None,
+        time: Optional[str] = None,
+        get_covers_range: Optional[bool] = None,
+    ) -> str:
         """
         Get available reservation times for a restaurant using the Yelp Bookings API.
 
         Use when: User wants to check availability or see time options before booking.
 
         Args:
-            None.
+            covers: Number of people for the reservation (1-10).
+            date: Desired reservation date in YYYY-MM-DD format.
+            time: Desired reservation time in HH:MM format.
+            get_covers_range: Whether to include covers range information in response.
 
         Returns:
             str: Formatted string containing available reservation times, or error message
@@ -347,7 +356,17 @@ class YelpTool(Toolkit):
             return "Failed to get restaurant openings. Please try again."
 
     @tool
-    def make_reservation_creditcard_not_required(self) -> str:
+    def make_reservation_creditcard_not_required(
+        self,
+        covers: Optional[int] = None,
+        date: Optional[str] = None,
+        time: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        phone: Optional[str] = None,
+        email: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> str:
         """
         Make a restaurant reservation using the Yelp Bookings API for restaurants that support
         instant confirmation without requiring credit card validation.
@@ -357,7 +376,14 @@ class YelpTool(Toolkit):
         - User has provided or confirms all required reservation details
 
         Args:
-            None.
+            covers: Number of people for the reservation (1-10).
+            date: Desired reservation date in YYYY-MM-DD format.
+            time: Desired reservation time in HH:MM format.
+            first_name: First name of the person making the reservation.
+            last_name: Last name of the person making the reservation.
+            phone: Phone number for the reservation.
+            email: Email address for the reservation.
+            notes: Additional party notes or special requests for the reservation.
 
         Returns:
             str: Reservation confirmation details with confirmation number, or secure booking link
@@ -604,7 +630,15 @@ class YelpTool(Toolkit):
             return "Failed to get waitlist configuration. Please try again."
 
     @tool
-    def create_waitlist_on_my_way_visit(self) -> str:
+    def create_waitlist_on_my_way_visit(
+        self,
+        name: Optional[str] = None,
+        phone: Optional[str] = None,
+        party_size: Optional[int] = None,
+        arrival_range_min: Optional[int] = None,
+        arrival_range_max: Optional[int] = None,
+        party_notes: Optional[str] = None,
+    ) -> str:
         """
         Create a waitlist on-my-way visit at a restaurant using the Yelp Waitlist API.
 
@@ -624,7 +658,12 @@ class YelpTool(Toolkit):
         Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
 
         Args:
-            None.
+            name: Full name of the person for the waitlist.
+            phone: Phone number in E.164 format (e.g., +15551234567).
+            party_size: Number of people in the party.
+            arrival_range_min: Minimum expected arrival time in minutes from now (1-30).
+            arrival_range_max: Maximum expected arrival time in minutes from now (1-30).
+            party_notes: Additional notes or special requests for the waitlist visit.
 
         Returns:
             str: Confirmation of waitlist on-my-way visit creation with visit details, or error message
@@ -714,7 +753,14 @@ class YelpTool(Toolkit):
             return f"Failed to create waitlist on-my-way visit. {str(e)}"
 
     @tool
-    def join_waitlist_queue(self) -> str:
+    def join_waitlist_queue(
+        self,
+        name: Optional[str] = None,
+        phone: Optional[str] = None,
+        party_size: Optional[int] = None,
+        party_notes: Optional[str] = None,
+        idempotency_token: Optional[str] = None,
+    ) -> str:
         """
         Join the waitlist queue for a restaurant using the Yelp Waitlist API.
 
@@ -725,7 +771,11 @@ class YelpTool(Toolkit):
         - Join the wait when they know there's currently a wait time
 
         Args:
-            None.
+            name: Full name of the person for the waitlist.
+            phone: Phone number in E.164 format (e.g., +15551234567).
+            party_size: Number of people in the party.
+            party_notes: Additional notes or special requests for the waitlist visit.
+            idempotency_token: Unique token to prevent duplicate requests.
 
         Returns:
             str: Confirmation of waitlist queue join with visit details, expected seating times,
@@ -853,14 +903,27 @@ class YelpTool(Toolkit):
             return f"Failed to join the waitlist queue. {str(e)}"
 
     @tool
-    def get_openings_open_api_creditcard_required(self) -> str:
+    def get_openings_open_api_creditcard_required(
+        self,
+        covers: Optional[int] = None,
+        date: Optional[str] = None,
+        time: Optional[str] = None,
+        get_covers_range: Optional[bool] = None,
+        after: Optional[bool] = None,
+        before: Optional[bool] = None,
+    ) -> str:
         """
         Get available reservation times for restaurants using their open API search endpoint.
 
         Use when: User wants to check availability or see time options for open API restaurants.
 
         Args:
-            None.
+            covers: Number of people for the reservation (1-10).
+            date: Desired reservation date in YYYY-MM-DD format.
+            time: Desired reservation time in HH:MM format.
+            get_covers_range: Whether to include covers range information in response.
+            after: Whether user wants openings after a specific time.
+            before: Whether user wants openings before a specific time.
 
         Returns:
             str: Formatted string containing available reservation times, or error message
@@ -945,7 +1008,15 @@ class YelpTool(Toolkit):
             return "Failed to get restaurant openings. Please try again."
 
     @tool
-    def make_reservation_creditcard_required(self) -> str:
+    def make_reservation_creditcard_required(
+        self,
+        covers: Optional[int] = None,
+        date: Optional[str] = None,
+        time: Optional[str] = None,
+        get_covers_range: Optional[bool] = None,
+        after: Optional[bool] = None,
+        before: Optional[bool] = None,
+    ) -> str:
         """
         Make a restaurant reservation and completion on Yelp's website.
 
@@ -958,7 +1029,12 @@ class YelpTool(Toolkit):
         - If exact requested time is NOT available: Returns all available times and asks user to confirm a different time (does not provide booking URL)
 
         Args:
-            None.
+            covers: Number of people for the reservation (1-10).
+            date: Desired reservation date in YYYY-MM-DD format.
+            time: Desired reservation time in HH:MM format.
+            get_covers_range: Whether to include covers range information in response.
+            after: Whether user wants openings after a specific time.
+            before: Whether user wants openings before a specific time.
 
         Returns:
             str: Secure Yelp booking link if exact time is available, or list of all available times
@@ -1064,7 +1140,10 @@ class YelpTool(Toolkit):
             return "Failed to make reservation. Please try again."
 
     @tool
-    def cancel_visit(self) -> str:
+    def cancel_visit(
+        self,
+        visit_id: Optional[str] = None,
+    ) -> str:
         """
         Cancel a waitlist visit using the Yelp Waitlist API.
 
@@ -1094,7 +1173,7 @@ class YelpTool(Toolkit):
         - Cancellation is immediate and cannot be undone
 
         Args:
-            None.
+            visit_id: The encrypted visit identifier from when they joined the waitlist.
 
         Returns:
             str: Confirmation of visit cancellation or user-friendly error message
