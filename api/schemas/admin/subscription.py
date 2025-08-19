@@ -2,7 +2,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import List, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, EmailStr, PositiveInt, field_validator
+from pydantic import AnyHttpUrl, BaseModel, EmailStr, field_validator
+from pydantic_core.core_schema import ValidationInfo
 
 from api.schemas.admin.project import ProjectSummary
 from db.tables.types import PaymentMethod, SubscriptionStatus, TargetTier
@@ -57,16 +58,12 @@ class CreateSubscriptionPlanRequest(BaseModel):
             raise ValueError("Plan name cannot be empty")
         return v.strip()
 
-    @field_validator("call_overage_charge", "order_overage_charge", "monthly_fee")
-    def validate_positive_amounts(cls, v):
+    @field_validator(
+        "call_overage_charge", "order_overage_charge", "monthly_fee", "free_trial_days"
+    )
+    def validate_positive_amounts(cls, v, info: ValidationInfo):
         if v is not None and v < 0:
-            raise ValueError("Charges and fees must be non-negative")
-        return v
-
-    @field_validator("call_quota", "order_quota", "free_trial_days")
-    def validate_positive_numbers(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Quotas and trial days must be positive")
+            raise ValueError(f"{info.field_name} must be non-negative")
         return v
 
 
@@ -108,20 +105,16 @@ class UpdateSubscriptionPlanRequest(BaseModel):
 
     @field_validator("name")
     def validate_name(cls, v):
-        if v is not None and (not v or not v.strip()):
+        if not v or not v.strip():
             raise ValueError("Plan name cannot be empty")
-        return v.strip() if v else v
+        return v.strip()
 
-    @field_validator("call_overage_charge", "order_overage_charge", "monthly_fee")
-    def validate_positive_amounts(cls, v):
+    @field_validator(
+        "call_overage_charge", "order_overage_charge", "monthly_fee", "free_trial_days"
+    )
+    def validate_positive_amounts(cls, v, info: ValidationInfo):
         if v is not None and v < 0:
-            raise ValueError("Charges and fees must be non-negative")
-        return v
-
-    @field_validator("call_quota", "order_quota", "free_trial_days")
-    def validate_positive_numbers(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("Quotas and trial days must be positive")
+            raise ValueError(f"{info.field_name} must be non-negative")
         return v
 
 
@@ -154,20 +147,6 @@ class CreateSubscriptionRequest(BaseModel):
             payment_method=self.payment_method,
             schedule=self.schedule,
         )
-
-
-class CheckoutParams(BaseModel):
-    account_name: str
-    customer_email: EmailStr
-    price_id: str
-    redirect_url_prefix: AnyHttpUrl
-    quantity: PositiveInt = 1
-
-    @field_validator("price_id")
-    def validate_price_id(cls, v):
-        if not v.startswith("price_"):
-            raise ValueError('Price ID must start with "price_"')
-        return v
 
 
 class ListAccountSubscriptionsResponse(BaseModel):
