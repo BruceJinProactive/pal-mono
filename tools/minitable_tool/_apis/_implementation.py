@@ -35,6 +35,7 @@ def search_availability(
         "party_size": str(search_params.get("party_size")),
         "slot_time": slot_times,
     }
+    logger.debug(f"[MiniTable] Checking availability api request: {request_body}")
 
     response = connect_minitable_api(
         api_function=api_function,
@@ -50,7 +51,7 @@ def search_availability(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"MiniTable API response: {data}")
+    logger.debug(f"[MiniTable] MiniTable API response: {data}")
 
     return {
         "party_size": data.get("party_size"),
@@ -108,7 +109,7 @@ def create_reservation(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"MiniTable API create reservation response: {data}")
+    logger.debug(f"[MiniTable] MiniTable API create reservation response: {data}")
 
     return {
         "booking": data.get("booking", {}),

@@ -99,19 +99,18 @@ class MiniTableTool(Toolkit):
             time: Time for the reservation in HH:MM format (24-hour, e.g., "19:30", "12:00")
         """
 
-        logger.debug(
-            f"[MiniTable] Checking availability for party_size: {party_size}, date: {date}, time: {time}"
-        )
-
         try:
             # Generate fuzzy time slots as strings
             fuzzy_time_slots = self._generate_fuzzy_time_slots(time)
-
             # Convert time slots to timestamps
             fuzzy_timestamps = [
                 self._convert_datetime_to_timestamp(date, time_slot)
                 for time_slot in fuzzy_time_slots
             ]
+
+            logger.debug(
+                f"[MiniTable] Checking availability for party_size: {party_size}, date: {date}, time: {time}, fuzzy_time: {fuzzy_time_slots}, timestamps: {fuzzy_timestamps}"
+            )
 
             search_params = {
                 "party_size": party_size,
