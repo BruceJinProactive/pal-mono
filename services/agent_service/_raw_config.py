@@ -110,10 +110,10 @@ class RawConfig:
                     background_speech_denoising_plan=self._get_background_speech_denoising_plan(),
                     language=self.agent.language,
                     tool_calling_filler_words=self.agent.raw_config.get(
-                        "tool_calling_filler_words", []
+                        "tool_calling_filler_words", {}
                     ),
                     chat_filler_words=self.agent.raw_config.get(
-                        "chat_filler_words", []
+                        "chat_filler_words", {}
                     ),
                     voice_decoder=self._get_voice_decoder_config(),
                     transcriber=self._get_transcriber_config(),

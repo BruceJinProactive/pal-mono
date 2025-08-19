@@ -74,8 +74,8 @@ class VoiceConfig(BaseModel):
     background_noise: str
     background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
     language: Language
-    tool_calling_filler_words: list[str] = Field(default_factory=list)
-    chat_filler_words: list[str] = Field(default_factory=list)
+    tool_calling_filler_words: dict[str, list[str]] = Field(default_factory=dict)
+    chat_filler_words: dict[str, list[str]] = Field(default_factory=dict)
     voice_decoder: Optional[VoiceDecoderConfig] = None
     transcriber: Optional[TranscriberConfig] = None
     start_speaking_plan: Optional[StartSpeakingPlan] = None

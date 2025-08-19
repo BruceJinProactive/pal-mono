@@ -2,6 +2,7 @@ import datetime
 import random
 import time
 import uuid
+from enum import StrEnum
 from typing import AsyncIterator, Optional
 
 import agno.agent.agent
@@ -21,6 +22,254 @@ from services.llm_service import build_agno_model
 from services.llm_service.schema import ModelOptions
 from utils.dd import send_dd_histogram_metrics, trace_block
 from utils.log import logger
+
+
+class FillerType(StrEnum):
+    CHAT = "chat"
+    TOOL_CALLING = "tool_calling"
+
+
+class FillerWordsManager:
+    """Manages language detection and filler words for chat and tool calling scenarios"""
+
+    # Supported Language enums for language detection and filler words
+    _SUPPORTED_LANGUAGES = {
+        Language.ENGLISH,
+        Language.SPANISH,
+        Language.FRENCH,
+        Language.ITALIAN,
+        Language.CHINESE,
+        Language.JAPANESE,
+        Language.KOREAN,
+    }
+
+    def __init__(
+        self,
+        chat_filler_words: dict[str, list[str]],
+        tool_calling_filler_words: dict[str, list[str]],
+        agent_id: str,
+        account_name: str,
+    ):
+        self.chat_filler_words = chat_filler_words
+        self.tool_calling_filler_words = tool_calling_filler_words
+        self.agent_id = agent_id
+        self.account_name = account_name
+        self._language_detector = self._build_language_detector()
+
+    def _build_language_detector(self):
+        """
+        Build a language detector with supported languages.
+
+        Returns:
+            LanguageDetector: Configured language detector
+        """
+        return LanguageDetectorBuilder.from_languages(
+            *self._SUPPORTED_LANGUAGES
+        ).build()
+
+    def detect_input_languages(self, input_content: str) -> list[Language]:
+        """
+        Detect the language(s) of the input text.
+
+        Args:
+            input_content: The text content to analyze
+
+        Returns:
+            List of detected languages
+        """
+        if not input_content or not input_content.strip():
+            logger.debug(
+                "[FillerWordsManager] Empty input content, skipping language detection"
+            )
+            return []
+
+        try:
+            detected_languages = self._language_detector.detect_multiple_languages_of(
+                input_content
+            )
+            return [
+                detected_language.language for detected_language in detected_languages
+            ]
+        except Exception as e:
+            logger.error(f"[FillerWordsManager] Language detection failed: {e}")
+            return []
+
+    def get_filler_words(self, language: str, filler_type: FillerType) -> str:
+        """
+        Generate a filler phrase from configured options for a specific language and type.
+
+        Args:
+            language: The language code/name for which to get filler words
+            filler_type: Type of filler words (FillerType enum)
+
+        Returns:
+            A filler string with flush directive, or empty string if no fillers configured
+        """
+        # Validate that the language is supported
+        supported_language_names = {lang.name for lang in self._SUPPORTED_LANGUAGES}
+        if language not in supported_language_names:
+            logger.warning(
+                f"[FillerWordsManager] Unsupported language '{language}' for {filler_type} filler words. "
+                f"Supported languages: {sorted(supported_language_names)}",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                    "language": language,
+                    "filler_type": filler_type.value,
+                    "supported_languages": sorted(supported_language_names),
+                },
+            )
+            return ""
+
+        # Get the appropriate filler words dictionary based on type
+        if filler_type == FillerType.CHAT:
+            filler_words_dict = self.chat_filler_words
+        elif filler_type == FillerType.TOOL_CALLING:
+            filler_words_dict = self.tool_calling_filler_words
+        else:
+            logger.error(f"[FillerWordsManager] Unknown filler type: {filler_type}")
+            return ""
+
+        if not filler_words_dict:
+            logger.debug(
+                f"[FillerWordsManager] No {filler_type} filler words configured"
+            )
+            return ""
+
+        # Get filler words for the specific language
+        language_filler_words = filler_words_dict.get(language, [])
+        if not language_filler_words:
+            logger.debug(
+                f"[FillerWordsManager] No {filler_type} filler words configured for language: {language}"
+            )
+            return ""
+
+        # Select a random filler from the configured options for this language
+        selected_filler = random.choice(language_filler_words)
+        logger.debug(
+            f"[FillerWordsManager] Selected {filler_type} filler for {language}: '{selected_filler}'"
+        )
+
+        # Empty string in config to control the probability
+        if not selected_filler:
+            return ""
+        return selected_filler + " <flush />"
+
+    def is_language_supported(self, language: str) -> bool:
+        """Check if a language is supported for filler words"""
+        supported_language_names = {lang.name for lang in self._SUPPORTED_LANGUAGES}
+        return language in supported_language_names
+
+    @classmethod
+    def get_supported_languages(cls) -> set[Language]:
+        """Get the set of supported Language enums"""
+        return cls._SUPPORTED_LANGUAGES.copy()
+
+    def get_chat_filler_for_input(self, input_content: str) -> str:
+        """
+        Get chat filler words with automatic language detection and decision logic.
+
+        Args:
+            input_content: The input text to analyze
+
+        Returns:
+            Filler words string or empty string if should be skipped
+        """
+        if not self.chat_filler_words:
+            logger.debug(
+                "[FillerWordsManager] No chat filler words configured",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                },
+            )
+            return ""
+
+        detected_languages = self.detect_input_languages(input_content)
+
+        # Only proceed with filler words if exactly one language is detected
+        if len(detected_languages) == 1:
+            detected_language = detected_languages[0]
+            filler_words = self.get_filler_words(
+                detected_language.name, FillerType.CHAT
+            )
+
+            if filler_words:
+                logger.debug(
+                    f"[FillerWordsManager] Chat filler outputted: {filler_words}",
+                    extra={
+                        "agent_id": self.agent_id,
+                        "account_name": self.account_name,
+                        "detected_language": detected_language.name,
+                    },
+                )
+            return filler_words
+        else:
+            logger.debug(
+                "[FillerWordsManager] Skipping chat filler words due to multilingual input or detection failure",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                    "detected_languages": [lang.name for lang in detected_languages],
+                },
+            )
+            return ""
+
+    def get_tool_calling_filler_for_input(
+        self, input_content: str, tool_name: str = "unknown"
+    ) -> str:
+        """
+        Get tool calling filler words with automatic language detection and decision logic.
+
+        Args:
+            input_content: The input text to analyze
+            tool_name: Name of the tool being called (for logging)
+
+        Returns:
+            Filler words string or empty string if should be skipped
+        """
+        if not self.tool_calling_filler_words:
+            logger.debug(
+                "[FillerWordsManager] No tool calling filler words configured",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                },
+            )
+            return ""
+
+        # Detect languages
+        detected_languages = self.detect_input_languages(input_content)
+
+        # Only proceed with filler words if exactly one language is detected
+        if len(detected_languages) == 1:
+            detected_language = detected_languages[0]
+            filler_words = self.get_filler_words(
+                detected_language.name, FillerType.TOOL_CALLING
+            )
+
+            if filler_words:
+                logger.debug(
+                    f"[FillerWordsManager] Tool calling filler outputted: {filler_words}",
+                    extra={
+                        "agent_id": self.agent_id,
+                        "account_name": self.account_name,
+                        "detected_language": detected_language.name,
+                        "tool_name": tool_name,
+                    },
+                )
+            return filler_words
+        else:
+            logger.debug(
+                "[FillerWordsManager] Skipping tool calling filler words due to multilingual input or detection failure",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                    "detected_languages": [lang.name for lang in detected_languages],
+                    "tool_name": tool_name,
+                },
+            )
+            return ""
 
 
 class ResponseModel(BaseModel):
@@ -76,7 +325,12 @@ class AgnoAgent:
 
         self._agent = agent
         self.config = config
-        self._language_detector = self._build_language_detector()
+        self.filler_manager = FillerWordsManager(
+            chat_filler_words=config.voice_config.chat_filler_words,
+            tool_calling_filler_words=config.voice_config.tool_calling_filler_words,
+            agent_id=config.metadata.agent_id,
+            account_name=config.metadata.account_name,
+        )
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -149,8 +403,6 @@ class AgnoAgent:
             output_content = ""
             message, messages = await self._build_model_inputs(input)
 
-            # Detect input languages once for both chat and tool calling filler decisions
-            detected_languages = self._detect_input_languages(input)
             logger.debug(
                 f"[AgnoAgent] start getting called at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
                 extra={
@@ -200,30 +452,12 @@ class AgnoAgent:
                     },
                 )
 
-                # Output chat filler words if configured and not skipped due to multilingual detection
-                filler_words = ""
-                if len(detected_languages) == 1:
-                    filler_words = self._get_chat_filler()
-                else:
-                    logger.debug(
-                        "[AgnoAgent] Skipping chat filler words due to multilingual input or detection failure",
-                        extra={
-                            "agent_id": self.config.metadata.agent_id,
-                            "account_name": self.config.metadata.account_name,
-                            "detected_languages": [
-                                lang.name for lang in detected_languages
-                            ],
-                        },
-                    )
+                # Output chat filler words if configured
+                filler_words = self.filler_manager.get_chat_filler_for_input(
+                    input.content
+                )
 
                 if filler_words:
-                    logger.debug(
-                        f"[AgnoAgent] chat filler outputted: {filler_words}",
-                        extra={
-                            "agent_id": self.config.metadata.agent_id,
-                            "account_name": self.config.metadata.account_name,
-                        },
-                    )
                     filler_output = Output(
                         content=filler_words,
                         documents=[],
@@ -277,63 +511,26 @@ class AgnoAgent:
                         yield chunk_output
 
                     elif isinstance(chunk, ToolCallStartedEvent):
-                        # Output filler words when tool execution starts (if configured and not multilingual)
-                        tool_filler_words = ""
-                        if (
-                            self.config.voice_config.tool_calling_filler_words
-                            and len(detected_languages) == 1
-                        ):
-                            tool_filler_words = random.choice(
-                                self.config.voice_config.tool_calling_filler_words
+                        # Output filler words when tool execution starts
+                        tool_name = (
+                            chunk.tool.tool_name
+                            if chunk.tool and chunk.tool.tool_name
+                            else "unknown"
+                        )
+                        tool_filler_words = (
+                            self.filler_manager.get_tool_calling_filler_for_input(
+                                input.content, tool_name
                             )
+                        )
 
                         if tool_filler_words:
-                            logger.debug(
-                                f"[AgnoAgent] tool call started, outputting filler words: {tool_filler_words}",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                    "tool_name": (
-                                        chunk.tool.tool_name
-                                        if chunk.tool
-                                        else "unknown"
-                                    ),
-                                },
-                            )
                             tool_filler_output = Output(
-                                content=tool_filler_words + " <flush />",
+                                content=tool_filler_words,
                                 documents=[],
                                 images=[],
                             )
                             output_content += tool_filler_output.content
                             yield tool_filler_output
-                        elif (
-                            self.config.voice_config.tool_calling_filler_words
-                            and len(detected_languages) != 1
-                        ):
-                            logger.debug(
-                                "[AgnoAgent] Skipping tool calling filler words due to multilingual input",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                    "tool_name": (
-                                        chunk.tool.tool_name
-                                        if chunk.tool
-                                        else "unknown"
-                                    ),
-                                    "detected_languages": [
-                                        lang.name for lang in detected_languages
-                                    ],
-                                },
-                            )
-                        else:
-                            logger.debug(
-                                "[AgnoAgent] not respond to ToolCallStartedEvent type chunk",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                },
-                            )
                     else:
                         logger.debug(
                             f"[AgnoAgent] received non ResponseContent type chunk: {type(chunk)}",
@@ -424,72 +621,3 @@ class AgnoAgent:
                 messages = messages[:-1]
         messages.append(Message(role="user", content=input.get_prompt()))
         return messages
-
-    def _get_chat_filler(self) -> str:
-        """
-        Generate a chat filler phrase from configured options.
-
-        Returns:
-            A chat filler string with flush directive, or empty string if no fillers configured
-        """
-
-        chat_filler_words = self.config.voice_config.chat_filler_words
-        if not chat_filler_words:
-            logger.debug("[AgnoAgent] No chat filler words configured")
-            return ""
-
-        # Select a random filler from the configured options
-        selected_filler = random.choice(chat_filler_words)
-        logger.debug(f"[AgnoAgent] Selected filler: '{selected_filler}'")
-
-        # Empty string in config to control the probability
-        if not selected_filler:
-            return ""
-        return selected_filler + " <flush />"
-
-    def _build_language_detector(self):
-        """
-        Build a language detector with common languages.
-
-        Returns:
-            LanguageDetector: Configured language detector
-        """
-        return LanguageDetectorBuilder.from_languages(
-            Language.ENGLISH,
-            Language.SPANISH,
-            Language.FRENCH,
-            Language.ITALIAN,
-            Language.CHINESE,
-            Language.JAPANESE,
-            Language.KOREAN,
-        ).build()
-
-    def _detect_input_languages(self, input: Input) -> list[Language]:
-        """
-        Detect the language(s) of the input text.
-
-        Args:
-            input: The input to analyze
-
-        Returns:
-            tuple: (detected_languages, should_skip_fillers)
-                - detected_languages: List of detected languages
-                - should_skip_fillers: True if multiple languages detected or detection failed
-        """
-        if not input.content or not input.content.strip():
-            logger.debug("[AgnoAgent] Empty input content, skipping language detection")
-            return []
-
-        try:
-            detected_languages = self._language_detector.detect_multiple_languages_of(
-                input.content
-            )
-
-            return [
-                detected_language.language for detected_language in detected_languages
-            ]
-
-        except Exception as e:
-            logger.error(f"[AgnoAgent] Language detection failed: {e}")
-            # On error, skip filler words to be safe
-            return []
