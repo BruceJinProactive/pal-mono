@@ -92,26 +92,47 @@ class TransactionRepository:
             .first()
         )
 
-    def update_transaction_status(
-        self, transaction_id: uuid.UUID, status: str
+    def update_transaction_by_order_number(
+        self,
+        store_id: str,
+        vendor: IntegrationProvider,
+        external_transaction_number: str,
+        **kwargs,
     ) -> Optional[Transaction]:
-        """Update the status of a transaction."""
-        transaction = self.get_transaction_by_id(transaction_id)
-        if transaction:
-            transaction.status = status
-            if self.auto_commit:
-                self.session.commit()
-        return transaction
+        """
+        Update a transaction by its external transaction number, store ID, and vendor.
 
-    def update_transaction_tracking_link(
-        self, transaction_id: uuid.UUID, tracking_link: str
-    ) -> Optional[Transaction]:
-        """Update the tracking link of a transaction."""
-        transaction = self.get_transaction_by_id(transaction_id)
+        Args:
+            store_id: The store ID to find
+            vendor: The integration provider (adora, square, toast, etc.)
+            external_transaction_number: The external order number to find
+            **kwargs: Fields to update (status, tracking_link, notes, etc.)
+
+        Returns:
+            Transaction: The updated transaction, or None if not found
+        """
+        # Build query filters
+        filters = [
+            Transaction.external_transaction_number == external_transaction_number,
+            Transaction.vendor == vendor,
+            Transaction.store_id == store_id,
+        ]
+
+        # Find the transaction with all specified criteria
+        transaction = self.session.query(Transaction).filter(*filters).first()
+
         if transaction:
-            transaction.tracking_link = tracking_link
+            # Update transaction fields
+            for field, value in kwargs.items():
+                if hasattr(transaction, field):
+                    setattr(transaction, field, value)
+
+            # Always update order_time to current time
+            transaction.order_time = datetime.now()
+
             if self.auto_commit:
                 self.session.commit()
+
         return transaction
 
     def get_order_value(

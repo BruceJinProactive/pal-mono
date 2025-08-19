@@ -24,7 +24,6 @@ from utils.secret import get_client_secret
 from ._util import (
     get_square_client_id,
     get_square_client_secret,
-    handle_order_created,
     handle_payment_updated,
     refresh_square_token,
 )
@@ -444,7 +443,6 @@ async def webhook(request: Request) -> JSONResponse:
 
     """
     try:
-        # Parse the webhook payload
         body = await request.json()
 
         # Extract event type
@@ -456,9 +454,7 @@ async def webhook(request: Request) -> JSONResponse:
         )
 
         # Only process specific event types
-        if event_type == "order.created":
-            await handle_order_created(body)
-        elif event_type == "payment.updated":
+        if event_type == "payment.updated":
             await handle_payment_updated(body)
         else:
             logger.info(

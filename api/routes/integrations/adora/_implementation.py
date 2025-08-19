@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.session import AsyncSessionLocal
 from utils.log import logger
 
-from ._utils import is_dev_mode, send_order_notification, update_order_status
+from ._utils import send_order_notification, update_order_status
 from .schemas import AdoraWebhookRequest, AdoraWebhookResponse
 
 
@@ -27,9 +27,6 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
         HTTPException: If there's an error processing the request
     """
     try:
-        # Check if dev mode is enabled
-        dev_mode = is_dev_mode(request)
-
         # Extract body from request
         body = await request.json()
 
@@ -59,22 +56,21 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                 content={"error": f"Invalid request body: {str(e)}"},
             )
 
-        if dev_mode:  # TODO: remove this once we're done testing
-            # Initialize database session
-            async with AsyncSessionLocal() as session:
-                try:
-                    # Update order status and get order object
-                    order = await update_order_status(session, webhook_request)
+        # Initialize database session
+        async with AsyncSessionLocal() as session:
+            try:
+                # Update order status and get order object
+                order = await update_order_status(session, webhook_request)
 
-                    # Attempt to send notification
-                    await send_order_notification(order)
+                # Attempt to send notification
+                await send_order_notification(order)
 
-                except (SQLAlchemyError, ValueError, RuntimeError) as e:
-                    logger.error(f"Failed to update order: {str(e)}")
-                    return JSONResponse(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        content={"error": f"Failed to update order: {str(e)}"},
-                    )
+            except (SQLAlchemyError, ValueError, RuntimeError) as e:
+                logger.error(f"Failed to update order: {str(e)}")
+                return JSONResponse(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    content={"error": f"Failed to update order: {str(e)}"},
+                )
 
         # For now, just log the event
         logger.info(

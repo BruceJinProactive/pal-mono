@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from db.repositories.transaction_repository import TransactionRepository
 from db.tables.transactions import Transaction
-from utils.log import logger
+from db.tables.types import IntegrationProvider
 
 from .schema import TransactionData
 
@@ -13,57 +13,27 @@ from .schema import TransactionData
 def create_transaction(
     session: Session,
     transaction_data: TransactionData,
-    auto_commit: bool = True,
 ) -> Transaction:
-    """
-    Create a new transaction record from standardized transaction data.
-
-    Args:
-        session: Database session
-        transaction_data: Standardized transaction data
-        auto_commit: Whether to commit the transaction automatically
-
-    Returns:
-        Transaction: The created transaction record
-
-    Raises:
-        Exception: If transaction creation fails
-    """
-    try:
-        repository = TransactionRepository(session, auto_commit=auto_commit)
-
-        transaction = repository.create_transaction(
-            external_transaction_id=transaction_data.external_transaction_id,
-            conversation_id=transaction_data.conversation_id,
-            user_id=transaction_data.user_id,
-            project_id=transaction_data.project_id,
-            vendor=transaction_data.vendor,
-            external_transaction_number=transaction_data.external_transaction_number,
-            store_id=transaction_data.store_id,
-            tracking_link=transaction_data.tracking_link,
-            status=transaction_data.status,
-            integration_type=transaction_data.integration_type,
-            fulfillment_strategy=transaction_data.fulfillment_strategy,
-            notes=transaction_data.notes,
-            subtotal=transaction_data.subtotal,
-            order_items=transaction_data.order_items,
-            table_size=transaction_data.table_size,
-            order_time=transaction_data.order_time,
-        )
-
-        logger.info(
-            f"[TransactionService] Created transaction {transaction.id} "
-            f"for vendor {transaction_data.vendor} with external_id {transaction_data.external_transaction_id}"
-        )
-
-        return transaction
-
-    except Exception as e:
-        logger.error(
-            f"[TransactionService] Failed to create transaction for vendor {transaction_data.vendor}: {e}",
-            exc_info=True,
-        )
-        raise
+    """Create a new transaction record from standardized transaction data."""
+    repository = TransactionRepository(session, auto_commit=True)
+    return repository.create_transaction(
+        external_transaction_id=transaction_data.external_transaction_id,
+        conversation_id=transaction_data.conversation_id,
+        user_id=transaction_data.user_id,
+        project_id=transaction_data.project_id,
+        vendor=transaction_data.vendor,
+        external_transaction_number=transaction_data.external_transaction_number,
+        store_id=transaction_data.store_id,
+        tracking_link=transaction_data.tracking_link,
+        status=transaction_data.status,
+        integration_type=transaction_data.integration_type,
+        fulfillment_strategy=transaction_data.fulfillment_strategy,
+        notes=transaction_data.notes,
+        subtotal=transaction_data.subtotal,
+        order_items=transaction_data.order_items,
+        table_size=transaction_data.table_size,
+        order_time=transaction_data.order_time,
+    )
 
 
 def get_transaction_by_id(
@@ -75,23 +45,18 @@ def get_transaction_by_id(
     return repository.get_transaction_by_id(transaction_id)
 
 
-def update_transaction_status(
+def update_transaction_by_order_number(
     session: Session,
-    transaction_id: uuid.UUID,
-    status: str,
-    auto_commit: bool = True,
+    store_id: str,
+    vendor: IntegrationProvider,
+    external_transaction_number: str,
+    **kwargs,
 ) -> Optional[Transaction]:
-    """Update the status of a transaction."""
-    repository = TransactionRepository(session, auto_commit=auto_commit)
-    return repository.update_transaction_status(transaction_id, status)
-
-
-def update_transaction_tracking_link(
-    session: Session,
-    transaction_id: uuid.UUID,
-    tracking_link: str,
-    auto_commit: bool = True,
-) -> Optional[Transaction]:
-    """Update the tracking link of a transaction."""
-    repository = TransactionRepository(session, auto_commit=auto_commit)
-    return repository.update_transaction_tracking_link(transaction_id, tracking_link)
+    """Update a transaction by its external transaction number, store ID, and vendor."""
+    repository = TransactionRepository(session, auto_commit=True)
+    return repository.update_transaction_by_order_number(
+        store_id=store_id,
+        vendor=vendor,
+        external_transaction_number=external_transaction_number,
+        **kwargs,
+    )

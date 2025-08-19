@@ -1,17 +1,8 @@
 """
-Transaction Helper Utilities
+Transaction Service Utilities
 
-Shared utilities for tools to easily save transaction data to the database.
-This module provides convenience functions that abstract away the complexity
-of creating and managing transaction records across different integration providers.
-
+Utility functions for the transaction service.
 """
-
-__all__ = [
-    "save_transaction",
-    "update_transaction_by_order_number",
-    "reconstruct_order_items",
-]
 
 import uuid
 from datetime import datetime
@@ -21,10 +12,10 @@ from typing import Any, List, Optional
 from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
-from db.session import SyncSessionLocal
 from db.tables.types import IntegrationProvider, IntegrationType
-from services.transaction_service import OrderTransactionData, create_transaction
 from utils.log import logger
+
+from .schema import OrderTransactionData
 
 
 def reconstruct_order_items(order_items: Optional[List[Any]]) -> Optional[List[dict]]:
@@ -120,6 +111,10 @@ def save_transaction(
     Returns:
         uuid.UUID: The ID of the created transaction, or None if failed
     """
+    from db.session import SyncSessionLocal
+
+    from ._implementation import create_transaction
+
     db_session = session or SyncSessionLocal()
     auto_close_session = session is None
 
@@ -153,7 +148,7 @@ def save_transaction(
         transaction = create_transaction(db_session, transaction_data)
 
         logger.info(
-            f"[TransactionHelper] Saved transaction {transaction.id} "
+            f"[TransactionService] Saved transaction {transaction.id} "
             f"for {vendor} with external_id {external_transaction_id}"
         )
 
@@ -161,7 +156,7 @@ def save_transaction(
 
     except Exception as e:
         logger.error(
-            f"[TransactionHelper] Failed to save transaction for {vendor}: {e}",
+            f"[TransactionService] Failed to save transaction for {vendor}: {e}",
             exc_info=True,
         )
         return None
@@ -171,83 +166,89 @@ def save_transaction(
             db_session.close()
 
 
-def update_transaction_by_order_number(
+def update_transaction_by_order_number_helper(
+    external_transaction_number: str,
     store_id: str,
     vendor: IntegrationProvider,
-    new_status: str,
-    external_transaction_number: Optional[str] = None,
+    status: Optional[str] = None,
     tracking_link: Optional[str] = None,
+    notes: Optional[str] = None,
     session: Optional[Session] = None,
+    **kwargs,
 ) -> bool:
     """
-    Update a transaction by its external transaction ID, store ID, vendor, and optional identifiers.
+    Helper function to update a transaction by order number with session management.
 
-    This helper finds a transaction using external_transaction_number, store_id, vendor, and optionally
-    transaction_number, then updates its status and tracking link.
+    This is a convenience function that can be used with asyncio.to_thread() for async contexts.
+    It handles session creation and cleanup automatically.
 
     Args:
-        external_transaction_number: The external ordernumber to find
+        external_transaction_number: The external order number to find
         store_id: The store ID to find
         vendor: The integration provider (adora, square, toast, etc.)
-        new_status: The new status to set
-        tracking_link: Optional new tracking link to set
+        status: Transaction status to update
+        tracking_link: Tracking link to update
+        notes: Notes to update
         session: Optional database session (creates one if not provided)
+        **kwargs: Additional fields to update
 
     Returns:
         bool: True if transaction was found and updated, False otherwise
     """
+    from db.session import SyncSessionLocal
+
+    from ._implementation import update_transaction_by_order_number
+
     db_session = session or SyncSessionLocal()
     auto_close_session = session is None
 
     try:
-        # Import here to avoid circular imports
-        from db.tables.transactions import Transaction
+        # Build update fields
+        update_fields = {}
+        if status is not None:
+            update_fields["status"] = status
+        if tracking_link is not None:
+            update_fields["tracking_link"] = tracking_link
+        if notes is not None:
+            update_fields["notes"] = notes
 
-        if not external_transaction_number:
-            logger.error(
-                "[TransactionHelper] external_transaction_number must be provided"
+        # Add any additional kwargs
+        update_fields.update(kwargs)
+
+        if not update_fields:
+            logger.warning(
+                f"[TransactionService] No fields to update for transaction {external_transaction_number}"
             )
             return False
 
-        # Build query filters
-        filters = [
-            Transaction.external_transaction_number == external_transaction_number,
-            Transaction.vendor == vendor,
-            Transaction.store_id == store_id,
-        ]
-
-        # Find the transaction with all specified criteria
-        transaction = db_session.query(Transaction).filter(*filters).first()
+        # Update the transaction
+        transaction = update_transaction_by_order_number(
+            session=db_session,
+            store_id=store_id,
+            vendor=vendor,
+            external_transaction_number=external_transaction_number,
+            **update_fields,
+        )
 
         if transaction:
-            # Update transaction status and tracking link
-            transaction.status = new_status
-            if tracking_link is not None:
-                transaction.tracking_link = tracking_link
-            transaction.order_time = datetime.now()
-            if auto_close_session:
-                db_session.commit()
-
-            logger.debug(
-                f"[TransactionHelper] Updated transaction {transaction.id} for external_transaction_number {external_transaction_number}"
+            updated_fields = ", ".join(update_fields.keys())
+            logger.info(
+                f"[TransactionService] Updated transaction {transaction.id} "
+                f"for external_transaction_number {external_transaction_number} fields: {updated_fields}"
             )
             return True
         else:
-            # Build descriptive error message
-            criteria = f"external_transaction_number: {external_transaction_number}, vendor: {vendor}, store_id: {store_id}"
-            if external_transaction_number:
-                criteria += (
-                    f", external_transaction_number: {external_transaction_number}"
-                )
-
-            logger.warning(f"[TransactionHelper] No transaction found with {criteria}")
+            logger.warning(
+                f"[TransactionService] No transaction found with external_transaction_number: {external_transaction_number}, "
+                f"vendor: {vendor}, store_id: {store_id}"
+            )
             return False
 
     except Exception as e:
         if auto_close_session:
             db_session.rollback()
         logger.error(
-            f"[TransactionHelper] Error updating transaction {external_transaction_number}: {e}",
+            f"[TransactionService] Error updating transaction {external_transaction_number}: {e}",
             exc_info=True,
         )
         return False
