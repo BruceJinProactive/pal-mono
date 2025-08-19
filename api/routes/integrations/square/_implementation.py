@@ -25,7 +25,7 @@ from ._util import (
     handle_payment_updated,
     refresh_square_token,
 )
-from ._valid import valid_request
+from ._valid import valid_request, validate_square_webhook_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
@@ -438,20 +438,82 @@ async def webhook(request: Request) -> JSONResponse:
     Square webhook endpoint that processes order.created and payment.updated events.
 
     """
+    # Initialize variables for error handling
+    raw_body = b""
+
     try:
-        body = await request.json()
+        # Get raw request body for signature validation
+        raw_body = await request.body()
+
+        # Debug logging for incoming webhook request
+        logger.debug(
+            "[Square Webhook Debug] Incoming webhook request details",
+            extra={
+                "method": request.method,
+                "url": str(request.url),
+                "headers": dict(request.headers),
+                "body_length": len(raw_body),
+                "body_preview": raw_body[:200].decode("utf-8", errors="ignore")
+                + ("..." if len(raw_body) > 200 else ""),
+            },
+        )
+
+        # Validate webhook signature
+        if not validate_square_webhook_request(request, raw_body):
+            logger.warning(
+                "[Square Webhook] Invalid signature - rejecting request",
+                extra={
+                    "url": str(request.url),
+                    "signature_header": request.headers.get(
+                        "x-square-hmacsha256-signature", "MISSING"
+                    ),
+                    "body_length": len(raw_body),
+                },
+            )
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": "Invalid webhook signature"},
+            )
+
+        # Parse JSON body after validation
+        body = json.loads(raw_body.decode("utf-8"))
 
         # Extract event type
         event_type = body.get("type")
 
         logger.info(
-            f"[Square Webhook] Received webhook event: {event_type}",
-            extra={"event_id": body.get("event_id"), "event_type": event_type},
+            f"[Square Webhook] Signature validated successfully - processing event: {event_type}",
+            extra={
+                "event_id": body.get("event_id"),
+                "event_type": event_type,
+                "signature_validation": "PASSED",
+            },
+        )
+
+        # Debug logging for parsed webhook body
+        logger.debug(
+            "[Square Webhook Debug] Parsed webhook body details",
+            extra={
+                "event_id": body.get("event_id"),
+                "event_type": event_type,
+                "created_at": body.get("created_at"),
+                "merchant_id": body.get("merchant_id"),
+                "location_id": body.get("location_id"),
+                "data_keys": (
+                    list(body.get("data", {}).keys()) if body.get("data") else []
+                ),
+            },
         )
 
         # Only process specific event types
         if event_type == "payment.updated":
+            logger.debug(
+                f"[Square Webhook Debug] Processing payment.updated event for event_id: {body.get('event_id')}"
+            )
             await handle_payment_updated(body)
+            logger.debug(
+                f"[Square Webhook Debug] Completed processing payment.updated event for event_id: {body.get('event_id')}"
+            )
         else:
             logger.info(
                 f"[Square Webhook] Ignoring unsupported event type: {event_type}",
@@ -459,19 +521,42 @@ async def webhook(request: Request) -> JSONResponse:
             )
 
         # Return success response
+        logger.debug(
+            "[Square Webhook Debug] Returning success response",
+            extra={
+                "event_id": body.get("event_id"),
+                "event_type": event_type,
+                "status_code": 200,
+            },
+        )
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={"success": True, "message": "Webhook processed successfully"},
         )
 
-    except json.JSONDecodeError:
-        logger.error("[Square Webhook] Invalid JSON in request body")
+    except json.JSONDecodeError as e:
+        logger.error(
+            "[Square Webhook] Invalid JSON in request body",
+            extra={
+                "error": str(e),
+                "body_preview": raw_body[:200].decode("utf-8", errors="ignore"),
+            },
+        )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": "Invalid JSON in request body"},
         )
     except Exception as e:
-        logger.error(f"[Square Webhook] Error processing webhook request: {str(e)}")
+        logger.error(
+            f"[Square Webhook] Error processing webhook request: {str(e)}",
+            extra={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "url": str(request.url) if request else "N/A",
+                "method": request.method if request else "N/A",
+            },
+            exc_info=True,
+        )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": "Internal server error"},
