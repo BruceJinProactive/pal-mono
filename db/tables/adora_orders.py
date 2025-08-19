@@ -16,8 +16,8 @@ from .base import Base
 from .types import IntegrationProvider
 
 
-class Order(Base):
-    __tablename__ = "orders"
+class AdoraOrder(Base):
+    __tablename__ = "adora_orders"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

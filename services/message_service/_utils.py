@@ -14,7 +14,7 @@ from api.schemas.chat.message import (
     Type,
 )
 from db.session import AsyncSessionLocal
-from db.tables.orders import Order
+from db.tables.adora_orders import AdoraOrder
 from db.tables.types import Channel
 from utils.log import logger
 from utils.request_context import RequestContext
@@ -390,8 +390,8 @@ async def _update_store_phone_number_from_url(
             # Query the order using store_id and order_number (which maps to orderKey)
             from sqlalchemy import select
 
-            query = select(Order).where(
-                Order.store_id == store_key, Order.order_number == order_key
+            query = select(AdoraOrder).where(
+                AdoraOrder.store_id == store_key, AdoraOrder.order_number == order_key
             )
             result = await session.execute(query)
             order = result.scalar_one_or_none()

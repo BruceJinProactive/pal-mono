@@ -15,7 +15,7 @@ from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from db.session import SyncSessionLocal
-from db.tables.orders import Order as DBOrder
+from db.tables.adora_orders import AdoraOrder as DBOrder
 from db.tables.types import IntegrationProvider, IntegrationType
 from tools.adora_tool.classes import (
     AdoraAccessToken,

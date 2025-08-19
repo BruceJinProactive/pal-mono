@@ -13,7 +13,7 @@ from api.schemas.chat.message import (
     Metadata,
     TextObject,
 )
-from db.tables.orders import Order
+from db.tables.adora_orders import AdoraOrder
 from db.tables.types import Channel, IntegrationProvider
 from tools.utils.transaction_helper import update_transaction_by_order_number
 from utils.log import logger
@@ -39,7 +39,7 @@ def is_dev_mode(request: Request) -> bool:
 
 async def update_order_status(
     session: AsyncSession, webhook_request: AdoraWebhookRequest
-) -> Order:
+) -> AdoraOrder:
     """
     Update the status of an existing order in both orders and transactions tables.
 
@@ -48,7 +48,7 @@ async def update_order_status(
         webhook_request: The validated webhook request data
 
     Returns:
-        Order: The updated order object
+        AdoraOrder: The updated order object
 
     Raises:
         ValueError: If the order is not found or has invalid store phone number
@@ -56,9 +56,9 @@ async def update_order_status(
     # Find the existing order using store_id and order_number
 
     logger.debug(f"[AdoraWebhook]Update order status: {webhook_request.orderNumber}")
-    order_query = select(Order).where(
-        Order.store_id == webhook_request.storeId,
-        Order.order_number == webhook_request.orderNumber,
+    order_query = select(AdoraOrder).where(
+        AdoraOrder.store_id == webhook_request.storeId,
+        AdoraOrder.order_number == webhook_request.orderNumber,
     )
     result = await session.execute(order_query)
     order = result.scalar_one_or_none()
@@ -119,7 +119,7 @@ async def update_order_status(
     return order
 
 
-def _generate_notification_text(order: Order) -> str:
+def _generate_notification_text(order: AdoraOrder) -> str:
     """
     Generate notification text based on the event type. Currently, only use a single message format for simplicity, later we may want to create different messages case by case.
 
@@ -139,7 +139,7 @@ def _generate_notification_text(order: Order) -> str:
 
 
 async def send_order_notification(
-    order: Order,
+    order: AdoraOrder,
 ) -> None:
     """
     Send order notification through the relay service.
