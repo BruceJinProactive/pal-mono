@@ -27,6 +27,7 @@ dependencies = [
   "httpx>=0.24.0", # Modern async/sync HTTP client with HTTP/2 support
   "instructor==1.9.2", # Structured outputs from LLMs using Pydantic models
   "jinja2==3.1.6", # Modern template engine for Python
+  "lingua-language-detector==2.1.1", # Fast and accurate language detection library
   "llama-index-embeddings-cohere==0.5.1", # Cohere embeddings integration for LlamaIndex
   "llama-index-llms-gemini==0.5.0", # Google Gemini LLM integration for LlamaIndex
   "llama-index-llms-groq==0.3.2", # Groq LLM integration for LlamaIndex
