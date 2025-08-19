@@ -127,17 +127,6 @@ def get_transcriber_and_voice_config(
         if voice_config.voice_model:
             voice["model"] = voice_config.voice_model
 
-        # Include chunkPlan if it exists
-        if voice_config.chunkPlan:
-            voice["chunkPlan"] = {
-                "enabled": voice_config.chunkPlan.enabled,
-                "minCharacters": voice_config.chunkPlan.minCharacters,
-            }
-            if voice_config.chunkPlan.punctuationBoundaries:
-                voice["chunkPlan"][
-                    "punctuationBoundaries"
-                ] = voice_config.chunkPlan.punctuationBoundaries
-
         # Include fallbackPlan if it exists
         if voice_config.fallbackPlan:
             voice["fallbackPlan"] = []
@@ -148,15 +137,6 @@ def get_transcriber_and_voice_config(
                 }
                 if plan.voice_model:
                     plan_dict["model"] = plan.voice_model
-                if plan.chunkPlan:
-                    plan_dict["chunkPlan"] = {
-                        "enabled": plan.chunkPlan.enabled,
-                        "minCharacters": plan.chunkPlan.minCharacters,
-                    }
-                    if plan.chunkPlan.punctuationBoundaries:
-                        plan_dict["chunkPlan"][
-                            "punctuationBoundaries"
-                        ] = plan.chunkPlan.punctuationBoundaries
 
                 voice["fallbackPlan"].append(plan_dict)
     else:
