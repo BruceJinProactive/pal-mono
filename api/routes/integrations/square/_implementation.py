@@ -1,6 +1,4 @@
-import binascii
 import json
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -27,7 +25,7 @@ from ._util import (
     handle_payment_updated,
     refresh_square_token,
 )
-from ._valid import _oauth_state, valid_request
+from ._valid import valid_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
@@ -49,10 +47,8 @@ async def install(request: Request):
             content={"error": "account_name parameter is required"},
         )
 
-    # Generate state for CSRF protection and store account context
-    state = binascii.b2a_hex(os.urandom(15)).decode("utf-8")
+    state = account_name
     logger.info(f"[Square OAuth] state inside install: {state}")
-    _oauth_state[state] = account_name
 
     client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
