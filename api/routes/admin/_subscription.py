@@ -97,7 +97,10 @@ def list_subscription_plans(
         session: Database session
         hidden: Optional filter for hidden status (None = all, True = hidden only, False = not hidden only)
     """
-    authorize_admin(context)
+    if hidden is not False:
+        # Only admin can see hidden plans
+        authorize_admin(context)
+
     plans = subscription_service.get_subscription_plans(session, hidden=hidden)
     return [build_subscription_plan(plan) for plan in plans]
 
@@ -110,7 +113,6 @@ def get_subscription_plan(
     """
     Retrieves a subscription plan by ID.
     """
-    authorize_admin(context)
     plan = subscription_service.get_subscription_plan_by_id(session, plan_id)
     if not plan:
         raise HTTPException(
@@ -171,7 +173,7 @@ def create_account_subscription(
     """
     Creates a new subscription for an account.
     """
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
 
     account = account_service.get_account(session, account_name)
     if not account:
@@ -211,7 +213,7 @@ def list_account_subscriptions(
     account_name: str,
 ) -> ListAccountSubscriptionsResponse:
     """Get all active subscriptions for an account."""
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
 
     account = account_service.get_account(session, account_name)
     if not account:
@@ -245,7 +247,11 @@ def update_account_subscription(
     force_update: bool = False,
 ) -> Subscription:
     """Update an account subscription by external_id, creating a new version."""
-    authorize_admin(context)
+    """Update an account subscription by external_id, creating a new version."""
+    authorize_user_account(context, account_name)
+    if force_update:
+        # Only admins can perform force updates
+        authorize_admin(context)
 
     account = account_service.get_account(session, account_name)
     if not account:
@@ -289,7 +295,7 @@ def update_account_subscription_status(
     request: UpdateAccountSubscriptionStatusRequest,
 ) -> UpdateAccountSubscriptionStatusResponse:
     """Update the status of an account subscription."""
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
 
     account = account_service.get_account(session, account_name)
     if not account:
@@ -339,7 +345,7 @@ def cancel_account_subscription(
     external_id: uuid.UUID,
 ) -> dict:
     """Cancel an account subscription."""
-    authorize_admin(context)
+    authorize_user_account(context, account_name)
 
     try:
         cancelled_subscription = subscription_service.cancel_account_subscription(
