@@ -632,7 +632,7 @@ def _create_order_line_item(
     """Create a single order line item."""
     line_item_modifiers = _create_line_item_modifiers(modifiers)
 
-    palona_note = "Palona AI testing - Order created via automated system"
+    palona_note = "Palona AI - Order created via automated system"
     combined_note = f"{palona_note} | {special_notes}" if special_notes else palona_note
 
     return OrderLineItem(
