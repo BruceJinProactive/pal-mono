@@ -43,7 +43,6 @@ class SubscriptionPlan(Base):
     order_overage_charge: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     free_trial_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     monthly_fee: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    stripe_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )

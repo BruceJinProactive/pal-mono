@@ -56,7 +56,6 @@ def create_subscription_plan(
         order_overage_charge=request.order_overage_charge,
         free_trial_days=request.free_trial_days,
         monthly_fee=request.monthly_fee,
-        stripe_price_id=request.stripe_price_id,
         active=request.active,
         sort_id=request.sort_id,
         hidden=request.hidden,

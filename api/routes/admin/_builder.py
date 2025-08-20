@@ -256,7 +256,6 @@ def build_subscription_plan(plan: db.SubscriptionPlan) -> SubscriptionPlan:
         order_overage_charge=plan.order_overage_charge,
         free_trial_days=plan.free_trial_days,
         monthly_fee=plan.monthly_fee,
-        stripe_price_id=plan.stripe_price_id,
         active=plan.active,
         sort_id=plan.sort_id,
         hidden=bool(plan.hidden),

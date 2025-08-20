@@ -27,7 +27,6 @@ class SubscriptionPlan(BaseModel):
     order_overage_charge: Optional[int]
     free_trial_days: Optional[int]
     monthly_fee: Optional[int]
-    stripe_price_id: Optional[str]
     active: bool
     sort_id: Optional[int]
     hidden: bool
@@ -47,7 +46,6 @@ class CreateSubscriptionPlanRequest(BaseModel):
     order_overage_charge: Optional[int] = None
     free_trial_days: Optional[int] = None
     monthly_fee: Optional[int] = None
-    stripe_price_id: Optional[str] = None
     active: bool = True
     sort_id: Optional[int] = None
     hidden: bool = True
@@ -79,7 +77,6 @@ class UpdateSubscriptionPlanRequest(BaseModel):
     order_overage_charge: Optional[int] = None
     free_trial_days: Optional[int] = None
     monthly_fee: Optional[int] = None
-    stripe_price_id: Optional[str] = None
     active: Optional[bool] = None
     sort_id: Optional[int] = None
     hidden: Optional[bool] = None
@@ -97,7 +94,6 @@ class UpdateSubscriptionPlanRequest(BaseModel):
             order_overage_charge=self.order_overage_charge,
             free_trial_days=self.free_trial_days,
             monthly_fee=self.monthly_fee,
-            stripe_price_id=self.stripe_price_id,
             active=self.active,
             sort_id=self.sort_id,
             hidden=self.hidden,

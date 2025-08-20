@@ -19,7 +19,6 @@ class SubscriptionPlanParams(BaseModel):
     order_overage_charge: Optional[int] = None
     free_trial_days: Optional[int] = None
     monthly_fee: Optional[int] = None
-    stripe_price_id: Optional[str] = None
     active: bool | None = None
     sort_id: int | None = None
     hidden: bool | None = True
