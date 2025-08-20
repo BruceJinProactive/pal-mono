@@ -13,5 +13,6 @@ from .orders import Order
 from .pos_integration import POSIntegration
 from .projects import Project
 from .prompts import Prompt, PromptDetails
+from .reservations import Reservation
 from .subscriptions import AccountSubscription, ProjectSubscription, SubscriptionPlan
 from .users import User
