@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 
 import db
 from db.repositories.account_repository import AccountRepository
@@ -38,6 +39,53 @@ def get_square_client_secret() -> str:
             "SQUARE_CLIENT_SECRET is not set in secrets or environment variables"
         )
     return value
+
+
+def _get_fernet_instance() -> Fernet:
+    """Get Fernet instance with the encryption key from secrets manager."""
+    try:
+        app_secrets = secret._get_client_secrets()
+        key_b64 = app_secrets.get("SQUARE_STATE_ENCRYPTION_KEY")
+
+        if not key_b64:
+            raise ValueError("SQUARE_STATE_ENCRYPTION_KEY not found in secrets manager")
+
+        key = key_b64.encode()
+        return Fernet(key)
+    except Exception as e:
+        logger.error(f"Failed to initialize Fernet: {e}")
+        raise ValueError(f"Encryption key not configured: {e}")
+
+
+def encrypt_account_name(account_name: str) -> str:
+    """Encrypt account name for use as OAuth state parameter."""
+    try:
+        f = _get_fernet_instance()
+        encrypted_data = f.encrypt(account_name.encode())
+        # Convert to URL-safe base64 for use in URLs
+        return encrypted_data.decode("utf-8")
+    except Exception as e:
+        logger.error(f"Failed to encrypt account name: {e}")
+        raise ValueError(f"Failed to encrypt state parameter: {e}")
+
+
+def decrypt_account_name(encrypted_state: str) -> str:
+    """Decrypt OAuth state parameter to get account name."""
+    try:
+        f = _get_fernet_instance()
+
+        # Decrypt the data
+        decrypted_data = f.decrypt(encrypted_state.encode("utf-8"))
+
+        # Convert back to string
+        return decrypted_data.decode()
+
+    except InvalidToken:
+        logger.error("Invalid or corrupted state parameter")
+        raise ValueError("Invalid state parameter")
+    except Exception as e:
+        logger.error(f"Failed to decrypt state parameter: {e}")
+        raise ValueError(f"Failed to decrypt state parameter: {e}")
 
 
 def refresh_square_token(

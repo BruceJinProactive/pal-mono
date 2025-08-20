@@ -7,6 +7,8 @@ from fastapi import HTTPException, Request, status
 from utils import secret
 from utils.log import logger
 
+from ._util import decrypt_account_name
+
 
 def get_square_webhook_credentials() -> tuple[str, str]:
     """
@@ -56,7 +58,7 @@ def is_test_request(request: Request) -> bool:
     return False
 
 
-def valid_request(request: Request, is_callback=False):
+def validate_oauth_request(request: Request, is_callback=False):
     if is_callback:
         state = request.query_params.get("state")
         if not state:
@@ -65,7 +67,16 @@ def valid_request(request: Request, is_callback=False):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or missing state parameter",
             )
-        return state
+
+        # Decrypt the state to get the account name
+        try:
+            account_name = decrypt_account_name(state)
+            logger.info(f"[Square OAuth] Decrypted account name: {account_name}")
+            return account_name
+        except ValueError as e:
+            logger.error(f"[Square OAuth] Failed to decrypt state: {e}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
     return True
 
 

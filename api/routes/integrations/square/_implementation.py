@@ -20,12 +20,13 @@ from utils.log import logger
 from utils.secret import get_client_secret
 
 from ._util import (
+    encrypt_account_name,
     get_square_client_id,
     get_square_client_secret,
     handle_payment_updated,
     refresh_square_token,
 )
-from ._valid import valid_request, validate_square_webhook_request
+from ._valid import validate_oauth_request, validate_square_webhook_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
@@ -47,8 +48,9 @@ async def install(request: Request):
             content={"error": "account_name parameter is required"},
         )
 
-    state = account_name
-    logger.info(f"[Square OAuth] state inside install: {state}")
+    # Encrypt the account name for the state parameter
+    encrypted_state = encrypt_account_name(account_name)
+    logger.info(f"[Square OAuth] Encrypted state: {encrypted_state}")
 
     client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
@@ -57,7 +59,7 @@ async def install(request: Request):
         f"{SQUARE_AUTH_URL}?client_id={client_id}"
         f"&scope={scopes}"
         f"&session=False"
-        f"&state={state}"
+        f"&state={encrypted_state}"
         f"&redirect_uri={redirect_uri}"
     )
     return RedirectResponse(auth_url)
@@ -65,7 +67,7 @@ async def install(request: Request):
 
 async def callback(request: Request):
     # Validate state parameter for CSRF protection and get account_name
-    account_name_result = valid_request(request, is_callback=True)
+    account_name_result = validate_oauth_request(request, is_callback=True)
     if not isinstance(account_name_result, str):
         logger.error("[Square OAuth] Invalid state validation")
         return JSONResponse(
