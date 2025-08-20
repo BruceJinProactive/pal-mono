@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from db.tables import Conversation, Message, User
+from db.tables import Conversation, Message, Project, User
 from db.tables.orders import Order
 from db.tables.types import IntegrationProvider
 from utils.log import logger
@@ -121,13 +121,13 @@ class OrderRepository:
     ):
         """
         Calculate order totals for a given account within a date range,
-        grouped by channel. Only includes completed orders.
+        grouped by channel and project. Only includes completed orders.
         Args:
             account_id (uuid.UUID): The account ID to filter orders by
             start_date (datetime): Start date for the calculation
             end_date (datetime): End date for the calculation
         Returns:
-            list: Raw query results with date, channel, and "Order Total" fields.
+            list: Raw query results with date, channel, project_id, project_name, and order_total fields.
         """
         try:
             # Define expressions for efficient querying
@@ -148,13 +148,15 @@ class OrderRepository:
                 .subquery()
             )
 
-            # Query to get order totals by joining orders -> conversations -> channel_subquery
-            # Group by date and channel
+            # Query to get order totals by joining orders -> conversations -> channel_subquery -> projects
+            # Group by date, channel, and project
             # Only include completed orders
             query = (
                 select(
                     date_expr.label("date"),
                     channel_subquery.c.channel.label("channel"),
+                    Conversation.project_id.label("project_id"),
+                    Project.name.label("project_name"),
                     func.coalesce(func.sum(Order.subtotal), 0).label("order_total"),
                 )
                 .join(Conversation, Order.conversation_id == Conversation.id)
@@ -163,6 +165,7 @@ class OrderRepository:
                     Conversation.id == channel_subquery.c.conversation_id,
                 )
                 .join(User, Conversation.user_id == User.id)
+                .join(Project, Conversation.project_id == Project.id)
                 .filter(
                     User.account_id == account_id,
                     Order.order_time >= start_date,
@@ -173,8 +176,12 @@ class OrderRepository:
                 .group_by(
                     date_expr,
                     channel_subquery.c.channel,
+                    Conversation.project_id,
+                    Project.name,
                 )
-                .order_by(date_expr, channel_subquery.c.channel)
+                .order_by(
+                    date_expr, channel_subquery.c.channel, Conversation.project_id
+                )
             )
             result = self.session.execute(query)
             rows = result.all()

@@ -70,9 +70,17 @@ def process_analytics_results_to_dict(
 
         # Only count known channels, ignore unknown ones
         if channel_name in valid_channels:
-            # Use project name if available, otherwise fall back to project_id
+            # Use project name if available, otherwise fall back to project_id or "unknown"
             project_name = get_row_value(row, "project_name")
-            project_key = project_name
+            project_id = get_row_value(row, "project_id")
+
+            # Ensure project_key is always a string
+            if project_name:
+                project_key = str(project_name)
+            elif project_id:
+                project_key = f"project_{project_id}"
+            else:
+                project_key = "unknown_project"
 
             # Initialize project if not exists
             if project_key not in analytics_data[date_str]:
