@@ -6,6 +6,7 @@ from .feedback_repository import FeedbackRepository
 from .integration_repository import IntegrationAsyncRepository, IntegrationRepository
 from .lead_repository import LeadFilter, LeadRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync
+from .order_repository import OrderRepository
 from .pos_integration_repository import POSIntegrationRepository
 from .project_integration_repository import ProjectIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
@@ -15,5 +16,4 @@ from .subscription_repository import (
     ProjectSubscriptionRepository,
     SubscriptionPlanRepository,
 )
-from .transaction_repository import TransactionRepository
 from .user_repository import UserRepository, UserRepositoryAsync

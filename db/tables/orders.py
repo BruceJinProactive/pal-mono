@@ -10,14 +10,14 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, Integer, Numeric, String
+from sqlalchemy.types import DateTime, Numeric, String
 
 from .base import Base
-from .types import IntegrationProvider, IntegrationType
+from .types import IntegrationProvider
 
 
-class Transaction(Base):
-    __tablename__ = "transactions"
+class Order(Base):
+    __tablename__ = "orders"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -26,12 +26,9 @@ class Transaction(Base):
         nullable=False,
         index=True,
     )
-    external_transaction_id: Mapped[str] = mapped_column(
-        String(), nullable=False
-    )  # reservation_id / transaction_id
-    external_transaction_number: Mapped[Optional[str]] = mapped_column(
+    order_id: Mapped[Optional[str]] = mapped_column(
         String(), nullable=True
-    )  # reservation_number / transaction_number
+    )  # order identifier from external system
 
     store_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
     tracking_link: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
@@ -43,24 +40,13 @@ class Transaction(Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
-    )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), nullable=False, index=True
-    )
 
     vendor: Mapped[IntegrationProvider | None] = mapped_column(
         Enum(IntegrationProvider),
         nullable=True,
     )
-    integration_type: Mapped[IntegrationType | None] = mapped_column(
-        Enum(IntegrationType), nullable=True
-    )
 
-    notes: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
-
-    # Transaction details
+    # Order details
     subtotal: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
     order_items: Mapped[Optional[list]] = mapped_column(
         JSONB(),
@@ -69,13 +55,10 @@ class Transaction(Base):
     )
     fulfillment_strategy: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
-    # Reservation details
-    table_size: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
-
     # Timestamps
     order_time: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
-    )  # Record the time of the order has been placed or reservation has been made
+    )  # Record the time of the order has been placed
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )

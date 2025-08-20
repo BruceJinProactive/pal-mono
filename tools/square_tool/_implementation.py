@@ -15,6 +15,7 @@ from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from db.tables.types import IntegrationProvider, IntegrationType
 from services import integration_service
+from services.transaction_service import save_order
 from tools.square_tool._apis import create_payment_link
 from tools.square_tool._prompt_constants import (
     RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
@@ -37,7 +38,6 @@ from tools.utils.ordering._llm import llm_call
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import get_chat_history, get_relevant_docs
 from tools.utils.ordering.classes import SubQueries
-from tools.utils.transaction_helper import save_transaction
 from utils.log import logger
 
 
@@ -119,14 +119,12 @@ class SquareTool(Toolkit):
             amount_cents = getattr(total_money, "amount", None) if total_money else None
             if amount_cents is not None:
                 subtotal_decimal = Decimal(amount_cents) / Decimal("100")
-            transaction_id = save_transaction(
+            transaction_id = save_order(
                 tool_metadata=self.tool_metadata,
                 vendor=IntegrationProvider.square,
-                external_transaction_id=created_order.id or "",
-                external_transaction_number=created_order.id or "",
+                order_id=created_order.id or "",
                 store_id=self.location_id,
                 status="pending",
-                integration_type=IntegrationType.pos,
                 fulfillment_strategy="pickup",
                 subtotal=subtotal_decimal,
                 order_items=matched_items or None,

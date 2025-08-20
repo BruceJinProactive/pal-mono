@@ -16,7 +16,8 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from db.session import SyncSessionLocal
 from db.tables.adora_orders import AdoraOrder as DBOrder
-from db.tables.types import IntegrationProvider, IntegrationType
+from db.tables.types import IntegrationProvider
+from services.transaction_service import save_order
 from tools.adora_tool.classes import (
     AdoraAccessToken,
     AdoraLatestOrderResponse,
@@ -29,7 +30,6 @@ from tools.adora_tool.classes import (
     Order,
     SubQueries,
 )
-from tools.utils.transaction_helper import save_transaction
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -475,18 +475,12 @@ class AdoraTool(Toolkit):
 
             # Also save to transactions table for enhanced tracking
             try:
-                transaction_id = save_transaction(
+                transaction_id = save_order(
                     tool_metadata=self.tool_metadata,
                     vendor=IntegrationProvider.adora,
-                    external_transaction_id=(
-                        str(validated_order.key) if validated_order.key else ""
-                    ),
-                    external_transaction_number=(
-                        str(validated_order.key) if validated_order.key else ""
-                    ),
+                    order_id=(str(validated_order.key) if validated_order.key else ""),
                     store_id=self.store_id,
                     status="pending",
-                    integration_type=IntegrationType.pos,
                     fulfillment_strategy=order.order_type,
                     subtotal=(
                         validated_order.subTotal
@@ -495,7 +489,6 @@ class AdoraTool(Toolkit):
                     ),
                     order_items=order.order_items if order.order_items else None,
                     order_time=datetime.now(),
-                    notes=order.order_comment if order.order_comment else None,
                     session=session,  # Reuse the same session
                 )
                 if transaction_id:

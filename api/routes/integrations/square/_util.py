@@ -12,7 +12,7 @@ from db.repositories.integration_repository import IntegrationRepository
 from db.tables.types import IntegrationProvider
 from services.integration_service._utils import update_integration_credentials
 from services.integration_service.schema import IntegrationCredentials
-from services.transaction_service import update_transaction_by_order_number_helper
+from services.transaction_service import update_order_by_order_id
 from utils import secret
 from utils.log import logger
 from utils.secret import get_client_secret
@@ -155,7 +155,7 @@ async def handle_payment_updated(webhook_request) -> None:
     """
     Handle payment.updated webhook events.
 
-    Updates existing transaction status using update_transaction_by_order_number.
+    Updates existing transaction status using update_order_by_order_id.
 
     Args:
         webhook_request: The Square webhook request containing payment data
@@ -166,7 +166,6 @@ async def handle_payment_updated(webhook_request) -> None:
         )
 
         # Extract required fields
-        payment_id = payment_data.get("id")
         order_id = payment_data.get("order_id")
         location_id = payment_data.get("location_id")
         payment_created_at = payment_data.get("created_at")
@@ -182,7 +181,6 @@ async def handle_payment_updated(webhook_request) -> None:
         logger.info(
             "[Square Webhook] Processing payment.updated event",
             extra={
-                "payment_id": payment_id,
                 "order_id": order_id,
                 "location_id": location_id,
                 "payment_created_at": payment_created_at,
@@ -193,41 +191,31 @@ async def handle_payment_updated(webhook_request) -> None:
         )
 
         # Update transaction in database if order_id exists
-        if order_id and location_id:
+        if order_id and location_id and payment_status == "COMPLETED":
             # Map Square payment status to our transaction status
-            if payment_status == "COMPLETED":
-                transaction_status = "paid"
-            else:
-                # Default to pending for other statuses or if payment_status is None
-                transaction_status = "pending"
-
-            # Update transaction using transaction helper
+            transaction_status = "paid"
+            # Update order using order helper
             success = await asyncio.to_thread(
-                update_transaction_by_order_number_helper,
-                external_transaction_number=order_id,
+                update_order_by_order_id,
+                order_id=order_id,
                 store_id=location_id,
                 vendor=IntegrationProvider.square,
-                status=transaction_status,
+                new_status=transaction_status,
                 tracking_link=receipt_url,
                 session=None,  # Let helper create its own sync session
             )
 
             if success:
                 logger.info(
-                    f"[Square Webhook] Successfully updated transaction for order {order_id}"
+                    f"[Square Webhook] Successfully updated order for order {order_id}"
                 )
             else:
                 logger.warning(
-                    f"[Square Webhook] Failed to update transaction for order {order_id} - transaction not found"
+                    f"[Square Webhook] Failed to update order for order {order_id} - order not found"
                 )
         else:
             logger.warning(
-                "[Square Webhook] Missing order_id or location_id - cannot update transaction",
-                extra={
-                    "payment_id": payment_id,
-                    "order_id": order_id,
-                    "location_id": location_id,
-                },
+                "[Square Webhook] Missing order_id or location_id - cannot update order",
             )
 
     except Exception as e:

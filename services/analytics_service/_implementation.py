@@ -48,7 +48,7 @@ def get_analytics_reports(
         # Handle date range validation and defaults
         start_date, end_date = handle_analytics_date_range(start_date, end_date)
         message_repo = db.MessageRepository(session)
-        transaction_repo = db.TransactionRepository(session)
+        order_repo = db.OrderRepository(session)
 
         # Fetch and process DAU data
         dau_result = message_repo.get_daily_active_users(
@@ -69,9 +69,7 @@ def get_analytics_reports(
             AnalyticsReportType.MESSAGE_TURNS,
         )
         # Fetch order data (contains both value and count)
-        order_result = transaction_repo.get_order_value(
-            account_id, start_date, end_date
-        )
+        order_result = order_repo.get_order_value(account_id, start_date, end_date)
 
         # Process Order Total data (uses DB column key via report_name)
         order_value_data = process_analytics_results_to_dict(

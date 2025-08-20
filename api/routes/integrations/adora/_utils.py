@@ -15,7 +15,7 @@ from api.schemas.chat.message import (
 )
 from db.tables.adora_orders import AdoraOrder
 from db.tables.types import Channel, IntegrationProvider
-from tools.utils.transaction_helper import update_transaction_by_order_number
+from services.transaction_service import update_order_by_order_id
 from utils.log import logger
 
 from .schemas import AdoraWebhookRequest
@@ -80,13 +80,13 @@ async def update_order_status(
     # Note: Using sync helper function, but the session will be committed later
     try:
         success = await asyncio.to_thread(
-            update_transaction_by_order_number,
-            external_transaction_number=order.order_number,
+            update_order_by_order_id,
+            order_id=order.order_number,
             store_id=webhook_request.storeId,
             vendor=IntegrationProvider.adora,
             new_status=webhook_request.event,
             tracking_link=webhook_request.trackingLink,
-            session=None,  # Let helper create its own sync session
+            session=None,
         )
 
         if success:
