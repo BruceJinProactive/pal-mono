@@ -862,7 +862,6 @@ def reserve_phone_numbers_for_projects(
                 country_code="US",
                 toll_free=True,
                 merchant_name=project.name,
-                assistant_config=None,
             )
 
             phone_number = number_response.number

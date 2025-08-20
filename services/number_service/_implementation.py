@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional
+from typing import List
 
 from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
@@ -8,11 +8,9 @@ from twilio.rest.api.v2010.account.incoming_phone_number import (
 from vapi import Vapi
 from vapi.types.create_twilio_phone_number_dto import CreateTwilioPhoneNumberDto
 from vapi.types.custom_llm_model import CustomLlmModel
-from vapi.types.server import Server
 
 from utils.log import logger
 
-from ..service_utils import get_server_url
 from ._utils import (
     AssistantConfig,
     NumberResponse,
@@ -120,7 +118,7 @@ class NumberService:
         try:
             twilio_number = self.twilio_client.incoming_phone_numbers.create(
                 phone_number=number.phone_number,
-                friendly_name=self._get_friendly_name(merchant_name),
+                friendly_name=self._get_friendly_name(merchant_name, for_twilio=True),
             )
             if not twilio_number.phone_number:
                 raise ValueError("Failed to get phone number from Twilio")
@@ -162,7 +160,7 @@ class NumberService:
         try:
             twilio_number = self.twilio_client.incoming_phone_numbers.create(
                 phone_number=number.phone_number,
-                friendly_name=self._get_friendly_name(merchant_name) + "_INACTIVATED",
+                friendly_name=self._get_friendly_name(merchant_name, for_twilio=True),
             )
             if not twilio_number.phone_number:
                 raise ValueError("Failed to get toll-free phone number from Twilio")
@@ -196,8 +194,6 @@ class NumberService:
         country_code: str,
         toll_free: bool,
         merchant_name: str,
-        assistant_config: Optional[AssistantConfig] = None,
-        purchase_number: bool = False,
     ) -> NumberResponse:
         """Set up a phone number with optional Vapi assistant integration.
 
@@ -211,7 +207,6 @@ class NumberService:
             country_code: Two-letter country code (e.g., 'US')
             toll_free: Whether to purchase a toll-free number
             merchant_name: Business name to associate with the number
-            assistant_config: Optional configuration for Vapi assistant
 
         Returns:
             NumberResponse containing the set up number details
@@ -220,24 +215,8 @@ class NumberService:
             ValueError: If number setup or integration fails
         """
         # use the server_url to get settings from the server, if not provided, create a new assistant
-
-        if assistant_config:
-            if assistant_config["server_url"]:
-                assistant_id = None
-                server_url = assistant_config["server_url"]
-            else:
-                # Create the assistant
-                assistant_id = self._create_assistant_and_get_id(assistant_config)
-                server_url = None
-        else:
-            assistant_id = None
-            server_url = f"{get_server_url()}/v1/integrations/vapi/"
-
-        merchant_name = (
-            assistant_config["merchant_name"] if assistant_config else merchant_name
-        )
         approved_numbers = self.get_approved_numbers()
-        if purchase_number or len(approved_numbers) == 0:
+        if len(approved_numbers) == 0:
             # Purchase number
             if toll_free:
                 number_response = self.purchase_toll_free_number(
@@ -254,7 +233,9 @@ class NumberService:
             number_details = self.get_number_details(phone_number)
             if not number_details:
                 raise ValueError("Failed to get phone number from Twilio")
-            number_details.update(friendly_name=self._get_friendly_name(merchant_name))
+            number_details.update(
+                friendly_name=self._get_friendly_name(merchant_name, for_twilio=True)
+            )
             number_response = NumberResponse(
                 number=phone_number,
                 merchant_name=self._get_friendly_name(merchant_name),
@@ -269,8 +250,6 @@ class NumberService:
                     twilio_account_sid=self.twilio_client.username,  # type: ignore
                     twilio_auth_token=self.twilio_client.password,
                     name=self._get_friendly_name(merchant_name),
-                    assistant_id=assistant_id,
-                    server=Server(url=server_url),
                 ),
             )
         except Exception as e:
@@ -463,8 +442,17 @@ class NumberService:
         self._release_number_from_vapi(number)
         self._release_number_from_twilio(number)
 
-    def _get_friendly_name(self, name: str) -> str:
+    def _get_friendly_name(self, name: str, for_twilio: bool = False) -> str:
         stage = os.environ.get("RUNTIME_ENV") or "dev"
+        # twilio limits friendly name to max of 40 chars
+        # here we will take the last n chars of a name
+        # so it doesn't exceed 40 with the env label. Why last n
+        # instead of first n? The last n is better at identifying
+        # the project than the first n chars.
+        if for_twilio:
+            prefix_length = len(stage) + 1
+            name_length = 40 - prefix_length
+            name = name[-name_length:]
         return f"{stage}:{name}"
 
     def _get_phone_number_type(self, phone_number: str) -> NumberType:
