@@ -143,6 +143,7 @@ class ProjectSubscription(Base):
         nullable=False,
         index=True,
     )
+    base_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     call_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     order_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     deleted: Mapped[bool] = mapped_column(

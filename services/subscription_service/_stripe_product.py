@@ -16,7 +16,6 @@ ORDERS_METER_EVENT_NAME = "pal_orders"
 @dataclass
 class MeterTier:
     last_unit: int | None  # ending quantity (inclusive)
-    flat_fee: int | None  # flat fee in cents
     per_unit: int | None  # per unit charge in cents
 
 
@@ -113,35 +112,42 @@ def create_billing_meter(display_name, event_name: str) -> str:
 
 def create_product_price(
     product_id: str,
-    meter_id: str,
     nickname: str,
-    meter_tiers: list[MeterTier],
     project: db.Project,
+    flat_fee: int | None = None,
+    meter_tiers: list[MeterTier] | None = None,
+    meter_id: str | None = None,
 ):
+    if flat_fee is not None and meter_tiers is not None:
+        raise ValueError("Flat fee and meter tiers cannot be both set!")
+    if meter_tiers is not None and meter_id is None:
+        raise ValueError("meter_id is required when meter_tiers are provided")
     params = {
         "product": product_id,
         "currency": DEFAULT_CURRENCY,
         "metadata": {
             "project_name": project.name,
-            "meter_id": meter_id,
         },
         "nickname": nickname,
         "recurring": {
             "interval": "month",
-            "usage_type": "metered",
-            "meter": meter_id,
         },
-        "billing_scheme": "tiered",
-        "tiers_mode": "graduated",
-        "tiers": [
+    }
+    if flat_fee is not None:
+        params["unit_amount"] = flat_fee
+    if meter_tiers:
+        params["tiers"] = [
             {
                 "up_to": t.last_unit or "inf",
                 "unit_amount": t.per_unit or 0,
-                "flat_amount": t.flat_fee or 0,
             }
             for t in meter_tiers
-        ],
-    }
+        ]
+        params["billing_scheme"] = "tiered"
+        params["tiers_mode"] = "graduated"
+        params["recurring"]["usage_type"] = "metered"
+        params["recurring"]["meter"] = meter_id
+
     try:
         price = stripe.Price.create(**params)
         return price.id

@@ -237,6 +237,28 @@ def add_project_to_subscription(
         subscription.external_id,
     )
 
+    # Setup base fee
+    if plan.monthly_fee and plan.monthly_fee > 0:
+        base_price_id = _stripe_product.create_product_price(
+            stripe_product_id,
+            nickname=f"Flat fee - {project.display_name}",
+            project=project,
+            flat_fee=plan.monthly_fee,
+        )
+        project_subscription_repository.update_project_subscription(
+            id=project_subscription.id,
+            base_price_id=base_price_id,
+        )
+        if subscription.stripe_subscription_id:
+            _stripe_subscription.add_subscription_item(
+                subscription.stripe_subscription_id,
+                base_price_id,
+            )
+    else:
+        logger.info(
+            "Subscription plan has no monthly fee, skipping base price creation"
+        )
+
     # Setup call price
     call_meter_id = _stripe_product.create_billing_meter(
         f"{project.name} calls",
@@ -244,10 +266,10 @@ def add_project_to_subscription(
     )
     call_price_id = _stripe_product.create_product_price(
         stripe_product_id,
-        call_meter_id,
-        nickname=f"Calls - {project.name}",
-        meter_tiers=_build_call_tiers(plan),
+        nickname=f"Calls - {project.display_name}",
         project=project,
+        meter_tiers=_build_call_tiers(plan),
+        meter_id=call_meter_id,
     )
     project_subscription_repository.update_project_subscription(
         id=project_subscription.id,
@@ -267,10 +289,10 @@ def add_project_to_subscription(
         )
         order_price_id = _stripe_product.create_product_price(
             stripe_product_id,
-            order_meter_id,
-            nickname=f"Orders - {project.name}",
+            nickname=f"Orders - {project.display_name}",
             meter_tiers=_build_order_tiers(plan),
             project=project,
+            meter_id=order_meter_id,
         )
         project_subscription_repository.update_project_subscription(
             id=project_subscription.id,
@@ -298,7 +320,6 @@ def _build_call_tiers(plan: db.SubscriptionPlan):
     tiers = [
         MeterTier(
             last_unit=plan.call_quota,
-            flat_fee=plan.monthly_fee,
             # if has a quota, then base tier usage is covered and should be free
             per_unit=0 if has_call_quota else (plan.call_overage_charge or 0),
         )
@@ -307,7 +328,6 @@ def _build_call_tiers(plan: db.SubscriptionPlan):
         tiers.append(
             MeterTier(
                 last_unit=None,
-                flat_fee=None,
                 per_unit=plan.call_overage_charge,
             )
         )
@@ -319,7 +339,6 @@ def _build_order_tiers(plan: db.SubscriptionPlan):
     tiers = [
         MeterTier(
             last_unit=plan.order_quota,
-            flat_fee=None,  # no base fee for order yet
             # if has a quota, then base tier usage is covered and should be free
             per_unit=0 if has_order_quota else (plan.order_overage_charge or 0),
         )
@@ -328,7 +347,6 @@ def _build_order_tiers(plan: db.SubscriptionPlan):
         tiers.append(
             MeterTier(
                 last_unit=None,
-                flat_fee=None,
                 per_unit=plan.order_overage_charge,
             )
         )
