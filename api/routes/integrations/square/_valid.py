@@ -86,9 +86,12 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
     Returns:
         bool: True if webhook signature is valid, False otherwise
     """
+    logger.info("[Square Webhook DEBUG] validate_square_webhook_request called")
     try:
         # Check if this is a development or test request that should bypass verification
-        if is_test_request(request):
+        is_test = is_test_request(request)
+        logger.info(f"[Square Webhook DEBUG] is_test_request returned: {is_test}")
+        if is_test:
             return True
 
         # Get signature from headers (Square's actual header format)
@@ -103,8 +106,12 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
         # Get Square webhook signature key and URL from secrets manager (like Shopify)
         try:
             signature_key, webhook_url = get_square_webhook_credentials()
+            logger.info(
+                "[Square Webhook DEBUG] Successfully retrieved webhook credentials"
+            )
         except ValueError as e:
             logger.warning(f"[Square Webhook] {e}")
+            logger.info("[Square Webhook DEBUG] Returning False due to ValueError")
             return False  # Reject requests without signature key in production
 
         # Decode the request body
@@ -114,7 +121,7 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
         message = webhook_url + raw_body
 
         # Debug logging for signature verification
-        logger.debug(
+        logger.info(
             "[Square Webhook Debug] Signature verification details",
             extra={
                 "webhook_url": webhook_url,
