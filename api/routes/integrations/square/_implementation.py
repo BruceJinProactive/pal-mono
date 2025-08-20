@@ -25,7 +25,7 @@ from ._util import (
     handle_payment_updated,
     refresh_square_token,
 )
-from ._valid import valid_request
+from ._valid import valid_request, validate_square_webhook_request
 
 SQUARE_AUTH_URL = "https://connect.squareup.com/oauth2/authorize"
 SQUARE_TOKEN_URL = "https://connect.squareup.com/oauth2/token"
@@ -436,10 +436,22 @@ def get_merchant_locations(
 async def webhook(request: Request) -> JSONResponse:
     """
     Square webhook endpoint that processes order.created and payment.updated events.
-
+    Includes signature validation for security.
     """
     try:
-        body = await request.json()
+        # Get raw body for signature validation
+        raw_body = await request.body()
+
+        # Validate webhook signature
+        if not validate_square_webhook_request(request, raw_body):
+            logger.warning("[Square Webhook] Invalid signature - rejecting request")
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": "Invalid signature"},
+            )
+
+        # Parse JSON body after validation
+        body = json.loads(raw_body.decode("utf-8"))
 
         # Extract event type
         event_type = body.get("type")

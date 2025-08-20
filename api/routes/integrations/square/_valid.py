@@ -8,23 +8,27 @@ from utils import secret
 from utils.log import logger
 
 
-def get_square_webhook_signature_key() -> str:
+def get_square_webhook_credentials() -> tuple[str, str]:
     """
-    Get Square webhook signature key from secrets manager (mocking Shopify pattern).
+    Get Square webhook signature key and webhook URL from secrets manager (mocking Shopify pattern).
 
     Returns:
-        str: The Square webhook signature key
+        tuple[str, str]: A tuple containing (signature_key, webhook_url)
 
     Raises:
-        ValueError: If the signature key is not found in secrets
+        ValueError: If the signature key or webhook URL is not found in secrets
     """
     app_secrets = secret._get_client_secrets()
     signature_key = app_secrets.get("SQUARE_WEBHOOK_SIGNATURE_KEY")
+    webhook_url = app_secrets.get("SQUARE_WEBHOOK_URL")
 
     if not signature_key:
         raise ValueError("SQUARE_WEBHOOK_SIGNATURE_KEY not found in secrets manager")
 
-    return signature_key
+    if not webhook_url:
+        raise ValueError("SQUARE_WEBHOOK_URL not found in secrets manager")
+
+    return signature_key, webhook_url
 
 
 def is_test_request(request: Request) -> bool:
@@ -96,62 +100,66 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
             )
             return False
 
-        # Get Square webhook signature key from secrets manager (like Shopify)
+        # Get Square webhook signature key and URL from secrets manager (like Shopify)
         try:
-            signature_key = get_square_webhook_signature_key()
+            signature_key, webhook_url = get_square_webhook_credentials()
         except ValueError as e:
             logger.warning(f"[Square Webhook] {e}")
             return False  # Reject requests without signature key in production
 
-        # Construct the string to sign: notification_url + payload (Square's actual method)
-        notification_url = str(request.url)
-        payload = body.decode("utf-8")
-        string_to_sign = notification_url + payload
+        # Decode the request body
+        raw_body = body.decode("utf-8")
+
+        # Construct the message using fixed webhook URL from configuration
+        message = webhook_url + raw_body
 
         # Debug logging for signature verification
         logger.debug(
             "[Square Webhook Debug] Signature verification details",
             extra={
-                "notification_url": notification_url,
-                "payload_length": len(payload),
+                "webhook_url": webhook_url,
+                "payload_length": len(raw_body),
                 "payload_preview": (
-                    payload[:200] + "..." if len(payload) > 200 else payload
+                    raw_body[:200] + "..." if len(raw_body) > 200 else raw_body
                 ),
-                "string_to_sign_length": len(string_to_sign),
+                "message_length": len(message),
                 "signature_key_length": len(signature_key),
                 "received_signature": signature,
             },
         )
 
-        # Compute HMAC-SHA256 signature
-        computed_signature = hmac.new(
-            signature_key.encode("utf-8"),
-            string_to_sign.encode("utf-8"),
-            hashlib.sha256,
-        ).digest()
-
-        # Base64 encode the computed signature (Square's format)
-        computed_signature_b64 = base64.b64encode(computed_signature).decode("utf-8")
+        # Compute HMAC-SHA256 signature using fixed webhook URL
+        computed_signature = base64.b64encode(
+            hmac.new(
+                signature_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
+            ).digest()
+        ).decode("utf-8")
 
         # Debug logging for computed signature
         logger.debug(
             "[Square Webhook Debug] Computed signature details",
             extra={
-                "computed_signature_b64": computed_signature_b64,
-                "computed_signature_hex": computed_signature.hex(),
-                "signatures_match": computed_signature_b64 == signature,
+                "computed_signature_b64": computed_signature,
+                "computed_signature_hex": hmac.new(
+                    signature_key.encode("utf-8"),
+                    message.encode("utf-8"),
+                    hashlib.sha256,
+                )
+                .digest()
+                .hex(),
+                "signatures_match": computed_signature == signature,
             },
         )
 
         # Secure comparison to prevent timing attacks
-        is_valid = hmac.compare_digest(signature, computed_signature_b64)
+        is_valid = hmac.compare_digest(signature, computed_signature)
 
         if not is_valid:
             logger.warning(
                 "[Square Webhook] Invalid signature",
                 extra={
-                    "notification_url": notification_url,
-                    "expected_signature": computed_signature_b64[:10] + "...",
+                    "webhook_url": webhook_url,
+                    "expected_signature": computed_signature[:10] + "...",
                     "received_signature": signature[:10] + "...",
                 },
             )
