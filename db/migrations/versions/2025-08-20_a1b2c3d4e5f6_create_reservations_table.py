@@ -31,7 +31,7 @@ def upgrade() -> None:
         sa.Column("conversation_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(
             "vendor",
-            sa.Enum(
+            postgresql.ENUM(
                 "yelp",
                 "toast",
                 "olo",
@@ -39,6 +39,7 @@ def upgrade() -> None:
                 "square",
                 "opentable",
                 name="integrationprovider",
+                create_type=False,
             ),
             nullable=True,
         ),
