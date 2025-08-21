@@ -105,6 +105,8 @@ class TriageAssistantFactory(BaseAssistantFactory):
         squad_config: MultilingualSquadConfig,
         account_display_name: str,
         speech_rate: Any,
+        api_url: str,
+        caller_info: CallerInfo,
     ) -> VAPIAssistant:
         """Create a triage assistant."""
         triage_config = squad_config.triage_assistant
@@ -119,9 +121,21 @@ class TriageAssistantFactory(BaseAssistantFactory):
 
         # Update model configuration for triage assistant
         system_content = self._create_system_content(squad_config, account_display_name)
-        assistant_dict["model"] = self._build_model_with_system_message(
-            triage_config.model, system_content
-        )
+
+        # If the provider is palona, we want to use our own agent
+        if triage_config.model.get("provider", "").lower() == "palona":
+            base_model = {
+                "provider": "custom-llm",
+                "url": f"{api_url}/v1",
+                "model": json.dumps(caller_info.model_dump(exclude_none=True)),
+            }
+            assistant_dict["model"] = self._build_model_with_system_message(
+                base_model, system_content
+            )
+        else:
+            assistant_dict["model"] = self._build_model_with_system_message(
+                triage_config.model, system_content
+            )
 
         # Set background sound from agent config
         self._set_background_sound(assistant_dict)
@@ -299,7 +313,7 @@ class SquadBuilder:
 
         # Create triage assistant
         assistants["triage"] = self.triage_factory.create(
-            self.squad_config, account_display_name, speech_rate
+            self.squad_config, account_display_name, speech_rate, api_url, caller_info
         )
 
         # Create language assistants
