@@ -16,10 +16,9 @@ from pydantic import BaseModel, Field
 from agent.config import AgentConfig
 from agent.input_output import Input, Output
 from agent.memory._implementation import get_all_memories
+from agent.model import ModelOptions, build_agno_model
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
-from services.llm_service import build_agno_model
-from services.llm_service.schema import ModelOptions
 from utils.dd import send_dd_histogram_metrics, trace_block
 from utils.log import logger
 

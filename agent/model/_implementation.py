@@ -1,105 +1,121 @@
-from enum import Enum
-from os import getenv
+import os
+from typing import Any, AsyncIterator, Mapping
 
-from agno.embedder.openai import OpenAIEmbedder
-from agno.models.google.gemini import Gemini
-from agno.models.openai.chat import OpenAIChat
-from agno.models.openai.like import OpenAILike
-from openai import AsyncOpenAI, OpenAI
-from pydantic import BaseModel, Field
+from agno.models.azure.openai_chat import AzureOpenAI
+from openai import AsyncAzureOpenAI
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
-# Get the MODEL_ROUTER_BASE_URL environment variable, or use a default value if not set
-MODEL_ROUTER_BASE_URL = getenv(
-    "MODEL_ROUTER_BASE_URL",
-    "https://25qnn07d2j.execute-api.us-west-1.amazonaws.com/lat/",  # lat,
-)
-MODEL_ROUTER_API_KEY = getenv("MODEL_ROUTER_API_KEY", "")
+from utils.log import logger
+
+from ._config import ModelOptions
 
 
-class BaseOutputModel(BaseModel):
-    content: str = Field(..., description="plain response content")
-    escalated: bool = Field(..., description="system info escalated field")
+def _get_deployment_name(model_option: ModelOptions) -> str:
+    """Get the Azure deployment name from environment variable."""
+    deployment_name = os.getenv(model_option.env_key)
+    if not deployment_name:
+        raise ValueError(f"Environment variable {model_option.env_key} not found.")
+    return deployment_name
 
 
-class ModelName(str, Enum):
-    MEDIUM = "medium"
-    SMALL = "small"
+def _build_azure_client() -> AsyncAzureOpenAI:
+    """Build Azure OpenAI client with required configuration."""
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("AZURE_OPENAI_API_KEY environment variable not found.")
 
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if not azure_endpoint:
+        raise ValueError("AZURE_OPENAI_ENDPOINT environment variable not found.")
 
-class EmbedderName(str, Enum):
-    SMALL = "text-embedding-3-small"
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
 
-
-def get_client() -> OpenAI:
-    """
-    Get the model client instance providied by model router.
-
-    Returns:
-        A instance of model router client with same usage as openai client
-    """
-    client = OpenAI(
-        api_key="dummy",  # This argument is required by OpenAI(), but not used by model router
-        default_headers={
-            "x-api-key": MODEL_ROUTER_API_KEY,
-        },
-        base_url=MODEL_ROUTER_BASE_URL,
+    return AsyncAzureOpenAI(
+        api_key=api_key,
+        azure_endpoint=azure_endpoint,
+        api_version=api_version,
     )
-    return client
 
 
-def get_async_client() -> AsyncOpenAI:
+async def call_llm_default(
+    model_option: ModelOptions, params: Mapping[str, Any]
+) -> ChatCompletion:
     """
-    Get the model async client instance providied by model router.
-
-    Returns:
-        A instance of model router async client with same usage as async openai client
-    """
-    client = AsyncOpenAI(
-        api_key="dummy",  # This argument is required by AsyncOpenAI(), but not used by model router
-        default_headers={
-            "x-api-key": MODEL_ROUTER_API_KEY,
-        },
-        base_url=MODEL_ROUTER_BASE_URL,
-    )
-    return client
-
-
-def get_model(model_name: str = ModelName.MEDIUM, stream: bool = False) -> OpenAIChat:
-    """
-    Get the appropriate LLM (Large Language Model) instance based on the provided model name.
+    Makes a non-streaming LLM request using Azure OpenAI.
 
     Args:
-        model_name: The name of the model to retrieve. Must be "medium" or "small"
+        model_option: Model to use for this request
+        params: dict of OpenAI API compatible parameters; model and stream keys will be dropped.
 
     Returns:
-        An instance of OpenAILike configured with the model router settings.
+        OpenAI API compatible completions response
     """
-    if stream:
-        model = OpenAIChat(id="gpt-4o")
-        return model
-    else:
-        model = OpenAILike(
-            id=model_name,
-            api_key="dummy",  # Required but not used by model router
-            base_url=MODEL_ROUTER_BASE_URL,
-            default_headers={
-                "x-api-key": MODEL_ROUTER_API_KEY,
-            },
+    client = _build_azure_client()
+
+    # Resolve Azure deployment name and inject as 'model'
+    deployment_name = _get_deployment_name(model_option)
+
+    sanitized_params = {key: value for key, value in params.items() if key != "stream"}
+    sanitized_params["model"] = deployment_name
+    try:
+        response = await client.chat.completions.create(
+            stream=False, **sanitized_params
         )
-        return model
+        if not isinstance(response, ChatCompletion):
+            raise TypeError("Unexpected return type from Azure OpenAI.")
+        return response
+    except Exception:
+        logger.exception("Chat completion call to Azure OpenAI failed.")
+        raise
 
 
-def get_gemini_model():
-    api_key = getenv("GEMINI_API_KEY", "")
-    assert api_key, "GEMINI_API_KEY is not set"
-    return Gemini(id="gemini-2.0-flash", api_key=api_key)
-
-
-def get_embedder():
+async def call_llm_stream(
+    model_option: ModelOptions, params: Mapping[str, Any]
+) -> AsyncIterator[ChatCompletionChunk]:
     """
-    Get the OpenAIEmbedder instance configured with the appropriate embedding model.
+    Makes a streaming LLM request using Azure OpenAI.
+
+    Args:
+        model_option: Model to use for this request
+        params: dict of OpenAI API compatible parameters; model and stream keys will be dropped.
 
     Returns:
-        OpenAIEmbedder: An instance of OpenAIEmbedder configured with the embedding model from settings.
+        OpenAI API compatible completions response
     """
-    return OpenAIEmbedder(id=EmbedderName.SMALL)
+    client = _build_azure_client()
+
+    # Resolve Azure deployment name and inject as 'model'
+    deployment_name = _get_deployment_name(model_option)
+    sanitized_params = {key: value for key, value in params.items() if key != "stream"}
+    sanitized_params["model"] = deployment_name
+    try:
+        response = await client.chat.completions.create(stream=True, **sanitized_params)
+        if not hasattr(response, "__aiter__"):
+            raise TypeError("Unexpected return type from Azure OpenAI.")
+        return response
+    except Exception:
+        logger.exception("Chat completion call to Azure OpenAI failed.")
+        raise
+
+
+def build_agno_model(model_option: ModelOptions) -> AzureOpenAI:
+    """
+    Returns an Agno agent model that calls Azure OpenAI to make LLM requests.
+    """
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("AZURE_OPENAI_API_KEY environment variable not found.")
+
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if not azure_endpoint:
+        raise ValueError("AZURE_OPENAI_ENDPOINT environment variable not found.")
+
+    deployment_name = _get_deployment_name(model_option)
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+
+    return AzureOpenAI(
+        id=deployment_name,
+        api_key=api_key,
+        azure_endpoint=azure_endpoint,
+        api_version=api_version,
+    )

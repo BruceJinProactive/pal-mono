@@ -5,8 +5,7 @@ import subprocess
 import requests
 from bs4 import BeautifulSoup
 
-from services import llm_service
-from services.llm_service.schema import ModelOptions
+from agent.model import ModelOptions, call_llm_default
 from utils.log import logger
 
 
@@ -186,7 +185,7 @@ Format as a clean, organized summary that an AI agent can reference when helping
             "temperature": 0.1,
         }
 
-        response = await llm_service.call_llm_default(
+        response = await call_llm_default(
             model_option=ModelOptions.GPT_4O, params=chat_params
         )
 
@@ -537,7 +536,7 @@ async def generate_agent_prompts(
             "temperature": 0.7,
         }
 
-        response = await llm_service.call_llm_default(
+        response = await call_llm_default(
             model_option=ModelOptions.GPT_4O, params=chat_params
         )
 
