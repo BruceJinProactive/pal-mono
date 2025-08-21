@@ -741,7 +741,12 @@ def create_stripe_checkout_url(
 
         # Add base price
         if project_subscription.base_price_id:
-            line_items.append({"price": project_subscription.base_price_id})
+            line_items.append(
+                {
+                    "price": project_subscription.base_price_id,
+                    "quantity": 1,
+                }
+            )
             price_details.append(
                 {
                     "project_subscription_id": str(project_subscription.id),
