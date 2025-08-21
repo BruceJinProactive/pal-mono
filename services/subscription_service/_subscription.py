@@ -739,6 +739,22 @@ def create_stripe_checkout_url(
             project.display_name if (project and project.display_name) else project_name
         )
 
+        # Add base price
+        if project_subscription.base_price_id:
+            line_items.append({"price": project_subscription.base_price_id})
+            price_details.append(
+                {
+                    "project_subscription_id": str(project_subscription.id),
+                    "project_id": str(project_subscription.project_id),
+                    "project_name": project_name,
+                    "project_display_name": project_display_name,
+                    "price_type": "monthly_fee",
+                    "price_id": project_subscription.base_price_id,
+                    "description": f"Monthly fee for {project_display_name}",
+                    "pricing_method": "existing_price_id",
+                }
+            )
+
         # Add call usage price (using existing price ID - price_data doesn't support metered billing)
         if project_subscription.call_price_id:
             line_items.append(
