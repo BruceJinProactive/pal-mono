@@ -38,7 +38,6 @@ dependencies = [
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
-  "portkey-ai>=1.14.0", # AI gateway for LLM observability and management
   "psycopg[binary]==3.2.1", # Modern PostgreSQL adapter with binary wheels
   "pytest-cov==6.0.0", # Code coverage reporting for pytest
   "pytest-mock==3.14.0", # Mocking and patching utilities for pytest
@@ -57,7 +56,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black==24.8.0", "isort==5.13.2", "pyright==1.1.382", "ruff==0.6.2", "toml-sort==0.24.2"]
+dev = [
+  "black==24.8.0",
+  "isort==5.13.2",
+  "pip-tools>=7.5.0",
+  "pyright==1.1.382",
+  "ruff==0.6.2",
+  "toml-sort==0.24.2"
+]
 
 [tool.black]
 line-length = 88

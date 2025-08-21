@@ -547,9 +547,6 @@ class AgnoAgent:
                 yield error_output
 
             LLMObs.annotate(output_data=output_content)
-            # TODO remove manual logging once LLM Obs traces are working again
-            logger.info(f"Streaming request input: {input}")
-            logger.info(f"Streaming request output: {output_content}")
 
         return stream_wrapper()
 
