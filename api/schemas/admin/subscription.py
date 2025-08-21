@@ -251,66 +251,6 @@ class CreateCheckoutSessionRequest(BaseModel):
     redirect_url_prefix: AnyHttpUrl
 
 
-class CustomCheckoutRequest(BaseModel):
-    """Request for custom checkout with Payment Element"""
-
-    customer_email: EmailStr | None = None
-
-
-class CheckoutAccount(BaseModel):
-    """Account information for checkout"""
-
-    id: str
-    name: str
-    display_name: str
-    total_projects: int
-
-
-class CheckoutSubscriptionPlan(BaseModel):
-    """Subscription plan details for checkout"""
-
-    id: str
-    name: str
-    monthly_fee_per_project: int  # in cents
-    currency: str
-    call_quota_per_project: int
-    order_quota_per_project: int
-    call_overage_charge: int  # in cents per unit
-    order_overage_charge: int  # in cents per unit
-
-
-class CheckoutProject(BaseModel):
-    """Project information for checkout"""
-
-    id: str
-    name: str
-    display_name: str
-
-
-class CheckoutPricing(BaseModel):
-    """Pricing breakdown for checkout"""
-
-    billing_cycle: str
-    price_per_project: int  # in cents
-
-
-class CheckoutPayment(BaseModel):
-    """Payment information for checkout"""
-
-    payment_intent_id: str
-    client_secret: str
-
-
-class CustomCheckoutResponse(BaseModel):
-    """Response for custom checkout page data"""
-
-    account: CheckoutAccount
-    subscription_plan: CheckoutSubscriptionPlan
-    projects: list[CheckoutProject]
-    pricing: CheckoutPricing
-    payment: CheckoutPayment
-
-
 class ProjectSubscription(BaseModel):
     """Schema for ProjectSubscription response"""
 
