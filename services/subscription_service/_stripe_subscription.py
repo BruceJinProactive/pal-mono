@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Dict
@@ -149,41 +150,46 @@ def create_checkout_session(
 
 
 def handle_checkout_success(
-    payment_intent_id: str,
-    subscription_external_id: str,
-    account_id: str,
+    session_id: str,
 ) -> StripeCheckoutResponse | None:
+    """
+    Updates metadata for each subscription item after a successful checkout.
+    Links each subscription item to a specific project_id saved during subscription creation.
+    """
     try:
-        external_id = parse_uuid(subscription_external_id)
-        parsed_account_id = parse_uuid(account_id)
-
-        if not external_id or not parsed_account_id:
-            logger.error(
-                "Invalid UUID format in parameters",
-                extra={
-                    "payment_intent_id": payment_intent_id,
-                    "subscription_external_id": subscription_external_id,
-                    "account_id": account_id,
-                },
-            )
-            return None
-
-        return StripeCheckoutResponse(
-            account_id=parsed_account_id,
-            customer_id="",
-            stripe_subscription_id="",
-            subscription_external_id=external_id,
-        )
-    except Exception as e:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except stripe.StripeError as e:
         logger.error(
-            f"Error handling checkout success: {e}",
-            extra={
-                "payment_intent_id": payment_intent_id,
-                "subscription_external_id": subscription_external_id,
-                "account_id": account_id,
-            },
+            f"Failed to retrieve checkout session: {e}",
+            extra={"session_id": session_id},
         )
         return None
+
+    if not session.subscription:
+        logger.error(
+            "No subscription found in the session!", extra={"session_id": session_id}
+        )
+        return None
+    subscription_id = str(session.subscription)
+
+    try:
+        subscription = stripe.Subscription.retrieve(id=subscription_id)
+    except (stripe.StripeError, json.JSONDecodeError, KeyError) as e:
+        logger.error(
+            f"Failed to retrieve subscription details: {e}",
+            extra={"subscription_id": subscription_id},
+        )
+        return None
+
+    external_id = parse_uuid(subscription.metadata.get(SUBSCRIPTION_EXTERNAL_ID))
+
+    logger.info("Successfully handled stripe checkout success event")
+    return StripeCheckoutResponse(
+        account_id=parse_uuid(session.client_reference_id),
+        customer_id=str(subscription.customer),
+        stripe_subscription_id=subscription_id,
+        subscription_external_id=external_id,
+    )
 
 
 def get_subscription_details(

@@ -1677,18 +1677,14 @@ def create_subscription_checkout_session(
 
 @admin_router.get("/subscriptions/checkout/callback", status_code=status.HTTP_200_OK)
 def handle_subscription_checkout_callback(
-    payment_intent_id: str = Query(..., description="stripe payment intent id"),
-    subscription_id: str = Query(..., description="subscription external id"),
-    payment_status: str = Query(..., description="payment status"),
+    session_id: str = Query(..., description="stripe checkout session id"),
     context: UserContext = Depends(authenticate_user),
     db_session: Session = Depends(db.get_db),
 ):
     """
-    Handles the callback from stripe payment success event with payment intent data.
+    Handles the callback from stripe payment success event.
     """
-    _subscription.handle_subscription_checkout_callback(
-        context, db_session, payment_intent_id, subscription_id, payment_status
-    )
+    _subscription.handle_subscription_checkout_callback(context, db_session, session_id)
 
 
 @admin_router.get("/accounts/{account_name}/subscriptions/{external_id}/projects")

@@ -30,36 +30,24 @@ from utils.log import logger
 def handle_stripe_checkout_success(
     session: Session,
     context: UserContext,
-    payment_intent_id: str,
-    subscription_external_id: str,
+    session_id: str,
 ) -> StripeCheckoutResponse | None:
-    subscription = get_account_subscription_by_external_id(
-        session, uuid.UUID(subscription_external_id)
-    )
-    if not subscription:
-        logger.error(
-            "Subscription not found",
-            extra={"subscription_external_id": subscription_external_id},
-        )
-        return None
-
-    response = _stripe_subscription.handle_checkout_success(
-        payment_intent_id, subscription_external_id, str(subscription.account_id)
-    )
+    response = _stripe_subscription.handle_checkout_success(session_id)
     if not response:
         return response
 
     data = {
+        "stripe_subscription_id": response.stripe_subscription_id,
         "status": SubscriptionStatus.active,
     }
     update_account_subscription(
         session, context, response.account_id, response.subscription_external_id, data
     )
     logger.info(
-        "Successfully updated subscription status to active",
+        "Successfully updated subscription's stripe id",
         extra={
             "account_subscription_id": response.subscription_external_id,
-            "payment_intent_id": payment_intent_id,
+            "stripe_subscription_id": response.stripe_subscription_id,
         },
     )
     return response

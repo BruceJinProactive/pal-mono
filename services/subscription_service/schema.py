@@ -65,6 +65,6 @@ class StripeSubscriptionDetails(BaseModel):
 
 class StripeCheckoutResponse(BaseModel):
     account_id: uuid.UUID
-    customer_id: str | None = None
-    stripe_subscription_id: str | None = None
+    customer_id: str
+    stripe_subscription_id: str
     subscription_external_id: uuid.UUID

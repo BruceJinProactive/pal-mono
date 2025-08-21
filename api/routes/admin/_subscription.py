@@ -410,20 +410,13 @@ def create_checkout_session(
 def handle_subscription_checkout_callback(
     context: UserContext,
     session: Session,
-    payment_intent_id: str,
-    subscription_id: str,
-    payment_status: str,
+    session_id: str,
 ):
-    if payment_status != "success":
-        raise HTTPException(
-            status_code=400, detail=f"Payment not successful. Status: {payment_status}"
-        )
-
     checkout_response = subscription_service.handle_stripe_checkout_success(
-        session, context, payment_intent_id, subscription_id
+        session, context, session_id
     )
     if not checkout_response:
-        raise not_found_error("Invalid payment intent or checkout not successful")
+        raise not_found_error("Invalid session id or checkout not successful")
 
     account = account_service.get_account_by_id(session, checkout_response.account_id)
     if not account:
