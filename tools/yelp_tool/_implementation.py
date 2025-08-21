@@ -87,18 +87,24 @@ class YelpTool(Toolkit):
         """
         Initialize YelpTool with configurable workflow parameters.
 
+        The tool supports two main workflows:
+        1. Credit card workflow: Used when credit_card_required=True OR yelp_integration_api=False
+        2. Official integration workflow: Used when credit_card_required=False AND yelp_integration_api=True
+
         Args:
             business_id_or_alias: The Yelp business ID or alias
             tool_metadata: Tool metadata containing session information
-                        credit_card_required: Whether this business actually requires credit card for reservations
-            yelp_integration_api: Use Yelp integration API workflow (no credit card required workflow).
-                                Defaults to False (uses public booking API).
-            biz_id: Business-specific ID parameter (required if yelp_integration_api=True)
-            biz_lat: Business latitude parameter (required if yelp_integration_api=True)
-            biz_long: Business longitude parameter (required if yelp_integration_api=True)
+            credit_card_required: Whether this business actually requires credit card for reservations
+            yelp_integration_api: Use Yelp official integration API workflow (no credit card required workflow).
+            biz_id: Business-specific ID parameter (required for credit card workflow when reservations enabled)
+            biz_lat: Business latitude parameter (required for credit card workflow when reservations enabled)
+            biz_long: Business longitude parameter (required for credit card workflow when reservations enabled)
+            waitlist_enabled: Whether to enable waitlist functionality (default: False)
+            reservation_enabled: Whether to enable reservation functionality (default: True)
 
         Raises:
-            ValueError: If yelp_integration_api=False but biz_id, biz_lat, or biz_long are not provided
+            ValueError: If credit card workflow is used (credit_card_required=True OR yelp_integration_api=False)
+                      AND reservation_enabled=True AND any of biz_id, biz_lat, or biz_long are not provided
         """
         super().__init__(name="yelp_tool")
 
@@ -122,7 +128,7 @@ class YelpTool(Toolkit):
                 "[YelpTool.__init__] No timezone available in tool metadata, using UTC as fallback"
             )
 
-        # Determine workflow: use credit card workflow if required OR if not using integration API
+        # Determine workflow: use credit card workflow if credit card is required for making reservations OR if not using Yelp official integration API
         self.use_creditcard_workflow = credit_card_required or not yelp_integration_api
 
         # Register reservation tools
