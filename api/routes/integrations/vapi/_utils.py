@@ -139,6 +139,11 @@ def get_transcriber_and_voice_config(
                     plan_dict["model"] = plan.voice_model
 
                 voice["fallbackPlan"].append(plan_dict)
+
+        # Include chunkPlan if it exists
+        # chunkPlan is a dictionary
+        if voice_config.chunkPlan:
+            voice["chunkPlan"] = voice_config.chunkPlan
     else:
         voice = {
             "provider": "cartesia",

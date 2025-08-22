@@ -130,6 +130,7 @@ class VoiceDecoderConfig(BaseModel):
     voice_model: Optional[str] = Field(default=None, alias="model")
     provider: str
     fallbackPlan: Optional[list[VoiceDecoderConfig]] = None
+    chunkPlan: Optional[dict[str, Any]] = None
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
