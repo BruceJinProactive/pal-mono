@@ -105,6 +105,8 @@ from api.schemas.admin.subscription import (
     CreateProjectSubscriptionRequest,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    GetAccountCreditResponse,
+    GrantAccountCreditRequest,
     ListAccountSubscriptionsResponse,
     Subscription,
     SubscriptionPlan,
@@ -1783,6 +1785,31 @@ def remove_project_subscription(
     return _subscription.remove_project_subscription(
         context, db_session, account_name, external_id, project_id
     )
+
+
+@admin_router.post("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)
+def grant_account_credit(
+    account_name: str,
+    request: GrantAccountCreditRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Grant additional credit to the account. The amount must be in the smallest divisible
+    unit like "cents" for USD.
+    Positive value issues a credit for the user, and a negative value issues a debit for
+    the user. For our use cases, this number is almost always positive!
+    """
+    _subscription.grant_credit_for_account(context, session, account_name, request)
+
+
+@admin_router.get("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)
+def get_account_credit(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> GetAccountCreditResponse:
+    return _subscription.get_credit_amount(context, session, account_name)
 
 
 """

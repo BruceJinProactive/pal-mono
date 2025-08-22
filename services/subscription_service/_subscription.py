@@ -17,7 +17,11 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
 from services import account_service, project_service
 from services.history_service import change_log_context
-from services.subscription_service import _stripe_product, _stripe_subscription
+from services.subscription_service import (
+    _stripe_credit,
+    _stripe_product,
+    _stripe_subscription,
+)
 from services.subscription_service._stripe_product import MeterTier
 from services.subscription_service.schema import (
     StripeCheckoutResponse,
@@ -1040,3 +1044,31 @@ def get_stripe_customer_id_for_project(
             exc_info=True,
         )
         return None
+
+
+def grant_credit_to_account(
+    account: db.Account,
+    credit_amount_cents: int,
+    currency: str,
+    description: str | None,
+):
+    if not account.stripe_customer_id:
+        raise ValueError(
+            "Account does not have a stripe customer associated, does it have a subscription?"
+        )
+
+    _stripe_credit.grant_credit_balance(
+        account.stripe_customer_id, credit_amount_cents, currency, description
+    )
+
+
+def get_account_credit_balance(
+    account: db.Account,
+) -> tuple[int, str]:
+
+    if not account.stripe_customer_id:
+        raise ValueError(
+            "Account does not have a stripe customer associated, does it have a subscription?"
+        )
+
+    return _stripe_credit.get_credit_balance(account.stripe_customer_id)

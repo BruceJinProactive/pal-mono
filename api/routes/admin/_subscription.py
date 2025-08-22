@@ -18,6 +18,8 @@ from api.schemas.admin.subscription import (
     CreateProjectSubscriptionResponse,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    GetAccountCreditResponse,
+    GrantAccountCreditRequest,
     ListAccountSubscriptionsResponse,
     ListProjectSubscriptionsResponse,
     RemoveProjectSubscriptionResponse,
@@ -574,3 +576,51 @@ def retrieve_projects(session, account_id, project_ids) -> list[db.Project]:
             )
 
     return projects
+
+
+def grant_credit_for_account(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    request: GrantAccountCreditRequest,
+):
+    # Only admin user can issue credit
+    authorize_admin(context)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    try:
+        subscription_service.grant_credit_to_account(
+            account, request.amount, request.currency, request.description
+        )
+    except ValueError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+    logger.info(
+        "Successfully granted credit to account",
+        extra={
+            "account_name": account_name,
+            "credit_amount_cents": request.amount,
+        },
+    )
+
+
+def get_credit_amount(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+) -> GetAccountCreditResponse:
+    # Both admin and account manager can see the current credit balance
+    authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError("Account not found")
+
+    balance, currency = subscription_service.get_account_credit_balance(account)
+
+    return GetAccountCreditResponse(
+        balance=balance,
+        currency=currency,
+    )

@@ -287,3 +287,14 @@ class RemoveProjectSubscriptionResponse(BaseModel):
 
     message: str
     success: bool
+
+
+class GrantAccountCreditRequest(BaseModel):
+    amount: int  # amount in cent
+    currency: str = "usd"  # default USD
+    description: str | None = None  # A description for the credit
+
+
+class GetAccountCreditResponse(BaseModel):
+    balance: int  # amount in cent
+    currency: str  # 3 letter lowercase currency code
