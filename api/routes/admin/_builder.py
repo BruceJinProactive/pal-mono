@@ -255,6 +255,7 @@ def build_subscription_plan(plan: db.SubscriptionPlan) -> SubscriptionPlan:
         call_overage_charge=plan.call_overage_charge,
         order_overage_charge=plan.order_overage_charge,
         free_trial_days=plan.free_trial_days,
+        credit_amount=plan.credit_amount,
         monthly_fee=plan.monthly_fee,
         active=plan.active,
         sort_id=plan.sort_id,

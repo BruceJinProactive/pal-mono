@@ -56,6 +56,7 @@ def create_subscription_plan(
         call_overage_charge=request.call_overage_charge,
         order_overage_charge=request.order_overage_charge,
         free_trial_days=request.free_trial_days,
+        credit_amount=request.credit_amount,
         monthly_fee=request.monthly_fee,
         active=request.active,
         sort_id=request.sort_id,

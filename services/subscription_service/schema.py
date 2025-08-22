@@ -18,6 +18,7 @@ class SubscriptionPlanParams(BaseModel):
     call_overage_charge: Optional[int] = None
     order_overage_charge: Optional[int] = None
     free_trial_days: Optional[int] = None
+    credit_amount: Optional[int] = None
     monthly_fee: Optional[int] = None
     active: bool | None = None
     sort_id: int | None = None

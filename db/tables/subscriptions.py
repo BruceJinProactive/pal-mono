@@ -42,6 +42,7 @@ class SubscriptionPlan(Base):
     call_overage_charge: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     order_overage_charge: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     free_trial_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    credit_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     monthly_fee: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"

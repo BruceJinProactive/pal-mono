@@ -26,6 +26,7 @@ class SubscriptionPlan(BaseModel):
     call_overage_charge: Optional[int]
     order_overage_charge: Optional[int]
     free_trial_days: Optional[int]
+    credit_amount: Optional[int]
     monthly_fee: Optional[int]
     active: bool
     sort_id: Optional[int]
@@ -45,6 +46,7 @@ class CreateSubscriptionPlanRequest(BaseModel):
     call_overage_charge: Optional[int] = None
     order_overage_charge: Optional[int] = None
     free_trial_days: Optional[int] = None
+    credit_amount: Optional[int] = None
     monthly_fee: Optional[int] = None
     active: bool = True
     sort_id: Optional[int] = None
@@ -76,6 +78,7 @@ class UpdateSubscriptionPlanRequest(BaseModel):
     call_overage_charge: Optional[int] = None
     order_overage_charge: Optional[int] = None
     free_trial_days: Optional[int] = None
+    credit_amount: Optional[int] = None
     monthly_fee: Optional[int] = None
     active: Optional[bool] = None
     sort_id: Optional[int] = None
@@ -93,6 +96,7 @@ class UpdateSubscriptionPlanRequest(BaseModel):
             call_overage_charge=self.call_overage_charge,
             order_overage_charge=self.order_overage_charge,
             free_trial_days=self.free_trial_days,
+            credit_amount=self.credit_amount,
             monthly_fee=self.monthly_fee,
             active=self.active,
             sort_id=self.sort_id,
