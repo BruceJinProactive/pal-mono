@@ -19,7 +19,45 @@ class MeterTier:
     per_unit: int | None  # per unit charge in cents
 
 
+def create_product_for_project(
+    project: db.Project, account_name: str, plan_name: str
+) -> str:
+    """
+    Create a Stripe product for a specific project.
+    Each project gets its own product with account metadata for connection.
+    """
+    try:
+        product = stripe.Product.create(
+            name=f"{plan_name} - {project.display_name or project.name}",
+            description=f"Monthly subscription plan for {project.display_name or project.name}",
+            metadata={
+                "account_name": account_name,
+                "account_id": str(project.account_id),
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "type": "project_usage_billing",
+            },
+        )
+        return product.id
+
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to create Stripe product for project {project.name}: {e}",
+            extra={
+                "account_name": account_name,
+                "project_id": str(project.id),
+                "project_name": project.name,
+            },
+        )
+        raise
+
+
+# Keep the old function for backward compatibility during migration
 def create_product(account_name, plan_name: str):
+    """
+    DEPRECATED: Use create_product_for_project instead.
+    This function is kept for backward compatibility.
+    """
     try:
         product = stripe.Product.create(
             name=f"{plan_name} - {account_name}",
@@ -127,6 +165,8 @@ def create_product_price(
         "currency": DEFAULT_CURRENCY,
         "metadata": {
             "project_name": project.name,
+            "project_id": str(project.id),
+            "account_id": str(project.account_id),
         },
         "nickname": nickname,
         "recurring": {

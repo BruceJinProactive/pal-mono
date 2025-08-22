@@ -366,7 +366,10 @@ class ProjectSubscriptionRepository:
         self.auto_commit = auto_commit
 
     def create_project_subscription(
-        self, project_id: uuid.UUID, subscription_id: uuid.UUID
+        self,
+        project_id: uuid.UUID,
+        subscription_id: uuid.UUID,
+        stripe_product_id: str | None = None,
     ) -> ProjectSubscription:
         """Create a new project subscription."""
         try:
@@ -374,6 +377,7 @@ class ProjectSubscriptionRepository:
                 id=uuid.uuid4(),
                 project_id=project_id,
                 subscription_id=subscription_id,
+                stripe_product_id=stripe_product_id,
                 deleted=False,
             )
 

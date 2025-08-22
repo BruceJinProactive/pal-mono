@@ -142,6 +142,7 @@ class ProjectSubscription(Base):
         nullable=False,
         index=True,
     )
+    stripe_product_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     base_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     call_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     order_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)

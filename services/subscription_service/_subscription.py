@@ -173,11 +173,6 @@ def create_account_subscription(
             "Cannot create subscription: overlaps with existing active subscriptions"
         )
 
-    # Step 1: Create a product on stripe for this account
-    stripe_product_id = _stripe_product.create_product(account.name, plan.name)
-    account_subscription.stripe_product_id = stripe_product_id
-
-    # Step 2: Create the account subscription record
     with change_log_context(
         session=session,
         resource_type=ChangeResourceType.Subscription,
@@ -208,7 +203,6 @@ def create_account_subscription(
         },
     )
 
-    # Step 3: add each project to the subscription
     for project in projects:
         add_project_to_subscription(session, account_subscription, project)
 
@@ -222,18 +216,27 @@ def add_project_to_subscription(
     project_subscription_repository = ProjectSubscriptionRepository(
         session, auto_commit=False
     )
-    stripe_product_id = subscription.stripe_product_id
-    if not stripe_product_id:
-        raise ValueError("Missing stripe product id in subscription.")
 
     plan = subscription_plan_repository.get_subscription_plan_by_id(
         subscription.subscription_plan_id
     )
     if not plan:
         raise ValueError("Subscription Plan not found.")
+
+    account_name = (
+        project.account.name
+        if hasattr(project, "account") and project.account
+        else "Unknown Account"
+    )
+
+    stripe_product_id = _stripe_product.create_product_for_project(
+        project, account_name, plan.name
+    )
+
     project_subscription = project_subscription_repository.create_project_subscription(
         project.id,
         subscription.external_id,
+        stripe_product_id=stripe_product_id,
     )
 
     # Setup base fee
