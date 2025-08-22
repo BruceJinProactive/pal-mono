@@ -8,6 +8,10 @@ from api.routes.admin._utils import UserContext, not_found_error
 from api.schemas.admin.phone_number import (
     ListPhoneNumbersResponse,
     PhoneNumberInfo,
+    PurchaseNumberRequest,
+    PurchaseNumberResponse,
+    ReleaseNumberRequest,
+    ReleaseNumberResponse,
     ReleaseProjectNumberRequest,
     ReserveProjectNumberRequest,
 )
@@ -214,4 +218,107 @@ async def list_phone_numbers(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve phone numbers: {str(e)}",
+        )
+
+
+async def purchase_number(
+    request: PurchaseNumberRequest,
+    context: UserContext,
+    session: Session,
+) -> PurchaseNumberResponse:
+    """
+    Purchase a single phone number.
+    """
+
+    # 1. Auth check - ensure only admin users can access
+    authorize_admin(context)
+
+    logger.info(
+        "Starting phone number purchase request",
+        extra={
+            "country_code": request.country_code,
+            "toll_free": request.toll_free,
+            "area_code": request.area_code,
+            "contains": request.contains,
+        },
+    )
+
+    try:
+        number_service = NumberService()
+        number_response = number_service.setup_number(
+            country_code=request.country_code,
+            toll_free=request.toll_free,
+            merchant_name="AVAILABLE",  # Purchased numbers use "AVAILABLE" label
+            purchase_number=True,  # Force purchase new number
+            area_code=request.area_code,
+            contains=request.contains,
+        )
+
+        logger.info(
+            f"Phone number purchased successfully: {number_response.number}",
+            extra={
+                "phone_number": number_response.number,
+                "country_code": request.country_code,
+                "toll_free": request.toll_free,
+            },
+        )
+
+        return PurchaseNumberResponse(
+            phone_number=number_response.number,
+            merchant_name=number_response.merchant_name,
+            country_code=number_response.country_code,
+            toll_free=number_response.toll_free,
+        )
+
+    except ValueError as e:
+        logger.info("Purchase failed with business error", extra={"detail": str(e)})
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to purchase phone number")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to purchase phone number: {str(e)}",
+        )
+
+
+async def release_standalone_number(
+    request: ReleaseNumberRequest,
+    context: UserContext,
+    session: Session,
+) -> ReleaseNumberResponse:
+    """
+    Release a standalone phone number (not associated with any project).
+    """
+
+    # 1. Auth check - ensure only admin users can access
+    authorize_admin(context)
+
+    logger.info(
+        f"Starting standalone number release request for {request.phone_number}",
+        extra={"phone_number": request.phone_number},
+    )
+
+    try:
+        number_service = NumberService()
+
+        number_service.delete_number(request.phone_number)
+
+        success_message = f"Number {request.phone_number} deleted successfully from both Vapi and Twilio"
+        logger.info(success_message)
+
+        return ReleaseNumberResponse(
+            phone_number=request.phone_number,
+            message=success_message,
+            released_from_vapi=True,  # Assume success if no exception
+            released_from_twilio=True,
+        )
+
+    except ValueError as e:
+        logger.info("Release failed with business error", extra={"detail": str(e)})
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to release standalone phone number")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to release phone number: {str(e)}",
         )

@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
@@ -20,6 +20,7 @@ from ._utils import (
 )
 
 RELEASED_LABEL = "RELEASED"
+AVAILABLE_LABEL = "AVAILABLE"
 
 
 class NumberService:
@@ -92,12 +93,20 @@ class NumberService:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize NumberService: {e}") from e
 
-    def purchase_number(self, country_code: str, merchant_name: str) -> NumberResponse:
+    def purchase_number(
+        self,
+        country_code: str,
+        merchant_name: str,
+        area_code: Optional[str] = None,
+        contains: Optional[str] = None,
+    ) -> NumberResponse:
         """Purchase a new local phone number from Twilio.
 
         Args:
             country_code: Two-letter country code (e.g., 'US')
             merchant_name: Business name to associate with the number
+            area_code: Optional area code to search within (e.g., '415')
+            contains: Optional pattern for substring matching in phone numbers
 
         Returns:
             NumberResponse containing the purchased number details
@@ -105,13 +114,26 @@ class NumberService:
         Raises:
             ValueError: If no numbers are available or purchase fails
         """
+        # Build search parameters for Twilio API
+        list_params: Dict[str, Any] = {"limit": 1}
+        if area_code:
+            list_params["area_code"] = area_code
+        if contains:
+            list_params["contains"] = contains
+
+        # Search for available numbers
         available_numbers = self.twilio_client.available_phone_numbers(
             country_code
-        ).local.list(limit=1)
+        ).local.list(**list_params)
 
         if not available_numbers:
+            criteria = [f"country_code={country_code}"]
+            if area_code:
+                criteria.append(f"area_code={area_code}")
+            if contains:
+                criteria.append(f"contains={contains}")
             raise ValueError(
-                f"No available phone numbers found for country code {country_code}"
+                f"No available local phone numbers found for criteria: {', '.join(criteria)}"
             )
 
         number = available_numbers[0]
@@ -133,13 +155,18 @@ class NumberService:
         )
 
     def purchase_toll_free_number(
-        self, country_code: str, merchant_name: str
+        self,
+        country_code: str,
+        merchant_name: str,
+        contains: Optional[str] = None,
     ) -> NumberResponse:
         """Purchase a new toll-free phone number from Twilio.
 
         Args:
             country_code: Two-letter country code (e.g., 'US')
             merchant_name: Business name to associate with the number
+            contains: Optional pattern for substring matching in phone numbers
+                     Note: area_code is not applicable for toll-free numbers
 
         Returns:
             NumberResponse containing the purchased toll-free number details
@@ -147,13 +174,22 @@ class NumberService:
         Raises:
             ValueError: If no toll-free numbers are available or purchase fails
         """
+        # Build search parameters for Twilio API
+        list_params: Dict[str, Any] = {"limit": 1}
+        if contains:
+            list_params["contains"] = contains
+
+        # Search for available toll-free numbers
         available_numbers = self.twilio_client.available_phone_numbers(
             country_code
-        ).toll_free.list(limit=1)
+        ).toll_free.list(**list_params)
 
         if not available_numbers:
+            criteria = [f"country_code={country_code}"]
+            if contains:
+                criteria.append(f"contains={contains}")
             raise ValueError(
-                f"No available toll-free phone numbers found for country code {country_code}"
+                f"No available toll-free phone numbers found for criteria: {', '.join(criteria)}"
             )
 
         number = available_numbers[0]
@@ -169,7 +205,7 @@ class NumberService:
 
         return NumberResponse(
             number=twilio_number.phone_number,
-            merchant_name=twilio_number.friendly_name or "",
+            merchant_name=merchant_name,
             country_code=country_code,
             toll_free=True,
         )
@@ -194,12 +230,16 @@ class NumberService:
         country_code: str,
         toll_free: bool,
         merchant_name: str,
+        assistant_config: Optional[AssistantConfig] = None,
+        purchase_number: bool = False,
+        area_code: Optional[str] = None,
+        contains: Optional[str] = None,
     ) -> NumberResponse:
         """Set up a phone number with optional Vapi assistant integration.
 
         This method handles the complete setup process:
         1. Creates a Vapi assistant if configuration is provided
-        2. Purchases a phone number (local or toll-free)
+        2. Purchases a phone number (local or toll-free) or reuses approved numbers
         3. Integrates the number with Vapi
         4. Handles cleanup if any step fails
 
@@ -207,6 +247,11 @@ class NumberService:
             country_code: Two-letter country code (e.g., 'US')
             toll_free: Whether to purchase a toll-free number
             merchant_name: Business name to associate with the number
+            assistant_config: Optional assistant configuration for Vapi integration
+            purchase_number: If True, always purchase a new number. If False (default),
+                           reuse approved numbers first, only purchasing if none available.
+            area_code: Optional area code for local numbers (e.g., '415')
+            contains: Optional pattern for number search (supports wildcards like '*6666')
 
         Returns:
             NumberResponse containing the set up number details
@@ -214,22 +259,31 @@ class NumberService:
         Raises:
             ValueError: If number setup or integration fails
         """
-        # use the server_url to get settings from the server, if not provided, create a new assistant
-        approved_numbers = self.get_approved_numbers()
-        if len(approved_numbers) == 0:
+        # Check if we should purchase a new number or reuse approved ones
+        if purchase_number:
+            # Force purchase a new number regardless of approved numbers
+            phone_number = None
+        else:
+            # Try to reuse approved numbers first (existing behavior)
+            approved_numbers = self.get_approved_numbers()
+            phone_number = approved_numbers[0] if approved_numbers else None
+
+        if phone_number is None:
             # Purchase number
             if toll_free:
                 number_response = self.purchase_toll_free_number(
-                    country_code, merchant_name
+                    country_code, merchant_name, contains=contains
                 )
             else:
-                number_response = self.purchase_number(country_code, merchant_name)
+                number_response = self.purchase_number(
+                    country_code, merchant_name, area_code=area_code, contains=contains
+                )
 
             if not number_response or not number_response.number:
                 raise ValueError("Failed to get phone number from Twilio")
             phone_number = number_response.number
         else:
-            phone_number = approved_numbers[0]
+            # Reusing an approved number
             number_details = self.get_number_details(phone_number)
             if not number_details:
                 raise ValueError("Failed to get phone number from Twilio")
@@ -259,6 +313,8 @@ class NumberService:
             raise ValueError(f"Failed to import number to Vapi: {e}") from e
 
         return number_response
+
+    # Batch purchase functionality removed - frontend handles multiple calls
 
     def get_purchased_numbers(self) -> List[IncomingPhoneNumberInstance]:
         """Retrieve all purchased phone numbers from Twilio for the current environment.
@@ -384,7 +440,7 @@ class NumberService:
             raise ValueError(f"Failed to release number from Vapi: {e}") from e
 
     def _release_number_from_twilio(self, number: str):
-        """Release a phone number from Twilio.
+        """Release a phone number from Twilio (marks as RELEASED, keeps number).
 
         Args:
             number: The phone number to release
@@ -409,6 +465,46 @@ class NumberService:
                     break
         except Exception as e:
             raise ValueError(f"Failed to release number from Twilio: {e}") from e
+
+    def _delete_number_from_twilio(self, number: str):
+        """Completely delete a phone number from Twilio account.
+
+        Args:
+            number: The phone number to delete
+
+        Raises:
+            ValueError: If number not found or deletion fails
+        """
+        try:
+            numbers = self.twilio_client.incoming_phone_numbers.list(
+                phone_number=number
+            )
+            if not numbers:
+                logger.warn("Phone number does not exist in twilio, skipping deletion.")
+                return
+            for n in numbers:
+                if n.phone_number == number:
+                    n.delete()  # Actually delete the number completely
+                    logger.info(f"Successfully deleted number {number} from Twilio")
+                    break
+        except Exception as e:
+            raise ValueError(f"Failed to delete number from Twilio: {e}") from e
+
+    def delete_number(self, number: str):
+        """Completely delete a phone number from both Vapi and Twilio.
+
+        This method ensures complete deletion by:
+        1. Removing the number from Vapi integration
+        2. Deleting the number from Twilio (not just marking as released)
+
+        Args:
+            number: The phone number to delete
+
+        Raises:
+            ValueError: If deletion from either service fails
+        """
+        self._release_number_from_vapi(number)
+        self._delete_number_from_twilio(number)
 
     def activate_number(self, number: str):
         """Manually activate a phone number from after it has been verified by Twilio.

@@ -77,3 +77,62 @@ class ListPhoneNumbersResponse(BaseModel):
     has_more: Optional[bool] = Field(
         None, description="Whether there are more pages available"
     )
+
+
+class PurchaseNumberRequest(BaseModel):
+    """Request model for purchasing a single phone number.
+
+    Note: Purchased numbers automatically use "AVAILABLE" as their merchant name,
+    making them available for assignment to projects.
+    """
+
+    country_code: str = Field(
+        "US", description="Country code for the phone number (e.g., 'US')"
+    )
+    toll_free: bool = Field(False, description="Whether to purchase a toll-free number")
+    area_code: Optional[str] = Field(
+        None,
+        description="Optional area code for local numbers (e.g., '415'). "
+        "Can be combined with contains for more specific searches.",
+    )
+    contains: Optional[str] = Field(
+        None,
+        description="Optional pattern for substring matching in phone numbers. "
+        "This value is passed directly to Twilio's contains parameter. "
+        "Examples: '555' to find numbers containing '555', '6666' for numbers containing '6666'. "
+        "Can be combined with area_code for more specific searches.",
+    )
+
+
+class PurchaseNumberResponse(BaseModel):
+    """Response model for purchasing a single phone number."""
+
+    phone_number: str = Field(
+        ..., description="The purchased phone number in E.164 format"
+    )
+    merchant_name: str = Field(
+        ..., description="Merchant name (will be 'env:AVAILABLE' for purchased numbers)"
+    )
+    country_code: str = Field(..., description="Country code for the number")
+    toll_free: bool = Field(..., description="Whether this is a toll-free number")
+
+
+class ReleaseNumberRequest(BaseModel):
+    """Request model for releasing a standalone phone number."""
+
+    phone_number: str = Field(
+        ..., description="The phone number to release (e.g., '+15551234567')"
+    )
+
+
+class ReleaseNumberResponse(BaseModel):
+    """Response model for releasing a phone number."""
+
+    phone_number: str = Field(..., description="The phone number that was released")
+    message: str = Field(..., description="Success message")
+    released_from_vapi: bool = Field(
+        ..., description="Whether the number was removed from Vapi"
+    )
+    released_from_twilio: bool = Field(
+        ..., description="Whether the number was released from Twilio"
+    )

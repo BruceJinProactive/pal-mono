@@ -80,6 +80,10 @@ from api.schemas.admin.onboarding import (
 )
 from api.schemas.admin.phone_number import (
     ListPhoneNumbersResponse,
+    PurchaseNumberRequest,
+    PurchaseNumberResponse,
+    ReleaseNumberRequest,
+    ReleaseNumberResponse,
     ReleaseProjectNumberRequest,
     ReserveProjectNumberRequest,
 )
@@ -946,6 +950,58 @@ async def list_phone_numbers(
     Includes project and account associations for each phone number.
     """
     return await _phone_number.list_phone_numbers(context, session, page, page_size)
+
+
+@admin_router.post("/phone_numbers", response_model=PurchaseNumberResponse)
+async def purchase_phone_number(
+    request: PurchaseNumberRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Purchase a single phone number.
+
+    This endpoint allows administrators to purchase a phone number
+    with optional criteria like area code and number patterns.
+
+    Parameters:
+    - country_code: Country code for the number (default: 'US')
+    - toll_free: Whether to purchase a toll-free number (default: false)
+    - area_code: Optional area code for local numbers (e.g., '415')
+    - contains: Optional pattern (e.g., '*6666' for ending with 6666, '*PALONA' for ending with PALONA, '555*' for containing 555)
+
+    Notes:
+    - area_code and contains can be combined for more specific searches
+    - Purchased numbers automatically use "AVAILABLE" as their merchant name
+    - Numbers are ready to be assigned to projects after purchase
+    - For multiple numbers, make multiple API calls from the frontend
+    """
+    return await _phone_number.purchase_number(request, context, session)
+
+
+@admin_router.delete("/phone_numbers", response_model=ReleaseNumberResponse)
+async def release_standalone_phone_number(
+    request: ReleaseNumberRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Delete a standalone phone number (not associated with any project).
+
+    This endpoint allows administrators to completely delete phone numbers that are not
+    currently assigned to any project. The number will be permanently removed from both
+    Vapi and Twilio systems.
+
+    Parameters:
+    - phone_number: The phone number to delete (e.g., '+15551234567')
+
+    Notes:
+    - Only works for numbers not currently assigned to projects
+    - For project-assigned numbers, use the project-specific release endpoint
+    - Number will be completely deleted from both Vapi and Twilio (irreversible)
+    - Operation will fail if number not found in either system
+    """
+    return await _phone_number.release_standalone_number(request, context, session)
 
 
 """
