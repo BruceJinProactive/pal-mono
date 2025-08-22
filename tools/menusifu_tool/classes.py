@@ -184,12 +184,13 @@ class Category(BaseModel):
     options: Optional[List[Option]] = None
     taxes: Optional[List[Tax]] = None
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Hours(BaseModel):
     """Menu group hours"""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     name: str
     description: Optional[str] = None
@@ -198,12 +199,11 @@ class Hours(BaseModel):
     from_day_of_the_week: int = Field(alias="fromDayOfTheWeek")
     to_day_of_the_week: int = Field(alias="toDayOfTheWeek")
 
-    class Config:
-        allow_population_by_field_name = True
-
 
 class MenuGroup(BaseModel):
     """Menu group containing categories"""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     id: int
     name: LocalizedName
@@ -211,9 +211,6 @@ class MenuGroup(BaseModel):
     description: Optional[str] = None
     categories: List[Category]
     hours: Optional[List[Hours]] = None
-
-    class Config:
-        allow_population_by_field_name = True
 
 
 class MenuResponse(BaseModel):
@@ -360,7 +357,7 @@ class ChargeObject(BaseModel):
     charge: Union[int, float]
     charge_is_per: bool = Field(alias="chargeIsPer")
     charge_rate: Union[int, float] = Field(alias="chargeRate")
-    type: str
+    type: Optional[str] = None
 
 
 class OrderCalculationResponse(BaseModel):

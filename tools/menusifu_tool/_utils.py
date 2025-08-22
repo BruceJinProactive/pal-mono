@@ -4,9 +4,21 @@ Utility functions for MenuSifu tool operations
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
 
-from .classes import DetailPrice, LocalizedName, MenuResponse, Price, Property, Size
+from .classes import (
+    Category,
+    ComboSection,
+    DetailPrice,
+    LocalizedName,
+    MenuGroup,
+    MenuResponse,
+    Price,
+    Property,
+    SaleItem,
+    Size,
+)
 
 
 def _localized_to_text(
@@ -1071,3 +1083,648 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                 lines.append("")  # Space after each category
 
     return "\n".join(lines).strip()
+
+
+# MenuSifu API Filtering Functions
+# Based on API error conditions: CLOSING, DELETED, ITEM_HIDDEN, SOLD_OUT, OUT_OF_STOCK, OPTION_LIMIT
+
+
+def is_item_available_by_time(
+    item: Union[SaleItem, Dict[str, Any]],
+    group_hours: Optional[List[Dict[str, Any]]] = None,
+    current_time: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """
+    Check if item is available during current time based on group hours.
+
+    Note: Individual items don't have groupHours in MenuSifu - time restrictions
+    are at the group level. This function checks if the group containing this
+    item is currently open.
+
+    API Error: CLOSING - "Some sale item is not available. the sale item is:..."
+
+    Args:
+        item: SaleItem model or item data dict from menu response
+        group_hours: Hours from the MenuGroup containing this item
+        current_time: Current datetime (defaults to now)
+
+    Returns:
+        dict: {"available": bool, "reason": str, "hours": list}
+    """
+    if current_time is None:
+        current_time = datetime.now()
+
+    # If no group hours provided, assume available all day
+    if not group_hours:
+        return {"available": True, "reason": "No time restrictions", "hours": []}
+
+    # Get day of week (1=Monday, 7=Sunday, MenuSifu uses 1-7)
+    current_day = current_time.isoweekday()  # 1=Monday, 7=Sunday
+    current_time_str = current_time.strftime("%H:%M")
+
+    # Check each time period
+    for period in group_hours:
+        from_day = period.get("fromDayOfTheWeek", 1)
+        to_day = period.get("toDayOfTheWeek", 7)
+        from_time = period.get("from", "00:00")
+        to_time = period.get("to", "23:59")
+
+        # Check if current day is within the period
+        day_in_range = False
+        if from_day <= to_day:
+            # Normal range (e.g., Mon-Fri)
+            day_in_range = from_day <= current_day <= to_day
+        else:
+            # Wrap-around range (e.g., Fri-Mon)
+            day_in_range = current_day >= from_day or current_day <= to_day
+
+        if day_in_range:
+            # Check if current time is within the period
+            if from_time <= current_time_str <= to_time:
+                return {
+                    "available": True,
+                    "reason": f"Available during {period.get('name', 'period')}",
+                    "hours": group_hours,
+                }
+
+    # Not available during current time
+    return {
+        "available": False,
+        "reason": "Not available during current time",
+        "hours": group_hours,
+    }
+
+
+def is_item_not_deleted(item: Union[SaleItem, Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Check if item is not deleted.
+
+    Note: In the actual MenuSifu menu response, sale items don't have a 'deleted' field.
+    The DELETED error occurs when trying to order an item that was removed from the menu
+    but is no longer present in the API response. This function always returns True
+    for items that exist in the menu response.
+
+    API Error: DELETED - "\"item_name\" item is deleted."
+
+    Args:
+        item: SaleItem model or item data dict from menu response
+
+    Returns:
+        dict: {"available": bool, "reason": str, "deleted": bool}
+    """
+    # If the item exists in the menu response, it's not deleted
+    # The 'deleted' field doesn't exist on sale items in the actual API response
+    return {
+        "available": True,
+        "reason": "Item exists in menu (not deleted)",
+        "deleted": False,
+    }
+
+
+def is_item_not_hidden(item: Union[SaleItem, Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Check if item is not hidden (hiddenItem = false).
+
+    API Error: ITEM_HIDDEN - "\"item_name\" item is hidden."
+
+    Args:
+        item: SaleItem model or item data dict from menu response
+
+    Returns:
+        dict: {"available": bool, "reason": str, "hidden": bool}
+    """
+    if isinstance(item, SaleItem):
+        hidden = item.hidden_item
+    else:
+        hidden = item.get("hiddenItem", False)
+
+    if hidden:
+        return {"available": False, "reason": "Item is hidden", "hidden": True}
+    else:
+        return {"available": True, "reason": "Item is visible", "hidden": False}
+
+
+def is_item_in_stock(item: Union[SaleItem, Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Check if item is in stock (not sold out or out of stock).
+
+    API Error: SOLD_OUT - "\"item_name\" item is sold out."
+    API Error: OUT_OF_STOCK - "\"item_name\" item is deleted." (same message, different type)
+
+    Args:
+        item: SaleItem model or item data dict from menu response
+
+    Returns:
+        dict: {"available": bool, "reason": str, "out_of_stock": bool, "sold_out": bool}
+    """
+    if isinstance(item, SaleItem):
+        out_of_stock = item.out_of_stock
+    else:
+        out_of_stock = item.get("outOfStock", False)
+
+    # Note: MenuSifu doesn't seem to have a separate "soldOut" field in the menu response
+    # The SOLD_OUT error is determined at order time based on current inventory
+
+    if out_of_stock:
+        return {
+            "available": False,
+            "reason": "Item is out of stock",
+            "out_of_stock": True,
+            "sold_out": False,
+        }
+    else:
+        return {
+            "available": True,
+            "reason": "Item is in stock",
+            "out_of_stock": False,
+            "sold_out": False,
+        }
+
+
+def validate_option_quantities(
+    selected_options: List[Dict[str, Any]], item_max_options: int
+) -> Dict[str, Any]:
+    """
+    Validate that option quantities are within allowed limits.
+
+    API Error: OPTION_LIMIT - "There is a limit to the number of options for item \"item_name\"."
+
+    Args:
+        selected_options: List of selected options with quantities
+        item_max_options: maxNumOfItemOptionAllowed from item
+
+    Returns:
+        dict: {"valid": bool, "reason": str, "total_options": int, "max_allowed": int}
+    """
+    total_options = sum(option.get("quantity", 0) for option in selected_options)
+
+    if item_max_options > 0 and total_options > item_max_options:
+        return {
+            "valid": False,
+            "reason": f"Too many options: {total_options} selected, max allowed: {item_max_options}",
+            "total_options": total_options,
+            "max_allowed": item_max_options,
+        }
+    else:
+        return {
+            "valid": True,
+            "reason": f"Option count valid: {total_options}/{item_max_options}",
+            "total_options": total_options,
+            "max_allowed": item_max_options,
+        }
+
+
+def validate_combo_section_selections(
+    combo_section: Union[ComboSection, Dict[str, Any]], selected_items: List[int]
+) -> Dict[str, Any]:
+    """
+    Validate combo section selections against MenuSifu rules.
+
+    API Error: Various combo-related errors based on selection rules.
+
+    Args:
+        combo_section: ComboSection model or combo section data dict
+        selected_items: List of selected item IDs in this section
+
+    Returns:
+        dict: {"valid": bool, "reason": str, "rule_info": dict}
+    """
+    if isinstance(combo_section, ComboSection):
+        selection_rule = combo_section.item_selection_rule
+        min_selections = combo_section.min_num_of_selection_allowed
+        max_selections = combo_section.max_num_of_selection_allowed
+        allow_repeated = combo_section.allow_repeated_items
+    else:
+        selection_rule = combo_section.get("itemSelectionRule", 1)
+        min_selections = combo_section.get("minNumOfSelectionAllowed", 1)
+        max_selections = combo_section.get("maxNumOfSelectionAllowed", 1)
+        allow_repeated = combo_section.get("allowRepeatedItems", False)
+
+    selected_count = len(selected_items)
+    unique_count = len(set(selected_items))
+
+    rule_info = {
+        "selection_rule": selection_rule,
+        "min_required": min_selections,
+        "max_allowed": max_selections,
+        "allow_repeated": allow_repeated,
+        "selected_count": selected_count,
+        "unique_count": unique_count,
+    }
+
+    # Check repeated items if not allowed
+    if not allow_repeated and selected_count != unique_count:
+        return {
+            "valid": False,
+            "reason": "Repeated items not allowed in this section",
+            "rule_info": rule_info,
+        }
+
+    # Validate based on selection rule with proper None handling
+    min_sel = min_selections or 0
+    max_sel = max_selections or 0
+
+    if selection_rule == 1:  # EQUALS_TO
+        if selected_count != min_sel:
+            return {
+                "valid": False,
+                "reason": f"Must select exactly {min_sel} items, got {selected_count}",
+                "rule_info": rule_info,
+            }
+    elif selection_rule == 2:  # MIN_NUM_LIMIT
+        if selected_count < min_sel:
+            return {
+                "valid": False,
+                "reason": f"Must select at least {min_sel} items, got {selected_count}",
+                "rule_info": rule_info,
+            }
+    elif selection_rule == 3:  # MAX_NUM_LIMIT
+        if max_sel > 0 and selected_count > max_sel:
+            return {
+                "valid": False,
+                "reason": f"Can select at most {max_sel} items, got {selected_count}",
+                "rule_info": rule_info,
+            }
+    elif selection_rule == 4:  # RANGE
+        if selected_count < min_sel or (max_sel > 0 and selected_count > max_sel):
+            return {
+                "valid": False,
+                "reason": f"Must select {min_sel}-{max_sel} items, got {selected_count}",
+                "rule_info": rule_info,
+            }
+
+    return {"valid": True, "reason": "Selection valid", "rule_info": rule_info}
+
+
+def check_item_properties(
+    item: Union[SaleItem, Dict[str, Any]],
+    required_properties: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Check item properties for any special requirements or restrictions.
+
+    Args:
+        item: SaleItem model or item data dict from menu response
+        required_properties: Optional list of required property names
+
+    Returns:
+        dict: {"valid": bool, "reason": str, "properties": dict, "issues": list}
+    """
+    if isinstance(item, SaleItem):
+        properties = item.properties or []
+    else:
+        properties = item.get("properties", [])
+
+    property_dict = {}
+    issues = []
+
+    # Extract properties
+    for prop in properties:
+        if isinstance(prop, Property):
+            # Pydantic Property model
+            name = prop.name
+            value = prop.value
+            display_name = prop.display_name or name
+        elif isinstance(prop, dict):
+            # Dict format
+            name = prop.get("name", "")
+            value = prop.get("value")
+            display_name = prop.get("displayName", name)
+        else:
+            continue
+
+        property_dict[name] = {"value": value, "display_name": display_name}
+
+    # Check required properties
+    if required_properties:
+        for req_prop in required_properties:
+            if req_prop not in property_dict:
+                issues.append(f"Missing required property: {req_prop}")
+            elif not property_dict[req_prop]["value"]:
+                issues.append(f"Required property disabled: {req_prop}")
+
+    # Check for any restricting properties
+    restricting_props = ["TEMP_UNAVAILABLE", "KITCHEN_CLOSED", "SPECIAL_ORDER"]
+    for prop_name, prop_data in property_dict.items():
+        if prop_name in restricting_props and prop_data["value"]:
+            issues.append(f"Item restricted by property: {prop_data['display_name']}")
+
+    return {
+        "valid": len(issues) == 0,
+        "reason": (
+            "No property issues"
+            if len(issues) == 0
+            else f"Property issues: {'; '.join(issues)}"
+        ),
+        "properties": property_dict,
+        "issues": issues,
+    }
+
+
+def filter_valid_menu_items(
+    menu_data: Union[MenuResponse, Dict[str, Any]],
+    current_time: Optional[datetime] = None,
+    include_hidden: bool = False,
+    include_combos: bool = True,
+) -> Dict[str, Any]:
+    """
+    Filter menu items to return only those that are available for ordering.
+
+    Applies all MenuSifu validation rules:
+    - Time availability (CLOSING)
+    - Not deleted (DELETED)
+    - Not hidden (ITEM_HIDDEN)
+    - In stock (SOLD_OUT, OUT_OF_STOCK)
+    - Valid properties
+
+    Args:
+        menu_data: MenuResponse model or complete menu response data dict
+        current_time: Current datetime for time checks
+        include_hidden: Whether to include hidden items
+        include_combos: Whether to include combo items
+
+    Returns:
+        dict: {"valid_items": list, "filtered_items": list, "summary": dict}
+    """
+    valid_items = []
+    filtered_items = []
+
+    summary = {
+        "total_items": 0,
+        "valid_items": 0,
+        "filtered_by_time": 0,
+        "filtered_by_deleted": 0,
+        "filtered_by_hidden": 0,
+        "filtered_by_stock": 0,
+        "filtered_by_type": 0,
+        "filtered_by_properties": 0,
+    }
+
+    # Handle both MenuResponse model and dict input
+    if isinstance(menu_data, MenuResponse):
+        groups = menu_data.groups
+    else:
+        groups = menu_data.get("groups", [])
+
+    # Process all groups and categories
+    for group in groups:
+        if isinstance(group, MenuGroup):
+            categories = group.categories
+        else:
+            categories = group.get("categories", [])
+
+        for category in categories:
+            if isinstance(category, Category):
+                items = category.sale_items
+            else:
+                items = category.get("saleItems", [])
+
+            for item in items:
+                summary["total_items"] += 1
+
+                # Apply all validation filters
+                filters_passed = True
+                filter_reasons = []
+
+                # 1. Check if not deleted
+                deleted_check = is_item_not_deleted(item)
+                if not deleted_check["available"]:
+                    filters_passed = False
+                    filter_reasons.append("deleted")
+                    summary["filtered_by_deleted"] += 1
+
+                # 2. Check if not hidden (unless including hidden)
+                hidden_check = is_item_not_hidden(item)
+                if not include_hidden:
+                    if not hidden_check["available"]:
+                        filters_passed = False
+                        filter_reasons.append("hidden")
+                        summary["filtered_by_hidden"] += 1
+
+                # 3. Check if in stock
+                stock_check = is_item_in_stock(item)
+                if not stock_check["available"]:
+                    filters_passed = False
+                    filter_reasons.append("out_of_stock")
+                    summary["filtered_by_stock"] += 1
+
+                # 4. Check time availability (using group hours)
+                if isinstance(group, MenuGroup):
+                    group_hours_data = []
+                    if group.hours:
+                        for h in group.hours:
+                            group_hours_data.append(
+                                {
+                                    "fromDayOfTheWeek": h.from_day_of_the_week,
+                                    "toDayOfTheWeek": h.to_day_of_the_week,
+                                    "from": h.from_time,
+                                    "to": h.to_time,
+                                    "name": h.name,
+                                }
+                            )
+                else:
+                    group_hours_data = group.get("hours", [])
+
+                time_check = is_item_available_by_time(
+                    item, group_hours_data, current_time
+                )
+                if not time_check["available"]:
+                    filters_passed = False
+                    filter_reasons.append("time_restricted")
+                    summary["filtered_by_time"] += 1
+
+                # 5. Check item type (if excluding combos)
+                item_type = (
+                    item.item_type
+                    if isinstance(item, SaleItem)
+                    else item.get("itemType")
+                )
+                if not include_combos and item_type == "COMBO_SALE_ITEM":
+                    filters_passed = False
+                    filter_reasons.append("combo_excluded")
+                    summary["filtered_by_type"] += 1
+
+                # 6. Check properties
+                property_check = check_item_properties(item)
+                if not property_check["valid"]:
+                    filters_passed = False
+                    filter_reasons.append("properties")
+                    summary["filtered_by_properties"] += 1
+
+                # Add to appropriate list - handle both Pydantic and dict
+                if isinstance(item, SaleItem):
+                    item_dict = item.model_dump(by_alias=True)
+                    category_id = (
+                        category.id
+                        if isinstance(category, Category)
+                        else category.get("id")
+                    )
+                    category_name = (
+                        category.name
+                        if isinstance(category, Category)
+                        else category.get("name", {})
+                    )
+                    group_id = (
+                        group.id if isinstance(group, MenuGroup) else group.get("id")
+                    )
+                    group_name = (
+                        group.name
+                        if isinstance(group, MenuGroup)
+                        else group.get("name", {})
+                    )
+                else:
+                    item_dict = dict(item)
+                    category_id = (
+                        category.get("id")
+                        if isinstance(category, dict)
+                        else category.id
+                    )
+                    category_name = (
+                        category.get("name", {})
+                        if isinstance(category, dict)
+                        else category.name
+                    )
+                    group_id = group.get("id") if isinstance(group, dict) else group.id
+                    group_name = (
+                        group.get("name", {}) if isinstance(group, dict) else group.name
+                    )
+
+                item_with_validation = {
+                    **item_dict,
+                    "validation": {
+                        "deleted_check": deleted_check,
+                        "hidden_check": (
+                            hidden_check
+                            if not include_hidden
+                            else {"available": True, "reason": "Hidden items included"}
+                        ),
+                        "stock_check": stock_check,
+                        "time_check": time_check,
+                        "property_check": property_check,
+                        "overall_valid": filters_passed,
+                        "filter_reasons": filter_reasons,
+                    },
+                    "category_id": category_id,
+                    "category_name": category_name,
+                    "group_id": group_id,
+                    "group_name": group_name,
+                }
+
+                if filters_passed:
+                    valid_items.append(item_with_validation)
+                    summary["valid_items"] += 1
+                else:
+                    filtered_items.append(item_with_validation)
+
+    return {
+        "valid_items": valid_items,
+        "filtered_items": filtered_items,
+        "summary": summary,
+    }
+
+
+def get_available_items_for_order(
+    menu_data: Union[MenuResponse, Dict[str, Any]],
+    current_time: Optional[datetime] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Get a simple list of items that are available for ordering right now.
+
+    This is a convenience function that applies all filters and returns just the valid items
+    in a format suitable for creating orders.
+
+    Args:
+        menu_data: MenuResponse model or complete menu response data dict
+        current_time: Current datetime for time checks
+
+    Returns:
+        list: List of items available for ordering with essential fields
+    """
+    result = filter_valid_menu_items(
+        menu_data, current_time, include_hidden=False, include_combos=True
+    )
+
+    available_items = []
+    for item in result["valid_items"]:
+        # Extract essential fields for ordering
+        available_items.append(
+            {
+                "id": item.get("id"),
+                "name": item.get("name", {}),
+                "itemType": item.get("itemType"),
+                "price": item.get("price"),
+                "basePrice": item.get("basePrice"),
+                "categoryId": item.get("category_id"),
+                "groupId": item.get("group_id"),
+                "options": item.get("options", []),
+                "comboSections": (
+                    item.get("comboSections", [])
+                    if item.get("itemType") == "COMBO_SALE_ITEM"
+                    else None
+                ),
+                "maxNumOfItemOptionAllowed": item.get("maxNumOfItemOptionAllowed", 0),
+            }
+        )
+
+    return available_items
+
+
+def load_menu_from_json(json_data: Dict[str, Any]) -> MenuResponse:
+    """
+    Load menu data from JSON dict into a MenuResponse Pydantic model.
+
+    This provides type safety and validation when working with menu data.
+
+    Args:
+        json_data: Raw JSON dict from MenuSifu API
+
+    Returns:
+        MenuResponse: Validated Pydantic model
+
+    Raises:
+        ValidationError: If the JSON data doesn't match the expected schema
+    """
+    return MenuResponse.model_validate(json_data)
+
+
+def get_typed_available_items(
+    menu_response: MenuResponse, current_time: Optional[datetime] = None
+) -> List[SaleItem]:
+    """
+    Get available items with full type safety using Pydantic models.
+
+    Args:
+        menu_response: Validated MenuResponse model
+        current_time: Current datetime for time checks
+
+    Returns:
+        list: List of SaleItem models that are available for ordering
+    """
+    result = filter_valid_menu_items(
+        menu_response, current_time, include_hidden=False, include_combos=True
+    )
+
+    # Convert back to SaleItem models for type safety
+    available_items = []
+    for item_dict in result["valid_items"]:
+        # Remove validation metadata before creating SaleItem
+        clean_dict = {
+            k: v
+            for k, v in item_dict.items()
+            if k
+            not in [
+                "validation",
+                "category_id",
+                "category_name",
+                "group_id",
+                "group_name",
+            ]
+        }
+        try:
+            sale_item = SaleItem.model_validate(clean_dict)
+            available_items.append(sale_item)
+        except Exception:
+            # Skip items that don't validate properly
+            continue
+
+    return available_items
