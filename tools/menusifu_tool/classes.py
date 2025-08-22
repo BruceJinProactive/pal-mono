@@ -2,10 +2,14 @@
 MenuSifu Tool classes
 """
 
+from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Type alias for monetary values
+Money = Decimal
 
 
 class LocalizedName(BaseModel):
@@ -24,7 +28,7 @@ class SubOption(BaseModel):
 
     id: int
     name: LocalizedName
-    price: Union[int, float]
+    price: Money
     short_name: Optional[LocalizedName] = Field(None, alias="shortName")
 
 
@@ -35,7 +39,7 @@ class Option(BaseModel):
 
     id: int
     name: LocalizedName
-    price: Optional[Union[int, float]] = None
+    price: Optional[Money] = None
     short_name: Optional[LocalizedName] = Field(None, alias="shortName")
     max_num_of_item_option_allowed: Optional[int] = Field(
         None, alias="maxNumOfItemOptionAllowed"
@@ -55,9 +59,9 @@ class Tax(BaseModel):
     last_updated: Optional[str] = Field(None, alias="lastUpdated")
     merchant_id: Optional[str] = Field(None, alias="merchantId")
     name: Optional[str] = None
-    out_rate: Optional[Union[int, float]] = Field(None, alias="outRate")
+    out_rate: Optional[Money] = Field(None, alias="outRate")
     price_limit: Optional[int] = Field(None, alias="priceLimit")
-    rate: Optional[Union[int, float]] = None
+    rate: Optional[Money] = None
     system_generated: Optional[bool] = Field(None, alias="systemGenerated")
     tax_increase: Optional[str] = Field(None, alias="taxIncrease")
     tax_increase_rate: Optional[int] = Field(None, alias="taxIncreaseRate")
@@ -89,7 +93,7 @@ class Price(BaseModel):
 
     id: int
     order_type: str = Field(alias="orderType")
-    price: Union[int, float]
+    price: Money
     size: Size
     size_id: int = Field(alias="sizeId")
 
@@ -138,7 +142,7 @@ class SaleItem(BaseModel):
     id: int
     name: LocalizedName
     item_type: str = Field(alias="itemType")
-    price: Optional[Union[int, float]] = None
+    price: Optional[Money] = None
     short_name: Optional[LocalizedName] = Field(None, alias="shortName")
     item_number: Optional[str] = Field(None, alias="itemNumber")
     hidden_item: Optional[bool] = Field(None, alias="hiddenItem")
@@ -151,7 +155,7 @@ class SaleItem(BaseModel):
 
     # Combo-specific fields
     combo_type: Optional[int] = Field(None, alias="comboType")
-    base_price: Optional[Union[int, float]] = Field(None, alias="basePrice")
+    base_price: Optional[Money] = Field(None, alias="basePrice")
     combo_sections: Optional[List[ComboSection]] = Field(None, alias="comboSections")
 
     # Additional fields
@@ -285,9 +289,9 @@ class OrderItemOption(BaseModel):
     name_multilingual: Optional[MultilingualName] = Field(
         None, alias="nameMultilingual"
     )
-    option_price: Union[int, float] = Field(alias="optionPrice")
-    price: Union[int, float]
-    price_original: Union[int, float] = Field(alias="priceOriginal")
+    option_price: Money = Field(alias="optionPrice")
+    price: Money
+    price_original: Money = Field(alias="priceOriginal")
     quantity: int
     section_id: str = Field(alias="sectionId")
     section_name: MultilingualName = Field(alias="sectionName")
@@ -300,7 +304,7 @@ class DetailPriceInfo(BaseModel):
 
     detail_price_id: int = Field(alias="detailPriceId")
     size_id: int = Field(alias="sizeId")
-    price: Union[int, float]
+    price: Money
 
 
 class OrderSelectedItem(BaseModel):
@@ -319,7 +323,7 @@ class OrderSelectedItem(BaseModel):
         None, alias="nameMultilingual"
     )
     options: Optional[List[OrderItemOption]] = None
-    price: Union[int, float]
+    price: Money
     quantity: int
     sale_item_id: int = Field(alias="saleItemId")
 
@@ -334,11 +338,11 @@ class OrderCalculationRequest(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    delivery_fee: Union[int, float] = Field(alias="deliveryFee")
+    delivery_fee: Money = Field(alias="deliveryFee")
     order_type: OrderType = Field(alias="orderType")
     payment_method: PaymentMethod = Field(alias="paymentMethod")
     selected_items: List[OrderSelectedItem] = Field(alias="selectedItems")
-    total_tips: Union[int, float] = Field(alias="totalTips")
+    total_tips: Money = Field(alias="totalTips")
 
 
 class TaxDetail(BaseModel):
@@ -346,7 +350,7 @@ class TaxDetail(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    tax_amount: Union[int, float] = Field(alias="taxAmount")
+    tax_amount: Money = Field(alias="taxAmount")
 
 
 class ChargeObject(BaseModel):
@@ -354,9 +358,9 @@ class ChargeObject(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    charge: Union[int, float]
+    charge: Money
     charge_is_per: bool = Field(alias="chargeIsPer")
-    charge_rate: Union[int, float] = Field(alias="chargeRate")
+    charge_rate: Money = Field(alias="chargeRate")
     type: Optional[str] = None
 
 
@@ -365,18 +369,18 @@ class OrderCalculationResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    order_subtotal: Union[int, float] = Field(alias="orderSubtotal")
-    order_promotion: Union[int, float] = Field(alias="orderPromotion")
-    order_discount: Union[int, float] = Field(alias="orderDiscount")
-    order_charge: Union[int, float] = Field(alias="orderCharge")
-    order_total_tips: Union[int, float] = Field(alias="orderTotalTips")
+    order_subtotal: Money = Field(alias="orderSubtotal")
+    order_promotion: Money = Field(alias="orderPromotion")
+    order_discount: Money = Field(alias="orderDiscount")
+    order_charge: Money = Field(alias="orderCharge")
+    order_total_tips: Money = Field(alias="orderTotalTips")
     order_tax_detail: Dict[str, TaxDetail] = Field(alias="orderTaxDetail")
-    order_tax_total: Union[int, float] = Field(alias="orderTaxTotal")
-    order_original_total: Union[int, float] = Field(alias="orderOriginalTotal")
-    rounding: Union[int, float]
-    order_total: Union[int, float] = Field(alias="orderTotal")
+    order_tax_total: Money = Field(alias="orderTaxTotal")
+    order_original_total: Money = Field(alias="orderOriginalTotal")
+    rounding: Money
+    order_total: Money = Field(alias="orderTotal")
     charge_obj: List[ChargeObject] = Field(alias="chargeObj")
-    online_fee: Union[int, float] = Field(alias="onlineFee")
+    online_fee: Money = Field(alias="onlineFee")
     charge_name: str = Field(alias="chargeName")
     successful: bool
 
@@ -401,7 +405,7 @@ class DetailedErrorData(ErrorData):
     hidden_item: Optional[bool] = Field(None, alias="hiddenItem")
     item_type: Optional[str] = Field(None, alias="itemType")
     out_of_stock: Optional[bool] = Field(None, alias="outOfStock")
-    price: Optional[Union[int, float]] = None
+    price: Optional[Money] = None
     printer_ids: Optional[List[int]] = Field(None, alias="printerIds")
     properties: Optional[List[Property]] = None
     taxes: Optional[List[Tax]] = None
@@ -418,7 +422,7 @@ class OptionDeletedErrorData(BaseModel):
     id: int
     deleted: bool
     name: str
-    price: Union[int, float]
+    price: Money
     option_type: str = Field(alias="optionType")
 
 
@@ -449,4 +453,373 @@ class OrderCalculationErrorResponse(BaseModel):
 
     message: ErrorMessage
     id: Optional[int] = None
+    successful: bool
+
+
+# Order Generation API Classes
+
+
+class Phone(BaseModel):
+    """Phone number with country code"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    country_code: str = Field(alias="countryCode")
+    number: str
+
+
+class Address(BaseModel):
+    """Address information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    address1: str = ""
+    address2: str = ""
+    city: str = ""
+    state: str = ""
+    zip_code: str = Field("", alias="zipCode")
+
+
+class Customer(BaseModel):
+    """Customer information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    email: str
+    first_name: str = Field(alias="firstName")
+    last_name: str = Field(alias="lastName")
+    phone: Phone
+
+
+class TaxInfo(BaseModel):
+    """Tax information for order pricing"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    value: Money
+    rate: Money
+
+
+class ChargeObjectInfo(BaseModel):
+    """Charge object information for order pricing"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    charge: Money
+    charge_is_per: Optional[bool] = Field(None, alias="chargeIsPer")
+    charge_rate: Optional[Money] = Field(None, alias="chargeRate")
+    type: Optional[str] = None
+
+
+class OrderPrice(BaseModel):
+    """Price information for order generation"""
+
+    model_config = ConfigDict(populate_by_name=True, str_to_lower=False)
+
+    subtotal: Money
+    total: Money
+    discount: Money = Decimal("0")
+    online_fee: Money = Field(alias="onlineFee")
+    delivery_fee: Money = Field(alias="deliveryFee")
+    charge: Money
+    charge_obj: List[ChargeObjectInfo] = Field(alias="chargeObj")
+    tips: Money
+    tax_total: Money = Field(alias="taxTotal")
+    taxes: List[TaxInfo]
+    charge_name: str = Field(alias="chargeName")
+    discount_total_crm: Money = Field(Decimal("0"), alias="discountTotalCrm")
+    rounding: Money = Decimal("0")
+
+
+class DeliveryInfo(BaseModel):
+    """Delivery information (empty for pickup orders)"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Can add delivery-specific fields here if needed
+    estimate_delivery_time: Optional[str] = Field(None, alias="estimateDeliveryTime")
+
+
+class PointRule(BaseModel):
+    """Point rule information for CRM"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    _id: str
+    last_updated_time: int = Field(alias="lastUpdatedTime")
+
+
+class OrderItemOptionNote(BaseModel):
+    """Option for order item (can be real option or note/comment)"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # For real options (condiments, etc.)
+    id: Optional[int] = None
+    detail_price_id: Optional[str] = Field(None, alias="detailPriceId")
+    option_price: Optional[Money] = Field(None, alias="optionPrice")
+
+    # For notes/comments
+    name: Optional[str] = None
+    price: Money = Decimal("0")  # Should be 0 for notes
+    quantity: int = 1  # Should be 1 for notes
+    checked: Optional[bool] = None  # Only for notes
+    is_open_option: Optional[bool] = Field(None, alias="isOpenOption")  # Only for notes
+
+
+class OrderGenerationSelectedItem(BaseModel):
+    """Selected item for order generation"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    sale_item_id: int = Field(alias="saleItemId")
+    quantity: int
+    item_type: str = Field(alias="itemType")
+    price: Money
+    display_price: Optional[Money] = Field(
+        None, alias="displayPrice"
+    )  # Optional, not needed
+    name: str
+    name_multilingual: Optional[MultilingualName] = Field(
+        None, alias="nameMultilingual"
+    )
+    category_id: int = Field(alias="categoryId")
+    options: Optional[List[OrderItemOptionNote]] = None
+
+
+class OrderGenerationRequest(BaseModel):
+    """Request for order generation API"""
+
+    model_config = ConfigDict(populate_by_name=True, str_to_lower=False)
+
+    # Required fields
+    country_code: str = Field(alias="countryCode")
+    telephone_number: str = Field(alias="telephoneNumber")
+    channel: str = "BOT"
+    product_line: str = Field("ONLINE_ORDER", alias="productLine")
+    order_type: OrderType = Field(alias="orderType")  # ONLINE_PICKUP, ONLINE_DELIVERY
+    price: OrderPrice
+    customer: Customer
+    address: Address
+    payment_method: PaymentMethod = Field(alias="paymentMethod")  # 1, 7, 8
+    payment_info: str = Field("", alias="paymentInfo")
+    pay_online: bool = Field(alias="payOnline")
+    selected_items: List[OrderGenerationSelectedItem] = Field(alias="selectedItems")
+
+    # Optional fields
+    need_sms: Optional[bool] = Field(None, alias="needSms")
+    riskified_id: Optional[str] = Field(None, alias="riskifiedId")
+    online_type: str = Field("", alias="onlineType")
+    delivery_info: DeliveryInfo = Field(
+        default_factory=lambda: DeliveryInfo(estimateDeliveryTime=None),
+        alias="deliveryInfo",
+    )
+    selected_gift_items: List = Field(default_factory=list, alias="selectedGiftItems")
+    selected_gift_items_crm: List = Field(
+        default_factory=list, alias="selectedGiftItemsCrm"
+    )
+    allergy_info: str = Field("", alias="allergyInfo")
+    need_utensils: bool = Field(False, alias="needUtensils")
+    need_straws: bool = Field(False, alias="needStraws")
+    need_condiments: bool = Field(False, alias="needCondiments")
+    mini_program: bool = Field(False, alias="miniProgram")
+    business_id: Optional[str] = Field(None, alias="businessId")
+    point_rule: Optional[PointRule] = Field(None, alias="pointRule")
+    points: Optional[int] = None
+    _id: Optional[str] = None  # For order updates, not used in BOT
+
+
+# Response Models
+
+
+class Timeline(BaseModel):
+    """Timeline entry for order"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: str
+    time: int
+
+
+class ComboDetail(BaseModel):
+    """Combo detail information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Add combo-specific fields as needed
+    pass
+
+
+class OrderItem(BaseModel):
+    """Order item in the response"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    choice_labels: List[str] = Field(default_factory=list, alias="choiceLabels")
+    combo_detail: Optional[ComboDetail] = Field(None, alias="comboDetail")
+    sale_item_id: int = Field(alias="saleItemId")
+    quantity: int
+    item_type: str = Field(alias="itemType")
+    price: Money
+    display_price: Money = Field(alias="displayPrice")
+    name: str
+    name_multilingual: Optional[MultilingualName] = Field(
+        None, alias="nameMultilingual"
+    )
+    category_id: int = Field(alias="categoryId")
+    options: List[OrderItemOptionNote] = Field(default_factory=list)
+
+
+class CustomerResponse(BaseModel):
+    """Customer information in response"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    email: str
+    first_name: str = Field(alias="firstName")
+    last_name: str = Field(alias="lastName")
+    phone: Phone
+    address: Address
+
+
+class SelectedPaymentInfo(BaseModel):
+    """Selected payment information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    pay_online: bool = Field(alias="payOnline")
+    payment_method: PaymentMethod = Field(alias="paymentMethod")
+
+
+class PrepareTime(BaseModel):
+    """Preparation time range"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    min: int
+    max: int
+
+
+class Contains(BaseModel):
+    """Order contents information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    alcohol: bool = False
+
+
+class OrderDiscount(BaseModel):
+    """Order discount information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Add discount fields as needed
+    pass
+
+
+class OrderCharge(BaseModel):
+    """Order charge information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    charge: Money
+    charge_name: str = Field(alias="chargeName")
+
+
+class PosTax(BaseModel):
+    """POS tax information"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    tax_amount: Money = Field(alias="taxAmount")
+    tax: Dict[str, int]  # Contains "id" field
+
+
+class OrderResponsePrice(BaseModel):
+    """Price information in order response"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    subtotal: Money
+    total: Money
+    discount: Money
+    online_fee: Money = Field(alias="onlineFee")
+    delivery_fee: Money = Field(alias="deliveryFee")
+    charge: Money
+    charge_obj: List[ChargeObjectInfo] = Field(alias="chargeObj")
+    tips: Money
+    tax_total: Money = Field(alias="taxTotal")
+    taxes: List[TaxInfo]
+    charge_name: str = Field(alias="chargeName")
+    rounding: Money
+    order_discounts: List[OrderDiscount] = Field(
+        default_factory=list, alias="orderDiscounts"
+    )
+    discount_name: str = Field("", alias="discountName")
+    rounding_amount: Money = Field(alias="roundingAmount")
+    order_charges: List[OrderCharge] = Field(default_factory=list, alias="orderCharges")
+    pos_taxes: List[PosTax] = Field(default_factory=list, alias="posTaxes")
+
+
+class Order(BaseModel):
+    """Order information in response"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: OrderType
+    product_line: str = Field(alias="productLine")
+    status: int
+    order_number: str = Field(alias="orderNumber")
+    notes: str = ""
+    order_status: int = Field(alias="orderStatus")
+    kitchen_status: int = Field(alias="kitchenStatus")
+    is_urgent_to_pick: bool = Field(alias="isUrgentToPick")
+    urgent_to_pick_times: int = Field(alias="urgentToPickTimes")
+    payment_summary: str = Field(alias="paymentSummary")
+    promotions: List = Field(default_factory=list)
+    pos_payments: List = Field(default_factory=list, alias="POSPayments")
+    channel: str
+    selected_gift_items: List = Field(default_factory=list, alias="selectedGiftItems")
+    operate_type: str = Field(alias="operateType")
+    timeline: List[Timeline] = Field(default_factory=list)
+    _id: str
+    order_items: List[OrderItem] = Field(alias="orderItems")
+    customer: CustomerResponse
+    allergy_info: str = Field("", alias="allergyInfo")
+    online_type: str = Field(alias="onlineType")
+    table_id: str = Field("", alias="tableId")
+    num_of_guests: int = Field(1, alias="numOfGuests")
+    table_name: str = Field("", alias="tableName")
+    need_utensils: bool = Field(alias="needUtensils")
+    user_agent: str = Field(alias="userAgent")
+    client_ip: str = Field(alias="clientIp")
+    need_condiments: bool = Field(alias="needCondiments")
+    selected_payment_info: SelectedPaymentInfo = Field(alias="selectedPaymentInfo")
+    prepare_time: PrepareTime = Field(alias="prepareTime")
+    order_email: str = Field(alias="orderEmail")
+    contains: Contains
+    email_verified: bool = Field(alias="emailVerified")
+    merchant_id: str = Field(alias="merchantId")
+    merchant_id_obj: str = Field(alias="merchant_id")
+    user_id: str = Field(alias="userId")
+    price: OrderResponsePrice
+    merchant_name: str = Field(alias="merchantName")
+    merchant_group_id: str = Field(alias="merchantGroupId")
+    create_at: int = Field(alias="createAt")
+    update_at: int = Field(alias="updateAt")
+    version: int = Field(alias="__v")
+    send_to_pos_time: int = Field(alias="sendToPosTime")
+    transaction_id: str = Field(alias="transactionId")
+
+
+class OrderGenerationResponse(BaseModel):
+    """Response from order generation API"""
+
+    model_config = ConfigDict(populate_by_name=True, str_to_lower=False)
+
+    payment_url: Optional[str] = Field(alias="paymentUrl")
+    payment_html: str = Field("", alias="paymentHtml")
+    order: Order
     successful: bool
