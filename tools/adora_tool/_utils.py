@@ -2,6 +2,7 @@ import re
 from typing import Any, Tuple
 
 from ddtrace.llmobs.decorators import task
+from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import Nominatim
 
 from tools.adora_tool.classes import (
@@ -85,7 +86,33 @@ def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, st
     logger.debug(
         "[AdoraTool.add_lat_long_to_address] Geolocator payload: " + str(geo_payload)
     )
-    geocoded_loc: Any = geolocator.geocode(geo_payload)
+
+    try:
+        geocoded_loc: Any = geolocator.geocode(geo_payload)
+    except GeocoderTimedOut as e:
+        logger.error(
+            f"[AdoraTool.add_lat_long_to_address] Nominatim geocoding timed out: {e}"
+        )
+        return (
+            False,
+            "Address lookup service is temporarily unavailable. Please try again in a moment.",
+        )
+    except GeocoderServiceError as e:
+        logger.error(
+            f"[AdoraTool.add_lat_long_to_address] Nominatim geocoding service error: {e}"
+        )
+        return (
+            False,
+            "Address lookup service is experiencing issues. Please try again later.",
+        )
+    except Exception as e:
+        logger.error(
+            f"[AdoraTool.add_lat_long_to_address] Unexpected error during geocoding: {e}"
+        )
+        return (
+            False,
+            "An error occurred while validating your address. Please try again.",
+        )
     logger.debug(
         f"[AdoraTool.add_lat_long_to_address] Geocoded location: {bool(geocoded_loc)}"
     )
