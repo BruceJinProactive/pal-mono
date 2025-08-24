@@ -866,7 +866,7 @@ class AdoraTool(Toolkit):
             )
 
             if not isinstance(order, Order):
-                logger.error(
+                logger.warning(
                     f"`order` object in type {type(order)} but expected type Order.\n"
                     f"`order` object: {order}"
                 )
@@ -883,7 +883,7 @@ class AdoraTool(Toolkit):
                 # Adora requires a string 'Delivery' or 'TakeOut' as the order type
                 order.order_type = _utils.validate_order_type(order.order_type)
             except Exception as e:
-                logger.error(f"Could not validate order type: {e}")
+                logger.warning(f"Could not validate order type: {e}")
                 return "Sorry, do you want that for Takeout or Delivery?"
 
             # Validate the address if the order is for delivery
@@ -988,8 +988,8 @@ class AdoraTool(Toolkit):
             return self._fulfill_order(order, bearer_token)
 
         except Exception as e:
-            logger.error(f"Error in extracting structured data: {e}")
-            logger.error(traceback.format_exc())
+            logger.warning(f"Error in extracting structured data: {e}")
+            logger.warning(traceback.format_exc())
             return "Please try again."
 
     @tool
