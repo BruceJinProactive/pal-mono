@@ -511,6 +511,14 @@ class AgnoAgent:
 
                     elif isinstance(chunk, ToolCallStartedEvent):
                         # Output filler words when tool execution starts
+                        logger.debug(
+                            "[AgnoAgent] received tool call started event",
+                            extra={
+                                "agent_id": self.config.metadata.agent_id,
+                                "account_name": self.config.metadata.account_name,
+                            },
+                        )
+
                         tool_name = (
                             chunk.tool.tool_name
                             if chunk.tool and chunk.tool.tool_name
