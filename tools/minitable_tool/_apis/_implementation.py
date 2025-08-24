@@ -19,7 +19,7 @@ def search_availability(
     if missing_fields:
         raise ValueError(f"Missing required fields: {missing_fields}")
 
-    api_function = "/weapp/ai/reserve/availiability/check"
+    api_function = "/weapp/ai/reserve/availability/check"
 
     slot_times = []
     for start_sec in search_params["start_sec_list"]:

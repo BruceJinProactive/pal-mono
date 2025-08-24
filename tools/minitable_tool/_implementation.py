@@ -100,21 +100,18 @@ class MiniTableTool(Toolkit):
         """
 
         try:
-            # Generate fuzzy time slots as strings
             fuzzy_time_slots = self._generate_fuzzy_time_slots(time)
-            # Convert time slots to timestamps
-            fuzzy_timestamps = [
-                self._convert_datetime_to_timestamp(date, time_slot)
-                for time_slot in fuzzy_time_slots
+            fuzzy_datetime_strings = [
+                f"{date} {time_slot}" for time_slot in fuzzy_time_slots
             ]
 
             logger.debug(
-                f"[MiniTable] Checking availability for party_size: {party_size}, date: {date}, time: {time}, fuzzy_time: {fuzzy_time_slots}, timestamps: {fuzzy_timestamps}"
+                f"[MiniTable] Checking availability for party_size: {party_size}, date: {date}, time: {time}, fuzzy_time: {fuzzy_time_slots}"
             )
 
             search_params = {
                 "party_size": party_size,
-                "start_sec_list": fuzzy_timestamps,
+                "start_sec_list": fuzzy_datetime_strings,
                 "duration_sec": 3600,
             }
 
@@ -124,60 +121,25 @@ class MiniTableTool(Toolkit):
             )
 
             slot_time_availability = result.get("slot_time_availability", [])
-            available_slots = []
-            requested_timestamp = self._convert_datetime_to_timestamp(date, time)
-            requested_time_available = False
 
-            for slot in slot_time_availability:
-                if slot.get("available"):
-                    slot_time = slot.get("slot_time", {})
-                    start_sec = slot_time.get("start_sec")
+            available_start_times = [
+                slot.get("slot_time", {}).get("start_sec")
+                for slot in slot_time_availability
+                if slot.get("available") is True
+                and slot.get("slot_time", {}).get("start_sec")
+            ]
 
-                    # Convert epoch time to local time using timezone
-                    if start_sec:
-                        if not self.tool_metadata.timezone:
-                            raise ValueError(
-                                "Timezone information is required but not available in tool_metadata"
-                            )
-                        tz = ZoneInfo(self.tool_metadata.timezone)
-                        dt = datetime.fromtimestamp(int(start_sec), tz=tz)
-                        local_time = dt.strftime("%H:%M")
-
-                        # Calculate time difference from requested time
-                        time_diff_minutes = (int(start_sec) - requested_timestamp) // 60
-
-                        if time_diff_minutes == 0:
-                            requested_time_available = True
-                            available_slots.append(
-                                {
-                                    "time": local_time,
-                                    "diff": 0,
-                                    "desc": f"{local_time} (requested time)",
-                                }
-                            )
-                        else:
-                            if time_diff_minutes > 0:
-                                desc = f"{local_time} (+{time_diff_minutes}min)"
-                            else:
-                                desc = f"{local_time} ({time_diff_minutes}min)"
-                            available_slots.append(
-                                {
-                                    "time": local_time,
-                                    "diff": abs(time_diff_minutes),
-                                    "desc": desc,
-                                }
-                            )
+            requested_datetime_string = f"{date} {time}"
 
             # Check if requested time is available
-            if requested_time_available:
-                return f"Great! Your requested time {time} is available."
-            elif available_slots:
-                # Sort by time difference and suggest closest alternatives
-                available_slots.sort(key=lambda x: x["diff"])
+            if requested_datetime_string in available_start_times:
+                return f"Great! Your requested time {date} {time} is available."
+            elif available_start_times:
+                # Show up to 3 available times
                 suggestions = [
-                    slot["desc"] for slot in available_slots[:3]
-                ]  # Show up to 3 closest
-                return f"Your requested time {time} is not available. Here are the closest available times: {', '.join(suggestions)}"
+                    f"{start_time}" for start_time in available_start_times[:3]
+                ]
+                return f"Your requested time {date} {time} is not available. Here are available times: {', '.join(suggestions)}"
             else:
                 return f"Sorry, no available time slots found for {date} around {time}."
 
@@ -214,12 +176,10 @@ class MiniTableTool(Toolkit):
             # Validate and format phone number
             formatted_telephone = validate_and_format_phone(telephone)
 
-            start_sec = self._convert_datetime_to_timestamp(date, time)
-
             reservation_params = {
                 "telephone": formatted_telephone,
                 "customer_name": customer_name,
-                "start_sec": start_sec,
+                "start_sec": f"{date} {time}",
                 "party_size": party_size,
                 "note": note,
                 "duration_sec": 3600,
