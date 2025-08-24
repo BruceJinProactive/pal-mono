@@ -2,20 +2,10 @@
 /* kelvin@proactiveailab.com jun.hyung.lee@proactiveailab.com
 /*/* kelvin@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
-# Consumer, business and core services
-/api/** frankie.liu@proactiveailab.com
-/services/** frankie.liu@proactiveailab.com
-/db/** frankie.liu@proactiveailab.com
+# DB schema
+/db/tables/** kelvin@proactiveailab.com frankie.liu@proactiveailab.com shuo.wang@proactiveailab.com
+/db/migrations/** kelvin@proactiveailab.com frankie.liu@proactiveailab.com shuo.wang@proactiveailab.com
 
-# Development pipeline and toolchain
-/.github/** jun.hyung.lee@proactiveailab.com
-/scripts/** jun.hyung.lee@proactiveailab.com
-/utils/** jun.hyung.lee@proactiveailab.com
 
-# Agent framework and tools
-/agent/** shuo.wang@proactiveailab.com
-/tools/** shuo.wang@proactiveailab.com
-
-# To be deleted
-/app/** kelvin@proactiveailab.com
-/workspace/** kelvin@proactiveailab.com
+# Agent interfaces
+/agent/* kelvin@proactiveailab.com frankie.liu@proactiveailab.com shuo.wang@proactiveailab.com
