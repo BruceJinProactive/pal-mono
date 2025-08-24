@@ -1,6 +1,3 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
@@ -23,31 +20,6 @@ class MiniTableTool(Toolkit):
 
         self.register(self.check_availability)
         self.register(self.make_reservation)
-
-    def _convert_datetime_to_timestamp(self, date: str, time: str) -> int:
-        """
-        Convert date and time to Unix timestamp using timezone from tool_metadata.
-
-        Args:
-            date: Date in YYYY-MM-DD format
-            time: Time in HH:MM format (24-hour)
-
-        Returns:
-            Unix timestamp as integer
-
-        Raises:
-            ValueError: If timezone is not available in tool_metadata
-        """
-        if not self.tool_metadata.timezone:
-            raise ValueError(
-                "Timezone information is required but not available in tool_metadata"
-            )
-
-        tz = ZoneInfo(self.tool_metadata.timezone)
-        datetime_str = f"{date} {time}"
-        dt = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
-        dt_with_tz = dt.replace(tzinfo=tz)
-        return int(dt_with_tz.timestamp())
 
     def _generate_fuzzy_time_slots(
         self, time: str, slots_before: int = 6, slots_after: int = 6
@@ -131,14 +103,19 @@ class MiniTableTool(Toolkit):
 
             requested_datetime_string = f"{date} {time}"
 
-            # Check if requested time is available
+            suggestions = [
+                f"{start_time}"
+                for start_time in available_start_times[:3]
+                if start_time != requested_datetime_string
+            ]
+
             if requested_datetime_string in available_start_times:
-                return f"Great! Your requested time {date} {time} is available."
-            elif available_start_times:
+                if suggestions:
+                    return f"Great! Your requested time {date} {time} is available. Here are all other available times: {', '.join(suggestions)}"
+                else:
+                    return f"Great! Your requested time {date} {time} is available."
+            elif suggestions:
                 # Show up to 3 available times
-                suggestions = [
-                    f"{start_time}" for start_time in available_start_times[:3]
-                ]
                 return f"Your requested time {date} {time} is not available. Here are available times: {', '.join(suggestions)}"
             else:
                 return f"Sorry, no available time slots found for {date} around {time}."
