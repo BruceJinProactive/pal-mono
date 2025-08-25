@@ -165,14 +165,23 @@ async def list_phone_numbers(
     session: Session,
     page: int = 1,
     page_size: int = 20,
+    friendly_name: str | None = None,
+    phone_number: str | None = None,
 ) -> ListPhoneNumbersResponse:
     """
-    List purchased phone numbers from Twilio account for the current environment.
+    List purchased phone numbers using unified streaming pagination approach.
+
+    Three efficient filtering scenarios with consistent streaming implementation:
+    1. Phone number: Partial match + environment prefix (hybrid: native+environment check) - HIGHEST PRIORITY
+    2. Friendly name: Exact match with native optimization (hybrid approach)
+    3. Environment-only: All numbers for current env (pure streaming)
 
     Args:
         context: User context for authentication
         page: Page number for pagination (1-based, default: 1).
         page_size: Number of numbers per page when pagination is used (default: 20)
+        friendly_name: Optional friendly name to filter by (exact match with env prefix)
+        phone_number: Optional phone number to filter by (partial match + env requirement)
 
     Returns:
         ListPhoneNumbersResponse: List of phone numbers with their details
@@ -186,7 +195,11 @@ async def list_phone_numbers(
     try:
         number_service = NumberService()
         phone_numbers_data, has_more = number_service.list_phone_numbers_with_details(
-            session=session, page=page, page_size=page_size
+            session=session,
+            page=page,
+            page_size=page_size,
+            friendly_name=friendly_name,
+            phone_number=phone_number,
         )
 
         phone_numbers = []

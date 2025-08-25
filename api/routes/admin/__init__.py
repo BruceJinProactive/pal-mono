@@ -940,18 +940,45 @@ async def list_phone_numbers(
     page_size: int = Query(
         20, ge=1, le=100, description="Number of phone numbers per page"
     ),
+    friendly_name: Optional[str] = Query(
+        None,
+        description="Optional friendly name to filter by (exact match). Example: 'AVAILABLE' to find numbers with friendly_name '{env}: AVAILABLE'",
+    ),
+    phone_number: Optional[str] = Query(
+        None,
+        description="Optional phone number to filter by (partial match). Only returns numbers with friendly_name starting with current environment prefix. Example: '1555' to find numbers containing '1555'",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ):
     """
     List purchased phone numbers from Twilio account for the current environment.
 
-    Returns paginated phone numbers that belong to the current environment (determined by RUNTIME_ENV).
-    Uses 1-based pagination where page=1 returns the first page of results.
+    Uses efficient streaming pagination for optimal performance across all filtering scenarios:
+
+    **Three Filtering Scenarios:**
+    1. **Phone Number**: Partial match in phone number + environment prefix (hybrid: native+environment check) - HIGHEST PRIORITY
+    2. **Friendly Name**: Exact match for "{env}: {friendly_name}" (hybrid: native+streaming)
+    3. **Environment Only**: Returns all numbers with friendly_name starting with "{env}:" (pure streaming)
+
+    **Filtering Details:**
+    - friendly_name: Exact match (e.g., "AVAILABLE" matches "dev: AVAILABLE" only) - uses native Twilio filtering
+    - phone_number: Partial match (e.g., "1555" matches "+15551234567") - uses native Twilio filtering + environment check
+    - phone_number filtering takes priority over friendly_name if both provided
+    - All results are environment-scoped (friendly_name must start with current env prefix)
+
+    **Pagination:** Uses 1-based pagination with memory-efficient streaming and early termination.
 
     Includes project and account associations for each phone number.
     """
-    return await _phone_number.list_phone_numbers(context, session, page, page_size)
+    return await _phone_number.list_phone_numbers(
+        context=context,
+        session=session,
+        page=page,
+        page_size=page_size,
+        friendly_name=friendly_name,
+        phone_number=phone_number,
+    )
 
 
 @admin_router.post("/phone_numbers", response_model=PurchaseNumberResponse)

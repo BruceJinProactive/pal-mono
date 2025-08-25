@@ -326,8 +326,8 @@ class NumberService:
             - sid: Twilio's unique identifier
         """
         # Get current environment
-        env = (os.environ.get("RUNTIME_ENV") or "dev").strip().lower()
-        prefix = f"{env}:"
+        env_lower = (os.environ.get("RUNTIME_ENV") or "dev").strip().lower()
+        prefix = f"{env_lower}:"
 
         # Stream all numbers from Twilio, filtering by environment prefix
         filtered_numbers: list[IncomingPhoneNumberInstance] = []
@@ -338,21 +338,26 @@ class NumberService:
         return filtered_numbers
 
     def get_purchased_numbers_by_page(
-        self, page: int = 0, page_size: int = 20
+        self,
+        page: int = 0,
+        page_size: int = 20,
+        friendly_name: str | None = None,
+        phone_number: str | None = None,
     ) -> tuple[List[IncomingPhoneNumberInstance], bool]:
         """
-        Retrieve purchased phone numbers for current environment with pagination.
+        Retrieve purchased phone numbers with efficient native filtering and pagination.
 
-        Uses Twilio SDK's efficient stream() method with client-side filtering.
-        This approach is memory-efficient and stops fetching once we have enough results.
+        Uses Twilio's native list() method with filtering and pagination for optimal performance.
 
         Args:
             page: Page number (0-based indexing, default: 0)
             page_size: Number of numbers per page (default: 20, max: 100)
+            friendly_name: Optional friendly name to filter by (exact match with env prefix)
+            phone_number: Optional phone number to filter by (exact match)
 
         Returns:
             Tuple containing:
-            - List of Twilio IncomingPhoneNumberInstance objects for current environment
+            - List of Twilio IncomingPhoneNumberInstance objects
             - Boolean indicating if there are more pages available
 
         Raises:
@@ -364,47 +369,151 @@ class NumberService:
         if not (1 <= page_size <= 100):
             raise ValueError("page_size must be between 1 and 100")
 
-        # Get current environment
-        env = (os.environ.get("RUNTIME_ENV") or "dev").strip().lower()
-        prefix = f"{env}:"
-
-        # Calculate the target slice for the requested page
-        target_start = page * page_size
-        target_end_exclusive = target_start + page_size
-
-        # We will lazily iterate Twilio results and filter client-side
-        # To determine has_more efficiently, we fetch up to one extra match
-        # beyond the requested window.
-        matched: list[IncomingPhoneNumberInstance] = []
-        max_needed = target_end_exclusive + 1  # one extra to determine has_more
-
-        # Tune Twilio page_size for fewer round-trips while keeping memory modest
-        twilio_page_size = max(30, min(100, page_size * 3))
+        # Get current environment (raw + lower) for different matching needs
+        stage_raw = (os.environ.get("RUNTIME_ENV") or "dev").strip()
+        env_lower = stage_raw.lower()
 
         try:
-            # stream(...) yields results lazily, fetching additional pages
-            # only as iteration demands. This is much more efficient than REST API approach.
-            for num in self.twilio_client.incoming_phone_numbers.stream(
-                limit=None, page_size=twilio_page_size
-            ):
-                friendly_name = str(num.friendly_name or "").lower()
-                if friendly_name.startswith(prefix):
-                    matched.append(num)
+            # Unified streaming approach for all filtering scenarios
+            env_prefix = f"{env_lower}:"
 
-                    # Stop once we have enough to serve the page and know has_more
-                    if len(matched) >= max_needed:
-                        break
+            # Create single reusable environment filter function
+            def env_filter(num):
+                return str(num.friendly_name or "").lower().startswith(env_prefix)
+
+            if phone_number is not None:
+                # Scenario 3: Hybrid phone number filtering (native + environment check)
+                return self._get_filtered_numbers_with_streaming(
+                    filter_func=env_filter,  # Reuse env_filter (same logic as phone_env_filter)
+                    page=page,
+                    page_size=page_size,
+                    filter_value=phone_number,
+                    native_filter_type="phone_number",
+                )
+
+            elif friendly_name is not None:
+                # Scenario 2: Native friendly name filtering (no additional filtering needed)
+                target_friendly_name = f"{stage_raw}:{friendly_name}"
+                return self._get_filtered_numbers_with_streaming(
+                    filter_func=None,  # No additional filtering needed (Twilio already filtered exactly)
+                    page=page,
+                    page_size=page_size,
+                    filter_value=target_friendly_name,
+                    native_filter_type="friendly_name",
+                )
+
+            else:
+                # Scenario 1: Environment-only filtering (pure streaming)
+                return self._get_filtered_numbers_with_streaming(
+                    filter_func=env_filter,  # Reuse same env_filter
+                    page=page,
+                    page_size=page_size,
+                    filter_value=env_prefix,
+                    native_filter_type="environment",
+                )
 
         except Exception as e:
-            logger.error(f"Error streaming numbers from Twilio: {e}")
+            logger.error(f"Error in get_purchased_numbers_by_page: {e}")
             raise ValueError(f"Failed to fetch numbers from Twilio: {e}")
 
-        # Slice out the requested page window
-        page_numbers = matched[target_start:target_end_exclusive]
-        # has_more if we collected the extra match beyond the requested window
-        has_more_pages = len(matched) > target_end_exclusive
+    def _get_filtered_numbers_with_streaming(
+        self,
+        filter_func,
+        page: int,
+        page_size: int,
+        filter_value: str,
+        native_filter_type: str,
+    ) -> tuple[List[IncomingPhoneNumberInstance], bool]:
+        """
+        Unified streaming-based pagination for all filtering scenarios.
 
-        return page_numbers, has_more_pages
+        This method provides consistent, memory-efficient pagination for:
+        1. Phone number filtering (hybrid: native Twilio + environment check) - HIGHEST PRIORITY
+        2. Friendly name filtering (hybrid: native Twilio filtering, no additional filtering needed)
+        3. Environment-only filtering (pure streaming with client-side filtering)
+
+        Features:
+        - Memory efficient streaming (loads chunks, not all data)
+        - Early termination (stops when enough results found)
+        - Automatic native filtering optimization based on filter type
+        - Consistent pagination across all scenarios
+
+        Args:
+            filter_func: Function to filter individual numbers (None if no additional filtering needed)
+            page: Page number (0-based)
+            page_size: Items per page
+            filter_value: Value being filtered for logging
+            native_filter_type: Type of filtering ('environment', 'friendly_name', 'phone_number')
+
+        Returns:
+            Tuple of (filtered_numbers, has_more)
+        """
+        matched: list[IncomingPhoneNumberInstance] = []
+        target_start = page * page_size
+        target_end_exclusive = target_start + page_size
+        max_needed = target_end_exclusive + 1  # +1 to determine has_more
+
+        try:
+            # Log the filtering operation
+            logger.info(
+                f"Filtering phone numbers: type={native_filter_type}, filter_value='{filter_value}', page={page}"
+            )
+
+            # Build unified streaming parameters
+            params = {
+                "limit": None,
+                "page_size": 50,  # Optimal chunk size for memory efficiency
+            }
+
+            # Add native filter parameter based on type
+            if native_filter_type == "phone_number":
+                # Scenario 1: Native phone_number filtering + environment check (HIGHEST PRIORITY)
+                params["phone_number"] = filter_value
+            elif native_filter_type == "friendly_name":
+                # Scenario 2: Native friendly_name filtering (no additional filtering needed)
+                params["friendly_name"] = filter_value
+            elif native_filter_type == "environment":
+                # Scenario 3: Pure streaming with environment filtering (no native filter params)
+                pass  # No additional params needed
+            else:
+                raise ValueError(
+                    f"Unsupported native_filter_type: {native_filter_type}"
+                )
+
+            # Unified streaming with conditional filtering logic
+            processed_count = 0
+            for num in self.twilio_client.incoming_phone_numbers.stream(**params):
+                processed_count += 1
+
+                # Apply conditional filtering based on scenario
+                should_include = False
+                if native_filter_type == "friendly_name":
+                    # No additional filtering needed - Twilio already filtered exactly
+                    should_include = True
+                elif native_filter_type in ["phone_number", "environment"]:
+                    # Apply environment check for both phone number and environment scenarios
+                    should_include = filter_func(num) if filter_func else True
+
+                if should_include:
+                    matched.append(num)
+                    if len(matched) >= max_needed:
+                        logger.info(
+                            f"Early termination: found {len(matched)} results, processing stopped"
+                        )
+                        break
+
+            # Extract the requested page
+            page_numbers = matched[target_start:target_end_exclusive]
+            has_more = len(matched) > target_end_exclusive
+
+            logger.info(
+                f"Page {page} complete: {len(page_numbers)} numbers returned (total_matched={len(matched)}, has_more={has_more})"
+            )
+            return page_numbers, has_more
+
+        except Exception as e:
+            logger.error(f"Error in streaming {native_filter_type} filtering: {e}")
+            raise ValueError(f"Failed to filter numbers by {native_filter_type}: {e}")
 
     def get_number_details(self, number: str) -> IncomingPhoneNumberInstance | None:
         """Get details of a specific purchased phone number.
@@ -665,22 +774,30 @@ class NumberService:
         return inreview_numbers
 
     def list_phone_numbers_with_details(
-        self, session, page: int = 1, page_size: int = 20
+        self,
+        session,
+        page: int = 1,
+        page_size: int = 20,
+        friendly_name: str | None = None,
+        phone_number: str | None = None,
     ):
         """
         Business logic for listing phone numbers with full details including project associations.
 
         This method handles:
-        - Retrieving paginated phone numbers from Twilio
+        - Retrieving paginated phone numbers from Twilio with native filtering
         - Determining phone number types (toll-free vs other)
         - Checking toll-free verification status
         - Finding associated projects and accounts
         - Determining usage types (voice/sms/both/unused)
+        - Optional filtering by exact friendly name or phone number match
 
         Args:
             session: Database session for project lookups
             page: Page number (1-based)
             page_size: Number of items per page
+            friendly_name: Optional friendly name to filter by (exact match with env prefix)
+            phone_number: Optional phone number to filter by (exact match)
 
         Returns:
             tuple: (phone_numbers_data, has_more) where phone_numbers_data is a list of dicts
@@ -690,7 +807,10 @@ class NumberService:
 
         # Get purchased numbers from Twilio with pagination (convert to 0-based)
         twilio_numbers, has_more = self.get_purchased_numbers_by_page(
-            page=page - 1, page_size=page_size
+            page=page - 1,
+            page_size=page_size,
+            friendly_name=friendly_name,
+            phone_number=phone_number,
         )
 
         # Process each phone number with business logic
