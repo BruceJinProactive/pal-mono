@@ -162,12 +162,11 @@ def generate_order(
         ValueError: If the API call fails or response validation fails
     """
     try:
-        # Build API endpoint - note: using /merchant instead of /bot path for order generation
-        api_endpoint = f"/merchant/{merchant_id}/order/charge"
+        # Build API endpoint - using /bot path like calculation API (301 redirect without it)
+        api_endpoint = f"/bot/merchant/{merchant_id}/order/charge"
 
-        # Convert Pydantic model to JSON string for API call
-        request_data = order_request.model_dump(by_alias=True)
-        payload = json.dumps(request_data)
+        # Convert Pydantic model to JSON string for API call (handles Decimal serialization)
+        payload = order_request.model_dump_json(by_alias=True)
 
         # Make API call
         response = connect_menusifu_api(

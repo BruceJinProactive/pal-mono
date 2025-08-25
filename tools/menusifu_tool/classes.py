@@ -52,7 +52,7 @@ class Tax(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    _id: Optional[str] = None
+    tax_id: Optional[str] = Field(None, alias="_id")
     created_on: Optional[str] = Field(None, alias="createdOn")
     deleted: Optional[bool] = None
     id: Optional[int] = None
@@ -494,7 +494,10 @@ class Customer(BaseModel):
 class TaxInfo(BaseModel):
     """Tax information for order pricing"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
+    )
 
     name: str
     value: Money
@@ -504,7 +507,10 @@ class TaxInfo(BaseModel):
 class ChargeObjectInfo(BaseModel):
     """Charge object information for order pricing"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
+    )
 
     charge: Money
     charge_is_per: Optional[bool] = Field(None, alias="chargeIsPer")
@@ -515,7 +521,11 @@ class ChargeObjectInfo(BaseModel):
 class OrderPrice(BaseModel):
     """Price information for order generation"""
 
-    model_config = ConfigDict(populate_by_name=True, str_to_lower=False)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        str_to_lower=False,
+        json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
+    )
 
     subtotal: Money
     total: Money
@@ -546,14 +556,17 @@ class PointRule(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    _id: str
+    rule_id: str = Field(alias="_id")
     last_updated_time: int = Field(alias="lastUpdatedTime")
 
 
 class OrderItemOptionNote(BaseModel):
     """Option for order item (can be real option or note/comment)"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
+    )
 
     # For real options (condiments, etc.)
     id: Optional[int] = None
@@ -571,7 +584,10 @@ class OrderItemOptionNote(BaseModel):
 class OrderGenerationSelectedItem(BaseModel):
     """Selected item for order generation"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
+    )
 
     id: int
     sale_item_id: int = Field(alias="saleItemId")
@@ -580,7 +596,7 @@ class OrderGenerationSelectedItem(BaseModel):
     price: Money
     display_price: Optional[Money] = Field(
         None, alias="displayPrice"
-    )  # Optional, not needed
+    )  # item + partial prices per spec
     name: str
     name_multilingual: Optional[MultilingualName] = Field(
         None, alias="nameMultilingual"
@@ -592,7 +608,11 @@ class OrderGenerationSelectedItem(BaseModel):
 class OrderGenerationRequest(BaseModel):
     """Request for order generation API"""
 
-    model_config = ConfigDict(populate_by_name=True, str_to_lower=False)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        str_to_lower=False,
+        json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
+    )
 
     # Required fields
     country_code: str = Field(alias="countryCode")
@@ -612,10 +632,7 @@ class OrderGenerationRequest(BaseModel):
     need_sms: Optional[bool] = Field(None, alias="needSms")
     riskified_id: Optional[str] = Field(None, alias="riskifiedId")
     online_type: str = Field("", alias="onlineType")
-    delivery_info: DeliveryInfo = Field(
-        default_factory=lambda: DeliveryInfo(estimateDeliveryTime=None),
-        alias="deliveryInfo",
-    )
+    delivery_info: dict = Field(default_factory=dict, alias="deliveryInfo")
     selected_gift_items: List = Field(default_factory=list, alias="selectedGiftItems")
     selected_gift_items_crm: List = Field(
         default_factory=list, alias="selectedGiftItemsCrm"
@@ -628,7 +645,9 @@ class OrderGenerationRequest(BaseModel):
     business_id: Optional[str] = Field(None, alias="businessId")
     point_rule: Optional[PointRule] = Field(None, alias="pointRule")
     points: Optional[int] = None
-    _id: Optional[str] = None  # For order updates, not used in BOT
+    request_id: Optional[str] = Field(
+        None, alias="_id"
+    )  # For order updates, not used in BOT
 
 
 # Response Models
@@ -784,7 +803,7 @@ class Order(BaseModel):
     selected_gift_items: List = Field(default_factory=list, alias="selectedGiftItems")
     operate_type: str = Field(alias="operateType")
     timeline: List[Timeline] = Field(default_factory=list)
-    _id: str
+    order_id: Optional[str] = Field(None, alias="_id")
     order_items: List[OrderItem] = Field(alias="orderItems")
     customer: CustomerResponse
     allergy_info: str = Field("", alias="allergyInfo")
