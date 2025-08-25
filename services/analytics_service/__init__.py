@@ -46,3 +46,27 @@ def get_analytics_reports(
     return _implementation.get_analytics_reports(
         session, account_id, start_date, end_date
     )
+
+
+async def send_daily_report_to_slack(channel: str | None = None, client=None) -> dict:
+    """
+    Send a simple daily report message to Slack via bot.
+
+    Args:
+        channel (str): Slack channel to send to (optional, uses env variable if not provided)
+        client: Optional Slack client to reuse
+
+    Returns:
+        dict: Status of the operation
+    """
+    return await _implementation.send_daily_report_to_slack(channel, client)
+
+
+def get_slack_handler():
+    """
+    Get the Slack request handler for FastAPI integration.
+
+    Returns:
+        SlackRequestHandler: Handler for Slack events
+    """
+    return _implementation.get_slack_handler()

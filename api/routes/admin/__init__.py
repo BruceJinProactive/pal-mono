@@ -326,6 +326,40 @@ async def get_account_reports(
     )
 
 
+@admin_router.post(
+    "/accounts/{account_name}/reports/daily", status_code=status.HTTP_200_OK
+)
+async def send_daily_report(
+    account_name: str,
+    channel: str | None = Query(
+        default=None,
+        description="Optional Slack channel to send to. If not provided, uses SLACK_CHANNEL env variable or #general.",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Send a daily report message to Slack via bot.
+    """
+    return await _analytics.generate_daily_report(
+        account_name, context, session, channel
+    )
+
+
+@admin_router.post("/slack/events")
+async def slack_events(request: Request):
+    """
+    Handle Slack events (including messages with 'daily').
+    """
+    from services import analytics_service
+
+    handler = analytics_service.get_slack_handler()
+    if handler:
+        return await handler.handle(request)
+    else:
+        return {"status": "error", "message": "Slack handler not configured"}
+
+
 @admin_router.get("/accounts/{account_name}/stat")
 async def get_account_statistics(
     account_name: str,

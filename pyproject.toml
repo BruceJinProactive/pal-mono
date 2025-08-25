@@ -46,6 +46,8 @@ dependencies = [
   "python-multipart==0.0.19", # HTTP multipart form data parser
   "requests==2.32.4", # Simple HTTP library for human beings
   "shapely==2.1.0", # Geometric operations and spatial analysis library
+  "slack-bolt==1.20.1", # Slack Bolt framework for building Slack apps
+  "slack-sdk==3.33.5", # Official Slack SDK for Python
   "sqlalchemy==2.0.32", # Python SQL toolkit and Object Relational Mapping
   "stripe>=12,<13", # Official Stripe API client for payment processing
   "twilio==9.3.2", # Twilio API client for SMS, voice, and messaging

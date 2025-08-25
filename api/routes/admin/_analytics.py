@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import (
@@ -74,3 +75,46 @@ async def get_reports(
         ]
         result: GetAllReportsResponse = GetAllReportsResponse(reports=empty_reports)
         return result
+
+
+async def generate_daily_report(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+    channel: str | None = None,
+) -> dict:
+    """
+    Generate and send daily report to Slack via bot.
+
+    Args:
+        account_name (str): The name of the account (for authorization).
+        context (UserContext): User context for authorization.
+        session (Session): The SQLAlchemy session for database access.
+        channel (str): Optional Slack channel to send to.
+
+    Returns:
+        dict: Status of the operation.
+    """
+    try:
+        logger.info(f"[Slackbot]: Generating daily report for account {account_name}")
+        authorize_user_account(context, account_name)
+        account = get_account(session, account_name)
+        if not account:
+            raise not_found_error(f"Account {account_name} not found.")
+
+        # Send the report via bot
+        result = await analytics_service.send_daily_report_to_slack(channel)
+
+        if result["status"] == "error":
+            raise HTTPException(status_code=500, detail=result["message"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Analytics: Error in generate_daily_report: {e}")
+        logger.exception("Analytics: Full traceback:")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate daily report: {str(e)}"
+        )
