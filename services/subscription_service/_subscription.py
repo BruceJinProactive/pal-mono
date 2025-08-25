@@ -43,7 +43,7 @@ def handle_stripe_checkout_success(
         "stripe_subscription_id": response.stripe_subscription_id,
         "status": SubscriptionStatus.active,
     }
-    update_account_subscription(
+    updated_subscription = update_account_subscription(
         session, context, response.account_id, response.subscription_external_id, data
     )
     logger.info(
@@ -53,6 +53,39 @@ def handle_stripe_checkout_success(
             "stripe_subscription_id": response.stripe_subscription_id,
         },
     )
+
+    # Grant credit based on plan's credit_amount upon activation
+    try:
+        if (
+            updated_subscription
+            and updated_subscription.subscription_plan
+            and updated_subscription.subscription_plan.credit_amount
+        ):
+            account = account_service.get_account_by_id(session, response.account_id)
+            if account and account.stripe_customer_id:
+                credit_amount = updated_subscription.subscription_plan.credit_amount
+                grant_credit_to_account(
+                    account=account,
+                    credit_amount_cents=credit_amount,
+                    currency="usd",
+                    description=f"Plan activation credit: {updated_subscription.subscription_plan.name}",
+                )
+            else:
+                logger.warning(
+                    "Cannot grant credit: account not found or no stripe customer ID",
+                    extra={"account_id": str(response.account_id)},
+                )
+    except Exception as e:
+        logger.error(
+            "Failed to grant plan activation credit",
+            extra={
+                "account_id": str(response.account_id),
+                "subscription_id": str(response.subscription_external_id),
+                "error": str(e),
+            },
+            exc_info=True,
+        )
+
     return response
 
 

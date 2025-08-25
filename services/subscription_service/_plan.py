@@ -187,6 +187,7 @@ def update_subscription_plan(
     restricted_update_fields = {
         "name",
         "description",
+        "credit_amount",
         "sort_id",
         "free_trial_days",
         "active",
