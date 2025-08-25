@@ -51,7 +51,7 @@ async def api_toast_webhook(request: Request) -> JSONResponse:
                 await update_ordering_schedule(webhook_request)
             case _:
                 logger.warning(
-                    f"Received unknown Toast webhook event category: {webhook_request.eventCategory}"
+                    f"[ToastWebhook.api_toast_webhook] Received unknown Toast webhook event category: {webhook_request.eventCategory}"
                 )
                 return JSONResponse(
                     status_code=status.HTTP_200_OK,
@@ -65,7 +65,7 @@ async def api_toast_webhook(request: Request) -> JSONResponse:
 
     # Log the incoming request for debugging
     logger.debug(
-        "[ToastWebhook]Toast webhook request received",
+        "[ToastWebhook.api_toast_webhook] Toast webhook request received",
         extra={
             "timestamp": webhook_request.timestamp,
             "event_category": webhook_request.eventCategory,

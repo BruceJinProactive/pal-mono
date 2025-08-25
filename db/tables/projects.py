@@ -41,6 +41,7 @@ class Project(Base):
     )
     store_hours: Mapped[str | None] = mapped_column(String, nullable=True)
     address: Mapped[str | None] = mapped_column(String, nullable=True)
+    # TODO: Add product_info_metadata column?
     product_info: Mapped[str | None] = mapped_column(String, nullable=True)
     service_instruction: Mapped[str | None] = mapped_column(String, nullable=True)
     order_integration_id: Mapped[uuid.UUID | None] = mapped_column(

@@ -37,6 +37,7 @@ class ToastWebhookMenuDetails(BaseModel):
 class ToastStockItemStatus(StrEnum):
     IN_STOCK = "IN_STOCK"
     QUANTITY = "QUANTITY"
+    OUT_OF_STOCK = "OUT_OF_STOCK"
 
 
 class ToastWebhookStockItemDetails(BaseModel):

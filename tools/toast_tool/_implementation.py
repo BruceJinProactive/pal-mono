@@ -528,7 +528,8 @@ class ToastTool(Toolkit):
     def _construct_order(self) -> OrderInput | str:
         chat_history: str = self._get_chat_history()  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
-
+        # TODO: Get dining options
+        # TODO: Update Extractor system prompt to include dining option
         order = llm_call(
             system_prompt=EXTRACTOR_SYSTEM_PROMPT,
             prompt=EXTRACTOR_USER_PROMPT.format(
