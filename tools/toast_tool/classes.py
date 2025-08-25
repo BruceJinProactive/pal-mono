@@ -148,17 +148,36 @@ class OptionGroup(ItemBase):
     pass
 
 
+class SelectionType(str, Enum):
+    NONE = "NONE"
+    SPECIAL_REQUEST = "SPECIAL_REQUEST"
+
+
 class Modifier(BaseModel):
-    optionGroup: OptionGroup = Field(
-        description="The option group GUID of the modifier associated with the item. Find the correct group ID corresponding to the item ID."
+    optionGroup: Optional[OptionGroup] = Field(
+        description="The option group GUID of the modifier associated with the item. Find the correct group ID corresponding to the item ID.",
+        default=None,
     )
-    item: MenuItem = Field(description="The item ID associated with the modifier")
-    quantity: int = Field(description="The quantity of the modifier", gt=0)
+    item: Optional[MenuItem] = Field(
+        description="The item ID associated with the modifier", default=None
+    )
+    quantity: Optional[int] = Field(
+        description="The quantity of the modifier. If the modifier is a special request, set the quantity to None.",
+        gt=0,
+        default=None,
+    )
     modifiers: List["Modifier"] = Field(
         default_factory=list,
         description="Nested modifiers for this modifier. Always include as empty array [].",
     )
-    displayName: SkipJsonSchema[Optional[str]] = None
+    displayName: Optional[str] = Field(
+        description="The display name of the modifier. If there is a special request, include the special request in this field. If there is no special request, set the field to None.",
+        default=None,
+    )
+    selectionType: SelectionType = Field(
+        description="The type of selection for the modifier. If there is a special request, set the field to SPECIAL_REQUEST and include the special request in the `displayName` field. If there is no special request, set the field to NONE.",
+        default=SelectionType.NONE,
+    )
 
 
 class OrderItemFulfillmentStatus(str, Enum):
@@ -169,12 +188,11 @@ class OrderItemFulfillmentStatus(str, Enum):
 
 
 class ItemSelection(BaseModel):
-    itemGroup: Optional[ItemGroup] = Field(
-        default=None,
-        description="The item group associated with the item selection. Can be null when treating a modifier as an item.",
+    itemGroup: ItemGroup = Field(
+        description="The item group associated with the item selection."
     )
     item: ItemBase = Field(description="The item selected")
-    quantity: int = Field(description="The quantity of the item selection", gt=0)
+    quantity: int = Field(description="The quantity of the item selection.", gt=0)
     modifiers: Optional[List[Modifier]] = Field(
         default_factory=list,
         description=(

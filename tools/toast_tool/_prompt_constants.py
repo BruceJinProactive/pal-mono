@@ -18,6 +18,7 @@ You will be given the chat history and relevant context. You goal is to convert 
 5. Map the items, names, modifiers, etc., that you identified from the english language to the structured data format that is required by the Toast API using the provided context.
 6. Make sure that the order type is correctly identified as "TakeOut" or "Delivery". If not specified it should be empty.
 7. Extract discount coupon codes if available.
+8. **CRITICAL**: For each item selection, you MUST extract the "Group GUID" from the menu document and use it as the "itemGroup" guid. Every item MUST have a valid itemGroup - this is required by the Toast API.
 
 ## ORDER TYPE INSTRUCTIONS:
 - You must recognize user's implicit intent of takeout the order herself, and help the user place a takeout order. Here are a few examples how the user expresses their intention of taking out the order: "see you soon in the restaurant", "I will visit the restaurant", "see you at your place", "be there/around/ at the restaurant soon", "I will swing/pass/come/stop by"
@@ -31,7 +32,7 @@ You will be given the chat history and relevant context. You goal is to convert 
 - The modifier item ID of one item belongs only to the modifier optionGroup ID of the same item. You must identify the correct modifier optionGroup ID and modifier item ID pair of each item. You can find them in the document related to the specific item. 
 - You must not mix up the modifier optionGroup ID and modifier item ID for different items. The modifier item ID of one item must be paired with the modifier optionGroup ID of the same item.
 - If in the item's document there is only a base price, you must not include any size modifier group ID and size modifier item ID of any kind for that item in the selections list. You must NOT use other items' modifier group ID and item ID for that item.
-- If the user orders a modifier multiple times, you must include the modifier multiple times in the selections list instead of specifying the quantity of the modifier. For example, if the user orders 1 item with 3 portions of modifier B, you must include modifier B with quantity 1 three times in the selections list.
+- If the user orders a modifier multiple times, you must include the modifier multiple times in the selections list instead of specifying the modifier quantity. For example, if the user orders 1 item with 3 portions of modifier B, you must include modifier B with quantity 1 three times in the selections list.
 
 # CRITICAL MODIFIER STRUCTURE RULES:
 - EVERY modifier object MUST include a "modifiers" field as an empty array: "modifiers": []
@@ -72,10 +73,17 @@ provide a delivery address, output "N/A" for all fields.
 - If the user places a **delivery** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "2581adcf-3b04-4598-8df4-4c79cfcfc2dd"}.
 
 # RULES FOR ADDING SPECIAL NOTES TO THE ORDER:
-- You must recognize any notes/requests that the user wants to add to the order from the chat history. If there are any, add them to the order object appropriately. Be specific.
-- If the user is placing a delivery order, fill out the attribute `curbsidePickupInfo`.
-- If the user is placing other order types, fill out the attribute `ToastCurbsidePickupInfo`. Set the `transportDescription` field to "None" if the order type is not curbside pickup.
-- If the user did not specify any special notes, set the `notes` field to "No notes specified".
+- You must recognize any notes/requests that the user wants to add to the order from the chat history.
+- If the order type is **not curbside pickup**, add special requests as a SEPARATE **modifier entity** in the `checks.selections[].modifiers[]` array:
+  - Use `"selectionType": "SPECIAL_REQUEST"`.
+  - Store the user's request in `"displayName"`.
+  - Set `"quantity": None` for special requests.
+  - Set `optionGroup` and `item` to None for special requests.
+  - Include empty `"modifiers": []` array.
+  - SPECIAL_REQUEST must not carry structural IDs or quantities
+- If the user is placing a **curbside pickup** order, fill out the attribute `curbsidePickupInfo`.
+- If the user is placing a **delivery** order, fill out the attribute `deliveryInfo`.
+- If the user did not specify any special notes, do not create a `SPECIAL_REQUEST` modifier.
 
 # IMPORTANT RULES:
 - Do NOT make assumptions or fabricate data
@@ -102,7 +110,15 @@ EXTRACTOR_USER_PROMPT = """
 
 Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beutify the response. We will parse the JSON object later.
 
-When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. If the user specified any modifiers for an item, select the modifier group id and modifier option item id within that document for the item. The modifier group id and modifier option item id must be found in the same document as the item. If you cannot find the correct document, do NOT use any modifier group id and modifier option item id from any other document because this will break the ordering process.
+When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. 
+
+**CRITICAL**: For each item selection, you MUST:
+1. Find the menu document that matches the item name
+2. Extract the "Group GUID" from that document and use it as the "itemGroup" guid
+3. Extract the "Item GUID" and use it as the "item" guid
+4. If the user specified any modifiers, extract the modifier group id and modifier option item id from the SAME document
+
+The Group GUID and Item GUID must be found in the same document as the item. If you cannot find the correct document, do NOT use any GUIDs from other documents because this will break the ordering process.
 
 
 """
