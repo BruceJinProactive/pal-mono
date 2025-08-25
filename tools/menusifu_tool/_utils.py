@@ -5,7 +5,18 @@ Utility functions for MenuSifu tool operations
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+
+if TYPE_CHECKING:
+    from .classes import (
+        Address,
+        Customer,
+        OrderCalculationRequest,
+        OrderCalculationResponse,
+        OrderGenerationResponse,
+        OrderGenerationSelectedItem,
+        OrderPrice,
+    )
 
 from .classes import (
     Category,
@@ -1728,3 +1739,420 @@ def get_typed_available_items(
             continue
 
     return available_items
+
+
+# =============================================================================
+# ORDER PROCESSING UTILITY FUNCTIONS
+# =============================================================================
+
+
+def build_order_price_from_calculation(
+    calc_response: "OrderCalculationResponse",
+) -> "OrderPrice":
+    """
+    Convert OrderCalculationResponse price data to OrderPrice for order generation.
+
+    Args:
+        calc_response: Response from order calculation API
+
+    Returns:
+        OrderPrice object for order generation request
+    """
+    from decimal import Decimal
+
+    from .classes import ChargeObjectInfo, OrderPrice, TaxInfo
+
+    # Build charge objects from calculation response
+    charge_obj_list = []
+    if calc_response.charge_obj:
+        for charge in calc_response.charge_obj:
+            charge_info = ChargeObjectInfo(
+                charge=charge.charge or Decimal("0"),
+                chargeIsPer=getattr(charge, "charge_is_per", None),
+                chargeRate=getattr(charge, "charge_rate", None),
+                type=getattr(charge, "type", None),
+            )
+            charge_obj_list.append(charge_info)
+
+    # Build taxes from order tax detail
+    taxes_list = []
+    if calc_response.order_tax_detail:
+        for tax_id, tax_detail in calc_response.order_tax_detail.items():
+            tax_info = TaxInfo(
+                name=f"Tax {tax_id}",
+                value=tax_detail.tax_amount or Decimal("0"),
+                rate=getattr(tax_detail, "tax_rate", None) or Decimal("0"),
+            )
+            taxes_list.append(tax_info)
+
+    return OrderPrice(
+        subtotal=calc_response.order_subtotal or Decimal("0"),
+        total=calc_response.order_total or Decimal("0"),
+        discount=calc_response.order_discount or Decimal("0"),
+        onlineFee=getattr(calc_response, "online_fee", None) or Decimal("0"),
+        deliveryFee=getattr(calc_response, "delivery_fee", None) or Decimal("0"),
+        charge=calc_response.order_charge or Decimal("0"),
+        chargeObj=charge_obj_list,
+        tips=getattr(calc_response, "total_tips", None) or Decimal("0"),
+        taxTotal=calc_response.order_tax_total or Decimal("0"),
+        taxes=taxes_list,
+        chargeName=calc_response.charge_name or "",
+        discountTotalCrm=getattr(calc_response, "discount_total_crm", None)
+        or Decimal("0"),
+        rounding=calc_response.rounding or Decimal("0"),
+    )
+
+
+def build_selected_items_from_calculation(
+    calc_request: "OrderCalculationRequest",
+) -> List["OrderGenerationSelectedItem"]:
+    """
+    Convert OrderCalculationRequest items to OrderGenerationSelectedItem list.
+
+    Args:
+        calc_request: Original calculation request with selected items
+
+    Returns:
+        List of OrderGenerationSelectedItem objects
+    """
+    from .classes import OrderGenerationSelectedItem
+
+    selected_items = []
+
+    for item in calc_request.selected_items:
+        # Build the selected item for generation
+        generation_item = OrderGenerationSelectedItem(
+            id=item.id,
+            saleItemId=item.id,  # Same as id
+            quantity=item.quantity,
+            itemType=item.item_type,
+            price=item.price,
+            displayPrice=item.price,  # Optional field per spec
+            name=item.name,
+            nameMultilingual=item.name_multilingual,
+            categoryId=item.category_id,
+            options=None,  # Options need conversion between calculation and generation types
+        )
+        selected_items.append(generation_item)
+
+    return selected_items
+
+
+def build_customer_info(
+    email: str,
+    first_name: str,
+    last_name: str = "",
+    country_code: str = "+1",
+    phone_number: str = "",
+) -> "Customer":
+    """
+    Build Customer object for order generation.
+
+    Args:
+        email: Customer email
+        first_name: Customer first name
+        last_name: Customer last name (optional)
+        country_code: Phone country code (default +1)
+        phone_number: Phone number without country code
+
+    Returns:
+        Customer object
+    """
+    from .classes import Customer, Phone
+
+    phone = Phone(countryCode=country_code, number=phone_number)
+
+    return Customer(email=email, firstName=first_name, lastName=last_name, phone=phone)
+
+
+def build_address_info(
+    address1: str = "",
+    address2: str = "",
+    city: str = "",
+    state: str = "",
+    zip_code: str = "",
+) -> "Address":
+    """
+    Build Address object for order generation.
+
+    Args:
+        address1: Primary address line
+        address2: Secondary address line
+        city: City
+        state: State/Province
+        zip_code: ZIP/Postal code
+
+    Returns:
+        Address object
+    """
+    from .classes import Address
+
+    return Address(
+        address1=address1, address2=address2, city=city, state=state, zipCode=zip_code
+    )
+
+
+def validate_order_data(
+    customer_email: str,
+    customer_first_name: str,
+    phone_number: str,
+    selected_items: List[Dict[str, Any]],
+) -> Dict[str, List[str]]:
+    """
+    Validate order data before API submission.
+
+    Args:
+        customer_email: Customer email
+        customer_first_name: Customer first name
+        phone_number: Customer phone number
+        selected_items: List of selected items
+
+    Returns:
+        Dictionary with validation errors by field
+    """
+    errors = {}
+
+    # Email validation
+    if not customer_email or "@" not in customer_email:
+        errors.setdefault("customer_email", []).append(
+            "Valid email address is required"
+        )
+
+    # Name validation
+    if not customer_first_name or len(customer_first_name.strip()) < 1:
+        errors.setdefault("customer_first_name", []).append("First name is required")
+
+    # Phone validation (basic)
+    if (
+        phone_number
+        and not phone_number.replace("+", "")
+        .replace("-", "")
+        .replace(" ", "")
+        .isdigit()
+    ):
+        errors.setdefault("phone_number", []).append(
+            "Phone number must contain only digits, +, -, and spaces"
+        )
+
+    # Items validation
+    if not selected_items:
+        errors.setdefault("selected_items", []).append(
+            "At least one item must be selected"
+        )
+
+    for i, item in enumerate(selected_items):
+        if not item.get("id"):
+            errors.setdefault("selected_items", []).append(
+                f"Item {i+1}: ID is required"
+            )
+        quantity = item.get("quantity", 0)
+        if not quantity or quantity <= 0:
+            errors.setdefault("selected_items", []).append(
+                f"Item {i+1}: Quantity must be greater than 0"
+            )
+
+    return errors
+
+
+def format_phone_number(
+    phone: str, default_country_code: str = "+1"
+) -> tuple[str, str]:
+    """
+    Format phone number into country code and number parts.
+
+    Args:
+        phone: Full phone number (may include country code)
+        default_country_code: Default country code if none provided
+
+    Returns:
+        Tuple of (country_code, phone_number)
+    """
+    if not phone:
+        return default_country_code, ""
+
+    # Clean the phone number
+    clean_phone = (
+        phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    )
+
+    # If starts with +, extract country code
+    if clean_phone.startswith("+"):
+        # First, try known country codes with expected lengths
+        known_codes = {
+            "+1": 10,  # North America: +1 + 10 digits = 12 total
+            "+86": 8,  # China: +86 + 8+ digits
+            "+33": 8,  # France: +33 + 8+ digits
+            "+44": 8,  # UK: +44 + 8+ digits
+            "+49": 8,  # Germany: +49 + 8+ digits
+            "+81": 8,  # Japan: +81 + 8+ digits
+            "+82": 8,  # South Korea: +82 + 8+ digits
+        }
+
+        for country_code, min_remaining in known_codes.items():
+            if clean_phone.startswith(country_code):
+                remaining = clean_phone[len(country_code) :]
+                if len(remaining) >= min_remaining and (
+                    country_code == "+1"
+                    and len(remaining) == 10
+                    or country_code != "+1"
+                ):
+                    return country_code, remaining
+
+        # Fallback: try generic country code lengths (+ plus 1-3 digits)
+        for code_len in range(2, 5):  # +X, +XX, +XXX
+            if code_len < len(clean_phone):
+                country_code = clean_phone[:code_len]
+                remaining = clean_phone[code_len:]
+                # Return if remaining has plausible length (>=8 digits)
+                if len(remaining) >= 8:
+                    return country_code, remaining
+
+    # No country code provided, use default
+    return default_country_code, clean_phone
+
+
+def extract_order_summary(order_response: "OrderGenerationResponse") -> Dict[str, Any]:
+    """
+    Extract key information from order generation response for display/logging.
+
+    Args:
+        order_response: Response from order generation API
+
+    Returns:
+        Dictionary with key order information
+    """
+    if not order_response or not order_response.order:
+        return {"error": "No order data in response"}
+
+    order = order_response.order
+    summary = {
+        "order_id": getattr(order, "_id", None),
+        "order_number": order.order_number,
+        "status": order.order_status,
+        "kitchen_status": order.kitchen_status,
+        "payment_summary": order.payment_summary,
+        "total_amount": float(order.price.total),
+        "subtotal": float(order.price.subtotal),
+        "tax_total": float(order.price.tax_total),
+        "tips": float(order.price.tips),
+        "order_type": order.type,
+        "customer_email": order.customer.email,
+        "customer_name": f"{order.customer.first_name} {order.customer.last_name}".strip(),
+        "transaction_id": order.transaction_id,
+        "successful": order_response.successful,
+        "payment_url": order_response.payment_url,
+        "created_at": order.create_at,
+        "item_count": len(order.order_items),
+    }
+
+    return summary
+
+
+def handle_api_error(error_response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Parse and standardize API error responses.
+
+    Args:
+        error_response: Raw error response from API
+
+    Returns:
+        Standardized error information
+    """
+    error_info = {
+        "error_type": "api_error",
+        "message": "Unknown error occurred",
+        "details": {},
+        "is_retryable": False,
+    }
+
+    if isinstance(error_response, dict):
+        # Standard error message
+        if "message" in error_response:
+            error_info["message"] = error_response["message"]
+
+        # Check for specific error types
+        message = error_response.get("message", "").lower()
+
+        if "price validate error" in message:
+            error_info["error_type"] = "price_validation"
+            error_info["message"] = (
+                "Order price validation failed - check item prices and calculations"
+            )
+
+        elif "phone number is not available" in message:
+            error_info["error_type"] = "phone_validation"
+            error_info["message"] = "Invalid phone number format"
+
+        elif "sold out" in message or "out of stock" in message:
+            error_info["error_type"] = "inventory"
+            error_info["is_retryable"] = True
+
+        elif "merchant" in message and ("not found" in message or "invalid" in message):
+            error_info["error_type"] = "merchant_validation"
+
+        elif "unauthorized" in message or "access" in message:
+            error_info["error_type"] = "authorization"
+
+        # Extract additional details
+        error_info["details"] = {
+            k: v for k, v in error_response.items() if k != "message"
+        }
+
+    return error_info
+
+
+def calculate_order_totals(
+    items: List[Dict[str, Any]],
+    tax_rate: float = 0.1,
+    delivery_fee: float = 0.0,
+    convenience_fee: float = 0.0,
+    tips: float = 0.0,
+) -> Dict[str, float]:
+    """
+    Calculate order totals from items and fees.
+
+    Args:
+        items: List of items with price and quantity
+        tax_rate: Tax rate (default 10%)
+        delivery_fee: Delivery fee
+        convenience_fee: Convenience fee
+        tips: Tips amount
+
+    Returns:
+        Dictionary with calculated totals
+    """
+    from decimal import ROUND_HALF_UP, Decimal
+
+    # Calculate subtotal
+    subtotal = Decimal("0")
+    for item in items:
+        item_price = Decimal(str(item.get("price", 0)))
+        quantity = int(item.get("quantity", 1))
+        subtotal += item_price * quantity
+
+    # Calculate tax
+    tax_amount = subtotal * Decimal(str(tax_rate))
+
+    # Calculate total before rounding
+    total_before_rounding = (
+        subtotal
+        + tax_amount
+        + Decimal(str(delivery_fee))
+        + Decimal(str(convenience_fee))
+        + Decimal(str(tips))
+    )
+
+    # Apply rounding to nearest cent
+    total = total_before_rounding.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    rounding = total - total_before_rounding
+
+    return {
+        "subtotal": float(subtotal),
+        "tax_amount": float(tax_amount),
+        "delivery_fee": delivery_fee,
+        "convenience_fee": convenience_fee,
+        "tips": tips,
+        "total_before_rounding": float(total_before_rounding),
+        "total": float(total),
+        "rounding": float(rounding),
+    }
