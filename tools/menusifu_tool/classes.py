@@ -353,17 +353,6 @@ class TaxDetail(BaseModel):
     tax_amount: Money = Field(alias="taxAmount")
 
 
-class ChargeObject(BaseModel):
-    """Charge object information"""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    charge: Money
-    charge_is_per: bool = Field(alias="chargeIsPer")
-    charge_rate: Money = Field(alias="chargeRate")
-    type: Optional[str] = None
-
-
 class OrderCalculationResponse(BaseModel):
     """Response from order calculation API"""
 
@@ -379,7 +368,7 @@ class OrderCalculationResponse(BaseModel):
     order_original_total: Money = Field(alias="orderOriginalTotal")
     rounding: Money
     order_total: Money = Field(alias="orderTotal")
-    charge_obj: List[ChargeObject] = Field(alias="chargeObj")
+    charge_obj: List["ChargeObjectInfo"] = Field(alias="chargeObj")
     online_fee: Money = Field(alias="onlineFee")
     charge_name: str = Field(alias="chargeName")
     successful: bool
@@ -489,6 +478,7 @@ class Customer(BaseModel):
     first_name: str = Field(alias="firstName")
     last_name: str = Field(alias="lastName")
     phone: Phone
+    address: Optional[Address] = None  # Optional address for responses that include it
 
 
 class TaxInfo(BaseModel):
@@ -617,7 +607,7 @@ class OrderGenerationRequest(BaseModel):
     # Required fields
     country_code: str = Field(alias="countryCode")
     telephone_number: str = Field(alias="telephoneNumber")
-    channel: str = "BOT"
+    channel: str = "WEB"  # Changed from "BOT" to match sample
     product_line: str = Field("ONLINE_ORDER", alias="productLine")
     order_type: OrderType = Field(alias="orderType")  # ONLINE_PICKUP, ONLINE_DELIVERY
     price: OrderPrice
@@ -689,18 +679,6 @@ class OrderItem(BaseModel):
     )
     category_id: int = Field(alias="categoryId")
     options: List[OrderItemOptionNote] = Field(default_factory=list)
-
-
-class CustomerResponse(BaseModel):
-    """Customer information in response"""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    email: str
-    first_name: str = Field(alias="firstName")
-    last_name: str = Field(alias="lastName")
-    phone: Phone
-    address: Address
 
 
 class SelectedPaymentInfo(BaseModel):
@@ -805,7 +783,7 @@ class Order(BaseModel):
     timeline: List[Timeline] = Field(default_factory=list)
     order_id: Optional[str] = Field(None, alias="_id")
     order_items: List[OrderItem] = Field(alias="orderItems")
-    customer: CustomerResponse
+    customer: Customer
     allergy_info: str = Field("", alias="allergyInfo")
     online_type: str = Field(alias="onlineType")
     table_id: str = Field("", alias="tableId")
@@ -842,3 +820,62 @@ class OrderGenerationResponse(BaseModel):
     payment_html: str = Field("", alias="paymentHtml")
     order: Order
     successful: bool
+
+
+# ===== EXTRACTION CLASSES FOR LLM OUTPUT =====
+# These classes are specifically for LLM extraction output
+# and are more flexible than the API request/response classes
+
+
+class ExtractedMenuSifuModifier(BaseModel):
+    """Extracted modifier/option from chat history"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: Optional[str] = None
+    name: str
+    price: Optional[float] = None
+    quantity: int = 1
+    checked: bool = True
+
+
+class ExtractedMenuSifuItem(BaseModel):
+    """Extracted menu item from chat history with MenuSifu-specific fields"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    item_name: str
+    item_id: Optional[str] = None
+    sale_item_id: Optional[str] = None
+    quantity: int = 1
+    price: Optional[float] = None
+    display_price: Optional[float] = None
+    item_type: str = "SALE_ITEM"
+    category_id: Optional[int] = None
+    special_notes: Optional[str] = None
+    modifiers: List[ExtractedMenuSifuModifier] = Field(default_factory=list)
+
+
+class ExtractedMenuSifuOrder(BaseModel):
+    """Extracted complete order from chat history with MenuSifu-specific fields"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Customer information (reusing existing Customer structure but with optional fields for extraction)
+    customer_email: Optional[str] = None
+    customer_first_name: str = Field(alias="firstName")
+    customer_last_name: str = Field("", alias="lastName")
+    customer_phone: Optional[Phone] = None
+
+    # Required fields
+    items: List[ExtractedMenuSifuItem]
+
+    # Order configuration
+    order_type: OrderType = OrderType.ONLINE_PICKUP
+    payment_method: PaymentMethod = PaymentMethod.CASH
+
+    # Delivery address (only for ONLINE_DELIVERY) - reuse existing Address class
+    delivery_address: Optional[Address] = None
+
+    # Additional notes
+    special_instructions: Optional[str] = None

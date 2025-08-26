@@ -1052,10 +1052,10 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                         # Compact combo status
                         if combo_unavailable_sections:
                             category_lines.append(
-                                f"  ⚠️ Issues: {', '.join(combo_unavailable_sections)}"
+                                f"  Issues: {', '.join(combo_unavailable_sections)}"
                             )
                         elif combo_has_issues:
-                            category_lines.append("  ℹ️ Some items sold out")
+                            category_lines.append("  Some items sold out")
 
                     # Add options compactly
                     options = _extract_bilingual_options(item)
