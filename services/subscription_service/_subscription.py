@@ -1153,3 +1153,15 @@ def get_account_credit_balance(
         )
 
     return _stripe_credit.get_credit_balance(account.stripe_customer_id)
+
+
+def should_allow_calls(session: Session, account: db.Account) -> bool:
+    if account.current_subscription_id is None:
+        return True
+
+    current_subscription = get_current_subscription(session, account)
+
+    if not current_subscription:
+        return False
+
+    return current_subscription.status == SubscriptionStatus.active

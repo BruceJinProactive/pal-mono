@@ -453,6 +453,7 @@ def handle_subscription_checkout_callback(
         account.name,
         AccountParams(
             stripe_customer_id=checkout_response.customer_id,
+            current_subscription_id=checkout_response.subscription_external_id,
         ),
     )
 
