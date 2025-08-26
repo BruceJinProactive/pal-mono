@@ -154,6 +154,10 @@ class ListAccountSubscriptionsResponse(BaseModel):
     scheduled: List[Subscription] = []
 
 
+class GetCurrentSubscriptionResponse(BaseModel):
+    subscription: Optional[Subscription] = None
+
+
 class ListSubscriptionsRequest(BaseModel):
     """Request for listing subscriptions with pagination and filtering."""
 

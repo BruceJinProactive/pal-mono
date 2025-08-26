@@ -408,6 +408,25 @@ def _get_param_value(override, field_name: str, plan_value):
     return plan_value
 
 
+def get_current_subscription(
+    session: Session, account: db.Account
+) -> Optional[db.AccountSubscription]:
+    if account.current_subscription_id is None:
+        return None
+    subscription = get_account_subscription(
+        session, account.id, account.current_subscription_id
+    )
+    if not subscription:
+        logger.error(
+            "Referenced subscription does not exist, account data is polluted!",
+            extra={
+                "account_id": account.id,
+                "subscription_external_id": account.current_subscription_id,
+            },
+        )
+    return subscription
+
+
 def get_account_subscriptions(
     session: Session,
     account_id: uuid.UUID,

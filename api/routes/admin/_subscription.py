@@ -19,6 +19,7 @@ from api.schemas.admin.subscription import (
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     GetAccountCreditResponse,
+    GetCurrentSubscriptionResponse,
     GrantAccountCreditRequest,
     ListAccountSubscriptionsResponse,
     ListProjectSubscriptionsResponse,
@@ -206,6 +207,22 @@ def create_account_subscription(
             detail="Failed to create subscription",
         )
     return build_subscription(db_subscription)
+
+
+def get_current_subscription(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+) -> GetCurrentSubscriptionResponse:
+    authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} does not exist")
+
+    subscription = subscription_service.get_current_subscription(session, account)
+    return GetCurrentSubscriptionResponse(
+        subscription=build_subscription(subscription) if subscription else None
+    )
 
 
 def list_account_subscriptions(

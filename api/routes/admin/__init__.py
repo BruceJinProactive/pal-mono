@@ -106,6 +106,7 @@ from api.schemas.admin.subscription import (
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     GetAccountCreditResponse,
+    GetCurrentSubscriptionResponse,
     GrantAccountCreditRequest,
     ListAccountSubscriptionsResponse,
     Subscription,
@@ -1714,10 +1715,23 @@ def list_account_subscriptions(
     session: Session = Depends(db.get_db),
 ) -> ListAccountSubscriptionsResponse:
     """
+    TO BE DEPRECATED! Use get_current_account_subscription in the future.
     Retrieves all active subscriptions for the given account.
     Scheduled subscriptions are sorted by start_date if there are multiple.
     """
     return _subscription.list_account_subscriptions(context, session, account_name)
+
+
+@admin_router.get("/accounts/{account_name}/subscriptions/current")
+def get_current_account_subscription(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> GetCurrentSubscriptionResponse:
+    """
+    Retrieves the current subscription for the account.
+    """
+    return _subscription.get_current_subscription(context, session, account_name)
 
 
 @admin_router.patch("/accounts/{account_name}/subscriptions/{external_id}")
