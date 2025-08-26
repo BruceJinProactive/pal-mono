@@ -349,15 +349,11 @@ async def send_daily_report(
 @admin_router.post("/slack/events")
 async def slack_events(request: Request):
     """
-    Handle Slack events (including messages with 'daily').
+    Handle Slack events (including URL verification and messages with 'daily').
     """
     from services import analytics_service
 
-    handler = analytics_service.get_slack_handler()
-    if handler:
-        return await handler.handle(request)
-    else:
-        return {"status": "error", "message": "Slack handler not configured"}
+    return await analytics_service.handle_slack_events(request)
 
 
 @admin_router.get("/accounts/{account_name}/stat")

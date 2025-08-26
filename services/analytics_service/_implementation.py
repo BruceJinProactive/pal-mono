@@ -250,8 +250,34 @@ _slack_handler = None
 _slack_init_lock = threading.Lock()
 
 
-def get_slack_handler():
-    """Get the Slack request handler for FastAPI integration."""
+async def handle_slack_events(request):
+    """
+    Handle all Slack events by passing untouched request to Slack Bolt handler.
+    This allows proper signature verification and URL verification by Slack Bolt.
+
+    Args:
+        request: FastAPI Request object (untouched - no request.json() called)
+
+    Returns:
+        FastAPI Response object from Slack Bolt handler
+    """
+    try:
+        # Get Slack handler and let it handle everything (including URL verification)
+        # Important: Don't call request.json() as it breaks Bolt's signature verification
+        handler = _get_slack_handler()
+        if handler:
+            return await handler.handle(request)
+        else:
+            logger.error("[Slackbot] Slack handler not configured")
+            return {"status": "error", "message": "Slack handler not configured"}
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling Slack event: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def _get_slack_handler():
+    """Internal function to get the Slack request handler."""
     global _slack_app, _slack_handler
 
     if _slack_handler is None:

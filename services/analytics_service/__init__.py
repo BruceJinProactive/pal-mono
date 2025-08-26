@@ -62,11 +62,14 @@ async def send_daily_report_to_slack(channel: str | None = None, client=None) ->
     return await _implementation.send_daily_report_to_slack(channel, client)
 
 
-def get_slack_handler():
+async def handle_slack_events(request):
     """
-    Get the Slack request handler for FastAPI integration.
+    Handle Slack events including URL verification and message events.
+
+    Args:
+        request: FastAPI Request object
 
     Returns:
-        SlackRequestHandler: Handler for Slack events
+        FastAPI Response object for Slack
     """
-    return _implementation.get_slack_handler()
+    return await _implementation.handle_slack_events(request)
