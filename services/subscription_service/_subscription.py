@@ -17,6 +17,7 @@ from db.repositories.subscription_repository import (
 from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
 from services import account_service, project_service
+from services.account_service import AccountParams
 from services.history_service import change_log_context
 from services.subscription_service import (
     _stripe_credit,
@@ -45,7 +46,12 @@ def handle_stripe_checkout_success(
         "status": SubscriptionStatus.active,
     }
     updated_subscription = update_account_subscription(
-        session, context, response.account_id, response.subscription_external_id, data
+        session,
+        context,
+        response.account_id,
+        response.subscription_external_id,
+        data,
+        force_update=True,
     )
     logger.info(
         "Successfully updated subscription's stripe id",
@@ -245,6 +251,13 @@ def create_account_subscription(
             "start_date": subscription.start_date.isoformat(),
             "end_date": subscription.end_date.isoformat(),
         },
+    )
+
+    account_service.update_account(
+        session,
+        context,
+        account.name,
+        AccountParams(current_subscription_id=subscription.external_id),
     )
 
     for project in projects:
@@ -621,9 +634,6 @@ def cancel_account_subscription(
     account_subscription_repository = AccountSubscriptionRepository(
         session, auto_commit=False
     )
-    project_subscription_repository = ProjectSubscriptionRepository(
-        session=session, auto_commit=False
-    )
 
     subscription_to_cancel = account_subscription_repository.get_account_subscription(
         account.id, external_id
@@ -654,20 +664,12 @@ def cancel_account_subscription(
         logger.warning(
             f"Change log failed for account subscription cancellation, proceeding anyway: {e}"
         )
-
         cancelled_subscription = (
             account_subscription_repository.update_account_subscription_status(
                 external_id,
                 SubscriptionStatus.cancelled,
             )
         )
-
-    # Cancel all the attached project subscriptions
-    project_subscriptions = (
-        project_subscription_repository.get_project_subscriptions_by_subscription_id(
-            external_id
-        )
-    )
 
     # Cancel Stripe subscription first if it exists
     if subscription_to_cancel.stripe_subscription_id:
@@ -686,11 +688,6 @@ def cancel_account_subscription(
                 "subscription_external_id": str(external_id),
                 "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
             },
-        )
-
-    for project_sub in project_subscriptions:
-        remove_project_subscription(
-            session, project_sub.project_id, external_id, remove_subscription_item=False
         )
 
     logger.info(
@@ -769,10 +766,6 @@ def create_stripe_checkout_url(
 
     if not subscription or subscription.account_id != account_id:
         return None
-
-    # Validate subscription status
-    if not subscription.is_valid:
-        raise ValueError(f"Subscription status is invalid: {subscription.status}")
 
     # Validate subscription doesn't already have a Stripe subscription ID
     if subscription.stripe_subscription_id:
