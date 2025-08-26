@@ -198,11 +198,12 @@ class MenuSifuTool(Toolkit):
 
     def __init__(
         self,
-        merchant_id: str,
         namespace: str,
         index_name: str,
         tool_metadata: ToolMetadata,
         base_url: str = "assistant.mealkeyway.com",
+        merchant_id: Optional[str] = None,
+        access_token: Optional[str] = None,
     ):
         """
         Initialize MenuSifu Tool.
@@ -218,6 +219,7 @@ class MenuSifuTool(Toolkit):
 
         self.tool_metadata = tool_metadata
         self.merchant_id = merchant_id
+        self.access_token = access_token
         self.base_url = base_url
         self.namespace = namespace
         self.index_name = index_name
@@ -238,7 +240,7 @@ class MenuSifuTool(Toolkit):
         )
 
     @property
-    def _menusifu_token(self) -> str:
+    def _menusifu_token(self) -> tuple[str, str]:
         """
         Returns the MenuSifu API access token from secret manager.
         Access token is fetched from the secret manager using MENUSIFU_ACCESS_TOKEN key.
@@ -251,13 +253,14 @@ class MenuSifuTool(Toolkit):
         """
         try:
             access_token = get_client_secret_with_fallback("MENUSIFU_ACCESS_TOKEN")
+            merchant_id = get_client_secret_with_fallback("MENUSIFU_MERCHANT_ID")
             if not access_token:
                 logger.error("No MenuSifu access token found in secret manager")
                 raise ValueError(
                     "MenuSifu access token is required - check MENUSIFU_ACCESS_TOKEN secret"
                 )
 
-            return access_token
+            return access_token, merchant_id
         except Exception as e:
             logger.error(
                 f"Failed to retrieve MenuSifu access token from secret manager: {e}"
@@ -422,8 +425,8 @@ class MenuSifuTool(Toolkit):
                 f"Calling MenuSifu order calculation API with {len(selected_items)} items"
             )
             calc_result = calculate_order_total(
-                access_token=self._menusifu_token,
-                merchant_id=self.merchant_id,
+                access_token=self.access_token or self._menusifu_token[0],
+                merchant_id=self.merchant_id or self._menusifu_token[1],
                 order_request=calc_request,
                 base_url=self.base_url,
             )
@@ -596,8 +599,8 @@ class MenuSifuTool(Toolkit):
 
             # Call order generation API
             order_result = generate_order(
-                access_token=self._menusifu_token,
-                merchant_id=self.merchant_id,
+                access_token=self.access_token or self._menusifu_token[0],
+                merchant_id=self.merchant_id or self._menusifu_token[1],
                 order_request=order_request,
                 base_url=self.base_url,
             )
