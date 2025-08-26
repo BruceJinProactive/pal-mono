@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import Event as AnalyticsEvent
 from api.schemas.admin.analytics import GetAllReportsResponse
 
-from . import _implementation
+from . import _implementation, _slack
 
 
 # BRUCETODO: DELETE - Mixpanel related functions after migration to db
@@ -48,18 +49,21 @@ def get_analytics_reports(
     )
 
 
-async def send_daily_report_to_slack(channel: str | None = None, client=None) -> dict:
+async def send_daily_report_to_slack(
+    channel: str | None = None, client=None, session: AsyncSession | None = None
+) -> dict:
     """
-    Send a simple daily report message to Slack via bot.
+    Send a comprehensive daily commerce report to Slack with conversion analytics.
 
     Args:
         channel (str): Slack channel to send to (optional, uses env variable if not provided)
         client: Optional Slack client to reuse
+        session (AsyncSession): Async database session for fetching conversion data
 
     Returns:
         dict: Status of the operation
     """
-    return await _implementation.send_daily_report_to_slack(channel, client)
+    return await _slack.send_daily_report_to_slack(channel, client, session)
 
 
 async def handle_slack_events(request):
@@ -72,4 +76,17 @@ async def handle_slack_events(request):
     Returns:
         FastAPI Response object for Slack
     """
-    return await _implementation.handle_slack_events(request)
+    return await _slack.handle_slack_events(request)
+
+
+def get_conversion_data(session: Session) -> list[dict]:
+    """
+    Get account ranking by checkout conversion rate.
+
+    Args:
+        session: Database session (must be Session)
+
+    Returns:
+        list[dict]: List of dictionaries containing conversion statistics for each account
+    """
+    return _implementation.get_conversion_data(session)

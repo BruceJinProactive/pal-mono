@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -166,7 +166,7 @@ class ConversationRepository:
             if project_id is not None:
                 query = query.filter(Conversation.project_id == project_id)
 
-            return [id for id, in query.all()]
+            return [id for (id,) in query.all()]
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving conversation ids: {e}")
@@ -263,6 +263,99 @@ class ConversationRepository:
             self.session.rollback()
             logger.error(f"Error retrieving sessions: {e}")
             return 0, []
+
+    def get_conversion_data(self) -> list[dict]:
+        """
+        Get account ranking by checkout conversion rate (sync version).
+
+        Returns:
+            list[dict]: List of dictionaries containing conversion statistics for each account
+        """
+        try:
+            conversion_analytics_query = """
+            WITH account_stats AS (
+                SELECT 
+                    a.name as account_name,
+                    COUNT(DISTINCT c.id) as total_conversations,
+                    COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END) as conversations_with_orders,
+                    COUNT(DISTINCT CASE WHEN o.status = 'paid' THEN c.id END) as conversations_with_paid_orders,
+                    CASE 
+                        WHEN COUNT(DISTINCT c.id) > 0 THEN 
+                            ROUND((COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END)::DECIMAL / COUNT(DISTINCT c.id)::DECIMAL) * 100, 2)
+                        ELSE 0 
+                    END as checkout_conversion_rate,
+                    CASE 
+                        WHEN COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END) > 0 THEN 
+                            ROUND((COUNT(DISTINCT CASE WHEN o.status = 'paid' THEN c.id END)::DECIMAL / COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END)::DECIMAL) * 100, 2)
+                        ELSE 0 
+                    END as paid_rate,
+                    0 as is_total
+                FROM accounts a
+                INNER JOIN users u ON a.id = u.account_id
+                INNER JOIN conversations c ON u.id = c.user_id
+                LEFT JOIN orders o ON c.id = o.conversation_id
+                WHERE a.status = 'active'
+                GROUP BY a.id, a.name
+                HAVING COUNT(DISTINCT c.id) >= 5
+
+                UNION ALL
+
+                SELECT 
+                    'TOTAL' as account_name,
+                    COUNT(DISTINCT c.id) as total_conversations,
+                    COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END) as conversations_with_orders,
+                    COUNT(DISTINCT CASE WHEN o.status = 'paid' THEN c.id END) as conversations_with_paid_orders,
+                    CASE 
+                        WHEN COUNT(DISTINCT c.id) > 0 THEN 
+                            ROUND((COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END)::DECIMAL / COUNT(DISTINCT c.id)::DECIMAL) * 100, 2)
+                        ELSE 0 
+                    END as checkout_conversion_rate,
+                    CASE 
+                        WHEN COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END) > 0 THEN 
+                            ROUND((COUNT(DISTINCT CASE WHEN o.status = 'paid' THEN c.id END)::DECIMAL / COUNT(DISTINCT CASE WHEN o.id IS NOT NULL THEN c.id END)::DECIMAL) * 100, 2)
+                        ELSE 0 
+                    END as paid_rate,
+                    1 as is_total
+                FROM accounts a
+                INNER JOIN users u ON a.id = u.account_id
+                INNER JOIN conversations c ON u.id = c.user_id
+                LEFT JOIN orders o ON c.id = o.conversation_id
+                WHERE a.status = 'active'
+            )
+            SELECT 
+                account_name,
+                total_conversations,
+                conversations_with_orders,
+                conversations_with_paid_orders,
+                checkout_conversion_rate,
+                paid_rate
+            FROM account_stats
+            ORDER BY 
+                is_total,
+                checkout_conversion_rate DESC, 
+                total_conversations DESC;
+            """
+
+            result = self.session.execute(text(conversion_analytics_query))
+
+            conversion_data = []
+            for row in result:
+                conversion_data.append(
+                    {
+                        "account_name": row.account_name,
+                        "total_conversations": row.total_conversations,
+                        "conversations_with_orders": row.conversations_with_orders,
+                        "conversations_with_paid_orders": row.conversations_with_paid_orders,
+                        "checkout_conversion_rate": float(row.checkout_conversion_rate),
+                        "paid_rate": float(row.paid_rate),
+                    }
+                )
+
+            return conversion_data
+
+        except SQLAlchemyError as e:
+            logger.error(f"Error getting conversion data: {e}")
+            raise
 
     def update_conversation(
         self, conversation_id: uuid.UUID, update_data: ConversationUpdate

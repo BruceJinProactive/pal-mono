@@ -148,3 +148,133 @@ def handle_analytics_date_range(
         raise ValueError(f"Date range cannot exceed {max_days} days")
 
     return start_date, end_date
+
+
+def build_slack_report_blocks(report: list[dict]) -> list[dict]:
+    """Convert report JSON into Slack Block Kit blocks."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Split out TOTAL row
+    total = next((r for r in report if r["account_name"].upper() == "TOTAL"), None)
+    accounts = [r for r in report if r["account_name"].upper() != "TOTAL"]
+
+    # Header + context
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "📊 Palona • Daily Commerce Report"},
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"Generated on: {now}"}],
+        },
+        {"type": "divider"},
+    ]
+
+    # TOTAL summary
+    if total:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*🚀 Summary (TOTAL)*\n"
+                        f"• Conversations: *{total['total_conversations']}*\n"
+                        f"• Orders: *{total['conversations_with_orders']}*\n"
+                        f"• Paid Orders: *{total['conversations_with_paid_orders']}*\n"
+                        f"• Checkout CVR: *{total['checkout_conversion_rate']:.2f}%*\n"
+                        f"• Paid Rate: *{total['paid_rate']:.2f}%*"
+                    ),
+                },
+            }
+        )
+        blocks.append({"type": "divider"})
+
+        # Build the table with consistent column spacing
+    if accounts:
+        # Compute dynamic column widths from values and headers
+        name_width = max(
+            max(len(r["account_name"]) for r in accounts) + 2, len("Account"), 20
+        )
+
+        conv_width = max(
+            len("Conv"),
+            max(len(str(r["total_conversations"])) for r in accounts),
+        )
+        orders_width = max(
+            len("Orders"),
+            max(len(str(r["conversations_with_orders"])) for r in accounts),
+        )
+        paid_width = max(
+            len("Paid"),
+            max(len(str(r["conversations_with_paid_orders"])) for r in accounts),
+        )
+
+        cvr_values = [f"{r['checkout_conversion_rate']:.1f}" for r in accounts]
+        rate_values = [f"{r['paid_rate']:.1f}" for r in accounts]
+        cvr_width = max(len("CVR%"), max(len(v) for v in cvr_values))
+        rate_width = max(len("Paid%"), max(len(v) for v in rate_values))
+
+        # Define consistent spacing between columns
+        col_spacing = "  "  # 2 spaces between columns
+
+        # Build header with dynamic widths and consistent spacing
+        header = (
+            f"{'Account':<{name_width}}{col_spacing}"
+            f"{'Conv':>{conv_width}}{col_spacing}"
+            f"{'Orders':>{orders_width}}{col_spacing}"
+            f"{'Paid':>{paid_width}}{col_spacing}"
+            f"{'CVR%':>{cvr_width}}{col_spacing}"
+            f"{'Paid%':>{rate_width}}\n"
+        )
+
+        # Calculate total width for separator
+        total_width = (
+            name_width
+            + conv_width
+            + orders_width
+            + paid_width
+            + cvr_width
+            + rate_width
+            + (len(col_spacing) * 5)
+        )
+        separator = "-" * total_width + "\n"
+
+        rows = []
+        for r in accounts:
+            rows.append(
+                f"{r['account_name']:<{name_width}}{col_spacing}"
+                f"{r['total_conversations']:>{conv_width}}{col_spacing}"
+                f"{r['conversations_with_orders']:>{orders_width}}{col_spacing}"
+                f"{r['conversations_with_paid_orders']:>{paid_width}}{col_spacing}"
+                f"{r['checkout_conversion_rate']:>{cvr_width}.1f}{col_spacing}"
+                f"{r['paid_rate']:>{rate_width}.1f}"
+            )
+
+        table_text = "```" + header + separator + "\n".join(rows) + "```"
+
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*Per Account Breakdown*\n" + table_text,
+                },
+            }
+        )
+
+    # Footer context
+    blocks.append(
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "CVR = orders / conversations · Paid Rate = paid orders / orders",
+                }
+            ],
+        }
+    )
+
+    return blocks
