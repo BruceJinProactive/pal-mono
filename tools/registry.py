@@ -7,6 +7,7 @@ from agent.tool._config import ToolIdentifier, ToolMetadata
 from tools.adora_tool import AdoraTool
 from tools.booking_tool import BookingTool
 from tools.calculator_tool import CalculatorTool
+from tools.menusifu_tool import MenuSifuTool
 from tools.minitable_tool import MiniTableTool
 from tools.olo_tool import OloTool
 from tools.opentable_tool import OpenTableTool
@@ -36,6 +37,7 @@ class ToolRegistry:
             "square_tool": SquareTool,
             "opentable_tool": OpenTableTool,
             "minitable_tool": MiniTableTool,
+            "menusifu_tool": MenuSifuTool,
         }
         # Log instance creation with built-in id
         instance_id = id(self)
