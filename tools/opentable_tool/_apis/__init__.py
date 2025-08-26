@@ -45,29 +45,8 @@ def search_availability(
     # Construct API endpoint
     api_function = "/dapi/fe/gql?optype=query&opname=RestRefAvailability"
 
-    # GraphQL query for RestRefAvailability (this is what gets hashed for APQ)
-    graphql_query = """
-    query RestRefAvailability($forwardDays: Int!, $restaurantIds: [Int!]!, $date: String!, $time: String!, $partySize: Int!, $databaseRegion: String!, $rid: Int!) {
-        availability(forwardDays: $forwardDays, restaurantIds: $restaurantIds, date: $date, time: $time, partySize: $partySize, databaseRegion: $databaseRegion, rid: $rid) {
-            restaurantId
-            availabilityDays {
-                dayOffset
-                noTimesReasons
-                slots {
-                    isAvailable
-                    timeOffsetMinutes
-                    slotAvailabilityToken
-                    slotHash
-                    attributes
-                }
-            }
-        }
-    }
-    """
-
-    # Build variables once to avoid duplication
     variables = {
-        "forwardDays": int(math.ceil(search_params.forward_minutes / 1440)),
+        "forwardDays": 3,
         "restaurantIds": [restaurant_id],
         "date": datetime.fromisoformat(search_params.start_date_time).strftime(
             "%Y-%m-%d"
@@ -87,7 +66,7 @@ def search_availability(
         "extensions": {
             "persistedQuery": {
                 "version": 1,
-                "sha256Hash": generate_sha256_hash(graphql_query),
+                "sha256Hash": "49e1cc30a14ce4449b989941b1c618e1e7df0845188294883ed7f332ab938123",
             }
         },
     }
