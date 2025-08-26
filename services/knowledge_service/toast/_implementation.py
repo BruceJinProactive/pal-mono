@@ -1,0 +1,341 @@
+"""
+Toast menu processing orchestrator for knowledge base integration.
+
+This module provides the main orchestration class that coordinates all
+Toast menu processing operations from raw menu data to vector indexing.
+
+Key responsibilities:
+- Coordinate the complete menu processing pipeline
+- Manage the workflow from JSON data to knowledge base
+- Handle error management and debug logging
+- Provide the main interface for knowledge service integration
+
+Processing pipeline:
+1. Accept raw Toast menu JSON data
+2. Process and format menu items into readable text
+3. Index processed items into Pinecone vector store
+4. Return processing results and metadata
+
+Usage:
+    processor = ToastMenuProcessor(debug=True)
+    result = processor.process_and_index_menu(
+        menu_json=raw_menu_data,
+        pinecone_index_name="toast-menu",
+        pinecone_namespace="store_123",
+        ...
+    )
+
+Dependencies:
+- _formatter: Text generation
+- _indexer: Vector store operations
+- _utils: Toast-specific utilities
+"""
+
+import datetime
+import os
+from typing import Any, Dict, List, Optional
+
+from tools.toast_tool._apis import get_toast_access_token
+from utils.log import logger
+
+from ._client import download_menu, get_menu_metadata
+from ._indexer import index_to_pinecone
+from ._utils import _sanitize_filename, parse_menu
+
+
+class ToastMenuProcessor:
+    """Processes Toast menu data and indexes it to Pinecone.
+
+    Controls the complete menu processing pipeline from JSON parsing
+    to vector store indexing.
+    """
+
+    def __init__(self, debug: bool = False):
+        """Initialize processor.
+
+        Args:
+            debug: Whether to enable debug logging
+        """
+        self.debug = debug
+
+    def process_and_index_menu(
+        self,
+        menu_json: Dict[str, Any],
+        pinecone_index_name: str,
+        pinecone_namespace: str,
+        store_id: str,
+        save_debug_files: bool = False,
+        debug_output_dir: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Process Toast menu and index it to Pinecone.
+
+        Args:
+            menu_json: Raw Toast menu JSON data
+            pinecone_index_name: Pinecone index name
+            pinecone_namespace: Pinecone namespace for menu data
+            store_id: Store ID for metadata
+            save_debug_files: Whether to save debug files to disk
+            debug_output_dir: Directory to save debug files (optional)
+
+        Returns:
+            dict: Processing results with menu data and indexing information
+        """
+        try:
+            if self.debug:
+                logger.debug("Starting Toast menu processing...")
+
+            # Step 1: Parse menu JSON using migrated logic
+            individual_items, system_prompt_menu, infinite_loop_items = parse_menu(
+                menu_json
+            )
+
+            if self.debug:
+                logger.debug(
+                    "[toast._implementation.process_and_index_menu] Successfully parsed menu"
+                )
+                logger.debug(
+                    f"[toast._implementation.process_and_index_menu] Menu contains {len(individual_items)} items"
+                )
+                if infinite_loop_items:
+                    logger.debug(
+                        f"[toast._implementation.process_and_index_menu] Found {len(infinite_loop_items)} items with infinite loops (excluded from indexing)"
+                    )
+
+            # Step 2: Save debug files if requested (like dummy_menu.py)
+            if save_debug_files:
+                self._save_debug_files(
+                    individual_items,
+                    system_prompt_menu,
+                    infinite_loop_items,
+                    debug_output_dir,
+                )
+
+            # Step 3: Index to Pinecone
+            document_count = index_to_pinecone(
+                individual_items=individual_items,
+                pinecone_index_name=pinecone_index_name,
+                pinecone_namespace=pinecone_namespace,
+                debug=self.debug,
+            )
+
+            if self.debug:
+                logger.debug(
+                    f"[toast._implementation.process_and_index_menu] Processing complete. Total items: {len(individual_items)}"
+                )
+                logger.debug(
+                    f"[toast._implementation.process_and_index_menu] Indexed {document_count} documents to namespace: {pinecone_namespace}"
+                )
+
+            return {
+                "system_prompt_menu": system_prompt_menu,
+                "pinecone_namespace": pinecone_namespace,
+                "pinecone_index_name": pinecone_index_name,
+                "processed_items": document_count,
+                "store_id": store_id,
+                "infinite_loop_items_count": len(infinite_loop_items),
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing Toast menu: {e}")
+            raise
+
+    def _save_debug_files(
+        self,
+        individual_items: List[Dict[str, str]],
+        system_prompt_menu: str,
+        infinite_loop_items: List[Dict[str, str]],
+        debug_output_dir: Optional[str] = None,
+    ) -> None:
+        """Save debug files to disk (similar to dummy_menu.py logic).
+
+        Args:
+            individual_items: List of menu item dictionaries
+            system_prompt_menu: System prompt menu text
+            infinite_loop_items: Items with infinite loops
+            debug_output_dir: Directory to save files (optional)
+        """
+        # Use provided directory or create default one
+        if debug_output_dir is None:
+            dirname = f"toast_menu_debug_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        else:
+            dirname = debug_output_dir
+
+        # Create directories
+        os.makedirs(dirname, exist_ok=True)
+        os.makedirs(os.path.join(dirname, "menu_items"), exist_ok=True)
+
+        # Save each item in a separate file
+        for menu_item in individual_items:
+            for filename, information in menu_item.items():
+                # Sanitize the filename to avoid filesystem issues
+                safe_filename = _sanitize_filename(filename)
+                with open(
+                    os.path.join(dirname, "menu_items", f"{safe_filename}.txt"),
+                    "w",
+                    encoding="utf-8",
+                ) as f:
+                    f.write(information)
+
+        # Save system prompt menu to a file
+        with open(
+            os.path.join(dirname, "system_prompt_menu.md"), "w", encoding="utf-8"
+        ) as f:
+            f.write(system_prompt_menu)
+
+        # Save infinite loop items to separate directory
+        if infinite_loop_items:
+            infinite_loop_dirname = os.path.join(dirname, "infinite_loops")
+            os.makedirs(infinite_loop_dirname, exist_ok=True)
+
+            if self.debug:
+                logger.debug(
+                    f"📁 Saving {len(infinite_loop_items)} infinite loop items to: {infinite_loop_dirname}"
+                )
+
+            for menu_item in infinite_loop_items:
+                for filename, information in menu_item.items():
+                    # Sanitize the filename to avoid filesystem issues
+                    safe_filename = _sanitize_filename(filename)
+                    with open(
+                        os.path.join(infinite_loop_dirname, f"{safe_filename}.txt"),
+                        "w",
+                        encoding="utf-8",
+                    ) as f:
+                        f.write(information)
+        elif self.debug:
+            logger.debug("✅ No infinite loop items found")
+
+        if self.debug:
+            logger.debug(f"Debug files saved to: {dirname}")
+
+    def process_and_index_menu_from_api(
+        self,
+        client_id: str,
+        client_secret: str,
+        restaurant_external_id: str,
+        pinecone_index_name: str,
+        pinecone_namespace: str,
+        token_api_endpoint: Optional[str] = None,
+        general_api_endpoint: Optional[str] = None,
+        save_debug_files: bool = False,
+        debug_output_dir: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Process Toast menu from API and index it to Pinecone.
+
+        This method handles the complete workflow:
+        1. Authenticate with Toast API
+        2. Get menu metadata
+        3. Download menu data
+        4. Process and format menu items
+        5. Index to Pinecone
+
+        Args:
+            client_id: Toast API client ID
+            client_secret: Toast API client secret
+            restaurant_external_id: Restaurant external ID for Toast-Restaurant-External-ID header
+            pinecone_index_name: Pinecone index name
+            pinecone_namespace: Pinecone namespace for menu data
+            token_api_endpoint: Optional custom token API endpoint
+            general_api_endpoint: Optional custom API endpoint for menu calls
+            save_debug_files: Whether to save debug files to disk
+            debug_output_dir: Directory to save debug files (optional)
+
+        Returns:
+            dict: Processing results with menu data and indexing information
+        """
+        try:
+            if self.debug:
+                logger.debug("Starting Toast menu processing from API...")
+
+            # Step 1: Get authentication token
+            if self.debug:
+                logger.debug("Authenticating with Toast API...")
+
+            access_token = get_toast_access_token(
+                client_id=client_id,
+                client_secret=client_secret,
+                token_api_endpoint=token_api_endpoint,
+            )
+
+            if not access_token:
+                raise RuntimeError("Failed to obtain Toast access token")
+
+            if self.debug:
+                logger.debug("Successfully authenticated with Toast API")
+
+            # Step 2: Get menu metadata
+            if self.debug:
+                logger.debug("Getting menu metadata...")
+
+            metadata = get_menu_metadata(
+                bearer_token=access_token,
+                restaurant_external_id=restaurant_external_id,
+                general_api_endpoint=general_api_endpoint,
+            )
+
+            if self.debug:
+                logger.debug(
+                    f"Retrieved metadata for restaurant {metadata.get('restaurantGuid')}"
+                )
+
+            # Step 3: Download menu data
+            if self.debug:
+                logger.debug("Downloading menu data...")
+
+            menu_json = download_menu(
+                bearer_token=access_token,
+                restaurant_external_id=restaurant_external_id,
+                general_api_endpoint=general_api_endpoint,
+            )
+
+            if self.debug:
+                logger.debug(
+                    f"Successfully downloaded menu with {len(menu_json.get('menus', []))} menus"
+                )
+
+            # Step 4: Process menu using the existing logic
+            individual_items, system_prompt_menu, infinite_loop_items = parse_menu(
+                menu_json
+            )
+
+            if self.debug:
+                logger.debug(
+                    f"Parsed menu: {len(individual_items)} items, {len(infinite_loop_items)} infinite loop items"
+                )
+
+            # Step 5: Save debug files if requested
+            if save_debug_files:
+                self._save_debug_files(
+                    individual_items,
+                    system_prompt_menu,
+                    infinite_loop_items,
+                    debug_output_dir,
+                )
+
+            # Step 6: Index to Pinecone
+            document_count = index_to_pinecone(
+                individual_items=individual_items,
+                pinecone_index_name=pinecone_index_name,
+                pinecone_namespace=pinecone_namespace,
+                debug=self.debug,
+            )
+
+            if self.debug:
+                logger.debug(
+                    f"Successfully indexed {document_count} documents to Pinecone"
+                )
+
+            return {
+                "system_prompt_menu": system_prompt_menu,
+                "pinecone_namespace": pinecone_namespace,
+                "pinecone_index_name": pinecone_index_name,
+                "processed_items": document_count,
+                "restaurant_external_id": restaurant_external_id,
+                "restaurant_guid": metadata.get("restaurantGuid"),
+                "menu_last_updated": metadata.get("lastUpdated"),
+                "infinite_loop_items_count": len(infinite_loop_items),
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing Toast menu from API: {e}")
+            raise

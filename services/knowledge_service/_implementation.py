@@ -25,6 +25,10 @@ def _get_pinecone_api_key() -> str:
     return api_key
 
 
+def get_pinecone_api_key() -> str:
+    return _get_pinecone_api_key()
+
+
 @lru_cache()
 def _get_cohere_api_key() -> str:
     """
@@ -34,6 +38,10 @@ def _get_cohere_api_key() -> str:
     if not api_key:
         raise ValueError("COHERE_API_KEY environment variable not set")
     return api_key
+
+
+def get_cohere_api_key() -> str:
+    return _get_cohere_api_key()
 
 
 def list_knowledge_files(
@@ -425,6 +433,34 @@ def update_agent_kb(
                     "location_id": square_location_id,
                 }
                 result["debug"] = square_debug_info
+
+            return result
+
+        elif pos_provider == IntegrationProvider.toast:
+            from services.knowledge_service.toast import ToastMenuProcessor
+
+            processor = ToastMenuProcessor(debug=debug)
+            result = processor.process_and_index_menu_from_api(
+                client_id=client_id,
+                client_secret=client_secret,
+                restaurant_external_id=store_id,
+                pinecone_index_name=pinecone_index_name,
+                pinecone_namespace=pinecone_namespace,
+                token_api_endpoint=token_api_endpoint,
+                general_api_endpoint=general_api_endpoint,
+            )
+
+            logger.info(
+                "Successfully updated knowledge base for Toast agent",
+                extra={
+                    "restaurant_external_id": store_id,
+                    "processed_items": result.get("processed_items", 0),
+                    "final_namespace": result.get("pinecone_namespace"),
+                },
+            )
+
+            if debug:
+                result["debug"] = debug_info
 
             return result
 
