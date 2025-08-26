@@ -100,6 +100,7 @@ def connect_opentable_api(
         )
 
         logger.info("[OpenTable API] Request created, sending...")
+        logger.info(f"[OpenTable API] Request: {request}")
 
         # Send the request and get response
         with urllib.request.urlopen(request, timeout=timeout) as response:
