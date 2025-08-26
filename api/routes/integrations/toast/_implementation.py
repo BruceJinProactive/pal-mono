@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from utils.log import logger
 
 from ._utils import (
+    process_partner_event,
     update_menu_content,
     update_ordering_schedule,
     update_stock_item_status,
@@ -49,6 +50,8 @@ async def api_toast_webhook(request: Request) -> JSONResponse:
                 await update_stock_item_status(webhook_request)
             case "ordering_schedule":
                 await update_ordering_schedule(webhook_request)
+            case "partner":
+                await process_partner_event(webhook_request)
             case _:
                 logger.warning(
                     f"[ToastWebhook.api_toast_webhook] Received unknown Toast webhook event category: {webhook_request.eventCategory}"

@@ -24,9 +24,11 @@ from services.admin_service._utils import _get_agent_knowledge_settings
 from utils.log import logger
 
 from .schema import (
+    ToastPartnerEventType,
     ToastStockItemStatus,
     ToastWebhookMenuDetails,
     ToastWebhookOrderingScheduleDetails,
+    ToastWebhookPartnerDetails,
     ToastWebhookRequest,
     ToastWebhookStockItemDetails,
 )
@@ -532,3 +534,139 @@ async def update_ordering_schedule(webhook_request: ToastWebhookRequest) -> None
         f"Scheduled order max days: {scheduled_order_max_days}. "
         f"Last order configuration: {last_order_configuration}."
     )
+
+
+def _process_partner_added_event(partner_details: ToastWebhookPartnerDetails) -> None:
+    """
+    Process partner_added event - when integration is added to a restaurant.
+
+    Args:
+        partner_details: The partner event details
+    """
+    restaurant_guid = partner_details.restaurantGuid
+    restaurant_name = partner_details.restaurantName
+    location_name = partner_details.locationName or "N/A"
+
+    logger.info(
+        f"[ToastWebhook._process_partner_added_event] Integration added to restaurant: "
+        f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
+    )
+
+    # Log important details
+    if partner_details.managementGroupGuid:
+        logger.info(
+            f"[ToastWebhook._process_partner_added_event] Restaurant belongs to management group: {partner_details.managementGroupGuid}"
+        )
+
+    if partner_details.externalGroupRef or partner_details.externalRestaurantRef:
+        logger.info(
+            f"[ToastWebhook._process_partner_added_event] External references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
+        )
+
+    # Add business logic here in the future, such as:
+    # - Creating/updating project integrations in the database
+    # - Sending notifications to admin users
+    # - Triggering menu sync processes
+    # - Setting up initial configuration
+
+
+def _process_partner_removed_event(partner_details: ToastWebhookPartnerDetails) -> None:
+    """
+    Process partner_removed event - when integration is removed from a restaurant.
+
+    Args:
+        partner_details: The partner event details
+    """
+    restaurant_guid = partner_details.restaurantGuid
+    restaurant_name = partner_details.restaurantName
+    location_name = partner_details.locationName or "N/A"
+
+    logger.info(
+        f"[ToastWebhook._process_partner_removed_event] Integration removed from restaurant: "
+        f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
+    )
+
+    # Add business logic here in the future, such as:
+    # - Removing/deactivating project integrations in the database
+    # - Cleaning up associated data
+    # - Sending notifications to admin users
+    # - Stopping any scheduled sync processes
+
+
+def _process_partner_updated_event(partner_details: ToastWebhookPartnerDetails) -> None:
+    """
+    Process partner_updated event - when integration settings are updated.
+
+    Args:
+        partner_details: The partner event details
+    """
+    restaurant_guid = partner_details.restaurantGuid
+    restaurant_name = partner_details.restaurantName
+    location_name = partner_details.locationName or "N/A"
+
+    logger.info(
+        f"[ToastWebhook._process_partner_updated_event] Integration settings updated for restaurant: "
+        f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
+    )
+
+    # Log what might have changed
+    logger.info(
+        f"[ToastWebhook._process_partner_updated_event] Current external references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
+    )
+
+    # Add business logic here in the future, such as:
+    # - Updating project integration settings in the database
+    # - Validating external reference changes
+    # - Sending notifications about configuration changes
+    # - Re-syncing menu data if necessary
+
+
+async def process_partner_event(webhook_request: ToastWebhookRequest) -> None:
+    """
+    Process partner webhook events (partner_added, partner_removed, partner_updated).
+
+    Args:
+        webhook_request: The webhook request containing the partner event details
+    """
+    try:
+        partner_details = ToastWebhookPartnerDetails(**webhook_request.details)
+    except ValidationError as e:
+        logger.error(
+            "[ToastWebhook.process_partner_event] Invalid partner event details: %s", e
+        )
+        return
+
+    raw_event_type = webhook_request.eventType
+    try:
+        event_type = ToastPartnerEventType(raw_event_type)
+    except ValueError:
+        logger.warning(
+            f"[ToastWebhook.process_partner_event] Unknown partner event type: {raw_event_type}"
+        )
+        return
+
+    logger.info(
+        f"[ToastWebhook.process_partner_event] Processing partner event: {event_type} "
+        f"for restaurant {partner_details.restaurantName} (GUID: {partner_details.restaurantGuid})"
+    )
+
+    # Process the event based on type
+    try:
+        match event_type:
+            case ToastPartnerEventType.PARTNER_ADDED:
+                _process_partner_added_event(partner_details)
+            case ToastPartnerEventType.PARTNER_REMOVED:
+                _process_partner_removed_event(partner_details)
+            case ToastPartnerEventType.PARTNER_UPDATED:
+                _process_partner_updated_event(partner_details)
+
+        logger.info(
+            f"[ToastWebhook.process_partner_event] Successfully processed partner event: {event_type} "
+            f"for restaurant GUID: {partner_details.restaurantGuid}"
+        )
+
+    except Exception as e:
+        logger.error(
+            f"[ToastWebhook.process_partner_event] Error processing partner event {event_type}: {e}"
+        )
+        raise

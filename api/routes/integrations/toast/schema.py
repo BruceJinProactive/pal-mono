@@ -222,3 +222,69 @@ class ToastWebhookOrderingScheduleDetails(BaseModel):
 
     restaurantGuid: str
     orderingSchedule: OrderingSchedule
+
+
+class ToastPartnerEventType(StrEnum):
+    PARTNER_ADDED = "partner_added"
+    PARTNER_REMOVED = "partner_removed"
+    PARTNER_UPDATED = "partner_updated"
+
+
+class ToastWebhookPartnerDetails(BaseModel):
+    """Details of the partner webhook events (partner_added, partner_removed, partner_updated)
+
+    All three partner event types use the same payload structure.
+
+    Example:
+    {
+        "restaurantGuid": "00000000-1111-2222-3333-444444444444",
+        "managementGroupGuid": "55555555-6666-7777-8888-999999999999",
+        "restaurantName": "Toast Grill & Tap",
+        "locationName": "Fenway, Boston, MA",
+        "externalGroupRef": null,
+        "externalRestaurantRef": null,
+        "modifiedDate": 1568667880240,
+        "createdDate": 1568667880240,
+        "isoModifiedDate": "2019-09-16T21:01:53.685Z",
+        "isoCreatedDate": "2019-09-16T21:01:53.685Z",
+        "createdByFirstName": "Toast",
+        "createdByLastName": "Admin",
+        "createdByEmailAddress": "admin@toasttab.com",
+        "createdByPhoneNumber": null,
+        "restaurantPhoneNumber": "6175551234",
+        "restaurantAddressLine1": "401 Park Drive",
+        "restaurantAddressLine2": null,
+        "restaurantCity": "Boston",
+        "restaurantState": "MA",
+        "restaurantZipCode": "02215",
+        "restaurantCountryCode": "US",
+        "restaurantTimezone": "America/New_York",
+        "restaurantLatitude": "42.344257",
+        "restaurantLongitude": "-71.102181"
+    }
+    """
+
+    restaurantGuid: str
+    managementGroupGuid: Optional[str] = None
+    restaurantName: str
+    locationName: Optional[str] = None
+    externalGroupRef: Optional[str] = None
+    externalRestaurantRef: Optional[str] = None
+    modifiedDate: int
+    createdDate: int
+    isoModifiedDate: str
+    isoCreatedDate: str
+    createdByFirstName: Optional[str] = None
+    createdByLastName: Optional[str] = None
+    createdByEmailAddress: Optional[str] = None
+    createdByPhoneNumber: Optional[str] = None
+    restaurantPhoneNumber: Optional[str] = None
+    restaurantAddressLine1: Optional[str] = None
+    restaurantAddressLine2: Optional[str] = None
+    restaurantCity: Optional[str] = None
+    restaurantState: Optional[str] = None
+    restaurantZipCode: Optional[str] = None
+    restaurantCountryCode: str
+    restaurantTimezone: str
+    restaurantLatitude: Optional[float] = None
+    restaurantLongitude: Optional[float] = None
