@@ -54,7 +54,7 @@ def get_menu_metadata(
     """
     try:
         logger.debug(
-            f"[toast_client.get_menu_metadata] Getting menu metadata for restaurant {restaurant_external_id}"
+            f"[toast._client.get_menu_metadata] Getting menu metadata for restaurant {restaurant_external_id}"
         )
 
         # Use the Toast API utility to make the request
@@ -74,7 +74,7 @@ def get_menu_metadata(
                 raise ValueError("Invalid metadata - missing restaurantGuid")
 
             logger.debug(
-                f"[toast_client.get_menu_metadata] Successfully retrieved metadata for restaurant {metadata.get('restaurantGuid')}, last updated: {metadata.get('lastUpdated')}"
+                f"[toast._client.get_menu_metadata] Successfully retrieved metadata for restaurant {metadata.get('restaurantGuid')}, last updated: {metadata.get('lastUpdated')}"
             )
 
             return metadata
@@ -110,7 +110,7 @@ def download_menu(
     """
     try:
         logger.debug(
-            f"[toast_client.download_menu] Downloading menu for restaurant {restaurant_external_id}"
+            f"[toast._client.download_menu] Downloading menu for restaurant {restaurant_external_id}"
         )
 
         # Use the Toast API utility to make the request to get the full menu
@@ -130,7 +130,7 @@ def download_menu(
                 raise ValueError("Invalid menu data - no menus found")
 
             logger.debug(
-                f"[toast_client.download_menu] Successfully downloaded menu for restaurant {restaurant_external_id}, found {len(menu_data.get('menus', []))} menus"
+                f"[toast._client.download_menu] Successfully downloaded menu for restaurant {restaurant_external_id}, found {len(menu_data.get('menus', []))} menus"
             )
 
             return menu_data

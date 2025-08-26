@@ -1,3 +1,5 @@
+from typing import Optional
+
 from db.tables.types import IntegrationProvider
 
 from . import _implementation
@@ -140,6 +142,7 @@ def update_agent_kb(
     pinecone_index_name: str,
     debug: bool = False,
     include_category_in_doc_name: bool = False,
+    menu_last_updated: Optional[str] = None,
 ) -> dict:
     """Update the knowledge base for an agent based on the POS provider.
 
@@ -158,7 +161,7 @@ def update_agent_kb(
         pinecone_index_name: Name of the Pinecone index
         debug: Enable debug logging
         include_category_in_doc_name: Include category in document names
-
+        menu_last_updated: Last updated date of the menu
     Returns:
         dict: Results of the knowledge base update operation
 
@@ -177,6 +180,7 @@ def update_agent_kb(
         pinecone_index_name=pinecone_index_name,
         debug=debug,
         include_category_in_doc_name=include_category_in_doc_name,
+        menu_last_updated=menu_last_updated,
     )
 
 

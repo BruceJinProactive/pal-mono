@@ -83,7 +83,7 @@ def index_to_pinecone(
 
     if debug:
         logger.debug(
-            f"[toast.indexer.index_to_pinecone] Indexing {len(individual_items)} items to Pinecone..."
+            f"[toast._indexer.index_to_pinecone] Indexing {len(individual_items)} items to Pinecone..."
         )
 
     # Create documents from individual items
@@ -116,11 +116,11 @@ def index_to_pinecone(
 
             if debug and item_guid:
                 logger.debug(
-                    f"[toast.indexer] Extracted itemGuid '{item_guid}' for document: {document_name}"
+                    f"[toast._indexer.index_to_pinecone] Extracted itemGuid '{item_guid}' for document: {document_name}"
                 )
             elif debug and not item_guid:
                 logger.warning(
-                    f"[toast.indexer] No itemGuid found for document: {document_name}"
+                    f"[toast._indexer.index_to_pinecone] No itemGuid found for document: {document_name}"
                 )
 
     # Initialize Pinecone
@@ -147,7 +147,7 @@ def index_to_pinecone(
 
     if debug:
         logger.debug(
-            f"[toast.indexer.index_to_pinecone] Successfully indexed to Pinecone namespace: {pinecone_namespace}"
+            f"[toast._indexer.index_to_pinecone] Successfully indexed to Pinecone namespace: {pinecone_namespace}"
         )
 
     return len(documents)

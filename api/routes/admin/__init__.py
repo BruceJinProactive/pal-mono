@@ -1374,6 +1374,9 @@ async def update_agent_kb(
     include_category_in_doc_name: bool = Query(
         False, description="Whether to include category name in document names"
     ),
+    menu_last_updated: Optional[str] = Query(
+        None, description="Last updated date of the menu"
+    ),
     context: UserContext = Depends(authenticate_user),
     db_session: Session = Depends(db.get_db),
 ) -> dict:
@@ -1403,6 +1406,7 @@ async def update_agent_kb(
         pinecone_index_name,
         debug,
         include_category_in_doc_name,
+        menu_last_updated,
     )
 
 

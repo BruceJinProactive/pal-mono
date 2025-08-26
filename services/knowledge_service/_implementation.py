@@ -3,6 +3,7 @@ import shutil
 import uuid
 from datetime import datetime
 from functools import lru_cache
+from typing import Optional
 
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
@@ -341,6 +342,7 @@ def update_agent_kb(
     pinecone_index_name: str,
     debug: bool = False,
     include_category_in_doc_name: bool = False,
+    menu_last_updated: Optional[str] = None,
 ) -> dict:
     """Update the knowledge base for an agent based on the POS provider."""
 
@@ -448,6 +450,7 @@ def update_agent_kb(
                 pinecone_namespace=pinecone_namespace,
                 token_api_endpoint=token_api_endpoint,
                 general_api_endpoint=general_api_endpoint,
+                menu_last_updated=menu_last_updated,
             )
 
             logger.info(

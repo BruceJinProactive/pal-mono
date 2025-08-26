@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -152,6 +153,7 @@ async def update_agent_kb(
     pinecone_index_name: str,
     debug: bool = False,
     include_category_in_doc_name: bool = False,
+    menu_last_updated: Optional[str] = None,
 ) -> dict:
     """
     Update the knowledge base for an agent by downloading menu data, generating embeddings, and storing in Pinecone.
@@ -164,7 +166,7 @@ async def update_agent_kb(
         pinecone_index_name: Pinecone index name for storing embeddings
         debug: Enable debug mode to return additional metadata
         include_category_in_doc_name: Include category name in document names
-
+        menu_last_updated: Last updated date of the menu
     Returns:
         dict: Contains system_prompt_menu, pinecone_namespace, and pinecone_index_name.
               When debug=True, also includes POS integration details.
@@ -189,6 +191,8 @@ async def update_agent_kb(
             context,
             session,
         )
+
+        print(f"pos_integration: {pos_integration}")
 
         # Get the store identifier from the POS integration
         store_id = pos_integration.business_id
@@ -234,6 +238,7 @@ async def update_agent_kb(
             pinecone_index_name,
             debug,
             include_category_in_doc_name,
+            menu_last_updated,
         )
     except ValueError as e:
         raise HTTPException(
