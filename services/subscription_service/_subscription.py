@@ -1,6 +1,7 @@
 import copy
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal as D
 from typing import Any, List, Optional
 
 from sqlalchemy.orm import Session
@@ -69,6 +70,12 @@ def handle_stripe_checkout_success(
                     credit_amount_cents=credit_amount,
                     currency="usd",
                     description=f"Plan activation credit: {updated_subscription.subscription_plan.name}",
+                    issued_by="system",
+                    metadata={
+                        "issued_via": "stripe_checkout_success",
+                        "request_source": "plan_activation",
+                        "plan_name": updated_subscription.subscription_plan.name,
+                    },
                 )
             else:
                 logger.warning(
@@ -1084,14 +1091,36 @@ def grant_credit_to_account(
     credit_amount_cents: int,
     currency: str,
     description: str | None,
+    issued_by: str | None = None,
+    metadata: dict[str, str] | None = None,
+    idempotency_key: str | None = None,
 ):
     if not account.stripe_customer_id:
         raise ValueError(
             "Account does not have a stripe customer associated, does it have a subscription?"
         )
 
-    _stripe_credit.grant_credit_balance(
-        account.stripe_customer_id, credit_amount_cents, currency, description
+    audit_metadata = metadata.copy() if metadata else {}
+
+    if issued_by:
+        audit_metadata["issued_by"] = issued_by
+
+    audit_metadata.update(
+        {
+            "account_name": account.name,
+            "account_id": str(account.id),
+            "credit_amount_dollars": f"{(D(credit_amount_cents) / D('100')).quantize(D('0.01'))}",
+            "issued_at": datetime.now(UTC).isoformat(),
+        }
+    )
+
+    return _stripe_credit.grant_credit_balance(
+        account.stripe_customer_id,
+        credit_amount_cents,
+        currency,
+        description,
+        audit_metadata,
+        idempotency_key,
     )
 
 

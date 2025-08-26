@@ -593,8 +593,20 @@ def grant_credit_for_account(
         raise not_found_error("Account not found")
 
     try:
+        issued_by = context.email if context.role.value == "Admin" else "system"
+
         subscription_service.grant_credit_to_account(
-            account, request.amount, request.currency, request.description
+            account=account,
+            credit_amount_cents=request.amount,
+            currency=request.currency,
+            description=request.description,
+            issued_by=issued_by,
+            metadata={
+                "issued_via": "admin_api",
+                "request_source": "manual_credit_grant",
+                "user_role": context.role.value,
+                "actual_user": context.email,
+            },
         )
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
@@ -603,6 +615,10 @@ def grant_credit_for_account(
         extra={
             "account_name": account_name,
             "credit_amount_cents": request.amount,
+            "issued_by": issued_by,
+            "actual_user": context.email,
+            "user_role": context.role.value,
+            "description": request.description,
         },
     )
 

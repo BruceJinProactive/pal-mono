@@ -9,6 +9,8 @@ def grant_credit_balance(
     amount_cents: int,
     currency: str,
     description: str | None,
+    metadata: dict[str, str] | None = None,
+    idempotency_key: str | None = None,
 ):
     """
     Applies a one time credit amount to the customer. This amount will offset their
@@ -28,12 +30,35 @@ def grant_credit_balance(
             description = "Balance Adjustment"
 
     try:
-        stripe.Customer.create_balance_transaction(
+        balance_transaction_params = {
+            "amount": -amount_cents,
+            "currency": currency,
+            "description": description,
+        }
+
+        if metadata:
+            sanitized_metadata = {}
+            existing_keys = set()
+            for orig_k, v in metadata.items():
+                base = str(orig_k)
+                key = base[:40]
+                i = 1
+                while key in existing_keys:
+                    suffix = f"_{i}"
+                    key = (base[: 40 - len(suffix)]) + suffix
+                    i += 1
+                existing_keys.add(key)
+                sanitized_metadata[key] = ("" if v is None else str(v))[:500]
+            balance_transaction_params["metadata"] = sanitized_metadata
+
+        if idempotency_key:
+            balance_transaction_params["idempotency_key"] = idempotency_key
+
+        txn = stripe.Customer.create_balance_transaction(
             stripe_customer_id,
-            amount=-amount_cents,  # A credit reduces balance.
-            currency=currency,
-            description=description,
+            **balance_transaction_params,
         )
+        return txn
     except InvalidRequestError as err:
         logger.error(err)
         raise ValueError(err)
