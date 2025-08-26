@@ -13,19 +13,6 @@ from tools.opentable_tool.classes import (
 from utils.log import logger
 
 
-def generate_sha256_hash(data: str) -> str:
-    """
-    Generate a SHA256 hash from the given string data.
-
-    Args:
-        data: String data to hash
-
-    Returns:
-        SHA256 hash as a hexadecimal string
-    """
-    return hashlib.sha256(data.encode("utf-8")).hexdigest()
-
-
 def search_availability(
     bearer_token: OpenTableAccessToken,
     restaurant_id: int,
