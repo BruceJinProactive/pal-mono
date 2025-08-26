@@ -67,7 +67,7 @@ def connect_opentable_api(
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {bearer_token.access_token}",
+        "x-csrf-token": bearer_token.access_token,
     }
 
     # Add extra headers if provided

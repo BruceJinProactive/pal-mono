@@ -1,4 +1,7 @@
+import hashlib
 import json
+import math
+from datetime import datetime
 
 from tools.opentable_tool._apis._utils import connect_opentable_api
 from tools.opentable_tool.classes import (
@@ -8,6 +11,19 @@ from tools.opentable_tool.classes import (
     OpenTableAccessToken,
 )
 from utils.log import logger
+
+
+def generate_sha256_hash(data: str) -> str:
+    """
+    Generate a SHA256 hash from the given string data.
+
+    Args:
+        data: String data to hash
+
+    Returns:
+        SHA256 hash as a hexadecimal string
+    """
+    return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 def search_availability(
@@ -27,13 +43,53 @@ def search_availability(
         AvailabilitySearchResponse object or raises an exception if request fails
     """
     # Construct API endpoint
-    api_function = "/restref/api/availability"
+    api_function = "/dapi/fe/gql?optype=query&opname=RestRefAvailability"
 
-    # Create the request body with the required fields
-    request_body = {
-        "rid": restaurant_id,
-        "dateTime": search_params.start_date_time,
+    # GraphQL query for RestRefAvailability (this is what gets hashed for APQ)
+    graphql_query = """
+    query RestRefAvailability($forwardDays: Int!, $restaurantIds: [Int!]!, $date: String!, $time: String!, $partySize: Int!, $databaseRegion: String!, $rid: Int!) {
+        availability(forwardDays: $forwardDays, restaurantIds: $restaurantIds, date: $date, time: $time, partySize: $partySize, databaseRegion: $databaseRegion, rid: $rid) {
+            restaurantId
+            availabilityDays {
+                dayOffset
+                noTimesReasons
+                slots {
+                    isAvailable
+                    timeOffsetMinutes
+                    slotAvailabilityToken
+                    slotHash
+                    attributes
+                }
+            }
+        }
+    }
+    """
+
+    # Build variables once to avoid duplication
+    variables = {
+        "forwardDays": int(math.ceil(search_params.forward_minutes / 1440)),
+        "restaurantIds": [restaurant_id],
+        "date": datetime.fromisoformat(search_params.start_date_time).strftime(
+            "%Y-%m-%d"
+        ),
+        "time": datetime.fromisoformat(search_params.start_date_time).strftime(
+            "%H:%M:%S"
+        ),
         "partySize": search_params.party_size,
+        "databaseRegion": "NA",
+        "rid": restaurant_id,
+    }
+
+    # Create the request body with deduplicated variables
+    request_body = {
+        "operationName": "RestRefAvailability",
+        "variables": variables,
+        "extensions": {
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": generate_sha256_hash(graphql_query),
+            }
+        },
     }
 
     # Call the OpenTable API with POST request

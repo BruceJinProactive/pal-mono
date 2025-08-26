@@ -66,7 +66,8 @@ class OpenTableTool(Toolkit):
                 logger.info("Successful fetch of OpenTable restaurant page")
 
             # Look for authToken in the HTML - it's typically in a script tag or data attribute
-            auth_token_pattern = r'"authToken":\s*"([^"]+)"'  # Exact JSON format
+            # auth_token_pattern = r'"authToken":\s*"([^"]+)"'  # Exact JSON format
+            auth_token_pattern = r'"__CSRF_TOKEN__":\s*"([^"]+)"'
 
             auth_token = None
             logger.info("Looking for authToken in OpenTable HTML response")
