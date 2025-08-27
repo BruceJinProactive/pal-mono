@@ -18,9 +18,11 @@ from api.schemas.admin.subscription import (
     CreateProjectSubscriptionResponse,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
+    CreditGrant,
     GetAccountCreditResponse,
     GetCurrentSubscriptionResponse,
     GrantAccountCreditRequest,
+    ListAccountCreditGrantsResponse,
     ListAccountSubscriptionsResponse,
     ListProjectSubscriptionsResponse,
     RemoveProjectSubscriptionResponse,
@@ -658,3 +660,40 @@ def get_credit_amount(
         balance=balance,
         currency=currency,
     )
+
+
+def list_account_credit_grants(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+) -> ListAccountCreditGrantsResponse:
+    authorize_admin(context)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    try:
+        credit_grants_data = subscription_service.get_account_credit_grants(
+            account=account,
+        )
+
+        credit_grants = [
+            CreditGrant(
+                id=grant["id"],
+                created=grant["created"],
+                credit_amount_cents=grant["credit_amount_cents"],
+                currency=grant["currency"],
+                description=grant["description"],
+                metadata=grant["metadata"],
+                ending_balance=grant["ending_balance"],
+            )
+            for grant in credit_grants_data
+        ]
+
+        return ListAccountCreditGrantsResponse(
+            credit_grants=credit_grants,
+        )
+
+    except ValueError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))

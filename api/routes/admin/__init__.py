@@ -108,6 +108,7 @@ from api.schemas.admin.subscription import (
     GetAccountCreditResponse,
     GetCurrentSubscriptionResponse,
     GrantAccountCreditRequest,
+    ListAccountCreditGrantsResponse,
     ListAccountSubscriptionsResponse,
     Subscription,
     SubscriptionPlan,
@@ -1885,6 +1886,21 @@ def get_account_credit(
     session: Session = Depends(db.get_db),
 ) -> GetAccountCreditResponse:
     return _subscription.get_credit_amount(context, session, account_name)
+
+
+@admin_router.get(
+    "/accounts/{account_name}/credits/grants", status_code=status.HTTP_200_OK
+)
+def list_account_credit_grants(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListAccountCreditGrantsResponse:
+    return _subscription.list_account_credit_grants(
+        context=context,
+        session=session,
+        account_name=account_name,
+    )
 
 
 """

@@ -1152,6 +1152,19 @@ def get_account_credit_balance(
     return _stripe_credit.get_credit_balance(account.stripe_customer_id)
 
 
+def get_account_credit_grants(
+    account: db.Account,
+) -> list[dict]:
+    if not account.stripe_customer_id:
+        raise ValueError(
+            "Account does not have a stripe customer associated, does it have a subscription?"
+        )
+
+    return _stripe_credit.get_credit_grants_history(
+        account.stripe_customer_id,
+    )
+
+
 def should_allow_calls(session: Session, account: db.Account) -> bool:
     if account.current_subscription_id is None:
         return True

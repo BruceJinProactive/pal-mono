@@ -306,3 +306,17 @@ class GrantAccountCreditRequest(BaseModel):
 class GetAccountCreditResponse(BaseModel):
     balance: int  # amount in cent
     currency: str  # 3 letter lowercase currency code
+
+
+class CreditGrant(BaseModel):
+    id: str
+    created: datetime
+    credit_amount_cents: int
+    currency: str
+    description: str | None
+    metadata: dict[str, str]
+    ending_balance: int
+
+
+class ListAccountCreditGrantsResponse(BaseModel):
+    credit_grants: list[CreditGrant]

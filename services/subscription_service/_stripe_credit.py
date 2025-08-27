@@ -84,3 +84,41 @@ def get_credit_balance(stripe_customer_id: str) -> tuple[int, str]:
             f"Failed to retrieve credit balance for customer: {stripe_customer_id}"
         )
         raise err
+
+
+def get_credit_grants_history(
+    stripe_customer_id: str,
+) -> list[dict]:
+    try:
+        balance_transactions = stripe.Customer.list_balance_transactions(
+            stripe_customer_id,
+        )
+
+        credit_grants = []
+        for txn in balance_transactions.data:
+            credit_amount_cents = -txn.amount if txn.amount < 0 else 0
+            credit_grant = {
+                "id": txn.id,
+                "created": txn.created,
+                "credit_amount_cents": credit_amount_cents,
+                "currency": txn.currency,
+                "description": txn.description,
+                "metadata": txn.metadata,
+                "ending_balance": -txn.ending_balance if txn.ending_balance else 0,
+            }
+            credit_grants.append(credit_grant)
+
+        return credit_grants
+
+    except InvalidRequestError as err:
+        logger.error(f"Invalid request when retrieving credit grants: {err}")
+        raise ValueError(err)
+    except Exception as err:
+        logger.error(
+            f"Failed to retrieve credit grants for customer: {stripe_customer_id}",
+            extra={
+                "stripe_customer_id": stripe_customer_id,
+                "error": str(err),
+            },
+        )
+        raise err

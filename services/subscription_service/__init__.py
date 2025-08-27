@@ -14,6 +14,7 @@ from ._subscription import (
     create_project_subscription,
     create_stripe_checkout_url,
     get_account_credit_balance,
+    get_account_credit_grants,
     get_account_subscription,
     get_account_subscriptions,
     get_current_subscription,
@@ -51,5 +52,6 @@ __all__ = [
     "get_stripe_customer_id_for_project",
     "grant_credit_to_account",
     "get_account_credit_balance",
+    "get_account_credit_grants",
     "should_allow_calls",
 ]
