@@ -891,6 +891,9 @@ def create_stripe_checkout_url(
         },
     )
 
+    account = account_service.get_account_by_id(session, account_id)
+    existing_stripe_customer_id = account.stripe_customer_id if account else None
+
     # Create checkout session with project-specific prices
     checkout_session = _stripe_subscription.create_checkout_session(
         account_id=account_id,
@@ -899,6 +902,7 @@ def create_stripe_checkout_url(
         line_items=line_items,
         redirect_url_prefix=redirect_url_prefix,
         start_date=subscription.start_date,
+        existing_customer_id=existing_stripe_customer_id,
     )
 
     if not checkout_session or not checkout_session.url:

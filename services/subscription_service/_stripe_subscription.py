@@ -24,6 +24,7 @@ def create_checkout_session(
     line_items: list[dict],
     redirect_url_prefix: str,
     start_date: datetime | None = None,
+    existing_customer_id: str | None = None,
 ) -> Session:
     """
     Creates a new checkout session that allows user to subscribe to our product and
@@ -36,6 +37,7 @@ def create_checkout_session(
         redirect_url_prefix: URL prefix for success/cancel redirects
         start_date: Optional datetime when billing starts and trial ends.
                    If None, subscription begins immediately with no trial.
+        existing_customer_id: Optional existing Stripe customer ID to reuse
 
     Returns:
         Stripe checkout session object
@@ -88,7 +90,10 @@ def create_checkout_session(
             "success_url": f"{redirect_url_prefix}?action=payment_success&session_id={{CHECKOUT_SESSION_ID}}",
             "cancel_url": f"{redirect_url_prefix}?action=payment_cancelled",
         }
-        if customer_email:
+
+        if existing_customer_id:
+            session_params["customer"] = existing_customer_id
+        elif customer_email:
             session_params["customer_email"] = customer_email
 
         return stripe.checkout.Session.create(**session_params)
