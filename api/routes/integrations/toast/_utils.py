@@ -368,13 +368,13 @@ def _update_stock_in_project_product_info(
             if new_content != current_content:
                 locked.product_info = new_content
                 session.add(locked)
-                logger.info(
+                logger.debug(
                     f"[ToastWebhook._update_stock_in_project_product_info] Updated stock status in project '{project.name}' product_info for item {item_name}"
                 )
 
         # Commit all changes
         session.commit()
-        logger.info(
+        logger.debug(
             f"[ToastWebhook._update_stock_in_project_product_info] Successfully updated stock information for {item_name} in {len(projects)} projects"
         )
 
@@ -472,7 +472,7 @@ def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> Non
                     f"[ToastWebhook._process_stock_item_status_sync] Error retrieving item name from Pinecone, using fallback: {e}"
                 )
 
-            logger.info(
+            logger.debug(
                 f"[ToastWebhook._process_stock_item_status_sync] Updating stock status for item '{item_name}' to {status.value} in {len(projects)} projects"
             )
 
@@ -482,7 +482,7 @@ def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> Non
             )
 
             # Log completion
-            logger.info(
+            logger.debug(
                 f"[ToastWebhook._process_stock_item_status_sync] Successfully processed stock update for restaurant {restaurant_guid}, "
                 f"item '{item_name}' ({item_guid}), status: {status.value} across {len(projects)} projects"
             )
@@ -547,19 +547,19 @@ def _process_partner_added_event(partner_details: ToastWebhookPartnerDetails) ->
     restaurant_name = partner_details.restaurantName
     location_name = partner_details.locationName or "N/A"
 
-    logger.info(
+    logger.debug(
         f"[ToastWebhook._process_partner_added_event] Integration added to restaurant: "
         f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
     )
 
     # Log important details
     if partner_details.managementGroupGuid:
-        logger.info(
+        logger.debug(
             f"[ToastWebhook._process_partner_added_event] Restaurant belongs to management group: {partner_details.managementGroupGuid}"
         )
 
     if partner_details.externalGroupRef or partner_details.externalRestaurantRef:
-        logger.info(
+        logger.debug(
             f"[ToastWebhook._process_partner_added_event] External references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
         )
 
@@ -581,7 +581,7 @@ def _process_partner_removed_event(partner_details: ToastWebhookPartnerDetails) 
     restaurant_name = partner_details.restaurantName
     location_name = partner_details.locationName or "N/A"
 
-    logger.info(
+    logger.debug(
         f"[ToastWebhook._process_partner_removed_event] Integration removed from restaurant: "
         f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
     )
@@ -604,13 +604,13 @@ def _process_partner_updated_event(partner_details: ToastWebhookPartnerDetails) 
     restaurant_name = partner_details.restaurantName
     location_name = partner_details.locationName or "N/A"
 
-    logger.info(
+    logger.debug(
         f"[ToastWebhook._process_partner_updated_event] Integration settings updated for restaurant: "
         f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
     )
 
     # Log what might have changed
-    logger.info(
+    logger.debug(
         f"[ToastWebhook._process_partner_updated_event] Current external references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
     )
 
@@ -645,7 +645,7 @@ async def process_partner_event(webhook_request: ToastWebhookRequest) -> None:
         )
         return
 
-    logger.info(
+    logger.debug(
         f"[ToastWebhook.process_partner_event] Processing partner event: {event_type} "
         f"for restaurant {partner_details.restaurantName} (GUID: {partner_details.restaurantGuid})"
     )
@@ -660,7 +660,7 @@ async def process_partner_event(webhook_request: ToastWebhookRequest) -> None:
             case ToastPartnerEventType.PARTNER_UPDATED:
                 _process_partner_updated_event(partner_details)
 
-        logger.info(
+        logger.debug(
             f"[ToastWebhook.process_partner_event] Successfully processed partner event: {event_type} "
             f"for restaurant GUID: {partner_details.restaurantGuid}"
         )
