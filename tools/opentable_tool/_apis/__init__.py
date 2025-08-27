@@ -86,7 +86,7 @@ def search_availability(
         data = {}
 
     # Extract relevant data from the response
-    dates_available = data.get("availability", {})
+    dates_available = data.get("data", {}).get("availability", {})
     logger.info(f"Dates available: {dates_available}")
     times_available = []
     no_availability_reasons = []
