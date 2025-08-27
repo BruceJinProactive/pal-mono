@@ -13,7 +13,11 @@ from api.schemas.admin.analytics import Event as AnalyticsEvent
 from api.schemas.admin.analytics import GetAllReportsResponse, PerformanceReport
 from utils.log import logger
 
-from ._utils import handle_analytics_date_range, process_analytics_results_to_dict
+from ._utils import (
+    handle_analytics_date_range,
+    normalize_datetime_to_utc,
+    process_analytics_results_to_dict,
+)
 
 # BRUCETODO: DELETE - Mixpanel related variables
 MIXPANEL_BASE_URL = "https://mixpanel.com/api"
@@ -127,22 +131,165 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
     asyncio.create_task(asyncio.to_thread(_track))
 
 
-def get_conversion_data(session: Session) -> list[dict]:
+def get_all_accounts_conversion_stats(
+    session: Session,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[dict]:
     """
-    Get account ranking by checkout conversion rate (sync version).
+    Get conversion statistics for all accounts with elegant data combination.
+    Always includes a TOTAL row with aggregated data.
 
     Args:
         session: Database session (must be Session)
+        start_date: Optional start date for filtering (converted to UTC)
+        end_date: Optional end date for filtering (converted to UTC)
 
     Returns:
-        list[dict]: List of dictionaries containing conversion statistics for each account
+        list[dict]: List of conversion statistics for all accounts (includes TOTAL row)
     """
     try:
         if isinstance(session, AsyncSession):
-            raise ValueError("get_conversion_data requires a synchronous Session")
+            raise ValueError(
+                "get_all_accounts_conversion_stats requires a synchronous Session"
+            )
 
-        conversation_repo = db.ConversationRepository(session)
-        return conversation_repo.get_conversion_data()
+        # Normalize datetime inputs to UTC
+        start_date = normalize_datetime_to_utc(start_date)
+        end_date = normalize_datetime_to_utc(end_date)
+
+        # Get data from both repositories
+        conv_repo = db.ConversationRepository(session)
+        order_repo = db.OrderRepository(session)
+
+        conversation_data = conv_repo.get_conversation_counts_by_account(
+            start_date=start_date, end_date=end_date
+        )
+
+        order_data = order_repo.get_order_conversation_counts_by_account(
+            start_date=start_date, end_date=end_date
+        )
+
+        # Combine data elegantly
+        return _combine_conversion_data(conversation_data, order_data)
+
     except Exception as e:
-        logger.error(f"Analytics: Error getting conversion data: {e}")
+        logger.error(f"Analytics: Error getting all accounts conversion stats: {e}")
         return []
+
+
+def get_account_conversion_stats(
+    session: Session,
+    account_id: uuid.UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict | None:
+    """
+    Get conversion statistics for a single account.
+
+    Args:
+        session: Database session (must be Session)
+        account_id: The specific account ID to get stats for
+        start_date: Optional start date for filtering (converted to UTC)
+        end_date: Optional end date for filtering (converted to UTC)
+
+    Returns:
+        dict | None: Conversion statistics for the account, or None if not found
+    """
+    try:
+        if isinstance(session, AsyncSession):
+            raise ValueError(
+                "get_account_conversion_stats requires a synchronous Session"
+            )
+
+        # Normalize datetime inputs to UTC
+        start_date = normalize_datetime_to_utc(start_date)
+        end_date = normalize_datetime_to_utc(end_date)
+
+        # Get data from both repositories for specific account
+        conv_repo = db.ConversationRepository(session)
+        order_repo = db.OrderRepository(session)
+
+        conversation_data = conv_repo.get_conversation_counts_by_account(
+            account_id=account_id, start_date=start_date, end_date=end_date
+        )
+
+        order_data = order_repo.get_order_conversation_counts_by_account(
+            account_id=account_id, start_date=start_date, end_date=end_date
+        )
+
+        # Combine data for single account
+        combined_data = _combine_conversion_data(conversation_data, order_data)
+
+        return combined_data[0] if combined_data else None
+
+    except Exception as e:
+        logger.error(f"Analytics: Error getting account conversion stats: {e}")
+        return None
+
+
+def _combine_conversion_data(
+    conversation_data: list[tuple], order_data: list[tuple]
+) -> list[dict]:
+    """
+    Elegantly combine conversation and order data into formatted results.
+
+    Args:
+        conversation_data: List of tuples (account_id, account_name, total_conversations)
+        order_data: List of tuples (account_id, account_name, conversations_with_orders, conversations_with_paid_orders)
+
+    Returns:
+        list[dict]: Combined and formatted conversion statistics
+    """
+    # Create lookup map for order data
+    order_map = {
+        row[0]: {  # account_id as key
+            "conversations_with_orders": row[2],
+            "conversations_with_paid_orders": row[3],
+        }
+        for row in order_data
+    }
+
+    combined_results = []
+
+    for conv_row in conversation_data:
+        account_id, account_name, total_conversations = conv_row
+
+        # Get corresponding order data (default to 0 if no orders)
+        order_info = order_map.get(
+            account_id,
+            {"conversations_with_orders": 0, "conversations_with_paid_orders": 0},
+        )
+
+        # Calculate conversion rates
+        checkout_conversion_rate = (
+            (order_info["conversations_with_orders"] / total_conversations * 100)
+            if total_conversations > 0
+            else 0.0
+        )
+
+        paid_rate = (
+            (
+                order_info["conversations_with_paid_orders"]
+                / order_info["conversations_with_orders"]
+                * 100
+            )
+            if order_info["conversations_with_orders"] > 0
+            else 0.0
+        )
+
+        combined_results.append(
+            {
+                "account_id": str(account_id) if account_id else None,
+                "account_name": account_name,
+                "total_conversations": total_conversations,
+                "conversations_with_orders": order_info["conversations_with_orders"],
+                "conversations_with_paid_orders": order_info[
+                    "conversations_with_paid_orders"
+                ],
+                "checkout_conversion_rate": round(checkout_conversion_rate, 2),
+                "paid_rate": round(paid_rate, 2),
+            }
+        )
+
+    return combined_results

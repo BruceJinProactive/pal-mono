@@ -150,6 +150,32 @@ def handle_analytics_date_range(
     return start_date, end_date
 
 
+def normalize_datetime_to_utc(dt: datetime | None) -> datetime | None:
+    """
+    Convert datetime to UTC timezone.
+
+    Args:
+        dt: Datetime to convert. Can be naive (no timezone) or timezone-aware.
+
+    Returns:
+        datetime | None: UTC datetime or None if input was None
+
+    Behavior:
+        - If dt is None: returns None
+        - If dt is naive (no timezone): assumes UTC and adds UTC timezone
+        - If dt has timezone: converts to UTC
+    """
+    if dt is None:
+        return None
+
+    if dt.tzinfo is None:
+        # Naive datetime - assume UTC
+        return dt.replace(tzinfo=UTC)
+    else:
+        # Has timezone - convert to UTC
+        return dt.astimezone(UTC)
+
+
 def build_slack_report_blocks(report: list[dict]) -> list[dict]:
     """Convert report JSON into Slack Block Kit blocks."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")

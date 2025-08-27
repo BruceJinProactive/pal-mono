@@ -79,14 +79,46 @@ async def handle_slack_events(request):
     return await _slack.handle_slack_events(request)
 
 
-def get_conversion_data(session: Session) -> list[dict]:
+def get_all_accounts_conversion_stats(
+    session: Session,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[dict]:
     """
-    Get account ranking by checkout conversion rate.
+    Get conversion statistics for all accounts with date filtering.
+    Always includes a TOTAL row with aggregated data.
 
     Args:
         session: Database session (must be Session)
+        start_date: Optional start date for filtering (converted to UTC)
+        end_date: Optional end date for filtering (converted to UTC)
 
     Returns:
-        list[dict]: List of dictionaries containing conversion statistics for each account
+        list[dict]: List of conversion statistics for all accounts (includes TOTAL row)
     """
-    return _implementation.get_conversion_data(session)
+    return _implementation.get_all_accounts_conversion_stats(
+        session, start_date, end_date
+    )
+
+
+def get_account_conversion_stats(
+    session: Session,
+    account_id: uuid.UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict | None:
+    """
+    Get conversion statistics for a single account.
+
+    Args:
+        session: Database session (must be Session)
+        account_id: The specific account ID to get stats for
+        start_date: Optional start date for filtering (converted to UTC)
+        end_date: Optional end date for filtering (converted to UTC)
+
+    Returns:
+        dict | None: Conversion statistics for the account, or None if not found
+    """
+    return _implementation.get_account_conversion_stats(
+        session, account_id, start_date, end_date
+    )

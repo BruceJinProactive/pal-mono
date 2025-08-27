@@ -3,11 +3,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from db.tables import Conversation, Message, Project, User
+from db.tables import Account, Conversation, Message, Project, User
 from db.tables.orders import Order
 from db.tables.types import IntegrationProvider
 from utils.log import logger
@@ -190,3 +190,75 @@ class OrderRepository:
             self.session.rollback()
             logger.error(f"Error calculating order values: {e}")
             return []
+
+    def get_order_conversation_counts_by_account(
+        self,
+        account_id: uuid.UUID | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[tuple[uuid.UUID | None, str, int, int]]:
+        """
+        Get conversation counts based on orders (placed and paid), grouped by account.
+        Always includes a TOTAL row with aggregated data.
+
+        Args:
+            account_id: Optional account ID. If provided, gets data for single account.
+                       If None, gets data for all accounts.
+            start_date: Optional start date for filtering orders. If None, no start limit.
+            end_date: Optional end date for filtering orders. If None, no end limit.
+
+        Returns:
+            list[tuple[uuid.UUID | None, str, int, int]]: List of tuples (account_id, account_name, conversations_with_orders, conversations_with_paid_orders)
+                        Last row will always be (None, 'TOTAL', total_orders, total_paid)
+        """
+        try:
+            query = (
+                self.session.query(
+                    Account.id,
+                    Account.name,
+                    func.count(func.distinct(Conversation.id)).label("placed_order"),
+                    func.count(
+                        func.distinct(
+                            case((Order.status == "paid", Conversation.id), else_=None)
+                        )
+                    ).label("paid_order"),
+                )
+                .join(User, Account.id == User.account_id)
+                .join(Conversation, User.id == Conversation.user_id)
+                .join(
+                    Order, Conversation.id == Order.conversation_id
+                )  # INNER JOIN - only conversations with orders
+            )
+
+            # Add date filtering if provided (filter by order creation time)
+            if start_date:
+                query = query.filter(Order.order_time >= start_date)
+            if end_date:
+                query = query.filter(Order.order_time <= end_date)
+
+            if account_id:
+                # Single account query
+                query = query.filter(Account.id == account_id)
+                query = query.group_by(Account.id, Account.name)
+                results = query.all()
+                # Convert Row objects to tuples
+                return [(row[0], row[1], row[2], row[3]) for row in results]
+            else:
+                query = query.group_by(Account.id, Account.name)
+                results = query.all()
+
+                # Convert Row objects to tuples
+                tuple_results = [(row[0], row[1], row[2], row[3]) for row in results]
+
+                # Always add total row
+                if tuple_results:
+                    total_orders = sum(row[2] for row in tuple_results)
+                    total_paid = sum(row[3] for row in tuple_results)
+                    tuple_results.append((None, "TOTAL", total_orders, total_paid))
+
+                return tuple_results
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error getting order conversation counts by account: {e}")
+            raise

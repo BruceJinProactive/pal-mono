@@ -62,7 +62,9 @@ async def send_daily_report_to_slack(
 
             def _get_conversion_data_sync():
                 with SyncSessionLocal() as sync_session:
-                    return analytics_service.get_conversion_data(sync_session)
+                    return analytics_service.get_all_accounts_conversion_stats(
+                        sync_session
+                    )
 
             conversion_data = await asyncio.to_thread(_get_conversion_data_sync)
             logger.info(
