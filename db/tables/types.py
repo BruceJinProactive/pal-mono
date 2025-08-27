@@ -39,6 +39,58 @@ class Language(str, enum.Enum):
     multilingual = "multilingual"
 
 
+class CallLanguage(str, enum.Enum):
+    english = "english"
+    french = "french"
+    spanish = "spanish"
+    chinese = "chinese"
+
+
+class CallEndedReason(str, enum.Enum):
+    customer_ended = "customer_ended"
+    assistant_forwarded = "assistant_forwarded"
+    misdialed = "misdialed"
+    silence_timeout = "silence_timeout"
+    max_duration_exceeded = "max_duration_exceeded"
+    other = "other"
+
+
+class CallPurpose(str, enum.Enum):
+    """User call purposes (for routing & escalation rules)."""
+
+    # Basic info
+    store_info = "store_info"  # hours location/directions, parking, policies
+    menu_info = "menu_info"  # menu questions (items, ingredients, pricing)
+
+    # Orders & reservations
+    ordering = "ordering"  # user placed order
+    reservation = "reservation"  # making new reservations
+    waitlist = "waitlist"  # waitlist inquiries
+    takeout_issue = "takeout_issue"  # missing pickup items, wrong location
+    third_party_order = "third_party_order"  # DoorDash/other app order updates
+
+    # Complaints & service
+    customer_service = "customer_service"  # non-urgent management / general service
+    complaint_service = "complaint_service"  # dine-in or service complaints
+    complaint_food_safety = (
+        "complaint_food_safety"  # food safety / food poisoning issues
+    )
+
+    # Special cases
+    dietary_specific = (
+        "dietary_specific"  # allergy/dietary restriction beyond website info
+    )
+    lost_and_found = "lost_and_found"  # lost items at the restaurant
+    reservation_change = "reservation_change"  # unsupported resv. changes
+    other = "other"  # any other call purpose
+
+
+class UserSatisfaction(str, enum.Enum):
+    positive = "positive"  # customer satisfied, polite close, needs resolved
+    neutral = "neutral"  # mixed signals, partially resolved, or indifferent
+    negative = "negative"  # dissatisfied, frustrated, or issue not resolved
+
+
 class IntegrationProvider(str, enum.Enum):
     yelp = "yelp"
     toast = "toast"

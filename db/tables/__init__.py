@@ -10,9 +10,25 @@ from .integration import Integration, ProjectIntegration
 from .lead import Lead
 from .messages import Message
 from .orders import Order
+from .phonecalls import PhoneCall
 from .pos_integration import POSIntegration
 from .projects import Project
 from .prompts import Prompt, PromptDetails
 from .reservations import Reservation
 from .subscriptions import AccountSubscription, ProjectSubscription, SubscriptionPlan
+from .types import (
+    AgentType,
+    AuthType,
+    CallEndedReason,
+    CallLanguage,
+    CallPurpose,
+    Channel,
+    IntegrationProvider,
+    IntegrationType,
+    Language,
+    PaymentMethod,
+    SubscriptionStatus,
+    TargetTier,
+    UserSatisfaction,
+)
 from .users import User
