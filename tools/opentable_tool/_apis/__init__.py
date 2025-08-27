@@ -38,9 +38,7 @@ def search_availability(
         "date": datetime.fromisoformat(search_params.start_date_time).strftime(
             "%Y-%m-%d"
         ),
-        "time": datetime.fromisoformat(search_params.start_date_time).strftime(
-            "%H:%M:%S"
-        ),
+        "time": datetime.fromisoformat(search_params.start_date_time).strftime("%H:%M"),
         "partySize": search_params.party_size,
         "databaseRegion": "NA",
         "rid": restaurant_id,
