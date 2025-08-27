@@ -1,7 +1,7 @@
 import hashlib
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from tools.opentable_tool._apis._utils import connect_opentable_api
 from tools.opentable_tool.classes import (
@@ -85,31 +85,63 @@ def search_availability(
     if not isinstance(data, dict):
         data = {}
 
-    # Extract relevant data from the response
-    dates_available = data.get("data", {}).get("availability", {})
-    logger.info(f"Dates available: {dates_available}")
+    # Extract relevant data from the new response structure
+    availability_data = data.get("data", {}).get("availability", [])
+    logger.info(f"Availability data: {availability_data}")
     times_available = []
     no_availability_reasons = []
 
-    logger.info(f"Dates available: {dates_available}")
-    # For each times_available entry, ensure diningArea attributes are properly handled
-    for date in dates_available:
-        noTimes = dates_available[date].get("allNoTimesReasons")
-        logger.info(f"No times: {noTimes}")
-        if noTimes != [] and noTimes is not None:
-            no_availability_reasons.extend(noTimes)
-        time_slots = dates_available[date].get("timeSlots")
-        logger.info(f"Time slots: {time_slots}")
-        if time_slots is not None:
-            for time_slot in time_slots:
-                times_available.append(time_slot.get("dateTime"))
-                logger.info(f"Time slot: {time_slot}")
+    # Process each availability entry (there should be one per restaurant)
+    for availability_entry in availability_data:
+        if not isinstance(availability_entry, dict):
+            continue
+
+        # Extract restaurant ID
+        restaurant_id_from_response = availability_entry.get(
+            "restaurantId", restaurant_id
+        )
+
+        # Process availability days
+        availability_days = availability_entry.get("availabilityDays", [])
+        logger.info(f"Availability days: {availability_days}")
+
+        for day in availability_days:
+            if not isinstance(day, dict):
+                continue
+
+            # Check for no times reasons
+            no_times_reasons = day.get("noTimesReasons", [])
+            if no_times_reasons:
+                no_availability_reasons.extend(no_times_reasons)
+                logger.info(f"No times reasons: {no_times_reasons}")
+
+            # Process time slots
+            slots = day.get("slots", [])
+            logger.info(f"Slots: {slots}")
+
+            for slot in slots:
+                if isinstance(slot, dict) and slot.get("isAvailable", False):
+                    # Calculate actual time from timeOffsetMinutes
+                    time_offset = slot.get("timeOffsetMinutes", 0)
+
+                    # Calculate the actual time by adding offset to the requested time
+                    base_time = datetime.fromisoformat(search_params.start_date_time)
+                    actual_time = base_time + timedelta(minutes=time_offset)
+
+                    # Format the time as a string
+                    time_string = actual_time.strftime("%Y-%m-%dT%H:%M:%S")
+                    times_available.append(time_string)
+                    logger.info(
+                        f"Available slot at {time_string} (offset: {time_offset} minutes)"
+                    )
+
     logger.info(f"Times available: {times_available}")
     logger.info(f"No availability reasons: {no_availability_reasons}")
+
     # Construct and return the AvailabilitySearchResponse
     return AvailabilitySearchResponse(
-        rid=data.get("rid", restaurant_id),
-        party_size=data.get("party_size", search_params.party_size),
+        rid=restaurant_id,  # Use the restaurant_id from the request
+        party_size=search_params.party_size,
         times_available=times_available,
         no_availability_reasons=no_availability_reasons,
     )
