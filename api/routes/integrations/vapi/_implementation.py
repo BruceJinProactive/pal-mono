@@ -20,7 +20,13 @@ from api.schemas.chat.message import (
 )
 from db.tables.agents import SpeechRate
 from db.tables.types import Channel
-from services import agent_service, message_service, project_service, user_service
+from services import (
+    agent_service,
+    message_service,
+    project_service,
+    subscription_service,
+    user_service,
+)
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
@@ -301,6 +307,43 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         # Fallback to account name if display name is not set
         if not account_display_name:
             account_display_name = project.account.name
+
+        # ================= Step 1.5: Check subscription enforcement =================
+        # Check if calls should be allowed based on subscription status
+        if not await subscription_service.should_allow_calls_async(
+            session, project.account
+        ):
+            logger.info(
+                "VAPI call blocked due to subscription enforcement",
+                extra={
+                    "account_id": str(project.account.id),
+                    "account_name": project.account.name,
+                    "account_status": project.account.status.value,
+                    "has_current_subscription": project.account.current_subscription_id
+                    is not None,
+                    "has_stripe_customer": project.account.stripe_customer_id
+                    is not None,
+                    "call_id": call_id,
+                    "customer_number": customer_number,
+                },
+            )
+
+            return {
+                "assistant": {
+                    "firstMessage": "I'm sorry, but voice calls are only available for subscribed users with a valid payment method. Please visit our admin console to subscribe and add a credit card to use this feature. Thank you for your understanding.",
+                    "model": {
+                        "provider": "openai",
+                        "model": "gpt-4o-mini",
+                    },
+                    "voice": {"provider": "11labs", "voiceId": "sarah"},
+                    "endCallMessage": "Goodbye!",
+                    "endCallPhrases": [
+                        "subscription required",
+                        "goodbye",
+                        "thank you",
+                    ],
+                }
+            }
 
         # ================= Step 2: Construct agent and generate output =================
         agent_id = project.agent_id

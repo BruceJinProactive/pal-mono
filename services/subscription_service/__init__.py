@@ -18,6 +18,7 @@ from ._subscription import (
     get_account_subscription,
     get_account_subscriptions,
     get_current_subscription,
+    get_current_subscription_async,
     get_project_subscriptions_by_subscription_external_id,
     get_stripe_customer_id_for_project,
     get_subscription_plan_by_id,
@@ -25,6 +26,7 @@ from ._subscription import (
     handle_stripe_checkout_success,
     remove_project_subscription,
     should_allow_calls,
+    should_allow_calls_async,
     update_account_subscription,
     update_account_subscription_status,
 )
@@ -41,6 +43,7 @@ __all__ = [
     "get_subscription_plans",
     "cancel_account_subscription",
     "get_current_subscription",
+    "get_current_subscription_async",
     "get_subscription_plan_by_id",
     "update_subscription_plan",
     "delete_subscription_plan",
@@ -54,4 +57,5 @@ __all__ = [
     "get_account_credit_balance",
     "get_account_credit_grants",
     "should_allow_calls",
+    "should_allow_calls_async",
 ]

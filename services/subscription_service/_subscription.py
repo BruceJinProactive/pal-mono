@@ -1199,3 +1199,15 @@ def should_allow_calls(session: Session, account: db.Account) -> bool:
         return False
 
     return current_subscription.status == SubscriptionStatus.active
+
+
+async def should_allow_calls_async(session: AsyncSession, account: db.Account) -> bool:
+    if account.current_subscription_id is None:
+        return True
+
+    current_subscription = await get_current_subscription_async(session, account)
+
+    if not current_subscription:
+        return False
+
+    return current_subscription.status == SubscriptionStatus.active
