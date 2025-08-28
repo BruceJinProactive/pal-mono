@@ -2,8 +2,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import List, Optional
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
 
 from db.tables.subscriptions import (
@@ -533,3 +534,32 @@ class ProjectSubscriptionRepository:
             self.session.rollback()
             logger.error(f"Error updating project subscription: {e}")
             raise
+
+
+class AsyncAccountSubscriptionRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_account_subscription(
+        self, account_id: uuid.UUID, external_id: uuid.UUID
+    ) -> Optional[AccountSubscription]:
+        """Get the latest version of an account subscription by external_id."""
+        try:
+            query = (
+                select(AccountSubscription)
+                .filter(AccountSubscription.account_id == account_id)
+                .filter(AccountSubscription.external_id == external_id)
+                .order_by(AccountSubscription.version.desc())
+                .limit(1)
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            logger.error(
+                f"Error retrieving account subscription by external_id: {e}",
+                extra={
+                    "account_id": account_id,
+                    "external_id": external_id,
+                },
+            )
+            return None

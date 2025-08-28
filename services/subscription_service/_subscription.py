@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 from typing import Any, List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
@@ -11,6 +12,7 @@ from api.routes.admin import UserContext
 from db.db_utils import duplicate_row
 from db.repositories.subscription_repository import (
     AccountSubscriptionRepository,
+    AsyncAccountSubscriptionRepository,
     ProjectSubscriptionRepository,
     SubscriptionPlanRepository,
 )
@@ -429,6 +431,28 @@ def get_current_subscription(
     subscription = get_account_subscription(
         session, account.id, account.current_subscription_id
     )
+    if not subscription:
+        logger.error(
+            "Referenced subscription does not exist, account data is polluted!",
+            extra={
+                "account_id": account.id,
+                "subscription_external_id": account.current_subscription_id,
+            },
+        )
+    return subscription
+
+
+async def get_current_subscription_async(
+    session: AsyncSession, account: db.Account
+) -> Optional[db.AccountSubscription]:
+    if account.current_subscription_id is None:
+        return None
+
+    repository = AsyncAccountSubscriptionRepository(session)
+    subscription = await repository.get_account_subscription(
+        account.id, account.current_subscription_id
+    )
+
     if not subscription:
         logger.error(
             "Referenced subscription does not exist, account data is polluted!",
