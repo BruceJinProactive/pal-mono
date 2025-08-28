@@ -96,6 +96,16 @@ class BaseAssistantFactory:
             self.agent_config.voice_config.background_noise
         )
 
+    def _add_analysis_plan(self, assistant_config: dict[str, Any]) -> None:
+        """Add analysis plan configuration if available."""
+        if (
+            hasattr(self.agent_config.voice_config, "analysis_plan")
+            and self.agent_config.voice_config.analysis_plan
+        ):
+            assistant_config["analysisPlan"] = (
+                self.agent_config.voice_config.analysis_plan
+            )
+
 
 class TriageAssistantFactory(BaseAssistantFactory):
     """Factory for creating triage assistants."""
@@ -142,6 +152,9 @@ class TriageAssistantFactory(BaseAssistantFactory):
 
         # Use base factory method for background denoising
         self._add_background_denoising(assistant_dict)
+
+        # Add analysis plan configuration
+        self._add_analysis_plan(assistant_dict)
 
         # Apply any extra configuration from the triage config
         self._apply_extra_config(
@@ -228,6 +241,9 @@ class LanguageAssistantFactory(BaseAssistantFactory):
 
         # Use base factory method for background denoising
         self._add_background_denoising(assistant_dict)
+
+        # Add analysis plan configuration
+        self._add_analysis_plan(assistant_dict)
 
         # Apply any extra configuration from the language config
         self._apply_extra_config(

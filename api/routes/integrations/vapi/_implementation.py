@@ -410,6 +410,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 )
             )
 
+        if dynamic_vapi_config and config.voice_config.analysis_plan:
+            assistant_config["analysisPlan"] = config.voice_config.analysis_plan
+
         return {"assistant": assistant_config}
     except Exception as e:
         logger.error(f"Error in handle_assistant_request: {str(e)}")
