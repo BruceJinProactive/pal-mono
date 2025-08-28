@@ -247,6 +247,9 @@ class RawConfig:
         # Extract the knowledge section of the raw config
         raw_knowledge = self.agent.raw_config.get("knowledge")
 
+        if not raw_knowledge:
+            raw_knowledge = self.project.raw_config.get("knowledge")
+
         if raw_knowledge:
             provider = self._get_knowledge_provider(raw_knowledge)
 
