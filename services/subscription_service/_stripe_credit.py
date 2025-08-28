@@ -99,6 +99,7 @@ def get_credit_grants_history(
         credit_grants = []
         for txn in balance_transactions.data:
             credit_amount_cents = -txn.amount if txn.amount < 0 else 0
+            credit_reduction_cents = txn.amount if txn.amount > 0 else 0
 
             created_datetime = datetime.fromtimestamp(txn.created, tz=UTC)
 
@@ -111,6 +112,7 @@ def get_credit_grants_history(
                 "id": txn.id,
                 "created": created_datetime,
                 "credit_amount_cents": credit_amount_cents,
+                "credit_reduction_cents": credit_reduction_cents,
                 "currency": txn.currency,
                 "description": txn.description,
                 "metadata": metadata,

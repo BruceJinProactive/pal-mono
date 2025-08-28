@@ -683,6 +683,7 @@ def list_account_credit_grants(
                 id=grant["id"],
                 created=grant["created"],
                 credit_amount_cents=grant["credit_amount_cents"],
+                credit_reduction_cents=grant["credit_reduction_cents"],
                 currency=grant["currency"],
                 description=grant["description"],
                 metadata=grant["metadata"],

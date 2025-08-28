@@ -312,6 +312,7 @@ class CreditGrant(BaseModel):
     id: str
     created: datetime
     credit_amount_cents: int
+    credit_reduction_cents: int
     currency: str
     description: str | None
     metadata: dict[str, str]
