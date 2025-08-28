@@ -687,6 +687,9 @@ def list_account_credit_grants(
                 description=grant["description"],
                 metadata=grant["metadata"],
                 ending_balance=grant["ending_balance"],
+                issued_by=grant["issued_by"],
+                issued_via=grant["issued_via"],
+                request_source=grant["request_source"],
             )
             for grant in credit_grants_data
         ]

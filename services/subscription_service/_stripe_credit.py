@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import stripe
 from stripe import InvalidRequestError
 
@@ -97,14 +99,25 @@ def get_credit_grants_history(
         credit_grants = []
         for txn in balance_transactions.data:
             credit_amount_cents = -txn.amount if txn.amount < 0 else 0
+
+            created_datetime = datetime.fromtimestamp(txn.created, tz=UTC)
+
+            metadata = txn.metadata or {}
+            issued_by = metadata.get("issued_by") or "system"
+            issued_via = metadata.get("issued_via") or "stripe"
+            request_source = metadata.get("request_source") or "unknown"
+
             credit_grant = {
                 "id": txn.id,
-                "created": txn.created,
+                "created": created_datetime,
                 "credit_amount_cents": credit_amount_cents,
                 "currency": txn.currency,
                 "description": txn.description,
-                "metadata": txn.metadata,
+                "metadata": metadata,
                 "ending_balance": -txn.ending_balance if txn.ending_balance else 0,
+                "issued_by": issued_by,
+                "issued_via": issued_via,
+                "request_source": request_source,
             }
             credit_grants.append(credit_grant)
 

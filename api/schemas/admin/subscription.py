@@ -316,6 +316,9 @@ class CreditGrant(BaseModel):
     description: str | None
     metadata: dict[str, str]
     ending_balance: int
+    issued_by: str | None
+    issued_via: str | None
+    request_source: str | None
 
 
 class ListAccountCreditGrantsResponse(BaseModel):
