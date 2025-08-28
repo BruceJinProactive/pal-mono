@@ -30,11 +30,13 @@ from tools.toast_tool._prompt_constants import (
 )
 from tools.toast_tool._utils import (
     add_lat_long_to_address,
+    is_within_service_periods,
     parse_service_periods,
     validate_item_modifier_quantity,
 )
 from tools.toast_tool.classes import (
     DeliveryAddress,
+    DiningBehavior,
     Modifier,
     OrderInput,
     Price,
@@ -91,6 +93,7 @@ class ToastTool(Toolkit):
         # TODO: Figure out how to check if the store is open for online ordering
         # self.register(self.check_online_ordering_status)
         self.register(self.get_ordering_schedule_tool)
+        self.register(self.is_online_order_available)
         # TODO: Figure out how to check if an item is out of stock or has low quantity
         # self.register(self.get_menu_inventory_tool)
 
@@ -268,6 +271,64 @@ class ToastTool(Toolkit):
             )
             return "Failed to check the online ordering status, please try again."
 
+    @tool
+    def is_online_order_available(self) -> str:
+        """
+        Check if the store is currently open for online ordering based on the service periods.
+        """
+        logger.debug(
+            "[ToastTool.is_online_order_available] Checking if store is open for ordering ..."
+        )
+        is_open = self._is_online_order_available()
+
+        if not is_open:
+            return "Store is closed for ordering. You must let the user know."
+
+        return "Store is open for ordering."
+
+    def _is_online_order_available(
+        self, dining_behavior: Optional[DiningBehavior] = DiningBehavior.TAKE_OUT
+    ) -> bool:
+        """
+        Check if the store is currently open for online ordering based on the service periods.
+
+        Args:
+            dining_behavior: Optional dining behavior to check (TAKE_OUT, DELIVERY, etc.)
+                           If None, checks all service periods. Currently only supports TAKE_OUT.
+
+        Returns:
+            bool: True if store is open for ordering, False otherwise
+        """
+        try:
+            if not self._toast_bearer_token:
+                logger.error(
+                    "[ToastTool._is_online_order_available] No bearer token available for ordering schedule check"
+                )
+                return False
+
+            # Get the full ordering schedule response
+            schedule_response = get_ordering_schedule(
+                bearer_token=self._toast_bearer_token,
+                store_id=self.store_id,
+            )
+
+            # Extract timezone and service periods
+            timezone_id = schedule_response.timeZoneId
+            service_periods = schedule_response.servicePeriods
+
+            # Check if current time is within service periods
+            return is_within_service_periods(
+                timezone_id=timezone_id,
+                service_periods=service_periods,
+                dining_behavior=dining_behavior,
+            )
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool._is_online_order_available] Error checking if store is open: {e}"
+            )
+            return False
+
     # TODO: Decide if we want to register this tool
     def get_ordering_schedule_tool(self) -> str:
         """
@@ -295,9 +356,7 @@ class ToastTool(Toolkit):
                 store_id=self.store_id,
             )
 
-            return parse_service_periods(
-                schedule_response.model_dump()["servicePeriods"]
-            )
+            return parse_service_periods(schedule_response.servicePeriods)
 
         except Exception as e:
             logger.error(
@@ -365,6 +424,10 @@ class ToastTool(Toolkit):
             str: Order checkout confirmation details
         """
         try:
+            # First check if the store is open for ordering
+            if not self._is_online_order_available():
+                return "The store is currently closed for online ordering. Please try again later."
+
             order = self._construct_order()
 
             # If the order is a string, it indicates an error message
@@ -380,7 +443,7 @@ class ToastTool(Toolkit):
             return self._submit_order(order)
 
         except Exception as e:
-            logger.error(f"Error in submit order: {e}")
+            logger.error(f"[ToastTool.checkout_order] Error in submit order: {e}")
             logger.error(traceback.format_exc())
             return "Please try again."
 
@@ -450,7 +513,7 @@ class ToastTool(Toolkit):
         try:
             results = asyncio.run(run_all_queries())
         except Exception as e:
-            logger.error(f"Error executing queries: {e}")
+            logger.error(f"[ToastTool._get_relevant_docs] Error executing queries: {e}")
             results = []
 
         context = ""
@@ -589,7 +652,9 @@ class ToastTool(Toolkit):
         # Check if the order type non-empty and takeout. For now, we only support takeout orders
 
         if not order.diningOption or not order.diningOption.guid:
-            logger.error("Order diningOption is missing or its guid is empty.")
+            logger.warning(
+                "[ToastTool._post_process_order] Order diningOption is missing or its guid is empty."
+            )
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
 
         if not self._toast_bearer_token:
@@ -602,7 +667,9 @@ class ToastTool(Toolkit):
         try:
             _ = validate_item_modifier_quantity(order.checks[0].selections)
         except Exception as e:
-            logger.error(f"Could not validate order type: {e}")
+            logger.error(
+                f"[ToastTool._post_process_order] Could not validate order type: {e}"
+            )
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
 
         # TODO: Validate the address if the order is for delivery
@@ -620,19 +687,25 @@ class ToastTool(Toolkit):
         # TODO: Discuss with the team if we want to adopt Adora agent's approach to handling last names and email addresses.
         ### Validate checks ###
         if not order.checks:
-            logger.error("Order checks are missing.")
+            logger.error("[ToastTool._post_process_order] Order checks are missing.")
             return "We'll need to check your order to place it."
 
         # Validate each check in the order
         for check in order.checks:
             if not check.customer:
-                logger.error("Customer info is missing.")
+                logger.warning(
+                    "[ToastTool._post_process_order] Customer info is missing."
+                )
                 return "We'll need your first name, last name, email, and phone number to place the order."
             if not check.customer.firstName:
-                logger.error("Customer first name is missing.")
+                logger.warning(
+                    "[ToastTool._post_process_order] Customer first name is missing."
+                )
                 return "We'll need your first name."
             if not check.customer.lastName:
-                logger.error("Customer last name is missing.")
+                logger.warning(
+                    "[ToastTool._post_process_order] Customer last name is missing."
+                )
                 return "We'll need your last name."
 
             ########## NOTE: if we want to append "(via Toast Agent)" to the customer last name ##########
@@ -646,7 +719,9 @@ class ToastTool(Toolkit):
 
             email = check.customer.email
             if not email or not is_valid_email(email):
-                logger.error(f"Invalid email address: {email}")
+                logger.warning(
+                    f"[ToastTool._post_process_order] Invalid email address: {email}"
+                )
                 return "We'll need your email address."
 
             ########## NOTE: the following is how Adora agent handles the email. ##########
@@ -659,8 +734,8 @@ class ToastTool(Toolkit):
             if not check.customer.phone or not is_valid_phone_number(
                 format_phone_number(check.customer.phone)
             ):
-                logger.error(
-                    f"Customer phone number is missing or invalid. Phone: {check.customer.phone}"
+                logger.warning(
+                    f"[ToastTool._post_process_order] Customer phone number is missing or invalid. Phone: {check.customer.phone}"
                 )
                 return "We'll need your phone number."
 
@@ -685,7 +760,7 @@ class ToastTool(Toolkit):
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
             logger.debug(
-                f"Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order summary: {order.checks[0].selections}.\n\nYour order will be ready for pickup at {order.estimatedFulfillmentDate}"
+                f"[ToastTool._submit_order] Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order summary: {order.checks[0].selections}.\n\nYour order will be ready for pickup at {order.estimatedFulfillmentDate}"
             )
             return (
                 f"Order #{order.guid} submitted successfully! "
@@ -694,7 +769,7 @@ class ToastTool(Toolkit):
                 f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
             )
         except Exception as e:
-            logger.error(f"Failed to submit the order: {e}")
+            logger.error(f"[ToastTool._submit_order] Failed to submit the order: {e}")
             return "There was an error while submitting the order. Please try again."
 
     def _get_order_prices(self, order: OrderInput) -> str:
@@ -719,7 +794,9 @@ class ToastTool(Toolkit):
                 totalAmount=order.checks[0].totalAmount,
             ).model_dump_json()
         except Exception as e:
-            logger.error(f"Failed to get the order prices: {e}")
+            logger.error(
+                f"[ToastTool._get_order_prices] Failed to get the order prices: {e}"
+            )
             return (
                 "There was an error while getting the order prices. Please try again."
             )
@@ -745,7 +822,9 @@ class ToastTool(Toolkit):
 
             return self._get_order_prices(order)
         except Exception as e:
-            logger.error(f"Error in get order prices: {e}")
+            logger.error(
+                f"[ToastTool.get_order_prices_tool] Error in get order prices: {e}"
+            )
             return (
                 "There was an error while getting the order prices. Please try again."
             )

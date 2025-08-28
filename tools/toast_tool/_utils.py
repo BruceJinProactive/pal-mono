@@ -3,12 +3,13 @@ import datetime
 import os
 import re
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+from zoneinfo import ZoneInfo
 
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import Nominatim
 
-from tools.toast_tool.classes import DeliveryAddress, DiningBehavior
+from tools.toast_tool.classes import DeliveryAddress, DiningBehavior, ServicePeriod
 from utils.log import logger
 
 # Constants for better performance and maintainability
@@ -400,22 +401,212 @@ def _group_consecutive_days(days: List[str]) -> List[str]:
     return formatted_groups
 
 
-def parse_service_periods(service_periods: List[Dict[str, Any]]) -> str:
+def is_within_service_periods(
+    timezone_id: str,
+    service_periods: List[ServicePeriod],
+    dining_behavior: Optional[DiningBehavior] = None,
+) -> bool:
+    """
+    Check if the current time in the given timezone falls within any of the service periods.
+
+    Args:
+        timezone_id: The timezone ID (e.g., 'America/Los_Angeles')
+        service_periods: List of ServicePeriod objects from Toast API
+        dining_behavior: Optional dining behavior to filter by (TAKE_OUT, DELIVERY, etc.)
+
+    Returns:
+        bool: True if current time is within service periods, False otherwise
+    """
+    try:
+        # Get current time in the restaurant's timezone
+        tz = ZoneInfo(timezone_id)
+        current_time = datetime.datetime.now(tz)
+        current_day = current_time.strftime("%A")  # Get day name (e.g., 'Monday')
+        current_time_str = current_time.strftime("%H:%M")  # Get time as HH:MM
+        current_day_upper = current_day.upper()  # Convert once, use multiple times
+
+        logger.debug(
+            f"[ToastTool.is_within_service_periods] Checking service periods for {current_day} at {current_time_str} (timezone: {timezone_id})"
+        )
+
+        # Collect periods for current day and previous day (for early morning cross-midnight checks)
+        current_day_periods = []
+        prev_day_periods = []
+
+        # Only check cross-midnight periods if it's early morning (before noon)
+        check_cross_midnight = current_time.hour < 12
+        prev_day_upper = None
+        current_time_obj = None
+
+        if check_cross_midnight:
+            prev_day_upper = (
+                (current_time - datetime.timedelta(days=1)).strftime("%A").upper()
+            )
+            # Parse current time once for cross-midnight comparisons
+            try:
+                current_time_obj = datetime.datetime.strptime(
+                    current_time_str, "%H:%M"
+                ).time()
+            except ValueError as e:
+                logger.error(
+                    f"[ToastTool.is_within_service_periods] Error parsing current time '{current_time_str}': {e}"
+                )
+                check_cross_midnight = False
+
+        # Collect day periods that match current day or previous day (for cross-midnight)
+        for service_period in service_periods:
+            # Skip service periods with no days or wrong dining behavior
+            if not service_period.dayPeriods or (
+                dining_behavior
+                and service_period.diningOptionBehavior != dining_behavior
+            ):
+                continue
+
+            # Find periods for current day and previous day
+            for day_period in service_period.dayPeriods:
+                day_name_upper = day_period.day.upper()
+
+                if day_name_upper == current_day_upper:
+                    current_day_periods.append(day_period)
+                elif check_cross_midnight and day_name_upper == prev_day_upper:
+                    prev_day_periods.append(day_period)
+
+        # Check current day periods first
+        for day_period in current_day_periods:
+            for time_range in day_period.timeRanges:
+                try:
+                    # For cross-midnight ranges on current day, only match the evening half
+                    start_hour = int(time_range.start[:2])
+                    end_hour = int(time_range.end[:2])
+                    is_cross_midnight = start_hour > end_hour
+
+                    if is_cross_midnight:
+                        # Only match if current time is in evening half (>= start time)
+                        current_hour = int(current_time_str[:2])
+                        if current_hour >= start_hour:
+                            logger.debug(
+                                f"[ToastTool.is_within_service_periods] Found matching service period: {day_period.day} {time_range.start}-{time_range.end}"
+                            )
+                            return True
+                    elif _is_time_in_range(
+                        current_time_str, time_range.start, time_range.end
+                    ):
+                        logger.debug(
+                            f"[ToastTool.is_within_service_periods] Found matching service period: {day_period.day} {time_range.start}-{time_range.end}"
+                        )
+                        return True
+                except (ValueError, IndexError) as e:
+                    logger.error(
+                        f"[ToastTool.is_within_service_periods] Error parsing time range '{time_range.start}-{time_range.end}' for day {day_period.day}: {e}"
+                    )
+                    continue
+
+        # Check previous day's cross-midnight periods for early morning hours
+        # Cross-midnight periods (e.g., 22:00-02:00) are stored under their start day
+        # but also cover the next day's early morning hours
+        if check_cross_midnight and current_time_obj:
+            for day_period in prev_day_periods:
+                for time_range in day_period.timeRanges:
+                    try:
+                        start_hour = int(time_range.start[:2])
+                        end_hour = int(time_range.end[:2])
+
+                        # Check if this is a cross-midnight period (start > end)
+                        if start_hour > end_hour:
+                            # For cross-midnight periods, only check if current time is before end time (morning half)
+                            try:
+                                end_time_obj = datetime.datetime.strptime(
+                                    time_range.end, "%H:%M"
+                                ).time()
+
+                                if current_time_obj <= end_time_obj:
+                                    logger.debug(
+                                        f"[ToastTool.is_within_service_periods] Found matching cross-midnight period from {day_period.day}: {time_range.start}-{time_range.end}"
+                                    )
+                                    return True
+                            except ValueError as e:
+                                logger.error(
+                                    f"[ToastTool.is_within_service_periods] Error parsing end time '{time_range.end}' for cross-midnight period {day_period.day}: {e}"
+                                )
+                                continue
+                    except (ValueError, IndexError) as e:
+                        logger.error(
+                            f"[ToastTool.is_within_service_periods] Error parsing start/end hours for time range '{time_range.start}-{time_range.end}' in previous day period {day_period.day}: {e}"
+                        )
+                        continue
+
+        logger.debug(
+            "[ToastTool.is_within_service_periods] No matching service periods found"
+        )
+        return False
+
+    except Exception as e:
+        logger.error(
+            f"[ToastTool.is_within_service_periods] Error checking service periods: {e}"
+        )
+        return False
+
+
+def _is_time_in_range(current_time: str, start_time: str, end_time: str) -> bool:
+    """
+    Check if current time falls within the given time range.
+
+    Args:
+        current_time: Current time in HH:MM format
+        start_time: Start time in HH:MM format
+        end_time: End time in HH:MM format
+
+    Returns:
+        bool: True if current time is within range, False otherwise
+    """
+    try:
+        # Parse times
+        current = datetime.datetime.strptime(current_time, "%H:%M").time()
+        start = datetime.datetime.strptime(start_time, "%H:%M").time()
+        end = datetime.datetime.strptime(end_time, "%H:%M").time()
+
+        # Handle cases where end time is past midnight (e.g., 22:00 - 02:00)
+        if start <= end:
+            # Normal case: start time is before end time on same day
+            return start <= current <= end
+        else:
+            # Cross-midnight case: start time is after end time (spans midnight)
+            return current >= start or current <= end
+
+    except ValueError as e:
+        logger.error(
+            f"[ToastTool._is_time_in_range] Error parsing time range {start_time}-{end_time}: {e}"
+        )
+        return False
+
+
+def parse_service_periods(
+    service_periods: Union[List[Dict[str, Any]], List[ServicePeriod]],
+) -> str:
     """
     Parse multiple service periods into a readable format.
 
     Args:
-        service_periods: List of service period dictionaries
+        service_periods: List of service period dictionaries or ServicePeriod objects
 
     Returns:
         Formatted string with all service periods
     """
     if not service_periods:
         return ""
+
+    # Convert ServicePeriod objects to dictionaries if needed
+    periods_as_dicts = []
+    for period in service_periods:
+        if isinstance(period, ServicePeriod):
+            periods_as_dicts.append(period.model_dump())
+        else:
+            periods_as_dicts.append(period)
+
     # Process all periods - readable_hours now handles invalid data gracefully
     formatted_periods = [
         readable_hours(period)
-        for period in service_periods
+        for period in periods_as_dicts
         if period  # Only filter out completely None/empty periods
     ]
 
