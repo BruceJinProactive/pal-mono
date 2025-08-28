@@ -771,7 +771,7 @@ async def handle_session_closure(message_data, session: AsyncSession):
                 try:
                     phone_call = await message_service.create_phone_call_record(
                         session=session,
-                        call_data=call_data,
+                        message=message_data,
                         call_id=call_id,
                         conversation_id=first_conversation.id,
                     )

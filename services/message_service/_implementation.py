@@ -695,7 +695,7 @@ def build_opt_in_message(message: Message, metadata: Metadata) -> Message | None
 
 async def create_phone_call_record(
     session: AsyncSession,
-    call_data: dict,
+    message: dict,
     call_id: str,
     conversation_id: uuid.UUID,
 ) -> db.PhoneCall:
@@ -704,7 +704,7 @@ async def create_phone_call_record(
 
     Args:
         session: Async database session
-        call_data: Raw call data
+        message: Raw message data containing call information
         call_id: Call ID
         conversation_id: Associated conversation ID
 
@@ -712,14 +712,14 @@ async def create_phone_call_record(
         PhoneCall: The created phone call record
 
     Raises:
-        ValueError: If required call data is missing
+        ValueError: If required message data is missing
         SQLAlchemyError: If there is a database error
     """
     from ._utils import transform_vapi_call_data
 
     try:
         # Transform VAPI data to our schema
-        call_metrics = transform_vapi_call_data(call_data)
+        call_metrics = transform_vapi_call_data(message)
 
         # Create phone call record
         phone_call_repo = db.PhoneCallRepositoryAsync(session)
@@ -737,7 +737,7 @@ async def create_phone_call_record(
 
 def create_phone_call_record_sync(
     session: Session,
-    call_data: dict,
+    message: dict,
     call_id: str,
     conversation_id: uuid.UUID,
 ) -> db.PhoneCall:
@@ -746,7 +746,7 @@ def create_phone_call_record_sync(
 
     Args:
         session: Database session
-        call_data: Raw call data
+        message: Raw message data containing call information
         call_id: Call ID
         conversation_id: Associated conversation ID
 
@@ -754,14 +754,14 @@ def create_phone_call_record_sync(
         PhoneCall: The created phone call record
 
     Raises:
-        ValueError: If required call data is missing
+        ValueError: If required message data is missing
         SQLAlchemyError: If there is a database error
     """
     from ._utils import transform_vapi_call_data
 
     try:
         # Transform VAPI data to our schema
-        call_metrics = transform_vapi_call_data(call_data)
+        call_metrics = transform_vapi_call_data(message)
 
         # Create phone call record
         phone_call_repo = db.PhoneCallRepository(session)
