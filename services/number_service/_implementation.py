@@ -1,6 +1,8 @@
 import os
+import uuid
 from typing import Any, Dict, List, Optional
 
+import requests
 from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
@@ -9,10 +11,13 @@ from vapi import Vapi
 from vapi.types.create_twilio_phone_number_dto import CreateTwilioPhoneNumberDto
 from vapi.types.custom_llm_model import CustomLlmModel
 
+# Repository import for project operations (no circular dependency risk)
+from db.repositories.project_repository import ProjectRepository
 from utils.log import logger
 
 from ._utils import (
     AssistantConfig,
+    NumberChannel,
     NumberResponse,
     NumberType,
     UsageType,
@@ -89,6 +94,7 @@ class NumberService:
                 raise KeyError(f"Missing required secrets: {', '.join(missing)}")
 
             self.vapi_client = Vapi(token=vapi_token)
+            self.vapi_token = vapi_token  # Store for reuse in HTTP API calls
             self.twilio_client = Client(twilio_account_sid, twilio_auth_token)
         except Exception as e:
             raise RuntimeError(f"Failed to initialize NumberService: {e}") from e
@@ -454,11 +460,6 @@ class NumberService:
         max_needed = target_end_exclusive + 1  # +1 to determine has_more
 
         try:
-            # Log the filtering operation
-            logger.info(
-                f"Filtering phone numbers: type={native_filter_type}, filter_value='{filter_value}', page={page}"
-            )
-
             # Build unified streaming parameters
             params = {
                 "limit": None,
@@ -497,18 +498,11 @@ class NumberService:
                 if should_include:
                     matched.append(num)
                     if len(matched) >= max_needed:
-                        logger.info(
-                            f"Early termination: found {len(matched)} results, processing stopped"
-                        )
                         break
 
             # Extract the requested page
             page_numbers = matched[target_start:target_end_exclusive]
             has_more = len(matched) > target_end_exclusive
-
-            logger.info(
-                f"Page {page} complete: {len(page_numbers)} numbers returned (total_matched={len(matched)}, has_more={has_more})"
-            )
             return page_numbers, has_more
 
         except Exception as e:
@@ -528,6 +522,368 @@ class NumberService:
         if not numbers:
             return None
         return numbers[0]
+
+    def reserve_existing_number(
+        self, phone_number: str, merchant_name: str, session
+    ) -> bool:
+        """Reserve an existing phone number for a project.
+
+        This method validates that the phone number exists and is available for assignment,
+        then updates its friendly name to associate it with the project.
+
+        Args:
+            phone_number: The existing phone number to reserve
+            merchant_name: The project name to associate with the number
+            session: Database session for project lookups
+
+        Returns:
+            True if the number was successfully reserved
+
+        Raises:
+            ValueError: If the number doesn't exist, is not available, or reservation fails
+        """
+        # Get the existing number details
+        number_details = self.get_number_details(phone_number)
+        if not number_details:
+            raise ValueError(f"Phone number {phone_number} not found in Twilio account")
+
+        # Check if the number is available for assignment by verifying:
+        # 1. Number is already in Vapi
+        # 2. Number is not associated with any project
+        if not self._is_number_in_vapi(phone_number):
+            raise ValueError(
+                f"Phone number {phone_number} is not registered in Vapi and is not available for assignment"
+            )
+
+        if self._is_number_associated_with_project(phone_number, session):
+            raise ValueError(
+                f"Phone number {phone_number} is already associated with a project and not available for assignment"
+            )
+
+        try:
+            # Update the friendly name to associate with the project
+            new_friendly_name = self._get_friendly_name(merchant_name, for_twilio=True)
+            number_details.update(friendly_name=new_friendly_name)
+
+            # Keep Vapi synchronized with Twilio friendly name
+            vapi_friendly_name = self._get_friendly_name(merchant_name)
+            self._update_vapi_phone_number_name(phone_number, vapi_friendly_name)
+
+            return True
+
+        except Exception as e:
+            # Rollback: restore original friendly name to make number available again
+            self._set_number_available(phone_number)
+
+            raise ValueError(
+                f"Failed to reserve existing number {phone_number}: {e}"
+            ) from e
+
+    def assign_phone_number_to_project(
+        self,
+        project_id: uuid.UUID,
+        project_name: str,
+        channels: List[NumberChannel],
+        session,
+        context,
+        phone_number: Optional[str] = None,
+        country_code: str = "US",
+        toll_free: bool = True,
+    ) -> str:
+        """Assign a phone number to a project with complete channel setup.
+
+        This method handles the complete workflow of either purchasing a new number
+        or reserving an existing number, then updating the project's channel identifiers.
+
+        Args:
+            project_id: ID of the project to assign the number to
+            project_name: Name of the project (for friendly naming)
+            channels: List of channels (voice, sms) the number will be used for
+            session: Database session for project operations
+            context: User context for project updates
+            phone_number: Optional existing phone number to reserve (if None, purchases new)
+            country_code: Country code for new numbers (default: "US")
+            toll_free: Whether new numbers should be toll-free (default: True)
+
+        Returns:
+            str: The phone number that was assigned to the project
+
+        Raises:
+            ValueError: If number reservation/purchase fails or channel update fails
+        """
+        assigned_phone_number = None
+
+        try:
+            if phone_number:
+                # Reserve existing number
+                success = self.reserve_existing_number(
+                    phone_number=phone_number,
+                    merchant_name=project_name,
+                    session=session,
+                )
+                if not success:
+                    raise ValueError(
+                        f"Failed to reserve existing number {phone_number}"
+                    )
+
+                assigned_phone_number = phone_number
+
+            else:
+                # Purchase new number
+                number_response = self.setup_number(
+                    country_code=country_code,
+                    toll_free=toll_free,
+                    merchant_name=project_name,
+                )
+                assigned_phone_number = number_response.number
+
+            # Update project channel identifiers
+            self._modify_project_channels(
+                project_id=project_id,
+                session=session,
+                context=context,
+                modification_fn=lambda existing_channels: existing_channels
+                + [f"{channel.value}:{assigned_phone_number}" for channel in channels],
+                log_message=f"Added phone number {assigned_phone_number} to project channels",
+                phone_number=assigned_phone_number,
+                channels=channels,
+            )
+
+            logger.info(
+                f"Phone number assigned to project: {assigned_phone_number}",
+                extra={"project_id": project_id, "phone_number": assigned_phone_number},
+            )
+
+            return assigned_phone_number
+
+        except Exception as e:
+            # Rollback: handle cleanup based on what was assigned
+            if assigned_phone_number:
+                self._rollback_phone_number_assignment(
+                    assigned_phone_number, phone_number is not None
+                )
+
+            raise ValueError(f"Failed to assign phone number to project: {e}") from e
+
+    def _modify_project_channels(
+        self,
+        project_id: uuid.UUID,
+        session,
+        context,
+        modification_fn,
+        log_message: str,
+        phone_number: Optional[str] = None,
+        channels: Optional[List[NumberChannel]] = None,
+    ):
+        """Generic method to modify project channel identifiers.
+
+        Args:
+            project_id: ID of the project to update
+            session: Database session
+            context: User context for the update (not used by repository but kept for API compatibility)
+            modification_fn: Function that takes current channels list and returns modified list
+            log_message: Message to log on successful update
+            phone_number: Optional phone number for logging context
+            channels: Optional channels list for logging context
+
+        Raises:
+            ValueError: If project not found or update fails
+        """
+        # Get current project using repository
+        project_repo = ProjectRepository(session, auto_commit=True)
+        project = project_repo.get_project(project_id)
+        if not project:
+            raise ValueError(f"Project with id {project_id} not found")
+
+        # Apply modification function to current channels
+        current_channels = list(project.channel_identifiers or [])
+        new_channels = modification_fn(current_channels)
+
+        # Update project with modified channel identifiers using repository
+        updated_project = project_repo.update_project(
+            project_id=project_id,
+            channel_identifiers=new_channels,
+        )
+        if not updated_project:
+            raise ValueError(f"Failed to update project {project_id}")
+
+        # Build logging context
+        log_extra = {
+            "project_id": project_id,
+            "total_channels": len(new_channels),
+            "changed_count": len(new_channels) - len(current_channels),
+        }
+        if phone_number:
+            log_extra["phone_number"] = phone_number
+        if channels:
+            log_extra["new_channels"] = [ch.value for ch in channels]
+
+        logger.info(log_message, extra=log_extra)
+
+    def _rollback_phone_number_assignment(self, phone_number: str, was_existing: bool):
+        """Rollback phone number assignment on failure.
+
+        Args:
+            phone_number: Phone number to rollback
+            was_existing: True if it was an existing number (rollback to AVAILABLE),
+                         False if it was new (release completely)
+        """
+        try:
+            if was_existing:
+                # For existing numbers, set back to AVAILABLE
+                logger.warning(
+                    f"Rolling back existing number assignment: {phone_number}",
+                    extra={"phone_number": phone_number, "action": "set_available"},
+                )
+                self._set_number_available(phone_number)
+            else:
+                # For new numbers, release completely
+                logger.warning(
+                    f"Rolling back new number assignment: {phone_number}",
+                    extra={"phone_number": phone_number, "action": "complete_release"},
+                )
+                self.release_number(phone_number)
+
+        except Exception as rollback_error:
+            logger.exception(
+                f"Failed to rollback phone number {phone_number}",
+                extra={
+                    "phone_number": phone_number,
+                    "was_existing": was_existing,
+                    "rollback_error": str(rollback_error),
+                },
+            )
+
+    def release_phone_number_from_project(
+        self,
+        project_id: uuid.UUID,
+        phone_number: str,
+        release_type: Any,  # Enum or string
+        session,
+        context,
+    ) -> str:
+        """Release a phone number from a project with complete validation and cleanup.
+
+        This method handles the complete workflow of releasing a phone number from a project:
+        1. Validates the phone number belongs to the project
+        2. Releases the number using the specified release type
+        3. Updates the project's channel identifiers to remove the number
+
+        Args:
+            project_id: ID of the project to release the number from
+            phone_number: Phone number to release
+            release_type: Either 'return_to_pool' or 'delete_permanently' (str or Enum)
+            session: Database session for project operations
+            context: User context for project updates
+
+        Returns:
+            str: Success message describing what was done
+
+        Raises:
+            ValueError: If phone number doesn't belong to project or release fails
+        """
+        # Step 1: Validate phone number ownership
+        self._validate_phone_number_ownership(project_id, phone_number, session)
+
+        # Step 2: Release the phone number using existing service method
+        self.release_number_with_options(
+            phone_number=phone_number, release_type=release_type
+        )
+
+        # Step 3: Remove phone number from project channels
+        self._modify_project_channels(
+            project_id=project_id,
+            session=session,
+            context=context,
+            modification_fn=lambda channels: [
+                ch
+                for ch in channels
+                if not (
+                    ch.split(":")[0] in ["sms", "voice"]
+                    and ch.split(":")[1] == phone_number
+                )
+            ],
+            log_message=f"Removed phone number {phone_number} from project channels",
+            phone_number=phone_number,
+        )
+
+        # Step 4: Generate success message based on release type
+        release_type_value = getattr(release_type, "value", release_type)
+
+        if release_type_value == "return_to_pool":
+            message = f"Phone number {phone_number} has been returned to the available pool and can be reused"
+        else:  # delete_permanently - only other valid option
+            message = f"Phone number {phone_number} has been permanently deleted from Twilio and Vapi"
+
+        logger.info(
+            f"Phone number released from project: {phone_number} ({release_type_value})",
+            extra={"project_id": project_id, "phone_number": phone_number},
+        )
+
+        return message
+
+    def _validate_phone_number_ownership(
+        self, project_id: uuid.UUID, phone_number: str, session
+    ):
+        """Validate that a phone number belongs to the specified project.
+
+        Args:
+            project_id: ID of the project to check
+            phone_number: Phone number to validate
+            session: Database session
+
+        Raises:
+            ValueError: If project not found or phone number doesn't belong to project
+        """
+        # Get project details using repository
+        project_repo = ProjectRepository(session, auto_commit=False)
+        project = project_repo.get_project(project_id)
+        if not project:
+            raise ValueError(f"Project with id {project_id} not found")
+
+        # Extract phone numbers from project channels
+        project_phone_numbers = set(
+            [
+                channel_identifier.split(":")[1]
+                for channel_identifier in project.channel_identifiers or []
+                if channel_identifier.split(":")[0] in ["sms", "voice"]
+            ]
+        )
+
+        if phone_number not in project_phone_numbers:
+            raise ValueError(
+                f"Phone number {phone_number} does not belong to project {project_id}"
+            )
+
+    def _set_number_available(self, phone_number: str):
+        """Set phone number friendly name to AVAILABLE for reuse.
+
+        This method handles both rollback scenarios and explicit "return to pool" operations
+        by setting the number's friendly name to AVAILABLE in both Twilio and Vapi.
+
+        Args:
+            phone_number: The phone number to mark as available
+
+        Raises:
+            ValueError: If update fails
+        """
+        try:
+            number_details = self.get_number_details(phone_number)
+            if number_details:
+                available_name = self._get_friendly_name(
+                    AVAILABLE_LABEL, for_twilio=True
+                )
+                number_details.update(friendly_name=available_name)
+
+                # Keep Vapi synchronized
+                vapi_available_name = self._get_friendly_name(AVAILABLE_LABEL)
+                self._update_vapi_phone_number_name(phone_number, vapi_available_name)
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to rollback reservation for number {phone_number}: {e}",
+                extra={"phone_number": phone_number},
+            )
 
     def _release_number_from_vapi(self, number: str):
         """Release a phone number from Vapi integration.
@@ -594,7 +950,6 @@ class NumberService:
             for n in numbers:
                 if n.phone_number == number:
                     n.delete()  # Actually delete the number completely
-                    logger.info(f"Successfully deleted number {number} from Twilio")
                     break
         except Exception as e:
             raise ValueError(f"Failed to delete number from Twilio: {e}") from e
@@ -647,6 +1002,35 @@ class NumberService:
         self._release_number_from_vapi(number)
         self._release_number_from_twilio(number)
 
+    def release_number_with_options(self, phone_number: str, release_type: Any):
+        """Release a phone number with specified handling options.
+
+        This method provides enhanced control over how phone numbers are handled after release:
+        - 'return_to_pool': Keeps in both Vapi and Twilio but sets friendly name to AVAILABLE for reuse
+        - 'delete_permanently': Completely removes from both Vapi and Twilio
+
+        Args:
+            phone_number: The phone number to release
+            release_type: Either 'return_to_pool' or 'delete_permanently' (str or Enum)
+
+        Raises:
+            ValueError: If release fails or invalid release_type
+        """
+        # Coerce Enum to its value; accept raw strings as-is
+        release_type_value = getattr(release_type, "value", release_type)
+
+        if release_type_value == "return_to_pool":
+            self._set_number_available(phone_number)
+
+        elif release_type_value == "delete_permanently":
+            # Use existing complete deletion logic
+            self.delete_number(phone_number)
+
+        else:
+            raise ValueError(
+                f"Invalid release_type: {release_type_value}. Must be 'return_to_pool' or 'delete_permanently'"
+            )
+
     def _get_friendly_name(self, name: str, for_twilio: bool = False) -> str:
         stage = os.environ.get("RUNTIME_ENV") or "dev"
         # twilio limits friendly name to max of 40 chars
@@ -687,6 +1071,101 @@ class NumberService:
                 return NumberType.TOLL_FREE
 
         return NumberType.OTHER
+
+    def _is_number_in_vapi(self, phone_number: str) -> bool:
+        """
+        Check if a phone number exists in Vapi.
+
+        Args:
+            phone_number: The phone number to check
+
+        Returns:
+            True if the number exists in Vapi, False otherwise
+        """
+        try:
+            vapi_numbers = self.vapi_client.phone_numbers.list()
+            for vapi_number in vapi_numbers:
+                if vapi_number.number == phone_number:
+                    return True
+            return False
+        except Exception:
+            # Fail silently - caller will handle validation failure appropriately
+            return False
+
+    def _is_number_associated_with_project(self, phone_number: str, session) -> bool:
+        """
+        Check if a phone number is associated with any project.
+
+        Args:
+            phone_number: The phone number to check
+            session: Database session for project lookups
+
+        Returns:
+            True if the number is associated with any project, False otherwise
+        """
+        try:
+            project_repo = ProjectRepository(session, auto_commit=False)
+            projects = project_repo.get_projects_by_phone_number(phone_number)
+            return len(projects) > 0
+        except Exception:
+            # Fail silently - caller will handle validation failure appropriately
+            return False
+
+    def _update_vapi_phone_number_name(self, phone_number: str, new_name: str):
+        """
+        Update the name/friendly name of a phone number in Vapi using direct HTTP API.
+
+        Uses the Vapi REST API directly with requests.patch(), which works for all phone number
+        types (Twilio, BYO, Vonage, etc.) without depending on SDK-specific DTOs.
+
+        Args:
+            phone_number: The phone number to update
+            new_name: The new friendly name to set
+
+        Note:
+            This method fails gracefully and logs only critical errors to avoid log spam.
+        """
+        try:
+            if not self.vapi_token:
+                return  # Silently skip if no token available
+
+            # Find the phone number in Vapi to get its ID
+            vapi_numbers = self.vapi_client.phone_numbers.list()
+            vapi_number_id = None
+
+            for vapi_number in vapi_numbers:
+                if vapi_number.number == phone_number:
+                    vapi_number_id = vapi_number.id
+                    break
+
+            if not vapi_number_id:
+                return  # Silently skip if number not found
+
+            # Update the phone number name using direct HTTP API call
+            url = f"https://api.vapi.ai/phone-number/{vapi_number_id}"
+            headers = {
+                "Authorization": f"Bearer {self.vapi_token}",
+                "Content-Type": "application/json",
+            }
+            data = {"name": new_name}
+
+            response = requests.patch(
+                url,
+                json=data,
+                headers=headers,
+                timeout=10,  # seconds; prevent indefinite hangs on network issues
+            )
+
+            if response.status_code != 200:
+                logger.warning(
+                    f"Failed to update Vapi phone number name for {phone_number}: "
+                    f"HTTP {response.status_code} - {response.text}"
+                )
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to update Vapi phone number name for {phone_number}: {e}"
+            )
 
     def get_toll_free_verification_status(
         self, number_sid: str
@@ -803,8 +1282,6 @@ class NumberService:
             tuple: (phone_numbers_data, has_more) where phone_numbers_data is a list of dicts
                    containing all the processed phone number information
         """
-        from services import project_service
-
         # Get purchased numbers from Twilio with pagination (convert to 0-based)
         twilio_numbers, has_more = self.get_purchased_numbers_by_page(
             page=page - 1,
@@ -836,10 +1313,9 @@ class NumberService:
                 if status is None:
                     status = VerificationStatus.UNVERIFIED
 
-            # Find associated projects and accounts
-            projects = project_service.get_projects_by_phone_number(
-                session, phone_number
-            )
+            # Find associated projects and accounts using repository
+            project_repo = ProjectRepository(session, auto_commit=False)
+            projects = project_repo.get_projects_by_phone_number(phone_number)
 
             # Determine usage type by checking channel identifiers
             usage_types = set()

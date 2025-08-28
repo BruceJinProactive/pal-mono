@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from api.routes.admin._auth import authorize_admin
 from api.routes.admin._utils import UserContext, not_found_error
 from api.schemas.admin.phone_number import (
+    EnhancedReleaseProjectNumberRequest,
+    EnhancedReleaseProjectNumberResponse,
     ListPhoneNumbersResponse,
     PhoneNumberInfo,
     PurchaseNumberRequest,
@@ -28,66 +30,50 @@ async def reserve_phone_number(
     session: Session,
 ):
     """
-    Create a new phone number, optionally bind to assistant and project.
+    Create a new phone number or reserve an existing one for a project.
     """
+    authorize_admin(context)
 
     project = project_service.get_project(session, project_id)
     if project is None:
         raise not_found_error(f"Project with id {project_id} not found")
 
-    logger.info(
-        "Attempting to reserve a new phone number for project",
-        extra={
-            "project_id": project_id,
-        },
-    )
+    number_service = NumberService()
 
+    # Use the unified service method to handle both existing and new numbers
     try:
-        number_service = NumberService()
-        number_response = number_service.setup_number(
+        phone_number = number_service.assign_phone_number_to_project(
+            project_id=project_id,
+            project_name=project.name,
+            channels=request.channels,
+            session=session,
+            context=context,
+            phone_number=request.phone_number,  # None for new numbers
             country_code=request.country_code,
             toll_free=request.toll_free,
-            merchant_name=project.name,
         )
     except ValueError as err:
-        logger.exception("Failed to setup number")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to setup a new number: {err}",
-        )
-
-    channels = list(project.channel_identifiers or [])
-    for request_channel in request.channels:
-        channels.append(f"{request_channel.value}:{number_response.number}")
+        # Determine appropriate HTTP status based on the error
+        if request.phone_number:
+            # Existing number issues are client errors
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to reserve existing number: {err}",
+            )
+        else:
+            # New number purchase issues are server errors
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to setup new number: {err}",
+            )
 
     logger.info(
-        "Updating project with new channel identifiers",
-        extra={"channel_identifiers": channels},
-    )
-
-    try:
-        project_service.update_project(
-            session,
-            context,
-            project_id,
-            params=ProjectParams(
-                channel_identifiers=channels,
-            ),
-            auto_commit=True,
-        )
-    except Exception:
-        logger.exception("Failed to update channel identifiers with new voice number")
-        number_service.release_number(number_response.number)
-        raise HTTPException(
-            status_code=400,
-            detail="Failed to update project. The purchased number has been released.",
-        )
-    logger.info(
-        "Successfully reserved new phone number for project",
+        "Successfully reserved phone number for project",
         extra={
             "project_id": project_id,
-            "phone_number": number_response.number,
+            "phone_number": phone_number,
             "channels": request.channels,
+            "existing_number": bool(request.phone_number),
         },
     )
 
@@ -158,6 +144,54 @@ async def release_phone_number(
             detail="Failed to update project channel identifiers. Please try again later.",
         )
     logger.info("Successfully released phone number from project")
+
+
+async def release_phone_number_enhanced(
+    project_id: uuid.UUID,
+    request: EnhancedReleaseProjectNumberRequest,
+    context: UserContext,
+    session: Session,
+) -> EnhancedReleaseProjectNumberResponse:
+    """Enhanced phone number release with options for reuse or permanent deletion."""
+    authorize_admin(context)
+
+    # Use the unified service method to handle complete release workflow
+    try:
+        number_service = NumberService()
+        message = number_service.release_phone_number_from_project(
+            project_id=project_id,
+            phone_number=request.phone_number,
+            release_type=request.release_type,
+            session=session,
+            context=context,
+        )
+
+        return EnhancedReleaseProjectNumberResponse(
+            phone_number=request.phone_number,
+            release_type=request.release_type,
+            message=message,
+        )
+
+    except ValueError as err:
+        # Business logic errors (validation, phone number not found, etc.)
+        raise HTTPException(
+            status_code=400,
+            detail=str(err),
+        )
+    except Exception as err:
+        # Unexpected system errors
+        logger.exception(
+            "Enhanced release failed",
+            extra={
+                "project_id": project_id,
+                "phone_number": request.phone_number,
+                "release_type": request.release_type.value,
+            },
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to release phone number: {str(err)}",
+        )
 
 
 async def list_phone_numbers(

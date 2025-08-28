@@ -79,6 +79,8 @@ from api.schemas.admin.onboarding import (
     OnboardingRequest,
 )
 from api.schemas.admin.phone_number import (
+    EnhancedReleaseProjectNumberRequest,
+    EnhancedReleaseProjectNumberResponse,
     ListPhoneNumbersResponse,
     PurchaseNumberRequest,
     PurchaseNumberResponse,
@@ -960,6 +962,29 @@ async def release_phone_number(
     Release the specified phone number.
     """
     await _phone_number.release_phone_number(project_id, request, context, session)
+
+
+@admin_router.post(
+    "/projects/{project_id}/release_number_enhanced",
+    response_model=EnhancedReleaseProjectNumberResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def release_phone_number_enhanced(
+    project_id: uuid.UUID,
+    request: EnhancedReleaseProjectNumberRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Enhanced release phone number with options for reuse or permanent deletion.
+
+    Provides two release options:
+    - return_to_pool: Keeps the number in both Twilio and Vapi, marking it AVAILABLE for reuse
+    - delete_permanently: Completely removes from both Vapi and Twilio
+    """
+    return await _phone_number.release_phone_number_enhanced(
+        project_id, request, context, session
+    )
 
 
 @admin_router.get("/phone_numbers", response_model=ListPhoneNumbersResponse)

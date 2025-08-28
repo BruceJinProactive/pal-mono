@@ -1,4 +1,5 @@
 import uuid
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -12,7 +13,7 @@ from services.number_service._utils import (
 
 
 class ReserveProjectNumberRequest(BaseModel):
-    """Request model for creating a new phone number."""
+    """Request model for creating a new phone number or reserving an existing one."""
 
     channels: list[NumberChannel] = Field(
         ...,
@@ -22,6 +23,10 @@ class ReserveProjectNumberRequest(BaseModel):
         "US", description="Country code for the phone number (e.g., 'US')"
     )
     toll_free: bool = Field(True, description="Whether to create a toll-free number")
+    phone_number: Optional[str] = Field(
+        None,
+        description="Optional existing phone number to reserve instead of creating new one",
+    )
 
 
 class ReleaseProjectNumberRequest(BaseModel):
@@ -136,3 +141,32 @@ class ReleaseNumberResponse(BaseModel):
     released_from_twilio: bool = Field(
         ..., description="Whether the number was released from Twilio"
     )
+
+
+class PhoneNumberReleaseType(str, Enum):
+    """Type of phone number release operation."""
+
+    RETURN_TO_POOL = "return_to_pool"
+    DELETE_PERMANENTLY = "delete_permanently"
+
+
+class EnhancedReleaseProjectNumberRequest(BaseModel):
+    """Enhanced request model for releasing a phone number with options."""
+
+    phone_number: str = Field(
+        ..., description="The phone number to release (e.g., '+15551234567')"
+    )
+    release_type: PhoneNumberReleaseType = Field(
+        PhoneNumberReleaseType.RETURN_TO_POOL,
+        description="How to handle the phone number: 'return_to_pool' makes it available for reuse, 'delete_permanently' removes it completely",
+    )
+
+
+class EnhancedReleaseProjectNumberResponse(BaseModel):
+    """Response model for enhanced phone number release."""
+
+    phone_number: str = Field(..., description="The phone number that was released")
+    release_type: PhoneNumberReleaseType = Field(
+        ..., description="The type of release performed"
+    )
+    message: str = Field(..., description="Success message describing the action taken")
