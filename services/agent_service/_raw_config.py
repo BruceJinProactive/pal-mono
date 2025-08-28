@@ -115,6 +115,12 @@ class RawConfig:
                     chat_filler_words=self.agent.raw_config.get(
                         "chat_filler_words", {}
                     ),
+                    tool_calling_filler_words_percentage=self.agent.raw_config.get(
+                        "tool_calling_filler_words_percentage", 100
+                    ),
+                    chat_filler_words_percentage=self.agent.raw_config.get(
+                        "chat_filler_words_percentage", 100
+                    ),
                     voice_decoder=self._get_voice_decoder_config(),
                     transcriber=self._get_transcriber_config(),
                     start_speaking_plan=self._get_start_speaking_plan(),

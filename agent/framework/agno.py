@@ -48,11 +48,15 @@ class FillerWordsManager:
         tool_calling_filler_words: dict[str, list[str]],
         agent_id: str,
         account_name: str,
+        chat_filler_words_percentage: int = 100,
+        tool_calling_filler_words_percentage: int = 100,
     ):
         self.chat_filler_words = chat_filler_words
         self.tool_calling_filler_words = tool_calling_filler_words
         self.agent_id = agent_id
         self.account_name = account_name
+        self.chat_filler_words_percentage = chat_filler_words_percentage
+        self.tool_calling_filler_words_percentage = tool_calling_filler_words_percentage
         self._language_detector = self._build_language_detector()
 
     def _build_language_detector(self):
@@ -184,6 +188,16 @@ class FillerWordsManager:
             )
             return ""
 
+        if random.randint(1, 100) > self.chat_filler_words_percentage:
+            logger.debug(
+                f"[FillerWordsManager] Skipping chat filler words due to percentage ({self.chat_filler_words_percentage}%)",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                },
+            )
+            return ""
+
         detected_languages = self.detect_input_languages(input_content)
 
         # Only proceed with filler words if exactly one language is detected
@@ -230,6 +244,16 @@ class FillerWordsManager:
         if not self.tool_calling_filler_words:
             logger.debug(
                 "[FillerWordsManager] No tool calling filler words configured",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                },
+            )
+            return ""
+
+        if random.randint(1, 100) > self.tool_calling_filler_words_percentage:
+            logger.debug(
+                f"[FillerWordsManager] Skipping tool calling filler words due to percentage ({self.tool_calling_filler_words_percentage}%)",
                 extra={
                     "agent_id": self.agent_id,
                     "account_name": self.account_name,
@@ -329,6 +353,8 @@ class AgnoAgent:
             tool_calling_filler_words=config.voice_config.tool_calling_filler_words,
             agent_id=config.metadata.agent_id,
             account_name=config.metadata.account_name,
+            chat_filler_words_percentage=config.voice_config.chat_filler_words_percentage,
+            tool_calling_filler_words_percentage=config.voice_config.tool_calling_filler_words_percentage,
         )
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
