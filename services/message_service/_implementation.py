@@ -363,7 +363,6 @@ async def get_chat_response_stream(
                                 "chunk_type": type(chunk).__name__,
                             },
                         ) as span:
-
                             # Process different chunk types into content string
                             content = ""
                             if isinstance(chunk, Output):
@@ -692,3 +691,87 @@ def build_opt_in_message(message: Message, metadata: Metadata) -> Message | None
         )
 
     return None
+
+
+async def create_phone_call_record(
+    session: AsyncSession,
+    call_data: dict,
+    call_id: str,
+    conversation_id: uuid.UUID,
+) -> db.PhoneCall:
+    """
+    Create a phone call record.
+
+    Args:
+        session: Async database session
+        call_data: Raw call data
+        call_id: Call ID
+        conversation_id: Associated conversation ID
+
+    Returns:
+        PhoneCall: The created phone call record
+
+    Raises:
+        ValueError: If required call data is missing
+        SQLAlchemyError: If there is a database error
+    """
+    from ._utils import transform_vapi_call_data
+
+    try:
+        # Transform VAPI data to our schema
+        call_metrics = transform_vapi_call_data(call_data)
+
+        # Create phone call record
+        phone_call_repo = db.PhoneCallRepositoryAsync(session)
+        phone_call = await phone_call_repo.create_phone_call(
+            call_id=call_id, conversation_id=conversation_id, **call_metrics
+        )
+
+        logger.info(f"Phone call record created: {phone_call.id} for call {call_id}")
+        return phone_call
+
+    except Exception as e:
+        logger.error(f"Error creating phone call record: {e}")
+        raise
+
+
+def create_phone_call_record_sync(
+    session: Session,
+    call_data: dict,
+    call_id: str,
+    conversation_id: uuid.UUID,
+) -> db.PhoneCall:
+    """
+    Create a phone call record (sync version).
+
+    Args:
+        session: Database session
+        call_data: Raw call data
+        call_id: Call ID
+        conversation_id: Associated conversation ID
+
+    Returns:
+        PhoneCall: The created phone call record
+
+    Raises:
+        ValueError: If required call data is missing
+        SQLAlchemyError: If there is a database error
+    """
+    from ._utils import transform_vapi_call_data
+
+    try:
+        # Transform VAPI data to our schema
+        call_metrics = transform_vapi_call_data(call_data)
+
+        # Create phone call record
+        phone_call_repo = db.PhoneCallRepository(session)
+        phone_call = phone_call_repo.create_phone_call(
+            call_id=call_id, conversation_id=conversation_id, **call_metrics
+        )
+
+        logger.info(f"Phone call record created: {phone_call.id} for call {call_id}")
+        return phone_call
+
+    except Exception as e:
+        logger.error(f"Error creating phone call record: {e}")
+        raise

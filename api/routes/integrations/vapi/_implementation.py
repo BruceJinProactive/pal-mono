@@ -20,7 +20,13 @@ from api.schemas.chat.message import (
 )
 from db.tables.agents import SpeechRate
 from db.tables.types import Channel
-from services import agent_service, project_service, subscription_service, user_service
+from services import (
+    agent_service,
+    message_service,
+    project_service,
+    subscription_service,
+    user_service,
+)
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
@@ -538,7 +544,6 @@ async def handle_status_update(message_data, session: AsyncSession):
                         f"No matching active conversation found for call {call_id}"
                     )
                 else:
-
                     if len(conversations) > 1:
                         logger.warning(
                             f"There are more than one open conversations for user:{user.id}"
@@ -758,6 +763,23 @@ async def handle_session_closure(message_data, session: AsyncSession):
                 )
             for conversation in conversations:
                 conversation.status = db.ConversationStatus.CLOSING
+
+            # Save phone call data to the first conversation, in most of the cases, there is only one conversation,
+            # We do not need to create a duplicated call with different conversations
+            first_conversation = conversations[0]
+            if call_id:
+                try:
+                    phone_call = await message_service.create_phone_call_record(
+                        session=session,
+                        call_data=call_data,
+                        call_id=call_id,
+                        conversation_id=first_conversation.id,
+                    )
+                    logger.info(
+                        f"[phone_call] Phone call data saved: {phone_call.id} for conversation {first_conversation.id}"
+                    )
+                except Exception as e:
+                    logger.error(f"[phone_call] Failed to save phone call data: {e}")
 
             await session.commit()
 

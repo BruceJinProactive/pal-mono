@@ -207,6 +207,60 @@ def create_conversation(
     return _implementation.create_conversation(session, user_id, project_id, channel)
 
 
+async def create_phone_call_record(
+    session: AsyncSession,
+    call_data: dict,
+    call_id: str,
+    conversation_id: uuid.UUID,
+) -> db.PhoneCall:
+    """
+    Create a phone call record from call data.
+
+    Args:
+        session: Async database session
+        call_data: Raw call data
+        call_id: Call ID
+        conversation_id: Associated conversation ID
+
+    Returns:
+        PhoneCall: The created phone call record
+
+    Raises:
+        ValueError: If required call data is missing
+        SQLAlchemyError: If there is a database error
+    """
+    return await _implementation.create_phone_call_record(
+        session, call_data, call_id, conversation_id
+    )
+
+
+def create_phone_call_record_sync(
+    session: Session,
+    call_data: dict,
+    call_id: str,
+    conversation_id: uuid.UUID,
+) -> db.PhoneCall:
+    """
+    Create a phone call record from call data. (sync version).
+
+    Args:
+        session: Database session
+        call_data: Raw call data
+        call_id: call ID
+        conversation_id: Associated conversation ID
+
+    Returns:
+        PhoneCall: The created phone call record
+
+    Raises:
+        ValueError: If required call data is missing
+        SQLAlchemyError: If there is a database error
+    """
+    return _implementation.create_phone_call_record_sync(
+        session, call_data, call_id, conversation_id
+    )
+
+
 __all__ = [
     "get_chat_response",
     "get_chat_response_async",
@@ -217,4 +271,6 @@ __all__ = [
     "get_conversations_by_user",
     "get_conversations_by_users",
     "create_conversation",
+    "create_phone_call_record",
+    "create_phone_call_record_sync",
 ]
