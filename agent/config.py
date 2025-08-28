@@ -76,6 +76,8 @@ class VoiceConfig(BaseModel):
     language: Language
     tool_calling_filler_words: dict[str, list[str]] = Field(default_factory=dict)
     chat_filler_words: dict[str, list[str]] = Field(default_factory=dict)
+    tool_calling_filler_words_percentage: int = Field(default=100, ge=0, le=100)
+    chat_filler_words_percentage: int = Field(default=100, ge=0, le=100)
     voice_decoder: Optional[VoiceDecoderConfig] = None
     transcriber: Optional[TranscriberConfig] = None
     start_speaking_plan: Optional[StartSpeakingPlan] = None
