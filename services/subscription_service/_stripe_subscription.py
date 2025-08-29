@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 import stripe
 from stripe.checkout import Session
+from typing_extensions import Literal
 
 from services.subscription_service.schema import (
     StripeCheckoutResponse,
@@ -447,12 +448,15 @@ def cancel_subscription(subscription_id: str, cancel_immediately: bool = False) 
 def add_subscription_item(
     stripe_subscription_id: str,
     stripe_price_id: str,
+    proration_behavior: Literal[
+        "always_invoice", "create_prorations", "none"
+    ] = "create_prorations",
 ):
     try:
         stripe.SubscriptionItem.create(
             subscription=stripe_subscription_id,
             price=stripe_price_id,
-            proration_behavior="create_prorations",
+            proration_behavior=proration_behavior,
         )
     except Exception as err:
         logger.error(f"Failed to add subscription item due to error: {err}")
@@ -462,6 +466,9 @@ def add_subscription_item(
 def remove_subscription_item(
     stripe_subscription_id: str,
     stripe_price_id: str,
+    proration_behavior: Literal[
+        "always_invoice", "create_prorations", "none"
+    ] = "create_prorations",
 ):
     try:
         # 1. Retrieve subscription to find matching subscription item
@@ -482,7 +489,7 @@ def remove_subscription_item(
 
         # 2. Delete the subscription item
         stripe.SubscriptionItem.delete(
-            subscription_item_id, proration_behavior="create_prorations"
+            subscription_item_id, proration_behavior=proration_behavior
         )
         logger.info(
             "Successfully removed item from subscription",

@@ -324,3 +324,17 @@ class CreditGrant(BaseModel):
 
 class ListAccountCreditGrantsResponse(BaseModel):
     credit_grants: list[CreditGrant]
+
+
+class SwitchPlanRequest(BaseModel):
+    new_plan_id: uuid.UUID
+    prorate: bool = True
+
+
+class SwitchPlanResponse(BaseModel):
+    success: bool
+    subscription_id: uuid.UUID
+    old_plan_name: str
+    new_plan_name: str
+    effective_date: datetime
+    prorated: bool

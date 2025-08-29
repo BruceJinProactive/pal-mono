@@ -114,6 +114,8 @@ from api.schemas.admin.subscription import (
     ListAccountSubscriptionsResponse,
     Subscription,
     SubscriptionPlan,
+    SwitchPlanRequest,
+    SwitchPlanResponse,
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
@@ -1902,6 +1904,23 @@ def grant_account_credit(
     the user. For our use cases, this number is almost always positive!
     """
     _subscription.grant_credit_for_account(context, session, account_name, request)
+
+
+@admin_router.post(
+    "/accounts/{account_name}/switch_plan", status_code=status.HTTP_200_OK
+)
+def switch_subscription_plan(
+    account_name: str,
+    request: SwitchPlanRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> SwitchPlanResponse:
+    return _subscription.switch_subscription_plan(
+        context=context,
+        session=session,
+        account_name=account_name,
+        request=request,
+    )
 
 
 @admin_router.get("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)

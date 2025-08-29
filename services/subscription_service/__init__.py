@@ -26,6 +26,7 @@ from ._subscription import (
     handle_stripe_checkout_success,
     remove_project_subscription,
     should_allow_calls_async,
+    switch_subscription_plan,
     update_account_subscription,
     update_account_subscription_status,
 )
@@ -56,4 +57,5 @@ __all__ = [
     "get_account_credit_balance",
     "get_account_credit_grants",
     "should_allow_calls_async",
+    "switch_subscription_plan",
 ]
