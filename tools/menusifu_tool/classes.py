@@ -687,7 +687,7 @@ class OrderItem(BaseModel):
         None, alias="nameMultilingual"
     )
     category_id: int = Field(alias="categoryId")
-    options: List[OrderItemOptionNote] = Field(default_factory=list)
+    options: Optional[List[OrderItemOptionNote]] = Field(default_factory=list)
 
 
 class SelectedPaymentInfo(BaseModel):
