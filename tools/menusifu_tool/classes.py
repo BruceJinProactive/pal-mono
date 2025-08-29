@@ -336,7 +336,13 @@ class OrderSelectedItem(BaseModel):
 class OrderCalculationRequest(BaseModel):
     """Request body for order calculation API"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={
+            Decimal: float,  # Serialize Decimals as numbers, not strings
+            PaymentMethod: lambda v: v.value,  # Serialize PaymentMethod enum as numeric value
+        },
+    )
 
     delivery_fee: Money = Field(alias="deliveryFee")
     order_type: OrderType = Field(alias="orderType")
@@ -601,7 +607,10 @@ class OrderGenerationRequest(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
         str_to_lower=False,
-        json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
+        json_encoders={
+            Decimal: float,  # Serialize Decimals as numbers, not strings
+            PaymentMethod: lambda v: v.value,  # Serialize PaymentMethod enum as numeric value
+        },
     )
 
     # Required fields
@@ -684,7 +693,13 @@ class OrderItem(BaseModel):
 class SelectedPaymentInfo(BaseModel):
     """Selected payment information"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={
+            Decimal: float,  # Serialize Decimals as numbers, not strings
+            PaymentMethod: lambda v: v.value,  # Serialize PaymentMethod enum as numeric value
+        },
+    )
 
     pay_online: bool = Field(alias="payOnline")
     payment_method: PaymentMethod = Field(alias="paymentMethod")
@@ -859,7 +874,13 @@ class ExtractedMenuSifuItem(BaseModel):
 class ExtractedMenuSifuOrder(BaseModel):
     """Extracted complete order from chat history with MenuSifu-specific fields"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={
+            Decimal: float,  # Serialize Decimals as numbers, not strings
+            PaymentMethod: lambda v: v.value,  # Serialize PaymentMethod enum as numeric value
+        },
+    )
 
     # Customer information (must be provided in chat for order processing)
     customer_email: Optional[str] = None

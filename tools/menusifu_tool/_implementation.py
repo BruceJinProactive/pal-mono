@@ -106,6 +106,49 @@ class MenuSifuTool(Toolkit):
             f"MenuSifuTool instance created: merchant_id={merchant_id}, base_url={base_url}"
         )
 
+    def _resolve_payment_method(self, pm_input) -> tuple[PaymentMethod, bool]:
+        """
+        Resolve various payment method inputs to PaymentMethod enum and pay_online flag.
+
+        Args:
+            pm_input: PaymentMethod enum, int, or string (including synonyms and numerics)
+
+        Returns:
+            tuple: (PaymentMethod, bool) - payment method and whether it's online payment
+        """
+        # Accept PaymentMethod, int, or string (incl. synonyms and numerics).
+        if isinstance(pm_input, PaymentMethod):
+            method = pm_input
+        elif isinstance(pm_input, int):
+            method = (
+                PaymentMethod(pm_input)
+                if pm_input in {e.value for e in PaymentMethod}
+                else PaymentMethod.CASH
+            )
+        elif isinstance(pm_input, str):
+            s = pm_input.strip().lower()
+            map_ = {
+                "credit": PaymentMethod.CREDIT_CARD,
+                "card": PaymentMethod.CREDIT_CARD,
+                "credit card": PaymentMethod.CREDIT_CARD,
+                "wechat": PaymentMethod.WECHAT_PAY,
+                "wechat pay": PaymentMethod.WECHAT_PAY,
+                "wechatpay": PaymentMethod.WECHAT_PAY,
+                "微信": PaymentMethod.WECHAT_PAY,
+                "cash": PaymentMethod.CASH,
+                "pay on pickup": PaymentMethod.CASH,
+                "pay on delivery": PaymentMethod.CASH,
+                "现金": PaymentMethod.CASH,
+            }
+            if s.isdigit() and int(s) in {1, 7, 8}:
+                method = PaymentMethod(int(s))
+            else:
+                method = map_.get(s, PaymentMethod.CASH)
+        else:
+            method = PaymentMethod.CASH
+        pay_online = method in {PaymentMethod.CREDIT_CARD, PaymentMethod.WECHAT_PAY}
+        return method, pay_online
+
     @property
     def _menusifu_token(self) -> tuple[str, str]:
         """
@@ -235,10 +278,21 @@ class MenuSifuTool(Toolkit):
         """
         # Return error string directly
         if isinstance(extracted_order, str):
+            logger.warning(
+                f"[MenuSifuTool] Order extraction returned error: {extracted_order}"
+            )
             return extracted_order
 
+        logger.info(
+            f"[MenuSifuTool] Successfully extracted order with {len(extracted_order.items)} items for customer: {extracted_order.customer_first_name}"
+        )
+
         # Convert ExtractedMenuSifuOrder to internal dict format
-        return convert_extracted_order_to_dict(extracted_order)
+        processed_items = convert_extracted_order_to_dict(extracted_order)
+        logger.debug(
+            f"[MenuSifuTool] Converted {len(processed_items)} items to internal dict format"
+        )
+        return processed_items
 
     def _calculate_order_total(
         self, order_items: List[Dict]
@@ -253,13 +307,21 @@ class MenuSifuTool(Toolkit):
             OrderCalculationResponse or error message
         """
         try:
+            logger.debug(
+                f"[MenuSifuTool] Starting order total calculation for {len(order_items)} items"
+            )
+
             # Always use pickup order type (delivery not supported)
             # Validate that order_items is non-empty
             if not order_items:
+                logger.error(
+                    "[MenuSifuTool] Cannot calculate order total: no items provided"
+                )
                 return "Cannot calculate order total: no items provided"
 
             # Convert order_items to OrderSelectedItem instances
             selected_items = []
+            logger.debug("[MenuSifuTool] Converting items to OrderSelectedItem format")
             for item in order_items:
                 try:
                     # Use helper function for safe field conversion
@@ -304,7 +366,7 @@ class MenuSifuTool(Toolkit):
 
             # Call calculation API
             logger.info(
-                f"Calling MenuSifu order calculation API with {len(selected_items)} items"
+                f"[MenuSifuTool] Calling MenuSifu order calculation API with {len(selected_items)} items"
             )
             calc_result = calculate_order_total(
                 access_token=self.access_token or self._menusifu_token[0],
@@ -315,8 +377,15 @@ class MenuSifuTool(Toolkit):
 
             # Return OrderCalculationResponse directly, or convert error response to string
             if isinstance(calc_result, OrderCalculationResponse):
+                subtotal = getattr(calc_result, "order_subtotal", "N/A")
+                logger.info(
+                    f"[MenuSifuTool] Order calculation successful - subtotal: ${subtotal}"
+                )
                 return calc_result
             else:
+                logger.warning(
+                    f"[MenuSifuTool] Order calculation returned error: {calc_result}"
+                )
                 return f"Order calculation failed: {calc_result}"
 
         except Exception as e:
@@ -340,13 +409,21 @@ class MenuSifuTool(Toolkit):
             OrderGenerationResponse or error message
         """
         try:
+            logger.debug(
+                f"[MenuSifuTool] Starting order generation for {len(order_items)} items"
+            )
+
             # Always use pickup order type (delivery not supported)
             # Validate that order_items is non-empty
             if not order_items:
+                logger.error("[MenuSifuTool] Cannot generate order: no items provided")
                 return "Cannot generate order: no items provided"
 
             # Handle error case where customer_info is an error string
             if isinstance(customer_info, str):
+                logger.warning(
+                    f"[MenuSifuTool] Order generation aborted due to customer info error: {customer_info}"
+                )
                 return customer_info
 
             # Extract customer info directly from the unified extraction result
@@ -355,9 +432,21 @@ class MenuSifuTool(Toolkit):
             customer_first_name = customer_info.customer_first_name
             customer_last_name = customer_info.customer_last_name
 
+            # Log order processing without exposing PII at info level
+            logger.info(
+                "[MenuSifuTool] Processing order for customer - validation passed"
+            )
+            # Log PII details only at debug level for troubleshooting
+            logger.debug(
+                f"[MenuSifuTool] Customer details: {customer_first_name} {customer_last_name or ''} ({customer_email})"
+            )
+
             # Handle phone information from structured Phone object (required)
             # Safe access with validation (validated earlier in extraction)
             if not customer_info.customer_phone:
+                logger.error(
+                    "[MenuSifuTool] Customer phone information is missing from extracted order"
+                )
                 return "Customer phone information is missing from extracted order"
 
             country_code = customer_info.customer_phone.country_code
@@ -367,6 +456,7 @@ class MenuSifuTool(Toolkit):
             if not country_code or not phone_number:
                 return "Customer phone number or country code is missing from extracted order"
             payment_method_str = "CASH"  # Hardcoded to cash as requested
+            logger.debug(f"[MenuSifuTool] Using payment method: {payment_method_str}")
             # Address fields not needed for pickup orders
 
             # Validate that normalized phone_number is non-empty
@@ -486,6 +576,13 @@ class MenuSifuTool(Toolkit):
             )
 
             # Call order generation API
+            logger.info(
+                f"[MenuSifuTool] Calling MenuSifu order generation API for customer: {customer_first_name}"
+            )
+            logger.debug(
+                f"[MenuSifuTool] Order details: {len(selected_items)} items, payment: {payment_method}"
+            )
+
             order_result = generate_order(
                 access_token=self.access_token or self._menusifu_token[0],
                 merchant_id=self.merchant_id or self._menusifu_token[1],
@@ -493,10 +590,27 @@ class MenuSifuTool(Toolkit):
                 base_url=self.base_url,
             )
 
+            if isinstance(order_result, OrderGenerationResponse):
+                # Safely extract order ID from nested order object
+                order_obj = getattr(order_result, "order", None)
+                if order_obj:
+                    # Try order._id (alias order_id) first, then order_number as fallback
+                    order_id = getattr(order_obj, "_id", None) or getattr(
+                        order_obj, "order_number", "N/A"
+                    )
+                else:
+                    order_id = "N/A"
+                logger.info(
+                    f"[MenuSifuTool] Order generation successful - Order ID: {order_id}"
+                )
+            else:
+                logger.error(f"[MenuSifuTool] Order generation failed: {order_result}")
+
             # Return result directly - it's either OrderGenerationResponse or error string
             return order_result
 
         except Exception as e:
+            logger.error(f"[MenuSifuTool] Order generation exception: {str(e)}")
             return f"Failed to generate order: {str(e)}"
 
     @tool
@@ -567,7 +681,12 @@ class MenuSifuTool(Toolkit):
                 return order_result  # Error message
 
             # Step 5: Format success response (database saving disabled for now)
+            logger.info("[MenuSifuTool] Step 5: Formatting success response")
             order_summary = extract_order_summary(order_result)
+            order_id = order_summary.get("order_id", "N/A")
+            logger.info(
+                f"[MenuSifuTool] Order checkout completed successfully - Final Order ID: {order_id}"
+            )
 
             success_message = f"""Order Successfully Placed!
 
@@ -594,4 +713,7 @@ Your order has been sent to the restaurant. Please wait for confirmation and pic
             return success_message
 
         except Exception as e:
+            logger.error(
+                f"[MenuSifuTool] Order checkout process failed with exception: {str(e)}"
+            )
             return f"Failed to process order checkout: {str(e)}"

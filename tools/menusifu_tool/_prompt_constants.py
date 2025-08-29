@@ -102,11 +102,12 @@ Extract the following information from the conversation:
 - Validate that delivery orders have sufficient address information.
 
 # RULES FOR PAYMENT METHOD:
-- Default to CASH unless customer specifies otherwise.
-- Map common payment terms to MenuSifu PaymentMethod enum values:
-  - "card", "credit card", "credit" -> CREDIT_CARD
-  - "wechat", "wechat pay", "微信" -> WECHAT_PAY  
-  - "cash", "pay on pickup/delivery", "现金" -> CASH
+- Default to CASH (value: 7) unless customer specifies otherwise.
+- Map common payment terms to MenuSifu PaymentMethod enum numeric values:
+  - "card", "credit card", "credit" -> CREDIT_CARD (value: 1)
+  - "wechat", "wechat pay", "微信" -> WECHAT_PAY (value: 8)
+  - "cash", "pay on pickup/delivery", "现金" -> CASH (value: 7)
+- The payment method will be automatically converted to the correct numeric value for the API
 
 # IMPORTANT RULES:
 - Do NOT make assumptions or fabricate data
