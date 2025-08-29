@@ -96,11 +96,6 @@ def search_availability(
         if not isinstance(availability_entry, dict):
             continue
 
-        # Extract restaurant ID
-        restaurant_id_from_response = availability_entry.get(
-            "restaurantId", restaurant_id
-        )
-
         # Process availability days
         availability_days = availability_entry.get("availabilityDays", [])
         logger.info(f"Availability days: {availability_days}")
