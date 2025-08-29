@@ -287,11 +287,53 @@ class MenuSifuTool(Toolkit):
             f"[MenuSifuTool] Successfully extracted order with {len(extracted_order.items)} items for customer: {extracted_order.customer_first_name}"
         )
 
+        # Log detailed extracted order information
+        logger.info("[MenuSifuTool] Extracted Order Details:")
+        logger.info(
+            f"  - Customer: {extracted_order.customer_first_name} {extracted_order.customer_last_name or ''}"
+        )
+        logger.info(
+            f"  - Phone: {extracted_order.customer_phone.country_code}{extracted_order.customer_phone.number}"
+        )
+        logger.info(f"  - Order Type: {extracted_order.order_type}")
+        logger.info(
+            f"  - Payment Method: {extracted_order.payment_method} (value: {extracted_order.payment_method.value})"
+        )
+
+        for i, item in enumerate(extracted_order.items, 1):
+            logger.info(f"  - Item {i}: {item.item_name} (ID: {item.item_id})")
+            logger.info(
+                f"    * Price: ${item.price}, Display: {item.display_price}, Qty: {item.quantity}"
+            )
+            logger.info(f"    * Type: {item.item_type}, Category: {item.category_id}")
+            if item.modifiers:
+                logger.info(f"    * Modifiers: {len(item.modifiers)} items")
+                for mod in item.modifiers:
+                    logger.debug(
+                        f"      - {mod.name}: ${mod.price} (qty: {mod.quantity})"
+                    )
+
         # Convert ExtractedMenuSifuOrder to internal dict format
         processed_items = convert_extracted_order_to_dict(extracted_order)
         logger.debug(
             f"[MenuSifuTool] Converted {len(processed_items)} items to internal dict format"
         )
+
+        # Log converted items details
+        logger.debug("[MenuSifuTool] Converted Items Details:")
+        for i, item in enumerate(processed_items, 1):
+            logger.debug(f"  - Converted Item {i}: {item.get('name')}")
+            logger.debug(
+                f"    * ID: {item.get('id')}, Sale ID: {item.get('sale_item_id')}"
+            )
+            logger.debug(
+                f"    * Price: {item.get('price')}, Display: {item.get('display_price')}"
+            )
+            logger.debug(
+                f"    * Type: {item.get('item_type')}, Category: {item.get('category_id')}"
+            )
+            logger.debug(f"    * Options: {len(item.get('options', []))}")
+
         return processed_items
 
     def _calculate_order_total(
@@ -322,18 +364,32 @@ class MenuSifuTool(Toolkit):
             # Convert order_items to OrderSelectedItem instances
             selected_items = []
             logger.debug("[MenuSifuTool] Converting items to OrderSelectedItem format")
-            for item in order_items:
+            for i, item in enumerate(order_items, 1):
                 try:
+                    logger.debug(
+                        f"[MenuSifuTool] Processing item {i}: {item.get('name', 'Unknown')}"
+                    )
+
                     # Use helper function for safe field conversion
                     safe_fields = safe_convert_item_fields(item)
 
-                    # Use raw displayPrice for OrderSelectedItem
-                    display_price_val = safe_fields["displayPrice"]
+                    # Log safe field conversion results
+                    logger.debug(f"[MenuSifuTool] Safe field conversion for item {i}:")
+                    logger.debug(f"  - Raw item: {item}")
+                    logger.debug(f"  - Safe fields: {safe_fields}")
+
+                    # Convert price (Decimal) to displayPrice (int) - same value, different type
+                    price_decimal = safe_fields["price"]
+                    display_price_int = int(price_decimal) if price_decimal else None
+
+                    logger.debug(
+                        f"[MenuSifuTool] Price conversion: {price_decimal} (Decimal) -> {display_price_int} (int)"
+                    )
 
                     # Map fields from order_items to OrderSelectedItem format
                     selected_item = OrderSelectedItem(
                         categoryId=safe_fields["categoryId"],
-                        displayPrice=display_price_val,
+                        displayPrice=display_price_int,  # Same as price but as int
                         id=safe_fields["id"],
                         itemType=safe_fields["itemType"],
                         name=safe_fields["name"],
@@ -347,6 +403,12 @@ class MenuSifuTool(Toolkit):
                         sizeId=None,
                         detailPriceInfo=None,
                     )
+
+                    # Log final OrderSelectedItem details in one line
+                    logger.info(
+                        f"[MenuSifuTool] Created OrderSelectedItem {i}: {selected_item.name} (ID: {selected_item.id}, Price: ${selected_item.price}, Display: {selected_item.display_price}, Qty: {selected_item.quantity}, Category: {selected_item.category_id}, Type: {selected_item.item_type}, Options: {len(selected_item.options or [])})"
+                    )
+
                     selected_items.append(selected_item)
 
                 except Exception as e:
@@ -364,6 +426,20 @@ class MenuSifuTool(Toolkit):
                 selectedItems=selected_items,  # Use actual converted items
             )
 
+            # Log calculation request details
+            logger.info("[MenuSifuTool] Order Calculation Request:")
+            logger.info(f"  - Order Type: {calc_request.order_type}")
+            logger.info(
+                f"  - Payment Method: {calc_request.payment_method} (value: {calc_request.payment_method.value})"
+            )
+            logger.info(f"  - Total Tips: ${calc_request.total_tips}")
+            logger.info(f"  - Delivery Fee: ${calc_request.delivery_fee}")
+            logger.info(f"  - Selected Items: {len(calc_request.selected_items)}")
+
+            # Log the JSON payload (debug level)
+            logger.debug("[MenuSifuTool] Calculation API JSON payload:")
+            logger.debug(f"  {calc_request.model_dump_json(by_alias=True)}")
+
             # Call calculation API
             logger.info(
                 f"[MenuSifuTool] Calling MenuSifu order calculation API with {len(selected_items)} items"
@@ -378,9 +454,36 @@ class MenuSifuTool(Toolkit):
             # Return OrderCalculationResponse directly, or convert error response to string
             if isinstance(calc_result, OrderCalculationResponse):
                 subtotal = getattr(calc_result, "order_subtotal", "N/A")
+                total = getattr(calc_result, "order_total", "N/A")
+                tax_total = getattr(calc_result, "order_tax_total", "N/A")
+
                 logger.info(
                     f"[MenuSifuTool] Order calculation successful - subtotal: ${subtotal}"
                 )
+
+                # Log detailed calculation response
+                logger.info("[MenuSifuTool] Order Calculation Response Details:")
+                logger.info(f"  - Subtotal: ${subtotal}")
+                logger.info(f"  - Tax Total: ${tax_total}")
+                logger.info(f"  - Order Total: ${total}")
+                logger.info(
+                    f"  - Discount: ${getattr(calc_result, 'order_discount', 'N/A')}"
+                )
+                logger.info(
+                    f"  - Charge: ${getattr(calc_result, 'order_charge', 'N/A')}"
+                )
+                logger.info(
+                    f"  - Tips: ${getattr(calc_result, 'order_total_tips', 'N/A')}"
+                )
+
+                # Log charge objects details
+                charge_obj = getattr(calc_result, "charge_obj", [])
+                logger.debug(f"[MenuSifuTool] Charge objects: {len(charge_obj)} items")
+                for i, charge in enumerate(charge_obj):
+                    logger.debug(
+                        f"  - Charge {i+1}: ${charge.charge} (type: {getattr(charge, 'type', 'N/A')})"
+                    )
+
                 return calc_result
             else:
                 logger.warning(
@@ -575,6 +678,29 @@ class MenuSifuTool(Toolkit):
                 businessId=None,
             )
 
+            # Log order generation request details
+            logger.info("[MenuSifuTool] Order Generation Request:")
+            logger.info(
+                f"  - Customer: {order_request.customer.first_name} {order_request.customer.last_name}"
+            )
+            logger.info(
+                f"  - Phone: {order_request.country_code}{order_request.telephone_number}"
+            )
+            logger.info(f"  - Channel: {order_request.channel}")
+            logger.info(f"  - Order Type: {order_request.order_type}")
+            logger.info(
+                f"  - Payment Method: {order_request.payment_method} (value: {order_request.payment_method.value})"
+            )
+            logger.info(f"  - Pay Online: {order_request.pay_online}")
+            logger.info(f"  - Selected Items: {len(order_request.selected_items)}")
+            logger.info(f"  - Total Price: ${order_request.price.total}")
+            logger.info(f"  - Subtotal: ${order_request.price.subtotal}")
+            logger.info(f"  - Tax Total: ${order_request.price.tax_total}")
+
+            # Log generation request JSON payload (debug level)
+            logger.debug("[MenuSifuTool] Generation API JSON payload:")
+            logger.debug(f"  {order_request.model_dump_json(by_alias=True)}")
+
             # Call order generation API
             logger.info(
                 f"[MenuSifuTool] Calling MenuSifu order generation API for customer: {customer_first_name}"
@@ -598,8 +724,39 @@ class MenuSifuTool(Toolkit):
                     order_id = getattr(order_obj, "_id", None) or getattr(
                         order_obj, "order_number", "N/A"
                     )
+                    order_number = getattr(order_obj, "order_number", "N/A")
+                    status = getattr(order_obj, "status", "N/A")
+
+                    # Log detailed order generation response
+                    logger.info("[MenuSifuTool] Order Generation Response Details:")
+                    logger.info(f"  - Order ID: {order_id}")
+                    logger.info(f"  - Order Number: {order_number}")
+                    logger.info(f"  - Status: {status}")
+
+                    # Log price details from the generated order
+                    order_price = getattr(order_obj, "price", None)
+                    if order_price:
+                        logger.info(
+                            f"  - Final Total: ${getattr(order_price, 'total', 'N/A')}"
+                        )
+                        logger.info(
+                            f"  - Final Subtotal: ${getattr(order_price, 'subtotal', 'N/A')}"
+                        )
+                        logger.info(
+                            f"  - Final Tax: ${getattr(order_price, 'tax_total', 'N/A')}"
+                        )
+
+                    logger.info(
+                        f"  - Customer: {getattr(order_obj, 'customer_name', 'N/A')}"
+                    )
+                    logger.info(
+                        f"  - Phone: {getattr(order_obj, 'customer_phone', 'N/A')}"
+                    )
+
                 else:
                     order_id = "N/A"
+                    logger.warning("[MenuSifuTool] Order object missing from response")
+
                 logger.info(
                     f"[MenuSifuTool] Order generation successful - Order ID: {order_id}"
                 )
