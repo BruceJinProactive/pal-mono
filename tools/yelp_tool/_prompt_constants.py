@@ -128,7 +128,7 @@ Your task is to extract the following information:
 - Number of people (covers): How many people need seating (1-10) - e.g., "2", "4 people", "party of 6"
 - Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date} - e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"  
 - Time: The desired reservation time in HH:MM format (24-hour format) - e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
-- Guest details: first name, last name, phone number with area code (e.g., "555-123-4567"), email address (e.g., "customer@email.com")
+- Guest details: first name, last name, phone number with area code (e.g., "555-123-4567")
 - Special notes or requests (optional): Dietary restrictions, seating preferences, etc.
 
 # INSTRUCTIONS:
@@ -138,10 +138,9 @@ Your task is to extract the following information:
 {weekday_conversion_rules}
 3. For names, extract first and last name separately
 4. Phone numbers should be in standard format (e.g., "555-123-4567")
-5. Email addresses must be valid format
-6. If any required field is missing, output null for that field
-7. Special notes should capture any dietary restrictions, celebrations, seating preferences, etc.
-8. Assume the year as that of the current date {current_date} unless otherwise specified.
+5. If any required field is missing, output null for that field
+6. Special notes should capture any dietary restrictions, celebrations, seating preferences, etc.
+7. Assume the year as that of the current date {current_date} unless otherwise specified.
 
 # TIME EXTRACTION PRIORITY:
 1. **MOST IMPORTANT**: If the user specifically selects or confirms a particular time from available options (e.g., "I'll take the 5:45 pm", "book the 7:30 slot"), use that EXACT time
@@ -174,7 +173,6 @@ Examples:
 - first_name: non-empty string
 - last_name: non-empty string  
 - phone: valid phone number format
-- email: valid email address format
 - notes: optional string
 
 # IMPORTANT:

@@ -538,9 +538,6 @@ class ReservationQuery(BaseModel):
         min_length=1,
         max_length=32,
     )
-    email: Optional[str] = Field(
-        default=None, description="The email to attach to the reservation."
-    )
     notes: Optional[str] = Field(
         default=None, description="The additional party notes for the reservation."
     )
