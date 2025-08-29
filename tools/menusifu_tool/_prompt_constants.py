@@ -44,7 +44,7 @@ Extract the following information from the conversation:
 - Construct a structured order object with Chinese food items from the MenuSifu catalog.
 - Identify all Chinese dishes the user wants to order from the chat history.
 - Verify that quantities and sizes (Small/Large) are accurate based on user requests.
-- Map Chinese dish names to the correct MenuSifu catalog item IDs and sale_item_ids.
+- Map Chinese dish names to the correct MenuSifu catalog item IDs.
 - Handle both English and Chinese dish names (e.g., "General Tso Chicken" / "左宗鸡").
 - Extract and include customer information if provided.
 - Include any special dietary requests or customizations.
@@ -55,14 +55,17 @@ Extract the following information from the conversation:
   - lastName: Customer's last name (optional, can be empty string)
   - customer_email: Customer's email address (optional)
   - customer_phone: Phone object with countryCode (e.g. "+1", "+86") and number fields
+- For phone number country code: **assume "+1" if user did not mention a specific country code**
 - Examples of phone extraction:
   - "Call me at 555-1234" → customer_phone: {"countryCode": "+1", "number": "5551234"}
+  - "My phone is 5141234567" → customer_phone: {"countryCode": "+1", "number": "5141234567"}
   - "My number is +86 138 1234 5678" → customer_phone: {"countryCode": "+86", "number": "13812345678"}
 
 # RULES FOR CHINESE FOOD ITEMS:
 - Match user-requested Chinese dishes to the closest MenuSifu catalog items available.
-- Use the exact item_id and sale_item_id from the catalog for each item.
-- CRITICAL: If catalog/menu context is missing or items cannot be confidently mapped to catalog entries, set item_id and sale_item_id to null (do not guess or hallucinate IDs).
+- Use the exact item_id from the catalog for each item.
+
+- CRITICAL: If catalog/menu context is missing or items cannot be confidently mapped to catalog entries, set item_id to null (do not guess or hallucinate IDs).
 - When catalog context is missing, return a clear error message indicating "Missing or insufficient catalog context - please provide menu/catalog data to process order items" but continue to populate quantity, modifiers, and other available fields.
 - Handle common Chinese food sizes: Small, Large (not Regular/Medium like bubble tea).
 - Include customizations like "no onions", "extra sauce", "no vegetables" in the modifiers array.
@@ -82,11 +85,16 @@ Extract the following information from the conversation:
 - Chef's Specials (本楼菜): House specialties and combination dishes
 
 # RULES FOR CUSTOMER INFORMATION:
-- Extract customer contact information only if explicitly provided in the chat.
-- Customer name is required - if not provided, ask for it.
-- Phone number is required for MenuSifu orders.
-- Do not make assumptions or fabricate data.
-- Leave optional fields as None/null if information is not mentioned.
+- Customer first name is REQUIRED - extract from chat conversation.
+- Phone number is REQUIRED for MenuSifu orders - extract with country code and number.
+- **IMPORTANT**: For phone country code, assume "+1" if user did not specify a country code.
+- Look for customer information in phrases like:
+  - "My name is John" → customer_first_name: "John"
+  - "Call me at 555-1234" → customer_phone: {"countryCode": "+1", "number": "5551234"}
+  - "My phone is 514-123-4567" → customer_phone: {"countryCode": "+1", "number": "5141234567"}
+  - "I'm Sarah, phone is +86 138 1234 5678" → extract both name and phone
+- If customer information is missing from chat, return validation error asking for name and phone.
+- Do not make assumptions or use default values except for the "+1" country code default.
 
 # RULES FOR ORDER TYPE AND DELIVERY:
 - Default to ONLINE_PICKUP unless customer specifically requests delivery.
@@ -124,7 +132,7 @@ Based on the following MenuSifu Chinese restaurant menu context and chat history
 # CHAT HISTORY:
 {chat_history}
 
-Please analyze the conversation and extract all Chinese food order information. Use the menu context above to find the correct item IDs, sale_item_ids, prices, and available sizes/modifications.
+Please analyze the conversation and extract all Chinese food order information. Use the menu context above to find the correct item IDs, prices, and available sizes/modifications.
 
 **IMPORTANT EXTRACTION RULES:**
 1. Use EXACT item names and IDs as they appear in the menu context above
@@ -138,7 +146,7 @@ Please analyze the conversation and extract all Chinese food order information. 
 - If user says "I want General Tso Chicken large size"
   - Item: "General Tso Chicken" 
   - Size: "Large" (from available sizes in menu)
-  - Use item_id and sale_item_id from menu context
+  - Use item_id from menu context
 
 - If user says "Beef Lo Mein small, no onions please"
   - Item: "Beef Lo Mein"

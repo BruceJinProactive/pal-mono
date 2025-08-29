@@ -5,6 +5,7 @@ Utility functions for MenuSifu tool operations
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
@@ -22,6 +23,7 @@ from .classes import (
     Category,
     ComboSection,
     DetailPrice,
+    ExtractedMenuSifuOrder,
     LocalizedName,
     MenuGroup,
     MenuResponse,
@@ -2121,7 +2123,6 @@ def calculate_order_totals(
     Returns:
         Dictionary with calculated totals
     """
-    from decimal import ROUND_HALF_UP, Decimal
 
     # Calculate subtotal
     subtotal = Decimal("0")
@@ -2155,4 +2156,179 @@ def calculate_order_totals(
         "total_before_rounding": float(total_before_rounding),
         "total": float(total),
         "rounding": float(rounding),
+    }
+
+
+def convert_extracted_order_to_dict(
+    extracted_order: ExtractedMenuSifuOrder,
+) -> List[Dict[str, Any]]:
+    """
+    Convert ExtractedMenuSifuOrder to internal dict format for processing.
+
+    Args:
+        extracted_order: Extracted order from LLM
+
+    Returns:
+        List of item dictionaries in internal format
+    """
+    processed_items = []
+    for item in extracted_order.items:
+        # Convert modifiers to dict format for compatibility
+        options_list = []
+        for modifier in item.modifiers:
+            option_dict = {
+                "id": modifier.id,
+                "name": modifier.name,
+                "price": modifier.price,
+                "quantity": modifier.quantity,
+                "checked": modifier.checked,
+            }
+            options_list.append(option_dict)
+
+        item_dict = {
+            "id": item.item_id,
+            "item_id": item.item_id,
+            "sale_item_id": item.item_id,  # For MenuSifu: always same as item_id
+            "name": item.item_name,
+            "quantity": item.quantity,
+            "price": item.price,
+            "display_price": item.display_price,
+            "item_type": item.item_type,
+            "category_id": item.category_id,
+            "special_notes": item.special_notes,
+            "options": options_list,  # Converted modifiers to options dict format
+        }
+        processed_items.append(item_dict)
+
+    return processed_items
+
+
+def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Safely convert item fields with proper validation and defaults.
+
+    Args:
+        item: Raw item dictionary from order data
+
+    Returns:
+        Dict with safely converted fields
+
+    Raises:
+        ValueError: If required fields are missing
+    """
+    # Safely extract and validate required id field
+    raw_id = item.get("id") or item.get("item_id")
+    if raw_id is None or raw_id == "":
+        raise ValueError(f"Item missing required 'id' field: {item}")
+    item_id = int(raw_id)
+
+    # For MenuSifu: sale_item_id should always be the same as item_id
+    sale_item_id = item_id
+
+    # Safely convert price with validation (required field, default to 0)
+    raw_price = item.get("price")
+    if raw_price is None or raw_price == "":
+        price_val = Decimal("0")
+    else:
+        try:
+            price_val = Decimal(str(raw_price))
+        except (ValueError, TypeError, ArithmeticError):
+            # Default to 0 if conversion fails
+            price_val = Decimal("0")
+
+    # Safely convert displayPrice (optional field) - keep raw value intact but ensure it's not None
+    raw_display_price = item.get("displayPrice") or item.get("display_price")
+    # Keep as-is but ensure it's not None for Pydantic validation
+    display_price_val = (
+        raw_display_price if raw_display_price is not None else price_val
+    )
+
+    # Safely convert categoryId with default (handle 0 as valid value)
+    raw_category_id = item.get("categoryId")
+    if raw_category_id is None:
+        raw_category_id = item.get("category_id")
+
+    if raw_category_id is None or raw_category_id == "":
+        category_id_val = 0
+    else:
+        try:
+            category_id_val = int(raw_category_id)
+        except (ValueError, TypeError):
+            category_id_val = 0
+
+    # Safely convert quantity with default
+    raw_quantity = item.get("quantity")
+    if raw_quantity is None or raw_quantity == "":
+        quantity_val = 1
+    else:
+        try:
+            quantity_val = int(raw_quantity)
+            # Ensure quantity is at least 1
+            quantity_val = max(1, quantity_val)
+        except (ValueError, TypeError):
+            quantity_val = 1
+
+    return {
+        "id": item_id,
+        "saleItemId": sale_item_id,
+        "price": price_val,
+        "displayPrice": display_price_val,  # Raw value kept intact
+        "categoryId": category_id_val,
+        "quantity": quantity_val,
+        "itemType": item.get("itemType") or item.get("item_type") or "SALE_ITEM",
+        "name": item.get("name") or "",
+    }
+
+
+def safe_convert_option_fields(option: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Safely convert option fields with proper validation and defaults.
+
+    Args:
+        option: Raw option dictionary from item data
+
+    Returns:
+        Dict with safely converted fields
+    """
+    # Safely convert optionPrice (optional field)
+    raw_option_price = option.get("optionPrice")
+    option_price_val = None
+    if raw_option_price is not None and raw_option_price != "":
+        try:
+            option_price_val = Decimal(str(raw_option_price))
+        except (ValueError, TypeError, ArithmeticError):
+            # Default to None if conversion fails
+            option_price_val = None
+
+    # Safely convert option price (required field, default to 0)
+    raw_price = option.get("price")
+    if raw_price is None or raw_price == "":
+        price_val = Decimal("0")
+    else:
+        try:
+            price_val = Decimal(str(raw_price))
+        except (ValueError, TypeError, ArithmeticError):
+            # Default to 0 if conversion fails
+            price_val = Decimal("0")
+
+    # Safely convert option quantity with default
+    raw_quantity = option.get("quantity")
+    if raw_quantity is None or raw_quantity == "":
+        quantity_val = 1
+    else:
+        try:
+            quantity_val = int(raw_quantity)
+            # Ensure quantity is at least 1
+            quantity_val = max(1, quantity_val)
+        except (ValueError, TypeError):
+            quantity_val = 1
+
+    return {
+        "id": option.get("id"),  # Can be None for optional options
+        "optionPrice": option_price_val,
+        "price": price_val,
+        "quantity": quantity_val,
+        "name": option.get("name") or "",
+        "checked": option.get("checked", True),
+        "isOpenOption": option.get("isOpenOption", False),
     }

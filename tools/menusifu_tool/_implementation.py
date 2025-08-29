@@ -4,7 +4,7 @@ MenuSifu Tool implementation for online ordering and checkout
 
 import json
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
@@ -22,7 +22,10 @@ from tools.menusifu_tool._utils import (
     build_address_info,
     build_customer_info,
     build_order_price_from_calculation,
+    convert_extracted_order_to_dict,
     extract_order_summary,
+    safe_convert_item_fields,
+    safe_convert_option_fields,
 )
 from tools.menusifu_tool.classes import (
     ExtractedMenuSifuOrder,
@@ -42,142 +45,6 @@ from tools.utils.ordering._utils import get_chat_history, get_relevant_docs
 from tools.utils.ordering.classes import SubQueries
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
-
-
-def _convert_extracted_order_to_dict(
-    extracted_order: ExtractedMenuSifuOrder,
-) -> List[Dict[str, Any]]:
-    """
-    Convert ExtractedMenuSifuOrder to internal dict format for processing.
-
-    Args:
-        extracted_order: Extracted order from LLM
-
-    Returns:
-        List of item dictionaries in internal format
-    """
-    processed_items = []
-    for item in extracted_order.items:
-        # Convert modifiers to dict format for compatibility
-        options_list = []
-        for modifier in item.modifiers:
-            option_dict = {
-                "id": modifier.id,
-                "name": modifier.name,
-                "price": modifier.price,
-                "quantity": modifier.quantity,
-                "checked": modifier.checked,
-            }
-            options_list.append(option_dict)
-
-        item_dict = {
-            "id": item.item_id,
-            "item_id": item.item_id,
-            "sale_item_id": item.sale_item_id,
-            "name": item.item_name,
-            "quantity": item.quantity,
-            "price": item.price,
-            "display_price": item.display_price,
-            "item_type": item.item_type,
-            "category_id": item.category_id,
-            "special_notes": item.special_notes,
-            "options": options_list,  # Converted modifiers to options dict format
-        }
-        processed_items.append(item_dict)
-
-    return processed_items
-
-
-def _safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Safely convert item fields with proper validation and defaults.
-
-    Args:
-        item: Raw item dictionary from order data
-
-    Returns:
-        Dict with safely converted fields
-
-    Raises:
-        ValueError: If required fields are missing
-    """
-    # Safely extract and validate required id field
-    raw_id = item.get("id") or item.get("item_id")
-    if raw_id is None or raw_id == "":
-        raise ValueError(f"Item missing required 'id' field: {item}")
-    item_id = int(raw_id)
-
-    # Safely extract sale_item_id with fallback to item_id
-    raw_sale_item_id = item.get("saleItemId") or item.get("sale_item_id") or raw_id
-    sale_item_id = int(raw_sale_item_id)
-
-    # Safely convert price with validation (required field, default to 0)
-    raw_price = item.get("price")
-    if raw_price is None or raw_price == "":
-        price_val = Decimal("0")
-    else:
-        price_val = Decimal(str(raw_price))
-
-    # Safely convert displayPrice (optional field) - keep raw value intact
-    raw_display_price = item.get("displayPrice") or item.get("display_price")
-    display_price_val = raw_display_price  # Keep as-is without any modifications
-
-    # Safely convert categoryId with default
-    raw_category_id = item.get("categoryId") or item.get("category_id")
-    category_id_val = int(raw_category_id) if raw_category_id else 0
-
-    # Safely convert quantity with default
-    raw_quantity = item.get("quantity")
-    quantity_val = int(raw_quantity) if raw_quantity else 1
-
-    return {
-        "id": item_id,
-        "saleItemId": sale_item_id,
-        "price": price_val,
-        "displayPrice": display_price_val,  # Raw value kept intact
-        "categoryId": category_id_val,
-        "quantity": quantity_val,
-        "itemType": item.get("itemType") or item.get("item_type") or "SALE_ITEM",
-        "name": item.get("name") or "",
-    }
-
-
-def _safe_convert_option_fields(option: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Safely convert option fields with proper validation and defaults.
-
-    Args:
-        option: Raw option dictionary from item data
-
-    Returns:
-        Dict with safely converted fields
-    """
-    # Safely convert optionPrice (optional field)
-    raw_option_price = option.get("optionPrice")
-    option_price_val = None
-    if raw_option_price is not None and raw_option_price != "":
-        option_price_val = Decimal(str(raw_option_price))
-
-    # Safely convert option price (required field, default to 0)
-    raw_price = option.get("price")
-    if raw_price is None or raw_price == "":
-        price_val = Decimal("0")
-    else:
-        price_val = Decimal(str(raw_price))
-
-    # Safely convert option quantity with default
-    raw_quantity = option.get("quantity")
-    quantity_val = int(raw_quantity) if raw_quantity else 1
-
-    return {
-        "id": option.get("id"),  # Can be None for optional options
-        "optionPrice": option_price_val,
-        "price": price_val,
-        "quantity": quantity_val,
-        "name": option.get("name") or "",
-        "checked": option.get("checked", True),
-        "isOpenOption": option.get("isOpenOption", False),
-    }
 
 
 class MenuSifuTool(Toolkit):
@@ -313,9 +180,24 @@ class MenuSifuTool(Toolkit):
             if not isinstance(extracted_order, ExtractedMenuSifuOrder):
                 return f"Order extraction returned unexpected type: {type(extracted_order)}"
 
-            # Validate minimum required fields
-            if not extracted_order.customer_first_name:
-                return "Customer first name is required for order processing"
+            # Schema enforces required first name; rely on ValidationError path for consistent messages.
+
+            # Validate phone object before using it later in the flow
+            if not extracted_order.customer_phone:
+                return "Customer phone number is required for order processing. Please provide phone number in the conversation."
+
+            # Trim phone number before validating emptiness
+            if extracted_order.customer_phone.number:
+                extracted_order.customer_phone.number = (
+                    extracted_order.customer_phone.number.strip()
+                )
+            if not extracted_order.customer_phone.number:
+                return "Customer phone number is required for order processing. Please provide a valid phone number in the conversation."
+
+            # Default missing country code to +1 per prompt rules
+            if not extracted_order.customer_phone.country_code:
+                extracted_order.customer_phone.country_code = "+1"  # per prompt default
+                logger.info("Defaulted missing phone country code to +1.")
 
             if not extracted_order.items:
                 return "Some required items are missing from the order; please check inputs"
@@ -356,7 +238,7 @@ class MenuSifuTool(Toolkit):
             return extracted_order
 
         # Convert ExtractedMenuSifuOrder to internal dict format
-        return _convert_extracted_order_to_dict(extracted_order)
+        return convert_extracted_order_to_dict(extracted_order)
 
     def _calculate_order_total(
         self, order_items: List[Dict]
@@ -381,7 +263,7 @@ class MenuSifuTool(Toolkit):
             for item in order_items:
                 try:
                     # Use helper function for safe field conversion
-                    safe_fields = _safe_convert_item_fields(item)
+                    safe_fields = safe_convert_item_fields(item)
 
                     # Use raw displayPrice for OrderSelectedItem
                     display_price_val = safe_fields["displayPrice"]
@@ -471,26 +353,32 @@ class MenuSifuTool(Toolkit):
             # At this point, customer_info must be ExtractedMenuSifuOrder (str case handled above)
             customer_email = customer_info.customer_email or "test@palona.com"
             customer_first_name = customer_info.customer_first_name
-            customer_last_name = customer_info.customer_last_name or ""
+            customer_last_name = customer_info.customer_last_name
 
-            # Handle phone information from structured Phone object
+            # Handle phone information from structured Phone object (required)
+            # Safe access with validation (validated earlier in extraction)
             if not customer_info.customer_phone:
-                return f"Customer phone number is required for order processing. Customer: {customer_first_name} {customer_last_name} ({customer_email})"
+                return "Customer phone information is missing from extracted order"
 
             country_code = customer_info.customer_phone.country_code
             phone_number = customer_info.customer_phone.number
+
+            # Additional safety check
+            if not country_code or not phone_number:
+                return "Customer phone number or country code is missing from extracted order"
             payment_method_str = "CASH"  # Hardcoded to cash as requested
             # Address fields not needed for pickup orders
 
             # Validate that normalized phone_number is non-empty
             if not phone_number or phone_number.strip() == "":
-                return f"Customer phone number is required for order processing. Customer: {customer_first_name} {customer_last_name} ({customer_email})"
+                full_name = f"{customer_first_name} {customer_last_name or ''}".strip()
+                return f"Customer phone number is required for order processing. Customer: {full_name} ({customer_email})"
 
             # Build customer using helper function
             customer = build_customer_info(
                 email=customer_email,
                 first_name=customer_first_name,
-                last_name=customer_last_name,
+                last_name=customer_last_name or "",  # Handle optional None last_name
                 country_code=country_code,
                 phone_number=phone_number,
             )
@@ -506,13 +394,13 @@ class MenuSifuTool(Toolkit):
             for item in order_items:
                 try:
                     # Use helper function for safe field conversion
-                    safe_fields = _safe_convert_item_fields(item)
+                    safe_fields = safe_convert_item_fields(item)
 
                     # Convert options/modifiers to OrderItemOptionNote using helper
                     item_options = []
                     if item.get("options"):
                         for option in item["options"]:
-                            safe_option_fields = _safe_convert_option_fields(option)
+                            safe_option_fields = safe_convert_option_fields(option)
 
                             option_note = OrderItemOptionNote(
                                 id=safe_option_fields["id"],
@@ -632,16 +520,9 @@ class MenuSifuTool(Toolkit):
         - Calculates order total and generates the order with MenuSifu
         - Returns order confirmation with totals and order ID
 
-        **Do not use when:**
-        - Customer is browsing menu or asking questions about items
-        - Customer is still deciding what to order or quantities
-        - Customer hasn't confirmed they want to proceed with order
-        - Missing required information (customer name, phone, items)
-
         Args:
             customer_name: Customer's full name for the order.
             phone_number: Customer's phone number for order pickup.
-            special_instructions: Special requests or notes for the order.
 
         Note: All parameters are optional placeholders. Actual values are extracted from chat history.
 

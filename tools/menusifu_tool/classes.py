@@ -453,8 +453,8 @@ class Phone(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    country_code: str = Field(alias="countryCode")
-    number: str
+    country_code: str = Field(..., alias="countryCode", pattern=r"^\+\d{1,3}$")
+    number: str = Field(..., min_length=5)
 
 
 class Address(BaseModel):
@@ -861,11 +861,11 @@ class ExtractedMenuSifuOrder(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    # Customer information (reusing existing Customer structure but with optional fields for extraction)
+    # Customer information (must be provided in chat for order processing)
     customer_email: Optional[str] = None
-    customer_first_name: str = Field(alias="firstName")
-    customer_last_name: str = Field("", alias="lastName")
-    customer_phone: Optional[Phone] = None
+    customer_first_name: str = Field(..., alias="firstName", min_length=1)
+    customer_last_name: Optional[str] = Field(None, alias="lastName")
+    customer_phone: Phone  # Required field - not Optional
 
     # Required fields
     items: List[ExtractedMenuSifuItem]
