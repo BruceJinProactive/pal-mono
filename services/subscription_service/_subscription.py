@@ -1189,18 +1189,6 @@ def get_account_credit_grants(
     )
 
 
-def should_allow_calls(session: Session, account: db.Account) -> bool:
-    if account.current_subscription_id is None:
-        return True
-
-    current_subscription = get_current_subscription(session, account)
-
-    if not current_subscription:
-        return False
-
-    return current_subscription.status == SubscriptionStatus.active
-
-
 async def should_allow_calls_async(session: AsyncSession, account: db.Account) -> bool:
     if account.current_subscription_id is None:
         return True
