@@ -370,7 +370,6 @@ class YelpTool(Toolkit):
         first_name: Optional[str] = None,
         last_name: Optional[str] = None,
         phone: Optional[str] = None,
-        email: Optional[str] = None,
         notes: Optional[str] = None,
     ) -> str:
         """
@@ -388,7 +387,6 @@ class YelpTool(Toolkit):
             first_name: First name of the person making the reservation.
             last_name: Last name of the person making the reservation.
             phone: Phone number for the reservation.
-            email: Email address for the reservation.
             notes: Additional party notes or special requests for the reservation.
 
         Returns:
