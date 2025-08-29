@@ -154,6 +154,7 @@ class NumberService:
             raise ValueError(f"Failed to purchase phone number: {e}") from e
 
         return NumberResponse(
+            sid=twilio_number.sid,
             number=twilio_number.phone_number,
             merchant_name=merchant_name,
             country_code=country_code,
@@ -210,6 +211,7 @@ class NumberService:
             raise ValueError(f"Failed to purchase toll-free phone number: {e}") from e
 
         return NumberResponse(
+            sid=twilio_number.sid,
             number=twilio_number.phone_number,
             merchant_name=merchant_name,
             country_code=country_code,
@@ -284,10 +286,18 @@ class NumberService:
                 number_response = self.purchase_number(
                     country_code, merchant_name, area_code=area_code, contains=contains
                 )
+                # Add the purchased number to messaging service
+                if number_response.sid is None:
+                    raise ValueError("Phone number SID is not valid")
+                self._add_number_to_messaging_service(
+                    number_response.sid,
+                    number_response.number,
+                )
 
             if not number_response or not number_response.number:
                 raise ValueError("Failed to get phone number from Twilio")
             phone_number = number_response.number
+
         else:
             # Reusing an approved number
             number_details = self.get_number_details(phone_number)
@@ -297,6 +307,7 @@ class NumberService:
                 friendly_name=self._get_friendly_name(merchant_name, for_twilio=True)
             )
             number_response = NumberResponse(
+                sid=number_details.sid,
                 number=phone_number,
                 merchant_name=self._get_friendly_name(merchant_name),
                 country_code=country_code,
@@ -1043,6 +1054,53 @@ class NumberService:
             name_length = 40 - prefix_length
             name = name[-name_length:]
         return f"{stage}:{name}"
+
+    def _add_number_to_messaging_service(
+        self, phone_number_sid: str, phone_number: str
+    ):
+        """Add a phone number to the appropriate Twilio messaging service based on environment.
+
+        This method adds the phone number to the messaging service corresponding to the current
+        runtime environment. If the operation fails, it logs a warning but does not raise an
+        exception to avoid interrupting the main workflow.
+
+        Args:
+            phone_number: The phone number to add to the messaging service
+        """
+        try:
+
+            # Get the messaging service SID for this environment
+            messaging_service_sid = os.environ.get("MESSAGING_SERVICE_SID")
+            if not messaging_service_sid:
+                logger.warning(
+                    "No messaging service SID configured",
+                    extra={"phone_number": phone_number},
+                )
+                return
+
+            # Add the phone number to the messaging service
+            messaging_phone_number = self.twilio_client.messaging.v1.services(
+                messaging_service_sid
+            ).phone_numbers.create(phone_number_sid=phone_number_sid)
+
+            logger.info(
+                "Successfully added phone number to messaging service",
+                extra={
+                    "phone_number": phone_number,
+                    "messaging_service_sid": messaging_service_sid,
+                    "messaging_phone_number_sid": messaging_phone_number.sid,
+                },
+            )
+
+        except Exception as e:
+            # Log the error but don't raise to avoid interrupting the main workflow
+            logger.warning(
+                f"Failed to add phone number {phone_number} to messaging service: {e}",
+                extra={
+                    "phone_number": phone_number,
+                    "error": str(e),
+                },
+            )
 
     def _get_phone_number_type(self, phone_number: str) -> NumberType:
         """

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class NumberResponse(BaseModel):
     """Response model for phone number details."""
 
+    sid: str | None = Field(None, description="The unique id of the phone number")
     number: str = Field(..., description="The phone number in E.164 format")
     merchant_name: str = Field(..., description="The name associated with the number")
     toll_free: bool = Field(..., description="Whether this is a toll-free number")
