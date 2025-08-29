@@ -20,7 +20,6 @@ from tools.toast_tool._apis import (
     get_order_prices,
     get_ordering_schedule,
     get_store_info,
-    get_toast_access_token,
     submit_order,
 )
 from tools.toast_tool._prompt_constants import (
@@ -30,6 +29,7 @@ from tools.toast_tool._prompt_constants import (
 )
 from tools.toast_tool._utils import (
     add_lat_long_to_address,
+    get_toast_access_token_from_aws,
     is_within_service_periods,
     parse_service_periods,
     validate_item_modifier_quantity,
@@ -51,7 +51,6 @@ from tools.utils.ordering._utils import (
     is_valid_phone_number,
 )
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
 
 
 class ToastTool(Toolkit):
@@ -114,12 +113,7 @@ class ToastTool(Toolkit):
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
-            api_key = get_client_secret_with_fallback("TOAST_CLIENT_ID")
-            api_secret = get_client_secret_with_fallback("TOAST_CLIENT_SECRET")
-            bearer_token = get_toast_access_token(
-                api_key, api_secret, token_api_endpoint=self.token_api_endpoint
-            )
-            return bearer_token
+            return get_toast_access_token_from_aws(self.token_api_endpoint)
 
     @tool
     def check_address(self, address: str) -> str:

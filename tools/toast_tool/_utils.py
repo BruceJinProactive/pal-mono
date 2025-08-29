@@ -1,5 +1,6 @@
 #### NOTE: Most of the logics in this file are borrowed from Adora. ####
 import datetime
+import json
 import os
 import re
 from collections import defaultdict
@@ -9,8 +10,15 @@ from zoneinfo import ZoneInfo
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import Nominatim
 
-from tools.toast_tool.classes import DeliveryAddress, DiningBehavior, ServicePeriod
+from tools.toast_tool._apis import BASE_URL, get_toast_access_token
+from tools.toast_tool.classes import (
+    DeliveryAddress,
+    DiningBehavior,
+    ServicePeriod,
+    ToastAccessToken,
+)
 from utils.log import logger
+from utils.secret import get_client_secret_with_fallback, upsert_client_secret
 
 # Constants for better performance and maintainability
 _WEEKDAYS = [
@@ -613,3 +621,73 @@ def parse_service_periods(
     # Filter out any empty responses
     formatted_periods = [fp for fp in formatted_periods if fp]
     return "\n".join(formatted_periods)
+
+
+def get_toast_access_token_from_aws(
+    token_api_endpoint: Optional[str] = None,
+) -> ToastAccessToken:
+    """
+    Get a Toast access token from AWS Secrets; refresh via API if missing/expired.
+    Raises ValueError if refreshing fails.
+    """
+    try:
+        # Get the token from AWS secrets
+        logger.debug(
+            "[ToastTool.get_toast_access_token_from_aws] Getting token from AWS secrets"
+        )
+        token_json_str = get_client_secret_with_fallback("toast_access_token")
+        token_data = json.loads(token_json_str)
+        # Reconstruct ToastAccessToken from stored data
+        token = ToastAccessToken(**token_data)
+
+        # Check if token is expired
+        if token.expires_at < datetime.datetime.now(datetime.timezone.utc):
+            logger.debug(
+                "[ToastTool.get_toast_access_token_from_aws] Token expired, refreshing"
+            )
+            return refresh_toast_access_token_from_aws(
+                token_api_endpoint=(
+                    token_api_endpoint if token_api_endpoint else BASE_URL
+                )
+            )
+        return token
+    except (ValueError, KeyError, json.JSONDecodeError, TypeError) as e:
+        # Missing key, invalid format, or parsing error — fall back to a fresh token
+        logger.warning(
+            f"[ToastTool.get_toast_access_token_from_aws] Unable to use stored token ({e}); refreshing from API"
+        )
+        return refresh_toast_access_token_from_aws(
+            token_api_endpoint=token_api_endpoint
+        )
+
+
+def refresh_toast_access_token_from_aws(
+    token_api_endpoint: Optional[str] = None,
+) -> ToastAccessToken:
+    """
+    Refresh Toast access token from API.
+    """
+    logger.debug(
+        "[ToastTool.refresh_toast_access_token_from_aws] Refreshing token from API"
+    )
+    api_key = get_client_secret_with_fallback("TOAST_CLIENT_ID")
+    api_secret = get_client_secret_with_fallback("TOAST_CLIENT_SECRET")
+    bearer_token = get_toast_access_token(
+        api_key,
+        api_secret,
+        token_api_endpoint=(token_api_endpoint if token_api_endpoint else BASE_URL),
+    )
+    if bearer_token is None:
+        raise ValueError(
+            "[ToastTool.refresh_toast_access_token_from_aws] Failed to get Toast access token"
+        )
+    # Save the complete ToastAccessToken object to AWS secrets
+    token_json = bearer_token.model_dump_json()
+    try:
+        upsert_client_secret("toast_access_token", token_json)
+    except Exception as e:
+        logger.warning(
+            f"[ToastTool.refresh_toast_access_token_from_aws] Token refreshed but failed to persist to Secrets Manager: {e}"
+        )
+
+    return bearer_token

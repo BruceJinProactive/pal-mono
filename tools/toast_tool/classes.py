@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, List, Optional
 
@@ -16,13 +16,16 @@ class ToastAccessToken(BaseModel):
     https://[toast-api-hostname]/authentication/v1/authentication/login
     """
 
+    # The access token is the JWT token string (header.payload.signature)
+    # The decoded payload containing claims like exp, iat, aud, etc.
     access_token: str
     expires_in: int
     token_type: str
     scope: str | None = None
     id_token: str | None = None
     refresh_token: str | None = None
-    created_at: datetime = datetime.now()
+    # UTC time
+    expires_at: datetime
 
     @classmethod
     def from_toast_response(cls, response_data: dict) -> "ToastAccessToken":
@@ -44,26 +47,15 @@ class ToastAccessToken(BaseModel):
             scope=token_data.get("scope"),
             id_token=token_data.get("idToken"),
             refresh_token=token_data.get("refreshToken"),
+            expires_at=(
+                datetime.now(timezone.utc)
+                + timedelta(seconds=token_data.get("expiresIn") - 60)
+            ),
         )
-
-    def is_expired(self) -> bool:
-        """
-        Checks if the token is expired.
-
-        Returns:
-            bool: True if the token is expired, False otherwise
-        """
-        expiration_time = self.created_at + timedelta(seconds=self.expires_in)
-        return datetime.now() > expiration_time
 
     def get_token_header_value(self) -> str:
         """Returns the properly formatted token for use in headers"""
         return f"{self.token_type} {self.access_token}"
-
-    def is_valid(self) -> bool:
-        """Basic check to see if token has required fields and is not expired"""
-
-        return bool(self.access_token and self.token_type and not self.is_expired())
 
 
 class RestaurantInfo(BaseModel):
