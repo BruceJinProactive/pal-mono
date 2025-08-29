@@ -2216,24 +2216,50 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     Raises:
         ValueError: If required fields are missing
     """
+    from utils.log import logger
+
+    logger.debug(f"[safe_convert_item_fields] Starting conversion for item: {item}")
+
     # Safely extract and validate required id field
     raw_id = item.get("id") or item.get("item_id")
+    logger.debug(f"[safe_convert_item_fields] Raw ID: {raw_id} (type: {type(raw_id)})")
+
     if raw_id is None or raw_id == "":
+        logger.error(
+            f"[safe_convert_item_fields] Item missing required 'id' field: {item}"
+        )
         raise ValueError(f"Item missing required 'id' field: {item}")
-    item_id = int(raw_id)
+
+    try:
+        item_id = int(raw_id)
+        logger.debug(f"[safe_convert_item_fields] Converted item_id: {item_id}")
+    except (ValueError, TypeError) as e:
+        logger.error(
+            f"[safe_convert_item_fields] Failed to convert raw_id '{raw_id}' to int: {e}"
+        )
+        raise ValueError(f"Invalid item ID '{raw_id}': {e}")
 
     # For MenuSifu: sale_item_id should always be the same as item_id
     sale_item_id = item_id
 
     # Safely convert price with validation (required field, default to 0)
     raw_price = item.get("price")
+    logger.debug(
+        f"[safe_convert_item_fields] Raw price: {raw_price} (type: {type(raw_price)})"
+    )
+
     if raw_price is None or raw_price == "":
         price_val = Decimal("0")
+        logger.debug(f"[safe_convert_item_fields] Using default price: {price_val}")
     else:
         try:
             price_val = Decimal(str(raw_price))
-        except (ValueError, TypeError, ArithmeticError):
+            logger.debug(f"[safe_convert_item_fields] Converted price: {price_val}")
+        except (ValueError, TypeError, ArithmeticError) as e:
             # Default to 0 if conversion fails
+            logger.error(
+                f"[safe_convert_item_fields] Failed to convert price '{raw_price}': {e}"
+            )
             price_val = Decimal("0")
 
     # Safely convert displayPrice (optional field) - keep raw value intact but ensure it's not None
@@ -2268,7 +2294,7 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
         except (ValueError, TypeError):
             quantity_val = 1
 
-    return {
+    result = {
         "id": item_id,
         "saleItemId": sale_item_id,
         "price": price_val,
@@ -2278,6 +2304,13 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
         "itemType": item.get("itemType") or item.get("item_type") or "SALE_ITEM",
         "name": item.get("name") or "",
     }
+
+    logger.debug(f"[safe_convert_item_fields] Final result: {result}")
+    logger.debug(
+        f"[safe_convert_item_fields] Result types: {[(k, type(v)) for k, v in result.items()]}"
+    )
+
+    return result
 
 
 def safe_convert_option_fields(option: Dict[str, Any]) -> Dict[str, Any]:

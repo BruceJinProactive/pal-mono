@@ -3,7 +3,7 @@ MenuSifu Tool implementation for online ordering and checkout
 """
 
 import json
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional, Union
 
 from agno.tools.toolkit import Toolkit
@@ -363,46 +363,131 @@ class MenuSifuTool(Toolkit):
 
             # Convert order_items to OrderSelectedItem instances
             selected_items = []
+            failed_items = []  # Track items that failed conversion
             logger.debug("[MenuSifuTool] Converting items to OrderSelectedItem format")
             for i, item in enumerate(order_items, 1):
                 try:
                     logger.debug(
                         f"[MenuSifuTool] Processing item {i}: {item.get('name', 'Unknown')}"
                     )
+                    logger.debug(f"[MenuSifuTool] Raw item data: {item}")
 
                     # Use helper function for safe field conversion
-                    safe_fields = safe_convert_item_fields(item)
+                    try:
+                        logger.debug(
+                            f"[MenuSifuTool] Calling safe_convert_item_fields for item {i}"
+                        )
+                        safe_fields = safe_convert_item_fields(item)
+                        logger.debug(
+                            f"[MenuSifuTool] safe_convert_item_fields succeeded for item {i}"
+                        )
+                    except Exception as e:
+                        item_name = item.get("name", "Unknown item")
+                        logger.exception(
+                            f"[MenuSifuTool] safe_convert_item_fields failed for item {i} ({item_name}): {e}"
+                        )
+                        failed_items.append(
+                            f"Item {i} ({item_name}): field conversion failed"
+                        )
+                        continue  # Skip this item and process remaining items
 
                     # Log safe field conversion results
                     logger.debug(f"[MenuSifuTool] Safe field conversion for item {i}:")
                     logger.debug(f"  - Raw item: {item}")
                     logger.debug(f"  - Safe fields: {safe_fields}")
 
-                    # Convert price (Decimal) to displayPrice (int) - same value, different type
-                    price_decimal = safe_fields["price"]
-                    display_price_int = int(price_decimal) if price_decimal else None
-
-                    logger.debug(
-                        f"[MenuSifuTool] Price conversion: {price_decimal} (Decimal) -> {display_price_int} (int)"
-                    )
+                    # Convert price (Decimal) to displayPrice (int cents) - proper rounding from dollars to cents
+                    try:
+                        price_decimal = safe_fields["price"]
+                        logger.debug(
+                            f"[MenuSifuTool] Price decimal: {price_decimal} (type: {type(price_decimal)})"
+                        )
+                        # Convert dollars to integer cents with HALF_UP rounding
+                        # Note: Decimal('0') is falsy — don't use truthiness here.
+                        if price_decimal is None:
+                            display_price_int = None
+                        else:
+                            price_normalized = Decimal(price_decimal).quantize(
+                                Decimal("0.01"), rounding=ROUND_HALF_UP
+                            )
+                            display_price_int = int(price_normalized * 100)
+                        logger.debug(
+                            f"[MenuSifuTool] Price conversion: {price_decimal} dollars -> {display_price_int} cents"
+                        )
+                    except Exception as e:
+                        item_name = item.get("name", "Unknown item")
+                        logger.exception(
+                            f"[MenuSifuTool] Price conversion failed for item {i} ({item_name}): {e}"
+                        )
+                        failed_items.append(
+                            f"Item {i} ({item_name}): price conversion failed"
+                        )
+                        continue  # Skip this item and process remaining items
 
                     # Map fields from order_items to OrderSelectedItem format
-                    selected_item = OrderSelectedItem(
-                        categoryId=safe_fields["categoryId"],
-                        displayPrice=display_price_int,  # Same as price but as int
-                        id=safe_fields["id"],
-                        itemType=safe_fields["itemType"],
-                        name=safe_fields["name"],
-                        nameMultilingual=None,  # Optional field
-                        options=item.get("options") or [],  # List of options/modifiers
-                        price=safe_fields["price"],
-                        quantity=safe_fields["quantity"],
-                        saleItemId=safe_fields["saleItemId"],
-                        # Optional detail price fields
-                        detailPriceId=None,
-                        sizeId=None,
-                        detailPriceInfo=None,
-                    )
+                    try:
+                        logger.debug(
+                            f"[MenuSifuTool] Creating OrderSelectedItem for item {i}"
+                        )
+                        logger.debug("[MenuSifuTool] OrderSelectedItem parameters:")
+                        logger.debug(
+                            f"  - categoryId: {safe_fields['categoryId']} (type: {type(safe_fields['categoryId'])})"
+                        )
+                        logger.debug(
+                            f"  - displayPrice: {display_price_int} (type: {type(display_price_int)})"
+                        )
+                        logger.debug(
+                            f"  - id: {safe_fields['id']} (type: {type(safe_fields['id'])})"
+                        )
+                        logger.debug(
+                            f"  - itemType: {safe_fields['itemType']} (type: {type(safe_fields['itemType'])})"
+                        )
+                        logger.debug(
+                            f"  - name: {safe_fields['name']} (type: {type(safe_fields['name'])})"
+                        )
+                        logger.debug(
+                            f"  - price: {safe_fields['price']} (type: {type(safe_fields['price'])})"
+                        )
+                        logger.debug(
+                            f"  - quantity: {safe_fields['quantity']} (type: {type(safe_fields['quantity'])})"
+                        )
+                        logger.debug(
+                            f"  - saleItemId: {safe_fields['saleItemId']} (type: {type(safe_fields['saleItemId'])})"
+                        )
+
+                        selected_item = OrderSelectedItem(
+                            categoryId=safe_fields["categoryId"],
+                            displayPrice=display_price_int,  # Same as price but as int
+                            id=safe_fields["id"],
+                            itemType=safe_fields["itemType"],
+                            name=safe_fields["name"],
+                            nameMultilingual=None,  # Optional field
+                            options=item.get("options")
+                            or [],  # List of options/modifiers
+                            price=safe_fields["price"],
+                            quantity=safe_fields["quantity"],
+                            saleItemId=safe_fields["saleItemId"],
+                            # Optional detail price fields
+                            detailPriceId=None,
+                            sizeId=None,
+                            detailPriceInfo=None,
+                        )
+                        logger.debug(
+                            f"[MenuSifuTool] OrderSelectedItem created successfully for item {i}"
+                        )
+
+                    except Exception as e:
+                        item_name = item.get("name", "Unknown item")
+                        logger.exception(
+                            f"[MenuSifuTool] OrderSelectedItem construction failed for item {i} ({item_name}): {e}"
+                        )
+                        logger.error(
+                            f"[MenuSifuTool] Failed with safe_fields: {safe_fields}"
+                        )
+                        failed_items.append(
+                            f"Item {i} ({item_name}): OrderSelectedItem construction failed"
+                        )
+                        continue  # Skip this item and process remaining items
 
                     # Log final OrderSelectedItem details in one line
                     logger.info(
@@ -410,12 +495,35 @@ class MenuSifuTool(Toolkit):
                     )
 
                     selected_items.append(selected_item)
+                    logger.debug(
+                        f"[MenuSifuTool] Successfully appended item {i} to selected_items list"
+                    )
 
                 except Exception as e:
-                    return f"Failed to convert item '{item.get('name', 'Unknown item')}': {str(e)}"
+                    item_name = item.get("name", "Unknown item")
+                    logger.exception(
+                        f"[MenuSifuTool] Unexpected error in item conversion loop for item {i} ({item_name}): {e}"
+                    )
+                    failed_items.append(f"Item {i} ({item_name}): unexpected error")
+                    continue  # Skip this item and process remaining items
+
+            # Log conversion summary
+            total_items = len(order_items)
+            successful_items = len(selected_items)
+            failed_count = len(failed_items)
+            logger.info(
+                f"[MenuSifuTool] Item conversion summary: {successful_items}/{total_items} successful, {failed_count} failed"
+            )
+            if failed_items:
+                logger.debug(f"[MenuSifuTool] Failed items details: {failed_items}")
 
             if not selected_items:
-                return "No valid items could be processed for calculation"
+                error_msg = "No valid items could be processed for calculation"
+                if failed_items:
+                    error_msg += f". Failed items: {'; '.join(failed_items[:3])}"  # Show first 3 failures
+                    if len(failed_items) > 3:
+                        error_msg += f" (and {len(failed_items) - 3} more)"
+                return error_msg
 
             # Create calculation request with actual items
             calc_request = OrderCalculationRequest(
