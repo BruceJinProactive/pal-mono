@@ -492,7 +492,7 @@ class YelpTool(Toolkit):
                     first_name=reservation_query.first_name,  # type: ignore
                     last_name=reservation_query.last_name,  # type: ignore
                     phone=reservation_query.phone,  # type: ignore
-                    email="inbox+haidilao@proactiveailab.com",  # Hardcoded email instead of asking user
+                    email="inbox@proactiveailab.com",  # Hardcoded email instead of asking user
                     notes=reservation_query.notes,
                 )
             )
