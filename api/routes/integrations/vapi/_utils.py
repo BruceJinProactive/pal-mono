@@ -7,6 +7,7 @@ from db.tables.agents import SpeechRate
 from utils.log import logger
 
 from ._constants import (
+    CALL_ANALYSIS_PROMPT,
     CARTESIA_SPEED_MAPPING,
     SPORTSMAN_VOICE_ID,
     VAPI_SECRET_HEADER,
@@ -155,3 +156,33 @@ def get_transcriber_and_voice_config(
     voice = add_voice_speed_if_supported(voice, speech_rate)
 
     return transcriber, voice
+
+
+def get_analysis_plan() -> dict:
+    """
+    Returns the complete analysis plan configuration for VAPI structured data extraction.
+
+    This function creates the analysisPlan configuration that includes:
+    - Structured data plan with the call analysis prompt
+    - System and user message templates
+    - Timeout configuration
+
+    Returns:
+        dict: Complete analysis plan configuration ready for VAPI
+    """
+    return {
+        "structuredDataPlan": {
+            "enabled": True,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": CALL_ANALYSIS_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": "Here is the transcript: {{transcript}}\n\nHere is the ended reason of the call: {{endedReason}}\n\nAnalyze this conversation and provide the structured data.",
+                },
+            ],
+            "timeoutSeconds": 15,
+        }
+    }

@@ -81,7 +81,6 @@ class VoiceConfig(BaseModel):
     voice_decoder: Optional[VoiceDecoderConfig] = None
     transcriber: Optional[TranscriberConfig] = None
     start_speaking_plan: Optional[StartSpeakingPlan] = None
-    analysis_plan: dict | None = None
 
 
 class TranscriberConfig(BaseModel):

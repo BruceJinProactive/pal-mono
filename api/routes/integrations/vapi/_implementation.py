@@ -31,7 +31,11 @@ from utils.dd import dd_histogram_duration
 from utils.log import logger
 
 from ._squad import create_multilingual_squad, get_squad_model
-from ._utils import get_transcriber_and_voice_config, validate_vapi_request
+from ._utils import (
+    get_analysis_plan,
+    get_transcriber_and_voice_config,
+    validate_vapi_request,
+)
 
 
 def send_dd_latency(
@@ -435,6 +439,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             "backgroundSound": background_sound,
             "silenceTimeoutSeconds": 60,
             "backgroundDenoisingEnabled": True,
+            "analysisPlan": get_analysis_plan(),
         }
 
         # Add background speech denoising configuration if available
@@ -452,9 +457,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                     exclude_none=True, by_alias=True
                 )
             )
-
-        if dynamic_vapi_config and config.voice_config.analysis_plan:
-            assistant_config["analysisPlan"] = config.voice_config.analysis_plan
 
         return {"assistant": assistant_config}
     except Exception as e:

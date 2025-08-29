@@ -16,7 +16,7 @@ from agent.config import (
 from utils.log import logger
 
 from ._constants import DEFAULT_MULTILINGUAL_SQUAD_CONFIG
-from ._utils import add_voice_speed_if_supported
+from ._utils import add_voice_speed_if_supported, get_analysis_plan
 
 # ============================================================================
 # EXCEPTIONS
@@ -97,14 +97,8 @@ class BaseAssistantFactory:
         )
 
     def _add_analysis_plan(self, assistant_config: dict[str, Any]) -> None:
-        """Add analysis plan configuration if available."""
-        if (
-            hasattr(self.agent_config.voice_config, "analysis_plan")
-            and self.agent_config.voice_config.analysis_plan
-        ):
-            assistant_config["analysisPlan"] = (
-                self.agent_config.voice_config.analysis_plan
-            )
+        """Add structured data analysis plan configuration."""
+        assistant_config["analysisPlan"] = get_analysis_plan()
 
 
 class TriageAssistantFactory(BaseAssistantFactory):

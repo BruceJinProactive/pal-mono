@@ -124,7 +124,6 @@ class RawConfig:
                     voice_decoder=self._get_voice_decoder_config(),
                     transcriber=self._get_transcriber_config(),
                     start_speaking_plan=self._get_start_speaking_plan(),
-                    analysis_plan=self._get_analysis_plan(),
                 ),
                 multiling_squad_config=self._get_multilingual_squad_config(),
             )
@@ -647,36 +646,3 @@ class RawConfig:
                 extra={"agent_id": self.agent.id},
             )
             return None
-
-    # TODO: remove this once we decide to have a proper analysis plan config
-    def _get_analysis_plan(self) -> dict | None:
-        """
-        Get analysis plan configuration from agent raw_config.
-
-        Uses the analysis_plan string as the system prompt for structured data extraction.
-        Returns a hardcoded dict configuration for VAPI.
-        """
-        voice_config_raw = self.agent.raw_config.get("voice_config", {})
-        analysis_plan_prompt = voice_config_raw.get("analysis_plan")
-
-        if not analysis_plan_prompt:
-            return None
-        analysis_plan = {
-            "structuredDataPlan": {
-                "enabled": True,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": analysis_plan_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": "Here is the transcript: {{transcript}}\n\nHere is the ended reason of the call: {{endedReason}}\n\nAnalyze this conversation and provide the structured data.",
-                    },
-                ],
-                "timeoutSeconds": 15,
-            }
-        }
-
-        # Return hardcoded dict configuration
-        return analysis_plan
