@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agent.client import ClientConfig
 from agent.knowledge import KnowledgeConfig
 from agent.memory import MemoryConfig
 from agent.model import ModelConfig
@@ -258,7 +257,6 @@ class AgentConfig(BaseModel):
 
     metadata: AgentMetadata
 
-    client: ClientConfig
     stream: bool = False
     # Additional context added to the end of the system message.
     additional_context: Optional[str] = None

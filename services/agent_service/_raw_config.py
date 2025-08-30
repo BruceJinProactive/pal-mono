@@ -12,7 +12,6 @@ from agent import (
     AgentFramework,
     AgentMetadata,
     AgentPersona,
-    ClientConfig,
     KnowledgeConfig,
     KnowledgeProvider,
     LlamaIndexSettings,
@@ -49,7 +48,6 @@ class RawConfig:
         user_id: UUID,
         conversation_id: UUID,
         channel: Channel,
-        client_config: ClientConfig | None = None,
         integration: IntegrationDetail | None = None,
     ):
         self.agent = agent
@@ -57,21 +55,11 @@ class RawConfig:
         self.account = account
         self.user_id = user_id
         self.conversation_id = conversation_id
-        self.client_config = client_config
         self.channel = channel
         self.integration = integration
 
     def build(self) -> AgentConfig:
         try:
-            # NOTE: For now use only client data from project raw config
-            # TODO: Merge client data from agent raw config and project raw config
-            client_data = {}
-
-            # Add timezone datetime information
-            if self.project.raw_config:
-                client_data = self.project.raw_config.get("client_data", {})
-
-            self.client_config = ClientConfig(data=client_data)
 
             memory_enabled = self.agent.raw_config.get("memory_enabled", True)
 
@@ -94,7 +82,6 @@ class RawConfig:
                         "agent_framework", AgentFramework.AGNO
                     ),
                 ),
-                client=self.client_config,
                 additional_context=self._get_additional_context(),
                 voice_config=VoiceConfig(
                     enabled=self.agent.raw_config.get(
