@@ -22,7 +22,7 @@ def parse_json(model_class, json_str: str):
         data_model = model_class.model_validate_json(json_str)
         return data_model
     except ValidationError as e:
-        logger.error(e)
+        logger.info(e)
     return None
 
 
@@ -106,5 +106,5 @@ def connect_menusifu_api(
 
     except Exception as e:
         error_msg = f"Failed to connect to MenuSifu API: {str(e)}"
-        logger.error(error_msg)
+        logger.info(f"[MenuSifuAPI] connect_menusifu_api error: {error_msg}")
         raise ValueError(error_msg)

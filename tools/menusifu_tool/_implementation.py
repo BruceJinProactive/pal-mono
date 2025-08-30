@@ -165,14 +165,14 @@ class MenuSifuTool(Toolkit):
             access_token = get_client_secret_with_fallback("MENUSIFU_ACCESS_TOKEN")
             merchant_id = get_client_secret_with_fallback("MENUSIFU_MERCHANT_ID")
             if not access_token:
-                logger.error("No MenuSifu access token found in secret manager")
+                logger.info("No MenuSifu access token found in secret manager")
                 raise ValueError(
                     "MenuSifu access token is required - check MENUSIFU_ACCESS_TOKEN secret"
                 )
 
             return access_token, merchant_id
         except Exception as e:
-            logger.error(
+            logger.info(
                 f"Failed to retrieve MenuSifu access token from secret manager: {e}"
             )
             raise ValueError(f"Failed to retrieve MenuSifu access token: {e}") from e
@@ -188,7 +188,9 @@ class MenuSifuTool(Toolkit):
             # Step 1: Get chat history using standardized helper function
             chat_history = get_chat_history(self.query_messages_tool)
             if not chat_history.strip():
-                return "No recent messages found to extract order information from chat history"
+                error_msg = "No recent messages found to extract order information from chat history"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Step 2: Get relevant menu context from knowledge base using Pinecone
             context = get_relevant_docs(
@@ -211,23 +213,31 @@ class MenuSifuTool(Toolkit):
 
             # Check if the order is a string and convert it to an ExtractedMenuSifuOrder object
             if extracted_order is None:
-                return "Failed to extract order information from chat history"
+                error_msg = "Failed to extract order information from chat history"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             if isinstance(extracted_order, str):
                 try:
                     order_dict = json.loads(extracted_order)
                     extracted_order = ExtractedMenuSifuOrder(**order_dict)
                 except (json.JSONDecodeError, ValueError) as e:
-                    return f"Failed to parse extracted order: {str(e)}"
+                    error_msg = f"Failed to parse extracted order: {str(e)}"
+                    logger.info(f"[MenuSifuTool] {error_msg}")
+                    return error_msg
 
             if not isinstance(extracted_order, ExtractedMenuSifuOrder):
-                return f"Order extraction returned unexpected type: {type(extracted_order)}"
+                error_msg = f"Order extraction returned unexpected type: {type(extracted_order)}"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Schema enforces required first name; rely on ValidationError path for consistent messages.
 
             # Validate phone object before using it later in the flow
             if not extracted_order.customer_phone:
-                return "Customer phone number is required for order processing. Please provide phone number in the conversation."
+                error_msg = "Customer phone number is required for order processing. Please provide phone number in the conversation."
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Trim phone number before validating emptiness
             if extracted_order.customer_phone.number:
@@ -235,7 +245,9 @@ class MenuSifuTool(Toolkit):
                     extracted_order.customer_phone.number.strip()
                 )
             if not extracted_order.customer_phone.number:
-                return "Customer phone number is required for order processing. Please provide a valid phone number in the conversation."
+                error_msg = "Customer phone number is required for order processing. Please provide a valid phone number in the conversation."
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Default missing country code to +1 per prompt rules
             if not extracted_order.customer_phone.country_code:
@@ -243,7 +255,9 @@ class MenuSifuTool(Toolkit):
                 logger.info("Defaulted missing phone country code to +1.")
 
             if not extracted_order.items:
-                return "Some required items are missing from the order; please check inputs"
+                error_msg = "Some required items are missing from the order; please check inputs"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             logger.debug(f"[MenuSifuTool] Extracted order: {extracted_order}")
             return extracted_order
@@ -256,13 +270,17 @@ class MenuSifuTool(Toolkit):
                     f"Missing or invalid order data in the response: {error}"
                 )
                 warning_message += f"Missing or invalid order data: {error['loc'][-1]}: {error['msg']}, input: {error.get('input', 'N/A')}\n"
-            return (
+            final_error_msg = (
                 warning_message
                 + "\nAsk the customer to provide the missing information or correct the invalid details."
             )
+            logger.info(f"[MenuSifuTool] Validation error: {final_error_msg}")
+            return final_error_msg
         except Exception as e:
-            logger.error(f"[MenuSifuTool] Order extraction failed: {e}")
-            return f"Failed to extract order information: {str(e)}"
+            error_msg = f"Failed to extract order information: {str(e)}"
+            logger.info(f"[MenuSifuTool] Order extraction failed: {e}")
+            logger.info(f"[MenuSifuTool] {error_msg}")
+            return error_msg
 
     def _process_extracted_order(
         self, extracted_order: Union[ExtractedMenuSifuOrder, str]
@@ -356,10 +374,9 @@ class MenuSifuTool(Toolkit):
             # Always use pickup order type (delivery not supported)
             # Validate that order_items is non-empty
             if not order_items:
-                logger.error(
-                    "[MenuSifuTool] Cannot calculate order total: no items provided"
-                )
-                return "Cannot calculate order total: no items provided"
+                error_msg = "Cannot calculate order total: no items provided"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Convert order_items to OrderSelectedItem instances
             selected_items = []
@@ -481,7 +498,7 @@ class MenuSifuTool(Toolkit):
                         logger.exception(
                             f"[MenuSifuTool] OrderSelectedItem construction failed for item {i} ({item_name}): {e}"
                         )
-                        logger.error(
+                        logger.info(
                             f"[MenuSifuTool] Failed with safe_fields: {safe_fields}"
                         )
                         failed_items.append(
@@ -523,6 +540,7 @@ class MenuSifuTool(Toolkit):
                     error_msg += f". Failed items: {'; '.join(failed_items[:3])}"  # Show first 3 failures
                     if len(failed_items) > 3:
                         error_msg += f" (and {len(failed_items) - 3} more)"
+                logger.info(f"[MenuSifuTool] {error_msg}")
                 return error_msg
 
             # Create calculation request with actual items
@@ -594,13 +612,17 @@ class MenuSifuTool(Toolkit):
 
                 return calc_result
             else:
+                error_msg = f"Order calculation failed: {calc_result}"
                 logger.warning(
                     f"[MenuSifuTool] Order calculation returned error: {calc_result}"
                 )
-                return f"Order calculation failed: {calc_result}"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
         except Exception as e:
-            return f"Failed to calculate order total: {str(e)}"
+            error_msg = f"Failed to calculate order total: {str(e)}"
+            logger.info(f"[MenuSifuTool] {error_msg}")
+            return error_msg
 
     def _generate_order(
         self,
@@ -627,14 +649,16 @@ class MenuSifuTool(Toolkit):
             # Always use pickup order type (delivery not supported)
             # Validate that order_items is non-empty
             if not order_items:
-                logger.error("[MenuSifuTool] Cannot generate order: no items provided")
-                return "Cannot generate order: no items provided"
+                error_msg = "Cannot generate order: no items provided"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Handle error case where customer_info is an error string
             if isinstance(customer_info, str):
                 logger.warning(
                     f"[MenuSifuTool] Order generation aborted due to customer info error: {customer_info}"
                 )
+                logger.info(f"[MenuSifuTool] Error: {customer_info}")
                 return customer_info
 
             # Extract customer info directly from the unified extraction result
@@ -655,17 +679,18 @@ class MenuSifuTool(Toolkit):
             # Handle phone information from structured Phone object (required)
             # Safe access with validation (validated earlier in extraction)
             if not customer_info.customer_phone:
-                logger.error(
-                    "[MenuSifuTool] Customer phone information is missing from extracted order"
-                )
-                return "Customer phone information is missing from extracted order"
+                error_msg = "Customer phone information is missing from extracted order"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             country_code = customer_info.customer_phone.country_code
             phone_number = customer_info.customer_phone.number
 
             # Additional safety check
             if not country_code or not phone_number:
-                return "Customer phone number or country code is missing from extracted order"
+                error_msg = "Customer phone number or country code is missing from extracted order"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
             payment_method_str = "CASH"  # Hardcoded to cash as requested
             logger.debug(f"[MenuSifuTool] Using payment method: {payment_method_str}")
             # Address fields not needed for pickup orders
@@ -673,7 +698,9 @@ class MenuSifuTool(Toolkit):
             # Validate that normalized phone_number is non-empty
             if not phone_number or phone_number.strip() == "":
                 full_name = f"{customer_first_name} {customer_last_name or ''}".strip()
-                return f"Customer phone number is required for order processing. Customer: {full_name} ({customer_email})"
+                error_msg = f"Customer phone number is required for order processing. Customer: {full_name} ({customer_email})"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Build customer using helper function
             customer = build_customer_info(
@@ -733,10 +760,14 @@ class MenuSifuTool(Toolkit):
                     )
                     selected_items.append(selected_item)
                 except Exception as e:
-                    return f"Failed to process item '{item.get('name', 'Unknown item')}': {str(e)}"
+                    error_msg = f"Failed to process item '{item.get('name', 'Unknown item')}': {str(e)}"
+                    logger.info(f"[MenuSifuTool] {error_msg}")
+                    return error_msg
 
             if not selected_items:
-                return "No valid items could be processed for order generation"
+                error_msg = "No valid items could be processed for order generation"
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Extract payment method from customer_data (already extracted above)
             payment_method_str = payment_method_str.upper()
@@ -869,14 +900,16 @@ class MenuSifuTool(Toolkit):
                     f"[MenuSifuTool] Order generation successful - Order ID: {order_id}"
                 )
             else:
-                logger.error(f"[MenuSifuTool] Order generation failed: {order_result}")
+                logger.info(f"[MenuSifuTool] Order generation failed: {order_result}")
 
             # Return result directly - it's either OrderGenerationResponse or error string
             return order_result
 
         except Exception as e:
-            logger.error(f"[MenuSifuTool] Order generation exception: {str(e)}")
-            return f"Failed to generate order: {str(e)}"
+            error_msg = f"Failed to generate order: {str(e)}"
+            logger.info(f"[MenuSifuTool] Order generation exception: {str(e)}")
+            logger.info(f"[MenuSifuTool] {error_msg}")
+            return error_msg
 
     @tool
     def create_order_checkout(
@@ -917,9 +950,11 @@ class MenuSifuTool(Toolkit):
 
             # Check if we have query messages tool
             if not self.query_messages_tool:
-                return (
+                error_msg = (
                     "Chat history access not available. Please provide tool metadata."
                 )
+                logger.info(f"[MenuSifuTool] {error_msg}")
+                return error_msg
 
             # Step 1: Extract order from chat
             logger.info("[MenuSifuTool] Step 1: Extracting order from chat history")
@@ -929,12 +964,14 @@ class MenuSifuTool(Toolkit):
             logger.info("[MenuSifuTool] Step 2: Processing extracted order")
             processed_items = self._process_extracted_order(extracted_order)
             if isinstance(processed_items, str):
+                logger.info(f"[MenuSifuTool] Step 2: Error message: {processed_items}")
                 return processed_items  # Error message
 
             # Step 3: Calculate order total
             logger.info("[MenuSifuTool] Step 3: Calculating order total")
             calc_result = self._calculate_order_total(processed_items)
             if isinstance(calc_result, str):
+                logger.info(f"[MenuSifuTool] Step 3: Error message: {calc_result}")
                 return calc_result  # Error message
 
             # Step 4: Generate order
@@ -943,6 +980,7 @@ class MenuSifuTool(Toolkit):
                 calc_result, extracted_order, processed_items
             )
             if isinstance(order_result, str):
+                logger.info(f"[MenuSifuTool] Step 4: Error message: {order_result}")
                 return order_result  # Error message
 
             # Step 5: Format success response (database saving disabled for now)
@@ -978,7 +1016,9 @@ Your order has been sent to the restaurant. Please wait for confirmation and pic
             return success_message
 
         except Exception as e:
-            logger.error(
+            error_msg = f"Failed to process order checkout: {str(e)}"
+            logger.info(
                 f"[MenuSifuTool] Order checkout process failed with exception: {str(e)}"
             )
-            return f"Failed to process order checkout: {str(e)}"
+            logger.info(f"[MenuSifuTool] {error_msg}")
+            return error_msg
