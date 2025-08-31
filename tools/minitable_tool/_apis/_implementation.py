@@ -2,40 +2,38 @@ from tools.minitable_tool._apis._utils import connect_minitable_api
 from utils.log import logger
 
 
-def search_availability(
+def suggest_availability(
     restaurant_id: int,
-    search_params: dict,
+    party_size: int,
+    start_sec: str,
+    duration_sec: int = 1800,
 ) -> dict:
     """
-    Search for reservation availability for a specific restaurant.
+    Check availability for a specific time slot and get suggestions if not available.
 
+    Args:
+        restaurant_id: Restaurant ID
+        party_size: Number of people for the reservation
+        start_sec: Start time in "YYYY-MM-DD HH:MM" format
+        duration_sec: Duration in seconds (default 1800 = 30 minutes)
+
+    Returns:
+        Dictionary containing availability status and suggested time slots
     """
-    # Validate required fields
-    required_fields = ["party_size", "start_sec_list"]
-    missing_fields = [
-        field for field in required_fields if search_params.get(field) is None
-    ]
-
-    if missing_fields:
-        raise ValueError(f"Missing required fields: {missing_fields}")
-
-    api_function = "/weapp/ai/reserve/availability/check"
-
-    slot_times = []
-    for start_sec in search_params["start_sec_list"]:
-        slot_times.append(
-            {
-                "start_sec": start_sec,
-                "duration_sec": search_params.get("duration_sec", 3600),
-            }
-        )
+    api_function = "/weapp/ai/reserve/availability/suggest"
 
     request_body = {
         "merchant_id": str(restaurant_id),
-        "party_size": str(search_params.get("party_size")),
-        "slot_time": slot_times,
+        "slot_time": {
+            "start_sec": start_sec,
+            "duration_sec": duration_sec,
+        },
+        "party_size": party_size,
     }
-    logger.debug(f"[MiniTable] Checking availability api request: {request_body}")
+
+    logger.debug(
+        f"[MiniTable] Checking availability suggest api request: {request_body}"
+    )
 
     response = connect_minitable_api(
         api_function=api_function,
@@ -51,12 +49,9 @@ def search_availability(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"[MiniTable] MiniTable API response: {data}")
+    logger.debug(f"[MiniTable] MiniTable API suggest response: {data}")
 
-    return {
-        "party_size": data.get("party_size"),
-        "slot_time_availability": data.get("slot_time_availability", []),
-    }
+    return data
 
 
 def create_reservation(
