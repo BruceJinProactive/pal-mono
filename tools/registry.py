@@ -6,7 +6,6 @@ from agno.tools.toolkit import Toolkit
 from agent.tool._config import ToolIdentifier, ToolMetadata
 from tools.adora_tool import AdoraTool
 from tools.booking_tool import BookingTool
-from tools.calculator_tool import CalculatorTool
 from tools.menusifu_tool import MenuSifuTool
 from tools.minitable_tool import MiniTableTool
 from tools.olo_tool import OloTool
@@ -27,7 +26,6 @@ class ToolRegistry:
         # TODO: Support non-Agno tools
         self._tools: Dict[str, Type[Toolkit]] = {
             # Register available tools
-            "calculator_tool": CalculatorTool,
             "adora_tool": AdoraTool,
             "booking_tool": BookingTool,
             "toast_tool": ToastTool,
