@@ -122,9 +122,9 @@ class BaseReservationTool(ABC):
     def join_waitlist_queue(
         self,
         first_name: str,
-        last_name: str,
         phone: str,
         party_size: int,
+        last_name: str = "",
         notes: str = "",
     ) -> str:
         """
@@ -132,9 +132,9 @@ class BaseReservationTool(ABC):
 
         Args:
             first_name: Customer first name
-            last_name: Customer last name
             phone: Customer phone number
             party_size: Number of people in the party
+            last_name: Customer last name (optional)
             notes: Optional notes for the waitlist entry
 
         Returns:
