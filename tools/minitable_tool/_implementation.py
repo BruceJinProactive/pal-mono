@@ -2,13 +2,29 @@ from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
-from tools.base.reservation import BaseReservationTool
+from tools.base.reservation import BaseReservationTool, params_validate
 from tools.minitable_tool._apis import create_reservation, suggest_availability
 from tools.minitable_tool.phone_number_validator import validate_and_format_phone
 from utils.log import logger
 
 
 class MiniTableTool(Toolkit, BaseReservationTool):
+    REQUIRED_CHECK_AVAILABILITY_FIELDS = ["party_size", "date", "time"]
+    REQUIRED_MAKE_RESERVATION_FIELDS = [
+        "phone",
+        "first_name",
+        "last_name",
+        "party_size",
+        "date",
+        "time",
+    ]
+    REQUIRED_JOIN_WAITLIST_QUEUE_FIELDS = [
+        "first_name",
+        "last_name",
+        "phone",
+        "party_size",
+    ]
+
     def __init__(
         self,
         restaurant_id: int,
@@ -23,6 +39,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         self.register(self.make_reservation)
 
     @tool
+    @params_validate()
     def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
         Check availability for restaurant reservations.
@@ -69,15 +86,16 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             return f"Error checking availability: {str(e)}"
 
     @tool
+    @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,
         phone: str,
         first_name: str,
-        last_name: str,
-        email: str,
         party_size: int,
         date: str,
         time: str,
+        last_name: str,
+        email: str = "",
         notes: str = "",
     ) -> str:
         """
@@ -87,12 +105,13 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             phone: Customer phone number in xxx-xxx-xxxx format (e.g., "123-456-7890")
             first_name: Customer first name
             last_name: Customer last name
-            email: Customer email address
+            email: Customer email address (optional)
             party_size: Number of people for the reservation
             date: Date for the reservation in YYYY-MM-DD format (e.g., "2024-03-15")
             time: Time for the reservation in HH:MM format (24-hour, e.g., "19:30", "12:00")
             notes: Optional notes for the reservation
         """
+
         customer_name = f"{first_name} {last_name}"
         logger.debug(
             f"[MiniTable] Making reservation for {customer_name}, party_size: {party_size}, date: {date}, time: {time}"
@@ -149,6 +168,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         return "Waitlist functionality is not supported by MiniTable at this time."
 
     @tool
+    @params_validate()
     def join_waitlist_queue(  # type: ignore[misc]
         self,
         first_name: str,
