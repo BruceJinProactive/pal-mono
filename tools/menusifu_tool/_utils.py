@@ -4,6 +4,7 @@ Utility functions for MenuSifu tool operations
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -674,60 +675,139 @@ def check_combo_section_availability(section, item_lookup: dict) -> dict:
     }
 
 
-def create_item_lookup(menu: MenuResponse) -> dict:
+def create_item_lookup(menu_data: Union[MenuResponse, Dict[str, Any]]) -> dict:
     """
     Create a lookup dictionary mapping sale item IDs to their details.
-    Based on the official API spec for MenuSifu responses.
+    Handles both MenuResponse objects and dictionary inputs with field name compatibility.
 
     This includes ALL items from ALL categories, including internal ones,
     so combo sections can find their referenced items.
 
     Args:
-        menu: MenuResponse object containing menu data
+        menu_data: MenuResponse object or menu dictionary containing menu data
 
     Returns:
         dict: Mapping of item_id -> item details with cleaned names
     """
     item_lookup = {}
 
-    for group in menu.groups:
-        for category in group.categories:
-            # Include items from ALL categories (including internal ones) for combo lookup
-            category_name = category.name.en if category.name.en else ""
-            for item in category.sale_items:
-                # Clean the names according to the spec
-                clean_name_en = clean_item_name(item.name.en if item.name.en else "")
-                clean_name_zh = clean_item_name(
-                    item.name.zh_cn if item.name.zh_cn else ""
-                )
+    # Handle both MenuResponse objects and dictionary inputs
+    if isinstance(menu_data, MenuResponse):
+        groups = menu_data.groups
+    else:
+        groups = menu_data.get("groups", [])
 
-                item_lookup[item.id] = {
-                    "name_en": clean_name_en,
-                    "name_zh": clean_name_zh,
-                    "item_type": item.item_type,
-                    "category": category_name,
-                    "price": item.price,
-                    "base_price": getattr(item, "base_price", None),
-                    "out_of_stock": getattr(item, "out_of_stock", False),
-                    "hidden_item": getattr(item, "hidden_item", False),
-                    "from_internal_category": is_internal_category(
-                        clean_item_name(category.name.en if category.name.en else ""),
-                        clean_item_name(
-                            category.name.zh_cn if category.name.zh_cn else ""
+    for group in groups:
+        # Handle both MenuGroup objects and dictionary inputs
+        if hasattr(group, "categories"):
+            categories = group.categories
+        elif isinstance(group, dict):
+            categories = group.get("categories", [])
+        else:
+            continue
+
+        for category in categories:
+            # Handle both Category objects and dictionary inputs
+            if hasattr(category, "sale_items"):
+                sale_items = category.sale_items
+                category_name_en = category.name.en or ""
+                category_name_zh = category.name.zh_cn or ""
+                category_name = category_name_en
+            elif isinstance(category, dict):
+                # Handle both camelCase and snake_case for dictionary inputs
+                sale_items = category.get("saleItems", []) or category.get(
+                    "sale_items", []
+                )
+                cat_name = category.get("name", {})
+                if isinstance(cat_name, dict):
+                    category_name_en = cat_name.get("en", "")
+                    category_name_zh = cat_name.get("zh-cn", "")
+                else:
+                    category_name_en = str(cat_name)
+                    category_name_zh = ""
+                category_name = category_name_en
+            else:
+                continue
+
+            for item in sale_items:
+                # Handle both SaleItem objects and dictionary inputs
+                if hasattr(item, "name"):
+                    # Object access
+                    item_id = item.id
+                    item_name = item.name
+                    clean_name_en = clean_item_name(
+                        item_name.en if item_name.en else ""
+                    )
+                    clean_name_zh = clean_item_name(
+                        item_name.zh_cn if item_name.zh_cn else ""
+                    )
+                    item_type = getattr(item, "item_type", None) or getattr(
+                        item, "itemType", "REGULAR_ITEM"
+                    )
+                    price = item.price
+                    base_price = getattr(item, "base_price", None) or getattr(
+                        item, "basePrice", None
+                    )
+                    out_of_stock = getattr(item, "out_of_stock", False) or getattr(
+                        item, "outOfStock", False
+                    )
+                    hidden_item = getattr(item, "hidden_item", False) or getattr(
+                        item, "hiddenItem", False
+                    )
+                elif isinstance(item, dict):
+                    # Dictionary access with field name compatibility
+                    item_id = item.get("id")
+                    item_name = item.get("name", {})
+                    if isinstance(item_name, dict):
+                        clean_name_en = clean_item_name(item_name.get("en", ""))
+                        clean_name_zh = clean_item_name(item_name.get("zh-cn", ""))
+                    else:
+                        clean_name_en = clean_item_name(
+                            str(item_name) if item_name else ""
+                        )
+                        clean_name_zh = ""
+                    item_type = get_field_value(
+                        item, "itemType", "item_type", "REGULAR_ITEM"
+                    )
+                    price = item.get("price")
+                    base_price = get_field_value(item, "basePrice", "base_price")
+                    out_of_stock = get_field_value(
+                        item, "outOfStock", "out_of_stock", False
+                    )
+                    hidden_item = get_field_value(
+                        item, "hiddenItem", "hidden_item", False
+                    )
+                else:
+                    continue
+
+                if item_id:
+                    item_lookup[item_id] = {
+                        "name_en": clean_name_en,
+                        "name_zh": clean_name_zh,
+                        "item_type": item_type,
+                        "category": category_name,
+                        "price": price,
+                        "base_price": base_price,
+                        "out_of_stock": out_of_stock,
+                        "hidden_item": hidden_item,
+                        "from_internal_category": is_internal_category(
+                            category_name_en, category_name_zh
                         ),
-                    ),
-                }
+                    }
 
     return item_lookup
 
 
-def generate_bilingual_menu_content(menu: MenuResponse) -> str:
+def generate_bilingual_menu_content(
+    menu_data: Union[MenuResponse, Dict[str, Any]], user_friendly: bool = False
+) -> str:
     """
     Generate bilingual menu content based on official MenuSifu API specs.
+    Supports both MenuResponse objects and dictionary inputs.
 
     Features implemented according to API documentation:
     - Cleans item names by removing ^ or ~ prefixes
-    - Handles hidden items and categories (skips them)
+    - Handles hidden items and categories (skips them by default)
     - Shows out of stock status
     - Detailed combo information with proper selection rules
     - Bilingual support for all text elements
@@ -736,19 +816,35 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
     - Combo type and pricing rule information
 
     Args:
-        menu: MenuResponse object containing menu data
+        menu_data: MenuResponse object or dictionary containing menu data
+        user_friendly: If True, excludes technical IDs and includes hidden items
 
     Returns:
         str: Bilingual menu content with comprehensive combo details
     """
     lines = []
 
+    # Handle both MenuResponse objects and dictionary inputs
+    if isinstance(menu_data, MenuResponse):
+        menu_name = menu_data.name
+        groups = menu_data.groups
+    else:
+        menu_name = menu_data.get("name", {})
+        groups = menu_data.get("groups", [])
+
     # Create item lookup for combo resolution
-    item_lookup = create_item_lookup(menu)
+    item_lookup = create_item_lookup(menu_data)
 
     # Menu title - cleaned according to API specs
-    menu_name_en = clean_item_name(menu.name.en if menu.name.en else "Menu")
-    menu_name_zh = clean_item_name(menu.name.zh_cn if menu.name.zh_cn else "")
+    if hasattr(menu_name, "en"):
+        menu_name_en = clean_item_name(menu_name.en if menu_name.en else "Menu")
+        menu_name_zh = clean_item_name(menu_name.zh_cn if menu_name.zh_cn else "")
+    elif isinstance(menu_name, dict):
+        menu_name_en = clean_item_name(menu_name.get("en", "Menu"))
+        menu_name_zh = clean_item_name(menu_name.get("zh-cn", ""))
+    else:
+        menu_name_en = "Menu"
+        menu_name_zh = ""
 
     if menu_name_zh:
         lines.append(f"{menu_name_en} / {menu_name_zh}")
@@ -758,10 +854,31 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
     lines.append("")
 
     # Process groups and categories according to API specs
-    for group in menu.groups:
-        # Group name - cleaned
-        group_name_en = clean_item_name(group.name.en if group.name.en else "")
-        group_name_zh = clean_item_name(group.name.zh_cn if group.name.zh_cn else "")
+    for group in groups:
+        # Handle both MenuGroup objects and dictionary inputs
+        if hasattr(group, "name"):
+            # Group name - cleaned for object access
+            group_name_en = clean_item_name(group.name.en if group.name.en else "")
+            group_name_zh = clean_item_name(
+                group.name.zh_cn if group.name.zh_cn else ""
+            )
+            categories = group.categories
+            group_desc = getattr(group, "description", "")
+            group_hours = getattr(group, "hours", [])
+        elif isinstance(group, dict):
+            # Group name - cleaned for dictionary access
+            group_name_dict = group.get("name", {})
+            if isinstance(group_name_dict, dict):
+                group_name_en = clean_item_name(group_name_dict.get("en", ""))
+                group_name_zh = clean_item_name(group_name_dict.get("zh-cn", ""))
+            else:
+                group_name_en = clean_item_name(str(group_name_dict))
+                group_name_zh = ""
+            categories = group.get("categories", [])
+            group_desc = group.get("description", "")
+            group_hours = group.get("hours", [])
+        else:
+            continue
 
         if group_name_en:
             if group_name_zh:
@@ -773,22 +890,31 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
 
             # Compact group info on single line
             group_info = []
-            if hasattr(group, "description") and group.description:
-                group_info.append(group.description)
+            if group_desc:
+                group_info.append(group_desc)
 
             # Simplified hours
-            if hasattr(group, "hours") and group.hours:
+            if group_hours:
                 hour_texts = []
-                for hour in group.hours:
-                    if hasattr(hour, "name") and hour.name:
+                for hour in group_hours:
+                    # Handle both object and dictionary hour access
+                    if hasattr(hour, "name"):
+                        hour_name = hour.name
                         from_time = getattr(
                             hour, "from_time", getattr(hour, "from", "Unknown")
                         )
                         to_time = getattr(
                             hour, "to_time", getattr(hour, "to", "Unknown")
                         )
-                        if from_time != "Unknown" and to_time != "Unknown":
-                            hour_texts.append(f"{from_time}-{to_time}")
+                    elif isinstance(hour, dict):
+                        hour_name = hour.get("name", "")
+                        from_time = hour.get("from", hour.get("from_time", "Unknown"))
+                        to_time = hour.get("to", hour.get("to_time", "Unknown"))
+                    else:
+                        continue
+
+                    if hour_name and from_time != "Unknown" and to_time != "Unknown":
+                        hour_texts.append(f"{from_time}-{to_time}")
                 if hour_texts:
                     group_info.append(f"Hours: {' | '.join(hour_texts)}")
 
@@ -798,16 +924,51 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
             lines.append("")
 
         # Process categories
-        for category in group.categories:
-            # Skip hidden categories as per API spec
-            if getattr(category, "hidden_category", False):
+        for category in categories:
+            # Handle both Category objects and dictionary inputs for hidden check
+            if hasattr(category, "hidden_category"):
+                is_hidden_category = getattr(category, "hidden_category", False)
+            elif isinstance(category, dict):
+                is_hidden_category = get_field_value(
+                    category, "hiddenCategory", "hidden_category", False
+                )
+            else:
                 continue
 
-            # Category name - cleaned
-            cat_name_en = clean_item_name(category.name.en if category.name.en else "")
-            cat_name_zh = clean_item_name(
-                category.name.zh_cn if category.name.zh_cn else ""
-            )
+            # Skip hidden categories unless user_friendly mode
+            if is_hidden_category and not user_friendly:
+                continue
+
+            # Handle both Category objects and dictionary inputs for name/items
+            if isinstance(category, dict):
+                # Category name - cleaned for dictionary access
+                cat_name_dict = category.get("name", {})
+                if isinstance(cat_name_dict, dict):
+                    cat_name_en = clean_item_name(cat_name_dict.get("en", ""))
+                    cat_name_zh = clean_item_name(cat_name_dict.get("zh-cn", ""))
+                else:
+                    cat_name_en = clean_item_name(str(cat_name_dict))
+                    cat_name_zh = ""
+                sale_items = category.get("saleItems", []) or category.get(
+                    "sale_items", []
+                )
+                category_desc = category.get("description", "")
+                require_category = get_field_value(
+                    category, "requireCategory", "require_category", False
+                )
+            elif hasattr(category, "name"):
+                # Category name - cleaned for object access
+                cat_name_en = clean_item_name(
+                    category.name.en if category.name.en else ""
+                )
+                cat_name_zh = clean_item_name(
+                    category.name.zh_cn if category.name.zh_cn else ""
+                )
+                sale_items = category.sale_items
+                category_desc = category.description
+                require_category = getattr(category, "require_category", False)
+            else:
+                continue
 
             # Skip internal system categories (like "Combo Items DON'T DELETE")
             if is_internal_category(cat_name_en, cat_name_zh):
@@ -817,24 +978,66 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
             category_lines = []
 
             # Process items to see if any are valid
-            for item in category.sale_items:
+            for item in sale_items:
+
+                # Handle both SaleItem objects and dictionary inputs
+                if hasattr(item, "name"):
+                    # Object access
+                    item_name_obj = item.name
+                    item_name_en = clean_item_name(
+                        item_name_obj.en if item_name_obj.en else ""
+                    )
+                    item_name_zh = clean_item_name(
+                        item_name_obj.zh_cn if item_name_obj.zh_cn else ""
+                    )
+                    item_type = item.item_type
+                    is_hidden_item = getattr(item, "hidden_item", False)
+                    item_price = item.price
+                    base_price = getattr(item, "base_price", None) or getattr(
+                        item, "basePrice", None
+                    )
+                    combo_sections = getattr(item, "combo_sections", None) or getattr(
+                        item, "comboSections", []
+                    )
+                    combo_type = getattr(item, "combo_type", None) or getattr(
+                        item, "comboType", None
+                    )
+                elif isinstance(item, dict):
+                    # Dictionary access
+                    item_name_dict = item.get("name", {})
+                    if isinstance(item_name_dict, dict):
+                        item_name_en = clean_item_name(item_name_dict.get("en", ""))
+                        item_name_zh = clean_item_name(item_name_dict.get("zh-cn", ""))
+                    else:
+                        item_name_en = clean_item_name(
+                            str(item_name_dict) if item_name_dict else ""
+                        )
+                        item_name_zh = ""
+                    item_type = get_field_value(
+                        item, "itemType", "item_type", "REGULAR_ITEM"
+                    )
+                    is_hidden_item = get_field_value(
+                        item, "hiddenItem", "hidden_item", False
+                    )
+                    item_price = item.get("price")
+                    base_price = get_field_value(item, "basePrice", "base_price")
+                    combo_sections = get_field_value(
+                        item, "comboSections", "combo_sections", []
+                    )
+                    combo_type = get_field_value(item, "comboType", "combo_type")
+                else:
+                    continue
 
                 # Get prices (filtered for zero prices)
                 prices = _format_prices(item)
 
                 # Skip items with no valid prices (zero prices filtered out)
                 # Exception: Don't skip combo items that might have zero prices
-                if not prices and item.item_type != "COMBO_SALE_ITEM":
+                if not prices and item_type != "COMBO_SALE_ITEM":
                     continue
 
-                # Item names - cleaned according to API specs
-                item_name_en = clean_item_name(item.name.en if item.name.en else "")
-                item_name_zh = clean_item_name(
-                    item.name.zh_cn if item.name.zh_cn else ""
-                )
-
-                # Skip hidden items as per API spec
-                if getattr(item, "hidden_item", False):
+                # Skip hidden items unless user_friendly mode
+                if is_hidden_item and not user_friendly:
                     continue
 
                 if item_name_en:
@@ -863,21 +1066,19 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                     category_lines.append(item_line)
 
                     # Compact combo details format
-                    if item.item_type == "COMBO_SALE_ITEM" and item.combo_sections:
-                        # Compact combo header with type and price
-                        combo_type = getattr(item, "combo_type", None)
+                    if item_type == "COMBO_SALE_ITEM" and combo_sections:
                         combo_info = "COMBO"
                         if combo_type == 1:
                             combo_info += " (Fixed)"
                         elif combo_type == 2:
                             combo_info += " (Flexible)"
 
-                        base_price = getattr(item, "base_price", None)
+                        # Use the base_price extracted earlier
                         if base_price:
                             try:
                                 numeric_base_price = float(base_price)
                                 numeric_item_price = (
-                                    float(item.price) if item.price is not None else 0
+                                    float(item_price) if item_price is not None else 0
                                 )
                                 if numeric_base_price != numeric_item_price:
                                     combo_info += f" - Base: ${numeric_base_price:.2f}"
@@ -892,7 +1093,7 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                         combo_has_issues = False
 
                         # Process each combo section with MenuSifu business rules
-                        for i, section in enumerate(item.combo_sections):
+                        for i, section in enumerate(combo_sections):
                             # Check section availability first
                             section_availability = check_combo_section_availability(
                                 section, item_lookup
@@ -902,10 +1103,20 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                             section_pre_selected = []
                             section_unavailable_items = []
 
-                            if section.combo_section_sale_items:
-                                for combo_item in section.combo_section_sale_items:
-                                    item_details = item_lookup.get(
-                                        combo_item.sale_item_id, {}
+                            # Handle both camelCase and snake_case field names
+                            combo_items = getattr(
+                                section, "combo_section_sale_items", None
+                            ) or getattr(section, "comboSectionSaleItems", [])
+                            if combo_items:
+                                for combo_item in combo_items:
+                                    # Handle both field naming conventions
+                                    sale_item_id = getattr(
+                                        combo_item, "sale_item_id", None
+                                    ) or getattr(combo_item, "saleItemId", None)
+                                    item_details = (
+                                        item_lookup.get(sale_item_id, {})
+                                        if sale_item_id
+                                        else {}
                                     )
 
                                     # Get item names - ensure we map ALL combo items to actual dishes
@@ -921,11 +1132,14 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                                             )
                                         elif item_name_en:
                                             dish_name = item_name_en
+                                        elif item_name_zh:
+                                            dish_name = item_name_zh
                                         else:
-                                            dish_name = f"Unknown Item {combo_item.sale_item_id}"
+                                            # Skip items with no name instead of showing ID
+                                            continue
                                     else:
-                                        # Item not found in lookup - shouldn't happen but handle gracefully
-                                        dish_name = f"Item ID {combo_item.sale_item_id} [NOT IN LOOKUP]"
+                                        # Skip items not found in lookup - don't show ID references
+                                        continue
 
                                     # Check availability and include ALL combo items regardless of hidden status
                                     if item_details and item_details.get(
@@ -944,7 +1158,11 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                                             if formatted_price:
                                                 dish_name += f" ({formatted_price})"
 
-                                        if combo_item.pre_selected:
+                                        # Handle both field naming conventions for pre_selected
+                                        is_pre_selected = getattr(
+                                            combo_item, "pre_selected", False
+                                        ) or getattr(combo_item, "preSelected", False)
+                                        if is_pre_selected:
                                             section_pre_selected.append(dish_name)
                                         else:
                                             section_items.append(dish_name)
@@ -965,19 +1183,32 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
                                 section_title = f"Section {i + 1}"
 
                             # Get detailed rule descriptions from MenuSifu documentation
-                            rule = section.item_selection_rule
-                            min_sel = section.min_num_of_selection_allowed or 0
-                            max_sel = section.max_num_of_selection_allowed or 0
+                            # Handle both field naming conventions
+                            rule = getattr(
+                                section, "item_selection_rule", None
+                            ) or getattr(section, "itemSelectionRule", None)
+                            min_sel = (
+                                getattr(section, "min_num_of_selection_allowed", None)
+                                or getattr(section, "minNumOfSelectionAllowed", 0)
+                                or 0
+                            )
+                            max_sel = (
+                                getattr(section, "max_num_of_selection_allowed", None)
+                                or getattr(section, "maxNumOfSelectionAllowed", 0)
+                                or 0
+                            )
                             allow_repeated = getattr(
                                 section, "allow_repeated_items", False
-                            )
+                            ) or getattr(section, "allowRepeatedItems", False)
 
                             selection_rule = get_selection_rule_description(
-                                rule, min_sel, max_sel, allow_repeated
+                                rule or 0, min_sel, max_sel, allow_repeated
                             )
-                            pricing_rule = get_price_rule_description(
-                                section.price_rule
-                            )
+                            # Handle both field naming conventions
+                            price_rule = getattr(
+                                section, "price_rule", None
+                            ) or getattr(section, "priceRule", None)
+                            pricing_rule = get_price_rule_description(price_rule or 0)
 
                             # Compact section header with all info on one line
                             section_description = get_section_description(
@@ -1083,9 +1314,9 @@ def generate_bilingual_menu_content(menu: MenuResponse) -> str:
 
                 # Add category description and required status inline
                 category_details = []
-                if category.description:
-                    category_details.append(category.description)
-                if getattr(category, "require_category", False):
+                if category_desc:
+                    category_details.append(category_desc)
+                if require_category:
                     category_details.append("(Required)")
 
                 if category_details:
@@ -2365,3 +2596,173 @@ def safe_convert_option_fields(option: Dict[str, Any]) -> Dict[str, Any]:
         "checked": option.get("checked", True),
         "isOpenOption": option.get("isOpenOption", False),
     }
+
+
+# =====================================================================================
+# NEW FILTERING LOGIC - SIMPLE OUT-OF-STOCK ONLY FILTERING
+# =====================================================================================
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """JSON encoder that converts Decimal objects to float for serialization."""
+
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return float(o)
+        return super().default(o)
+
+
+def get_field_value(
+    data: Dict[str, Any], camel_case_key: str, snake_case_key: str, default: Any = None
+) -> Any:
+    """
+    Get field value handling both camelCase and snake_case naming conventions.
+
+    Args:
+        data: Dictionary to search in
+        camel_case_key: camelCase field name (e.g., 'outOfStock')
+        snake_case_key: snake_case field name (e.g., 'out_of_stock')
+        default: Default value if neither field is found
+
+    Returns:
+        Field value from either naming convention, or default
+    """
+    return data.get(camel_case_key, data.get(snake_case_key, default))
+
+
+def simple_filter_menu_items(menu_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Simple filtering that ONLY excludes out-of-stock items.
+
+    This new filtering approach:
+    - KEEPS hidden items (hiddenItem=true) - user specifically requested this
+    - EXCLUDES only out-of-stock items (outOfStock=true)
+    - PRESERVES all original metadata (hours, descriptions, categories, etc.)
+    - HANDLES both camelCase (API) and snake_case (Pydantic) field names
+
+    Args:
+        menu_dict: Complete menu response dictionary
+
+    Returns:
+        Filtered menu dictionary with same structure, only sale_items filtered
+    """
+    # Create a deep copy to avoid modifying original
+    filtered_menu = dict(menu_dict)
+
+    if not filtered_menu.get("groups"):
+        return filtered_menu
+
+    # Track filtering statistics
+    total_items = 0
+    filtered_items = 0
+
+    # Process each group (preserving all group data)
+    filtered_groups = []
+    for group in filtered_menu["groups"]:
+        # Copy group data completely (preserving hours, descriptions, etc.)
+        filtered_group = {**group}
+
+        if not group.get("categories"):
+            filtered_groups.append(filtered_group)
+            continue
+
+        # Process each category (preserving all category data)
+        filtered_categories = []
+        for category in group["categories"]:
+            # Copy category data completely (preserving descriptions, options, etc.)
+            filtered_category = {**category}
+
+            # Handle both camelCase and snake_case for sale_items
+            sale_items_key = "saleItems" if "saleItems" in category else "sale_items"
+            sale_items = category.get(sale_items_key, [])
+
+            if not sale_items:
+                filtered_categories.append(filtered_category)
+                continue
+
+            # Filter sale items - ONLY exclude out-of-stock items
+            filtered_sale_items = []
+            for item in sale_items:
+                total_items += 1
+
+                # Check if item is out of stock (handle both naming conventions)
+                out_of_stock = get_field_value(
+                    item, "outOfStock", "out_of_stock", False
+                )
+
+                # ONLY filter out-of-stock items - keep everything else including hidden items
+                if not out_of_stock:
+                    filtered_sale_items.append(item)
+                else:
+                    filtered_items += 1
+
+            # Update the filtered sale items
+            filtered_category[sale_items_key] = filtered_sale_items
+            filtered_categories.append(filtered_category)
+
+        filtered_group["categories"] = filtered_categories
+        filtered_groups.append(filtered_group)
+
+    filtered_menu["groups"] = filtered_groups
+
+    # Add filtering summary
+    print("📊 Simple Filtering Results:")
+    print(f"   Total items processed: {total_items}")
+    print(f"   Items kept: {total_items - filtered_items}")
+    print(f"   Out-of-stock items filtered: {filtered_items}")
+    print("   ✅ Hidden items KEPT (as requested)")
+
+    return filtered_menu
+
+
+def save_filtered_menu_data(
+    filtered_menu: Dict[str, Any], output_dir: str, generate_text_menu: bool = True
+) -> Dict[str, str]:
+    """
+    Save filtered menu data in multiple formats.
+
+    Args:
+        filtered_menu: Filtered menu dictionary
+        output_dir: Directory to save files in
+        generate_text_menu: Whether to generate user-friendly text menu
+
+    Returns:
+        Dictionary with file paths that were created
+    """
+    import os
+
+    created_files = {}
+
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save filtered JSON menu
+    clean_menu_path = os.path.join(output_dir, "clean_menu_response.json")
+    with open(clean_menu_path, "w", encoding="utf-8") as f:
+        json.dump(filtered_menu, f, indent=2, ensure_ascii=False, cls=DecimalEncoder)
+    created_files["clean_menu_json"] = clean_menu_path
+    print(f"💾 Saved filtered menu: {clean_menu_path}")
+
+    # Generate text menu if requested
+    if generate_text_menu:
+        try:
+            # Generate user-friendly bilingual menu directly from dict
+            bilingual_content = generate_bilingual_menu_content(
+                filtered_menu, user_friendly=True
+            )
+
+            bilingual_path = os.path.join(output_dir, "bilingual_menu.txt")
+            with open(bilingual_path, "w", encoding="utf-8") as f:
+                f.write(bilingual_content)
+            created_files["bilingual_menu"] = bilingual_path
+            print(f"📄 Saved bilingual menu: {bilingual_path}")
+
+        except Exception as e:
+            print(f"⚠️ Could not generate text menu: {e}")
+
+    return created_files
+
+
+# =====================================================================================
+# ENHANCED EXISTING FUNCTIONS - FIELD NAME COMPATIBILITY
+# =====================================================================================
