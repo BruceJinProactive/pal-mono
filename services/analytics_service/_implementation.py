@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 import uuid
 from datetime import datetime
 
@@ -51,10 +52,19 @@ async def get_account_reports(
         GetAllReportsResponse: Object containing all analytics reports
     """
     try:
+        start_time = time.time()
+        logger.info(
+            f"🚀 Analytics_time: Starting reports for account {account_id} at {time.strftime('%H:%M:%S.%f')[:-3]}"
+        )
+
         # Validate the date range
+        validation_start = time.time()
         start_date, end_date = validate_date_range(start_date, end_date)
+        validation_time = time.time() - validation_start
+        logger.info(f"⏱️  Analytics_time: Date validation took {validation_time:.6f}s")
 
         # Ensure account filtering is applied
+        filter_start = time.time()
         if filter_by is None:
             filter_by = {}
 
@@ -66,8 +76,14 @@ async def get_account_reports(
 
         # Debug: Log what we're passing to repository
         logger.info(f"Analytics Service: Passing filter_by to repository: {filter_by}")
+        filter_time = time.time() - filter_start
+        logger.info(f"⏱️  Analytics_time: Filter setup took {filter_time:.6f}s")
 
         # Execute all analytics queries in parallel for better performance
+        parallel_start = time.time()
+        logger.info(
+            f"🔄 Analytics_time: Starting 5 parallel queries at {time.strftime('%H:%M:%S.%f')[:-3]}..."
+        )
         (
             users_report,
             turns_report,
@@ -117,7 +133,13 @@ async def get_account_reports(
             ),
         )
 
+        parallel_time = time.time() - parallel_start
+        logger.info(
+            f"🏁 Analytics_time: Parallel queries completed in {parallel_time:.6f}s at {time.strftime('%H:%M:%S.%f')[:-3]}"
+        )
+
         # Create and return reports
+        report_start = time.time()
         reports = [
             PerformanceReport(
                 name=AnalyticsReportType.ACTIVE_USERS.name, data=users_report
@@ -137,16 +159,28 @@ async def get_account_reports(
                 data=conversion_report,
             ),
         ]
+
+        report_time = time.time() - report_start
+        total_time = time.time() - start_time
+
+        logger.info(f"📊 Analytics_time: Report creation took {report_time:.6f}s")
+        logger.info(f"✅ Analytics_time: TOTAL TIME: {total_time:.6f}s")
+        logger.info(
+            f"📈 Analytics_time: BREAKDOWN - Validation: {validation_time:.6f}s | Filter: {filter_time:.6f}s | Queries: {parallel_time:.6f}s | Reports: {report_time:.6f}s"
+        )
+
         return GetAllReportsResponse(reports=reports)
 
     except ValueError as e:
-        logger.error(f"Analytics: Date validation error for account {account_id}: {e}")
+        logger.error(
+            f"Analytics_time: Date validation error for account {account_id}: {e}"
+        )
         return GetAllReportsResponse(reports=[])
     except Exception as e:
         logger.error(
-            f"Analytics: Error calculating analytics for account {account_id}: {e}"
+            f"Analytics_time: Error calculating analytics for account {account_id}: {e}"
         )
-        logger.exception("Analytics: Full analytics exception traceback:")
+        logger.exception("Analytics_time: Full analytics exception traceback:")
         return GetAllReportsResponse(reports=[])
 
 
@@ -175,6 +209,11 @@ def get_active_users(
         }
     """
     try:
+        func_start = time.time()
+        logger.info(
+            f"🔍 Analytics_time: get_active_users starting at {time.strftime('%H:%M:%S.%f')[:-3]}..."
+        )
+
         # group_by is required (can be empty list for totals only)
         if group_by is None:
             group_by = []
@@ -186,8 +225,12 @@ def get_active_users(
         analytics_repo = db.AnalyticsRepository(session)
 
         # Get both grouped and total data in parallel to reduce database calls
+        db_start = time.time()
         if ordered_group_by:
             # If grouping is requested, get both grouped and total data
+            logger.info(
+                "🗄️  Analytics_time: get_active_users running 2 DB queries (grouped + totals)..."
+            )
             active_users_data, active_users_totals_data = (
                 analytics_repo.get_active_users(
                     start_date=start_date,
@@ -204,6 +247,9 @@ def get_active_users(
             )
         else:
             # If no grouping, only get totals (avoid duplicate query)
+            logger.info(
+                "🗄️  Analytics_time: get_active_users running 1 DB query (totals only)..."
+            )
             active_users_data = []
             active_users_totals_data = analytics_repo.get_active_users(
                 start_date=start_date,
@@ -211,6 +257,10 @@ def get_active_users(
                 group_by=[],
                 filter_by=filter_by,
             )
+        db_time = time.time() - db_start
+        logger.info(
+            f"🗄️  Analytics_time: get_active_users DB queries took {db_time:.6f}s"
+        )
 
         # Process Active Users Data using generic architecture
         active_users_report = process_analytics_data_generic(
@@ -225,6 +275,11 @@ def get_active_users(
             None,
             AnalyticsReportType.ACTIVE_USERS.metrics_config,
             calculate_totals=True,
+        )
+
+        func_time = time.time() - func_start
+        logger.info(
+            f"✅ Analytics_time: get_active_users completed in {func_time:.6f}s (DB: {db_time:.6f}s) at {time.strftime('%H:%M:%S.%f')[:-3]}"
         )
 
         return {
@@ -266,6 +321,11 @@ def get_turns_summary(
         }
     """
     try:
+        func_start = time.time()
+        logger.info(
+            f"🔍 Analytics_time: get_turns_summary starting at {time.strftime('%H:%M:%S.%f')[:-3]}..."
+        )
+
         # group_by is required (can be empty list for totals only)
         if group_by is None:
             group_by = []
@@ -277,8 +337,12 @@ def get_turns_summary(
         analytics_repo = db.AnalyticsRepository(session)
 
         # Optimize database calls based on grouping requirements
+        db_start = time.time()
         if ordered_group_by:
             # If grouping is requested, get both grouped and total data
+            logger.info(
+                "🗄️  Analytics_time: get_turns_summary running 2 COMPLEX DB queries (grouped + totals)..."
+            )
             turn_distribution_data, turn_totals_data = (
                 analytics_repo.get_turns_summary(
                     start_date=start_date,
@@ -295,6 +359,9 @@ def get_turns_summary(
             )
         else:
             # If no grouping, only get totals (avoid duplicate query)
+            logger.info(
+                "🗄️  Analytics_time: get_turns_summary running 1 COMPLEX DB query (totals only)..."
+            )
             turn_distribution_data = []
             turn_totals_data = analytics_repo.get_turns_summary(
                 start_date=start_date,
@@ -302,6 +369,10 @@ def get_turns_summary(
                 group_by=[],
                 filter_by=filter_by,
             )
+        db_time = time.time() - db_start
+        logger.info(
+            f"🗄️  Analytics_time: get_turns_summary DB queries took {db_time:.6f}s"
+        )
 
         # Process Turn Distribution Data using generic architecture
         turn_distribution = process_analytics_data_generic(
@@ -316,6 +387,11 @@ def get_turns_summary(
             None,
             AnalyticsReportType.MESSAGE_TURNS.metrics_config,
             calculate_totals=True,
+        )
+
+        func_time = time.time() - func_start
+        logger.info(
+            f"✅ Analytics_time: get_turns_summary completed in {func_time:.6f}s (DB: {db_time:.6f}s) at {time.strftime('%H:%M:%S.%f')[:-3]}"
         )
 
         return {
@@ -357,6 +433,11 @@ def get_calls_time_summary(
         }
     """
     try:
+        func_start = time.time()
+        logger.info(
+            f"🔍 Analytics_time: get_calls_time_summary starting at {time.strftime('%H:%M:%S.%f')[:-3]}..."
+        )
+
         # group_by is required (can be empty list for totals only)
         if group_by is None:
             group_by = []
@@ -368,8 +449,12 @@ def get_calls_time_summary(
         analytics_repo = db.AnalyticsRepository(session)
 
         # Optimize database calls based on grouping requirements
+        db_start = time.time()
         if ordered_group_by:
             # If grouping is requested, get both grouped and total data
+            logger.info(
+                "🗄️  Analytics_time: get_calls_time_summary running 2 DB queries (grouped + totals)..."
+            )
             call_time_data, call_time_totals_data = (
                 analytics_repo.get_calls_time_summary(
                     start_date=start_date,
@@ -386,6 +471,9 @@ def get_calls_time_summary(
             )
         else:
             # If no grouping, only get totals (avoid duplicate query)
+            logger.info(
+                "🗄️  Analytics_time: get_calls_time_summary running 1 DB query (totals only)..."
+            )
             call_time_data = []
             call_time_totals_data = analytics_repo.get_calls_time_summary(
                 start_date=start_date,
@@ -393,6 +481,10 @@ def get_calls_time_summary(
                 group_by=[],
                 filter_by=filter_by,
             )
+        db_time = time.time() - db_start
+        logger.info(
+            f"🗄️  Analytics_time: get_calls_time_summary DB queries took {db_time:.6f}s"
+        )
 
         # Process Call Time Data using generic architecture
         call_time_report = process_analytics_data_generic(
@@ -407,6 +499,11 @@ def get_calls_time_summary(
             None,
             AnalyticsReportType.CALL_METRICS.metrics_config,
             calculate_totals=True,
+        )
+
+        func_time = time.time() - func_start
+        logger.info(
+            f"✅ Analytics_time: get_calls_time_summary completed in {func_time:.6f}s (DB: {db_time:.6f}s) at {time.strftime('%H:%M:%S.%f')[:-3]}"
         )
 
         return {
@@ -432,6 +529,11 @@ def get_calls_info_summary(
 ) -> dict:
     """Get call purpose and language distribution - simple like get_calls_time_summary."""
     try:
+        func_start = time.time()
+        logger.info(
+            f"🔍 Analytics_time: get_calls_info_summary starting at {time.strftime('%H:%M:%S.%f')[:-3]}..."
+        )
+
         if group_by is None:
             group_by = []
 
@@ -443,8 +545,12 @@ def get_calls_info_summary(
         analytics_repo = db.AnalyticsRepository(session)
 
         # Optimize database calls based on grouping requirements
+        db_start = time.time()
         if ordered_group_by:
             # If grouping is requested, get both grouped and total data
+            logger.info(
+                "🗄️  Analytics_time: get_calls_info_summary running 2 DB queries (grouped + totals)..."
+            )
             call_info_data, call_info_totals_data = (
                 analytics_repo.get_calls_info_summary(
                     start_date=start_date,
@@ -461,6 +567,9 @@ def get_calls_info_summary(
             )
         else:
             # If no grouping, only get totals (avoid duplicate query)
+            logger.info(
+                "🗄️  Analytics_time: get_calls_info_summary running 1 DB query (totals only)..."
+            )
             call_info_data = []
             call_info_totals_data = analytics_repo.get_calls_info_summary(
                 start_date=start_date,
@@ -468,6 +577,10 @@ def get_calls_info_summary(
                 group_by=[],
                 filter_by=filter_by,
             )
+        db_time = time.time() - db_start
+        logger.info(
+            f"🗄️  Analytics_time: get_calls_info_summary DB queries took {db_time:.6f}s"
+        )
 
         # Process Call Purpose Distribution (purposes only)
         call_purpose_report = process_analytics_data_generic(
@@ -496,6 +609,11 @@ def get_calls_info_summary(
             None,
             AnalyticsReportType.CALL_LANGUAGE_DISTRIBUTION.metrics_config,
             calculate_totals=True,
+        )
+
+        func_time = time.time() - func_start
+        logger.info(
+            f"✅ Analytics_time: get_calls_info_summary completed in {func_time:.6f}s (DB: {db_time:.6f}s) at {time.strftime('%H:%M:%S.%f')[:-3]}"
         )
 
         return {
@@ -541,6 +659,11 @@ def get_conversion_summary(
         }
     """
     try:
+        func_start = time.time()
+        logger.info(
+            f"🔍 Analytics_time: get_conversion_summary starting at {time.strftime('%H:%M:%S.%f')[:-3]}..."
+        )
+
         # group_by is required (can be empty list for totals only)
         if group_by is None:
             group_by = []
@@ -552,8 +675,12 @@ def get_conversion_summary(
         analytics_repo = db.AnalyticsRepository(session)
 
         # Optimize database calls based on grouping requirements
+        db_start = time.time()
         if ordered_group_by:
             # If grouping is requested, get both grouped and total data
+            logger.info(
+                "🗄️  Analytics_time: get_conversion_summary running 2 DB queries (grouped + totals)..."
+            )
             conversion_data, conversion_totals_data = (
                 analytics_repo.get_conversion_summary(
                     start_date=start_date,
@@ -570,6 +697,9 @@ def get_conversion_summary(
             )
         else:
             # If no grouping, only get totals (avoid duplicate query)
+            logger.info(
+                "🗄️  Analytics_time: get_conversion_summary running 1 DB query (totals only)..."
+            )
             conversion_data = []
             conversion_totals_data = analytics_repo.get_conversion_summary(
                 start_date=start_date,
@@ -577,6 +707,10 @@ def get_conversion_summary(
                 group_by=[],
                 filter_by=filter_by,
             )
+        db_time = time.time() - db_start
+        logger.info(
+            f"🗄️  Analytics_time: get_conversion_summary DB queries took {db_time:.6f}s"
+        )
 
         # Process Conversion Data using generic architecture
         conversion_report = process_analytics_data_generic(
@@ -591,6 +725,11 @@ def get_conversion_summary(
             None,
             AnalyticsReportType.CONVERSION_METRICS.metrics_config,
             calculate_totals=True,
+        )
+
+        func_time = time.time() - func_start
+        logger.info(
+            f"✅ Analytics_time: get_conversion_summary completed in {func_time:.6f}s (DB: {db_time:.6f}s) at {time.strftime('%H:%M:%S.%f')[:-3]}"
         )
 
         return {
@@ -621,7 +760,7 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
                 mp.track(user_id, event_name, event_properties)
         except Exception as e:
             logger.error(
-                f"Analytics: Error tracking event {event_name} for user {user_id}: {e}"
+                f"Analytics_time: Error tracking event {event_name} for user {user_id}: {e}"
             )
 
     asyncio.create_task(asyncio.to_thread(_track))
