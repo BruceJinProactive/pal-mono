@@ -128,7 +128,7 @@ Your task is to extract the following information:
 - Number of people (covers): How many people need seating (1-10) - e.g., "2", "4 people", "party of 6"
 - Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date} - e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"  
 - Time: The desired reservation time in HH:MM format (24-hour format) - e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
-- Guest details: first name, last name, phone number with area code (e.g., "555-123-4567")
+- Guest details: name (first name or full name), phone number with area code (e.g., "555-123-4567")
 - Special notes or requests (optional): Dietary restrictions, seating preferences, etc.
 
 # INSTRUCTIONS:
@@ -136,7 +136,7 @@ Your task is to extract the following information:
 2. If date is mentioned relative to "today", "tomorrow", or weekday names, you must convert it to YYYY-MM-DD format with respect to the current date {current_date}. Follow these weekday conversion rules:
 
 {weekday_conversion_rules}
-3. For names, extract first and last name separately
+3. For names, extract whatever name information is provided - if customer gives "John Smith", extract first_name="John" and last_name="Smith". If customer gives only "John", extract first_name="John" and leave last_name as null
 4. Phone numbers should be in standard format (e.g., "555-123-4567")
 5. If any required field is missing, output null for that field
 6. Special notes should capture any dietary restrictions, celebrations, seating preferences, etc.
@@ -170,8 +170,8 @@ Examples:
 - covers: integer between 1 and 10
 - date: YYYY-MM-DD format
 - time: HH:MM format (24-hour)
-- first_name: non-empty string
-- last_name: non-empty string  
+- first_name: non-empty string (required)
+- last_name: string (optional - can be None, system will handle missing last names)
 - phone: valid phone number format
 - notes: optional string
 

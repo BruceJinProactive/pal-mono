@@ -225,6 +225,50 @@ class YelpTool(Toolkit):
 
         return num_results_before, num_results_after
 
+    def _process_name_for_reservation(
+        self, first_name: Optional[str], last_name: Optional[str]
+    ) -> tuple[str, str]:
+        """
+        Intelligently process name inputs for Yelp reservations.
+
+        Yelp requires both first and last names, but customers may only provide a single name.
+        This method handles the following cases:
+        1. If both first_name and last_name are provided, use them as-is
+        2. If only first_name is provided and it contains multiple words, split into first/last
+        3. If only first_name is provided as a single word, use "Palona AI" as last_name
+        4. If only last_name is provided, treat it as the first_name and use "Palona AI" as last_name
+        5. If neither are provided, return empty strings
+
+        Args:
+            first_name: Optional first name from user input
+            last_name: Optional last name from user input
+
+        Returns:
+            tuple[str, str]: (processed_first_name, processed_last_name)
+        """
+        # If both names are provided, use them as-is
+        if first_name and last_name:
+            return first_name.strip(), last_name.strip()
+
+        # If only first name is provided
+        if first_name and not last_name:
+            first_name_cleaned = first_name.strip()
+            name_parts = first_name_cleaned.split()
+
+            if len(name_parts) >= 2:
+                # Split the name: first part becomes first_name, rest becomes last_name
+                return name_parts[0], " ".join(name_parts[1:])
+            else:
+                # Single name provided - use "Palona AI" as last name
+                return first_name_cleaned, "Palona AI"
+
+        # If only last name is provided, treat it as first name
+        if last_name and not first_name:
+            return last_name.strip(), "Palona AI"
+
+        # If neither name is provided
+        return "", ""
+
     def _get_current_date(self) -> str:
         """
         Get the current date and weekday based on the timezone from metadata.
@@ -418,6 +462,13 @@ class YelpTool(Toolkit):
             if not isinstance(reservation_query, ReservationQuery):
                 return "I couldn't understand your reservation request. Please provide all the necessary details."
 
+            # Handle name processing - split full names or use Palona AI as fallback
+            processed_first_name, processed_last_name = (
+                self._process_name_for_reservation(
+                    reservation_query.first_name, reservation_query.last_name
+                )
+            )
+
             # Check required fields individually
             missing_fields = []
             if not reservation_query.covers:
@@ -426,10 +477,8 @@ class YelpTool(Toolkit):
                 missing_fields.append("date")
             if not reservation_query.time:
                 missing_fields.append("time")
-            if not reservation_query.first_name:
-                missing_fields.append("first name")
-            if not reservation_query.last_name:
-                missing_fields.append("last name")
+            if not processed_first_name:
+                missing_fields.append("name")
             if not reservation_query.phone:
                 missing_fields.append("phone")
 
@@ -489,8 +538,8 @@ class YelpTool(Toolkit):
                     bearer_token=bearer_token,
                     holds_response=hold_response,
                     holds_request=hold_request,
-                    first_name=reservation_query.first_name,  # type: ignore
-                    last_name=reservation_query.last_name,  # type: ignore
+                    first_name=processed_first_name,  # Use processed names
+                    last_name=processed_last_name,  # Use processed names
                     phone=reservation_query.phone,  # type: ignore
                     email="inbox@proactiveailab.com",  # Hardcoded email instead of asking user
                     notes=reservation_query.notes,
