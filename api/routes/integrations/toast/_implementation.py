@@ -4,6 +4,10 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from db.tables import Integration, IntegrationProvider
+from tools.toast_tool._apis import get_dining_options
+from tools.toast_tool._utils import get_toast_access_token_from_aws
+from tools.toast_tool.classes import DiningBehavior
 from utils.log import logger
 
 from ._utils import (
@@ -80,4 +84,77 @@ async def api_toast_webhook(request: Request) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=ToastWebhookResponse().model_dump(exclude_none=True),
+    )
+
+
+def check_and_refresh_dining_options(session):
+    """
+    Check all Toast integrations and check if take out dining option is available. Refresh project with take out dining option UUID if not already set or the UUID is different.
+    """
+    # Get all integrations whose integration provider is toast
+    integrations = (
+        session.query(Integration)
+        .filter(Integration.provider == IntegrationProvider.toast)
+        .all()
+    )
+
+    # Get bearer token from access token
+    bearer_token = get_toast_access_token_from_aws()
+
+    # Iterate over each integration and get dining options for each store
+    store_with_take_out_dining_option = set()
+    store_without_take_out_dining_option = set()
+
+    for integration in integrations:
+        if not integration.business_id:
+            logger.warning(
+                "[ToastWebhook.check_and_refresh_dining_options] Integration has no business ID, skipping"
+            )
+            continue
+        try:
+            dining_options = get_dining_options(
+                bearer_token=bearer_token,
+                store_id=integration.business_id,
+            )
+        except Exception as e:
+            logger.warning(
+                "[ToastWebhook.check_and_refresh_dining_options] Failed to fetch dining options for store %s (error=%s)",
+                integration.business_id,
+                e.__class__.__name__,
+                exc_info=True,
+            )
+            store_without_take_out_dining_option.add(integration.business_id)
+            continue
+
+        # Check if take out dining option is available
+        take_out_dining_option = next(
+            (
+                option
+                for option in dining_options
+                if option.behavior == DiningBehavior.TAKE_OUT
+            ),
+            None,
+        )
+        if not take_out_dining_option:
+            logger.warning(
+                "[ToastWebhook.check_and_refresh_dining_options] Take out dining option is not available, skipping"
+            )
+            store_without_take_out_dining_option.add(integration.business_id)
+
+        else:
+            store_with_take_out_dining_option.add(integration.business_id)
+
+        # TODO: Update project with take out dining option UUID if not already set or the UUID is different
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "message": "Dining options successfully checked",
+            "store_with_take_out_dining_option": list(
+                store_with_take_out_dining_option
+            ),
+            "store_without_take_out_dining_option": list(
+                store_without_take_out_dining_option
+            ),
+        },
     )

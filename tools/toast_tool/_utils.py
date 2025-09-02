@@ -629,7 +629,6 @@ def get_toast_access_token_from_aws(
 ) -> ToastAccessToken:
     """
     Get a Toast access token from AWS Secrets; refresh via API if missing/expired.
-    Raises ValueError if refreshing fails.
     """
     try:
         # Get the token from AWS secrets
@@ -640,18 +639,6 @@ def get_toast_access_token_from_aws(
         token_data = json.loads(token_json_str)
         # Reconstruct ToastAccessToken from stored data
         token = ToastAccessToken(**token_data)
-
-        # Check if token is expired
-        if token.expires_at < datetime.datetime.now(datetime.timezone.utc):
-            logger.debug(
-                "[ToastTool.get_toast_access_token_from_aws] Token expired, refreshing"
-            )
-            return refresh_toast_access_token_from_aws(
-                token_api_endpoint=(
-                    token_api_endpoint if token_api_endpoint else BASE_URL
-                )
-            )
-        return token
     except (
         ValueError,
         KeyError,
@@ -659,14 +646,25 @@ def get_toast_access_token_from_aws(
         TypeError,
         ValidationError,
     ) as e:
-        # Missing key, invalid format, or parsing error — fall back to a fresh token
+        # Missing/invalid token in Secrets – fall back to a fresh token
         logger.warning(
-            f"[ToastTool.get_toast_access_token_from_aws] Unable to use stored token ({e}); refreshing from API",
+            "[ToastTool.get_toast_access_token_from_aws] Stored token invalid; refreshing (error=%s)",
+            e.__class__.__name__,
             exc_info=True,
         )
         return refresh_toast_access_token_from_aws(
             token_api_endpoint=token_api_endpoint
         )
+
+    # Check expiration outside the try so refresh errors are not swallowed
+    if token.expires_at < datetime.datetime.now(datetime.timezone.utc):
+        logger.debug(
+            "[ToastTool.get_toast_access_token_from_aws] Token expired, refreshing"
+        )
+        return refresh_toast_access_token_from_aws(
+            token_api_endpoint=token_api_endpoint
+        )
+    return token
 
 
 def refresh_toast_access_token_from_aws(

@@ -10,6 +10,7 @@ from api.routes.endpoints import endpoints
 from api.routes.integrations.adora import adora_router
 from api.routes.integrations.shopify import _implementation
 from api.routes.integrations.square import _implementation as square_implementation
+from api.routes.integrations.toast import _implementation as toast_implementation
 from api.routes.integrations.toast import toast_router
 from api.routes.integrations.vapi import vapi_router
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
@@ -149,3 +150,13 @@ async def square_webhook(request: Request):
         JSONResponse: Success or error response
     """
     return await square_implementation.webhook(request)
+
+
+@integrations_router.post(
+    "/toast/refresh-dining-options", status_code=status.HTTP_200_OK
+)
+async def toast_refresh_dining_options(session=Depends(db.get_db)):
+    """
+    Check all Toast integrations and refresh dining options.
+    """
+    return toast_implementation.check_and_refresh_dining_options(session)
