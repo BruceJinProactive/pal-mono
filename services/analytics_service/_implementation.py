@@ -30,7 +30,7 @@ MIXPANEL_REPORTS = [
 ]
 
 
-def get_account_reports(
+async def get_account_reports(
     session: Session,
     account_id: uuid.UUID,
     start_date: datetime | None = None,
@@ -67,44 +67,54 @@ def get_account_reports(
         # Debug: Log what we're passing to repository
         logger.info(f"Analytics Service: Passing filter_by to repository: {filter_by}")
 
-        # Fetch and process active users data using service function
-        users_report = get_active_users(
-            session=session,
-            start_date=start_date,
-            end_date=end_date,
-            group_by=group_by,
-            filter_by=filter_by,
-        )
-
-        # Fetch and process Message Turns data using service function
-        turns_report = get_turns_summary(
-            session=session,
-            start_date=start_date,
-            end_date=end_date,
-            group_by=group_by,
-            filter_by=filter_by,
-        )
-        calls_report = get_calls_time_summary(
-            session=session,
-            start_date=start_date,
-            end_date=end_date,
-            group_by=group_by,
-            filter_by=filter_by,
-        )
-        call_info_report = get_calls_info_summary(
-            session=session,
-            start_date=start_date,
-            end_date=end_date,
-            group_by=group_by,
-            filter_by=filter_by,
-        )
-
-        conversion_report = get_conversion_summary(
-            session=session,
-            start_date=start_date,
-            end_date=end_date,
-            group_by=group_by,
-            filter_by=filter_by,
+        # Execute all analytics queries in parallel for better performance
+        (
+            users_report,
+            turns_report,
+            calls_report,
+            call_info_report,
+            conversion_report,
+        ) = await asyncio.gather(
+            asyncio.to_thread(
+                get_active_users,
+                session=session,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+                filter_by=filter_by,
+            ),
+            asyncio.to_thread(
+                get_turns_summary,
+                session=session,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+                filter_by=filter_by,
+            ),
+            asyncio.to_thread(
+                get_calls_time_summary,
+                session=session,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+                filter_by=filter_by,
+            ),
+            asyncio.to_thread(
+                get_calls_info_summary,
+                session=session,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+                filter_by=filter_by,
+            ),
+            asyncio.to_thread(
+                get_conversion_summary,
+                session=session,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+                filter_by=filter_by,
+            ),
         )
 
         # Create and return reports
@@ -175,21 +185,32 @@ def get_active_users(
         # Initialize repositories
         analytics_repo = db.AnalyticsRepository(session)
 
-        # Get Active Users (grouped data for details)
-        active_users_data = analytics_repo.get_active_users(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=ordered_group_by,
-            filter_by=filter_by,
-        )
-
-        # Get Active Users Totals (NO grouping to avoid duplication)
-        active_users_totals_data = analytics_repo.get_active_users(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=[],  # No grouping for accurate totals
-            filter_by=filter_by,
-        )
+        # Get both grouped and total data in parallel to reduce database calls
+        if ordered_group_by:
+            # If grouping is requested, get both grouped and total data
+            active_users_data, active_users_totals_data = (
+                analytics_repo.get_active_users(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=ordered_group_by,
+                    filter_by=filter_by,
+                ),
+                analytics_repo.get_active_users(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],  # No grouping for accurate totals
+                    filter_by=filter_by,
+                ),
+            )
+        else:
+            # If no grouping, only get totals (avoid duplicate query)
+            active_users_data = []
+            active_users_totals_data = analytics_repo.get_active_users(
+                start_date=start_date,
+                end_date=end_date,
+                group_by=[],
+                filter_by=filter_by,
+            )
 
         # Process Active Users Data using generic architecture
         active_users_report = process_analytics_data_generic(
@@ -255,21 +276,32 @@ def get_turns_summary(
         # Initialize repositories
         analytics_repo = db.AnalyticsRepository(session)
 
-        # Get Turn Distribution (grouped data for details)
-        turn_distribution_data = analytics_repo.get_turns_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=ordered_group_by,
-            filter_by=filter_by,
-        )
-
-        # Get Turn Totals (NO grouping to avoid duplication)
-        turn_totals_data = analytics_repo.get_turns_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=[],  # No grouping for accurate totals
-            filter_by=filter_by,
-        )
+        # Optimize database calls based on grouping requirements
+        if ordered_group_by:
+            # If grouping is requested, get both grouped and total data
+            turn_distribution_data, turn_totals_data = (
+                analytics_repo.get_turns_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=ordered_group_by,
+                    filter_by=filter_by,
+                ),
+                analytics_repo.get_turns_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],  # No grouping for accurate totals
+                    filter_by=filter_by,
+                ),
+            )
+        else:
+            # If no grouping, only get totals (avoid duplicate query)
+            turn_distribution_data = []
+            turn_totals_data = analytics_repo.get_turns_summary(
+                start_date=start_date,
+                end_date=end_date,
+                group_by=[],
+                filter_by=filter_by,
+            )
 
         # Process Turn Distribution Data using generic architecture
         turn_distribution = process_analytics_data_generic(
@@ -335,21 +367,32 @@ def get_calls_time_summary(
         # Initialize repositories
         analytics_repo = db.AnalyticsRepository(session)
 
-        # Get Call Time Data (grouped data for details)
-        call_time_data = analytics_repo.get_calls_time_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=ordered_group_by,
-            filter_by=filter_by,
-        )
-
-        # Get Call Time Totals (NO grouping to avoid duplication)
-        call_time_totals_data = analytics_repo.get_calls_time_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=[],  # No grouping for accurate totals
-            filter_by=filter_by,
-        )
+        # Optimize database calls based on grouping requirements
+        if ordered_group_by:
+            # If grouping is requested, get both grouped and total data
+            call_time_data, call_time_totals_data = (
+                analytics_repo.get_calls_time_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=ordered_group_by,
+                    filter_by=filter_by,
+                ),
+                analytics_repo.get_calls_time_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],  # No grouping for accurate totals
+                    filter_by=filter_by,
+                ),
+            )
+        else:
+            # If no grouping, only get totals (avoid duplicate query)
+            call_time_data = []
+            call_time_totals_data = analytics_repo.get_calls_time_summary(
+                start_date=start_date,
+                end_date=end_date,
+                group_by=[],
+                filter_by=filter_by,
+            )
 
         # Process Call Time Data using generic architecture
         call_time_report = process_analytics_data_generic(
@@ -399,21 +442,32 @@ def get_calls_info_summary(
         # Initialize repositories
         analytics_repo = db.AnalyticsRepository(session)
 
-        # Get Call Info Data (grouped data for details)
-        call_info_data = analytics_repo.get_calls_info_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=ordered_group_by,
-            filter_by=filter_by,
-        )
-
-        # Get Call Info Totals (NO grouping to avoid duplication)
-        call_info_totals_data = analytics_repo.get_calls_info_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=[],  # No grouping for accurate totals
-            filter_by=filter_by,
-        )
+        # Optimize database calls based on grouping requirements
+        if ordered_group_by:
+            # If grouping is requested, get both grouped and total data
+            call_info_data, call_info_totals_data = (
+                analytics_repo.get_calls_info_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=ordered_group_by,
+                    filter_by=filter_by,
+                ),
+                analytics_repo.get_calls_info_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],  # No grouping for accurate totals
+                    filter_by=filter_by,
+                ),
+            )
+        else:
+            # If no grouping, only get totals (avoid duplicate query)
+            call_info_data = []
+            call_info_totals_data = analytics_repo.get_calls_info_summary(
+                start_date=start_date,
+                end_date=end_date,
+                group_by=[],
+                filter_by=filter_by,
+            )
 
         # Process Call Purpose Distribution (purposes only)
         call_purpose_report = process_analytics_data_generic(
@@ -497,21 +551,32 @@ def get_conversion_summary(
         # Initialize repositories
         analytics_repo = db.AnalyticsRepository(session)
 
-        # Get Conversion Data (grouped data for details)
-        conversion_data = analytics_repo.get_conversion_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=ordered_group_by,
-            filter_by=filter_by,
-        )
-
-        # Get Conversion Totals (NO grouping to avoid duplication)
-        conversion_totals_data = analytics_repo.get_conversion_summary(
-            start_date=start_date,
-            end_date=end_date,
-            group_by=[],  # No grouping for accurate totals
-            filter_by=filter_by,
-        )
+        # Optimize database calls based on grouping requirements
+        if ordered_group_by:
+            # If grouping is requested, get both grouped and total data
+            conversion_data, conversion_totals_data = (
+                analytics_repo.get_conversion_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=ordered_group_by,
+                    filter_by=filter_by,
+                ),
+                analytics_repo.get_conversion_summary(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],  # No grouping for accurate totals
+                    filter_by=filter_by,
+                ),
+            )
+        else:
+            # If no grouping, only get totals (avoid duplicate query)
+            conversion_data = []
+            conversion_totals_data = analytics_repo.get_conversion_summary(
+                start_date=start_date,
+                end_date=end_date,
+                group_by=[],
+                filter_by=filter_by,
+            )
 
         # Process Conversion Data using generic architecture
         conversion_report = process_analytics_data_generic(
