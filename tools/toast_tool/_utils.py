@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import Nominatim
+from pydantic import ValidationError
 
 from tools.toast_tool._apis import BASE_URL, get_toast_access_token
 from tools.toast_tool.classes import (
@@ -651,10 +652,17 @@ def get_toast_access_token_from_aws(
                 )
             )
         return token
-    except (ValueError, KeyError, json.JSONDecodeError, TypeError) as e:
+    except (
+        ValueError,
+        KeyError,
+        json.JSONDecodeError,
+        TypeError,
+        ValidationError,
+    ) as e:
         # Missing key, invalid format, or parsing error — fall back to a fresh token
         logger.warning(
-            f"[ToastTool.get_toast_access_token_from_aws] Unable to use stored token ({e}); refreshing from API"
+            f"[ToastTool.get_toast_access_token_from_aws] Unable to use stored token ({e}); refreshing from API",
+            exc_info=True,
         )
         return refresh_toast_access_token_from_aws(
             token_api_endpoint=token_api_endpoint
