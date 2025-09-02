@@ -5,12 +5,11 @@ from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import (
     AnalyticsReportType,
-    AnalyticsResponse,
     GetAllReportsResponse,
     PerformanceReport,
 )
-from services import analytics_service
 from services.account_service import get_account
+from services.analytics_service import get_account_reports, send_daily_report_to_slack
 from utils.log import logger
 
 from . import UserContext
@@ -19,11 +18,13 @@ from ._utils import not_found_error
 
 
 async def get_reports(
-    account_name: str,
+    account_name: str | None,
     context: UserContext,
     session: Session,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    filter_by: dict | None = None,
+    group_by: list[str] | None = None,
 ) -> GetAllReportsResponse:
     """
     Get analytics data with project breakdowns.
@@ -39,17 +40,26 @@ async def get_reports(
         GetAllReportsResponse: Unified response with all analytics reports including project breakdowns.
     """
     try:
+        if not account_name:
+            logger.warning(
+                "Analytics: No account name provided, returning empty reports"
+            )
+            return GetAllReportsResponse(reports=[])
+
         authorize_user_account(context, account_name)
         account = get_account(session, account_name)
         if not account:
             raise not_found_error(f"Account {account_name} not found.")
+        logger.warning(f"Analytics filter: {filter_by}.")
 
         # Get analytics data
-        analytics_reports = analytics_service.get_analytics_reports(
-            session=session,
-            account_id=account.id,
-            start_date=start_date,
-            end_date=end_date,
+        analytics_reports = await get_account_reports(
+            session,
+            account.id,
+            start_date,
+            end_date,
+            group_by,
+            filter_by,
         )
 
         if not analytics_reports.reports:
@@ -65,12 +75,14 @@ async def get_reports(
         logger.exception("Analytics: Full traceback:")
         # Return empty response on error
         empty_reports: list[PerformanceReport] = [
+            PerformanceReport(name=AnalyticsReportType.ACTIVE_USERS.name, data={}),
             PerformanceReport(
-                name=AnalyticsReportType.DAU, data=AnalyticsResponse(analytics_data={})
+                name=AnalyticsReportType.MESSAGE_TURNS.name,
+                data={},
             ),
+            PerformanceReport(name=AnalyticsReportType.CALL_METRICS.name, data={}),
             PerformanceReport(
-                name=AnalyticsReportType.MESSAGE_TURNS,
-                data=AnalyticsResponse(analytics_data={}),
+                name=AnalyticsReportType.CALL_INFO_DISTRIBUTION.name, data={}
             ),
         ]
         result: GetAllReportsResponse = GetAllReportsResponse(reports=empty_reports)
@@ -103,7 +115,7 @@ async def generate_daily_report(
             raise not_found_error(f"Account {account_name} not found.")
 
         # Send the report via bot
-        result = await analytics_service.send_daily_report_to_slack(channel)
+        result = await send_daily_report_to_slack(channel)
 
         if result["status"] == "error":
             raise HTTPException(status_code=500, detail=result["message"])

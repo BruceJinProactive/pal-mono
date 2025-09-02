@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime
 
 from mixpanel import Mixpanel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
@@ -14,9 +13,9 @@ from api.schemas.admin.analytics import GetAllReportsResponse, PerformanceReport
 from utils.log import logger
 
 from ._utils import (
-    handle_analytics_date_range,
-    normalize_datetime_to_utc,
-    process_analytics_results_to_dict,
+    _enforce_hierarchy_order,
+    process_analytics_data_generic,
+    validate_date_range,
 )
 
 # BRUCETODO: DELETE - Mixpanel related variables
@@ -31,14 +30,16 @@ MIXPANEL_REPORTS = [
 ]
 
 
-def get_analytics_reports(
+def get_account_reports(
     session: Session,
     account_id: uuid.UUID,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
 ) -> GetAllReportsResponse:
     """
-    Get DAU, Message Turns, Order Total, and Order Numbers analytics data for a given account within a date range.
+    Get Active Users, Message Turns analytics data for a given account within a date range.
 
     Args:
         session (Session): Database session
@@ -50,54 +51,82 @@ def get_analytics_reports(
         GetAllReportsResponse: Object containing all analytics reports
     """
     try:
-        # Handle date range validation and defaults
-        start_date, end_date = handle_analytics_date_range(start_date, end_date)
-        message_repo = db.MessageRepository(session)
-        order_repo = db.OrderRepository(session)
+        # Validate the date range
+        start_date, end_date = validate_date_range(start_date, end_date)
 
-        # Fetch and process DAU data
-        dau_result = message_repo.get_daily_active_users(
-            account_id, start_date, end_date
-        )
-        dau_data = process_analytics_results_to_dict(
-            dau_result, start_date, end_date, AnalyticsReportType.DAU
+        # Ensure account filtering is applied
+        if filter_by is None:
+            filter_by = {}
+
+        # Debug: Log what we received
+        logger.info(f"Analytics Service: Received filter_by: {filter_by}")
+
+        # Always filter by the account ID
+        filter_by["account_id"] = account_id
+
+        # Debug: Log what we're passing to repository
+        logger.info(f"Analytics Service: Passing filter_by to repository: {filter_by}")
+
+        # Fetch and process active users data using service function
+        users_report = get_active_users(
+            session=session,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+            filter_by=filter_by,
         )
 
-        # Fetch and process Message Turns data
-        message_turns_result = message_repo.get_daily_message_turns(
-            account_id, start_date, end_date
+        # Fetch and process Message Turns data using service function
+        turns_report = get_turns_summary(
+            session=session,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+            filter_by=filter_by,
         )
-        message_turns_data = process_analytics_results_to_dict(
-            message_turns_result,
-            start_date,
-            end_date,
-            AnalyticsReportType.MESSAGE_TURNS,
+        calls_report = get_calls_time_summary(
+            session=session,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+            filter_by=filter_by,
         )
-        # Fetch order data (contains both value and count)
-        order_result = order_repo.get_order_value(account_id, start_date, end_date)
+        call_info_report = get_calls_info_summary(
+            session=session,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+            filter_by=filter_by,
+        )
 
-        # Process Order Total data (uses DB column key via report_name)
-        order_value_data = process_analytics_results_to_dict(
-            order_result,
-            start_date,
-            end_date,
-            AnalyticsReportType.ORDER_TOTAL,
-        )
-        logger.info(
-            f"Analytics: Processed Message Turns data for account {AnalyticsReportType.ORDER_TOTAL} from {order_value_data}"
+        conversion_report = get_conversion_summary(
+            session=session,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+            filter_by=filter_by,
         )
 
         # Create and return reports
         reports = [
-            PerformanceReport(name=AnalyticsReportType.DAU, data=dau_data),
             PerformanceReport(
-                name=AnalyticsReportType.MESSAGE_TURNS, data=message_turns_data
+                name=AnalyticsReportType.ACTIVE_USERS.name, data=users_report
             ),
             PerformanceReport(
-                name=AnalyticsReportType.ORDER_TOTAL, data=order_value_data
+                name=AnalyticsReportType.MESSAGE_TURNS.name, data=turns_report
+            ),
+            PerformanceReport(
+                name=AnalyticsReportType.CALL_METRICS.name, data=calls_report
+            ),
+            PerformanceReport(
+                name=AnalyticsReportType.CALL_INFO_DISTRIBUTION.name,
+                data=call_info_report,
+            ),
+            PerformanceReport(
+                name=AnalyticsReportType.CONVERSION_METRICS.name,
+                data=conversion_report,
             ),
         ]
-
         return GetAllReportsResponse(reports=reports)
 
     except ValueError as e:
@@ -109,6 +138,408 @@ def get_analytics_reports(
         )
         logger.exception("Analytics: Full analytics exception traceback:")
         return GetAllReportsResponse(reports=[])
+
+
+def get_active_users(
+    session: Session,
+    start_date: datetime,
+    end_date: datetime,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> dict:
+    """
+    Get active users analytics with flexible grouping and filtering.
+
+    Args:
+        session: Database session
+        start_date: Start date for analysis
+        end_date: End date for analysis
+        group_by: List of fields to group by ['account_id', 'project_id'] (date is automatically prepended)
+        filter_by: Dict of filters {'account_id': uuid|list[uuid], 'project_id': uuid|list[uuid]}
+
+    Returns:
+        dict: {
+            'active_users': {...},
+            'totals': {...},
+            'metadata': {...}
+        }
+    """
+    try:
+        # group_by is required (can be empty list for totals only)
+        if group_by is None:
+            group_by = []
+
+        # Enforce consistent hierarchy order: date -> account_id -> project_id
+        ordered_group_by = _enforce_hierarchy_order(group_by)
+
+        # Initialize repositories
+        analytics_repo = db.AnalyticsRepository(session)
+
+        # Get Active Users (grouped data for details)
+        active_users_data = analytics_repo.get_active_users(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=ordered_group_by,
+            filter_by=filter_by,
+        )
+
+        # Get Active Users Totals (NO grouping to avoid duplication)
+        active_users_totals_data = analytics_repo.get_active_users(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=[],  # No grouping for accurate totals
+            filter_by=filter_by,
+        )
+
+        # Process Active Users Data using generic architecture
+        active_users_report = process_analytics_data_generic(
+            active_users_data,
+            ordered_group_by,
+            AnalyticsReportType.ACTIVE_USERS.metrics_config,
+        )
+
+        # Calculate totals from ungrouped data (accurate totals)
+        totals = process_analytics_data_generic(
+            active_users_totals_data,
+            None,
+            AnalyticsReportType.ACTIVE_USERS.metrics_config,
+            calculate_totals=True,
+        )
+
+        return {
+            "active_users": active_users_report,
+            "totals": totals,
+            "metadata": {
+                "group_by": ordered_group_by,
+                "filter_by": filter_by or {},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating active users report: {e}")
+        raise
+
+
+def get_turns_summary(
+    session: Session,
+    start_date: datetime,
+    end_date: datetime,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> dict:
+    """
+    Get conversation turns summary with flexible grouping and filtering.
+
+    Args:
+        session: Database session
+        start_date: Start date for analysis
+        end_date: End date for analysis
+        group_by: List of fields to group by ['account_id', 'project_id'] (date is automatically prepended)
+        filter_by: Dict of filters {'account_id': uuid|list[uuid], 'project_id': uuid|list[uuid]}
+
+    Returns:
+        dict: {
+            'turn_distribution': {...},
+            'totals': {...},
+            'metadata': {...}
+        }
+    """
+    try:
+        # group_by is required (can be empty list for totals only)
+        if group_by is None:
+            group_by = []
+
+        # Enforce consistent hierarchy order: date -> account_id -> project_id
+        ordered_group_by = _enforce_hierarchy_order(group_by)
+
+        # Initialize repositories
+        analytics_repo = db.AnalyticsRepository(session)
+
+        # Get Turn Distribution (grouped data for details)
+        turn_distribution_data = analytics_repo.get_turns_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=ordered_group_by,
+            filter_by=filter_by,
+        )
+
+        # Get Turn Totals (NO grouping to avoid duplication)
+        turn_totals_data = analytics_repo.get_turns_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=[],  # No grouping for accurate totals
+            filter_by=filter_by,
+        )
+
+        # Process Turn Distribution Data using generic architecture
+        turn_distribution = process_analytics_data_generic(
+            turn_distribution_data,
+            ordered_group_by,
+            AnalyticsReportType.MESSAGE_TURNS.metrics_config,
+        )
+
+        # Calculate turns totals from ungrouped data (accurate totals)
+        turns_totals = process_analytics_data_generic(
+            turn_totals_data,
+            None,
+            AnalyticsReportType.MESSAGE_TURNS.metrics_config,
+            calculate_totals=True,
+        )
+
+        return {
+            "turn_distribution": turn_distribution,
+            "totals": turns_totals,
+            "metadata": {
+                "group_by": ordered_group_by,
+                "filter_by": filter_by or {},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating turns summary: {e}")
+        raise
+
+
+def get_calls_time_summary(
+    session: Session,
+    start_date: datetime,
+    end_date: datetime,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> dict:
+    """
+    Get call time metrics following the same pattern as get_turns_summary.
+
+    Args:
+        session: Database session
+        start_date: Start date for analysis
+        end_date: End date for analysis
+        group_by: List of fields to group by ['date', 'account_id', 'project_id']
+        filter_by: Dict of filters {'account_id': uuid|list[uuid], 'project_id': uuid|list[uuid]}
+
+    Returns:
+        dict: {
+            'call_time_metrics': {...},
+            'totals': {...},
+            'metadata': {...}
+        }
+    """
+    try:
+        # group_by is required (can be empty list for totals only)
+        if group_by is None:
+            group_by = []
+
+        # Enforce consistent hierarchy order: date -> account_id -> project_id
+        ordered_group_by = _enforce_hierarchy_order(group_by)
+
+        # Initialize repositories
+        analytics_repo = db.AnalyticsRepository(session)
+
+        # Get Call Time Data (grouped data for details)
+        call_time_data = analytics_repo.get_calls_time_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=ordered_group_by,
+            filter_by=filter_by,
+        )
+
+        # Get Call Time Totals (NO grouping to avoid duplication)
+        call_time_totals_data = analytics_repo.get_calls_time_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=[],  # No grouping for accurate totals
+            filter_by=filter_by,
+        )
+
+        # Process Call Time Data using generic architecture
+        call_time_report = process_analytics_data_generic(
+            call_time_data,
+            ordered_group_by,
+            AnalyticsReportType.CALL_METRICS.metrics_config,
+        )
+
+        # Calculate totals from ungrouped data (accurate totals)
+        totals = process_analytics_data_generic(
+            call_time_totals_data,
+            None,
+            AnalyticsReportType.CALL_METRICS.metrics_config,
+            calculate_totals=True,
+        )
+
+        return {
+            "call_time_metrics": call_time_report,
+            "totals": totals,
+            "metadata": {
+                "group_by": ordered_group_by,
+                "filter_by": filter_by or {},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating call time summary: {e}")
+        raise
+
+
+def get_calls_info_summary(
+    session: Session,
+    start_date: datetime,
+    end_date: datetime,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> dict:
+    """Get call purpose and language distribution - simple like get_calls_time_summary."""
+    try:
+        if group_by is None:
+            group_by = []
+
+        # Enforce consistent hierarchy order but exclude date
+        filtered_group_by = [field for field in group_by if field != "date"]
+        ordered_group_by = _enforce_hierarchy_order(filtered_group_by)
+
+        # Initialize repositories
+        analytics_repo = db.AnalyticsRepository(session)
+
+        # Get Call Info Data (grouped data for details)
+        call_info_data = analytics_repo.get_calls_info_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=ordered_group_by,
+            filter_by=filter_by,
+        )
+
+        # Get Call Info Totals (NO grouping to avoid duplication)
+        call_info_totals_data = analytics_repo.get_calls_info_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=[],  # No grouping for accurate totals
+            filter_by=filter_by,
+        )
+
+        # Process Call Purpose Distribution (purposes only)
+        call_purpose_report = process_analytics_data_generic(
+            call_info_data,
+            ordered_group_by,
+            AnalyticsReportType.CALL_PURPOSE_DISTRIBUTION.metrics_config,
+        )
+
+        # Process Call Language Distribution (languages only)
+        call_language_report = process_analytics_data_generic(
+            call_info_data,
+            ordered_group_by,
+            AnalyticsReportType.CALL_LANGUAGE_DISTRIBUTION.metrics_config,
+        )
+
+        # Calculate separate totals
+        call_purpose_totals = process_analytics_data_generic(
+            call_info_totals_data,
+            None,
+            AnalyticsReportType.CALL_PURPOSE_DISTRIBUTION.metrics_config,
+            calculate_totals=True,
+        )
+
+        call_language_totals = process_analytics_data_generic(
+            call_info_totals_data,
+            None,
+            AnalyticsReportType.CALL_LANGUAGE_DISTRIBUTION.metrics_config,
+            calculate_totals=True,
+        )
+
+        return {
+            "call_purpose_distribution": call_purpose_report,
+            "call_language_distribution": call_language_report,
+            "totals": {
+                "purposes": call_purpose_totals,
+                "languages": call_language_totals,
+            },
+            "metadata": {
+                "group_by": ordered_group_by,
+                "filter_by": filter_by or {},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating call info summary: {e}")
+        raise
+
+
+def get_conversion_summary(
+    session: Session,
+    start_date: datetime,
+    end_date: datetime,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> dict:
+    """
+    Get conversion metrics showing how many conversations lead to orders and paid orders.
+
+    Args:
+        session: Database session
+        start_date: Start date for analysis
+        end_date: End date for analysis
+        group_by: List of fields to group by ['account_id', 'project_id'] (date is automatically prepended)
+        filter_by: Dict of filters {'account_id': uuid|list[uuid], 'project_id': uuid|list[uuid]}
+
+    Returns:
+        dict: {
+            'conversion_metrics': {...},
+            'totals': {...},
+            'metadata': {...}
+        }
+    """
+    try:
+        # group_by is required (can be empty list for totals only)
+        if group_by is None:
+            group_by = []
+
+        # Enforce consistent hierarchy order: date -> account_id -> project_id
+        ordered_group_by = _enforce_hierarchy_order(group_by)
+
+        # Initialize repositories
+        analytics_repo = db.AnalyticsRepository(session)
+
+        # Get Conversion Data (grouped data for details)
+        conversion_data = analytics_repo.get_conversion_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=ordered_group_by,
+            filter_by=filter_by,
+        )
+
+        # Get Conversion Totals (NO grouping to avoid duplication)
+        conversion_totals_data = analytics_repo.get_conversion_summary(
+            start_date=start_date,
+            end_date=end_date,
+            group_by=[],  # No grouping for accurate totals
+            filter_by=filter_by,
+        )
+
+        # Process Conversion Data using generic architecture
+        conversion_report = process_analytics_data_generic(
+            conversion_data,
+            ordered_group_by,
+            AnalyticsReportType.CONVERSION_METRICS.metrics_config,
+        )
+
+        # Calculate totals from ungrouped data (accurate totals)
+        totals = process_analytics_data_generic(
+            conversion_totals_data,
+            None,
+            AnalyticsReportType.CONVERSION_METRICS.metrics_config,
+            calculate_totals=True,
+        )
+
+        return {
+            "conversion_metrics": conversion_report,
+            "totals": totals,
+            "metadata": {
+                "group_by": ordered_group_by,
+                "filter_by": filter_by or {},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating conversion summary: {e}")
+        raise
 
 
 # BRUCETODO: DELETE - Mixpanel related variables
@@ -129,167 +560,3 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
             )
 
     asyncio.create_task(asyncio.to_thread(_track))
-
-
-def get_all_accounts_conversion_stats(
-    session: Session,
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-) -> list[dict]:
-    """
-    Get conversion statistics for all accounts with elegant data combination.
-    Always includes a TOTAL row with aggregated data.
-
-    Args:
-        session: Database session (must be Session)
-        start_date: Optional start date for filtering (converted to UTC)
-        end_date: Optional end date for filtering (converted to UTC)
-
-    Returns:
-        list[dict]: List of conversion statistics for all accounts (includes TOTAL row)
-    """
-    try:
-        if isinstance(session, AsyncSession):
-            raise ValueError(
-                "get_all_accounts_conversion_stats requires a synchronous Session"
-            )
-
-        # Normalize datetime inputs to UTC
-        start_date = normalize_datetime_to_utc(start_date)
-        end_date = normalize_datetime_to_utc(end_date)
-
-        # Get data from both repositories
-        conv_repo = db.ConversationRepository(session)
-        order_repo = db.OrderRepository(session)
-
-        conversation_data = conv_repo.get_conversation_counts_by_account(
-            start_date=start_date, end_date=end_date
-        )
-
-        order_data = order_repo.get_order_conversation_counts_by_account(
-            start_date=start_date, end_date=end_date
-        )
-
-        # Combine data elegantly
-        return _combine_conversion_data(conversation_data, order_data)
-
-    except Exception as e:
-        logger.error(f"Analytics: Error getting all accounts conversion stats: {e}")
-        return []
-
-
-def get_account_conversion_stats(
-    session: Session,
-    account_id: uuid.UUID,
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-) -> dict | None:
-    """
-    Get conversion statistics for a single account.
-
-    Args:
-        session: Database session (must be Session)
-        account_id: The specific account ID to get stats for
-        start_date: Optional start date for filtering (converted to UTC)
-        end_date: Optional end date for filtering (converted to UTC)
-
-    Returns:
-        dict | None: Conversion statistics for the account, or None if not found
-    """
-    try:
-        if isinstance(session, AsyncSession):
-            raise ValueError(
-                "get_account_conversion_stats requires a synchronous Session"
-            )
-
-        # Normalize datetime inputs to UTC
-        start_date = normalize_datetime_to_utc(start_date)
-        end_date = normalize_datetime_to_utc(end_date)
-
-        # Get data from both repositories for specific account
-        conv_repo = db.ConversationRepository(session)
-        order_repo = db.OrderRepository(session)
-
-        conversation_data = conv_repo.get_conversation_counts_by_account(
-            account_id=account_id, start_date=start_date, end_date=end_date
-        )
-
-        order_data = order_repo.get_order_conversation_counts_by_account(
-            account_id=account_id, start_date=start_date, end_date=end_date
-        )
-
-        # Combine data for single account
-        combined_data = _combine_conversion_data(conversation_data, order_data)
-
-        return combined_data[0] if combined_data else None
-
-    except Exception as e:
-        logger.error(f"Analytics: Error getting account conversion stats: {e}")
-        return None
-
-
-def _combine_conversion_data(
-    conversation_data: list[tuple], order_data: list[tuple]
-) -> list[dict]:
-    """
-    Elegantly combine conversation and order data into formatted results.
-
-    Args:
-        conversation_data: List of tuples (account_id, account_name, total_conversations)
-        order_data: List of tuples (account_id, account_name, conversations_with_orders, conversations_with_paid_orders)
-
-    Returns:
-        list[dict]: Combined and formatted conversion statistics
-    """
-    # Create lookup map for order data
-    order_map = {
-        row[0]: {  # account_id as key
-            "conversations_with_orders": row[2],
-            "conversations_with_paid_orders": row[3],
-        }
-        for row in order_data
-    }
-
-    combined_results = []
-
-    for conv_row in conversation_data:
-        account_id, account_name, total_conversations = conv_row
-
-        # Get corresponding order data (default to 0 if no orders)
-        order_info = order_map.get(
-            account_id,
-            {"conversations_with_orders": 0, "conversations_with_paid_orders": 0},
-        )
-
-        # Calculate conversion rates
-        checkout_conversion_rate = (
-            (order_info["conversations_with_orders"] / total_conversations * 100)
-            if total_conversations > 0
-            else 0.0
-        )
-
-        paid_rate = (
-            (
-                order_info["conversations_with_paid_orders"]
-                / order_info["conversations_with_orders"]
-                * 100
-            )
-            if order_info["conversations_with_orders"] > 0
-            else 0.0
-        )
-
-        combined_results.append(
-            {
-                "account_id": str(account_id) if account_id else None,
-                "account_name": account_name,
-                "total_conversations": total_conversations,
-                "conversations_with_orders": order_info["conversations_with_orders"],
-                "conversations_with_paid_orders": order_info[
-                    "conversations_with_paid_orders"
-                ],
-                "checkout_conversion_rate": round(checkout_conversion_rate, 2),
-                "paid_rate": round(paid_rate, 2),
-            }
-        )
-
-    return combined_results

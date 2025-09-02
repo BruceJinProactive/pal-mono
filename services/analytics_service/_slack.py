@@ -6,7 +6,6 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from utils.log import logger
@@ -16,7 +15,6 @@ from utils.secret import get_client_secret_with_fallback
 async def send_daily_report_to_slack(
     channel: str | None = None,
     client: AsyncWebClient | None = None,
-    session: AsyncSession | None = None,
 ) -> dict:
     """
     Send a comprehensive daily commerce report to Slack with conversion analytics.
@@ -52,38 +50,10 @@ async def send_daily_report_to_slack(
         if client is None:
             client = AsyncWebClient(token=bot_token)
 
-        # Get conversion data for the report
-        conversion_data = []
-        try:
-            import asyncio
-
-            from db.session import SyncSessionLocal
-            from services import analytics_service
-
-            def _get_conversion_data_sync():
-                with SyncSessionLocal() as sync_session:
-                    return analytics_service.get_all_accounts_conversion_stats(
-                        sync_session
-                    )
-
-            conversion_data = await asyncio.to_thread(_get_conversion_data_sync)
-            logger.info(
-                f"[Slackbot] Retrieved {len(conversion_data)} conversion records"
-            )
-        except Exception as e:
-            logger.warning(f"[Slackbot] Could not fetch conversion data: {e}")
-
-        # Build Slack blocks
-        if conversion_data:
-            from ._utils import build_slack_report_blocks
-
-            blocks = build_slack_report_blocks(conversion_data)
-
             # Send rich report with blocks
             response = await client.chat_postMessage(
                 channel=target_channel,
                 text="📊 Palona Daily Commerce Report",  # Fallback text
-                blocks=blocks,
             )
         else:
             # Fallback to simple message if no data
@@ -134,7 +104,7 @@ def create_slack_app():
     app = AsyncApp(token=bot_token, signing_secret=signing_secret)
 
     @app.message("daily")
-    async def handle_daily_request(message, say, client):
+    async def handle_daily_request(message, client):
         """Handle when users send 'daily' in the channel."""
         try:
             channel = message["channel"]
@@ -148,7 +118,7 @@ def create_slack_app():
             result = {"status": "error", "message": "No result"}
             async for session in db.get_db_async():
                 # Send the daily report using the provided client and session
-                result = await send_daily_report_to_slack(channel, client, session)
+                result = await send_daily_report_to_slack(channel, client)
 
             if result["status"] == "success":
                 logger.info(f"[Slackbot] Daily report sent successfully to {channel}")

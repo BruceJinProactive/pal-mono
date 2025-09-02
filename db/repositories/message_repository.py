@@ -1,14 +1,14 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, cast, distinct, func, not_, or_
+from sqlalchemy import Boolean, cast, distinct, not_, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.functions import coalesce
 
-from db.tables import Conversation, ConversationStatus, Message, Project, User
+from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
 
@@ -482,131 +482,4 @@ class MessageRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error filtering sessions by keyword: {e}")
-            return []
-
-    def get_daily_active_users(
-        self,
-        account_id: uuid.UUID,
-        start_date: datetime.datetime,
-        end_date: datetime.datetime,
-    ):
-        """
-        Calculate Daily Active Users (DAU) for a given account within a date range,
-        grouped by channel and filtered to exclude testing messages.
-
-        Args:
-            account_id (uuid.UUID): The account ID to filter messages by
-            start_date (datetime.datetime): Start date for the DAU calculation
-            end_date (datetime.datetime): End date for the DAU calculation
-
-        Returns:
-            list: Raw query results with date, channel, project_id, and dau fields.
-        """
-        try:
-            # Query to get DAU by joining messages -> conversations -> users
-            # Group by date and channel, count distinct users
-            # Filter out testing messages
-
-            # Define expressions to avoid GROUP BY issues with JSON fields
-            channel_expr = Message.body["channel"].astext
-            date_expr = func.date(Message.created_at)
-
-            query = (
-                select(
-                    date_expr.label("date"),
-                    channel_expr.label("channel"),
-                    Conversation.project_id.label("project_id"),
-                    Project.name.label("project_name"),
-                    func.count(func.distinct(Conversation.user_id)).label("dau"),
-                )
-                .join(Conversation, Message.conversation_id == Conversation.id)
-                .join(User, Conversation.user_id == User.id)
-                .join(Project, Conversation.project_id == Project.id)
-                .filter(
-                    User.account_id == account_id,
-                    Message.created_at >= start_date,
-                    Message.created_at <= end_date,
-                    # Filter out testing messages
-                    ~cast(
-                        coalesce(Message.body["metadata"]["testing"].astext, "false"),
-                        Boolean,
-                    ),
-                )
-                .group_by(
-                    date_expr, channel_expr, Conversation.project_id, Project.name
-                )
-                .order_by(date_expr, channel_expr, Conversation.project_id)
-            )
-
-            result = self.session.execute(query)
-            rows = result.all()
-
-            return rows
-
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error calculating daily active users: {e}")
-            return []
-
-    def get_daily_message_turns(
-        self,
-        account_id: uuid.UUID,
-        start_date: datetime.datetime,
-        end_date: datetime.datetime,
-    ):
-        """
-        Calculate Daily Message Turns for a given account within a date range.
-
-        A "turn" consists of a user message followed by an agent response.
-        We count agent messages since each represents a completed conversation turn.
-
-        Args:
-            account_id (uuid.UUID): The account ID to calculate message turns for
-            start_date (datetime): Start date for the calculation
-            end_date (datetime): End date for the calculation
-
-        Returns:
-            list: Raw query results with date, channel, project_id, and message_turns fields.
-        """
-        try:
-            # Define expressions for efficient querying
-            date_expr = func.date(Message.created_at)
-            channel_expr = Message.body["channel"].astext
-            author_type_expr = Message.body["author_type"].astext
-
-            # Query to count agent/assistant messages (completed turns) by date and channel
-            query = (
-                select(
-                    date_expr.label("date"),
-                    channel_expr.label("channel"),
-                    Conversation.project_id.label("project_id"),
-                    Project.name.label("project_name"),
-                    func.count(Message.id).label("message_turns"),
-                )
-                .join(Conversation, Message.conversation_id == Conversation.id)
-                .join(User, Conversation.user_id == User.id)
-                .join(Project, Conversation.project_id == Project.id)
-                .where(
-                    User.account_id == account_id,
-                    Message.created_at >= start_date,
-                    Message.created_at <= end_date,
-                    # Count only agent messages (completed conversation turns)
-                    author_type_expr == "agent",
-                    # Filter out testing messages
-                    ~cast(
-                        coalesce(Message.body["metadata"]["testing"].astext, "false"),
-                        Boolean,
-                    ),
-                )
-                .group_by(
-                    date_expr, channel_expr, Conversation.project_id, Project.name
-                )
-                .order_by(date_expr, channel_expr, Conversation.project_id)
-            )
-
-            result = self.session.execute(query)
-            return result.all()
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error calculating daily message turns: {e}")
             return []

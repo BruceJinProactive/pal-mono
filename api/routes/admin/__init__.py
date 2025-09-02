@@ -308,30 +308,6 @@ async def list_account_projects(
     return await _projects.list_account_projects(account_name, context, session)
 
 
-@admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
-async def get_account_reports(
-    account_name: str,
-    start_date: datetime | None = Query(
-        default=None,
-        description="Start date for the report data. If not provided, defaults to 7 days ago.",
-    ),
-    end_date: datetime | None = Query(
-        default=None,
-        description="End date for the report data. If not provided, defaults to today.",
-    ),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> GetAllReportsResponse:
-    """
-    Retrieve unified analytics reports for this account.
-    Data is filtered by the specified date range (default: last 7 days).
-    """
-    # Get unified reports using async session
-    return await _analytics.get_reports(
-        account_name, context, session, start_date, end_date
-    )
-
-
 @admin_router.post(
     "/accounts/{account_name}/reports/daily", status_code=status.HTTP_200_OK
 )
@@ -2089,3 +2065,48 @@ async def get_merchant_locations(
     """
     session = next(db.get_db())
     return _implementation.get_merchant_locations(session, account_name, integration_id)
+
+
+"""
+---------- Analytics Endpoints ----------
+------------------------------------
+"""
+
+
+@admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
+async def get_account_reports(
+    account_name: str,
+    start_date: datetime | None = Query(
+        default=None,
+        description="Start date for the report data. If not provided, defaults to 7 days ago.",
+    ),
+    end_date: datetime | None = Query(
+        default=None,
+        description="End date for the report data. If not provided, defaults to today.",
+    ),
+    group_by: Optional[list[str]] = Query(
+        default=None,
+        description="List of fields to group the report data by (e.g., ['account_id', 'project_id']).",
+    ),
+    project_ids: Optional[list[uuid.UUID]] = Query(
+        default=None,
+        description="Optional list of project IDs to filter the reports by.",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> GetAllReportsResponse:
+    """
+    Retrieve unified analytics reports for this account.
+    Data is filtered by the specified date range (default: last 7 days).
+    """
+
+    # Get unified reports using async session
+    return await _analytics.get_reports(
+        account_name,
+        context,
+        session,
+        start_date,
+        end_date,
+        group_by=group_by if group_by else None,
+        filter_by={"project_id": project_ids} if project_ids else None,
+    )
