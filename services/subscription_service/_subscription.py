@@ -1316,26 +1316,10 @@ def _update_stripe_subscription_for_plan_switch(
             project, account_name, new_plan.name
         )
 
-        if project_subscription.base_price_id:
-            _stripe_subscription.remove_subscription_item(
-                stripe_subscription_id,
-                project_subscription.base_price_id,
-                proration_behavior=proration_behavior,
-            )
-
-        if project_subscription.call_price_id:
-            _stripe_subscription.remove_subscription_item(
-                stripe_subscription_id,
-                project_subscription.call_price_id,
-                proration_behavior=proration_behavior,
-            )
-
-        if project_subscription.order_price_id:
-            _stripe_subscription.remove_subscription_item(
-                stripe_subscription_id,
-                project_subscription.order_price_id,
-                proration_behavior=proration_behavior,
-            )
+        # Store old price IDs for in-place swapping
+        old_base_price_id = project_subscription.base_price_id
+        old_call_price_id = project_subscription.call_price_id
+        old_order_price_id = project_subscription.order_price_id
 
         new_base_price_id = None
         if new_plan.monthly_fee and new_plan.monthly_fee > 0:
@@ -1344,11 +1328,6 @@ def _update_stripe_subscription_for_plan_switch(
                 nickname=f"Flat fee - {project_display_name}",
                 project=project,
                 flat_fee=new_plan.monthly_fee,
-            )
-            _stripe_subscription.add_subscription_item(
-                stripe_subscription_id,
-                new_base_price_id,
-                proration_behavior=proration_behavior,
             )
 
         # Setup call pricing for new plan
@@ -1362,11 +1341,6 @@ def _update_stripe_subscription_for_plan_switch(
             project=project,
             meter_tiers=_build_call_tiers(new_plan),
             meter_id=call_meter_id,
-        )
-        _stripe_subscription.add_subscription_item(
-            stripe_subscription_id,
-            new_call_price_id,
-            proration_behavior=proration_behavior,
         )
 
         # Setup order pricing for new plan if applicable
@@ -1383,6 +1357,64 @@ def _update_stripe_subscription_for_plan_switch(
                 project=project,
                 meter_id=order_meter_id,
             )
+
+        # Swap in-place to avoid dual metering; add/remove only when structure changes
+        if old_base_price_id and new_base_price_id:
+            _stripe_subscription.update_subscription_item_price(
+                stripe_subscription_id,
+                old_base_price_id,
+                new_base_price_id,
+                proration_behavior=proration_behavior,
+            )
+        elif old_base_price_id and not new_base_price_id:
+            _stripe_subscription.remove_subscription_item(
+                stripe_subscription_id,
+                old_base_price_id,
+                proration_behavior=proration_behavior,
+            )
+        elif new_base_price_id and not old_base_price_id:
+            _stripe_subscription.add_subscription_item(
+                stripe_subscription_id,
+                new_base_price_id,
+                proration_behavior=proration_behavior,
+            )
+
+        # Calls (metered)
+        if old_call_price_id and new_call_price_id:
+            _stripe_subscription.update_subscription_item_price(
+                stripe_subscription_id,
+                old_call_price_id,
+                new_call_price_id,
+                proration_behavior=proration_behavior,
+            )
+        elif old_call_price_id and not new_call_price_id:
+            _stripe_subscription.remove_subscription_item(
+                stripe_subscription_id,
+                old_call_price_id,
+                proration_behavior=proration_behavior,
+            )
+        elif new_call_price_id and not old_call_price_id:
+            _stripe_subscription.add_subscription_item(
+                stripe_subscription_id,
+                new_call_price_id,
+                proration_behavior=proration_behavior,
+            )
+
+        # Orders (metered)
+        if old_order_price_id and new_order_price_id:
+            _stripe_subscription.update_subscription_item_price(
+                stripe_subscription_id,
+                old_order_price_id,
+                new_order_price_id,
+                proration_behavior=proration_behavior,
+            )
+        elif old_order_price_id and not new_order_price_id:
+            _stripe_subscription.remove_subscription_item(
+                stripe_subscription_id,
+                old_order_price_id,
+                proration_behavior=proration_behavior,
+            )
+        elif new_order_price_id and not old_order_price_id:
             _stripe_subscription.add_subscription_item(
                 stripe_subscription_id,
                 new_order_price_id,

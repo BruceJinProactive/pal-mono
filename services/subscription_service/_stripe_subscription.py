@@ -503,6 +503,54 @@ def remove_subscription_item(
         raise err
 
 
+def update_subscription_item_price(
+    stripe_subscription_id: str,
+    old_stripe_price_id: str,
+    new_stripe_price_id: str,
+    proration_behavior: Literal[
+        "always_invoice", "create_prorations", "none"
+    ] = "create_prorations",
+):
+    try:
+        subscription = stripe.Subscription.retrieve(stripe_subscription_id)
+        subscription_item_id = None
+
+        for item in subscription["items"].data:
+            if item and item.price.id == old_stripe_price_id:
+                subscription_item_id = item.id
+                break
+
+        if not subscription_item_id:
+            raise ValueError(
+                f"Price {old_stripe_price_id} not found in subscription {stripe_subscription_id}"
+            )
+
+        stripe.SubscriptionItem.modify(
+            subscription_item_id,
+            price=new_stripe_price_id,
+            proration_behavior=proration_behavior,
+        )
+
+        logger.info(
+            "Successfully updated subscription item price",
+            extra={
+                "old_price_id": old_stripe_price_id,
+                "new_price_id": new_stripe_price_id,
+                "subscription_id": stripe_subscription_id,
+            },
+        )
+    except Exception as err:
+        logger.error(
+            f"Failed to update subscription item price due to error: {err}",
+            extra={
+                "old_price_id": old_stripe_price_id,
+                "new_price_id": new_stripe_price_id,
+                "subscription_id": stripe_subscription_id,
+            },
+        )
+        raise err
+
+
 def update_subscription(
     subscription_id: str,
     trial_end_date: datetime | None = None,
