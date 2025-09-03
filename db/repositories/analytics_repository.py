@@ -102,15 +102,29 @@ class AnalyticsRepository:
         Returns:
             SQLAlchemy condition to exclude test conversations based on first message test flag
         """
-        # Use window function to get first message per conversation efficiently
-        test_conversations = select(Message.conversation_id).where(
-            (
-                func.row_number().over(
-                    partition_by=Message.conversation_id, order_by=Message.created_at
-                )
-                == 1
+        # Create a subquery to find the first message per conversation
+        # We can't use window functions in WHERE clauses, so we use a different approach
+        first_messages = (
+            select(
+                Message.conversation_id,
+                func.min(Message.created_at).label("first_created_at"),
             )
-            & (coalesce(Message.body["metadata"]["testing"].astext, "false") == "true")
+            .group_by(Message.conversation_id)
+            .subquery()
+        )
+
+        # Find test conversations by joining with the first messages
+        test_conversations = (
+            select(Message.conversation_id)
+            .select_from(Message)
+            .join(
+                first_messages,
+                (Message.conversation_id == first_messages.c.conversation_id)
+                & (Message.created_at == first_messages.c.first_created_at),
+            )
+            .where(
+                coalesce(Message.body["metadata"]["testing"].astext, "false") == "true"
+            )
         )
 
         return ~Conversation.id.in_(test_conversations)
