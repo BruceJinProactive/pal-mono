@@ -541,6 +541,7 @@ def update_account_subscription(
         "end_date",
         "status",
         "stripe_subscription_id",
+        "subscription_plan_id",
     }
 
     for k, v in update_data.items():
@@ -1241,6 +1242,23 @@ def switch_subscription_plan(
             account.name,
             prorate,
         )
+
+        try:
+            session.commit()
+        except Exception as err:
+            session.rollback()
+            logger.error(
+                "Failed to commit project subscription updates after Stripe changes",
+                extra={
+                    "account_id": str(account.id),
+                    "subscription_external_id": str(current_subscription.external_id),
+                    "old_plan_id": str(current_plan.id),
+                    "new_plan_id": str(new_plan.id),
+                    "projects_updated": len(project_subscriptions),
+                },
+                exc_info=True,
+            )
+            raise err
     else:
         logger.warning(
             "No Stripe subscription ID found, skipping Stripe updates",
