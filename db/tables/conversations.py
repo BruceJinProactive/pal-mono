@@ -55,7 +55,7 @@ class Conversation(Base):
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("now()")
+        DateTime(timezone=True), server_default=text("now()"), index=True
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()

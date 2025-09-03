@@ -58,5 +58,5 @@ class PhoneCall(Base):
 
     # Metadata
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=text("now()")
+        DateTime(timezone=True), server_default=text("now()"), index=True
     )

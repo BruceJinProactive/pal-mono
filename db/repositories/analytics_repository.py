@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, Float, case, cast, func
+from sqlalchemy import Float, case, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
@@ -99,29 +99,21 @@ class AnalyticsRepository:
 
     def _get_test_conversation_filter(self):
         """
-        Get the subquery to filter out test conversations.
-
         Returns:
             SQLAlchemy condition to exclude test conversations based on first message test flag
         """
-        # Subquery to get the first message ID for each conversation
-        first_message_subquery = (
-            select(Message.id)
-            .where(Message.conversation_id == Conversation.id)
-            .order_by(Message.created_at.asc())
-            .limit(1)
-        ).scalar_subquery()
-
-        # Filter out conversations where the first message has testing=true
-        return ~Conversation.id.in_(
-            select(Message.conversation_id).where(
-                Message.id == first_message_subquery,
-                cast(
-                    coalesce(Message.body["metadata"]["testing"].astext, "false"),
-                    Boolean,
-                ),
+        # Use window function to get first message per conversation efficiently
+        test_conversations = select(Message.conversation_id).where(
+            (
+                func.row_number().over(
+                    partition_by=Message.conversation_id, order_by=Message.created_at
+                )
+                == 1
             )
+            & (coalesce(Message.body["metadata"]["testing"].astext, "false") == "true")
         )
+
+        return ~Conversation.id.in_(test_conversations)
 
     def get_active_users(
         self,
