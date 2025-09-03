@@ -431,7 +431,7 @@ class YelpTool(Toolkit):
             first_name: First name of the person making the reservation.
             last_name: Last name of the person making the reservation.
             phone: Phone number for the reservation.
-            notes: Additional party notes or special requests for the reservation.
+            notes: Additional party notes and special requests for the reservation (dietary restrictions, seating preferences, celebrations, accessibility needs, etc.). System automatically extracts from conversation and defaults to "No special request" if none mentioned.
 
         Returns:
             str: Reservation confirmation details with confirmation number, or secure booking link
@@ -532,6 +532,13 @@ class YelpTool(Toolkit):
 
                 return f"I've placed a hold for {reservation_query.covers} people on {reservation_query.date} at {reservation_query.time}.\n\nThis restaurant requires a credit card to complete the reservation.\n\nPlease complete your reservation here: {hold_response.reserve_url}\n\nNote: This hold expires in 5 minutes.\n\nYou MUST include the EXACT reservation url in your response:\n{hold_response.reserve_url}"
 
+            # Handle notes with special requests - use default if none provided
+            notes = (
+                reservation_query.notes
+                if reservation_query.notes
+                else "No special request"
+            )
+
             # Create reservation directly
             reservation_success, reservation_message, reservation_response = (
                 create_reservation_from_hold_creditcard_not_required(
@@ -542,7 +549,7 @@ class YelpTool(Toolkit):
                     last_name=processed_last_name,  # Use processed names
                     phone=reservation_query.phone,  # type: ignore
                     email="inbox@proactiveailab.com",  # Hardcoded email instead of asking user
-                    notes=reservation_query.notes,
+                    notes=notes,
                 )
             )
 

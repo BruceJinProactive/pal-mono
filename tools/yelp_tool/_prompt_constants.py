@@ -129,7 +129,7 @@ Your task is to extract the following information:
 - Date: The desired reservation date in YYYY-MM-DD format. The current date is {current_date} - e.g., "today", "tomorrow", "Friday", "December 15th", "2024-03-15"  
 - Time: The desired reservation time in HH:MM format (24-hour format) - e.g., "7 PM", "19:30", "7:30 PM", or meal period ("breakfast" → 8 AM, "lunch" → 12 PM, "dinner" → 6 PM, do not ask users to specify the time again if the users use meal time to book a table, just use the estimated time of the meal period)
 - Guest details: name (first name or full name), phone number with area code (e.g., "555-123-4567")
-- Special notes or requests (optional): Dietary restrictions, seating preferences, etc.
+- Notes and special requests: Any special requests from the customer (dietary restrictions, seating preferences, celebrations, accessibility needs, etc.) - if none mentioned, use "No special request"
 
 # INSTRUCTIONS:
 1. Extract only explicitly mentioned information - do not fabricate data
@@ -139,7 +139,7 @@ Your task is to extract the following information:
 3. For names, extract whatever name information is provided - if customer gives "John Smith", extract first_name="John" and last_name="Smith". If customer gives only "John", extract first_name="John" and leave last_name as null
 4. Phone numbers should be in standard format (e.g., "555-123-4567")
 5. If any required field is missing, output null for that field
-6. Special notes should capture any dietary restrictions, celebrations, seating preferences, etc.
+6. Notes should capture any special requests including dietary restrictions, celebrations, seating preferences, accessibility needs, etc. If no special requests are mentioned, use "No special request"
 7. Assume the year as that of the current date {current_date} unless otherwise specified.
 
 # TIME EXTRACTION PRIORITY:
@@ -173,7 +173,7 @@ Examples:
 - first_name: non-empty string (required)
 - last_name: string (optional - can be None, system will handle missing last names)
 - phone: valid phone number format
-- notes: optional string
+- notes: string containing special requests with default "No special request" if not provided
 
 # IMPORTANT:
 - Only extract information that was clearly stated by the user
@@ -187,6 +187,8 @@ RESERVATION_EXTRACTION_USER_PROMPT = """
 {chat_history}
 
 Extract the complete reservation details from the conversation above. Include all information needed to make a reservation. Pay special attention to the user's final time selection if they chose from available options.
+
+Make sure to extract any special requests mentioned by the customer (dietary restrictions, seating preferences, celebrations, accessibility needs, etc.) into the notes field. If no special requests are mentioned, set notes to "No special request".
 """
 
 WAITLIST_ON_MY_WAY_EXTRACTION_SYSTEM_PROMPT = """You are an expert at extracting waitlist on-my-way visit parameters from conversation history.

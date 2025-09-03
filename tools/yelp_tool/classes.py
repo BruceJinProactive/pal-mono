@@ -539,7 +539,8 @@ class ReservationQuery(BaseModel):
         max_length=32,
     )
     notes: Optional[str] = Field(
-        default=None, description="The additional party notes for the reservation."
+        default=None,
+        description="The additional party notes and special requests for the reservation (dietary restrictions, seating preferences, celebrations, accessibility needs, etc.). If no special request is mentioned, defaults to 'No special request'.",
     )
 
 
