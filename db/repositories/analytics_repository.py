@@ -5,7 +5,6 @@ from sqlalchemy import Float, case, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
-from sqlalchemy.sql.functions import coalesce
 
 from db.tables import Account, Conversation, Message, Order, PhoneCall, Project, User
 from utils.log import logger
@@ -97,38 +96,6 @@ class AnalyticsRepository:
 
         return query
 
-    def _get_test_conversation_filter(self):
-        """
-        Returns:
-            SQLAlchemy condition to exclude test conversations based on first message test flag
-        """
-        # Create a subquery to find the first message per conversation
-        # We can't use window functions in WHERE clauses, so we use a different approach
-        first_messages = (
-            select(
-                Message.conversation_id,
-                func.min(Message.created_at).label("first_created_at"),
-            )
-            .group_by(Message.conversation_id)
-            .subquery()
-        )
-
-        # Find test conversations by joining with the first messages
-        test_conversations = (
-            select(Message.conversation_id)
-            .select_from(Message)
-            .join(
-                first_messages,
-                (Message.conversation_id == first_messages.c.conversation_id)
-                & (Message.created_at == first_messages.c.first_created_at),
-            )
-            .where(
-                coalesce(Message.body["metadata"]["testing"].astext, "false") == "true"
-            )
-        )
-
-        return ~Conversation.id.in_(test_conversations)
-
     def get_active_users(
         self,
         start_date: datetime.datetime,
@@ -181,7 +148,6 @@ class AnalyticsRepository:
 
             query = query.where(
                 Conversation.created_at.between(start_date, end_date),
-                self._get_test_conversation_filter(),
             )
 
             # Apply optional filters
@@ -227,14 +193,12 @@ class AnalyticsRepository:
         try:
             select_fields, group_fields = self._build_group_fields(group_by)
 
-            # First, get conversations in the date range that aren't test conversations
-            # We filter out test conversations based on the first message's testing flag
+            # First, get conversations in the date range
             valid_conversations = (
                 select(Conversation.id)
                 .select_from(Conversation)
                 .where(
                     Conversation.created_at.between(start_date, end_date),
-                    self._get_test_conversation_filter(),
                 )
                 .subquery()
             )
@@ -414,9 +378,6 @@ class AnalyticsRepository:
             # Filter by call creation date
             query = query.where(PhoneCall.created_at.between(start_date, end_date))
 
-            # Exclude test conversations
-            query = query.where(self._get_test_conversation_filter())
-
             # Apply optional filters (reuse existing logic)
             query = self._apply_filters(query, filter_by)
 
@@ -504,7 +465,6 @@ class AnalyticsRepository:
 
             # Apply filters
             query = query.where(PhoneCall.created_at.between(start_date, end_date))
-            query = query.where(self._get_test_conversation_filter())
             query = self._apply_filters(query, filter_by)
 
             # Group by if needed
@@ -595,9 +555,6 @@ class AnalyticsRepository:
 
             # Filter by conversation creation date
             query = query.where(Conversation.created_at.between(start_date, end_date))
-
-            # Exclude test conversations
-            query = query.where(self._get_test_conversation_filter())
 
             # Apply optional filters
             query = self._apply_filters(query, filter_by)
