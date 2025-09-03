@@ -203,28 +203,13 @@ class RawConfig:
         return transformed_config
 
     def _get_agent_persona(self, channel: Channel) -> AgentPersona:
-        # Extract the persona section of the raw config
+        # Extract the persona section of the raw config for voice_id and model_mode
         raw_persona = self.agent.raw_config.get("persona", {})
-        dynamic_prompt = self.agent.raw_config.get("dynamic_prompt_enabled", False)
 
-        if not raw_persona:
-            logger.info(
-                "'persona' is not provided in 'agent.raw_config'.",
-                extra={
-                    "agent_id": self.agent.id,
-                },
-            )
-
-        # Use the name, role, system_prompt from the persona section
-        name = (self.agent.name if dynamic_prompt else raw_persona.get("name")) or ""
-        role = (
-            self.agent.agent_type if dynamic_prompt else raw_persona.get("role")
-        ) or ""
-        system_prompt = (
-            self._build_agent_prompt(channel)
-            if dynamic_prompt
-            else raw_persona.get("system_prompt")
-        )
+        # Always use dynamic prompt behavior
+        name = self.agent.name or ""
+        role = self.agent.agent_type or ""
+        system_prompt = self._build_agent_prompt(channel)
         voice_id = raw_persona.get("voice_id") or None
         model_mode = raw_persona.get("model_mode") or None
 
