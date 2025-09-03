@@ -15,6 +15,7 @@ from tools.toast_tool._apis import BASE_URL, get_toast_access_token
 from tools.toast_tool.classes import (
     DeliveryAddress,
     DiningBehavior,
+    SelectionType,
     ServicePeriod,
     ToastAccessToken,
 )
@@ -78,8 +79,15 @@ def validate_item_modifier_quantity(selections: list) -> None:
 
     for selection in selections:
         if "modifiers" in selection:
-            item_quantity = selection["quantity"]
+            item_quantity = int(selection.get("quantity", 0))
             for modifier in selection["modifiers"]:
+                sel_type = modifier.get("selectionType")
+                if sel_type in (
+                    SelectionType.SPECIAL_REQUEST,
+                    SelectionType.SPECIAL_REQUEST.value,
+                    SelectionType.SPECIAL_REQUEST.name,
+                ):
+                    continue
                 if modifier["quantity"] != item_quantity:
                     logger.debug(
                         f"[ToastTool.validate_item_modifier_quantity] "
@@ -467,7 +475,7 @@ def is_within_service_periods(
             # Skip service periods with no days or wrong dining behavior
             if not service_period.dayPeriods or (
                 dining_behavior
-                and service_period.diningOptionBehavior != dining_behavior
+                and service_period.diningOptionBehavior != dining_behavior.value
             ):
                 continue
 
@@ -638,7 +646,7 @@ def get_toast_access_token_from_aws(
         token_json_str = get_client_secret_with_fallback("toast_access_token")
         token_data = json.loads(token_json_str)
         # Reconstruct ToastAccessToken from stored data
-        token = ToastAccessToken(**token_data)
+        token = ToastAccessToken.from_toast_response(token_data)
     except (
         ValueError,
         KeyError,
@@ -695,5 +703,8 @@ def refresh_toast_access_token_from_aws(
         logger.warning(
             f"[ToastTool.refresh_toast_access_token_from_aws] Token refreshed but failed to persist to Secrets Manager: {e}"
         )
-
-    return bearer_token
+    finally:
+        logger.debug(
+            "[ToastTool.refresh_toast_access_token_from_aws] Token refreshed successfully"
+        )
+        return bearer_token

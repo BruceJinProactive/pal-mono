@@ -40,6 +40,7 @@ from tools.toast_tool.classes import (
     Modifier,
     OrderInput,
     Price,
+    SelectionType,
     SubQueries,
     ToastAccessToken,
 )
@@ -344,7 +345,6 @@ class ToastTool(Toolkit):
                     "Failed to authenticate ordering tool. Please reach out to our "
                     "support team at help@palona.ai for assistance."
                 )
-
             schedule_response = get_ordering_schedule(
                 bearer_token=self._toast_bearer_token,
                 store_id=self.store_id,
@@ -419,6 +419,7 @@ class ToastTool(Toolkit):
         """
         try:
             # First check if the store is open for ordering
+            logger.info("Checking if the store is open for ordering")
             if not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
 
@@ -546,6 +547,9 @@ class ToastTool(Toolkit):
         cleaned: list[Modifier] = []
         for m in mods:
             # Basic validation: require both GUIDs (reject None, "N/A", empty, or whitespace-only)
+            if m.selectionType == SelectionType.SPECIAL_REQUEST:
+                cleaned.append(m)
+                continue
             og_guid = getattr(m.optionGroup, "guid", None)
             it_guid = getattr(m.item, "guid", None)
 
