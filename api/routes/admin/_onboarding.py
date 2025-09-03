@@ -5,12 +5,14 @@ from api.schemas.admin.onboarding import (
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
     OnboardingRequest,
+    OnboardingResponse,
 )
 from services import admin_service
 from services.admin_service import ProjectSetup
 from services.admin_service.schema import CognitoUser
 
 from ._auth import authorize_admin
+from ._builder import build_onboarding_project_info
 from ._utils import UserContext
 
 
@@ -18,7 +20,7 @@ async def create_onboarding(
     request: OnboardingRequest,
     context: UserContext,
     session: Session,
-) -> str:
+) -> OnboardingResponse:
     """
     Create a new account, agents, and projects in a single transaction.
 
@@ -41,8 +43,6 @@ async def create_onboarding(
                 ProjectSetup(
                     params=params,
                     enable_web_widget=proj.enable_web_widget,
-                    enable_voice=proj.enable_voice,
-                    enable_sms=proj.enable_sms,
                 )
             )
         agent_projects_data.append((agent_data, projects_data))
@@ -51,7 +51,7 @@ async def create_onboarding(
         CognitoUser(email=user.email, name=user.name) for user in request.users
     ]
     try:
-        return admin_service.onboard_new_account(
+        project_data = admin_service.onboard_new_account(
             session,
             context,
             request.account.name,
@@ -60,6 +60,13 @@ async def create_onboarding(
             agent_projects_data,
             users=cognito_users,
         )
+
+        # Convert project data to response objects using reusable builder
+        projects = [
+            build_onboarding_project_info(project_info) for project_info in project_data
+        ]
+
+        return OnboardingResponse(account_name=request.account.name, projects=projects)
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

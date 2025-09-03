@@ -56,3 +56,21 @@ class GenerateAgentPromptsResponse(BaseModel):
     interaction_guidelines: str = Field(
         ..., description="Interaction workflows and examples"
     )
+
+
+class OnboardingProjectInfo(BaseModel):
+    """Project information returned from onboarding"""
+
+    project_id: str = Field(..., description="UUID of the created project")
+    project_name: str = Field(..., description="Name of the project")
+    agent_id: str = Field(..., description="UUID of the associated agent")
+    enable_web_widget: bool = Field(..., description="Whether web widget is enabled")
+
+
+class OnboardingResponse(BaseModel):
+    """Response model for onboarding request"""
+
+    account_name: str = Field(..., description="Name of the created account")
+    projects: list[OnboardingProjectInfo] = Field(
+        ..., description="List of created projects"
+    )

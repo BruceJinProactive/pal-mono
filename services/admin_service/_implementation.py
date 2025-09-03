@@ -29,6 +29,7 @@ from services.admin_service._utils import generate_password, get_knowledge_setti
 from services.admin_service.schema import (
     CognitoUser,
     CognitoUserSession,
+    CreatedProjectInfo,
     LeadFilters,
     LeadParams,
     ProjectSetup,
@@ -40,12 +41,7 @@ from services.message_service import (
     get_conversations_by_users,
     get_messages_by_conversation,
 )
-from services.number_service import NumberService
-from services.project_service import (
-    ProjectParams,
-    get_project,
-    replace_project_channel_identifiers,
-)
+from services.project_service import get_project, replace_project_channel_identifiers
 from services.user_service import get_users_by_account_id
 from utils import secret
 from utils.log import logger
@@ -777,7 +773,10 @@ def onboard_new_account(
     lead_id: uuid.UUID | None,
     agent_projects: list[tuple[AgentParams, list[ProjectSetup]]],
     users: list[CognitoUser] | None,
-) -> str:
+) -> list[CreatedProjectInfo]:
+    # Collect project information to return
+    created_projects: list[CreatedProjectInfo] = []
+
     try:
         # Create the account
         account_service.create_account(
@@ -788,9 +787,6 @@ def onboard_new_account(
             lead_id=lead_id,
             auto_commit=False,
         )
-
-        # Track projects that need phone numbers for later processing
-        projects_needing_phone_numbers = []
 
         for agent_project in agent_projects:
             agent_param = agent_project[0]
@@ -825,9 +821,15 @@ def onboard_new_account(
                     auto_commit=False,
                 )
 
-                # Store projects that need phone numbers for later processing
-                if project_setup.enable_voice or project_setup.enable_sms:
-                    projects_needing_phone_numbers.append((project, project_setup))
+                # Collect project information for response
+                created_projects.append(
+                    {
+                        "project_id": str(project.id),
+                        "project_name": project.name,
+                        "agent_id": str(agent.id),
+                        "enable_web_widget": project_setup.enable_web_widget,
+                    }
+                )
 
         # create cognito user accounts
         for user in users or []:
@@ -841,69 +843,8 @@ def onboard_new_account(
         logger.warn(f"Error creating resources for onboarding: {e}")
         raise ValueError(f"Failed to onboarding account. {e}")
 
-    # Finally let's set up the phone numbers for projects
-    return reserve_phone_numbers_for_projects(
-        session, context, projects_needing_phone_numbers
-    )
-
-
-def reserve_phone_numbers_for_projects(
-    session: Session,
-    context: UserContext,
-    projects_needing_phone_numbers: list[tuple[db.Project, ProjectSetup]],
-) -> str:
-    # Now that all database objects are created successfully, reserve phone numbers
-    # and update project channel identifiers
-    errors = []
-    number_service = NumberService()
-    for project, project_setup in projects_needing_phone_numbers:
-        try:
-            number_response = number_service.setup_number(
-                country_code="US",
-                toll_free=True,
-                merchant_name=project.name,
-            )
-
-            phone_number = number_response.number
-            additional_channels = []
-
-            if project_setup.enable_voice:
-                additional_channels.append(f"voice:{phone_number}")
-
-            if project_setup.enable_sms:
-                additional_channels.append(f"sms:{phone_number}")
-
-            # Update project channel identifiers using the project update method
-            if additional_channels:
-                current_channels = project.channel_identifiers or []
-                updated_channels = current_channels + additional_channels
-
-                # Use project service to update channel identifiers
-                project_params = ProjectParams(channel_identifiers=updated_channels)
-                project_service.update_project(
-                    session=session,
-                    context=context,
-                    project_id=project.id,
-                    params=project_params,
-                    auto_commit=True,
-                )
-                logger.info(
-                    f"Successfully reserved phone number {phone_number} for project {project.name}",
-                    extra={
-                        "project_id": str(project.id),
-                        "project_name": project.name,
-                        "phone_number": phone_number,
-                        "channels": additional_channels,
-                    },
-                )
-        except Exception as e:
-            message = f"Failed to setup phone number for project {project.name}: {e}"
-            logger.error(message)
-            errors.append(message)
-    if errors:
-        return "\n".join(errors)
-    else:
-        return ""
+    # Phone number reservation is now handled separately via direct API calls
+    return created_projects
 
 
 def upload_project_knowledge(

@@ -14,6 +14,7 @@ from ..knowledge_service import KnowledgeFile
 from . import _implementation, agent_prompt_generation
 from .schema import (
     CognitoUser,
+    CreatedProjectInfo,
     LeadFilters,
     LeadParams,
     ProjectSetup,
@@ -352,7 +353,7 @@ def onboard_new_account(
     lead_id: uuid.UUID | None,
     agent_projects: list[tuple[AgentParams, list[ProjectSetup]]],
     users: list[CognitoUser] | None = None,
-) -> str:
+) -> list[CreatedProjectInfo]:
     """
     Creates an account, agents, and projects in a single transaction.
 
@@ -368,6 +369,10 @@ def onboard_new_account(
             - agent: Agent parameters
             - projects: List of project parameters
         users (list[CognitoUser], optional): List of (email, name) tuples for creating Cognito users.
+
+        Returns:
+        list[CreatedProjectInfo]: List of created project information containing project_id,
+                                   project_name, agent_id, and enable_web_widget for each project
 
     Raises:
         ValueError: If there's an error creating any of the entities

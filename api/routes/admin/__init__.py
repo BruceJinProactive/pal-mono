@@ -77,6 +77,7 @@ from api.schemas.admin.onboarding import (
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
     OnboardingRequest,
+    OnboardingResponse,
 )
 from api.schemas.admin.phone_number import (
     EnhancedReleaseProjectNumberRequest,
@@ -1595,9 +1596,11 @@ async def onboard(
     request: OnboardingRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-):
+) -> OnboardingResponse:
     """
     Onboard a new account with agents and projects in a single transaction.
+    Phone numbers must be reserved separately using the phone number APIs.
+    Returns the created project UUIDs for subsequent phone number reservation.
     """
     return await _onboarding.create_onboarding(request, context, session)
 

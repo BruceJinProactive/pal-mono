@@ -1,16 +1,24 @@
 from dataclasses import dataclass
+from typing import TypedDict
 
 import db
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from services.project_service import ProjectParams
 
 
+class CreatedProjectInfo(TypedDict):
+    """Type definition for project information returned from onboarding"""
+
+    project_id: str
+    project_name: str
+    agent_id: str
+    enable_web_widget: bool
+
+
 @dataclass
 class ProjectSetup:
     params: ProjectParams
     enable_web_widget: bool
-    enable_voice: bool
-    enable_sms: bool
 
 
 @dataclass(frozen=True, slots=True)

@@ -15,6 +15,7 @@ from api.schemas.admin.integration import (
     ProjectIntegrationSummaryResponse,
 )
 from api.schemas.admin.lead import Lead
+from api.schemas.admin.onboarding import OnboardingProjectInfo
 from api.schemas.admin.project import Project, ProjectSummary
 from api.schemas.admin.prompt import Prompt, PromptDetails
 from api.schemas.admin.subscription import (
@@ -23,6 +24,7 @@ from api.schemas.admin.subscription import (
     SubscriptionPlan,
 )
 from db.repositories.prompt_repository import PromptRepository
+from services.admin_service.schema import CreatedProjectInfo
 from services.integration_service.schema import IntegrationDetail
 
 
@@ -407,4 +409,16 @@ def build_prompt(prompt: db.Prompt, session=None) -> Prompt:
         created_at=prompt.created_at,
         updated_at=prompt.updated_at or datetime.now(),
         details=details,
+    )
+
+
+def build_onboarding_project_info(
+    project_info: CreatedProjectInfo,
+) -> OnboardingProjectInfo:
+    """Build OnboardingProjectInfo from CreatedProjectInfo."""
+    return OnboardingProjectInfo(
+        project_id=str(project_info["project_id"]),
+        project_name=str(project_info["project_name"]),
+        agent_id=str(project_info["agent_id"]),
+        enable_web_widget=bool(project_info["enable_web_widget"]),
     )
