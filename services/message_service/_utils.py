@@ -463,7 +463,7 @@ def _extract_latency_metrics(call_data: dict) -> dict:
     if not turn_latencies:
         return _get_empty_latency_metrics()
 
-    # Extract and convert latency metrics from ms to seconds
+    # Extract and convert latency metrics from milliseconds to seconds
     latency_fields = [
         "turnLatencyAverage",
         "modelLatencyAverage",

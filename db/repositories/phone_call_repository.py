@@ -35,7 +35,7 @@ class PhoneCallRepositoryAsync:
             call_id: Unique identifier for the call from the voice provider
             conversation_id: Associated conversation ID
             duration: Call duration in seconds
-            turn_latency_avg: Average turn latency in milliseconds
+            turn_latency_avg: Average turn latency in seconds
             model_latency_avg: Average model latency in milliseconds
             voice_latency_avg: Average voice latency in milliseconds
             transcriber_latency_avg: Average transcriber latency in milliseconds
@@ -107,11 +107,11 @@ class PhoneCallRepository:
             call_id: Unique identifier for the call from the voice provider
             conversation_id: Associated conversation ID
             duration: Call duration in seconds
-            turn_latency_avg: Average turn latency in milliseconds
-            model_latency_avg: Average model latency in milliseconds
-            voice_latency_avg: Average voice latency in milliseconds
-            transcriber_latency_avg: Average transcriber latency in milliseconds
-            endpointing_latency_avg: Average endpointing latency in milliseconds
+            turn_latency_avg: Average turn latency in seconds
+            model_latency_avg: Average model latency in seconds
+            voice_latency_avg: Average voice latency in seconds
+            transcriber_latency_avg: Average transcriber latency in seconds
+            endpointing_latency_avg: Average endpointing latency in seconds
             ended_reason: Reason the call ended
             call_purpose: List of call purposes identified
             user_satisfaction: User satisfaction level

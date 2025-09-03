@@ -406,11 +406,11 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
 
     elif "avg_duration" in metric_name:
         total_duration_sum = sum(
-            (row[-8] if row[-8] is not None else 0)
-            * (row[-9] if row[-9] is not None else 0)
+            (row[-9] if row[-9] is not None else 0)
+            * (row[-10] if row[-10] is not None else 0)
             for row in data
         )
-        total_calls = sum((row[-9] if row[-9] is not None else 0) for row in data)
+        total_calls = sum((row[-10] if row[-10] is not None else 0) for row in data)
         result["avg_duration"] = (
             round(total_duration_sum / total_calls, 2) if total_calls > 0 else 0.0
         )
@@ -421,7 +421,7 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
             * (row[-10] if row[-10] is not None else 0)
             for row in data
         )
-        total_calls = sum((row[-9] if row[-9] is not None else 0) for row in data)
+        total_calls = sum((row[-10] if row[-10] is not None else 0) for row in data)
         result["avg_turn_latency"] = (
             round(total_turn_latency_sum / total_calls, 2) if total_calls > 0 else 0.0
         )
@@ -429,7 +429,7 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
     # === RATE METRICS ===
     elif "transfer_rate" in metric_name:
         total_transfers = sum((row[-5] if row[-5] is not None else 0) for row in data)
-        total_calls = sum((row[-9] if row[-9] is not None else 0) for row in data)
+        total_calls = sum((row[-10] if row[-10] is not None else 0) for row in data)
         result["overall_transfer_rate"] = (
             round(total_transfers / total_calls, 2) if total_calls > 0 else 0.0
         )
