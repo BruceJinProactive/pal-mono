@@ -27,6 +27,7 @@ from ._subscription import (
     remove_project_subscription,
     should_allow_calls_async,
     switch_subscription_plan,
+    unlink_subscription_from_account,
     update_account_subscription,
     update_account_subscription_status,
 )
@@ -58,4 +59,5 @@ __all__ = [
     "get_account_credit_grants",
     "should_allow_calls_async",
     "switch_subscription_plan",
+    "unlink_subscription_from_account",
 ]

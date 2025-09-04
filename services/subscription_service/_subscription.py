@@ -1473,3 +1473,65 @@ async def should_allow_calls_async(session: AsyncSession, account: db.Account) -
         return False
 
     return current_subscription.status == SubscriptionStatus.active
+
+
+def unlink_subscription_from_account(
+    session: Session,
+    context: UserContext,
+    account: db.Account,
+    force_unlink: bool = False,
+) -> None:
+    """
+    Unlink a subscription from an account by setting current_subscription_id to null.
+    Only allows unlinking if the subscription status is not active or pending.
+    """
+    account_subscription_repo = AccountSubscriptionRepository(session)
+
+    external_id = account.current_subscription_id
+    if not external_id:
+        return
+
+    subscription = account_subscription_repo.get_account_subscription(
+        account.id, external_id
+    )
+
+    if not subscription:
+        error_msg = (
+            f"The subscription linked to the account is not found: {external_id}"
+        )
+        logger.error(error_msg)
+        if not force_unlink:
+            raise ValueError(error_msg)
+    elif subscription.status in [SubscriptionStatus.active, SubscriptionStatus.pending]:
+        if force_unlink:
+            logger.warning(
+                "Subscription has invalid status, but we are forcing the unlink anyway.",
+                extra={
+                    "account_name": account.name,
+                    "current_subscription_status": subscription.status,
+                },
+            )
+        else:
+            raise ValueError(
+                f"Cannot unlink subscription with status '{subscription.status}'. "
+                "Only cancelled, expired, or deleted subscriptions can be unlinked."
+            )
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Account,
+        author=context.email,
+        account_id=account.id,
+        resource_id=str(account.id),
+        auto_commit=False,
+    ):
+        account.current_subscription_id = None
+        session.commit()
+
+        logger.info(
+            "Successfully unlinked subscription from account",
+            extra={
+                "account_name": str(account.name),
+                "subscription_external_id": str(external_id),
+            },
+        )

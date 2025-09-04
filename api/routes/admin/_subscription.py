@@ -754,3 +754,30 @@ def switch_subscription_plan(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to switch subscription plan",
         )
+
+
+def unlink_subscription_from_account(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    force_unlink: bool,
+):
+    """Unlink a subscription from an account."""
+    authorize_admin(context)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    try:
+        subscription_service.unlink_subscription_from_account(
+            session=session,
+            context=context,
+            account=account,
+            force_unlink=force_unlink,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )

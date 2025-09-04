@@ -1926,6 +1926,25 @@ def list_account_credit_grants(
     )
 
 
+@admin_router.post(
+    "/accounts/{account_name}/reset_current_subscription",
+    status_code=status.HTTP_200_OK,
+)
+def unlink_subscription_from_account(
+    account_name: str,
+    force_unlink: bool = Query(False, description="Forces backend to unlink the sub"),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Unlink the current subscription from an account.
+    Only allows unlinking if the subscription status is not active or pending.
+    """
+    return _subscription.unlink_subscription_from_account(
+        context, session, account_name, force_unlink
+    )
+
+
 """
 ---------- Prompt Endpoints ----------
 ------------------------------------
