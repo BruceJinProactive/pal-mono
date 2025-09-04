@@ -22,6 +22,7 @@ from services import (
     email_service,
     knowledge_service,
     project_service,
+    subscription_service,
     user_service,
 )
 from services.account_service import AccountParams
@@ -779,7 +780,7 @@ def onboard_new_account(
 
     try:
         # Create the account
-        account_service.create_account(
+        created_account = account_service.create_account(
             session=session,
             context=context,
             account_name=account_name,
@@ -843,8 +844,31 @@ def onboard_new_account(
         logger.warn(f"Error creating resources for onboarding: {e}")
         raise ValueError(f"Failed to onboarding account. {e}")
 
+    # Optionally create stripe customer
+    _create_stripe_customer(session, context, created_account)
+
     # Phone number reservation is now handled separately via direct API calls
     return created_projects
+
+
+def _create_stripe_customer(session, context, account: db.Account):
+    try:
+        if account and not account.stripe_customer_id:
+            subscription_service.create_stripe_customer_for_account(
+                session=session,
+                context=context,
+                account_id=account.id,
+                account_email=None,
+            )
+            logger.info(
+                "Created Stripe customer during onboarding",
+                extra={"account_name": account.name, "account_id": str(account.id)},
+            )
+    except Exception as e:
+        logger.warning(
+            f"Failed to create Stripe customer during onboarding: {e}",
+            extra={"account_name": account.name, "account_id": str(account.id)},
+        )
 
 
 def upload_project_knowledge(

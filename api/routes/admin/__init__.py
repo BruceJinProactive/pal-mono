@@ -1945,6 +1945,23 @@ def unlink_subscription_from_account(
     )
 
 
+@admin_router.post("/accounts/{account_name}/stripe_customer")
+def create_stripe_customer(
+    account_name: str,
+    account_email: str | None = Query(
+        None, description="Optional email for the customer"
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Create a Stripe customer for an account.
+    """
+    return _subscription.create_stripe_customer(
+        context, session, account_name, account_email
+    )
+
+
 """
 ---------- Prompt Endpoints ----------
 ------------------------------------

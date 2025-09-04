@@ -23,6 +23,7 @@ class Account(BaseModel):
     business_promotions: str | None
     business_catalog: str | None
     business_others: str | None
+    stripe_customer_id: str | None
     projects: list[str] = []  # list of project uuids
     agents: list[str] = []  # list of agent uuids
     lead_id: UUID | None = None

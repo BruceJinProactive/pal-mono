@@ -94,9 +94,12 @@ def create_checkout_session(
 
         if existing_customer_id:
             session_params["customer"] = existing_customer_id
+            session_params["customer_update"] = {
+                "name": "auto",
+            }
         elif customer_email:
             session_params["customer_email"] = customer_email
-
+        logger.info(f"Stripe checkout parameter: {session_params}")
         return stripe.checkout.Session.create(**session_params)
     except stripe.InvalidRequestError as e:
         error_msg = str(e)
@@ -669,3 +672,57 @@ def parse_uuid(uuid_str: str | None) -> uuid.UUID:
         except ValueError:
             pass
     return uuid.UUID(int=0)
+
+
+def create_stripe_customer(
+    account_name: str,
+    account_email: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> str:
+    """
+    Create a Stripe customer for an account.
+
+    Args:
+        account_name: Name of the account
+        account_email: Optional email for the customer
+        metadata: Optional metadata to attach to the customer
+
+    Returns:
+        str: The created Stripe customer ID
+
+    Raises:
+        stripe.StripeError: If customer creation fails
+    """
+    try:
+        customer_params = {
+            "name": account_name,
+            "metadata": {
+                "account_name": account_name,
+                **(metadata or {}),
+            },
+        }
+
+        if account_email:
+            customer_params["email"] = account_email
+
+        customer = stripe.Customer.create(**customer_params)
+
+        logger.info(
+            "Successfully created Stripe customer",
+            extra={
+                "account_name": account_name,
+                "customer_id": customer.id,
+                "customer_email": account_email,
+            },
+        )
+
+        return customer.id
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to create Stripe customer: {e}",
+            extra={
+                "account_name": account_name,
+                "customer_email": account_email,
+            },
+        )
+        raise

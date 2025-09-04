@@ -40,6 +40,7 @@ def build_account(account: db.Account) -> Account:
         business_promotions=account.business_promotions,
         business_catalog=account.business_catalog,
         business_others=account.business_others,
+        stripe_customer_id=account.stripe_customer_id,
         projects=[str(project.id) for project in account.projects],
         agents=[str(agent.id) for agent in account.agents],
         status=account.status,

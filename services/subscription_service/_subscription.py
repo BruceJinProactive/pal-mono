@@ -1535,3 +1535,79 @@ def unlink_subscription_from_account(
                 "subscription_external_id": str(external_id),
             },
         )
+
+
+def create_stripe_customer_for_account(
+    session: Session,
+    context: UserContext,
+    account_id: uuid.UUID,
+    account_email: str | None = None,
+) -> str:
+    """
+    Create a Stripe customer for an account and update the account record.
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        account_id: The account ID to create a customer for
+        account_email: Optional email for the customer
+
+    Returns:
+        str: The created Stripe customer ID
+
+    Raises:
+        ValueError: If account not found or already has a customer
+        stripe.StripeError: If customer creation fails
+    """
+    account = account_service.get_account_by_id(session, account_id)
+    if not account:
+        raise ValueError(f"Account {account_id} not found")
+
+    if account.stripe_customer_id:
+        raise ValueError(
+            f"Account {account.name} already has a Stripe customer: {account.stripe_customer_id}"
+        )
+
+    try:
+        customer_id = _stripe_subscription.create_stripe_customer(
+            account_name=account.name,
+            account_email=account_email,
+            metadata={
+                "account_id": str(account.id),
+                "created_via": "admin_api",
+            },
+        )
+
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Account,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(account.id),
+            auto_commit=False,
+        ):
+            account.stripe_customer_id = customer_id
+            session.commit()
+
+        logger.info(
+            "Successfully created and linked Stripe customer to account",
+            extra={
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "customer_id": customer_id,
+            },
+        )
+
+        return customer_id
+
+    except Exception as e:
+        session.rollback()
+        logger.error(
+            f"Failed to create Stripe customer for account: {e}",
+            extra={
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "error": str(e),
+            },
+        )
+        raise

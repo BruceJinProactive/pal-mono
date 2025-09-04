@@ -781,3 +781,46 @@ def unlink_subscription_from_account(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(err),
         )
+
+
+def create_stripe_customer(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    account_email: str | None = None,
+) -> dict:
+    """Create a Stripe customer for an account."""
+    authorize_admin(context)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    try:
+        customer_id = subscription_service.create_stripe_customer_for_account(
+            session=session,
+            context=context,
+            account_id=account.id,
+            account_email=account_email,
+        )
+
+        return {
+            "message": "Stripe customer created successfully",
+            "customer_id": customer_id,
+        }
+
+    except ValueError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+    except Exception as err:
+        logger.error(
+            f"Failed to create Stripe customer: {err}",
+            extra={
+                "account_name": account_name,
+                "error": str(err),
+            },
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create Stripe customer",
+        )
