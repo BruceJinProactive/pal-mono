@@ -320,11 +320,11 @@ class NumberService:
                     number=phone_number,
                     twilio_account_sid=self.twilio_client.username,  # type: ignore
                     twilio_auth_token=self.twilio_client.password,
-                    name=self._get_friendly_name(merchant_name),
+                    name=self._get_friendly_name(merchant_name, for_twilio=True),
                 ),
             )
         except Exception as e:
-            self._release_number_from_twilio(
+            self._delete_number_from_twilio(
                 phone_number
             )  # release the purchased number if the vapi call fails
             raise ValueError(f"Failed to import number to Vapi: {e}") from e
@@ -577,8 +577,7 @@ class NumberService:
             number_details.update(friendly_name=new_friendly_name)
 
             # Keep Vapi synchronized with Twilio friendly name
-            vapi_friendly_name = self._get_friendly_name(merchant_name)
-            self._update_vapi_phone_number_name(phone_number, vapi_friendly_name)
+            self._update_vapi_phone_number_name(phone_number, new_friendly_name)
 
             return True
 
@@ -753,7 +752,7 @@ class NumberService:
                     f"Rolling back new number assignment: {phone_number}",
                     extra={"phone_number": phone_number, "action": "complete_release"},
                 )
-                self.release_number(phone_number)
+                self.delete_number(phone_number)
 
         except Exception as rollback_error:
             logger.exception(
@@ -887,8 +886,7 @@ class NumberService:
                 number_details.update(friendly_name=available_name)
 
                 # Keep Vapi synchronized
-                vapi_available_name = self._get_friendly_name(AVAILABLE_LABEL)
-                self._update_vapi_phone_number_name(phone_number, vapi_available_name)
+                self._update_vapi_phone_number_name(phone_number, available_name)
 
         except Exception as e:
             logger.warning(

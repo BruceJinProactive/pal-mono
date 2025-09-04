@@ -183,14 +183,14 @@ def delete_project(
     if unique_numbers:
         for number in unique_numbers:
             logger.info(
-                "Releasing phone number from project.",
+                "Returning phone number to pool from project.",
                 extra={
                     "project_id": project_id,
                     "phone_number": number,
                 },
             )
             try:
-                number_service.release_number(number)
+                number_service.release_number_with_options(number, "return_to_pool")
             except Exception as e:
                 raise ValueError(f"Failed to release phone number {number}: {str(e)}")
 
