@@ -253,6 +253,7 @@ prompt_factory.register(
 - Always check that common food terms and brand names are kept intact and natural for spoken output.
 - Do not say the state name as a part of the address. 
 - Spell out all phone numbers in this format: e.g., 6512431953 should be spelled as "six five one, two four three, one nine five three".
+- When outputting numbers, write out the number as words. For example, the time "11:30pm" should be "eleven thirty P.M."; the price "$19.99" should be "nineteen dollars and ninety-nine cents". 
 - When reading prices, speak naturally as a human would.
 
 For example:
