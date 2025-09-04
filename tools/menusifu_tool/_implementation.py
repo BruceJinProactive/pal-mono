@@ -165,6 +165,10 @@ class MenuSifuTool(Toolkit):
 
         allergy_parts = []
 
+        # Add order-level allergy information
+        if hasattr(customer_info, "allergy_info") and customer_info.allergy_info:
+            allergy_parts.append(customer_info.allergy_info)
+
         # Add order-level special instructions
         if (
             hasattr(customer_info, "special_instructions")
@@ -855,6 +859,11 @@ class MenuSifuTool(Toolkit):
                 payment_method = PaymentMethod.CASH
                 pay_online = False
 
+            # Coalesce None values to intended defaults for boolean fields
+            need_utensils_val = getattr(customer_info, "need_utensils", None)
+            need_straws_val = getattr(customer_info, "need_straws", None)
+            need_condiments_val = getattr(customer_info, "need_condiments", None)
+
             # Create order generation request
             order_request = OrderGenerationRequest(
                 countryCode=country_code,
@@ -880,9 +889,13 @@ class MenuSifuTool(Toolkit):
                 selectedGiftItems=[],
                 selectedGiftItemsCrm=[],
                 allergyInfo=self._build_allergy_info(customer_info, order_items),
-                needUtensils=True,  # Changed from False to match sample
-                needStraws=True,  # Changed from False to match sample
-                needCondiments=True,  # Changed from False to match sample
+                needUtensils=(
+                    need_utensils_val if need_utensils_val is not None else True
+                ),
+                needStraws=need_straws_val if need_straws_val is not None else False,
+                needCondiments=(
+                    need_condiments_val if need_condiments_val is not None else True
+                ),
                 miniProgram=False,
                 businessId=None,
             )

@@ -913,5 +913,9 @@ class ExtractedMenuSifuOrder(BaseModel):
     # Delivery address (only for ONLINE_DELIVERY) - reuse existing Address class
     delivery_address: Optional[Address] = None
 
-    # Additional notes
+    # Additional notes and dietary information
     special_instructions: Optional[str] = None
+    allergy_info: Optional[str] = None
+    need_utensils: Optional[bool] = None
+    need_straws: Optional[bool] = None
+    need_condiments: Optional[bool] = None

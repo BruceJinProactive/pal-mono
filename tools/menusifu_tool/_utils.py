@@ -2286,7 +2286,7 @@ def build_order_price_from_calculation(
         deliveryFee=getattr(calc_response, "delivery_fee", None) or Decimal("0"),
         charge=calc_response.order_charge or Decimal("0"),
         chargeObj=charge_obj_list,
-        tips=getattr(calc_response, "total_tips", None) or Decimal("0"),
+        tips=getattr(calc_response, "order_total_tips", None) or Decimal("0"),
         taxTotal=calc_response.order_tax_total or Decimal("0"),
         taxes=taxes_list,
         chargeName=calc_response.charge_name or "",
