@@ -20,19 +20,279 @@ if TYPE_CHECKING:
         OrderPrice,
     )
 
+from utils.log import logger
+
 from .classes import (
     Category,
+    ComboDetail,
     ComboSection,
+    ComboSectionForOrder,
     DetailPrice,
     ExtractedMenuSifuOrder,
     LocalizedName,
     MenuGroup,
     MenuResponse,
+    MultilingualName,
+    OrderGenerationSelectedItem,
     Price,
     Property,
     SaleItem,
+    SelectSaleItem,
     Size,
 )
+
+# Systematic combo section mapping generated from menu data
+COMBO_SECTION_MAPPINGS = {
+    3170: {"section_id": 23, "section_name": "Extra Wing"},  # Extra Wings
+    3290: {
+        "section_id": 28,
+        "section_name": "Family A.3 Persons(C)",
+    },  # ~Egg Roll(3 pcs.)
+    3291: {
+        "section_id": 31,
+        "section_name": "Family C.5 Persons",
+    },  # ~House Special Fried Rice(Qt.)
+    3292: {"section_id": 27, "section_name": "Family A.3 Persons(B)"},  # ~Beef Broccoli
+    3293: {
+        "section_id": 28,
+        "section_name": "Family A.3 Persons(C)",
+    },  # ~Chicken Broccoli
+    3294: {
+        "section_id": 30,
+        "section_name": "Family B.4 Persons(S)",
+    },  # ~Shrimp Roll(4 pcs.)
+    3295: {
+        "section_id": 30,
+        "section_name": "Family B.4 Persons(S)",
+    },  # ~Pork Fried Rice(Pt.)
+    3296: {
+        "section_id": 30,
+        "section_name": "Family B.4 Persons(S)",
+    },  # ~House Special Lo Mein(Qt.)
+    3297: {"section_id": 31, "section_name": "Family C.5 Persons"},  # ~Gen Tso Chicken
+    3298: {
+        "section_id": 30,
+        "section_name": "Family B.4 Persons(S)",
+    },  # ~Sesame Chicken
+    3299: {"section_id": 31, "section_name": "Family C.5 Persons"},  # ~Wonton Soup(Qt.)
+    3300: {
+        "section_id": 31,
+        "section_name": "Family C.5 Persons",
+    },  # ~House Special Lo Mein(Pt.)
+    3301: {"section_id": 31, "section_name": "Family C.5 Persons"},  # ~Happy Family
+    3304: {"section_id": 20, "section_name": "Add Sauce"},  # BBQ Sauce
+    3305: {"section_id": 20, "section_name": "Add Sauce"},  # Honey Sauce
+    3306: {"section_id": 20, "section_name": "Add Sauce"},  # Hot Sauce
+    3307: {"section_id": 20, "section_name": "Add Sauce"},  # Garlic Sauce
+    3308: {"section_id": 20, "section_name": "Add Sauce"},  # General Tso Sauce
+    3309: {"section_id": 22, "section_name": "Soda Choice"},  # Coke
+    3310: {"section_id": 22, "section_name": "Soda Choice"},  # Sprite
+    3311: {"section_id": 22, "section_name": "Soda Choice"},  # Pepsi
+    3312: {"section_id": 22, "section_name": "Soda Choice"},  # Diet Pepsi
+    3313: {"section_id": 22, "section_name": "Soda Choice"},  # Diet Coke
+    3314: {"section_id": 22, "section_name": "Soda Choice"},  # Ginger Ale
+    3315: {"section_id": 22, "section_name": "Soda Choice"},  # Mountain Dew
+    3316: {"section_id": 22, "section_name": "Soda Choice"},  # Orange Soda
+    3331: {"section_id": 19, "section_name": "Rice Modify"},  # No Veggie
+    3333: {"section_id": 19, "section_name": "Rice Modify"},  # No Onion
+    3334: {"section_id": 19, "section_name": "Rice Modify"},  # No Pea & Carrot
+    3335: {"section_id": 19, "section_name": "Rice Modify"},  # No Broccoli
+    3336: {"section_id": 26, "section_name": "Modify of Rice"},  # Add Crab Sticks
+    3337: {"section_id": 18, "section_name": "Dinner With"},  # Tostones
+    3339: {"section_id": 18, "section_name": "Dinner With"},  # French Fries
+    3355: {"section_id": 17, "section_name": "Dinner Choice"},  # .Soda
+    3357: {"section_id": 21, "section_name": "Lunch With"},  # ^Steamed Rice
+    3358: {"section_id": 21, "section_name": "Lunch With"},  # ^Pork Fried Rice
+    3359: {"section_id": 21, "section_name": "Lunch With"},  # ^Plain Fried Rice
+    3360: {"section_id": 21, "section_name": "Lunch With"},  # ^Fried Rice
+    3361: {"section_id": 21, "section_name": "Lunch With"},  # ^Chicken Fried Rice
+    3362: {"section_id": 21, "section_name": "Lunch With"},  # ^Veg Fried Rice
+    3363: {"section_id": 21, "section_name": "Lunch With"},  # ^Beef Fried Rice
+    3364: {"section_id": 21, "section_name": "Lunch With"},  # ^Shrimp Fried Rice
+    3365: {"section_id": 21, "section_name": "Lunch With"},  # ^Ham Fried Rice
+    3366: {"section_id": 21, "section_name": "Lunch With"},  # ^Crab Meat Fried Rice
+    3367: {"section_id": 21, "section_name": "Lunch With"},  # ^House Special Fried Rice
+    3368: {"section_id": 21, "section_name": "Lunch With"},  # ^Veg Lo Mein
+    3369: {"section_id": 21, "section_name": "Lunch With"},  # ^Pork Lo Mein
+    3370: {"section_id": 21, "section_name": "Lunch With"},  # ^Plain Lo Mein
+    3371: {"section_id": 21, "section_name": "Lunch With"},  # ^Chicken Lo Mein
+    3372: {"section_id": 21, "section_name": "Lunch With"},  # ^Beef Lo Mein
+    3373: {"section_id": 21, "section_name": "Lunch With"},  # ^Shrimp Lo Mein
+    3375: {"section_id": 21, "section_name": "Lunch With"},  # ^House Special Lo Mein
+    3377: {"section_id": 18, "section_name": "Dinner With"},  # .Pork Fried Rice
+    3378: {"section_id": 18, "section_name": "Dinner With"},  # .Steamed Rice
+    3379: {"section_id": 18, "section_name": "Dinner With"},  # .Fried Rice
+    3380: {"section_id": 18, "section_name": "Dinner With"},  # .Plain Fried Rice
+    3381: {"section_id": 18, "section_name": "Dinner With"},  # .Veg Fried Rice
+    3382: {"section_id": 18, "section_name": "Dinner With"},  # .Chicken Fried Rice
+    3383: {"section_id": 18, "section_name": "Dinner With"},  # .Beef Fried Rice
+    3384: {"section_id": 18, "section_name": "Dinner With"},  # .Ham Fried Rice
+    3385: {"section_id": 18, "section_name": "Dinner With"},  # .Crab Meat Fried Rice
+    3386: {"section_id": 18, "section_name": "Dinner With"},  # .Shrimp Fried Rice
+    3387: {
+        "section_id": 18,
+        "section_name": "Dinner With",
+    },  # .House Special Fried Rice
+    3388: {"section_id": 18, "section_name": "Dinner With"},  # .Plain Lo Mein
+    3389: {"section_id": 18, "section_name": "Dinner With"},  # .Veg Lo Mein
+    3390: {"section_id": 18, "section_name": "Dinner With"},  # .Chicken Lo Mein
+    3391: {"section_id": 18, "section_name": "Dinner With"},  # .Pork Lo Mein
+    3392: {"section_id": 18, "section_name": "Dinner With"},  # .Beef Lo Mein
+    3393: {"section_id": 18, "section_name": "Dinner With"},  # .Shrimp Lo Mein
+    3394: {"section_id": 18, "section_name": "Dinner With"},  # .House Special Lo Mein
+    3395: {"section_id": 17, "section_name": "Dinner Choice"},  # .Shrimp Roll
+    3396: {"section_id": 17, "section_name": "Dinner Choice"},  # .Egg Roll
+    3397: {"section_id": 17, "section_name": "Dinner Choice"},  # .Veg Roll
+    3398: {"section_id": 17, "section_name": "Dinner Choice"},  # .Spring Roll
+    3399: {"section_id": 17, "section_name": "Dinner Choice"},  # .Pizza Roll
+    3400: {"section_id": 17, "section_name": "Dinner Choice"},  # .Wonton Soup
+    3401: {"section_id": 17, "section_name": "Dinner Choice"},  # .Egg Drop Soup
+    3425: {"section_id": 17, "section_name": "Dinner Choice"},  # Homemade Iced Tea
+    3426: {"section_id": 17, "section_name": "Dinner Choice"},  # Coke
+    3427: {"section_id": 17, "section_name": "Dinner Choice"},  # Sprite
+    3428: {"section_id": 17, "section_name": "Dinner Choice"},  # Pepsi
+    3429: {"section_id": 17, "section_name": "Dinner Choice"},  # Diet Pepsi
+    3430: {"section_id": 17, "section_name": "Dinner Choice"},  # Ginger Ale
+    3431: {"section_id": 17, "section_name": "Dinner Choice"},  # Diet Coke
+    3432: {"section_id": 17, "section_name": "Dinner Choice"},  # Mountain Dew
+    3433: {"section_id": 17, "section_name": "Dinner Choice"},  # Orange Soda
+}
+
+# Section ID to name mapping
+SECTION_ID_TO_NAME = {
+    17: "Dinner Choice",
+    18: "Dinner With",
+    19: "Rice Modify",
+    20: "Add Sauce",
+    21: "Lunch With",
+    22: "Soda Choice",
+    23: "Extra Wing",
+    26: "Modify of Rice",
+    27: "Family A.3 Persons(B)",
+    28: "Family A.3 Persons(C)",
+    29: "Family B.4 Persons(G)",
+    30: "Family B.4 Persons(S)",
+    31: "Family C.5 Persons",
+}
+
+
+def _get_combo_section_for_option(
+    combo_sections: List[Dict], option_sale_item_id: int
+) -> tuple[int, str]:
+    """Find the combo section that contains a specific sale item ID."""
+    for section in combo_sections:
+        section_sale_items = section.get("comboSectionSaleItems", [])
+        for sale_item in section_sale_items:
+            if sale_item.get("saleItemId") == option_sale_item_id:
+                return section.get("id", 0), section.get("name", {}).get(
+                    "en", "Section"
+                )
+
+    # Explicitly mark as unknown to avoid mis-mapping
+    available_sections = [
+        f"id:{section.get('id', 0)}/name:{section.get('name', {}).get('en', 'Unknown')}"
+        for section in combo_sections
+    ]
+    logger.info(
+        f"[MenuSifuTool] combo_section_lookup: saleItemId {option_sale_item_id} not found in provided sections. "
+        f"Available sections: [{', '.join(available_sections)}]"
+    )
+    return 0, "Unknown Section"
+
+
+def validate_combo_selection_rule(
+    section: Dict, selected_item_ids: List[int]
+) -> Dict[str, Any]:
+    """Validate combo section selection against MenuSifu rules."""
+    rule = section.get("itemSelectionRule", 1)
+    min_allowed = section.get("minNumOfSelectionAllowed", 0)
+    max_allowed = section.get("maxNumOfSelectionAllowed", 0)
+    allow_repeated = section.get("allowRepeatedItems", False)
+
+    selected_count = len(selected_item_ids)
+    unique_count = len(set(selected_item_ids))
+
+    result = {
+        "valid": True,
+        "rule_type": rule,
+        "min_required": min_allowed,
+        "max_allowed": max_allowed,
+        "selected_count": selected_count,
+        "errors": [],
+    }
+
+    # Check repeated items
+    if not allow_repeated and selected_count != unique_count:
+        result["valid"] = False
+        result["errors"].append("Repeated items not allowed in this section")
+
+    # Apply selection rules
+    if rule == 1:  # EQUALS_TO
+        if selected_count != min_allowed:
+            result["valid"] = False
+            result["errors"].append(
+                f"Must select exactly {min_allowed} items, got {selected_count}"
+            )
+    elif rule == 2:  # MIN_NUM_LIMIT
+        if selected_count < min_allowed:
+            result["valid"] = False
+            result["errors"].append(
+                f"Must select at least {min_allowed} items, got {selected_count}"
+            )
+    elif rule == 3:  # MAX_NUM_LIMIT
+        if selected_count > max_allowed:
+            result["valid"] = False
+            result["errors"].append(
+                f"Can select at most {max_allowed} items, got {selected_count}"
+            )
+    elif rule == 4:  # RANGE
+        if selected_count < min_allowed or selected_count > max_allowed:
+            result["valid"] = False
+            result["errors"].append(
+                f"Must select {min_allowed}-{max_allowed} items, got {selected_count}"
+            )
+    elif rule == 5:  # RANGE_FOR_FIXED_UNTIL_MAX
+        if selected_count < min_allowed:
+            result["valid"] = False
+            result["errors"].append(
+                f"Must select at least {min_allowed} items, got {selected_count}"
+            )
+
+    return result
+
+
+def get_combo_section_price_rule(section: Dict) -> Dict[str, Any]:
+    """Get price rule information for a combo section."""
+    price_rule = section.get("priceRule", 1)
+
+    rule_info = {"rule_code": price_rule, "description": ""}
+
+    if price_rule == 1:  # ADJUSTABLE_PRICE
+        rule_info["description"] = (
+            "Section price is sum of selected sub-item prices and combo base price"
+        )
+    elif price_rule == 2:  # FIXED_UNTIL_MAX
+        rule_info["description"] = (
+            "Fixed price until max selections, then adjustable for excess"
+        )
+    elif price_rule == 3:  # FIXED_PRICE
+        rule_info["description"] = "Fixed combo price, no additional charges"
+    else:
+        rule_info["description"] = f"Unknown price rule: {price_rule}"
+
+    return rule_info
+
+
+def find_preselected_items(section: Dict) -> List[int]:
+    """Find pre-selected items in a combo section."""
+    preselected = []
+    section_sale_items = section.get("comboSectionSaleItems", [])
+
+    for sale_item in section_sale_items:
+        if sale_item.get("preSelected", False):
+            preselected.append(sale_item.get("saleItemId"))
+
+    return preselected
 
 
 def _localized_to_text(
@@ -2036,11 +2296,187 @@ def build_order_price_from_calculation(
     )
 
 
+def build_selected_items_from_calculation_with_menu_data(
+    calc_request: "OrderCalculationRequest",
+    menu_data: Optional[Dict[str, Any]] = None,
+) -> List["OrderGenerationSelectedItem"]:
+    """
+    Convert OrderCalculationRequest items to OrderGenerationSelectedItem list with proper combo section mapping.
+
+    Args:
+        calc_request: Original calculation request with selected items
+        menu_data: Full menu data to lookup combo sections properly
+
+    Returns:
+        List of OrderGenerationSelectedItem objects with correct combo mappings
+    """
+    selected_items = []
+
+    # Create item lookup for combo section resolution if menu_data provided
+    # Note: item_lookup is created but not used in current implementation
+    if menu_data:
+        create_item_lookup(
+            menu_data
+        )  # Create but don't store - not used in current flow
+
+    for item in calc_request.selected_items:
+        # Convert options to comboDetail if they exist
+        combo_detail = None
+        if item.options and len(item.options) > 0:
+            # Find the item in menu data to get its combo sections
+            combo_sections = []
+            if menu_data:
+                combo_sections = _find_combo_sections_for_item(menu_data, item.id)
+
+            if combo_sections:
+                # Group options by their actual combo sections
+                section_map = {}
+                combo_options = []
+                additional_options = []
+
+                for option in item.options:
+                    section_id, section_name = _get_combo_section_for_option(
+                        combo_sections, option.id or 0
+                    )
+
+                    # If any option maps to section_id == 0 (unknown), fall back to regular builder
+                    if section_id == 0:
+                        # Early return - fallback to build_selected_items_from_calculation
+                        return build_selected_items_from_calculation(calc_request)
+
+                    # Check if this is a real combo option vs an additional option
+                    if option.id is not None and section_id != 0:
+                        # This is a combo option
+                        combo_options.append(option)
+
+                        if section_id not in section_map:
+                            section_map[section_id] = {
+                                "id": section_id,
+                                "name": section_name,
+                                "items": [],
+                            }
+
+                        select_item = SelectSaleItem(
+                            saleItemId=option.id or 0,
+                            quantity=1,
+                            name=option.name,
+                            nameMultilingual=option.name_multilingual,
+                            price=option.price,
+                            detailPriceId="",
+                        )
+                        section_map[section_id]["items"].append(select_item)
+                    else:
+                        # This is an additional option/note
+                        additional_options.append(option)
+
+                # Build combo sections
+                combo_sections_list = []
+                for section_data in section_map.values():
+                    combo_section = ComboSectionForOrder(
+                        id=section_data["id"],
+                        name=section_data["name"],
+                        nameMultilingual=None,  # Will be populated from menu data if available
+                        selectSaleItems=section_data["items"],
+                    )
+                    combo_sections_list.append(combo_section)
+
+                combo_detail = ComboDetail(comboSections=combo_sections_list)
+
+            else:
+                # No combo sections found in menu data - fallback to build_selected_items_from_calculation
+                return build_selected_items_from_calculation(calc_request)
+
+        # Convert additional options to OrderItemOptionNote format if any
+        converted_options = None
+        additional_options = []
+
+        if item.options and combo_detail is None:
+            # For non-combo items, all options remain as options
+            additional_options = item.options
+        # If we processed combo options above, additional_options is already set
+
+        if additional_options:
+            from .classes import OrderItemOptionNote
+
+            converted_options = []
+            for option in additional_options:
+                is_real_option = option.id is not None
+                # Normalize sectionName to MultilingualName
+                _raw_section_name = getattr(option, "section_name", None)
+                option_note = OrderItemOptionNote(
+                    sectionId=getattr(option, "section_id", None),
+                    sectionName=(
+                        _raw_section_name
+                        if isinstance(_raw_section_name, MultilingualName)
+                        else (
+                            MultilingualName(
+                                en=_raw_section_name, **{"zh-cn": None, "French": None}
+                            )
+                            if _raw_section_name
+                            else None
+                        )
+                    ),
+                    id=option.id,
+                    detailPriceId=None,
+                    optionPrice=(
+                        Decimal(str(option.price))
+                        if (option.price and is_real_option)
+                        else None
+                    ),
+                    name=option.name if not is_real_option else None,
+                    nameMultilingual=getattr(option, "name_multilingual", None),
+                    price=(
+                        Decimal(str(option.price))
+                        if (option.price and not is_real_option)
+                        else Decimal("0")
+                    ),
+                    priceOriginal=None,
+                    quantity=option.quantity or 1,
+                    checked=getattr(option, "checked", True),
+                    isOpenOption=getattr(option, "is_open_option", False),
+                )
+                converted_options.append(option_note)
+
+        # Build the selected item for generation
+        generation_item = OrderGenerationSelectedItem(
+            id=item.id,
+            saleItemId=item.id,
+            quantity=item.quantity,
+            itemType=item.item_type,
+            price=item.price,
+            displayPrice=item.price,
+            name=item.name,
+            nameMultilingual=item.name_multilingual,
+            categoryId=item.category_id,
+            options=converted_options,
+            comboDetail=combo_detail,
+        )
+        selected_items.append(generation_item)
+
+    return selected_items
+
+
+def _find_combo_sections_for_item(
+    menu_data: Dict[str, Any], item_id: int
+) -> List[Dict]:
+    """Find combo sections for a specific item ID in menu data."""
+    for group in menu_data.get("groups", []):
+        for category in group.get("categories", []):
+            for item in category.get("saleItems", []):
+                if (
+                    item.get("id") == item_id
+                    and item.get("itemType") == "COMBO_SALE_ITEM"
+                ):
+                    return item.get("comboSections", [])
+    return []
+
+
 def build_selected_items_from_calculation(
     calc_request: "OrderCalculationRequest",
 ) -> List["OrderGenerationSelectedItem"]:
     """
     Convert OrderCalculationRequest items to OrderGenerationSelectedItem list.
+    Handles flexible combo structures including items with both comboDetail and options.
 
     Args:
         calc_request: Original calculation request with selected items
@@ -2048,23 +2484,139 @@ def build_selected_items_from_calculation(
     Returns:
         List of OrderGenerationSelectedItem objects
     """
-    from .classes import OrderGenerationSelectedItem
+    from .classes import MultilingualName
 
     selected_items = []
 
     for item in calc_request.selected_items:
-        # Build the selected item for generation
+        # For combo items, separate options into combo selections vs additional options
+        combo_detail = None
+        remaining_options = []
+
+        if item.item_type == "COMBO_SALE_ITEM" and item.options:
+            # Group options by type - combo selections vs additional options
+            combo_options = []
+            additional_options = []
+
+            for option in item.options:
+                # Use systematic mapping based on option ID (if available)
+                if option.id and option.id in COMBO_SECTION_MAPPINGS:
+                    combo_options.append(option)
+                else:
+                    # Additional options like special requests, add-ons without mapped IDs
+                    additional_options.append(option)
+
+            # Build combo detail from combo selections if any exist
+            if combo_options:
+                # Group options by combo section type
+                section_groups = {}
+
+                for option in combo_options:
+                    # Get section info from systematic mapping
+                    if option.id and option.id in COMBO_SECTION_MAPPINGS:
+                        section_info = COMBO_SECTION_MAPPINGS[option.id]
+                        section_id = section_info["section_id"]
+                        section_name = section_info["section_name"]
+                    else:
+                        # Fallback for unmapped items (shouldn't happen with systematic mapping)
+                        section_id = 21
+                        section_name = "Lunch With"
+
+                    # Group by section
+                    if section_id not in section_groups:
+                        section_groups[section_id] = {"name": section_name, "items": []}
+
+                    # Create MultilingualName with proper field names
+                    option_multilingual = MultilingualName(
+                        en=option.name, **{"zh-cn": None, "French": None}
+                    )
+
+                    select_item = SelectSaleItem(
+                        saleItemId=option.id or 0,
+                        quantity=1,
+                        name=option.name,
+                        nameMultilingual=option_multilingual,
+                        price=(
+                            Decimal(str(option.price)) if option.price else Decimal("0")
+                        ),
+                        detailPriceId="",
+                    )
+                    section_groups[section_id]["items"].append(select_item)
+
+                # Create combo sections for each group
+                combo_sections_list = []
+                for section_id, group_data in section_groups.items():
+                    section_multilingual = MultilingualName(
+                        en=group_data["name"], **{"zh-cn": group_data["name"]}
+                    )
+
+                    combo_section = ComboSectionForOrder(
+                        id=section_id,
+                        name=group_data["name"],
+                        nameMultilingual=section_multilingual,
+                        selectSaleItems=group_data["items"],
+                    )
+                    combo_sections_list.append(combo_section)
+
+                combo_detail = ComboDetail(comboSections=combo_sections_list)
+
+            # Keep additional options for the options field
+            remaining_options = additional_options
+
+        elif item.item_type == "SALE_ITEM" and item.options:
+            # For regular items, all options remain as options
+            remaining_options = item.options
+
+        # Convert remaining options to OrderItemOptionNote format if any
+        converted_options = None
+        if remaining_options:
+            from .classes import OrderItemOptionNote
+
+            converted_options = []
+            for option in remaining_options:
+                is_real_option = option.id is not None
+                option_note = OrderItemOptionNote(
+                    sectionId=getattr(option, "section_id", None),
+                    sectionName=getattr(option, "section_name", None),
+                    id=option.id,
+                    detailPriceId=None,
+                    optionPrice=(
+                        Decimal(str(option.price))
+                        if (option.price and is_real_option)
+                        else None
+                    ),
+                    name=option.name if not is_real_option else None,
+                    nameMultilingual=getattr(option, "name_multilingual", None),
+                    price=(
+                        Decimal(str(option.price))
+                        if (option.price and not is_real_option)
+                        else Decimal("0")
+                    ),
+                    priceOriginal=None,
+                    quantity=option.quantity or 1,
+                    checked=getattr(option, "checked", True),
+                    isOpenOption=getattr(option, "is_open_option", False),
+                )
+                converted_options.append(option_note)
+
+        # Create item MultilingualName with proper field names
+        item_multilingual = MultilingualName(
+            en=item.name, **{"zh-cn": None, "French": None}
+        )
+
+        # Build the selected item for generation (supporting both comboDetail and options)
         generation_item = OrderGenerationSelectedItem(
             id=item.id,
-            saleItemId=item.id,  # Same as id
+            saleItemId=item.id,
             quantity=item.quantity,
             itemType=item.item_type,
             price=item.price,
-            displayPrice=item.price,  # Optional field per spec
+            displayPrice=item.price,
             name=item.name,
-            nameMultilingual=item.name_multilingual,
+            nameMultilingual=item_multilingual,
             categoryId=item.category_id,
-            options=None,  # Options need conversion between calculation and generation types
+            options=converted_options,  # Can coexist with comboDetail
+            comboDetail=combo_detail,  # May be None for non-combo items
         )
         selected_items.append(generation_item)
 
@@ -2258,24 +2810,47 @@ def extract_order_summary(order_response: "OrderGenerationResponse") -> Dict[str
         return {"error": "No order data in response"}
 
     order = order_response.order
+
+    # Handle price safely for dict or Pydantic model
+    _price_obj = getattr(order, "price", None)
+    if isinstance(_price_obj, dict):
+        price_info = _price_obj
+    else:
+        try:
+            price_info = _price_obj.model_dump(by_alias=True) if _price_obj else {}
+        except Exception:
+            price_info = {}
+
     summary = {
         "order_id": getattr(order, "_id", None),
-        "order_number": order.order_number,
-        "status": order.order_status,
-        "kitchen_status": order.kitchen_status,
-        "payment_summary": order.payment_summary,
-        "total_amount": float(order.price.total),
-        "subtotal": float(order.price.subtotal),
-        "tax_total": float(order.price.tax_total),
-        "tips": float(order.price.tips),
-        "order_type": order.type,
-        "customer_email": order.customer.email,
-        "customer_name": f"{order.customer.first_name} {order.customer.last_name}".strip(),
-        "transaction_id": order.transaction_id,
-        "successful": order_response.successful,
-        "payment_url": order_response.payment_url,
-        "created_at": order.create_at,
-        "item_count": len(order.order_items),
+        "order_number": getattr(order, "orderNumber", "N/A"),
+        "status": getattr(order, "status", None),
+        "kitchen_status": getattr(order, "kitchen_status", None),
+        "payment_summary": getattr(order, "payment_summary", "N/A"),
+        "total_amount": float(price_info.get("total", 0)) if price_info else 0,
+        "subtotal": float(price_info.get("subtotal", 0)) if price_info else 0,
+        "tax_total": float(price_info.get("taxTotal", 0)) if price_info else 0,
+        "tips": float(price_info.get("tips", 0)) if price_info else 0,
+        "order_type": getattr(order, "type", "N/A"),
+        "customer_email": (
+            getattr(getattr(order, "customer", None), "email", None)
+            if not isinstance(getattr(order, "customer", None), dict)
+            else getattr(order, "customer", {}).get("email", "N/A")
+        )
+        or "N/A",
+        "customer_name": (
+            (
+                f"{getattr(getattr(order, 'customer', None), 'firstName', '')} {getattr(getattr(order, 'customer', None), 'lastName', '')}".strip()
+                if not isinstance(getattr(order, "customer", None), dict)
+                else f"{getattr(order, 'customer', {}).get('firstName','')} {getattr(order, 'customer', {}).get('lastName','')}".strip()
+            )
+            or "N/A"
+        ),
+        "transaction_id": getattr(order, "transaction_id", "N/A"),
+        "successful": getattr(order_response, "successful", True),
+        "payment_url": getattr(order_response, "payment_url", None),
+        "created_at": getattr(order, "create_at", None),
+        "item_count": len(getattr(order, "orderItems", [])),
     }
 
     return summary
@@ -2395,6 +2970,7 @@ def convert_extracted_order_to_dict(
 ) -> List[Dict[str, Any]]:
     """
     Convert ExtractedMenuSifuOrder to internal dict format for processing.
+    Properly handles combo items vs regular items with modifiers.
 
     Args:
         extracted_order: Extracted order from LLM
@@ -2404,7 +2980,8 @@ def convert_extracted_order_to_dict(
     """
     processed_items = []
     for item in extracted_order.items:
-        # Convert modifiers to dict format for compatibility
+        # Convert modifiers to options format
+        # The system will later convert these to comboDetail for combo items
         options_list = []
         for modifier in item.modifiers:
             option_dict = {
@@ -2413,6 +2990,8 @@ def convert_extracted_order_to_dict(
                 "price": modifier.price,
                 "quantity": modifier.quantity,
                 "checked": modifier.checked,
+                "name_multilingual": None,  # Will be populated later if needed
+                "section_name": None,  # Will be determined based on item type
             }
             options_list.append(option_dict)
 
@@ -2426,8 +3005,8 @@ def convert_extracted_order_to_dict(
             "display_price": item.display_price,
             "item_type": item.item_type,
             "category_id": item.category_id,
-            "special_notes": item.special_notes,
-            "options": options_list,  # Converted modifiers to options dict format
+            "special_notes": item.special_notes or "",
+            "options": options_list,  # Modifiers converted to options - will become comboDetail for combo items
         }
         processed_items.append(item_dict)
 
@@ -2447,11 +3026,9 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     Raises:
         ValueError: If required fields are missing
     """
-    from utils.log import logger
+    logger.debug(f"[safe_convert_item_fields] Processing item: {item}")
 
-    logger.debug(f"[safe_convert_item_fields] Starting conversion for item: {item}")
-
-    # Safely extract and validate required id field
+    # Extract raw ID from item
     raw_id = item.get("id") or item.get("item_id")
     logger.debug(f"[safe_convert_item_fields] Raw ID: {raw_id} (type: {type(raw_id)})")
 

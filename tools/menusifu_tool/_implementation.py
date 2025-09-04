@@ -33,8 +33,6 @@ from tools.menusifu_tool.classes import (
     OrderCalculationResponse,
     OrderGenerationRequest,
     OrderGenerationResponse,
-    OrderGenerationSelectedItem,
-    OrderItemOptionNote,
     OrderSelectedItem,
     OrderType,
     PaymentMethod,
@@ -148,6 +146,46 @@ class MenuSifuTool(Toolkit):
             method = PaymentMethod.CASH
         pay_online = method in {PaymentMethod.CREDIT_CARD, PaymentMethod.WECHAT_PAY}
         return method, pay_online
+
+    def _build_allergy_info(
+        self, customer_info: Union[ExtractedMenuSifuOrder, str], order_items: List[Dict]
+    ) -> str:
+        """
+        Build comprehensive allergy/special instructions info from multiple sources.
+
+        Args:
+            customer_info: Extracted order with customer info
+            order_items: List of processed order items
+
+        Returns:
+            str: Combined allergy and special instructions text
+        """
+        if isinstance(customer_info, str):
+            return ""
+
+        allergy_parts = []
+
+        # Add order-level special instructions
+        if (
+            hasattr(customer_info, "special_instructions")
+            and customer_info.special_instructions
+        ):
+            allergy_parts.append(customer_info.special_instructions)
+
+        # Add item-level special notes
+        for item in order_items:
+            special_notes = item.get("special_notes", "")
+            if special_notes and special_notes.strip():
+                item_name = item.get("name", "Item")
+                allergy_parts.append(f"{item_name}: {special_notes.strip()}")
+
+        # Combine all parts
+        if allergy_parts:
+            combined = ". ".join(allergy_parts)
+            # Limit to reasonable length for API
+            return combined[:500] if len(combined) > 500 else combined
+
+        return ""
 
     @property
     def _menusifu_token(self) -> tuple[str, str]:
@@ -717,52 +755,84 @@ class MenuSifuTool(Toolkit):
             # Build order price from calculation using helper function
             order_price = build_order_price_from_calculation(calc_result)
 
-            # Convert order_items to OrderGenerationSelectedItem instances
-            selected_items = []
+            # Use the updated utility function to convert items properly
+            from ._utils import build_selected_items_from_calculation
+            from .classes import (
+                OrderCalculationRequest,
+                OrderItemOption,
+                OrderSelectedItem,
+            )
+
+            calc_selected_items = []
             for item in order_items:
                 try:
                     # Use helper function for safe field conversion
                     safe_fields = safe_convert_item_fields(item)
 
-                    # Convert options/modifiers to OrderItemOptionNote using helper
+                    # Convert options to OrderItemOption format for proper handling
                     item_options = []
                     if item.get("options"):
                         for option in item["options"]:
                             safe_option_fields = safe_convert_option_fields(option)
 
-                            option_note = OrderItemOptionNote(
+                            # Create OrderItemOption with proper parameters
+                            option_obj = OrderItemOption(
                                 id=safe_option_fields["id"],
-                                detailPriceId=None,  # Optional field
-                                optionPrice=safe_option_fields["optionPrice"],
                                 name=safe_option_fields["name"],
+                                nameMultilingual=None,
+                                optionPrice=safe_option_fields["optionPrice"],
                                 price=safe_option_fields["price"],
+                                priceOriginal=None,
                                 quantity=safe_option_fields["quantity"],
-                                checked=safe_option_fields["checked"],
-                                isOpenOption=safe_option_fields["isOpenOption"],
+                                sectionId="Options",  # Default section ID
+                                sectionName=None,
+                                detailPriceId="",
+                                subOptions=[],
+                                subOptionsPrice=None,
+                                isOpenOption=safe_option_fields.get(
+                                    "isOpenOption", False
+                                ),
+                                checked=safe_option_fields.get("checked", True),
                             )
-                            item_options.append(option_note)
+                            item_options.append(option_obj)
 
-                    # Use raw displayPrice for OrderGenerationSelectedItem (keep intact)
-                    display_price_val = safe_fields["displayPrice"]
-
-                    # Create OrderGenerationSelectedItem
-                    selected_item = OrderGenerationSelectedItem(
+                    # Create OrderSelectedItem
+                    order_item = OrderSelectedItem(
                         id=safe_fields["id"],
                         saleItemId=safe_fields["saleItemId"],
                         quantity=safe_fields["quantity"],
                         price=safe_fields["price"],
-                        displayPrice=display_price_val,
+                        displayPrice=safe_fields["displayPrice"],
                         itemType=safe_fields["itemType"],
                         name=safe_fields["name"],
-                        nameMultilingual=None,  # Optional field
+                        nameMultilingual=None,
                         categoryId=safe_fields["categoryId"],
-                        options=item_options if item_options else None,
+                        options=item_options if item_options else [],
+                        detailPriceId=None,
+                        sizeId=None,
+                        detailPriceInfo=None,
                     )
-                    selected_items.append(selected_item)
+                    calc_selected_items.append(order_item)
+
                 except Exception as e:
                     error_msg = f"Failed to process item '{item.get('name', 'Unknown item')}': {str(e)}"
                     logger.info(f"[MenuSifuTool] {error_msg}")
                     return error_msg
+
+            # Create a temporary calculation request to use the conversion logic
+            temp_calc_request = OrderCalculationRequest(
+                orderType=OrderType.ONLINE_PICKUP,
+                paymentMethod=PaymentMethod.CASH,
+                totalTips=Decimal("0"),
+                deliveryFee=Decimal("0"),
+                selectedItems=calc_selected_items,
+            )
+
+            # Use the updated utility function to convert to proper format
+            selected_items = build_selected_items_from_calculation(temp_calc_request)
+
+            # Remove any failed conversions
+            selected_items = [item for item in selected_items if item is not None]
 
             if not selected_items:
                 error_msg = "No valid items could be processed for order generation"
@@ -809,7 +879,7 @@ class MenuSifuTool(Toolkit):
                 deliveryInfo={},  # Always empty for pickup
                 selectedGiftItems=[],
                 selectedGiftItemsCrm=[],
-                allergyInfo="",
+                allergyInfo=self._build_allergy_info(customer_info, order_items),
                 needUtensils=True,  # Changed from False to match sample
                 needStraws=True,  # Changed from False to match sample
                 needCondiments=True,  # Changed from False to match sample
@@ -859,11 +929,11 @@ class MenuSifuTool(Toolkit):
                 # Safely extract order ID from nested order object
                 order_obj = getattr(order_result, "order", None)
                 if order_obj:
-                    # Try order._id (alias order_id) first, then order_number as fallback
+                    # Try order._id first, then orderNumber as fallback
                     order_id = getattr(order_obj, "_id", None) or getattr(
-                        order_obj, "order_number", "N/A"
+                        order_obj, "orderNumber", "N/A"
                     )
-                    order_number = getattr(order_obj, "order_number", "N/A")
+                    order_number = getattr(order_obj, "orderNumber", "N/A")
                     status = getattr(order_obj, "status", "N/A")
 
                     # Log detailed order generation response
@@ -874,15 +944,15 @@ class MenuSifuTool(Toolkit):
 
                     # Log price details from the generated order
                     order_price = getattr(order_obj, "price", None)
-                    if order_price:
+                    if order_price and isinstance(order_price, dict):
                         logger.info(
-                            f"  - Final Total: ${getattr(order_price, 'total', 'N/A')}"
+                            f"  - Final Total: ${order_price.get('total', 'N/A')}"
                         )
                         logger.info(
-                            f"  - Final Subtotal: ${getattr(order_price, 'subtotal', 'N/A')}"
+                            f"  - Final Subtotal: ${order_price.get('subtotal', 'N/A')}"
                         )
                         logger.info(
-                            f"  - Final Tax: ${getattr(order_price, 'tax_total', 'N/A')}"
+                            f"  - Final Tax: ${order_price.get('taxTotal', 'N/A')}"
                         )
 
                     logger.info(

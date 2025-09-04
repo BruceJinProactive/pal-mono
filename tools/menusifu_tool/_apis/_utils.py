@@ -84,8 +84,16 @@ def connect_menusifu_api(
                     path_plus_params + "?" + urllib.parse.urlencode(query_params)
                 )
 
-            # Make request
-            conn.request(http_method.upper(), path_plus_params, payload, headers)
+            # Make request - ensure payload is properly encoded as UTF-8 bytes
+            encoded_payload = None
+            if payload:
+                if isinstance(payload, str):
+                    encoded_payload = payload.encode("utf-8")
+                else:
+                    encoded_payload = payload
+            conn.request(
+                http_method.upper(), path_plus_params, encoded_payload, headers
+            )
 
             # Get response
             res = conn.getresponse()

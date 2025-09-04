@@ -284,17 +284,23 @@ class OrderItemOption(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     detail_price_id: Optional[str] = Field(None, alias="detailPriceId")
-    id: int
+    id: Optional[int] = None  # Some options may not have ID (e.g. open options)
     name: str
     name_multilingual: Optional[MultilingualName] = Field(
         None, alias="nameMultilingual"
     )
-    option_price: Money = Field(alias="optionPrice")
+    option_price: Optional[Money] = Field(None, alias="optionPrice")
     price: Money
-    price_original: Money = Field(alias="priceOriginal")
+    price_original: Optional[Money] = Field(None, alias="priceOriginal")
     quantity: int
     section_id: str = Field(alias="sectionId")
-    section_name: MultilingualName = Field(alias="sectionName")
+    section_name: Optional[MultilingualName] = Field(None, alias="sectionName")
+
+    # Additional fields for new structure
+    sub_options: Optional[List[Dict]] = Field(default_factory=list, alias="subOptions")
+    sub_options_price: Optional[Money] = Field(None, alias="subOptionsPrice")
+    is_open_option: Optional[bool] = Field(None, alias="isOpenOption")
+    checked: Optional[bool] = None
 
 
 class DetailPriceInfo(BaseModel):
@@ -564,17 +570,28 @@ class OrderItemOptionNote(BaseModel):
         json_encoders={Decimal: float},  # Serialize Decimals as numbers, not strings
     )
 
+    # Section identification (for notes/custom options)
+    section_id: Optional[str] = Field(None, alias="sectionId")
+    section_name: Optional[MultilingualName] = Field(None, alias="sectionName")
+
     # For real options (condiments, etc.)
     id: Optional[int] = None
     detail_price_id: Optional[str] = Field(None, alias="detailPriceId")
     option_price: Optional[Money] = Field(None, alias="optionPrice")
 
-    # For notes/comments
+    # For notes/comments and options
     name: Optional[str] = None
+    name_multilingual: Optional[MultilingualName] = Field(
+        None, alias="nameMultilingual"
+    )
     price: Money = Decimal("0")  # Should be 0 for notes
+    price_original: Optional[Money] = Field(None, alias="priceOriginal")
     quantity: int = 1  # Should be 1 for notes
     checked: Optional[bool] = None  # Only for notes
     is_open_option: Optional[bool] = Field(None, alias="isOpenOption")  # Only for notes
+    sub_options: Optional[List] = Field(
+        default_factory=list, alias="subOptions"
+    )  # Sub-options list
 
 
 class OrderGenerationSelectedItem(BaseModel):
@@ -599,6 +616,9 @@ class OrderGenerationSelectedItem(BaseModel):
     )
     category_id: int = Field(alias="categoryId")
     options: Optional[List[OrderItemOptionNote]] = None
+    combo_detail: Optional["ComboDetail"] = Field(
+        None, alias="comboDetail"
+    )  # Forward reference
 
 
 class OrderGenerationRequest(BaseModel):
@@ -661,13 +681,40 @@ class Timeline(BaseModel):
     time: int
 
 
-class ComboDetail(BaseModel):
-    """Combo detail information"""
+class SelectSaleItem(BaseModel):
+    """Selected sale item within a combo section"""
 
     model_config = ConfigDict(populate_by_name=True)
 
-    # Add combo-specific fields as needed
-    pass
+    sale_item_id: int = Field(alias="saleItemId")
+    quantity: int
+    name: str
+    name_multilingual: Optional[MultilingualName] = Field(
+        None, alias="nameMultilingual"
+    )
+    price: Money
+    detail_price_id: str = Field(alias="detailPriceId")
+
+
+class ComboSectionForOrder(BaseModel):
+    """Combo section for order generation (different from menu combo section)"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int
+    name: str
+    name_multilingual: Optional[MultilingualName] = Field(
+        None, alias="nameMultilingual"
+    )
+    select_sale_items: List[SelectSaleItem] = Field(alias="selectSaleItems")
+
+
+class ComboDetail(BaseModel):
+    """Combo detail information for order generation"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    combo_sections: List[ComboSectionForOrder] = Field(alias="comboSections")
 
 
 class OrderItem(BaseModel):
@@ -776,54 +823,20 @@ class OrderResponsePrice(BaseModel):
 
 
 class Order(BaseModel):
-    """Order information in response"""
+    """Order information in response - simplified to match actual API response"""
 
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(
+        populate_by_name=True, extra="allow"
+    )  # Allow extra fields
 
-    type: OrderType
-    product_line: str = Field(alias="productLine")
-    status: int
-    order_number: str = Field(alias="orderNumber")
-    notes: str = ""
-    order_status: int = Field(alias="orderStatus")
-    kitchen_status: int = Field(alias="kitchenStatus")
-    is_urgent_to_pick: bool = Field(alias="isUrgentToPick")
-    urgent_to_pick_times: int = Field(alias="urgentToPickTimes")
-    payment_summary: str = Field(alias="paymentSummary")
-    promotions: List = Field(default_factory=list)
-    pos_payments: List = Field(default_factory=list, alias="POSPayments")
-    channel: str
-    selected_gift_items: List = Field(default_factory=list, alias="selectedGiftItems")
-    operate_type: str = Field(alias="operateType")
-    timeline: List[Timeline] = Field(default_factory=list)
-    order_id: Optional[str] = Field(None, alias="_id")
-    order_items: List[OrderItem] = Field(alias="orderItems")
-    customer: Customer
-    allergy_info: str = Field("", alias="allergyInfo")
-    online_type: str = Field(alias="onlineType")
-    table_id: str = Field("", alias="tableId")
-    num_of_guests: int = Field(1, alias="numOfGuests")
-    table_name: str = Field("", alias="tableName")
-    need_utensils: bool = Field(alias="needUtensils")
-    user_agent: str = Field(alias="userAgent")
-    client_ip: str = Field(alias="clientIp")
-    need_condiments: bool = Field(alias="needCondiments")
-    selected_payment_info: SelectedPaymentInfo = Field(alias="selectedPaymentInfo")
-    prepare_time: PrepareTime = Field(alias="prepareTime")
-    order_email: str = Field(alias="orderEmail")
-    contains: Contains
-    email_verified: bool = Field(alias="emailVerified")
-    merchant_id: str = Field(alias="merchantId")
-    merchant_id_obj: str = Field(alias="merchant_id")
-    user_id: str = Field(alias="userId")
-    price: OrderResponsePrice
-    merchant_name: str = Field(alias="merchantName")
-    merchant_group_id: str = Field(alias="merchantGroupId")
-    create_at: int = Field(alias="createAt")
-    update_at: int = Field(alias="updateAt")
-    version: int = Field(alias="__v")
-    send_to_pos_time: int = Field(alias="sendToPosTime")
-    transaction_id: str = Field(alias="transactionId")
+    # Core fields present in actual API response
+    _id: Optional[str] = None
+    type: Optional[str] = None  # Changed from OrderType to str for flexibility
+    productLine: Optional[str] = None
+    status: Optional[int] = None
+    orderNumber: Optional[str] = None
+    orderItems: Optional[List[Dict]] = Field(default_factory=list)  # Simplified as Dict
+    price: Optional[Dict] = None  # Keep as Dict to avoid validation issues
 
 
 class OrderGenerationResponse(BaseModel):
@@ -831,10 +844,12 @@ class OrderGenerationResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, str_to_lower=False)
 
-    payment_url: Optional[str] = Field(alias="paymentUrl")
+    payment_url: Optional[str] = Field(None, alias="paymentUrl")
     payment_html: str = Field("", alias="paymentHtml")
     order: Order
-    successful: bool
+    successful: bool = (
+        True  # Default to True since we only get here on successful API calls
+    )
 
 
 # ===== EXTRACTION CLASSES FOR LLM OUTPUT =====
