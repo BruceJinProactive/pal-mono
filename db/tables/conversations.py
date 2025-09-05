@@ -66,6 +66,11 @@ class Conversation(Base):
         Enum(ConversationStatus), default=ConversationStatus.ACTIVE, nullable=False
     )
 
+    # Test flag - marks if conversation started with a test message
+    is_test: Mapped[bool] = mapped_column(
+        default=False, nullable=False, server_default=text("false")
+    )
+
     # Vapi control URL for call transfer
     vapi_control_url: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
