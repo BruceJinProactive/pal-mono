@@ -250,10 +250,15 @@ class MenuSifuTool(Toolkit):
                     chat_history=chat_history,
                 ),
                 response_format=ExtractedMenuSifuOrder,
-                openai=False,  # Use internal model like Square
+                openai=True,
             )
 
             # Check if the order is a string and convert it to an ExtractedMenuSifuOrder object
+            logger.info(
+                f"[MenuSifuTool] Extraction result type: {type(extracted_order)}"
+            )
+            logger.info(f"[MenuSifuTool] Extraction result: {str(extracted_order)}")
+
             if extracted_order is None:
                 error_msg = "Failed to extract order information from chat history"
                 logger.info(f"[MenuSifuTool] {error_msg}")
@@ -261,10 +266,23 @@ class MenuSifuTool(Toolkit):
 
             if isinstance(extracted_order, str):
                 try:
+                    logger.info(
+                        f"[MenuSifuTool] Raw LLM response: {extracted_order[:500]}..."
+                    )
                     order_dict = json.loads(extracted_order)
+                    logger.info(
+                        f"[MenuSifuTool] Parsed JSON keys: {list(order_dict.keys())}"
+                    )
+                    if "firstName" in order_dict:
+                        logger.info(
+                            f"[MenuSifuTool] firstName value: {order_dict['firstName']}"
+                        )
                     extracted_order = ExtractedMenuSifuOrder(**order_dict)
                 except (json.JSONDecodeError, ValueError) as e:
-                    error_msg = f"Failed to parse extracted order: {str(e)}"
+                    error_msg = f"Failed to parse extracted order JSON: {str(e)}"
+                    logger.info(
+                        f"[MenuSifuTool] Raw response that failed to parse: {extracted_order[:200]}"
+                    )
                     logger.info(f"[MenuSifuTool] {error_msg}")
                     return error_msg
 
@@ -305,7 +323,8 @@ class MenuSifuTool(Toolkit):
             return extracted_order
 
         except ValidationError as e:
-            logger.warning(f"[MenuSifuTool] Order validation error: {e}")
+            logger.warning(f"[MenuSifuTool] Pydantic validation error: {e}")
+            logger.warning(f"[MenuSifuTool] Validation error details: {e.errors()}")
             warning_message = ""
             for error in e.errors():
                 logger.warning(
@@ -316,12 +335,19 @@ class MenuSifuTool(Toolkit):
                 warning_message
                 + "\nAsk the customer to provide the missing information or correct the invalid details."
             )
-            logger.info(f"[MenuSifuTool] Validation error: {final_error_msg}")
+            logger.info(
+                f"[MenuSifuTool] Final validation error message: {final_error_msg}"
+            )
             return final_error_msg
         except Exception as e:
-            error_msg = f"Failed to extract order information: {str(e)}"
-            logger.info(f"[MenuSifuTool] Order extraction failed: {e}")
-            logger.info(f"[MenuSifuTool] {error_msg}")
+            error_msg = "An error occurred during extraction."
+            logger.error(
+                f"[MenuSifuTool] Unexpected error during extraction: {type(e).__name__}: {e}"
+            )
+            logger.error(f"[MenuSifuTool] Error details: {repr(e)}")
+            import traceback
+
+            logger.error(f"[MenuSifuTool] Full traceback: {traceback.format_exc()}")
             return error_msg
 
     def _process_extracted_order(
