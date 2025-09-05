@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from datetime import datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import Event as AnalyticsEvent
@@ -27,6 +27,39 @@ def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict
     return _implementation.track_event(user_id, event_name, event_properties)
 
 
+async def get_reports(
+    session: Session,
+    account_id: uuid.UUID | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> GetAllReportsResponse:
+    """
+    Get all analytics reports for a given account within a date range.
+    This is the main analytics function.
+
+    Args:
+        session (Session): Database session
+        account_id (uuid.UUID): The account ID to calculate analytics for
+        start_date (datetime | None): Start date for the calculation
+        end_date (datetime | None): End date for the calculation
+        group_by (list[str] | None): List of fields to group by
+        filter_by (dict): Filter parameters
+
+    Returns:
+        GetAllReportsResponse: Object containing all analytics reports
+    """
+    return await _implementation.get_reports(
+        session,
+        account_id,
+        start_date,
+        end_date,
+        group_by=group_by,
+        filter_by=filter_by,
+    )
+
+
 async def get_account_reports(
     session: Session,
     account_id: uuid.UUID,
@@ -36,7 +69,7 @@ async def get_account_reports(
     filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
 ) -> GetAllReportsResponse:
     """
-    Get both Active Users and Message Turns analytics data for a given account within a date range.
+    Wrapper function for backward compatibility. Calls get_reports internally.
 
     Args:
         session (Session): Database session
@@ -49,7 +82,7 @@ async def get_account_reports(
     Returns:
         GetAllReportsResponse: Object containing all analytics reports
     """
-    return await _implementation.get_account_reports(
+    return await get_reports(
         session,
         account_id,
         start_date,
@@ -59,19 +92,29 @@ async def get_account_reports(
     )
 
 
-async def send_daily_report_to_slack(channel: str | None = None, client=None) -> dict:
+async def send_report_to_slack(
+    slack_channel: str | None = None,
+    client: AsyncWebClient | None = None,
+    session: Session | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict:
     """
-    Send a comprehensive daily commerce report to Slack with conversion analytics.
+    Send report to Slack with conversion analytics.
 
     Args:
         channel (str): Slack channel to send to (optional, uses env variable if not provided)
         client: Optional Slack client to reuse
-        session (AsyncSession): Async database session for fetching conversion data
+        session (Session): Database session
+        start_date (datetime | None): Start date for the calculation
+        end_date (datetime | None): End date for the calculation
 
     Returns:
         dict: Status of the operation
     """
-    return await _slack.send_daily_report_to_slack(channel, client)
+    return await _slack.send_report_to_slack(
+        slack_channel, client, session, start_date, end_date
+    )
 
 
 async def handle_slack_events(request):

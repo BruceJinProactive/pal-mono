@@ -309,36 +309,6 @@ async def list_account_projects(
     return await _projects.list_account_projects(account_name, context, session)
 
 
-@admin_router.post(
-    "/accounts/{account_name}/reports/daily", status_code=status.HTTP_200_OK
-)
-async def send_daily_report(
-    account_name: str,
-    channel: str | None = Query(
-        default=None,
-        description="Optional Slack channel to send to. If not provided, uses SLACK_CHANNEL env variable or #general.",
-    ),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> dict:
-    """
-    Send a daily report message to Slack via bot.
-    """
-    return await _analytics.generate_daily_report(
-        account_name, context, session, channel
-    )
-
-
-@admin_router.post("/slack/events")
-async def slack_events(request: Request):
-    """
-    Handle Slack events (including URL verification and messages with 'daily').
-    """
-    from services import analytics_service
-
-    return await analytics_service.handle_slack_events(request)
-
-
 @admin_router.get("/accounts/{account_name}/stat")
 async def get_account_statistics(
     account_name: str,
@@ -2110,6 +2080,16 @@ async def get_merchant_locations(
 ---------- Analytics Endpoints ----------
 ------------------------------------
 """
+
+
+@admin_router.post("/slack/events")
+async def slack_events(request: Request):
+    """
+    Handle Slack events (including URL verification and messages with 'daily').
+    """
+    from services import analytics_service
+
+    return await analytics_service.handle_slack_events(request)
 
 
 @admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
