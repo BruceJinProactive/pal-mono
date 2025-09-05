@@ -4,12 +4,12 @@ from typing import Any, Dict, List
 
 from agent.config import (
     AgentConfig,
-    AssistantDestination,
     CallerInfo,
     LanguageAssistantMultilingConfig,
     MultilingualSquadConfig,
     SquadConfig,
     SquadMember,
+    TransferDestination,
     VAPIAssistant,
     VoiceDecoderConfig,
 )
@@ -342,7 +342,7 @@ class SquadBuilder:
 
         return assistants
 
-    def _create_transfer_destinations(self) -> List[AssistantDestination]:
+    def _create_transfer_destinations(self) -> List[TransferDestination]:
         """Create transfer destinations for the triage assistant."""
         destinations = []
         transfer_mode = self.squad_config.triage_assistant.transfer_mode
@@ -350,7 +350,7 @@ class SquadBuilder:
         for language_name in self.squad_config.language_assistants:
             config = self.squad_config.language_assistants[language_name]
             destinations.append(
-                AssistantDestination(
+                TransferDestination(
                     assistantName=config.name,
                     message=config.transfer_message,
                     description=config.transfer_description

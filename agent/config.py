@@ -171,7 +171,7 @@ class VAPIAssistant(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
-class AssistantDestination(BaseModel):
+class TransferDestination(BaseModel):
     """Configuration for assistant transfer destinations."""
 
     assistantName: str
@@ -183,12 +183,31 @@ class AssistantDestination(BaseModel):
     type: Literal["assistant"] = "assistant"
 
 
+class ContextEngineeringPlan(BaseModel):
+    """Configuration for context engineering."""
+
+    type: Literal["none", "all", "lastNMessages"]
+    maxMessages: Optional[int] = Field(default=0, ge=0)
+
+
+class HandoffDestination(BaseModel):
+    """Configuration for handoff destinations."""
+
+    assistantName: str
+    description: str  # Used by AI to choose when/how to transfer
+    type: Literal["assistant"] = "assistant"
+    contextEngineeringPlan: Optional[ContextEngineeringPlan] = None
+    assistant: Optional[VAPIAssistant] = (
+        None  # This is a transient assistant to transfer the call to.
+    )
+
+
 class SquadMember(BaseModel):
     """Squad member configuration."""
 
     assistantId: Optional[str] = None
     assistant: Optional[VAPIAssistant] = None
-    assistantDestinations: Optional[List[AssistantDestination]] = None
+    assistantDestinations: Optional[List[TransferDestination]] = None
 
     @model_validator(mode="after")
     def validate_assistant_or_assistant_id(self):
