@@ -862,7 +862,7 @@ class ExtractedMenuSifuModifier(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    id: Optional[str] = None
+    id: Optional[int] = None
     name: str
     price: Optional[float] = None
     quantity: int = 1
@@ -896,8 +896,8 @@ class ExtractedMenuSifuItem(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     item_name: str
-    item_id: Optional[str] = None
-    sale_item_id: Optional[str] = None
+    item_id: Optional[int] = None
+    sale_item_id: Optional[int] = None
     quantity: int = 1
     price: Optional[float] = None
     display_price: Optional[float] = None
