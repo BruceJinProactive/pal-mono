@@ -63,7 +63,18 @@ async def get_reports(
         if account_id:
             filter_by["account_id"] = account_id
 
-        # Execute all analytics queries in parallel for better performance
+        # Create a function that creates a new sync session for each thread operation
+        def create_sync_session_and_run(func, **kwargs):
+            from db.session import SyncSessionLocal
+
+            sync_session = SyncSessionLocal()
+            try:
+                return func(session=sync_session, **kwargs)
+            finally:
+                sync_session.close()
+
+        # Execute all analytics queries in parallel with separate sessions for each thread
+
         (
             users_report,
             turns_report,
@@ -72,40 +83,40 @@ async def get_reports(
             conversion_report,
         ) = await asyncio.gather(
             asyncio.to_thread(
+                create_sync_session_and_run,
                 get_active_users,
-                session=session,
                 start_date=start_date,
                 end_date=end_date,
                 group_by=group_by,
                 filter_by=filter_by,
             ),
             asyncio.to_thread(
+                create_sync_session_and_run,
                 get_turns_summary,
-                session=session,
                 start_date=start_date,
                 end_date=end_date,
                 group_by=group_by,
                 filter_by=filter_by,
             ),
             asyncio.to_thread(
+                create_sync_session_and_run,
                 get_calls_time_summary,
-                session=session,
                 start_date=start_date,
                 end_date=end_date,
                 group_by=group_by,
                 filter_by=filter_by,
             ),
             asyncio.to_thread(
+                create_sync_session_and_run,
                 get_calls_info_summary,
-                session=session,
                 start_date=start_date,
                 end_date=end_date,
                 group_by=group_by,
                 filter_by=filter_by,
             ),
             asyncio.to_thread(
+                create_sync_session_and_run,
                 get_conversion_summary,
-                session=session,
                 start_date=start_date,
                 end_date=end_date,
                 group_by=group_by,

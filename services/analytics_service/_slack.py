@@ -576,7 +576,6 @@ async def handle_report_request(
         # Get database session for conversion data using proper context handling
         result = {"status": "error", "message": "No result"}
 
-        # Create session directly
         session = SyncSessionLocal()
         try:
             result = await send_report_to_slack(
