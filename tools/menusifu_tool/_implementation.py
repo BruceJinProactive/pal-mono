@@ -824,13 +824,21 @@ class MenuSifuTool(Toolkit):
                             )
                             item_options.append(option_obj)
 
+                    # Convert displayPrice from dollars to integer cents (matching calculation logic)
+                    display_price_cents = None
+                    if safe_fields["displayPrice"] is not None:
+                        price_normalized = Decimal(
+                            safe_fields["displayPrice"]
+                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                        display_price_cents = int(price_normalized * 100)
+
                     # Create OrderSelectedItem
                     order_item = OrderSelectedItem(
                         id=safe_fields["id"],
                         saleItemId=safe_fields["saleItemId"],
                         quantity=safe_fields["quantity"],
                         price=safe_fields["price"],
-                        displayPrice=safe_fields["displayPrice"],
+                        displayPrice=display_price_cents,  # Now in cents as integer
                         itemType=safe_fields["itemType"],
                         name=safe_fields["name"],
                         nameMultilingual=None,
