@@ -122,11 +122,14 @@ Extract the following information from the conversation:
 ## FORMAT FOR ITEMS:
 
 ### For Combo Items (COMBO_SALE_ITEM):
+**IMPORTANT**: If menu context shows "price": null for combo items, use "base_price" value instead!
 ```json
 {{
   "item_id": 3537,
   "item_name": "DB3.Beef Lo Mein",
   "item_type": "COMBO_SALE_ITEM",
+  "price": 10.5,  // Use base_price if menu shows price: null
+  "display_price": 10.5,  // Same as price for combo items
   "combo_sections": [{{
     "section_id": 18,
     "section_name": "Dinner With",
@@ -246,6 +249,14 @@ Please analyze the conversation and extract all Chinese food order information. 
 5. Only extract items and information the user has confirmed they want to order
 6. Map bilingual names appropriately (English/Chinese)
 
+**CRITICAL PRICE EXTRACTION RULES FOR COMBO ITEMS:**
+7. For COMBO_SALE_ITEM items: If the menu context shows "price": null, use the "base_price" value instead
+8. For COMBO_SALE_ITEM items: Always set both "price" and "display_price" to the base_price value when price is null
+9. **Currency format**: All prices must be in dollars (not cents) with 2 decimal places when needed
+10. **Zero base_price handling**: If base_price is 0, set both "price": 0.00 and "display_price": 0.00 (never null)
+11. Example: If menu shows {"price": null, "base_price": 8.5, "item_type": "COMBO_SALE_ITEM"} → extract as "price": 8.5, "display_price": 8.5
+12. NEVER leave price as null for combo items when base_price is available in the menu context
+
 **EXAMPLES FOR CHINESE FOOD:**
 - If user says "I want General Tso Chicken large size"
   - Item: "General Tso Chicken" 
@@ -287,8 +298,8 @@ For basic combo items with combo selections (e.g., lunch/dinner combos):
     "item_id": 3451,
     "item_name": "LC15.Chicken Black Mushroom",
     "quantity": 1,
-    "price": 8.5,
-    "display_price": 850,
+    "price": 8.5,  // Prices are in dollars
+    "display_price": 8.5,
     "item_type": "COMBO_SALE_ITEM",
     "category_id": 329,
     "special_notes": "",
@@ -310,8 +321,8 @@ For combo items with modifications AND additional options:
     "item_id": 3689,
     "item_name": "Plain Lo Mein",
     "quantity": 1,
-    "price": 9.2,
-    "display_price": 920,
+    "price": 9.2,  // Prices are in dollars
+    "display_price": 9.2,
     "item_type": "COMBO_SALE_ITEM",
     "category_id": 343,
     "special_notes": "",
@@ -406,8 +417,8 @@ For items with additional options/modifiers (non-combo items):
     "item_id": 3179,
     "item_name": "Boneless Ribs",
     "quantity": 1,
-    "price": 10.5,
-    "display_price": 1050,
+    "price": 10.5,  // Prices are in dollars
+    "display_price": 10.5,
     "item_type": "SALE_ITEM",
     "category_id": 339,
     "special_notes": "",

@@ -3110,16 +3110,22 @@ def convert_extracted_order_to_dict(
             )
 
         # Build item dictionary in internal format
+        # Ensure item_id is integer and sale_item_id is set
+        item_id = int(item.item_id) if item.item_id else None
+        sale_item_id = int(item.sale_item_id) if item.sale_item_id else item_id
+
         item_dict = {
-            "id": item.item_id,
-            "item_id": item.item_id,
-            "sale_item_id": item.item_id,  # For MenuSifu: always same as item_id
+            "id": item_id,
+            "item_id": item_id,
+            "sale_item_id": sale_item_id,  # For MenuSifu: always same as item_id
             "name": item.item_name,
             "quantity": item.quantity,
             "price": item.price,
             "display_price": item.display_price,
             "item_type": item.item_type,
+            "itemType": item.item_type,  # Add camelCase version
             "category_id": item.category_id,
+            "categoryId": item.category_id,  # Add camelCase version
             "special_notes": item.special_notes or "",
             "combo_sections": combo_sections_list,  # For COMBO_SALE_ITEM
             "options": options_list,  # For custom notes/instructions
@@ -3169,15 +3175,36 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     # For MenuSifu: sale_item_id should always be the same as item_id
     sale_item_id = item_id
 
-    # Safely convert price with validation (required field, default to 0)
+    # Safely convert price with validation (required field, default to 0 or base_price for combo items)
     raw_price = item.get("price")
+    item_type = item.get("itemType") or item.get("item_type") or "SALE_ITEM"
     logger.debug(
-        f"[safe_convert_item_fields] Raw price: {raw_price} (type: {type(raw_price)})"
+        f"[safe_convert_item_fields] Raw price: {raw_price} (type: {type(raw_price)}), item_type: {item_type}"
     )
 
     if raw_price is None or raw_price == "":
-        price_val = Decimal("0")
-        logger.debug(f"[safe_convert_item_fields] Using default price: {price_val}")
+        # For combo items, use base_price instead of defaulting to 0
+        if item_type == "COMBO_SALE_ITEM":
+            raw_base_price = item.get("basePrice") or item.get("base_price")
+            if raw_base_price is not None and raw_base_price != "":
+                try:
+                    price_val = Decimal(str(raw_base_price))
+                    logger.debug(
+                        f"[safe_convert_item_fields] Using base_price for combo item: {price_val}"
+                    )
+                except (ValueError, TypeError, ArithmeticError) as e:
+                    logger.error(
+                        f"[safe_convert_item_fields] Failed to convert base_price '{raw_base_price}': {e}"
+                    )
+                    price_val = Decimal("0")
+            else:
+                logger.warning(
+                    "[safe_convert_item_fields] Combo item missing base_price, using default: 0"
+                )
+                price_val = Decimal("0")
+        else:
+            price_val = Decimal("0")
+            logger.debug(f"[safe_convert_item_fields] Using default price: {price_val}")
     else:
         try:
             price_val = Decimal(str(raw_price))
@@ -3189,12 +3216,25 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
             )
             price_val = Decimal("0")
 
-    # Safely convert displayPrice (optional field) - keep raw value intact but ensure it's not None
+    # Safely convert displayPrice (optional field) - ensure it matches price for combo items
     raw_display_price = item.get("displayPrice") or item.get("display_price")
-    # Keep as-is but ensure it's not None for Pydantic validation
-    display_price_val = (
-        raw_display_price if raw_display_price is not None else price_val
-    )
+    # For combo items or when display_price is missing, use the calculated price_val
+    if raw_display_price is None or raw_display_price == "":
+        display_price_val = price_val  # Use the same value as price
+        logger.debug(
+            f"[safe_convert_item_fields] Setting displayPrice to match price: {display_price_val}"
+        )
+    else:
+        try:
+            display_price_val = Decimal(str(raw_display_price))
+            logger.debug(
+                f"[safe_convert_item_fields] Converted displayPrice: {display_price_val}"
+            )
+        except (ValueError, TypeError, ArithmeticError) as e:
+            logger.error(
+                f"[safe_convert_item_fields] Failed to convert displayPrice '{raw_display_price}': {e}"
+            )
+            display_price_val = price_val  # Fall back to price value
 
     # Safely convert categoryId with default (handle 0 as valid value)
     raw_category_id = item.get("categoryId")
