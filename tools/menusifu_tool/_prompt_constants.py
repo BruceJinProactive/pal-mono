@@ -381,8 +381,8 @@ The system will automatically convert this to the proper API format with:
 
 For items with additional options/modifiers (non-combo items):
 ```json
-{
-  "items": [{
+{{
+  "items": [{{
     "item_id": 3179,
     "item_name": "Boneless Ribs",
     "quantity": 1,
@@ -391,15 +391,15 @@ For items with additional options/modifiers (non-combo items):
     "item_type": "SALE_ITEM",
     "category_id": 339,
     "special_notes": "",
-    "modifiers": [{
+    "modifiers": [{{
       "id": 3221,
       "name": "House Lo Mein",
       "price": 4.5,
       "quantity": 1,
       "checked": true
-    }]
-  }]
-}
+    }}]
+  }}]
+}}
 ```
 
 Note the key differences:
@@ -425,49 +425,49 @@ For a complex order with both item-specific dietary notes and order-level allerg
 
 **Extract as**:
 ```json
-{
+{{
   "allergy_info": "Multiple allergies - please ensure no cross-contamination. Allergies: Peanuts,Egg,Wheat,Fish,Shellfish,Soy,TreeNuts,Dairy",
   "need_utensils": true,
-  "items": [{
+  "items": [{{
     "item_id": 3123,
     "item_name": "General Tso Chicken",
     "quantity": 1,
     "size": "Large",
-    "options": [{
+    "options": [{{
       "sectionId": "Options",
-      "sectionName": {"en": "Option"},
+      "sectionName": {{"en": "Option"}},
       "name": "Extra spicy please",
-      "nameMultilingual": {"en": "Extra spicy please", "zh-cn": "Extra spicy please"},
+      "nameMultilingual": {{"en": "Extra spicy please", "zh-cn": "Extra spicy please"}},
       "quantity": 1,
       "price": 0,
       "isOpenOption": true,
       "checked": true
-    }, {
+    }}, {{
       "sectionId": "Options",
-      "sectionName": {"en": "Option"},
+      "sectionName": {{"en": "Option"}},
       "name": "Gluten-free preparation",
-      "nameMultilingual": {"en": "Gluten-free preparation", "zh-cn": "Gluten-free preparation"},
+      "nameMultilingual": {{"en": "Gluten-free preparation", "zh-cn": "Gluten-free preparation"}},
       "quantity": 1,
       "price": 0,
       "isOpenOption": true,
       "checked": true
-    }]
-  }, {
+    }}]
+  }}, {{
     "item_id": 3456,
     "item_name": "Beef Lo Mein",
     "quantity": 1,
     "size": "Small",
-    "combo_sections": [{
+    "combo_sections": [{{
       "section_id": 19,
       "section_name": "Rice Modify",
-      "selected_items": [{
+      "selected_items": [{{
         "sale_item_id": 3333,
         "name": "No Onion",
         "price": 0
-      }]
-    }]
-  }]
-}
+      }}]
+    }}]
+  }}]
+}}
 ```
 
 **Key Points**:
