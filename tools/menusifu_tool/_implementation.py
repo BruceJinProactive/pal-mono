@@ -294,24 +294,22 @@ class MenuSifuTool(Toolkit):
             # Schema enforces required first name; rely on ValidationError path for consistent messages.
 
             # Validate phone object before using it later in the flow
-            if not extracted_order.customer_phone:
+            if not extracted_order.phone:
                 error_msg = "Customer phone number is required for order processing. Please provide phone number in the conversation."
                 logger.info(f"[MenuSifuTool] {error_msg}")
                 return error_msg
 
             # Trim phone number before validating emptiness
-            if extracted_order.customer_phone.number:
-                extracted_order.customer_phone.number = (
-                    extracted_order.customer_phone.number.strip()
-                )
-            if not extracted_order.customer_phone.number:
+            if extracted_order.phone.number:
+                extracted_order.phone.number = extracted_order.phone.number.strip()
+            if not extracted_order.phone.number:
                 error_msg = "Customer phone number is required for order processing. Please provide a valid phone number in the conversation."
                 logger.info(f"[MenuSifuTool] {error_msg}")
                 return error_msg
 
             # Default missing country code to +1 per prompt rules
-            if not extracted_order.customer_phone.country_code:
-                extracted_order.customer_phone.country_code = "+1"  # per prompt default
+            if not extracted_order.phone.country_code:
+                extracted_order.phone.country_code = "+1"  # per prompt default
                 logger.info("Defaulted missing phone country code to +1.")
 
             if not extracted_order.items:
@@ -370,16 +368,16 @@ class MenuSifuTool(Toolkit):
             return extracted_order
 
         logger.info(
-            f"[MenuSifuTool] Successfully extracted order with {len(extracted_order.items)} items for customer: {extracted_order.customer_first_name}"
+            f"[MenuSifuTool] Successfully extracted order with {len(extracted_order.items)} items for customer: {extracted_order.firstName}"
         )
 
         # Log detailed extracted order information
         logger.info("[MenuSifuTool] Extracted Order Details:")
         logger.info(
-            f"  - Customer: {extracted_order.customer_first_name} {extracted_order.customer_last_name or ''}"
+            f"  - Customer: {extracted_order.firstName} {extracted_order.lastName or ''}"
         )
         logger.info(
-            f"  - Phone: {extracted_order.customer_phone.country_code}{extracted_order.customer_phone.number}"
+            f"  - Phone: {extracted_order.phone.country_code}{extracted_order.phone.number}"
         )
         logger.info(f"  - Order Type: {extracted_order.order_type}")
         logger.info(
@@ -731,9 +729,9 @@ class MenuSifuTool(Toolkit):
 
             # Extract customer info directly from the unified extraction result
             # At this point, customer_info must be ExtractedMenuSifuOrder (str case handled above)
-            customer_email = customer_info.customer_email or "test@palona.com"
-            customer_first_name = customer_info.customer_first_name
-            customer_last_name = customer_info.customer_last_name
+            customer_email = customer_info.email or "test@palona.com"
+            customer_first_name = customer_info.firstName
+            customer_last_name = customer_info.lastName
 
             # Log order processing without exposing PII at info level
             logger.info(
@@ -746,13 +744,13 @@ class MenuSifuTool(Toolkit):
 
             # Handle phone information from structured Phone object (required)
             # Safe access with validation (validated earlier in extraction)
-            if not customer_info.customer_phone:
+            if not customer_info.phone:
                 error_msg = "Customer phone information is missing from extracted order"
                 logger.info(f"[MenuSifuTool] {error_msg}")
                 return error_msg
 
-            country_code = customer_info.customer_phone.country_code
-            phone_number = customer_info.customer_phone.number
+            country_code = customer_info.phone.country_code
+            phone_number = customer_info.phone.number
 
             # Additional safety check
             if not country_code or not phone_number:

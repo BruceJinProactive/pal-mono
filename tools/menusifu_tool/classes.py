@@ -898,10 +898,10 @@ class ExtractedMenuSifuOrder(BaseModel):
     )
 
     # Customer information (must be provided in chat for order processing)
-    customer_email: Optional[str] = None
-    customer_first_name: str = Field(..., alias="firstName", min_length=1)
-    customer_last_name: Optional[str] = Field(default=None, alias="lastName")
-    customer_phone: Phone  # Required field - not Optional
+    email: Optional[str] = None
+    firstName: str = Field(..., min_length=1)
+    lastName: Optional[str] = None
+    phone: Phone  # Required field - not Optional
 
     # Required fields
     items: List[ExtractedMenuSifuItem]
