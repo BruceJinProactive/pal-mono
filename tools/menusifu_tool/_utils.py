@@ -2970,7 +2970,7 @@ def convert_extracted_order_to_dict(
 ) -> List[Dict[str, Any]]:
     """
     Convert ExtractedMenuSifuOrder to internal dict format for processing.
-    Properly handles combo items vs regular items with modifiers.
+    Handles combo_sections and special_notes according to actual MenuSifu API structure.
 
     Args:
         extracted_order: Extracted order from LLM
@@ -2980,21 +2980,136 @@ def convert_extracted_order_to_dict(
     """
     processed_items = []
     for item in extracted_order.items:
-        # Convert modifiers to options format
-        # The system will later convert these to comboDetail for combo items
+        logger.debug(
+            f"[convert_extracted_order_to_dict] Processing item: {item.item_name}"
+        )
+
+        # Handle combo sections if present (for COMBO_SALE_ITEM)
+        combo_sections_list = []
+        if hasattr(item, "combo_sections") and item.combo_sections:
+            logger.debug(
+                f"[convert_extracted_order_to_dict] Found {len(item.combo_sections)} combo sections"
+            )
+            for combo_section in item.combo_sections:
+                # Convert combo section to MenuSifu API format
+                section_dict = {
+                    "id": combo_section.section_id,
+                    "name": combo_section.section_name,
+                    "nameMultilingual": {
+                        "en": combo_section.section_name,
+                        "zh-cn": combo_section.section_name,  # Default to English if no translation
+                    },
+                    "selectSaleItems": [],
+                }
+
+                # Add selected items in this section
+                for selected_item in combo_section.selected_items:
+                    sale_item_dict = {
+                        "saleItemId": selected_item.sale_item_id,
+                        "quantity": selected_item.quantity or 1,
+                        "name": selected_item.name,
+                        "nameMultilingual": {
+                            "en": selected_item.name,
+                            "zh-cn": selected_item.name,  # Default to English if no translation
+                        },
+                        "price": str(selected_item.price or 0),  # API expects string
+                        "detailPriceId": "",
+                    }
+                    section_dict["selectSaleItems"].append(sale_item_dict)
+
+                combo_sections_list.append(section_dict)
+                logger.info(
+                    f"[convert_extracted_order_to_dict] Created combo section: {section_dict}"
+                )
+
+        # Handle both special notes AND real modifiers (convert to options array)
         options_list = []
-        for modifier in item.modifiers:
+
+        # Handle legacy modifiers (real menu options with IDs)
+        if hasattr(item, "modifiers") and item.modifiers:
+            logger.debug(
+                f"[convert_extracted_order_to_dict] Found {len(item.modifiers)} modifiers"
+            )
+            for modifier in item.modifiers:
+                id_text = str(modifier.id).strip() if modifier.id is not None else ""
+                is_real_option = id_text.isdigit()
+
+                if is_real_option:
+                    # Real menu option (like Brown Sauce) - use complex structure matching sample 2
+                    option_dict = {
+                        "sectionId": "Options",
+                        "sectionName": {
+                            "en": "Option",
+                            "zh-cn": "调味",
+                            "es": "Condimento",
+                            "French": "Condiments",
+                        },
+                        "id": int(id_text),
+                        "name": modifier.name,
+                        "optionPrice": modifier.price or 0,
+                        "price": modifier.price or 0,
+                        "priceOriginal": modifier.price or 0,
+                        "quantity": modifier.quantity or 1,
+                        "detailPriceId": "",
+                        "subOptions": [],
+                        "nameMultilingual": {
+                            "en": modifier.name,
+                            "zh-cn": modifier.name,  # Could be enhanced with real translations
+                        },
+                    }
+                    logger.debug(
+                        f"[convert_extracted_order_to_dict] Created real option: {option_dict}"
+                    )
+                else:
+                    # Custom note (like "extra spicy") - use simple structure
+                    option_dict = {
+                        "sectionId": "Options",
+                        "sectionName": {"en": "Option"},
+                        "name": modifier.name,
+                        "nameMultilingual": {
+                            "en": modifier.name,
+                            "zh-cn": modifier.name,
+                        },
+                        "quantity": modifier.quantity or 1,
+                        "price": 0,  # Notes are always free
+                        "isOpenOption": True,
+                        "checked": getattr(modifier, "checked", True),
+                    }
+                    logger.debug(
+                        f"[convert_extracted_order_to_dict] Created note option: {option_dict}"
+                    )
+
+                options_list.append(option_dict)
+
+        # Handle special_notes (convert to simple options)
+        if (
+            hasattr(item, "special_notes")
+            and item.special_notes
+            and item.special_notes.strip()
+        ):
+            logger.debug(
+                f"[convert_extracted_order_to_dict] Found special notes: {item.special_notes}"
+            )
+            # Convert special notes text to options format (simple structure)
             option_dict = {
-                "id": modifier.id,
-                "name": modifier.name,
-                "price": modifier.price,
-                "quantity": modifier.quantity,
-                "checked": modifier.checked,
-                "name_multilingual": None,  # Will be populated later if needed
-                "section_name": None,  # Will be determined based on item type
+                "sectionId": "Options",
+                "sectionName": {"en": "Option"},
+                "name": item.special_notes.strip(),
+                "nameMultilingual": {
+                    "en": item.special_notes.strip(),
+                    "zh-cn": item.special_notes.strip(),
+                },
+                "quantity": 1,
+                "price": 0,  # Notes are always free
+                "isOpenOption": True,
+                "checked": True,
             }
             options_list.append(option_dict)
+            logger.info(
+                f"[convert_extracted_order_to_dict] Created option from notes: {option_dict}"
+            )
 
+        # Build item dictionary in internal format
         item_dict = {
             "id": item.item_id,
             "item_id": item.item_id,
@@ -3006,9 +3121,13 @@ def convert_extracted_order_to_dict(
             "item_type": item.item_type,
             "category_id": item.category_id,
             "special_notes": item.special_notes or "",
-            "options": options_list,  # Modifiers converted to options - will become comboDetail for combo items
+            "combo_sections": combo_sections_list,  # For COMBO_SALE_ITEM
+            "options": options_list,  # For custom notes/instructions
         }
         processed_items.append(item_dict)
+        logger.debug(
+            f"[convert_extracted_order_to_dict] Created item_dict: {item_dict}"
+        )
 
     return processed_items
 

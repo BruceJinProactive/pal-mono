@@ -64,26 +64,27 @@ Extract the following information from the conversation:
 # DIETARY RESTRICTIONS AND SPECIAL INSTRUCTIONS:
 **CRITICAL**: Properly categorize dietary information, allergy warnings, and special instructions:
 
-## FOR INDIVIDUAL ITEM NOTES:
-- Item-specific dietary restrictions, cooking preferences, and special instructions go in the item's `options` array  
-- Notes should have NO `id` field (they automatically become `isOpenOption: true`)
-- Notes structure: `sectionId: "Options"`, `sectionName: {"en": "Option"}`, and `nameMultilingual` fields
-- **Available menu-based exclusions** (use with real IDs from "Rice Modify" combo sections):
-  - "No Veggie" (id: 3331) - excludes vegetables
-  - "No Egg" (id: 3332) - excludes eggs  
-  - "No Onion" (id: 3333) - excludes onions
-  - "No Pea & Carrot" (id: 3334) - excludes peas and carrots
-  - "No Broccoli" (id: 3335) - excludes broccoli
-- **Available sauce options** (use with real IDs from "Add Sauce" combo sections):
-  - "Brown Sauce" (id: 3166) - free with some items
-  - "Garlic Sauce" (id: 3167/3307/3171) - varies by item
-  - "Honey Sauce" (id: 3173/3305) - varies by item  
-  - "BBQ Sauce" (id: 3169/3304) - varies by item
-  - "Soy Sauce" (id: 3403) - available as condiment
-- Examples of item-level notes:
-  - "Make the beef broccoli extra spicy" → Add to that item's options array with no `id` field
-  - "No onions in the fried rice" → Use real modifier "No Onion" (id: 3333) if available in combo sections
-  - "Gluten-free preparation for the chicken" → Add to that item's options array with no `id` field
+## FOR COMBO ITEM STRUCTURE:
+**CRITICAL**: For combo items, use proper combo sections structure:
+
+### **COMBO SELECTIONS** (goes in combo_sections array):
+- Extract combo choices like rice, sides, drinks, sauces into structured sections
+- **Common combo sections**:
+  - "Dinner With" (id: 18) - for rice/starch choices like "Plain Fried Rice", "Chicken Fried Rice"
+  - "Dinner Choice" (id: 17) - for sides like "Soda", "Pizza Roll"  
+  - "Rice Modify" (id: 19) - for exclusions like "No Pea & Carrot", "No Onion"
+  - "Add Sauce" (id: 20) - for sauces like "Honey Sauce", "Brown Sauce"
+- **Structure each section** with section_id, section_name, and selected_items array
+- **Available items by section**:
+  - Rice options: "Plain Fried Rice" (3380), "Chicken Fried Rice" (3382)
+  - Sides: "Soda" (3355), "Pizza Roll" (3399)
+  - Exclusions: "No Pea & Carrot" (3334), "No Onion" (3333), "No Veggie" (3331)
+  - Sauces: "Honey Sauce" (3305), "Brown Sauce" (3166)
+
+### **CUSTOM NOTES** (goes in special_notes field):
+- Item-specific dietary restrictions, cooking preferences, and special instructions
+- Simple text that will be converted to options array during processing
+- Examples: "Extra spicy please", "Gluten-free preparation", "Well-done vegetables"
 
 ## FOR ORDER-LEVEL DIETARY INFORMATION:
 - Order-wide allergy information goes in the `allergy_info` field at the order level
@@ -103,46 +104,65 @@ Extract the following information from the conversation:
 
 ## EXAMPLES OF PROPER CATEGORIZATION:
 
-### Item-Specific (goes in item's options array):
-- "Make this dish extra crispy" → Item option with no `id` field: `{"sectionId": "Options", "name": "Extra crispy preparation", "isOpenOption": true}`
-- "No vegetables in my lo mein" → Item option with no `id` field: `{"sectionId": "Options", "name": "No vegetables", "isOpenOption": true}`
-- "Can you make the chicken dish vegan with tofu?" → Item option with no `id` field: `{"sectionId": "Options", "name": "Vegan - substitute chicken with tofu", "isOpenOption": true}`
+### Combo Item Structure (COMBO_SALE_ITEM):
+- "I want beef lo mein with fried rice and honey sauce" →
+  - Item: "DB3.Beef Lo Mein" (combo item)
+  - Combo sections: [{"section_id": 18, "section_name": "Dinner With", "selected_items": [{"sale_item_id": 3380, "name": "Plain Fried Rice"}]}, {"section_id": 20, "section_name": "Add Sauce", "selected_items": [{"sale_item_id": 3305, "name": "Honey Sauce"}]}]
+
+### Regular Item with Custom Notes (SALE_ITEM):
+- "Steamed vegetables with extra spicy sauce please" →
+  - Item: "Steamed Mix Vegetables" (regular item)  
+  - Special notes: "Extra spicy sauce please"
 
 ### Order-Level (goes in allergy_info):
 - "I'm allergic to peanuts" → `"allergy_info": "Peanut allergy"`
 - "We need gluten-free preparation for the whole order" → `"allergy_info": "Gluten-free preparation required"`
 - "Customer is diabetic - no sugar added" → `"allergy_info": "Diabetic - no sugar added"`
 
-## FORMAT FOR DIETARY OPTIONS:
+## FORMAT FOR ITEMS:
+
+### For Combo Items (COMBO_SALE_ITEM):
 ```json
 {{
-  "options": [{{
-    "sectionId": "Options",
-    "sectionName": {{"en": "Option"}},
-    "name": "Gluten-free preparation please",
-    "nameMultilingual": {{"en": "Gluten-free preparation please", "zh-cn": "Gluten-free preparation please"}},
-    "quantity": 1,
-    "price": 0,
-    "isOpenOption": true,
-    "checked": true
+  "item_id": 3537,
+  "item_name": "DB3.Beef Lo Mein",
+  "item_type": "COMBO_SALE_ITEM",
+  "combo_sections": [{{
+    "section_id": 18,
+    "section_name": "Dinner With",
+    "selected_items": [{{
+      "sale_item_id": 3380,
+      "name": "Plain Fried Rice",
+      "price": 0
+    }}]
   }}, {{
-    "sectionId": "Options",
-    "sectionName": {{"en": "Option"}},
-    "name": "Extra spicy, well-done vegetables",
-    "nameMultilingual": {{"en": "Extra spicy, well-done vegetables", "zh-cn": "Extra spicy, well-done vegetables"}},
-    "quantity": 1,
-    "price": 0,
-    "isOpenOption": true,
-    "checked": true
-  }}]
+    "section_id": 20,
+    "section_name": "Add Sauce", 
+    "selected_items": [{{
+      "sale_item_id": 3305,
+      "name": "Honey Sauce",
+      "price": 1
+    }}]
+  }}],
+  "special_notes": "testing instructions"
+}}
+```
+
+### For Regular Items (SALE_ITEM):
+```json
+{{
+  "item_id": 3279,
+  "item_name": "Steamed Mix Vegetable Beef",
+  "item_type": "SALE_ITEM",
+  "special_notes": "Extra spicy please"
 }}
 ```
 
 ## DOUBLE-CHARGING PREVENTION:
-**IMPORTANT**: Distinguish between real menu options and notes:
-- **Real options** (with saleItemIds): These are actual menu items/modifiers that may have associated costs
-- **Notes** (without any ID fields): Special instructions, dietary restrictions, cooking preferences in `options` array
-- Notes should have NO `id` field at all and `isOpenOption: true` to prevent charging issues
+**IMPORTANT**: Distinguish between combo selections and custom notes:
+- **Combo selections** (with sale_item_ids): These are actual menu choices that may have associated costs - go in `combo_sections`
+- **Custom notes** (without any ID fields): Special instructions, dietary restrictions, cooking preferences - go in `special_notes` as text
+- Custom notes should have NO `id` or `sale_item_id` fields to prevent charging issues
 
 # RULES FOR CHINESE FOOD ITEMS:
 - Match user-requested Chinese dishes to the closest MenuSifu catalog items available.
@@ -431,30 +451,14 @@ For a complex order with both item-specific dietary notes and order-level allerg
   "items": [{{
     "item_id": 3123,
     "item_name": "General Tso Chicken",
+    "item_type": "SALE_ITEM",
     "quantity": 1,
     "size": "Large",
-    "options": [{{
-      "sectionId": "Options",
-      "sectionName": {{"en": "Option"}},
-      "name": "Extra spicy please",
-      "nameMultilingual": {{"en": "Extra spicy please", "zh-cn": "Extra spicy please"}},
-      "quantity": 1,
-      "price": 0,
-      "isOpenOption": true,
-      "checked": true
-    }}, {{
-      "sectionId": "Options",
-      "sectionName": {{"en": "Option"}},
-      "name": "Gluten-free preparation",
-      "nameMultilingual": {{"en": "Gluten-free preparation", "zh-cn": "Gluten-free preparation"}},
-      "quantity": 1,
-      "price": 0,
-      "isOpenOption": true,
-      "checked": true
-    }}]
+    "special_notes": "Extra spicy please. Gluten-free preparation."
   }}, {{
-    "item_id": 3456,
-    "item_name": "Beef Lo Mein",
+    "item_id": 3537,
+    "item_name": "DB3.Beef Lo Mein",
+    "item_type": "COMBO_SALE_ITEM", 
     "quantity": 1,
     "size": "Small",
     "combo_sections": [{{
@@ -473,7 +477,7 @@ For a complex order with both item-specific dietary notes and order-level allerg
 **Key Points**:
 - Order-wide allergies (multiple allergies) → goes in `allergy_info` with format "Allergies: Peanuts,Egg,Wheat,Fish,Shellfish,Soy,TreeNuts,Dairy"
 - Utensil/condiment requests → goes in `need_utensils`, `need_condiments`, `need_straws` boolean fields
-- Item-specific custom notes (extra spicy, gluten-free) → goes in that item's `options` array with no `id` field  
-- Menu-specific modifiers (No Onion) → goes in `combo_sections` with real sale_item_id when available from menu
+- Item-specific custom notes (extra spicy, gluten-free) → goes in that item's `special_notes` field as text
+- Combo menu selections (No Onion, sauces, rice choices) → goes in that item's `combo_sections` array with proper structure
 - This prevents double-charging and ensures proper categorization of dietary restrictions
 """

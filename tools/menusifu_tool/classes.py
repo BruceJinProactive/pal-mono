@@ -858,7 +858,7 @@ class OrderGenerationResponse(BaseModel):
 
 
 class ExtractedMenuSifuModifier(BaseModel):
-    """Extracted modifier/option from chat history"""
+    """Extracted modifier/option from chat history (legacy - being replaced by combo_sections)"""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -867,6 +867,27 @@ class ExtractedMenuSifuModifier(BaseModel):
     price: Optional[float] = None
     quantity: int = 1
     checked: bool = True
+
+
+class ExtractedComboSectionItem(BaseModel):
+    """Simple combo section item for LLM extraction"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    sale_item_id: int
+    name: str
+    price: float = 0.0
+    quantity: int = 1
+
+
+class ExtractedComboSection(BaseModel):
+    """Simple combo section for LLM extraction"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    section_id: int
+    section_name: str
+    selected_items: List[ExtractedComboSectionItem] = Field(default_factory=list)
 
 
 class ExtractedMenuSifuItem(BaseModel):
@@ -883,6 +904,9 @@ class ExtractedMenuSifuItem(BaseModel):
     item_type: str = "SALE_ITEM"
     category_id: Optional[int] = None
     special_notes: Optional[str] = None
+    # New structure for combo items
+    combo_sections: Optional[List[ExtractedComboSection]] = Field(default_factory=list)
+    # Legacy structure (being phased out)
     modifiers: List[ExtractedMenuSifuModifier] = Field(default_factory=list)
 
 
