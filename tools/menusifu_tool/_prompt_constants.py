@@ -242,26 +242,34 @@ Based on the following MenuSifu Chinese restaurant menu context and chat history
 Please analyze the conversation and extract all Chinese food order information. Use the menu context above to find the correct item IDs, prices, and available sizes/modifications.
 
 **IMPORTANT EXTRACTION RULES:**
-1. Use EXACT item names and IDs as they appear in the menu context above
+1. Use the EXACT display name and item_id from the menu context. Do not fabricate or concatenate code prefixes. If the display name itself includes a code prefix (e.g., "LB1.Beef Broccoli"), include it; otherwise use the display name as-is.
 2. Use EXACT modifier names as they appear in the menu context above
-3. Handle Chinese food sizes correctly: Small/Large (not bubble tea sizes)
-4. Extract combo modifications like "Rice Modify" and "Add Sauce" options
-5. Only extract items and information the user has confirmed they want to order
-6. Map bilingual names appropriately (English/Chinese)
+3. **CRITICAL**: When customers use casual names, map them to the correct item_id in the menu and output the menu's display name (include a code prefix only if it is part of that display name).
+Note: Some catalogs separate item codes from names; if so, do not concatenate "CODE.Name" in item_name—use the display name and correct item_id.
+4. Handle Chinese food sizes correctly: Small/Large (not bubble tea sizes)
+5. Extract combo modifications like "Rice Modify" and "Add Sauce" options
+6. Only extract items and information the user has confirmed they want to order
+7. Map bilingual names appropriately (English/Chinese)
 
 **CRITICAL PRICE EXTRACTION RULES FOR COMBO ITEMS:**
-7. For COMBO_SALE_ITEM items: If the menu context shows "price": null, use the "base_price" value instead
-8. For COMBO_SALE_ITEM items: Always set both "price" and "display_price" to the base_price value when price is null
-9. **Currency format**: All prices must be in dollars (not cents) with 2 decimal places when needed
-10. **Zero base_price handling**: If base_price is 0, set both "price": 0.00 and "display_price": 0.00 (never null)
-11. Example: If menu shows {{"price": null, "base_price": 8.5, "item_type": "COMBO_SALE_ITEM"}} → extract as "price": 8.5, "display_price": 8.5
-12. NEVER leave price as null for combo items when base_price is available in the menu context
+8. For COMBO_SALE_ITEM items: If the menu context shows "price": null, use the "base_price" value instead
+9. For COMBO_SALE_ITEM items: Always set both "price" and "display_price" to the base_price value when price is null
+10. Prices must be JSON numbers in dollars (not cents). Do not pad trailing zeros (e.g., 8.5 is fine). UI handles two-decimal display.
+11. **Zero base_price handling**: If base_price is 0, set both "price": 0 and "display_price": 0 (never null)
+12. Example: If menu shows {{"price": null, "base_price": 8.5, "item_type": "COMBO_SALE_ITEM"}} → extract as "price": 8.5, "display_price": 8.5
+13. NEVER leave price as null for combo items when base_price is available in the menu context
 
 **EXAMPLES FOR CHINESE FOOD:**
 - If user says "I want General Tso Chicken large size"
   - Item: "General Tso Chicken" 
   - Size: "Large" (from available sizes in menu)
   - Use item_id from menu context
+
+**CRITICAL NAME MATCHING EXAMPLES:**
+- Customer says "Beef Broccoli lunch combo" → Find the correct item_id in menu and use the menu's display name exactly as shown
+- Customer says "Shrimp Lo Mein dinner" → Map to correct item_id and use the display name from menu context
+- Customer says "Chicken Black Mushroom lunch" → Locate item by matching description, extract correct item_id and display name
+- ALWAYS use the EXACT display name from the menu context, whether it includes prefixes or not
 
 - If user says "Beef Lo Mein small, no onions please"
   - Item: "Beef Lo Mein"
