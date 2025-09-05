@@ -254,7 +254,7 @@ Please analyze the conversation and extract all Chinese food order information. 
 8. For COMBO_SALE_ITEM items: Always set both "price" and "display_price" to the base_price value when price is null
 9. **Currency format**: All prices must be in dollars (not cents) with 2 decimal places when needed
 10. **Zero base_price handling**: If base_price is 0, set both "price": 0.00 and "display_price": 0.00 (never null)
-11. Example: If menu shows {"price": null, "base_price": 8.5, "item_type": "COMBO_SALE_ITEM"} → extract as "price": 8.5, "display_price": 8.5
+11. Example: If menu shows {{"price": null, "base_price": 8.5, "item_type": "COMBO_SALE_ITEM"}} → extract as "price": 8.5, "display_price": 8.5
 12. NEVER leave price as null for combo items when base_price is available in the menu context
 
 **EXAMPLES FOR CHINESE FOOD:**
