@@ -1115,6 +1115,8 @@ def generate_bilingual_menu_content(
 
     # Process groups and categories according to API specs
     for group in groups:
+        group_combo_sections = None  # Store combo sections at group level
+        combo_categories = []  # Track which categories use these combo options
         # Handle both MenuGroup objects and dictionary inputs
         if hasattr(group, "name"):
             # Group name - cleaned for object access
@@ -1325,230 +1327,24 @@ def generate_bilingual_menu_content(
 
                     category_lines.append(item_line)
 
-                    # Compact combo details format
+                    # Store combo sections for later display (only once per group)
                     if item_type == "COMBO_SALE_ITEM" and combo_sections:
-                        combo_info = "COMBO"
-                        if combo_type == 1:
-                            combo_info += " (Fixed)"
-                        elif combo_type == 2:
-                            combo_info += " (Flexible)"
+                        # Add this category to the list of categories that use combo options
+                        category_display_name = cat_name_en
+                        if cat_name_zh:
+                            category_display_name = f"{cat_name_en} / {cat_name_zh}"
 
-                        # Use the base_price extracted earlier
-                        if base_price:
-                            try:
-                                numeric_base_price = float(base_price)
-                                numeric_item_price = (
-                                    float(item_price) if item_price is not None else 0
-                                )
-                                if numeric_base_price != numeric_item_price:
-                                    combo_info += f" - Base: ${numeric_base_price:.2f}"
-                            except (ValueError, TypeError):
-                                # Skip formatting for non-numeric base_price
-                                pass
+                        if category_display_name not in combo_categories:
+                            combo_categories.append(category_display_name)
 
-                        category_lines.append(f"  {combo_info}:")
-
-                        # Check overall combo availability and process sections with business rules
-                        combo_unavailable_sections = []
-                        combo_has_issues = False
-
-                        # Process each combo section with MenuSifu business rules
-                        for i, section in enumerate(combo_sections):
-                            # Check section availability first
-                            section_availability = check_combo_section_availability(
-                                section, item_lookup
-                            )
-
-                            section_items = []
-                            section_pre_selected = []
-                            section_unavailable_items = []
-
-                            # Handle both camelCase and snake_case field names
-                            combo_items = getattr(
-                                section, "combo_section_sale_items", None
-                            ) or getattr(section, "comboSectionSaleItems", [])
-                            if combo_items:
-                                for combo_item in combo_items:
-                                    # Handle both field naming conventions
-                                    sale_item_id = getattr(
-                                        combo_item, "sale_item_id", None
-                                    ) or getattr(combo_item, "saleItemId", None)
-                                    item_details = (
-                                        item_lookup.get(sale_item_id, {})
-                                        if sale_item_id
-                                        else {}
-                                    )
-
-                                    # Get item names - ensure we map ALL combo items to actual dishes
-                                    if item_details:
-                                        # Get the cleaned names (^ prefix already removed by clean_item_name)
-                                        item_name_en = item_details.get("name_en", "")
-                                        item_name_zh = item_details.get("name_zh", "")
-
-                                        # Create proper bilingual dish name
-                                        if item_name_zh and item_name_en:
-                                            dish_name = (
-                                                f"{item_name_en} / {item_name_zh}"
-                                            )
-                                        elif item_name_en:
-                                            dish_name = item_name_en
-                                        elif item_name_zh:
-                                            dish_name = item_name_zh
-                                        else:
-                                            # Skip items with no name instead of showing ID
-                                            continue
-                                    else:
-                                        # Skip items not found in lookup - don't show ID references
-                                        continue
-
-                                    # Check availability and include ALL combo items regardless of hidden status
-                                    if item_details and item_details.get(
-                                        "out_of_stock", False
-                                    ):
-                                        dish_name += " (SOLD OUT)"
-                                        section_unavailable_items.append(dish_name)
-                                        combo_has_issues = True
-                                    else:
-                                        # Include ALL combo items - hidden items are valid combo choices
-                                        # Add pricing info using safe formatting
-                                        if item_details:
-                                            formatted_price = _format_price(
-                                                item_details.get("price")
-                                            )
-                                            if formatted_price:
-                                                dish_name += f" ({formatted_price})"
-
-                                        # Handle both field naming conventions for pre_selected
-                                        is_pre_selected = getattr(
-                                            combo_item, "pre_selected", False
-                                        ) or getattr(combo_item, "preSelected", False)
-                                        if is_pre_selected:
-                                            section_pre_selected.append(dish_name)
-                                        else:
-                                            section_items.append(dish_name)
-
-                            # Create section title with bilingual support
-                            section_name_en = clean_item_name(
-                                section.name.en if section.name.en else ""
-                            )
-                            section_name_zh = clean_item_name(
-                                section.name.zh_cn if section.name.zh_cn else ""
-                            )
-
-                            if section_name_en and section_name_zh:
-                                section_title = f"{section_name_en} / {section_name_zh}"
-                            elif section_name_en:
-                                section_title = section_name_en
-                            else:
-                                section_title = f"Section {i + 1}"
-
-                            # Get detailed rule descriptions from MenuSifu documentation
-                            # Handle both field naming conventions
-                            rule = getattr(
-                                section, "item_selection_rule", None
-                            ) or getattr(section, "itemSelectionRule", None)
-                            min_sel = (
-                                getattr(section, "min_num_of_selection_allowed", None)
-                                or getattr(section, "minNumOfSelectionAllowed", 0)
-                                or 0
-                            )
-                            max_sel = (
-                                getattr(section, "max_num_of_selection_allowed", None)
-                                or getattr(section, "maxNumOfSelectionAllowed", 0)
-                                or 0
-                            )
-                            allow_repeated = getattr(
-                                section, "allow_repeated_items", False
-                            ) or getattr(section, "allowRepeatedItems", False)
-
-                            selection_rule = get_selection_rule_description(
-                                rule or 0, min_sel, max_sel, allow_repeated
-                            )
-                            # Handle both field naming conventions
-                            price_rule = getattr(
-                                section, "price_rule", None
-                            ) or getattr(section, "priceRule", None)
-                            pricing_rule = get_price_rule_description(price_rule or 0)
-
-                            # Compact section header with all info on one line
-                            section_description = get_section_description(
-                                section_name_en, section_name_zh
-                            )
-                            description_text = (
-                                f" ({section_description})"
-                                if section_description
-                                else ""
-                            )
-
-                            if not section_availability["available"]:
-                                category_lines.append(
-                                    f"    • {section_title}{description_text} - UNAVAILABLE: {section_availability['reason']}"
-                                )
-                                combo_unavailable_sections.append(section_title)
-                                combo_has_issues = True
-                            else:
-                                category_lines.append(
-                                    f"    • {section_title}{description_text}:"
-                                )
-                                # Combine rules and pricing on one line
-                                category_lines.append(
-                                    f"      {selection_rule} | {pricing_rule}"
-                                )
-
-                            # Compact display of items
-                            if section_pre_selected:
-                                category_lines.append(
-                                    f"      Required: {' | '.join(section_pre_selected)}"
-                                )
-
-                            # Display choice items more compactly
-                            if section_items:
-                                available_count = len(section_items)
-                                category_lines.append(
-                                    f"      Choices ({available_count}): {' | '.join(section_items)}"
-                                )
-
-                            # Display unavailable items compactly
-                            if section_unavailable_items:
-                                category_lines.append(
-                                    f"      Unavailable: {' | '.join(section_unavailable_items)}"
-                                )
-
-                            # Debug: If still no items are shown, provide detailed info
-                            if (
-                                not section_items
-                                and not section_pre_selected
-                                and not section_unavailable_items
-                            ):
-                                if section.combo_section_sale_items:
-                                    # This should rarely happen now - let's debug what's going wrong
-                                    missing_items = []
-                                    for combo_item in section.combo_section_sale_items:
-                                        if combo_item.sale_item_id not in item_lookup:
-                                            missing_items.append(
-                                                str(combo_item.sale_item_id)
-                                            )
-
-                                    if missing_items:
-                                        category_lines.append(
-                                            f"      ERROR: Items not found in lookup: {', '.join(missing_items)}"
-                                        )
-                                    else:
-                                        category_lines.append(
-                                            "      ERROR: Items exist but filtered out unexpectedly"
-                                        )
-                                else:
-                                    category_lines.append(
-                                        "      Items: No items configured for this section"
-                                    )
-
-                        # Compact combo status
-                        if combo_unavailable_sections:
-                            category_lines.append(
-                                f"  Issues: {', '.join(combo_unavailable_sections)}"
-                            )
-                        elif combo_has_issues:
-                            category_lines.append("  Some items sold out")
+                        # Store combo sections if not already stored
+                        if group_combo_sections is None:
+                            group_combo_sections = {
+                                "combo_sections": combo_sections,
+                                "combo_type": combo_type,
+                                "base_price": base_price,
+                                "item_price": item_price,
+                            }
 
                     # Add options compactly
                     options = _extract_bilingual_options(item)
@@ -1585,6 +1381,243 @@ def generate_bilingual_menu_content(
                 # Add all the category items
                 lines.extend(category_lines)
                 lines.append("")  # Space after each category
+
+        # Add group-level combo sections once at the end of the group
+        if group_combo_sections:
+            lines.append("")  # Extra space before combo sections
+
+            # Create a clean header with group name and specific categories
+            if group_name_zh:
+                group_display_name = f"{group_name_en} / {group_name_zh}"
+            else:
+                group_display_name = group_name_en
+
+            combo_sections = group_combo_sections["combo_sections"]
+            combo_type = group_combo_sections["combo_type"]
+            base_price = group_combo_sections["base_price"]
+            item_price = group_combo_sections["item_price"]
+
+            # Create combo header with type
+            combo_type_text = ""
+            if combo_type == 1:
+                combo_type_text = " (Fixed)"
+            elif combo_type == 2:
+                combo_type_text = " (Flexible)"
+
+            combo_info = f"### {group_display_name} Combo Options{combo_type_text}"
+
+            # Use the base_price extracted earlier
+            if base_price:
+                try:
+                    numeric_base_price = float(base_price)
+                    numeric_item_price = (
+                        float(item_price) if item_price is not None else 0
+                    )
+                    if numeric_base_price != numeric_item_price:
+                        combo_info += f" Base: ${numeric_base_price:.2f}"
+                except (ValueError, TypeError):
+                    # Skip formatting for non-numeric base_price
+                    pass
+
+            lines.append(combo_info)
+
+            # Add the categories that this combo applies to
+            if len(combo_categories) == 1:
+                lines.append(f"*Applied to: {combo_categories[0]}*")
+            elif len(combo_categories) <= 3:
+                categories_text = " & ".join(combo_categories)
+                lines.append(f"*Applied to: {categories_text}*")
+            else:
+                # For many categories, list them as bullet points for better readability
+                lines.append("*Applied to:*")
+                for cat in combo_categories:
+                    lines.append(f"  • {cat}")
+
+            lines.append("")  # Empty line for better spacing
+
+            # Check overall combo availability and process sections with business rules
+            combo_unavailable_sections = []
+            combo_has_issues = False
+
+            # Process each combo section with MenuSifu business rules
+            for i, section in enumerate(combo_sections):
+                # Check section availability first
+                section_availability = check_combo_section_availability(
+                    section, item_lookup
+                )
+
+                section_items = []
+                section_pre_selected = []
+                section_unavailable_items = []
+
+                # Handle both camelCase and snake_case field names
+                combo_items = getattr(
+                    section, "combo_section_sale_items", None
+                ) or getattr(section, "comboSectionSaleItems", [])
+                if combo_items:
+                    for combo_item in combo_items:
+                        # Handle both field naming conventions
+                        sale_item_id = getattr(
+                            combo_item, "sale_item_id", None
+                        ) or getattr(combo_item, "saleItemId", None)
+                        item_details = (
+                            item_lookup.get(sale_item_id, {}) if sale_item_id else {}
+                        )
+
+                        # Get item names - ensure we map ALL combo items to actual dishes
+                        if item_details:
+                            # Get the cleaned names (^ prefix already removed by clean_item_name)
+                            item_name_en = item_details.get("name_en", "")
+                            item_name_zh = item_details.get("name_zh", "")
+
+                            # Create proper bilingual dish name
+                            if item_name_zh and item_name_en:
+                                dish_name = f"{item_name_en} / {item_name_zh}"
+                            elif item_name_en:
+                                dish_name = item_name_en
+                            elif item_name_zh:
+                                dish_name = item_name_zh
+                            else:
+                                # Skip items with no name instead of showing ID
+                                continue
+                        else:
+                            # Skip items not found in lookup - don't show ID references
+                            continue
+
+                        # Check availability and include ALL combo items regardless of hidden status
+                        if item_details and item_details.get("out_of_stock", False):
+                            dish_name += " (SOLD OUT)"
+                            section_unavailable_items.append(dish_name)
+                            combo_has_issues = True
+                        else:
+                            # Include ALL combo items - hidden items are valid combo choices
+                            # Add pricing info using safe formatting
+                            if item_details:
+                                formatted_price = _format_price(
+                                    item_details.get("price")
+                                )
+                                if formatted_price:
+                                    dish_name += f" ({formatted_price})"
+
+                            # Handle both field naming conventions for pre_selected
+                            is_pre_selected = getattr(
+                                combo_item, "pre_selected", False
+                            ) or getattr(combo_item, "preSelected", False)
+                            if is_pre_selected:
+                                section_pre_selected.append(dish_name)
+                            else:
+                                section_items.append(dish_name)
+
+                # Create section title with bilingual support
+                section_name_en = clean_item_name(
+                    section.name.en if section.name.en else ""
+                )
+                section_name_zh = clean_item_name(
+                    section.name.zh_cn if section.name.zh_cn else ""
+                )
+
+                if section_name_en and section_name_zh:
+                    section_title = f"{section_name_en} / {section_name_zh}"
+                elif section_name_en:
+                    section_title = section_name_en
+                else:
+                    section_title = f"Section {i + 1}"
+
+                # Get detailed rule descriptions from MenuSifu documentation
+                # Handle both field naming conventions
+                rule = getattr(section, "item_selection_rule", None) or getattr(
+                    section, "itemSelectionRule", None
+                )
+                min_sel = (
+                    getattr(section, "min_num_of_selection_allowed", None)
+                    or getattr(section, "minNumOfSelectionAllowed", 0)
+                    or 0
+                )
+                max_sel = (
+                    getattr(section, "max_num_of_selection_allowed", None)
+                    or getattr(section, "maxNumOfSelectionAllowed", 0)
+                    or 0
+                )
+                allow_repeated = getattr(
+                    section, "allow_repeated_items", False
+                ) or getattr(section, "allowRepeatedItems", False)
+
+                selection_rule = get_selection_rule_description(
+                    rule or 0, min_sel, max_sel, allow_repeated
+                )
+                # Handle both field naming conventions
+                price_rule = getattr(section, "price_rule", None) or getattr(
+                    section, "priceRule", None
+                )
+                pricing_rule = get_price_rule_description(price_rule or 0)
+
+                # Compact section header with all info on one line
+                section_description = get_section_description(
+                    section_name_en, section_name_zh
+                )
+                description_text = (
+                    f" ({section_description})" if section_description else ""
+                )
+
+                if not section_availability["available"]:
+                    lines.append(
+                        f"• {section_title}{description_text} - UNAVAILABLE: {section_availability['reason']}"
+                    )
+                    combo_unavailable_sections.append(section_title)
+                    combo_has_issues = True
+                else:
+                    lines.append(f"• {section_title}{description_text}:")
+                    # Combine rules and pricing on one line
+                    lines.append(f"  {selection_rule} | {pricing_rule}")
+
+                # Compact display of items
+                if section_pre_selected:
+                    lines.append(f"  Required: {' | '.join(section_pre_selected)}")
+
+                # Display choice items more compactly
+                if section_items:
+                    available_count = len(section_items)
+                    lines.append(
+                        f"  Choices ({available_count}): {' | '.join(section_items)}"
+                    )
+
+                # Display unavailable items compactly
+                if section_unavailable_items:
+                    lines.append(
+                        f"  Unavailable: {' | '.join(section_unavailable_items)}"
+                    )
+
+                # Debug: If still no items are shown, provide detailed info
+                if (
+                    not section_items
+                    and not section_pre_selected
+                    and not section_unavailable_items
+                ):
+                    if section.combo_section_sale_items:
+                        # This should rarely happen now - let's debug what's going wrong
+                        missing_items = []
+                        for combo_item in section.combo_section_sale_items:
+                            if combo_item.sale_item_id not in item_lookup:
+                                missing_items.append(str(combo_item.sale_item_id))
+
+                        if missing_items:
+                            lines.append(
+                                f"  ERROR: Items not found in lookup: {', '.join(missing_items)}"
+                            )
+                        else:
+                            lines.append(
+                                "  ERROR: Items exist but filtered out unexpectedly"
+                            )
+                    else:
+                        lines.append("  Items: No items configured for this section")
+
+            # Compact combo status
+            if combo_unavailable_sections:
+                lines.append(f"Issues: {', '.join(combo_unavailable_sections)}")
+            elif combo_has_issues:
+                lines.append("Some items sold out")
+
+            lines.append("")  # Space after combo sections
 
     return "\n".join(lines).strip()
 
