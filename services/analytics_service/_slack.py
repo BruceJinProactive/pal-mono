@@ -1,3 +1,16 @@
+"""
+Slack Analytics Bot Service
+
+This module provides Slack integration for analytics reporting, including:
+- Automated report generation and formatting
+- Custom date range parsing
+- Interactive Slack bot commands
+- Professional table formatting for analytics data
+
+The service supports daily, weekly, monthly, and custom date range reports
+with engagement metrics, conversion data, and call quality analytics.
+"""
+
 import re
 import threading
 from datetime import datetime, timedelta
@@ -14,6 +27,59 @@ from services.analytics_service._implementation import get_reports
 from services.analytics_service._utils import normalize_datetime_to_utc
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
+
+# =============================================================================
+# CONSTANTS AND CONFIGURATION
+# =============================================================================
+
+# Report name to data key mapping for cleaner code
+REPORT_DATA_KEYS = {
+    "Active Users": "active_users",
+    "Message Turn Distribution": "turn_distribution",
+    "Call Time Metrics": "call_time_metrics",
+    "Conversion Metrics": "conversion_metrics",
+}
+
+# Conversion metrics keys for data detection
+CONVERSION_METRIC_KEYS = [
+    "conversations_with_orders",
+    "paid_orders",
+    "total_subtotal",
+    "paid_total",
+    "conversion_rate",
+    "paid_rate",
+]
+
+# Column definitions for different report sections
+ENGAGEMENT_COLUMNS = [
+    "active_users",
+    "total_conversations",
+    "total_turns",
+    "avg_turns",
+    "total_calls",
+    "avg_duration",
+    "transfer_calls",
+    "transfer_rate",
+    "positive_calls",
+    "negative_calls",
+]
+
+CONVERSION_COLUMNS = [
+    "conversations_with_orders",
+    "paid_orders",
+    "total_subtotal",
+    "paid_total",
+    "conversion_rate",
+    "paid_rate",
+]
+
+ALL_COLUMNS = ENGAGEMENT_COLUMNS + CONVERSION_COLUMNS
+
+# Global Slack app instance and thread safety
+_slack_app = None
+_slack_handler = None
+_slack_init_lock = threading.Lock()
+
 
 # =============================================================================
 # DATE UTILITY FUNCTIONS
@@ -107,56 +173,8 @@ def get_date_range_for_period(period: str) -> tuple[datetime, datetime]:
     return start_date, end_date
 
 
+# FORMATTING UTILITY FUNCTIONS
 # =============================================================================
-# CONSTANTS AND CONFIGURATION
-# =============================================================================
-
-# Report name to data key mapping for cleaner code
-REPORT_DATA_KEYS = {
-    "Active Users": "active_users",
-    "Message Turn Distribution": "turn_distribution",
-    "Call Time Metrics": "call_time_metrics",
-    "Conversion Metrics": "conversion_metrics",
-}
-
-# Conversion metrics keys for data detection
-CONVERSION_METRIC_KEYS = [
-    "conversations_with_orders",
-    "paid_orders",
-    "total_subtotal",
-    "paid_total",
-    "conversion_rate",
-    "paid_rate",
-]
-
-# =============================================================================
-# SLACK REPORTING FUNCTIONS
-# =============================================================================
-
-# Global column lists for different report sections
-ENGAGEMENT_COLUMNS = [
-    "active_users",
-    "total_conversations",
-    "total_turns",
-    "avg_turns",
-    "total_calls",
-    "avg_duration",
-    "transfer_calls",
-    "transfer_rate",
-    "positive_calls",
-    "negative_calls",
-]
-
-CONVERSION_COLUMNS = [
-    "conversations_with_orders",
-    "paid_orders",
-    "total_subtotal",
-    "paid_total",
-    "conversion_rate",
-    "paid_rate",
-]
-
-ALL_COLUMNS = ENGAGEMENT_COLUMNS + CONVERSION_COLUMNS
 
 
 def safe_float_format(value, decimals: int = 1) -> str:
@@ -215,6 +233,11 @@ REPORT_COLUMNS = {
 }
 
 
+# =============================================================================
+# DATA PROCESSING FUNCTIONS
+# =============================================================================
+
+
 def merge_report_data(reports: list) -> dict:
     """
     Merge multiple report types into unified account data structure.
@@ -228,81 +251,318 @@ def merge_report_data(reports: list) -> dict:
     unified_accounts = {}
     totals_summary = {}
 
-    logger.info(f"[Slackbot] Processing {len(reports)} reports for merging")
-
+    # Process each report type
     for report in reports:
+        report_name = report.name
+        report_data = report.data
+
         # Extract totals for summary
-        if "totals" in report.data:
-            totals_summary[report.name] = report.data["totals"]
+        if "totals" in report_data:
+            totals_summary[report_name] = report_data["totals"]
 
         # Extract account-level data
-        account_data_key = REPORT_DATA_KEYS.get(report.name)
-        if account_data_key and account_data_key in report.data:
-            accounts = report.data[account_data_key]
+        account_data_key = REPORT_DATA_KEYS.get(report_name)
+        if account_data_key and account_data_key in report_data:
+            accounts = report_data[account_data_key]
+
             for account_name, metrics in accounts.items():
                 if account_name not in unified_accounts:
                     unified_accounts[account_name] = {}
-                unified_accounts[account_name].update(metrics)
-        else:
-            logger.warning(
-                f"[Slackbot] No account data found for report '{report.name}' (expected key: {account_data_key})"
-            )
 
-    logger.info(
-        f"[Slackbot] Merged data: {len(unified_accounts)} accounts, {len(totals_summary)} report summaries"
-    )
+                # Merge metrics into unified structure
+                unified_accounts[account_name].update(metrics)
+
     return {"unified_accounts": unified_accounts, "totals_summary": totals_summary}
 
 
-def create_slack_table_cell(text: str) -> dict:
-    """Create a standardized Slack table cell."""
-    return {
-        "type": "rich_text",
-        "elements": [
-            {"type": "rich_text_section", "elements": [{"type": "text", "text": text}]}
-        ],
-    }
+def has_conversion_data(totals_summary: dict, unified_accounts: dict) -> bool:
+    """Check if conversion data exists in the reports."""
+    return "Conversion Metrics" in totals_summary or any(
+        any(key in account_data for key in CONVERSION_METRIC_KEYS)
+        for account_data in unified_accounts.values()
+    )
 
 
-def create_slack_header_cell(text: str) -> dict:
-    """Create a standardized Slack table header cell with bold styling."""
-    return {
-        "type": "rich_text",
-        "elements": [
-            {
-                "type": "rich_text_section",
-                "elements": [{"type": "text", "text": text, "style": {"bold": True}}],
-            }
-        ],
-    }
+# =============================================================================
+# TABLE CREATION FUNCTIONS
+# =============================================================================
 
 
-def create_engagement_table(unified_accounts: dict, columns: list[str]) -> list:
-    """Create engagement metrics table rows."""
-    # Build table header
-    header_row = [create_slack_header_cell("Account")]
-    for col_key in columns:
-        if col_key in REPORT_COLUMNS:
-            header_row.append(
-                create_slack_header_cell(REPORT_COLUMNS[col_key]["header"])
-            )
+def create_account_metrics_table(unified_accounts: dict, columns: list[str]) -> str:
+    """Create a proper ASCII table format like the example provided."""
+    if not unified_accounts:
+        return "No account data available."
 
-    table_rows = [header_row]
+    # Get headers
+    headers = ["Account"] + [
+        REPORT_COLUMNS[col]["header"] for col in columns if col in REPORT_COLUMNS
+    ]
 
     # Build data rows
+    data_rows = []
     for account_name, account_data in unified_accounts.items():
-        row = [create_slack_table_cell(account_name)]
-
+        row = [account_name]
         for col_key in columns:
             if col_key in REPORT_COLUMNS:
                 col_config = REPORT_COLUMNS[col_key]
                 value = account_data.get(col_config["data_key"])
                 formatted_value = col_config["format_func"](value)
-                row.append(create_slack_table_cell(formatted_value))
+                # Remove currency symbols and % for cleaner table display
+                if formatted_value.startswith("$"):
+                    formatted_value = formatted_value[1:]
+                if formatted_value.endswith("%"):
+                    formatted_value = formatted_value[:-1]
+                row.append(formatted_value)
+        data_rows.append(row)
 
-        table_rows.append(row)
+    # Calculate column widths
+    col_widths = []
+    for i, header in enumerate(headers):
+        max_width = len(header)
+        for row in data_rows:
+            if i < len(row):
+                max_width = max(max_width, len(str(row[i])))
+        col_widths.append(max_width)
 
-    return table_rows
+    lines = []
+
+    # Header row
+    header_line = ""
+    for i, header in enumerate(headers):
+        if i == 0:
+            # Left-align account names
+            header_line += header.ljust(col_widths[i])
+        else:
+            # Right-align numeric columns
+            header_line += header.rjust(col_widths[i])
+        if i < len(headers) - 1:
+            header_line += "  "
+    lines.append(header_line)
+
+    # Separator line
+    separator = ""
+    for i, width in enumerate(col_widths):
+        separator += "-" * width
+        if i < len(col_widths) - 1:
+            separator += "--"
+    lines.append(separator)
+
+    # Data rows
+    for row in data_rows:
+        row_line = ""
+        for i, cell in enumerate(row):
+            cell_str = str(cell)
+            if i == 0:
+                # Left-align account names
+                row_line += cell_str.ljust(col_widths[i])
+            else:
+                # Right-align numeric values
+                row_line += cell_str.rjust(col_widths[i])
+            if i < len(row) - 1:
+                row_line += "  "
+        lines.append(row_line)
+
+    return "```\n" + "\n".join(lines) + "\n```"
+
+
+def create_conversion_table(unified_accounts: dict) -> str:
+    """Create a conversion table similar to the provided example format."""
+    if not unified_accounts:
+        return "No account data available."
+
+    # Headers matching the example format
+    headers = ["Account", "Conv", "Orders", "Paid", "CVR%", "Paid%"]
+
+    # Build data rows
+    data_rows = []
+    for account_name, account_data in unified_accounts.items():
+        conv = account_data.get("total_conversations", "0")
+        orders = account_data.get("conversations_with_orders", "0")
+        paid = account_data.get("paid_orders", "0")
+        cvr = safe_float_format(account_data.get("conversion_rate", 0), 1)
+        paid_rate = safe_float_format(account_data.get("paid_rate", 0), 1)
+
+        row = [account_name, str(conv), str(orders), str(paid), cvr, paid_rate]
+        data_rows.append(row)
+
+    # Calculate column widths with minimum widths for numeric columns
+    col_widths = []
+    for i, header in enumerate(headers):
+        max_width = len(header)
+        for row in data_rows:
+            if i < len(row):
+                max_width = max(max_width, len(str(row[i])))
+
+        # Set minimum widths based on column type for conversion table
+        if i > 0:  # Skip account name column
+            if header in ["Conv"]:
+                # Conversations: 10 digits (9,999,999,999)
+                max_width = max(max_width, 10)
+            else:
+                # Other numeric columns: keep existing 6 digit width
+                max_width = max(max_width, 6)
+
+        col_widths.append(max_width)
+
+    lines = []
+
+    # Header row
+    header_line = ""
+    for i, header in enumerate(headers):
+        if i == 0:
+            # Left-align account names
+            header_line += header.ljust(col_widths[i])
+        else:
+            # Right-align numeric columns
+            header_line += header.rjust(col_widths[i])
+        if i < len(headers) - 1:
+            header_line += "  "
+    lines.append(header_line)
+
+    # Separator line
+    separator = ""
+    for i, width in enumerate(col_widths):
+        separator += "-" * width
+        if i < len(col_widths) - 1:
+            separator += "--"
+    lines.append(separator)
+
+    # Data rows
+    for row in data_rows:
+        row_line = ""
+        for i, cell in enumerate(row):
+            cell_str = str(cell)
+            if i == 0:
+                # Left-align account names
+                row_line += cell_str.ljust(col_widths[i])
+            else:
+                # Right-align numeric values
+                row_line += cell_str.rjust(col_widths[i])
+            if i < len(row) - 1:
+                row_line += "  "
+        lines.append(row_line)
+
+    return "```\n" + "\n".join(lines) + "\n```"
+
+
+def create_engagement_table(unified_accounts: dict) -> str:
+    """Create an engagement table with key metrics including call quality."""
+    if not unified_accounts:
+        return "No account data available."
+
+    # Headers with key engagement metrics
+    headers = ["Account", "Users", "Conv", "Calls", "Dur", "Xfer%"]
+
+    # Build data rows
+    data_rows = []
+    for account_name, account_data in unified_accounts.items():
+        users = account_data.get("active_users", "0")
+        conv = account_data.get("total_conversations", "0")
+        calls = account_data.get("total_calls", "0")
+        duration = account_data.get("avg_duration", "0")
+        transfer_rate = account_data.get("transfer_rate", "0")
+
+        # Format numeric values to consistent format
+        # Duration: format to 1 decimal place, remove 's' suffix
+        if str(duration).endswith("s"):
+            duration = str(duration)[:-1]
+        try:
+            duration = f"{float(duration):.1f}"
+        except (ValueError, TypeError):
+            duration = str(duration)
+
+        # Transfer rate: format to 1 decimal place, remove '%' suffix
+        if str(transfer_rate).endswith("%"):
+            transfer_rate = str(transfer_rate)[:-1]
+        try:
+            transfer_rate = f"{float(transfer_rate):.1f}"
+        except (ValueError, TypeError):
+            transfer_rate = str(transfer_rate)
+
+        row = [
+            account_name,
+            str(users),
+            str(conv),
+            str(calls),
+            duration,
+            transfer_rate,
+        ]
+        data_rows.append(row)
+
+    # Calculate column widths with minimum widths for numeric columns
+    col_widths = []
+    for i, header in enumerate(headers):
+        max_width = len(header)
+        for row in data_rows:
+            if i < len(row):
+                max_width = max(max_width, len(str(row[i])))
+
+        # Set minimum widths based on column type for engagement table
+        if i > 0:  # Skip account name column
+            if header in ["Users"]:
+                # Users: 6 digits (999,999)
+                max_width = max(max_width, 6)
+            elif header in ["Conv", "Calls"]:
+                # Conversations and Calls: 10 digits (9,999,999,999)
+                max_width = max(max_width, 10)
+            else:
+                # Other numeric columns: keep existing 6 digit width
+                max_width = max(max_width, 6)
+
+        col_widths.append(max_width)
+
+    lines = []
+
+    # Header row
+    header_line = ""
+    for i, header in enumerate(headers):
+        if i == 0:
+            # Left-align account names
+            header_line += header.ljust(col_widths[i])
+        else:
+            # Right-align numeric columns
+            header_line += header.rjust(col_widths[i])
+        if i < len(headers) - 1:
+            header_line += "  "
+    lines.append(header_line)
+
+    # Separator line
+    separator = ""
+    for i, width in enumerate(col_widths):
+        separator += "-" * width
+        if i < len(col_widths) - 1:
+            separator += "--"
+    lines.append(separator)
+
+    # Data rows
+    for row in data_rows:
+        row_line = ""
+        for i, cell in enumerate(row):
+            cell_str = str(cell)
+            if i == 0:
+                # Left-align account names
+                row_line += cell_str.ljust(col_widths[i])
+            else:
+                # Right-align numeric values
+                row_line += cell_str.rjust(col_widths[i])
+            if i < len(row) - 1:
+                row_line += "  "
+        lines.append(row_line)
+
+    return "```\n" + "\n".join(lines) + "\n```"
+
+
+# =============================================================================
+# REPORT SECTION BUILDERS
+# =============================================================================
+
+
+def create_engagement_section(unified_accounts: dict, columns: list[str]) -> dict:
+    """Create engagement metrics section block with compact table formatting."""
+    table_text = create_engagement_table(unified_accounts)
+    section_text = "*📈 Account Details*\n\n" + table_text
+
+    return {"type": "section", "text": {"type": "mrkdwn", "text": section_text}}
 
 
 def build_engagement_summary(totals_summary: dict) -> list[str]:
@@ -315,7 +575,7 @@ def build_engagement_summary(totals_summary: dict) -> list[str]:
 
     if "Message Turn Distribution" in totals_summary:
         total_convs = totals_summary["Message Turn Distribution"].get(
-            "total_total_conversations", 0
+            "total_conversations", 0
         )
         avg_turns = totals_summary["Message Turn Distribution"].get(
             "avg_turns_per_conversation", 0
@@ -326,7 +586,7 @@ def build_engagement_summary(totals_summary: dict) -> list[str]:
         )
 
     if "Call Time Metrics" in totals_summary:
-        total_calls = totals_summary["Call Time Metrics"].get("total_total_calls", 0)
+        total_calls = totals_summary["Call Time Metrics"].get("total_calls", 0)
         avg_duration = totals_summary["Call Time Metrics"].get("avg_duration", 0)
         avg_duration_formatted = safe_float_format(avg_duration, 1)
         summary_lines.append(
@@ -372,7 +632,7 @@ def build_conversion_section(
         conversion_summary_lines
     )
 
-    # Add divider, summary, and table
+    # Add divider, summary, and conversion details
     blocks.extend(
         [
             {"type": "divider"},
@@ -380,31 +640,33 @@ def build_conversion_section(
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": conversion_summary_text},
             },
-            {"type": "table", "rows": create_conversion_table(unified_accounts)},
+            create_conversion_section(unified_accounts),
         ]
     )
 
     return blocks
 
 
-def create_conversion_table(unified_accounts: dict) -> list:
-    """Create conversion metrics table rows, filtering out accounts with 0 orders."""
-    # Filter out accounts with 0 conversations_with_orders
-    filtered_accounts = {
-        account_name: account_data
-        for account_name, account_data in unified_accounts.items()
-        if account_data.get("conversations_with_orders", 0) > 0
-    }
+def create_conversion_section(unified_accounts: dict) -> dict | None:
+    """Create conversion metrics section block using the conversion table format."""
+    if not unified_accounts:
+        return {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*📊 Conversion Details*\n\nNo account data available.",
+            },
+        }
 
-    return create_engagement_table(filtered_accounts, CONVERSION_COLUMNS)
+    table_text = create_conversion_table(unified_accounts)
+    section_text = "*📊 Conversion Details*\n\n" + table_text
+
+    return {"type": "section", "text": {"type": "mrkdwn", "text": section_text}}
 
 
-def has_conversion_data(totals_summary: dict, unified_accounts: dict) -> bool:
-    """Check if conversion data exists in the reports."""
-    return "Conversion Metrics" in totals_summary or any(
-        any(key in account_data for key in CONVERSION_METRIC_KEYS)
-        for account_data in unified_accounts.values()
-    )
+# =============================================================================
+# MAIN REPORT FORMATTING FUNCTIONS
+# =============================================================================
 
 
 def format_unified_report_for_slack(
@@ -415,7 +677,7 @@ def format_unified_report_for_slack(
 
     Args:
         reports: List of report objects to merge
-        columns: List of column keys to include (defaults to engagement columns)
+        columns: List of column keys to include (defaults to all available)
 
     Returns:
         dict: Slack blocks structure
@@ -448,12 +710,12 @@ def format_unified_report_for_slack(
             )
             return {"blocks": blocks}
 
-        # Add engagement table
+        # Add engagement details section
         logger.info(
-            f"[Slackbot] Creating engagement table with {len(unified_accounts)} accounts"
+            f"[Slackbot] Creating engagement section with {len(unified_accounts)} accounts"
         )
-        engagement_table_rows = create_engagement_table(unified_accounts, columns)
-        blocks.append({"type": "table", "rows": engagement_table_rows})
+        engagement_section = create_engagement_section(unified_accounts, columns)
+        blocks.append(engagement_section)
 
         # Add conversion section if data exists
         if has_conversion_data(totals_summary, unified_accounts):
@@ -468,6 +730,7 @@ def format_unified_report_for_slack(
             )
 
         logger.info(f"[Slackbot] Generated {len(blocks)} Slack blocks total")
+
         return {"blocks": blocks}
 
     except Exception as e:
@@ -483,6 +746,11 @@ def format_unified_report_for_slack(
                 }
             ]
         }
+
+
+# =============================================================================
+# SLACK INTEGRATION FUNCTIONS
+# =============================================================================
 
 
 def get_slack_credentials() -> tuple[str, str]:
@@ -677,7 +945,7 @@ async def handle_custom_date_request(message, client):
 
 
 # =============================================================================
-# SLACK APP CONFIGURATION
+# SLACK BOT CONFIGURATION
 # =============================================================================
 
 
@@ -710,7 +978,6 @@ def create_slack_app():
         """Handle monthly report requests."""
         await handle_report_request("monthly", message, client)
 
-    # Handle custom date range requests
     @app.message(
         re.compile(r"from\s+\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}", re.IGNORECASE)
     )
@@ -724,12 +991,6 @@ def create_slack_app():
 # =============================================================================
 # SLACK EVENT HANDLING
 # =============================================================================
-
-
-# Global Slack app instance and thread safety
-_slack_app = None
-_slack_handler = None
-_slack_init_lock = threading.Lock()
 
 
 async def handle_slack_events(request) -> Response:
