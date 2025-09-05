@@ -108,9 +108,30 @@ def get_date_range_for_period(period: str) -> tuple[datetime, datetime]:
 
 
 # =============================================================================
-# SLACK REPORTING FUNCTIONS
+# CONSTANTS AND CONFIGURATION
 # =============================================================================
 
+# Report name to data key mapping for cleaner code
+REPORT_DATA_KEYS = {
+    "Active Users": "active_users",
+    "Message Turn Distribution": "turn_distribution",
+    "Call Time Metrics": "call_time_metrics",
+    "Conversion Metrics": "conversion_metrics",
+}
+
+# Conversion metrics keys for data detection
+CONVERSION_METRIC_KEYS = [
+    "conversations_with_orders",
+    "paid_orders",
+    "total_subtotal",
+    "paid_total",
+    "conversion_rate",
+    "paid_rate",
+]
+
+# =============================================================================
+# SLACK REPORTING FUNCTIONS
+# =============================================================================
 
 # Global column lists for different report sections
 ENGAGEMENT_COLUMNS = [
@@ -138,14 +159,24 @@ CONVERSION_COLUMNS = [
 ALL_COLUMNS = ENGAGEMENT_COLUMNS + CONVERSION_COLUMNS
 
 
+def safe_float_format(value, decimals: int = 1) -> str:
+    """Safely format a value as float, handling strings and None."""
+    if value is None:
+        return "N/A"
+    try:
+        return f"{float(value):.{decimals}f}"
+    except (ValueError, TypeError):
+        return str(value)
+
+
 def create_column_config(key: str, header: str, format_type: str = "int") -> dict:
     """Create a standardized column configuration."""
     format_funcs = {
         "int": lambda x: str(x) if x is not None else "N/A",
-        "float": lambda x: f"{x:.1f}" if x is not None else "N/A",
-        "percent": lambda x: f"{x:.1f}%" if x is not None else "N/A",
-        "currency": lambda x: f"${x:.2f}" if x is not None else "N/A",
-        "duration": lambda x: f"{x:.1f}s" if x is not None else "N/A",
+        "float": lambda x: safe_float_format(x, 1),
+        "percent": lambda x: f"{safe_float_format(x, 1)}%" if x is not None else "N/A",
+        "currency": lambda x: f"${safe_float_format(x, 2)}" if x is not None else "N/A",
+        "duration": lambda x: f"{safe_float_format(x, 1)}s" if x is not None else "N/A",
     }
 
     return {
@@ -197,36 +228,29 @@ def merge_report_data(reports: list) -> dict:
     unified_accounts = {}
     totals_summary = {}
 
-    # Process each report type
-    for report in reports:
-        report_name = report.name
-        report_data = report.data
+    logger.info(f"[Slackbot] Processing {len(reports)} reports for merging")
 
+    for report in reports:
         # Extract totals for summary
-        if "totals" in report_data:
-            totals_summary[report_name] = report_data["totals"]
+        if "totals" in report.data:
+            totals_summary[report.name] = report.data["totals"]
 
         # Extract account-level data
-        account_data_key = None
-        if report_name == "ACTIVE_USERS":
-            account_data_key = "active_users"
-        elif report_name == "MESSAGE_TURNS":
-            account_data_key = "turn_distribution"
-        elif report_name == "CALL_METRICS":
-            account_data_key = "call_time_metrics"
-        elif report_name == "CONVERSION_METRICS":
-            account_data_key = "conversion_metrics"
-
-        if account_data_key and account_data_key in report_data:
-            accounts = report_data[account_data_key]
-
+        account_data_key = REPORT_DATA_KEYS.get(report.name)
+        if account_data_key and account_data_key in report.data:
+            accounts = report.data[account_data_key]
             for account_name, metrics in accounts.items():
                 if account_name not in unified_accounts:
                     unified_accounts[account_name] = {}
-
-                # Merge metrics into unified structure
                 unified_accounts[account_name].update(metrics)
+        else:
+            logger.warning(
+                f"[Slackbot] No account data found for report '{report.name}' (expected key: {account_data_key})"
+            )
 
+    logger.info(
+        f"[Slackbot] Merged data: {len(unified_accounts)} accounts, {len(totals_summary)} report summaries"
+    )
     return {"unified_accounts": unified_accounts, "totals_summary": totals_summary}
 
 
@@ -281,6 +305,88 @@ def create_engagement_table(unified_accounts: dict, columns: list[str]) -> list:
     return table_rows
 
 
+def build_engagement_summary(totals_summary: dict) -> list[str]:
+    """Build engagement summary lines from totals data."""
+    summary_lines = []
+
+    if "Active Users" in totals_summary:
+        total_users = totals_summary["Active Users"].get("total_active_users", 0)
+        summary_lines.append(f"• Active Users: *{total_users}*")
+
+    if "Message Turn Distribution" in totals_summary:
+        total_convs = totals_summary["Message Turn Distribution"].get(
+            "total_total_conversations", 0
+        )
+        avg_turns = totals_summary["Message Turn Distribution"].get(
+            "avg_turns_per_conversation", 0
+        )
+        avg_turns_formatted = safe_float_format(avg_turns, 1)
+        summary_lines.append(
+            f"• Conversations: *{total_convs}* (Avg {avg_turns_formatted} turns)"
+        )
+
+    if "Call Time Metrics" in totals_summary:
+        total_calls = totals_summary["Call Time Metrics"].get("total_total_calls", 0)
+        avg_duration = totals_summary["Call Time Metrics"].get("avg_duration", 0)
+        avg_duration_formatted = safe_float_format(avg_duration, 1)
+        summary_lines.append(
+            f"• Calls: *{total_calls}* (Avg {avg_duration_formatted}s)"
+        )
+
+    return summary_lines
+
+
+def build_conversion_section(
+    totals_summary: dict, unified_accounts: dict
+) -> list[dict]:
+    """Build conversion summary section and table blocks."""
+    blocks = []
+
+    conversion_summary_lines = []
+    if "Conversion Metrics" in totals_summary:
+        conv_totals = totals_summary["Conversion Metrics"]
+
+        # Extract conversion metrics
+        total_convs_with_orders = conv_totals.get("total_conversations_with_orders", 0)
+        total_paid_orders = conv_totals.get("total_paid_orders", 0)
+        total_revenue = conv_totals.get("total_subtotal", 0)
+        paid_revenue = conv_totals.get("total_paid_total", 0)
+        overall_conversion_rate = conv_totals.get("overall_conversion_rate", 0)
+        overall_paid_rate = conv_totals.get("overall_paid_rate", 0)
+
+        # Format values safely
+        total_revenue_formatted = safe_float_format(total_revenue, 2)
+        paid_revenue_formatted = safe_float_format(paid_revenue, 2)
+        conversion_rate_formatted = safe_float_format(overall_conversion_rate, 1)
+        paid_rate_formatted = safe_float_format(overall_paid_rate, 1)
+
+        conversion_summary_lines.extend(
+            [
+                f"• Orders: *{total_convs_with_orders}* (Paid: *{total_paid_orders}*)",
+                f"• Revenue: *${total_revenue_formatted}* (Paid: *${paid_revenue_formatted}*)",
+                f"• Conversion Rate: *{conversion_rate_formatted}%* | Paid Rate: *{paid_rate_formatted}%*",
+            ]
+        )
+
+    conversion_summary_text = "*💰 Conversion Summary*\n" + "\n".join(
+        conversion_summary_lines
+    )
+
+    # Add divider, summary, and table
+    blocks.extend(
+        [
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": conversion_summary_text},
+            },
+            {"type": "table", "rows": create_conversion_table(unified_accounts)},
+        ]
+    )
+
+    return blocks
+
+
 def create_conversion_table(unified_accounts: dict) -> list:
     """Create conversion metrics table rows, filtering out accounts with 0 orders."""
     # Filter out accounts with 0 conversations_with_orders
@@ -293,6 +399,14 @@ def create_conversion_table(unified_accounts: dict) -> list:
     return create_engagement_table(filtered_accounts, CONVERSION_COLUMNS)
 
 
+def has_conversion_data(totals_summary: dict, unified_accounts: dict) -> bool:
+    """Check if conversion data exists in the reports."""
+    return "Conversion Metrics" in totals_summary or any(
+        any(key in account_data for key in CONVERSION_METRIC_KEYS)
+        for account_data in unified_accounts.values()
+    )
+
+
 def format_unified_report_for_slack(
     reports: list, columns: list[str] | None = None
 ) -> dict:
@@ -301,48 +415,31 @@ def format_unified_report_for_slack(
 
     Args:
         reports: List of report objects to merge
-        columns: List of column keys to include (defaults to all available)
+        columns: List of column keys to include (defaults to engagement columns)
 
     Returns:
         dict: Slack blocks structure
     """
     try:
         # Use default columns if none specified
-        if columns is None:
-            columns = ENGAGEMENT_COLUMNS
+        columns = columns or ENGAGEMENT_COLUMNS
 
         # Merge all report data
         merged_data = merge_report_data(reports)
         unified_accounts = merged_data["unified_accounts"]
         totals_summary = merged_data["totals_summary"]
 
-        # Build summary section
-        summary_lines = []
-        if "ACTIVE_USERS" in totals_summary:
-            total_users = totals_summary["ACTIVE_USERS"].get("total_active_users", 0)
-            summary_lines.append(f"• Active Users: *{total_users}*")
-
-        if "MESSAGE_TURNS" in totals_summary:
-            total_convs = totals_summary["MESSAGE_TURNS"].get(
-                "total_total_conversations", 0
-            )
-            avg_turns = totals_summary["MESSAGE_TURNS"].get(
-                "avg_turns_per_conversation", 0
-            )
-            summary_lines.append(
-                f"• Conversations: *{total_convs}* (Avg {avg_turns:.1f} turns)"
-            )
-
-        if "CALL_METRICS" in totals_summary:
-            total_calls = totals_summary["CALL_METRICS"].get("total_total_calls", 0)
-            avg_duration = totals_summary["CALL_METRICS"].get("avg_duration", 0)
-            summary_lines.append(f"• Calls: *{total_calls}* (Avg {avg_duration:.1f}s)")
-
+        # Build engagement summary
+        summary_lines = build_engagement_summary(totals_summary)
         summary_text = "*📊 Engagement Summary*\n" + "\n".join(summary_lines)
 
         blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": summary_text}}]
 
+        # Handle case with no account data
         if not unified_accounts:
+            logger.warning(
+                "[Slackbot] No unified accounts found - showing 'No account data available' message"
+            )
             blocks.append(
                 {
                     "type": "section",
@@ -352,65 +449,25 @@ def format_unified_report_for_slack(
             return {"blocks": blocks}
 
         # Add engagement table
+        logger.info(
+            f"[Slackbot] Creating engagement table with {len(unified_accounts)} accounts"
+        )
         engagement_table_rows = create_engagement_table(unified_accounts, columns)
         blocks.append({"type": "table", "rows": engagement_table_rows})
 
-        # Add conversion summary section if conversion data exists
-        has_conversion_data = "CONVERSION_METRICS" in totals_summary or any(
-            any(
-                key in account_data
-                for key in [
-                    "conversations_with_orders",
-                    "paid_orders",
-                    "total_subtotal",
-                    "paid_total",
-                    "conversion_rate",
-                    "paid_rate",
-                ]
+        # Add conversion section if data exists
+        if has_conversion_data(totals_summary, unified_accounts):
+            logger.info("[Slackbot] Adding conversion section - conversion data found")
+            conversion_blocks = build_conversion_section(
+                totals_summary, unified_accounts
             )
-            for account_data in unified_accounts.values()
-        )
-
-        if has_conversion_data:
-            # Build conversion summary
-            conversion_summary_lines = []
-            if "CONVERSION_METRICS" in totals_summary:
-                conv_totals = totals_summary["CONVERSION_METRICS"]
-                total_convs_with_orders = conv_totals.get(
-                    "total_conversations_with_orders", 0
-                )
-                total_paid_orders = conv_totals.get("total_paid_orders", 0)
-                total_revenue = conv_totals.get("total_subtotal", 0)
-                paid_revenue = conv_totals.get("total_paid_total", 0)
-                overall_conversion_rate = conv_totals.get("overall_conversion_rate", 0)
-                overall_paid_rate = conv_totals.get("overall_paid_rate", 0)
-
-                conversion_summary_lines.extend(
-                    [
-                        f"• Orders: *{total_convs_with_orders}* (Paid: *{total_paid_orders}*)",
-                        f"• Revenue: *${total_revenue:.2f}* (Paid: *${paid_revenue:.2f}*)",
-                        f"• Conversion Rate: *{overall_conversion_rate:.1f}%* | Paid Rate: *{overall_paid_rate:.1f}%*",
-                    ]
-                )
-
-            conversion_summary_text = "*💰 Conversion Summary*\n" + "\n".join(
-                conversion_summary_lines
+            blocks.extend(conversion_blocks)
+        else:
+            logger.info(
+                "[Slackbot] Skipping conversion section - no conversion data found"
             )
 
-            blocks.extend(
-                [
-                    {"type": "divider"},
-                    {
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": conversion_summary_text},
-                    },
-                ]
-            )
-
-            # Add conversion table
-            conversion_table_rows = create_conversion_table(unified_accounts)
-            blocks.append({"type": "table", "rows": conversion_table_rows})
-
+        logger.info(f"[Slackbot] Generated {len(blocks)} Slack blocks total")
         return {"blocks": blocks}
 
     except Exception as e:
@@ -428,18 +485,20 @@ def format_unified_report_for_slack(
         }
 
 
-# Legacy function for backward compatibility
-def format_active_users_for_slack(active_users_data: dict) -> dict:
-    """Legacy function - use format_unified_report_for_slack instead."""
+def get_slack_credentials() -> tuple[str, str]:
+    """Get Slack bot token and channel from secrets."""
+    try:
+        bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
+    except ValueError as e:
+        logger.error(f"[Slackbot] SLACK_BOT_TOKEN not found: {e}")
+        raise ValueError("Slack bot token not configured")
 
-    # Convert single report to list format for unified function
-    class MockReport:
-        def __init__(self, name, data):
-            self.name = name
-            self.data = data
+    try:
+        slack_channel = get_client_secret_with_fallback("SLACK_CHANNEL")
+    except ValueError:
+        slack_channel = "#test-channel"  # Default fallback
 
-    reports = [MockReport("ACTIVE_USERS", active_users_data)]
-    return format_unified_report_for_slack(reports, columns=["active_users"])
+    return bot_token, slack_channel
 
 
 async def send_report_to_slack(
@@ -450,98 +509,86 @@ async def send_report_to_slack(
     end_date: datetime | None = None,
 ) -> dict:
     """
-    Send a comprehensive engagement report to Slack with unified analytics.
+    Send a comprehensive analytics report to Slack.
 
     Args:
-        slack_channel (str): Slack slack_channel to send to (optional, uses secret manager if not provided)
-        client (AsyncWebClient): Optional async Slack client to reuse (creates new one if not provided)
-        session (Session): Database session for fetching analytics data
-        start_date (datetime): Start date for the report
-        end_date (datetime): End date for the report
+        slack_channel: Slack channel to send to (optional, uses secret manager if not provided)
+        client: Optional async Slack client to reuse (creates new one if not provided)
+        session: Database session for fetching analytics data
+        start_date: Start date for the report
+        end_date: End date for the report
 
     Returns:
         dict: Status of the operation
     """
     try:
-        # Get bot token from AWS Secrets Manager with environment variable fallback
-        try:
-            bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
-        except ValueError as e:
-            logger.error(
-                f"[Slackbot] SLACK_BOT_TOKEN not found in secrets manager or environment: {e}"
-            )
-            return {"status": "error", "message": "Slack bot token not configured"}
-
-        # Get slack_channel from parameter or AWS Secrets Manager
-        if not slack_channel:
-            try:
-                target_slack_channel = get_client_secret_with_fallback("SLACK_CHANNEL")
-            except ValueError:
-                target_slack_channel = "#test-channel"  # Default fallback
-        else:
-            target_slack_channel = slack_channel
-
-        # Use provided client or create new one
-        if client is None:
-            client = AsyncWebClient(token=bot_token)
-
-        # Get reports data
+        # Validate required session
         if session is None:
             return {"status": "error", "message": "Database session not available"}
 
+        # Get Slack credentials
+        try:
+            bot_token, default_channel = get_slack_credentials()
+            target_channel = slack_channel or default_channel
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
+
+        # Create client if not provided
+        if client is None:
+            client = AsyncWebClient(token=bot_token)
+
+        # Fetch analytics reports
+        logger.info(
+            f"[Slackbot] Fetching analytics reports from {start_date} to {end_date}"
+        )
         reports = await get_reports(
             session, None, start_date, end_date, group_by=["account_id"]
         )
-
         if not reports.reports:
+            logger.warning("[Slackbot] No reports data returned from analytics service")
             return {"status": "error", "message": "No reports data available"}
 
-        # Convert reports to Slack blocks format
-        try:
-            message_blocks = format_unified_report_for_slack(reports.reports)
-            logger.info(
-                f"[Slackbot] Successfully converted {len(reports.reports)} reports to Slack blocks"
-            )
+        # Generate Slack blocks
+        logger.info(
+            f"[Slackbot] Converting {len(reports.reports)} reports to Slack blocks"
+        )
+        message_blocks = format_unified_report_for_slack(reports.reports)
+        if not message_blocks or "blocks" not in message_blocks:
+            logger.error("[Slackbot] Failed to generate valid Slack blocks structure")
+            return {"status": "error", "message": "Failed to generate Slack blocks"}
 
-            # Validate blocks structure
-            if not message_blocks or "blocks" not in message_blocks:
-                return {"status": "error", "message": "Failed to generate Slack blocks"}
+        logger.info(
+            f"[Slackbot] Successfully converted {len(reports.reports)} reports to Slack blocks"
+        )
 
-        except Exception as e:
-            logger.error(f"[Slackbot] Error converting reports to Slack blocks: {e}")
-            return {"status": "error", "message": f"Block conversion failed: {str(e)}"}
-
-        # Send the message
-        if client is None:
-            return {"status": "error", "message": "Slack client not available"}
-
+        # Send to Slack
+        logger.info(f"[Slackbot] Sending report to Slack channel: {target_channel}")
         response = await client.chat_postMessage(
-            channel=target_slack_channel, text="Engagement Report", **message_blocks
+            channel=target_channel, text="Analytics Report", **message_blocks
         )
 
         if response["ok"]:
-            logger.info(
-                f"[Slackbot] Engagement report sent successfully to Slack channel {target_slack_channel}"
-            )
+            logger.info(f"[Slackbot] Report sent successfully to {target_channel}")
             return {
                 "status": "success",
-                "message": f"Engagement report sent to Slack channel {target_slack_channel} successfully",
+                "message": f"Report sent to {target_channel} successfully",
             }
         else:
-            logger.error(
-                f"[Slackbot] Failed to send to Slack: {response.get('error', 'Unknown error')}"
-            )
+            error_msg = response.get("error", "Unknown error")
+            logger.error(f"[Slackbot] Slack API error: {error_msg}")
             return {
                 "status": "error",
-                "message": f"Failed to send to Slack: {response.get('error', 'Unknown error')}",
+                "message": f"Failed to send to Slack: {error_msg}",
             }
 
     except SlackApiError as e:
-        logger.error(f"[Slackbot] Slack API error: {e.response['error']}")
-        return {"status": "error", "message": f"Slack API error: {e.response['error']}"}
+        error_msg = f"Slack API error: {e.response['error']}"
+        logger.error(f"[Slackbot] {error_msg}")
+        return {"status": "error", "message": error_msg}
     except Exception as e:
-        logger.error(f"[Slackbot] Error sending engagement report to Slack: {e}")
-        return {"status": "error", "message": f"Failed to send report: {str(e)}"}
+        error_msg = f"Failed to send report: {str(e)}"
+        logger.error(f"[Slackbot] {error_msg}")
+        return {"status": "error", "message": error_msg}
 
 
 async def handle_report_request(
@@ -561,7 +608,7 @@ async def handle_report_request(
         user = message["user"]
 
         logger.info(
-            f"[Slackbot] User {user} requested {period} report in slack_channel {slack_channel}"
+            f"[Slackbot] User {user} requested {period} report in channel {slack_channel}"
         )
 
         # Get date range - either custom or predefined period
@@ -572,10 +619,11 @@ async def handle_report_request(
             )
         else:
             start_date, end_date = get_date_range_for_period(period)
+            logger.info(
+                f"[Slackbot] Using {period} date range: {start_date} to {end_date}"
+            )
 
         # Get database session for conversion data using proper context handling
-        result = {"status": "error", "message": "No result"}
-
         session = SyncSessionLocal()
         try:
             result = await send_report_to_slack(
@@ -586,11 +634,11 @@ async def handle_report_request(
 
         if result["status"] == "success":
             logger.info(
-                f"[Slackbot] {period.capitalize()} report sent successfully to {slack_channel}"
+                f"[Slackbot] {period.capitalize()} report completed successfully"
             )
         else:
             logger.error(
-                f"[Slackbot] Failed to send {period} report: {result['message']}"
+                f"[Slackbot] {period.capitalize()} report failed: {result['message']}"
             )
 
     except Exception as e:
@@ -636,32 +684,33 @@ async def handle_custom_date_request(message, client):
 def create_slack_app():
     """Create and configure Slack Bolt app with event handlers."""
     try:
-        # Get bot token and signing secret from AWS Secrets Manager with environment variable fallback
         bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
         signing_secret = get_client_secret_with_fallback("SLACK_SIGNING_SECRET")
     except ValueError as e:
         logger.warning(
-            f"[Slackbot] SLACK_BOT_TOKEN or SLACK_SIGNING_SECRET not found in secrets manager or environment: {e} - Slack event handling disabled"
+            f"[Slackbot] Slack credentials not found: {e} - Event handling disabled"
         )
         return None
 
     app = AsyncApp(token=bot_token, signing_secret=signing_secret)
 
+    # Register message handlers for different report periods
     @app.message("daily")
     async def handle_daily_request(message, client):
-        """Handle when users send 'daily' in the slack_channel."""
+        """Handle daily report requests."""
         await handle_report_request("daily", message, client)
 
     @app.message("weekly")
     async def handle_weekly_request(message, client):
-        """Handle when users send 'weekly' in the slack_channel."""
+        """Handle weekly report requests."""
         await handle_report_request("weekly", message, client)
 
     @app.message("monthly")
     async def handle_monthly_request(message, client):
-        """Handle when users send 'monthly' in the slack_channel."""
+        """Handle monthly report requests."""
         await handle_report_request("monthly", message, client)
 
+    # Handle custom date range requests
     @app.message(
         re.compile(r"from\s+\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}", re.IGNORECASE)
     )
