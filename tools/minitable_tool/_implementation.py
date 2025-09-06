@@ -3,7 +3,12 @@ from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from tools.base.reservation import BaseReservationTool, params_validate
-from tools.minitable_tool._apis import create_reservation, suggest_availability
+from tools.minitable_tool._apis import (
+    check_waitlist_status,
+    create_reservation,
+    create_waitlist,
+    suggest_availability,
+)
 from tools.minitable_tool.phone_number_validator import validate_and_format_phone
 from utils.log import logger
 
@@ -37,6 +42,8 @@ class MiniTableTool(Toolkit, BaseReservationTool):
 
         self.register(self.check_availability)
         self.register(self.make_reservation)
+        self.register(self.get_waitlist_status)
+        self.register(self.join_waitlist_queue)
 
     @tool
     @params_validate()
@@ -159,13 +166,52 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             return f"Error creating reservation: {str(e)}"
 
     @tool
-    def get_waitlist_status(self, **kwargs) -> str:  # type: ignore[misc]
+    def get_waitlist_status(self) -> str:  # type: ignore[misc]
         """
         Get current waitlist status and wait times for the restaurant.
-
-        Note: MiniTable does not currently support waitlist functionality.
         """
-        return "Waitlist functionality is not supported by MiniTable at this time."
+        try:
+            logger.debug(
+                f"[MiniTable] Getting waitlist status for restaurant {self.restaurant_id}"
+            )
+
+            result = check_waitlist_status(merchant_id=str(self.restaurant_id))
+
+            status = result.get("status", "Unknown")
+            reason = result.get("reason", "")
+            wait_estimate = result.get("wait_estimate", {})
+
+            if status == "Closed":
+                return f"Waitlist is currently closed. {reason}".strip()
+
+            if status == "Open":
+                response_parts = ["Waitlist is currently open."]
+
+                if wait_estimate:
+                    response_parts.append("Current wait estimates by party size:")
+
+                    # Format wait estimates for different party sizes
+                    for category, info in wait_estimate.items():
+                        parties_ahead = info.get("parties_ahead_count", 0)
+                        from_size = info.get("from_people_number", 0)
+                        to_size = info.get("to_people_number", 0)
+
+                        if to_size == 9999:
+                            size_range = f"{from_size}+ people"
+                        else:
+                            size_range = f"{from_size}-{to_size} people"
+
+                        response_parts.append(
+                            f"- {size_range}: {parties_ahead} parties ahead"
+                        )
+
+                return "\n".join(response_parts)
+
+            return f"Waitlist status: {status}. {reason}".strip()
+
+        except Exception as e:
+            logger.error(f"[MiniTable] Error getting waitlist status: {str(e)}")
+            return f"Error getting waitlist status: {str(e)}"
 
     @tool
     @params_validate()
@@ -176,11 +222,69 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         phone: str,
         party_size: int,
         notes: str = "",
-        **kwargs,
     ) -> str:
         """
         Join the waitlist queue for the restaurant.
 
-        Note: MiniTable does not currently support waitlist functionality.
+        Args:
+            first_name: Customer first name
+            last_name: Customer last name
+            phone: Customer phone number
+            party_size: Number of people in the party
+            notes: Optional notes for the waitlist entry
         """
-        return "Waitlist functionality is not supported by MiniTable at this time."
+        customer_name = f"{first_name} {last_name}"
+        logger.debug(
+            f"[MiniTable] Adding to waitlist: {customer_name}, party_size: {party_size}"
+        )
+
+        try:
+            # Validate and format phone number
+            formatted_telephone = validate_and_format_phone(phone)
+
+            result = create_waitlist(
+                merchant_id=str(self.restaurant_id),
+                party_size=party_size,
+                telephone=formatted_telephone,
+                customer_name=customer_name,
+                note=notes,
+            )
+
+            # Check for business logic failures
+            business_failure = result.get("waitlist_business_logic_failure")
+            if business_failure:
+                cause = business_failure.get("cause", "Unknown")
+                description = business_failure.get("description", "")
+
+                if cause == "EXISTING_WAITLIST_ENTRY":
+                    return "You already have an entry on the waitlist."
+                elif cause == "WAITLIST_FULL":
+                    return "The waitlist is currently full. Please try again later."
+                elif cause == "WAITLIST_NOT_ENABLE":
+                    return "The waitlist is not currently enabled for this restaurant."
+                else:
+                    return (
+                        f"Unable to join waitlist: {description}"
+                        if description
+                        else f"Unable to join waitlist due to: {cause}"
+                    )
+
+            # Success case
+            waitlist_id = result.get("waitlist_id")
+            wait_code = result.get("wait_code")
+            left_count = result.get("left_count", 0)
+
+            if waitlist_id and wait_code:
+                return f"Successfully added to waitlist! Waitlist ID: {waitlist_id}, Wait code: {wait_code}, Position: {left_count + 1} parties ahead of you."
+            else:
+                return "Successfully added to waitlist, but some details are missing from the response."
+
+        except ValueError as e:
+            error_msg = str(e)
+            # Handle phone number validation errors specifically
+            if "phone number" in error_msg.lower():
+                return f"{error_msg}. Please provide a valid US phone number."
+            return f"Validation error: {error_msg}"
+        except Exception as e:
+            logger.error(f"[MiniTable] Error joining waitlist: {str(e)}")
+            return f"Error joining waitlist: {str(e)}"

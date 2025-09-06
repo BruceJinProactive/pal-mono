@@ -109,3 +109,90 @@ def create_reservation(
     return {
         "booking": data.get("booking", {}),
     }
+
+
+def create_waitlist(
+    merchant_id: str,
+    party_size: int,
+    telephone: str,
+    customer_name: str,
+    note: str = "",
+) -> dict:
+    """
+    Create a waitlist entry for a restaurant.
+
+    Args:
+        merchant_id: Merchant ID
+        party_size: Number of people in the party
+        telephone: Customer's phone number
+        customer_name: Customer's name
+        note: Optional note for the waitlist entry
+
+    Returns:
+        Dictionary containing waitlist creation response with waitlist_id, wait_code,
+        left_count, and potential business logic failures
+    """
+    api_function = "/weapp/ai/waitlist/create"
+
+    request_body = {
+        "merchant_id": merchant_id,
+        "party_size": party_size,
+        "telephone": telephone,
+        "customer_name": customer_name,
+        "note": note,
+    }
+
+    logger.debug(f"[MiniTable] Creating waitlist entry with request: {request_body}")
+
+    response = connect_minitable_api(
+        api_function=api_function,
+        payload=request_body,
+    )
+
+    if response.status != 200:
+        logger.error(
+            f"MiniTable API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"MiniTable API error: {response.status} {response.reason}")
+
+    data = response.decoded_body
+    logger.debug(f"[MiniTable] MiniTable API create waitlist response: {data}")
+
+    return data
+
+
+def check_waitlist_status(merchant_id: str) -> dict:
+    """
+    Check the current waitlist status for a restaurant.
+
+    Args:
+        merchant_id: Merchant ID
+
+    Returns:
+        Dictionary containing waitlist status, reason, and wait estimates for different party sizes
+    """
+    api_function = "/weapp/ai/waitlist/status/check"
+
+    request_body = {
+        "merchant_id": merchant_id,
+    }
+
+    logger.debug(f"[MiniTable] Checking waitlist status with request: {request_body}")
+
+    response = connect_minitable_api(
+        api_function=api_function,
+        payload=request_body,
+    )
+
+    if response.status != 200:
+        logger.error(
+            f"MiniTable API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"MiniTable API error: {response.status} {response.reason}")
+
+    data = response.decoded_body
+    logger.debug(f"[MiniTable] MiniTable API check waitlist status response: {data}")
+
+    return data
