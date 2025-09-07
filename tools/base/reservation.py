@@ -142,6 +142,19 @@ class BaseReservationTool(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def get_user_wait_status(self, phone: str) -> str:
+        """
+        Get today's waitlist entries for a specific phone number.
+
+        Args:
+            phone: Customer phone number to check waitlist status for
+
+        Returns:
+            str: Waitlist entries and status information for the phone number
+        """
+        raise NotImplementedError
+
     def validate_required_params(
         self, params: Dict[str, Any], required_fields: List[str], method_name: str = ""
     ) -> Optional[str]:

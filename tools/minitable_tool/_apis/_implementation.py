@@ -196,3 +196,41 @@ def check_waitlist_status(merchant_id: str) -> dict:
     logger.debug(f"[MiniTable] MiniTable API check waitlist status response: {data}")
 
     return data
+
+
+def get_user_wait_status(merchant_id: str, telephone: str) -> dict:
+    """
+    Get today's waitlist entries for a specific phone number.
+
+    Args:
+        merchant_id: Merchant ID
+        telephone: Customer's phone number
+
+    Returns:
+        Dictionary containing waitlist entries for the phone number
+    """
+    api_function = "/weapp/ai/waitlist/list"
+
+    request_body = {
+        "merchant_id": merchant_id,
+        "telephone": telephone,
+    }
+
+    logger.debug(f"[MiniTable] Getting user wait status with request: {request_body}")
+
+    response = connect_minitable_api(
+        api_function=api_function,
+        payload=request_body,
+    )
+
+    if response.status != 200:
+        logger.error(
+            f"MiniTable API returned error: {response.status} {response.reason}"
+        )
+        logger.error(f"Response body: {response.decoded_body}")
+        raise Exception(f"MiniTable API error: {response.status} {response.reason}")
+
+    data = response.decoded_body
+    logger.debug(f"[MiniTable] MiniTable API get user wait status response: {data}")
+
+    return data

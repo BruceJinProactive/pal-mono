@@ -7,6 +7,7 @@ from tools.minitable_tool._apis import (
     check_waitlist_status,
     create_reservation,
     create_waitlist,
+    get_user_wait_status,
     suggest_availability,
 )
 from tools.minitable_tool.phone_number_validator import validate_and_format_phone
@@ -29,6 +30,9 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         "phone",
         "party_size",
     ]
+    REQUIRED_GET_USER_WAIT_STATUS_FIELDS = [
+        "phone",
+    ]
 
     def __init__(
         self,
@@ -44,6 +48,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         self.register(self.make_reservation)
         self.register(self.get_waitlist_status)
         self.register(self.join_waitlist_queue)
+        self.register(self.get_user_wait_status)
 
     @tool
     @params_validate()
@@ -288,3 +293,60 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         except Exception as e:
             logger.error(f"[MiniTable] Error joining waitlist: {str(e)}")
             return f"Error joining waitlist: {str(e)}"
+
+    @tool
+    @params_validate()
+    def get_user_wait_status(self, phone: str) -> str:  # type: ignore[misc]
+        """
+        Get today's waitlist entries for a specific phone number.
+
+        Args:
+            phone: Customer phone number to check waitlist status for
+        """
+        try:
+            # Validate and format phone number
+            formatted_telephone = validate_and_format_phone(phone)
+
+            logger.debug(
+                f"[MiniTable] Getting user wait status for phone: {formatted_telephone}"
+            )
+
+            result = get_user_wait_status(
+                merchant_id=str(self.restaurant_id),
+                telephone=formatted_telephone,
+            )
+
+            waitlists = result.get("waitlists", [])
+
+            if not waitlists:
+                return "No waitlist entries found for this phone number today."
+
+            response_parts = [
+                f"Found {len(waitlists)} waitlist entries for this phone number:"
+            ]
+
+            for i, waitlist in enumerate(waitlists, 1):
+                status = waitlist.get("status", "Unknown")
+                wait_code = waitlist.get("wait_code", "N/A")
+                party_size = waitlist.get("party_size", "Unknown")
+                parties_ahead = waitlist.get("parties_ahead_count", "Unknown")
+                created_time = waitlist.get("state_times", {}).get(
+                    "created_time", "Unknown"
+                )
+
+                response_parts.append(
+                    f"{i}. Status: {status}, Wait Code: {wait_code}, Party Size: {party_size}, "
+                    f"Parties Ahead: {parties_ahead}, Created: {created_time}"
+                )
+
+            return "\n".join(response_parts)
+
+        except ValueError as e:
+            error_msg = str(e)
+            # Handle phone number validation errors specifically
+            if "phone number" in error_msg.lower():
+                return f"{error_msg}. Please provide a valid US phone number."
+            return f"Validation error: {error_msg}"
+        except Exception as e:
+            logger.error(f"[MiniTable] Error getting user wait status: {str(e)}")
+            return f"Error getting user wait status: {str(e)}"
