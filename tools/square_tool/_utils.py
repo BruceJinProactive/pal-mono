@@ -16,6 +16,7 @@ from tools.square_tool.classes import (
     Order,
     OrderLineItem,
     OrderLineItemModifier,
+    OrderPricingOptions,
     SquareAccessToken,
 )
 from utils.log import logger
@@ -719,6 +720,7 @@ def create_square_order_with_modifiers(
             ticket_name=None,
             line_items=line_items,
             fulfillments=fulfillments,
+            pricing_options=OrderPricingOptions(auto_apply_taxes=True),
             metadata={"palona_testing": "Order created via Palona AI automated system"},
         )
 
