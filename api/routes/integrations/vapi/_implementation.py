@@ -214,6 +214,8 @@ async def api_vapi_server(request: Request, session: AsyncSession) -> JSONRespon
                 response_data = handle_transcript_update(message_data)
             case "end-of-call-report":
                 response_data = await handle_session_closure(message_data, session)
+            case "tool-calls":
+                response_data = handle_tool_calls(message_data)
             case _:
                 logger.warning(f"Received unknown VAPI message type: {message_type}")
                 response_data = {"status": "acknowledged"}
@@ -615,6 +617,50 @@ def handle_function_call(message_data):
             }
     except Exception as e:
         logger.error(f"Error in handle_function_call: {str(e)}")
+        return {"error": str(e)}
+
+
+def handle_tool_calls(message_data):
+    """
+    Handle tool-calls message type.
+    This is sent when the Assistant wants to call a tool.
+
+    Args:
+        message_data: The message data from the request
+
+    Returns:
+        dict: A list of tool call results. Put error message in `error` field if any error occurs.
+    """
+    try:
+        tool_calls = message_data.get("toolCallList", [])
+        call_data = message_data.get("call", {})
+        call_id = call_data.get("id")
+        logger.debug(
+            f"Tool calls received for call {call_id}: {json.dumps(tool_calls)}"
+        )
+
+        # Handle different tool types
+        results = []
+        for tool_call in tool_calls:
+            tool_call_id = tool_call.get("id")
+            tool_function = tool_call.get("function")
+            tool_name = tool_function.get("name")
+            tool_args = tool_function.get("arguments", {})
+            logger.debug(
+                f"Tool call received: {tool_name} with args: {json.dumps(tool_args)}"
+            )
+            results.append(
+                {
+                    "name": tool_name,
+                    "toolCallId": tool_call_id,
+                    "result": "<placeholder>",
+                }
+            )
+
+        return {"results": results}
+
+    except Exception as e:
+        logger.error(f"Error in handle_tool_calls: {str(e)}")
         return {"error": str(e)}
 
 
