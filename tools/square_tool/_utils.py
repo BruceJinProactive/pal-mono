@@ -633,15 +633,12 @@ def _create_order_line_item(
     """Create a single order line item."""
     line_item_modifiers = _create_line_item_modifiers(modifiers)
 
-    palona_note = "🅿️ Order created via palona.ai agent 🅿️"
-    combined_note = f"{palona_note} | {special_notes}" if special_notes else palona_note
-
     return OrderLineItem(
         uid=str(uuid.uuid4())[:8],
         catalog_object_id=variation_id,
         name=item_name,
         quantity=str(quantity),
-        note=combined_note,
+        note=special_notes,
         variation_name=None,
         modifiers=line_item_modifiers if line_item_modifiers else None,
     )
@@ -696,7 +693,7 @@ def create_square_order_with_modifiers(
         pickup_details = FulfillmentPickupDetails(
             recipient=recipient,
             schedule_type="ASAP",
-            note=f"Order for {customer_name}",
+            note=f"Order for {customer_name} (palona.ai)",
         )
 
         # Create fulfillment - only set non-read-only fields
