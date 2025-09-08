@@ -366,24 +366,58 @@ def create_account_metrics_table(unified_accounts: dict, columns: list[str]) -> 
 
 
 def create_conversion_table(unified_accounts: dict) -> str:
-    """Create a conversion table similar to the provided example format."""
+    """Create a conversion table with conversation value and paid value columns, filtering out accounts with 0 orders."""
     if not unified_accounts:
         return "No account data available."
 
-    # Headers matching the example format
-    headers = ["Account", "Conv", "Orders", "Paid", "CVR%", "Paid%"]
+    # Headers with conversation value and paid value
+    headers = [
+        "Account",
+        "Conv",
+        "Orders",
+        "Paid",
+        "Subtotal",
+        "Paidtotal",
+        "CVR%",
+        "Paid%",
+    ]
 
-    # Build data rows
+    # Build data rows - filter out accounts with 0 orders
     data_rows = []
     for account_name, account_data in unified_accounts.items():
         conv = account_data.get("total_conversations", "0")
         orders = account_data.get("conversations_with_orders", "0")
+
+        # Skip accounts with 0 orders
+        try:
+            orders_int = int(orders)
+            if orders_int == 0:
+                continue
+        except (ValueError, TypeError):
+            # If orders can't be converted to int, skip this account
+            continue
+
         paid = account_data.get("paid_orders", "0")
+        conv_value = safe_float_format(account_data.get("total_subtotal", 0), 1)
+        paid_value = safe_float_format(account_data.get("paid_total", 0), 1)
         cvr = safe_float_format(account_data.get("conversion_rate", 0), 1)
         paid_rate = safe_float_format(account_data.get("paid_rate", 0), 1)
 
-        row = [account_name, str(conv), str(orders), str(paid), cvr, paid_rate]
+        row = [
+            account_name,
+            str(conv),
+            str(orders),
+            str(paid),
+            conv_value,
+            paid_value,
+            cvr,
+            paid_rate,
+        ]
         data_rows.append(row)
+
+    # Handle case where no accounts have orders
+    if not data_rows:
+        return "No accounts with orders found."
 
     # Calculate column widths with minimum widths for numeric columns
     col_widths = []
@@ -397,6 +431,9 @@ def create_conversion_table(unified_accounts: dict) -> str:
         if i > 0:  # Skip account name column
             if header in ["Conv"]:
                 # Conversations: 10 digits (9,999,999,999)
+                max_width = max(max_width, 10)
+            elif header in ["Subtotal", "Paidtotal"]:
+                # Revenue columns: wider for currency values (e.g., "123,456.7")
                 max_width = max(max_width, 10)
             else:
                 # Other numeric columns: keep existing 6 digit width
@@ -614,17 +651,29 @@ def build_conversion_section(
         overall_conversion_rate = conv_totals.get("overall_conversion_rate", 0)
         overall_paid_rate = conv_totals.get("overall_paid_rate", 0)
 
+        # Calculate averages
+        avg_subtotal = (
+            total_revenue / total_convs_with_orders
+            if total_convs_with_orders > 0
+            else 0
+        )
+        avg_paid_total = (
+            paid_revenue / total_paid_orders if total_paid_orders > 0 else 0
+        )
         # Format values safely
-        total_revenue_formatted = safe_float_format(total_revenue, 2)
+        total_transaction_formatted = safe_float_format(total_revenue, 2)
         paid_revenue_formatted = safe_float_format(paid_revenue, 2)
         conversion_rate_formatted = safe_float_format(overall_conversion_rate, 1)
         paid_rate_formatted = safe_float_format(overall_paid_rate, 1)
+        avg_subtotal_formatted = safe_float_format(avg_subtotal, 2)
+        avg_paid_total_formatted = safe_float_format(avg_paid_total, 2)
 
         conversion_summary_lines.extend(
             [
                 f"• Orders: *{total_convs_with_orders}* (Paid: *{total_paid_orders}*)",
-                f"• Revenue: *${total_revenue_formatted}* (Paid: *${paid_revenue_formatted}*)",
-                f"• Conversion Rate: *{conversion_rate_formatted}%* | Paid Rate: *{paid_rate_formatted}%*",
+                f"• Subtotal Value: *${total_transaction_formatted}* | Paid Total: *${paid_revenue_formatted}*",
+                f"• Avg Subtotal: *${avg_subtotal_formatted}* | Avg Paid Total: *${avg_paid_total_formatted}*",
+                f"• Checkout Rate: *{conversion_rate_formatted}%* | Paid Rate: *{paid_rate_formatted}%*",
             ]
         )
 
@@ -670,7 +719,10 @@ def create_conversion_section(unified_accounts: dict) -> dict | None:
 
 
 def format_unified_report_for_slack(
-    reports: list, columns: list[str] | None = None
+    reports: list,
+    columns: list[str] | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> dict:
     """
     Format unified analytics report into Slack blocks with configurable columns.
@@ -678,6 +730,8 @@ def format_unified_report_for_slack(
     Args:
         reports: List of report objects to merge
         columns: List of column keys to include (defaults to all available)
+        start_date: Start date of the report period
+        end_date: End date of the report period
 
     Returns:
         dict: Slack blocks structure
@@ -691,11 +745,25 @@ def format_unified_report_for_slack(
         unified_accounts = merged_data["unified_accounts"]
         totals_summary = merged_data["totals_summary"]
 
+        # Create date range header if dates are provided
+        blocks = []
+        if start_date and end_date:
+            start_formatted = start_date.strftime("%Y-%m-%d")
+            end_formatted = end_date.strftime("%Y-%m-%d")
+            date_range_text = (
+                f"*📅 Report Period: {start_formatted} to {end_formatted}*"
+            )
+            blocks.append(
+                {"type": "section", "text": {"type": "mrkdwn", "text": date_range_text}}
+            )
+
         # Build engagement summary
         summary_lines = build_engagement_summary(totals_summary)
         summary_text = "*📊 Engagement Summary*\n" + "\n".join(summary_lines)
 
-        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": summary_text}}]
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": summary_text}}
+        )
 
         # Handle case with no account data
         if not unified_accounts:
@@ -820,7 +888,9 @@ async def send_report_to_slack(
         logger.info(
             f"[Slackbot] Converting {len(reports.reports)} reports to Slack blocks"
         )
-        message_blocks = format_unified_report_for_slack(reports.reports)
+        message_blocks = format_unified_report_for_slack(
+            reports.reports, None, start_date, end_date
+        )
         if not message_blocks or "blocks" not in message_blocks:
             logger.error("[Slackbot] Failed to generate valid Slack blocks structure")
             return {"status": "error", "message": "Failed to generate Slack blocks"}

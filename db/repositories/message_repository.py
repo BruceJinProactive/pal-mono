@@ -106,7 +106,12 @@ class MessageRepositoryAsync:
             latest_conversation is None
             or latest_conversation.status != ConversationStatus.ACTIVE
         ):
-            new_conversation = Conversation(user_id=user.id, project_id=project_id)
+            metadata = message_body.get("metadata", {})
+            is_test_message = metadata.get("testing", False)
+
+            new_conversation = Conversation(
+                user_id=user.id, project_id=project_id, is_test=is_test_message
+            )
             self.session.add(new_conversation)
             await self.session.flush()
             conversation_id = new_conversation.id
@@ -182,7 +187,10 @@ class MessageRepository:
 
         # Step 4: If no conversation exists, create one for the user
         if not conversation:
-            conversation = Conversation(user_id=user.id)
+            metadata = message_body.get("metadata", {})
+            is_test_message = metadata.get("testing", False)
+
+            conversation = Conversation(user_id=user.id, is_test=is_test_message)
             self.session.add(conversation)
             self.session.commit()
             self.session.refresh(conversation)  # Refresh to get the new conversation ID

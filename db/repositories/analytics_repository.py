@@ -1,12 +1,22 @@
 import datetime
 import uuid
 
-from sqlalchemy import Float, case, func
+from sqlalchemy import Float, case, exists, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
-from db.tables import Account, Conversation, Message, Order, PhoneCall, Project, User
+from db.tables import (
+    Account,
+    Conversation,
+    Integration,
+    Message,
+    Order,
+    PhoneCall,
+    Project,
+    User,
+)
+from db.tables.types import IntegrationType
 from utils.log import logger
 
 # Turn threshold constants
@@ -136,11 +146,10 @@ class AnalyticsRepository:
                 select(*select_fields)
                 .select_from(Conversation)
                 .join(User, Conversation.user_id == User.id)
+                .join(
+                    Account, User.account_id == Account.id
+                )  # Always join Account for palona filter
             )
-
-            # Add Account join if needed for grouping
-            if group_by and "account_id" in group_by:
-                query = query.join(Account, User.account_id == Account.id)
 
             # Add Project join if needed for grouping
             if group_by and "project_id" in group_by:
@@ -148,6 +157,8 @@ class AnalyticsRepository:
 
             query = query.where(
                 Conversation.created_at.between(start_date, end_date),
+                ~Conversation.is_test,
+                Account.name != "palona",
             )
 
             # Apply optional filters
@@ -197,8 +208,12 @@ class AnalyticsRepository:
             valid_conversations = (
                 select(Conversation.id)
                 .select_from(Conversation)
+                .join(User, Conversation.user_id == User.id)
+                .join(Account, User.account_id == Account.id)
                 .where(
                     Conversation.created_at.between(start_date, end_date),
+                    ~Conversation.is_test,
+                    Account.name != "palona",
                 )
                 .subquery()
             )
@@ -365,18 +380,19 @@ class AnalyticsRepository:
                 .select_from(PhoneCall)
                 .join(Conversation, PhoneCall.conversation_id == Conversation.id)
                 .join(User, Conversation.user_id == User.id)
+                .join(Account, User.account_id == Account.id)
             )
-
-            # Add Account join if needed for grouping
-            if group_by and "account_id" in group_by:
-                query = query.join(Account, User.account_id == Account.id)
 
             # Add Project join if needed for grouping
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
-            # Filter by call creation date
-            query = query.where(PhoneCall.created_at.between(start_date, end_date))
+            # Filter by call creation date and exclude test conversations
+            query = query.where(
+                PhoneCall.created_at.between(start_date, end_date),
+                ~Conversation.is_test,
+                Account.name != "palona",
+            )
 
             # Apply optional filters (reuse existing logic)
             query = self._apply_filters(query, filter_by)
@@ -455,16 +471,21 @@ class AnalyticsRepository:
                 .select_from(PhoneCall)
                 .join(Conversation, PhoneCall.conversation_id == Conversation.id)
                 .join(User, Conversation.user_id == User.id)
+                .join(
+                    Account, User.account_id == Account.id
+                )  # Always join Account for palona filter
             )
 
             # Add joins for grouping
-            if group_by and "account_id" in group_by:
-                query = query.join(Account, User.account_id == Account.id)
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
             # Apply filters
-            query = query.where(PhoneCall.created_at.between(start_date, end_date))
+            query = query.where(
+                PhoneCall.created_at.between(start_date, end_date),
+                ~Conversation.is_test,
+                Account.name != "palona",
+            )
             query = self._apply_filters(query, filter_by)
 
             # Group by if needed
@@ -542,19 +563,34 @@ class AnalyticsRepository:
                 select(*select_fields)
                 .select_from(Conversation)
                 .join(User, Conversation.user_id == User.id)
+                .join(
+                    Account, User.account_id == Account.id
+                )  # Always join Account for palona filter
                 .outerjoin(Order, Conversation.id == Order.conversation_id)
             )
-
-            # Add Account join if needed for grouping
-            if group_by and "account_id" in group_by:
-                query = query.join(Account, User.account_id == Account.id)
 
             # Add Project join if needed for grouping
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
-            # Filter by conversation creation date
-            query = query.where(Conversation.created_at.between(start_date, end_date))
+            # Filter by conversation creation date and exclude test conversations
+            query = query.where(
+                Conversation.created_at.between(start_date, end_date),
+                ~Conversation.is_test,
+                Account.name != "palona",
+            )
+
+            # Only include accounts with POS integration
+            query = query.where(
+                exists(
+                    select(1)
+                    .select_from(Integration)
+                    .where(
+                        Integration.account_id == User.account_id,
+                        Integration.integration_type == IntegrationType.pos,
+                    )
+                )
+            )
 
             # Apply optional filters
             query = self._apply_filters(query, filter_by)
