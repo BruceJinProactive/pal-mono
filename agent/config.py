@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import StrEnum, auto
+from enum import StrEnum
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -10,11 +10,6 @@ from agent.memory import MemoryConfig
 from agent.model import ModelConfig
 from agent.tool import ToolConfig
 from db.tables.agents import Language, SpeechRate
-
-
-class AgentFramework(StrEnum):
-    AGNO = auto()
-    PAL_SIMPLE = auto()
 
 
 class TransferMode(StrEnum):
@@ -39,7 +34,6 @@ class AgentMetadata(BaseModel):
     agent_id: str
     user_id: str
     session_id: str
-    framework: AgentFramework
 
 
 class SmartDenoisingPlan(BaseModel):

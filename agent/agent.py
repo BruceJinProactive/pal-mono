@@ -8,9 +8,8 @@ from typing import AsyncIterator
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import workflow
 
-from agent.config import AgentConfig, AgentFramework
+from agent.config import AgentConfig
 from agent.framework import AgnoAgent
-from agent.framework.pal_simple_agent import PalSimpleAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
@@ -30,22 +29,9 @@ class Agent:
 
         Args:
             config (AgentConfig): The configuration for the agent.
-
-        Raises:
-            ValueError: If the framework specified in the configuration is not
-                supported.
         """
-        framework = (
-            config.metadata.framework
-            if isinstance(config.metadata.framework, AgentFramework)
-            else AgentFramework.AGNO
-        )
-
-        match framework:
-            case AgentFramework.AGNO:
-                self._agent = AgnoAgent(config)
-            case AgentFramework.PAL_SIMPLE:
-                self._agent = PalSimpleAgent(config)
+        # Default to AgnoAgent
+        self._agent = AgnoAgent(config)
 
         self._metadata = config.metadata
 

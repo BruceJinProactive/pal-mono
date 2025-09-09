@@ -9,7 +9,6 @@ from pydantic import ValidationError
 import db
 from agent import (
     AgentConfig,
-    AgentFramework,
     AgentMetadata,
     AgentPersona,
     KnowledgeConfig,
@@ -78,9 +77,6 @@ class RawConfig:
                     agent_id=str(self.agent.id),
                     user_id=str(self.user_id),
                     session_id=str(self.conversation_id),
-                    framework=self.agent.raw_config.get(
-                        "agent_framework", AgentFramework.AGNO
-                    ),
                 ),
                 additional_context=self._get_additional_context(),
                 voice_config=VoiceConfig(
