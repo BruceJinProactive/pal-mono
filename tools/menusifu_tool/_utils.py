@@ -3475,11 +3475,11 @@ def simple_filter_menu_items(menu_dict: Dict[str, Any]) -> Dict[str, Any]:
     filtered_menu["groups"] = filtered_groups
 
     # Add filtering summary
-    print("📊 Simple Filtering Results:")
-    print(f"   Total items processed: {total_items}")
-    print(f"   Items kept: {total_items - filtered_items}")
-    print(f"   Out-of-stock items filtered: {filtered_items}")
-    print("   ✅ Hidden items KEPT (as requested)")
+    logger.debug("Simple Filtering Results:")
+    logger.debug("Total items processed: %s", total_items)
+    logger.debug("Items kept: %s", total_items - filtered_items)
+    logger.debug("Out-of-stock items filtered: %s", filtered_items)
+    logger.debug("Hidden items KEPT (as requested)")
 
     return filtered_menu
 
@@ -3510,7 +3510,7 @@ def save_filtered_menu_data(
     with open(clean_menu_path, "w", encoding="utf-8") as f:
         json.dump(filtered_menu, f, indent=2, ensure_ascii=False, cls=DecimalEncoder)
     created_files["clean_menu_json"] = clean_menu_path
-    print(f"💾 Saved filtered menu: {clean_menu_path}")
+    logger.debug("Saved filtered menu: %s", clean_menu_path)
 
     # Generate text menu if requested
     if generate_text_menu:
@@ -3524,10 +3524,10 @@ def save_filtered_menu_data(
             with open(bilingual_path, "w", encoding="utf-8") as f:
                 f.write(bilingual_content)
             created_files["bilingual_menu"] = bilingual_path
-            print(f"📄 Saved bilingual menu: {bilingual_path}")
+            logger.debug("Saved bilingual menu: %s", bilingual_path)
 
         except Exception as e:
-            print(f"⚠️ Could not generate text menu: {e}")
+            logger.debug("Could not generate text menu: %s", e)
 
     return created_files
 

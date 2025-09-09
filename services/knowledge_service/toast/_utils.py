@@ -22,6 +22,8 @@ Toast menu processing capabilities for the knowledge service.
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from utils.log import logger
+
 
 def _sanitize_filename(filename: str) -> str:
     """Sanitize filename by replacing problematic characters with safe alternatives."""
@@ -98,8 +100,10 @@ def _has_infinite_loop(
                 ):
                     nested_option = modifier_options.get(str(nested_option_ref))
                     if nested_option and nested_option.get("guid") == item_guid:
-                        print(
-                            f"⚠️  WARNING: Infinite loop detected for item '{item.get('name')}' (GUID: {item_guid})"
+                        logger.debug(
+                            "WARNING: Infinite loop detected for item '%s' (GUID: %s)",
+                            item.get("name"),
+                            item_guid,
                         )
                         return True
 
@@ -245,8 +249,10 @@ def _format_nested_system_prompt_modifiers(
     option_guid = option.get("guid")
     if option_guid in visited_options:
         option_name = option.get("name", "customization")
-        print(
-            f"⚠️  WARNING: Circular reference detected in menu structure for '{option_name}' (GUID: {option_guid})"
+        logger.debug(
+            "WARNING: Circular reference detected in menu structure for '%s' (GUID: %s)",
+            option_name,
+            option_guid,
         )
         return [
             f"  └─ [Note: Only one {option_name} allowed per order - it is okay to order]"
@@ -490,8 +496,10 @@ def _format_nested_modifier_options(
     option_guid = option.get("guid")
     if option_guid in visited_options:
         option_name = option.get("name", "customization")
-        print(
-            f"⚠️  WARNING: Circular reference detected in menu structure for '{option_name}' (GUID: {option_guid})"
+        logger.debug(
+            "WARNING: Circular reference detected in menu structure for '%s' (GUID: %s)",
+            option_name,
+            option_guid,
         )
         return [
             f"{indent}└─ [Note: Only one {option_name} allowed per order - it is okay to order]"

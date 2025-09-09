@@ -439,14 +439,14 @@ class ToastMenuProcessor:
                 client_id, client_secret, token_api_endpoint
             )
 
-            print(f"Menu last updated: {menu_last_updated}")
+            logger.debug("Menu last updated: %s", menu_last_updated)
 
             # Step 2: Get menu metadata
             metadata = self._get_menu_metadata(
                 access_token, restaurant_external_id, general_api_endpoint
             )
 
-            print(f"Menu metadata: {metadata}")
+            logger.debug("Menu metadata: %s", metadata)
 
             # Step 2.5: Check if menu needs updating
             if menu_last_updated and not self._should_update_menu(
