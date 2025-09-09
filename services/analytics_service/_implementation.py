@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 import uuid
 from datetime import datetime
 
@@ -74,6 +75,10 @@ async def get_reports(
                 sync_session.close()
 
         # Execute all analytics queries in parallel with separate sessions for each thread
+        logger.info(
+            f"Analytics: Starting parallel report execution for account {account_id}"
+        )
+        start_time = time.time()
 
         (
             users_report,
@@ -122,6 +127,12 @@ async def get_reports(
                 group_by=group_by,
                 filter_by=filter_by,
             ),
+        )
+
+        # Log completion timing
+        total_time = time.time() - start_time
+        logger.info(
+            f"Analytics: Completed all reports in {total_time:.2f}s for account {account_id}"
         )
 
         # Create and return reports
@@ -210,6 +221,7 @@ def get_active_users(
             'metadata': {...}
         }
     """
+    start_time = time.time()
     try:
         # group_by is required (can be empty list for totals only)
         if group_by is None:
@@ -263,7 +275,7 @@ def get_active_users(
             calculate_totals=True,
         )
 
-        return {
+        result = {
             "active_users": active_users_report,
             "totals": totals,
             "metadata": {
@@ -271,6 +283,10 @@ def get_active_users(
                 "filter_by": filter_by or {},
             },
         }
+
+        elapsed = time.time() - start_time
+        logger.info(f"Analytics: Active Users report completed in {elapsed:.2f}s")
+        return result
 
     except Exception as e:
         logger.error(f"Error generating active users report: {e}")
@@ -301,6 +317,7 @@ def get_turns_summary(
             'metadata': {...}
         }
     """
+    start_time = time.time()
     try:
         # group_by is required (can be empty list for totals only)
         if group_by is None:
@@ -353,7 +370,7 @@ def get_turns_summary(
             calculate_totals=True,
         )
 
-        return {
+        result = {
             "turn_distribution": turn_distribution,
             "totals": turns_totals,
             "metadata": {
@@ -361,6 +378,10 @@ def get_turns_summary(
                 "filter_by": filter_by or {},
             },
         }
+
+        elapsed = time.time() - start_time
+        logger.info(f"Analytics: Turns Summary report completed in {elapsed:.2f}s")
+        return result
 
     except Exception as e:
         logger.error(f"Error generating turns summary: {e}")

@@ -1,4 +1,5 @@
 import datetime
+import time
 import uuid
 
 from sqlalchemy import Float, case, exists, func
@@ -129,6 +130,7 @@ class AnalyticsRepository:
             list[tuple]: (group_field1, group_field2, ..., active_users, conversations)
         """
         try:
+            start_time = time.time()
             select_fields, group_fields = self._build_group_fields(group_by)
 
             # Add aggregation fields
@@ -141,28 +143,52 @@ class AnalyticsRepository:
                 ]
             )
 
-            # Build the query - using Conversation as primary table
-            query = (
-                select(*select_fields)
-                .select_from(Conversation)
-                .join(User, Conversation.user_id == User.id)
-                .join(
-                    Account, User.account_id == Account.id
-                )  # Always join Account for palona filter
-            )
+            # Build the query with early filtering optimization
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+
+                # Handle both single UUID and list of UUIDs
+                if isinstance(account_filter, list):
+                    account_condition = User.account_id.in_(account_filter)
+                else:
+                    account_condition = User.account_id == account_filter
+
+                query = (
+                    select(*select_fields)
+                    .select_from(Conversation)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        Conversation.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                        account_condition,
+                    )
+                )
+            else:
+                query = (
+                    select(*select_fields)
+                    .select_from(Conversation)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        Conversation.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                    )
+                )
 
             # Add Project join if needed for grouping
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
-            query = query.where(
-                Conversation.created_at.between(start_date, end_date),
-                ~Conversation.is_test,
-                Account.name != "palona",
-            )
-
-            # Apply optional filters
-            query = self._apply_filters(query, filter_by)
+            # Apply project_id filter early if present
+            if filter_by and "project_id" in filter_by:
+                project_id = filter_by["project_id"]
+                if isinstance(project_id, list):
+                    query = query.where(Conversation.project_id.in_(project_id))
+                else:
+                    query = query.where(Conversation.project_id == project_id)
 
             # Apply grouping and ordering
             if group_fields:
@@ -176,8 +202,10 @@ class AnalyticsRepository:
 
             result = self.session.execute(query)
             rows = [tuple(row) for row in result.all()]
+
+            elapsed = time.time() - start_time
             logger.info(
-                f"Analytics: Active users query returned {len(rows)} rows: {rows}"
+                f"AnalyticsRepository: Active users query executed in {elapsed:.3f}s, returned {len(rows)} rows"
             )
             return rows
 
@@ -202,21 +230,45 @@ class AnalyticsRepository:
 
         """
         try:
+            start_time = time.time()
             select_fields, group_fields = self._build_group_fields(group_by)
 
-            # First, get conversations in the date range
-            valid_conversations = (
-                select(Conversation.id)
-                .select_from(Conversation)
-                .join(User, Conversation.user_id == User.id)
-                .join(Account, User.account_id == Account.id)
-                .where(
-                    Conversation.created_at.between(start_date, end_date),
-                    ~Conversation.is_test,
-                    Account.name != "palona",
+            # Build valid_conversations subquery with early filtering
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+
+                # Handle both single UUID and list of UUIDs
+                if isinstance(account_filter, list):
+                    account_condition = User.account_id.in_(account_filter)
+                else:
+                    account_condition = User.account_id == account_filter
+
+                valid_conversations = (
+                    select(Conversation.id)
+                    .select_from(Conversation)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        Conversation.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                        account_condition,
+                    )
+                    .subquery()
                 )
-                .subquery()
-            )
+            else:
+                valid_conversations = (
+                    select(Conversation.id)
+                    .select_from(Conversation)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        Conversation.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                    )
+                    .subquery()
+                )
 
             # Then calculate turns for those conversations
             # Calculate turns as number of agent messages in the conversation
@@ -275,8 +327,13 @@ class AnalyticsRepository:
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
-            # Apply optional filters
-            query = self._apply_filters(query, filter_by)
+            # Apply project_id filter early if present
+            if filter_by and "project_id" in filter_by:
+                project_id = filter_by["project_id"]
+                if isinstance(project_id, list):
+                    query = query.where(Conversation.project_id.in_(project_id))
+                else:
+                    query = query.where(Conversation.project_id == project_id)
 
             # Apply grouping
             if group_fields:
@@ -284,8 +341,10 @@ class AnalyticsRepository:
 
             result = self.session.execute(query)
             rows = [tuple(row) for row in result.all()]
+
+            elapsed = time.time() - start_time
             logger.info(
-                f"Analytics: Turn distribution query returned {len(rows)} rows: {rows}"
+                f"AnalyticsRepository: Turns summary query executed in {elapsed:.3f}s, returned {len(rows)} rows"
             )
             return rows
 
@@ -312,6 +371,7 @@ class AnalyticsRepository:
                          positive_calls, neutral_calls, negative_calls)
         """
         try:
+            start_time = time.time()
             from db.tables import PhoneCall
 
             select_fields, group_fields = self._build_group_fields(group_by)
@@ -374,28 +434,54 @@ class AnalyticsRepository:
                 ]
             )
 
-            # Build query - join PhoneCall -> Conversation -> User (same pattern as turns)
-            query = (
-                select(*select_fields)
-                .select_from(PhoneCall)
-                .join(Conversation, PhoneCall.conversation_id == Conversation.id)
-                .join(User, Conversation.user_id == User.id)
-                .join(Account, User.account_id == Account.id)
-            )
+            # Build query with early filtering optimization
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+
+                # Handle both single UUID and list of UUIDs
+                if isinstance(account_filter, list):
+                    account_condition = User.account_id.in_(account_filter)
+                else:
+                    account_condition = User.account_id == account_filter
+
+                query = (
+                    select(*select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                        account_condition,
+                    )
+                )
+            else:
+                query = (
+                    select(*select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                    )
+                )
 
             # Add Project join if needed for grouping
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
-            # Filter by call creation date and exclude test conversations
-            query = query.where(
-                PhoneCall.created_at.between(start_date, end_date),
-                ~Conversation.is_test,
-                Account.name != "palona",
-            )
-
-            # Apply optional filters (reuse existing logic)
-            query = self._apply_filters(query, filter_by)
+            # Apply project_id filter early if present
+            if filter_by and "project_id" in filter_by:
+                project_id = filter_by["project_id"]
+                if isinstance(project_id, list):
+                    query = query.where(Conversation.project_id.in_(project_id))
+                else:
+                    query = query.where(Conversation.project_id == project_id)
 
             # Apply grouping
             if group_fields:
@@ -403,8 +489,10 @@ class AnalyticsRepository:
 
             result = self.session.execute(query)
             rows = [tuple(row) for row in result.all()]
+
+            elapsed = time.time() - start_time
             logger.info(
-                f"Analytics: Call time summary query returned {len(rows)} rows: {rows}"
+                f"AnalyticsRepository: Call time summary query executed in {elapsed:.3f}s, returned {len(rows)} rows"
             )
             return rows
 
@@ -465,28 +553,54 @@ class AnalyticsRepository:
                 ).label(language)
                 combined_select_fields.append(language_count)
 
-            # Build single query with all fields
-            query = (
-                select(*combined_select_fields)
-                .select_from(PhoneCall)
-                .join(Conversation, PhoneCall.conversation_id == Conversation.id)
-                .join(User, Conversation.user_id == User.id)
-                .join(
-                    Account, User.account_id == Account.id
-                )  # Always join Account for palona filter
-            )
+            # Build single query with early filtering optimization
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+
+                # Handle both single UUID and list of UUIDs
+                if isinstance(account_filter, list):
+                    account_condition = User.account_id.in_(account_filter)
+                else:
+                    account_condition = User.account_id == account_filter
+
+                query = (
+                    select(*combined_select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                        account_condition,
+                    )
+                )
+            else:
+                query = (
+                    select(*combined_select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                    )
+                )
 
             # Add joins for grouping
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
-            # Apply filters
-            query = query.where(
-                PhoneCall.created_at.between(start_date, end_date),
-                ~Conversation.is_test,
-                Account.name != "palona",
-            )
-            query = self._apply_filters(query, filter_by)
+            # Apply project_id filter early if present
+            if filter_by and "project_id" in filter_by:
+                project_id = filter_by["project_id"]
+                if isinstance(project_id, list):
+                    query = query.where(Conversation.project_id.in_(project_id))
+                else:
+                    query = query.where(Conversation.project_id == project_id)
 
             # Group by if needed
             if group_fields:
@@ -523,6 +637,7 @@ class AnalyticsRepository:
                          paid_orders, total_subtotal, paid_total)
         """
         try:
+            start_time = time.time()
             select_fields, group_fields = self._build_group_fields(group_by)
 
             select_fields.extend(
@@ -558,42 +673,74 @@ class AnalyticsRepository:
                 ]
             )
 
-            # Build query - join Conversation -> Order (left join to include conversations without orders)
-            query = (
-                select(*select_fields)
-                .select_from(Conversation)
-                .join(User, Conversation.user_id == User.id)
-                .join(
-                    Account, User.account_id == Account.id
-                )  # Always join Account for palona filter
-                .outerjoin(Order, Conversation.id == Order.conversation_id)
-            )
+            # Build query with early filtering optimization
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+
+                # Handle both single UUID and list of UUIDs
+                if isinstance(account_filter, list):
+                    account_condition = User.account_id.in_(account_filter)
+                    integration_condition = Integration.account_id.in_(account_filter)
+                else:
+                    account_condition = User.account_id == account_filter
+                    integration_condition = Integration.account_id == account_filter
+
+                query = (
+                    select(*select_fields)
+                    .select_from(Conversation)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .outerjoin(Order, Conversation.id == Order.conversation_id)
+                    .where(
+                        Conversation.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                        account_condition,
+                        # Only include accounts with POS integration - early filter
+                        exists(
+                            select(1)
+                            .select_from(Integration)
+                            .where(
+                                integration_condition,
+                                Integration.integration_type == IntegrationType.pos,
+                            )
+                        ),
+                    )
+                )
+            else:
+                query = (
+                    select(*select_fields)
+                    .select_from(Conversation)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .outerjoin(Order, Conversation.id == Order.conversation_id)
+                    .where(
+                        Conversation.created_at.between(start_date, end_date),
+                        ~Conversation.is_test,
+                        Account.name != "palona",
+                        # Only include accounts with POS integration
+                        exists(
+                            select(1)
+                            .select_from(Integration)
+                            .where(
+                                Integration.account_id == User.account_id,
+                                Integration.integration_type == IntegrationType.pos,
+                            )
+                        ),
+                    )
+                )
 
             # Add Project join if needed for grouping
             if group_by and "project_id" in group_by:
                 query = query.join(Project, Conversation.project_id == Project.id)
 
-            # Filter by conversation creation date and exclude test conversations
-            query = query.where(
-                Conversation.created_at.between(start_date, end_date),
-                ~Conversation.is_test,
-                Account.name != "palona",
-            )
-
-            # Only include accounts with POS integration
-            query = query.where(
-                exists(
-                    select(1)
-                    .select_from(Integration)
-                    .where(
-                        Integration.account_id == User.account_id,
-                        Integration.integration_type == IntegrationType.pos,
-                    )
-                )
-            )
-
-            # Apply optional filters
-            query = self._apply_filters(query, filter_by)
+            # Apply project_id filter early if present
+            if filter_by and "project_id" in filter_by:
+                project_id = filter_by["project_id"]
+                if isinstance(project_id, list):
+                    query = query.where(Conversation.project_id.in_(project_id))
+                else:
+                    query = query.where(Conversation.project_id == project_id)
 
             # Apply grouping
             if group_fields:
@@ -601,8 +748,10 @@ class AnalyticsRepository:
 
             result = self.session.execute(query)
             rows = [tuple(row) for row in result.all()]
+
+            elapsed = time.time() - start_time
             logger.info(
-                f"Analytics: Conversion summary query returned {len(rows)} rows: {rows}"
+                f"AnalyticsRepository: Conversion summary query executed in {elapsed:.3f}s, returned {len(rows)} rows"
             )
             return rows
 
