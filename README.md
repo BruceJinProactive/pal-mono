@@ -68,32 +68,22 @@ docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
 
 9. Log into the Management Application
 
-   - Under the 'Tools', select 'Merchant Onboarding'.
-   - Enter the account name: "palona".
-   - Click the 'Next Step' button to proceed.
+   - In the top right corner of the page, click on Onboard. 
+   - Enter the account name and account display name: "palona".
 
 10. Create a New Agent
 
-   - Click on 'New Agent'.
    - Enter the agent name: "palona agent".
-   - Select the desired Agent Type and Voice.
-   - Provide a greeting message (e.g., “Hello”).
-   - Click 'Next Step' to continue.
+   - Select the desired Agent Type and Language.
+   - Select any desired Agent Personality Tags.
 
 11. Create a New Project
 
-    - Click on 'New Project'.
     - Enter the project name: "palona-default".
-    - Select the previously created agent.
-    - Enable the required Communication Integrations.
-    - Proceed by clicking 'Next Step'.
+    - Click on Create Account
+    - Setup process is now complete
 
-12. Configure Admin Credentials
-
-    - Enter the Admin Username and Email Address as prompted.
-    - Complete the setup process.
-
-13. Under the 'Chat' page, you should be able to talk to the agent of the "palona" account.
+12. Under the 'Chat' page, you should be able to talk to the agent of the "palona" account.
 
 ### Local Environment
 
