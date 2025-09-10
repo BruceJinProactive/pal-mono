@@ -57,9 +57,9 @@ Extract the following information from the conversation:
   - phone: Phone object with countryCode (e.g. "+1", "+86") and number fields
 - For phone number country code: **assume "+1" if user did not mention a specific country code**
 - Examples of phone extraction:
-  - "Call me at 555-1234" → phone: {"countryCode": "+1", "number": "5551234"}
-  - "My phone is 5141234567" → phone: {"countryCode": "+1", "number": "5141234567"}
-  - "My number is +86 138 1234 5678" → phone: {"countryCode": "+86", "number": "13812345678"}
+  - "Call me at 555-1234" → phone: {{"countryCode": "+1", "number": "5551234"}}
+  - "My phone is 5141234567" → phone: {{"countryCode": "+1", "number": "5141234567"}}
+  - "My number is +86 138 1234 5678" → phone: {{"countryCode": "+86", "number": "13812345678"}}
 
 # DIETARY RESTRICTIONS AND SPECIAL INSTRUCTIONS:
 **CRITICAL**: Properly categorize dietary information, allergy warnings, and special instructions:
@@ -113,7 +113,7 @@ Extract the following information from the conversation:
 ### Combo Item Structure (COMBO_SALE_ITEM):
 - "I want beef lo mein with fried rice and honey sauce" →
   - Item: "DB3.Beef Lo Mein" (combo item)
-  - Combo sections: [{"section_id": 18, "section_name": "Dinner With", "selected_items": [{"sale_item_id": 3380, "name": "Plain Fried Rice"}]}, {"section_id": 20, "section_name": "Add Sauce", "selected_items": [{"sale_item_id": 3305, "name": "Honey Sauce"}]}]
+  - Combo sections: [{{"section_id": 18, "section_name": "Dinner With", "selected_items": [{{"sale_item_id": 3380, "name": "Plain Fried Rice"}}]}}, {{"section_id": 20, "section_name": "Add Sauce", "selected_items": [{{"sale_item_id": 3305, "name": "Honey Sauce"}}]}}]
 
 ### Regular Item with Custom Notes (SALE_ITEM):
 - "Steamed vegetables with extra spicy sauce please" →
@@ -232,8 +232,8 @@ Extract the following information from the conversation:
 - **IMPORTANT**: For phone country code, assume "+1" if user did not specify a country code.
 - Look for customer information in phrases like:
   - "My name is John" → firstName: "John"
-  - "Call me at 555-1234" → phone: {"countryCode": "+1", "number": "5551234"}
-  - "My phone is 514-123-4567" → phone: {"countryCode": "+1", "number": "5141234567"}
+  - "Call me at 555-1234" → phone: {{"countryCode": "+1", "number": "5551234"}}
+  - "My phone is 514-123-4567" → phone: {{"countryCode": "+1", "number": "5141234567"}}
   - "I'm Sarah, phone is +86 138 1234 5678" → extract both name and phone
 - If customer information is missing from chat, return validation error asking for name and phone.
 - Do not make assumptions or use default values except for the "+1" country code default.
@@ -328,17 +328,17 @@ Note: Some catalogs separate item codes from names; if so, do not concatenate "C
     - `size_id`: Size ID (e.g., 63 for Large, 61 for Small)
     - `detail_price_info`: Complete object with price and multilingual names
 21. **Size mapping examples**:
-    - User says "Large Kung Po Chicken" + menu shows `detailPrice: [{"id": 838, "size": "Large", "sizeId": 63, "price": 12.25}]`
+    - User says "Large Kung Po Chicken" + menu shows `detailPrice: [{{"id": 838, "size": "Large", "sizeId": 63, "price": 12.25}}]`
     - Extract as: `"size": "Large", "detail_price_id": 838, "size_id": 63, "price": 12.25`
 22. **detailPriceInfo structure**: Always include complete object:
     ```json
-    "detail_price_info": {
+    "detail_price_info": {{
       "detailPriceId": 838,
       "sizeId": 63, 
       "price": 12.25,
-      "name": {"en": "Large", "zh-cn": "大"},
-      "nameMultilingual": {"en": "Large", "zh-cn": "大"}
-    }
+      "name": {{"en": "Large", "zh-cn": "大"}},
+      "nameMultilingual": {{"en": "Large", "zh-cn": "大"}}
+    }}
     ```
 21. **High quantities**: Support bulk orders (4, 12, 20+ items) for catering scenarios
 22. **Prices in dollars**: All prices are JSON numbers in dollars (not cents), e.g., 8.25 not 825
@@ -578,12 +578,12 @@ For size-variant combo items with modifications (Rule 3 - detailPrice + comboSec
       "section_id": 20,
       "section_name": "Add Sauce",
       "selected_items": [{{
-        "sale_item_id": {SAUCE_ID_1},
+        "sale_item_id": {{SAUCE_ID_1}},
         "name": "BBQ Sauce",
         "price": 1,
         "quantity": 1
       }}, {{
-        "sale_item_id": {SAUCE_ID_2},
+        "sale_item_id": {{SAUCE_ID_2}},
         "name": "Garlic Sauce", 
         "price": 1,
         "quantity": 1
