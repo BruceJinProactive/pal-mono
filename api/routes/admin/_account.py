@@ -10,6 +10,7 @@ from api.schemas.admin.account import (
     AccountStatusResponse,
     CreateAccountRequest,
     ListAccountsResponse,
+    TermsStatusResponse,
     UpdateAccountRequest,
 )
 from api.schemas.admin.agent import AgentSummary
@@ -193,6 +194,27 @@ def get_account_status(
         id=account.id,
         name=account.name,
         status=account.status,
+        display_name=account.display_name,
+    )
+
+
+def get_account_terms_status(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+) -> TermsStatusResponse:
+    authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+    return TermsStatusResponse(
+        id=account.id,
+        name=account.name,
+        terms_accepted=account.terms_accepted,
         display_name=account.display_name,
     )
 

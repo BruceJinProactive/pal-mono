@@ -26,6 +26,7 @@ from api.schemas.admin.account import (
     AccountStatusResponse,
     CreateAccountRequest,
     ListAccountsResponse,
+    TermsStatusResponse,
     UpdateAccountRequest,
 )
 from api.schemas.admin.agent import (
@@ -346,6 +347,18 @@ def get_account_status(
     Retrieve account status by account name.
     """
     return _account.get_account_status(account_name, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/terms_status")
+def get_account_terms_status(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> TermsStatusResponse:
+    """
+    Retrieve terms acceptance status by account name.
+    """
+    return _account.get_account_terms_status(account_name, context, session)
 
 
 """

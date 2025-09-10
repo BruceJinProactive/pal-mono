@@ -124,3 +124,12 @@ class AccountStatusResponse(BaseModel):
     name: str
     status: AccountStatus
     display_name: str | None = None
+
+
+class TermsStatusResponse(BaseModel):
+    """Terms Acceptance Status Response"""
+
+    id: UUID
+    name: str
+    terms_accepted: bool
+    display_name: str | None = None
