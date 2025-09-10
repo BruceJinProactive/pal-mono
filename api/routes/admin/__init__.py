@@ -21,6 +21,7 @@ from api.routes.admin._utils import SortOrder, UserContext
 from api.routes.endpoints import endpoints
 from api.routes.integrations.square import _implementation
 from api.schemas.admin.account import (
+    AcceptTermsResponse,
     Account,
     AccountStatisticsResponse,
     AccountStatusResponse,
@@ -359,6 +360,18 @@ def get_account_terms_status(
     Retrieve terms acceptance status by account name.
     """
     return _account.get_account_terms_status(account_name, context, session)
+
+
+@admin_router.put("/accounts/{account_name}/accept_terms")
+async def accept_account_terms(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> AcceptTermsResponse:
+    """
+    Accept terms and conditions for the specified account.
+    """
+    return await _account.accept_account_terms(account_name, context, session)
 
 
 """

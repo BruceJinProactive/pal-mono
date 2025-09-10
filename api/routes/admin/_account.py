@@ -5,6 +5,7 @@ from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import (
+    AcceptTermsResponse,
     Account,
     AccountStatisticsResponse,
     AccountStatusResponse,
@@ -217,6 +218,24 @@ def get_account_terms_status(
         terms_accepted=account.terms_accepted,
         display_name=account.display_name,
     )
+
+
+async def accept_account_terms(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+) -> AcceptTermsResponse:
+    authorize_user_account(context, account_name)
+    account_params = AccountParams(terms_accepted=True)
+    try:
+        account_service.update_account(session, context, account_name, account_params)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+    return AcceptTermsResponse(accepted=True)
 
 
 async def user_signup(

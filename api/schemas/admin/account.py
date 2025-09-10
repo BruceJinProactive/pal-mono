@@ -133,3 +133,9 @@ class TermsStatusResponse(BaseModel):
     name: str
     terms_accepted: bool
     display_name: str | None = None
+
+
+class AcceptTermsResponse(BaseModel):
+    """Accept Terms Response"""
+
+    accepted: bool
