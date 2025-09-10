@@ -64,6 +64,11 @@ class Agent(Base):
         nullable=False,
         server_default=Language.english,
     )
+    filler_words: Mapped[Dict] = mapped_column(
+        MutableDict.as_mutable(JSONB()),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
 
     # deprecated, use the explicit fields instead
     raw_config: Mapped[Dict] = mapped_column(
