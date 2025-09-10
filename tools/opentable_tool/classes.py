@@ -134,22 +134,7 @@ class AvailabilitySearchRequest(BaseModel):
     start_date_time: str = Field(
         description="The local date and time to begin the search (ISO 8601 format)"
     )
-    forward_minutes: int = Field(
-        description="Minutes forward from start time to search (up to 720)"
-    )
-    backward_minutes: int = Field(
-        description="Minutes backward from start time to search (up to 720)"
-    )
     party_size: int = Field(description="Number of diners")
-    require_attributes: Optional[TableAttribute] = Field(
-        None, description="Table types for search"
-    )
-    include_credit_card_results: Optional[bool] = Field(
-        None, description="Include availability requiring credit card"
-    )
-    include_experiences: Optional[bool] = Field(
-        False, description="Include special dining experiences"
-    )
 
 
 class AvailabilitySearchResponse(BaseModel):

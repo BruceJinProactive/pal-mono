@@ -1,6 +1,4 @@
-import hashlib
 import json
-import math
 from datetime import datetime, timedelta
 
 from tools.opentable_tool._apis._utils import connect_opentable_api
