@@ -131,16 +131,16 @@ Extract the following information from the conversation:
 **IMPORTANT**: Extract basePrice as the item price for fixed combos, or use price: 0 for size-variant combos!
 ```json
 {{
-  "item_id": {LUNCH_COMBO_ID},
+  "item_id": {{LUNCH_COMBO_ID}},
   "item_name": "LC11.Kung Po Chicken",
   "item_type": "COMBO_SALE_ITEM",
-  "price": {BASE_PRICE},           // Use basePrice from menu (Rule 2)
-  "display_price": {BASE_PRICE},   // Same as price
+  "price": {{BASE_PRICE}},           // Use basePrice from menu (Rule 2)
+  "display_price": {{BASE_PRICE}},   // Same as price
   "combo_sections": [{{
     "section_id": 18,
     "section_name": "Dinner With",
     "selected_items": [{{
-      "sale_item_id": {RICE_OPTION_ID},
+      "sale_item_id": {{RICE_OPTION_ID}},
       "name": "Plain Fried Rice",
       "price": 0
     }}]
@@ -148,7 +148,7 @@ Extract the following information from the conversation:
     "section_id": 20,
     "section_name": "Add Sauce", 
     "selected_items": [{{
-      "sale_item_id": {SAUCE_OPTION_ID},
+      "sale_item_id": {{SAUCE_OPTION_ID}},
       "name": "Honey Sauce",
       "price": 1
     }}]
@@ -160,7 +160,7 @@ Extract the following information from the conversation:
 ### For Regular Items (SALE_ITEM):
 ```json
 {{
-  "item_id": {REGULAR_ITEM_ID},
+  "item_id": {{REGULAR_ITEM_ID}},
   "item_name": "Steamed Mix Vegetable Beef",
   "item_type": "SALE_ITEM",
   "special_notes": "Extra spicy please"
@@ -390,17 +390,17 @@ When user requests "Kung Po Chicken", analyze the menu context entries:
 
 **STEP 1: Scan all menu entries matching the dish name**
 Look for entries containing "Kung Po Chicken":
-- Entry A: "Item ID: {LUNCH_COMBO_ID}, Item: LC11.Kung Po Chicken, Item Type: COMBO_SALE_ITEM, Dish Category: lunch_combo"
-- Entry B: "Item ID: {INDIVIDUAL_ID}, Item: Kung Po Chicken, Available Sizes: Small, Large, Item Type: SALE_ITEM, Dish Category: individual_item"  
-- Entry C: "Item ID: {DINNER_COMBO_ID}, Item: DC11.Kung Po Chicken, Item Type: COMBO_SALE_ITEM, Dish Category: dinner_combo"
+- Entry A: "Item ID: {{LUNCH_COMBO_ID}}, Item: LC11.Kung Po Chicken, Item Type: COMBO_SALE_ITEM, Dish Category: lunch_combo"
+- Entry B: "Item ID: {{INDIVIDUAL_ID}}, Item: Kung Po Chicken, Available Sizes: Small, Large, Item Type: SALE_ITEM, Dish Category: individual_item"  
+- Entry C: "Item ID: {{DINNER_COMBO_ID}}, Item: DC11.Kung Po Chicken, Item Type: COMBO_SALE_ITEM, Dish Category: dinner_combo"
 
 **STEP 2: Apply disambiguation logic**
 - User input: "Kung Po Chicken" (no size, no combo mention)
 - Rule: Default to individual item → Select Entry B
-- **RESULT**: item_id={INDIVIDUAL_ID}, item_name="Kung Po Chicken", price=0 (detailPrice item - requires size selection and detail_price_id)
+- **RESULT**: item_id={{INDIVIDUAL_ID}}, item_name="Kung Po Chicken", price=0 (detailPrice item - requires size selection and detail_price_id)
 
 **🚨 CRITICAL WARNING - NO PLACEHOLDER VALUES:**
-The above IDs ({LUNCH_COMBO_ID}, {INDIVIDUAL_ID}, {DINNER_COMBO_ID}) are ILLUSTRATIVE PLACEHOLDERS ONLY.
+The above IDs ({{LUNCH_COMBO_ID}}, {{INDIVIDUAL_ID}}, {{DINNER_COMBO_ID}}) are ILLUSTRATIVE PLACEHOLDERS ONLY.
 You MUST NEVER use placeholder values in your output. Always extract the actual item IDs, prices, and details from the provided menu context.
 These examples demonstrate the selection process - you must apply this logic to find real values from the context.
 
@@ -415,9 +415,9 @@ These examples demonstrate the selection process - you must apply this logic to 
 User input: "Large Kung Po Chicken"
 - STEP 1: Find entries with size options → Entry B (has "Available Sizes: Small, Large")
 - STEP 2: Size specified → Select individual item → Entry B  
-- STEP 3: Extract size details → item_id={INDIVIDUAL_ID}, size="Large", detail_price_id={SIZE_PRICE_ID} (price remains 0; actual price from detailPrice structure)
+- STEP 3: Extract size details → item_id={{INDIVIDUAL_ID}}, size="Large", detail_price_id={{SIZE_PRICE_ID}} (price remains 0; actual price from detailPrice structure)
 
-**⚠️ PLACEHOLDER WARNING:** {INDIVIDUAL_ID} is a placeholder - you must extract the actual ID and detailPrice structure from the provided context.
+**⚠️ PLACEHOLDER WARNING:** {{INDIVIDUAL_ID}} is a placeholder - you must extract the actual ID and detailPrice structure from the provided context.
 
 **CRITICAL**: Always use the exact item_id and price from the selected menu entry, never mix data between entries!
 
@@ -430,11 +430,11 @@ Use these menu context fields to identify the correct variant:
 - **DISAMBIGUATION tags**: Clear indicators like "This is a lunch combo version" or "This item requires size selection"
 
 **SELECTION PRIORITY EXAMPLES:**
-User: "Beef Broccoli" → Look for dish_category="individual_item" → Select individual entry (e.g., ID {BEEF_INDIVIDUAL_ID}: Beef Broccoli with size options)
-User: "Large Beef Broccoli" → Look for has_sizes=true + "Large" in available_sizes → Select individual entry (e.g., ID {BEEF_INDIVIDUAL_ID}: Beef Broccoli)
-User: "Beef Broccoli dinner" → Look for dish_category="dinner_combo" → Select dinner combo entry (e.g., ID {BEEF_DINNER_ID}: DB1.Beef Broccoli)
+User: "Beef Broccoli" → Look for dish_category="individual_item" → Select individual entry (e.g., ID {{BEEF_INDIVIDUAL_ID}}: Beef Broccoli with size options)
+User: "Large Beef Broccoli" → Look for has_sizes=true + "Large" in available_sizes → Select individual entry (e.g., ID {{BEEF_INDIVIDUAL_ID}}: Beef Broccoli)
+User: "Beef Broccoli dinner" → Look for dish_category="dinner_combo" → Select dinner combo entry (e.g., ID {{BEEF_DINNER_ID}}: DB1.Beef Broccoli)
 
-**🚨 PLACEHOLDER WARNING:** The IDs above ({BEEF_INDIVIDUAL_ID}, {BEEF_DINNER_ID}) are PLACEHOLDERS ONLY. You MUST extract actual IDs from your provided context. Do not use placeholder values in your extraction output.
+**🚨 PLACEHOLDER WARNING:** The IDs above ({{BEEF_INDIVIDUAL_ID}}, {{BEEF_DINNER_ID}}) are PLACEHOLDERS ONLY. You MUST extract actual IDs from your provided context. Do not use placeholder values in your extraction output.
 
 **VALIDATION CHECKLIST:**
 Before finalizing extraction, verify:
@@ -471,22 +471,22 @@ Return the extracted information as a properly formatted JSON object matching th
 
 # EXPECTED OUTPUT FORMAT EXAMPLES:
 
-🚨 **CRITICAL**: All JSON examples below contain placeholder values like {LUNCH_COMBO_ID}, {BASE_PRICE}, and literal IDs (e.g., 3553, 3384). These are ILLUSTRATIVE ONLY. You MUST extract actual values from your provided menu context. Never use placeholder values or example IDs in your output.
+🚨 **CRITICAL**: All JSON examples below contain placeholder values like {{LUNCH_COMBO_ID}}, {{BASE_PRICE}}, and literal IDs (e.g., 3553, 3384). These are ILLUSTRATIVE ONLY. You MUST extract actual values from your provided menu context. Never use placeholder values or example IDs in your output.
 
 For simple fixed-price combo items (e.g., lunch combos with basePrice):
 ```json
 {{
   "items": [{{
-    "item_id": {LUNCH_COMBO_ID},
+    "item_id": {{LUNCH_COMBO_ID}},
     "item_name": "LC11.Kung Po Chicken", 
     "quantity": 1,
-    "price": {BASE_PRICE},           // From menu basePrice (Rule 2)
-    "display_price": {BASE_PRICE},   // Same as base price for simple combos
+    "price": {{BASE_PRICE}},           // From menu basePrice (Rule 2)
+    "display_price": {{BASE_PRICE}},   // Same as base price for simple combos
     "item_type": "COMBO_SALE_ITEM",
-    "category_id": {CATEGORY_ID},
+    "category_id": {{CATEGORY_ID}},
     "special_notes": "",
     "modifiers": [{{
-      "id": {MODIFIER_ID},
+      "id": {{MODIFIER_ID}},
       "name": "^Pork Fried Rice",
       "price": 0,             // Free combo choice
       "quantity": 1,
@@ -496,19 +496,19 @@ For simple fixed-price combo items (e.g., lunch combos with basePrice):
 }}
 ```
 
-⚠️ **NOTE**: All IDs above ({LUNCH_COMBO_ID}, {BASE_PRICE}, {CATEGORY_ID}, {MODIFIER_ID}) are placeholders - extract actual values from your menu context.
+⚠️ **NOTE**: All IDs above ({{LUNCH_COMBO_ID}}, {{BASE_PRICE}}, {{CATEGORY_ID}}, {{MODIFIER_ID}}) are placeholders - extract actual values from your menu context.
 
 For complex combo items with upgrade costs (e.g., dinner combos):
 ```json
 {{
   "items": [{{
-    "item_id": {DINNER_COMBO_ID},
+    "item_id": {{DINNER_COMBO_ID}},
     "item_name": "DS1.Shrimp Broccoli",
     "quantity": 1, 
-    "price": {BASE_PRICE},          // From menu basePrice (Rule 2)
-    "display_price": {TOTAL_PRICE},   // Base + combo upgrade costs
+    "price": {{BASE_PRICE}},          // From menu basePrice (Rule 2)
+    "display_price": {{TOTAL_PRICE}},   // Base + combo upgrade costs
     "item_type": "COMBO_SALE_ITEM",
-    "category_id": {CATEGORY_ID},
+    "category_id": {{CATEGORY_ID}},
     "special_notes": "",
     "modifiers": [{{
       "id": 3384,
@@ -547,20 +547,20 @@ For size-variant combo items with modifications (Rule 3 - detailPrice + comboSec
 ```json
 {{
   "items": [{{
-    "item_id": {ITEM_ID},
+    "item_id": {{ITEM_ID}},
     "item_name": "Kung Po Chicken",
     "quantity": 1,
-    "price": {DETAIL_PRICE},         // From detailPriceInfo (Rule 3)
-    "display_price": {TOTAL_PRICE},  // detailPrice + combo upgrade costs
+    "price": {{DETAIL_PRICE}},         // From detailPriceInfo (Rule 3)
+    "display_price": {{TOTAL_PRICE}},  // detailPrice + combo upgrade costs
     "item_type": "COMBO_SALE_ITEM",
-    "category_id": {CATEGORY_ID},
+    "category_id": {{CATEGORY_ID}},
     "size": "Large",                 // User's size choice
-    "size_id": {SIZE_ID},           // From detailPriceInfo
-    "detail_price_id": {PRICE_ID},  // From detailPrice array for Large
+    "size_id": {{SIZE_ID}},           // From detailPriceInfo
+    "detail_price_id": {{PRICE_ID}},  // From detailPrice array for Large
     "detail_price_info": {{
-      "detailPriceId": {PRICE_ID},
-      "sizeId": {SIZE_ID},
-      "price": {DETAIL_PRICE},
+      "detailPriceId": {{PRICE_ID}},
+      "sizeId": {{SIZE_ID}},
+      "price": {{DETAIL_PRICE}},
       "name": {{"en": "Large", "zh-cn": "大"}},
       "nameMultilingual": {{"en": "Large", "zh-cn": "大"}}
     }},
@@ -569,7 +569,7 @@ For size-variant combo items with modifications (Rule 3 - detailPrice + comboSec
       "section_id": 19,
       "section_name": "Rice Modify",
       "selected_items": [{{
-        "sale_item_id": {MODIFY_ID},
+        "sale_item_id": {{MODIFY_ID}},
         "name": "No Pea & Carrot",
         "price": 0,
         "quantity": 1
@@ -907,7 +907,7 @@ Note the key differences:
 - **Size specification**: Always include size, detail_price_id, size_id for detailPrice items
 - **Allergy format validation**: The example `"Allergies: Fish,Wheat,Peanuts,Egg,Dairy,TreeNuts,Soy,Shellfish."` shows the correct API format
 
-🚨 **FINAL CRITICAL WARNING**: All example IDs shown above (such as {LUNCH_COMBO_ID}, {INDIVIDUAL_ID}, {DINNER_COMBO_ID}, etc.) are ILLUSTRATIVE PLACEHOLDERS ONLY. 
+🚨 **FINAL CRITICAL WARNING**: All example IDs shown above (such as {{LUNCH_COMBO_ID}}, {{INDIVIDUAL_ID}}, {{DINNER_COMBO_ID}}, etc.) are ILLUSTRATIVE PLACEHOLDERS ONLY. 
 
 **YOU MUST NEVER USE PLACEHOLDER VALUES IN YOUR OUTPUT.** 
 
