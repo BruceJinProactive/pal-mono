@@ -24,5 +24,6 @@ class AccountParams:
     tier: TargetTier | None = None
     notes: str | None = None
     contract_signed: bool | None = None
+    terms_accepted: bool | None = None
     phone_number: str | None = None
     channels: list[str] | None = None

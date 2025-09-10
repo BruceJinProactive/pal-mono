@@ -96,6 +96,9 @@ class Account(Base):
     contract_signed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, index=True, server_default=text("false")
     )
+    terms_accepted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Contact information

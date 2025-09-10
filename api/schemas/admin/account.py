@@ -32,6 +32,7 @@ class Account(BaseModel):
     tier: str | None = None
     notes: str | None = None
     contract_signed: bool = False
+    terms_accepted: bool = False
     phone_number: str | None = None
     channels: list[str] | None = None
 
