@@ -85,8 +85,7 @@ class AdoraMenuProcessor:
             dict: Processing results with menu data and indexing information
         """
         try:
-            if self.debug:
-                logger.debug("Starting Adora menu processing...")
+            logger.debug("Starting Adora menu processing...")
 
             # Step 1: Get authentication token
             if not self.token:
@@ -95,10 +94,10 @@ class AdoraMenuProcessor:
                     client_secret=client_secret,
                     token_api_endpoint=token_api_endpoint,
                 )
-                if self.debug:
-                    logger.debug(
-                        f"[adora._implementation.process_and_index_menu] Successfully got authentication token for store {store_id}"
-                    )
+                logger.debug(
+                    "[adora._implementation.process_and_index_menu] Successfully got authentication token for store %s",
+                    store_id,
+                )
 
             # Step 2: Download menu data
             menu_data = download_menu(
@@ -107,13 +106,14 @@ class AdoraMenuProcessor:
                 general_api_endpoint=general_api_endpoint,
             )
 
-            if self.debug:
-                logger.debug(
-                    f"[adora._implementation.process_and_index_menu] Successfully downloaded menu for store {store_id}"
-                )
-                logger.debug(
-                    f"[adora._implementation.process_and_index_menu] Menu contains {len(menu_data.get('items', []))} items"
-                )
+            logger.debug(
+                "[adora._implementation.process_and_index_menu] Successfully downloaded menu for store %s",
+                store_id,
+            )
+            logger.debug(
+                "[adora._implementation.process_and_index_menu] Menu contains %s items",
+                len(menu_data.get("items", [])),
+            )
 
             # Step 3: Generate individual item texts
             individual_items = []
@@ -153,13 +153,15 @@ class AdoraMenuProcessor:
                 pinecone_namespace=pinecone_namespace,
                 debug=self.debug,
             )
-            if self.debug:
-                logger.debug(
-                    f"[adora._implementation.process_and_index_menu] Processing complete. Total items: {len(individual_items)}"
-                )
-                logger.debug(
-                    f"[adora._implementation.process_and_index_menu] Indexed {document_count} documents to namespace: {pinecone_namespace}"
-                )
+            logger.debug(
+                "[adora._implementation.process_and_index_menu] Processing complete. Total items: %s",
+                len(individual_items),
+            )
+            logger.debug(
+                "[adora._implementation.process_and_index_menu] Indexed %s documents to namespace: %s",
+                document_count,
+                pinecone_namespace,
+            )
 
             return {
                 "system_prompt_menu": consolidated_menu,

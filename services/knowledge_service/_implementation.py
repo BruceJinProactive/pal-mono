@@ -355,8 +355,7 @@ def update_agent_kb(
         "general_api_endpoint": general_api_endpoint,
     }
 
-    if debug:
-        logger.debug("update_agent_kb called with debug=True", extra=debug_info)
+    logger.debug("update_agent_kb called", extra=debug_info)
 
     try:
         if pos_provider == IntegrationProvider.adora:

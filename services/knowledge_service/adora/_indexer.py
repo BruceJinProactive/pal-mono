@@ -62,10 +62,10 @@ def index_to_pinecone(
     pinecone_api_key = _get_pinecone_api_key()
     cohere_api_key = _get_cohere_api_key()
 
-    if debug:
-        logger.debug(
-            f"[indexer.index_to_pinecone] Indexing {len(individual_items)} items to Pinecone..."
-        )
+    logger.debug(
+        "[indexer.index_to_pinecone] Indexing %s items to Pinecone...",
+        len(individual_items),
+    )
 
     # Create documents from individual items
     documents = []
@@ -106,9 +106,6 @@ def index_to_pinecone(
         embed_model=embed_model,
     )
 
-    if debug:
-        logger.debug(
-            f"Successfully indexed to Pinecone namespace: {pinecone_namespace}"
-        )
+    logger.debug("Successfully indexed to Pinecone namespace: %s", pinecone_namespace)
 
     return len(documents)

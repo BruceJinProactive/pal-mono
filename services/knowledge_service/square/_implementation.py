@@ -81,8 +81,7 @@ class SquareMenuProcessor:
             RuntimeError: If processing fails
         """
         try:
-            if self.debug:
-                logger.debug("Starting Square menu processing...")
+            logger.debug("Starting Square menu processing...")
 
             # Step 1: Validate credentials and parameters
             validation_result = validate_square_credentials(access_token, location_id)
@@ -91,8 +90,7 @@ class SquareMenuProcessor:
                     f"Invalid credentials: {validation_result.get('error')}"
                 )
 
-            if self.debug:
-                logger.debug(f"Credentials validated for location {location_id}")
+            logger.debug("Credentials validated for location %s", location_id)
 
             # Step 2: Download menu data from Square API
             menu_data = download_menu(
@@ -100,19 +98,18 @@ class SquareMenuProcessor:
                 location_id=location_id,
             )
 
-            if self.debug:
-                logger.debug(f"Successfully downloaded menu for location {location_id}")
-                logger.debug(f"Menu contains {menu_data.get('item_count', 0)} items")
+            logger.debug("Successfully downloaded menu for location %s", location_id)
+            logger.debug("Menu contains %s items", menu_data.get("item_count", 0))
 
             # Step 3: Parse and validate menu data
             parsed_menu = parse_menu_data(menu_data)
 
-            if self.debug:
-                validation_summary = parsed_menu.get("validation_summary", {})
-                logger.debug(
-                    f"Menu validation: {validation_summary.get('items_valid', 0)} valid items "
-                    f"out of {validation_summary.get('items_processed', 0)} processed"
-                )
+            validation_summary = parsed_menu.get("validation_summary", {})
+            logger.debug(
+                "Menu validation: %s valid items out of %s processed",
+                validation_summary.get("items_valid", 0),
+                validation_summary.get("items_processed", 0),
+            )
 
             # Step 4: Generate individual item texts
             individual_items = []
@@ -138,18 +135,16 @@ class SquareMenuProcessor:
                     logger.warning(f"Failed to generate text for item {i+1}: {e}")
                     continue
 
-            if self.debug:
-                logger.debug(f"Generated text for {len(individual_items)} menu items")
+            logger.debug("Generated text for %s menu items", len(individual_items))
 
             # Step 5: Generate consolidated menu documents
             consolidated_documents = format_consolidated_menu(
                 menu_data=parsed_menu,
             )
 
-            if self.debug:
-                logger.debug(
-                    f"Generated {len(consolidated_documents)} consolidated documents"
-                )
+            logger.debug(
+                "Generated %s consolidated documents", len(consolidated_documents)
+            )
 
             # Step 6: Index individual items to Pinecone
             indexing_result = index_individual_items_to_pinecone(
@@ -170,8 +165,7 @@ class SquareMenuProcessor:
             # Step 7: Calculate statistics
             menu_stats = calculate_menu_statistics(parsed_menu)
 
-            if self.debug:
-                logger.debug(f"Menu statistics calculated: {menu_stats}")
+            logger.debug("Menu statistics calculated: %s", menu_stats)
 
             # Extract consolidated menu text for system prompt
             consolidated_menu = ""
