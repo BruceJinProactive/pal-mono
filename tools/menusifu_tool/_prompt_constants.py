@@ -285,7 +285,8 @@ Please analyze the conversation and extract all Chinese food order information. 
 2. Use EXACT modifier names as they appear in the menu context above
 3. **CRITICAL**: When customers use casual names, map them to the correct item_id in the menu and output the menu's display name (include a code prefix only if it is part of that display name).
 Note: Some catalogs separate item codes from names; if so, do not concatenate "CODE.Name" in item_name—use the display name and correct item_id.
-4. **MENU DISAMBIGUATION**: Apply disambiguation rules for items with multiple versions:
+4. **MANDATORY COMBO SECTIONS**: For COMBO_SALE_ITEM types, ALL combo sections are MANDATORY - you MUST extract combo_sections for every combo item. Look for sections like "Lunch With", "Dinner With", "Dinner Choice" in the menu context. Even if the customer says "no modifications" or "plain", extract at least one default selection per section. **DEFAULT SELECTION RULE**: Always select the cheapest option ($0.00 price), or if multiple have same price, pick the first one listed (typically "^Steamed Rice" for rice sections, ".Egg Roll" for appetizer sections). MenuSifu API requires combo_sections field populated for all COMBO_SALE_ITEM types or the order will fail with "Price of order item is error".
+5. **MENU DISAMBIGUATION**: Apply disambiguation rules for items with multiple versions:
    - Size mentioned (Small/Large) → prefer individual item with detailPrice
    - "lunch" context → prefer LC/LB/LP prefix combos  
    - "dinner" context → prefer DC/DS/DB prefix combos
@@ -485,6 +486,16 @@ For simple fixed-price combo items (e.g., lunch combos with basePrice):
     "item_type": "COMBO_SALE_ITEM",
     "category_id": {{CATEGORY_ID}},
     "special_notes": "",
+    "combo_sections": [{{             // MANDATORY: Always include combo sections for COMBO_SALE_ITEM
+      "section_id": 21,
+      "section_name": "Lunch With", 
+      "selected_items": [{{
+        "sale_item_id": 3357,
+        "name": "^Steamed Rice",    // Default selection if customer doesn't specify
+        "price": 0,
+        "quantity": 1
+      }}]
+    }}],
     "modifiers": [{{
       "id": {{MODIFIER_ID}},
       "name": "^Pork Fried Rice",
@@ -496,7 +507,20 @@ For simple fixed-price combo items (e.g., lunch combos with basePrice):
 }}
 ```
 
-⚠️ **NOTE**: All IDs above ({{LUNCH_COMBO_ID}}, {{BASE_PRICE}}, {{CATEGORY_ID}}, {{MODIFIER_ID}}) are placeholders - extract actual values from your menu context.
+⚠️ **IMPORTANT**: 
+- All IDs above ({{LUNCH_COMBO_ID}}, {{BASE_PRICE}}, {{CATEGORY_ID}}, {{MODIFIER_ID}}) are placeholders - extract actual values from your menu context.
+- The `combo_sections` format above is for EXTRACTION only. The system converts it to MenuSifu API format:
+  ```
+  EXTRACTION: "combo_sections": [{{"section_id": 21, "selected_items": [{{"sale_item_id": 3357, ...}}]}}]
+  API FORMAT: "comboDetail": {{"comboSections": [{{"id": 21, "selectSaleItems": [{{"saleItemId": 3357, ...}}]}}]}}
+  ```
+
+🚨 **COMBO EXTRACTION RULE**: 
+- **For COMBO_SALE_ITEM**: Do not leave `combo_sections` empty unless the menu entry defines no combo sections at all (rare)
+- **Mandatory sections**: Always populate with default selections (cheapest option $0.00, or first if tied)
+- **Optional sections**: May be omitted only when unselected by customer
+- **Even for "plain" orders**: If customer says "no modifications", still extract default selections for mandatory sections
+- **Example**: LC11.Kung Po Chicken → MUST include combo_sections with "^Steamed Rice" (free) from "Lunch With" section
 
 For complex combo items with upgrade costs (e.g., dinner combos):
 ```json
@@ -698,10 +722,10 @@ Note the key differences:
   - Both can coexist on the same item
 - Always use the extracted format above - the system handles API conversion automatically
 - Combo sections include:
-  - "Lunch With" (id: 21) - for rice/starch choices
+  - "Dinner Choice" (id: 17) - for sides/appetizers or drinks when defined
   - "Dinner With" (id: 18) - for dinner combo choices  
   - "Rice Modify" (id: 19) - for exclusions (No Veggie, No Onion, etc.)
-  - May be empty/none for some combo items
+  - "Lunch With" (id: 21) - for rice/starch choices
 - Modifier names should match exactly what's available in the menu (e.g., "^Steamed Rice", "No Veggie")
 - Special requests without specific IDs should have `"id": null` and will become `isOpenOption: true`
 
@@ -757,30 +781,42 @@ Note the key differences:
     "display_price": 13.8,     // Base + upgrades: 11.05 + 1.5 + 0.25 + 1.0
     "category_id": 336,
     "special_notes": "",
-    "modifiers": [{{
-      "id": 3384,
-      "name": ".Ham Fried Rice",
-      "price": 1.5,            // Upgrade cost
-      "quantity": 1,
-      "checked": true
+    "combo_sections": [{{
+      "section_id": 18,
+      "section_name": "Dinner With",
+      "selected_items": [{{
+        "sale_item_id": 3384,
+        "name": ".Ham Fried Rice",
+        "price": 1.5,          // Upgrade cost
+        "quantity": 1
+      }}]
     }}, {{
-      "id": 3395,
-      "name": ".Shrimp Roll",
-      "price": 0.25,           // Add-on cost
-      "quantity": 1,
-      "checked": true
+      "section_id": 17,
+      "section_name": "Dinner Choice",
+      "selected_items": [{{
+        "sale_item_id": 3395,
+        "name": ".Shrimp Roll",
+        "price": 0.25,         // Add-on cost
+        "quantity": 1
+      }}]
     }}, {{
-      "id": 3335,
-      "name": "No Broccoli",
-      "price": 0,              // Free modification
-      "quantity": 1,
-      "checked": true
+      "section_id": 19,
+      "section_name": "Rice Modify",
+      "selected_items": [{{
+        "sale_item_id": 3335,
+        "name": "No Broccoli",
+        "price": 0,            // Free modification
+        "quantity": 1
+      }}]
     }}, {{
-      "id": 3307,
-      "name": "Garlic Sauce",
-      "price": 1,              // Sauce cost
-      "quantity": 1,
-      "checked": true
+      "section_id": 20,
+      "section_name": "Add Sauce",
+      "selected_items": [{{
+        "sale_item_id": 3307,
+        "name": "Garlic Sauce",
+        "price": 1,            // Sauce cost
+        "quantity": 1
+      }}]
     }}],
     "options": [{{
       "sectionId": "Options",
@@ -806,7 +842,7 @@ Note the key differences:
   "items": [{{
     "item_id": 3584,
     "item_name": "Fried Half Chicken",
-    "item_type": "COMBO_SALE_ITEM",
+    "item_type": "SALE_ITEM",
     "quantity": 4,
     "price": 7.75,              // Rule 2: From basePrice
     "display_price": 7.75,
@@ -814,7 +850,7 @@ Note the key differences:
   }}, {{
     "item_id": 3705,
     "item_name": "Kung Po Chicken",
-    "item_type": "COMBO_SALE_ITEM", 
+    "item_type": "SALE_ITEM", 
     "quantity": 12,
     "price": 12.25,             // Rule 3: From detailPrice Large
     "display_price": 12.25,
@@ -832,7 +868,7 @@ Note the key differences:
   }}, {{
     "item_id": 3718,
     "item_name": "Beef Mushroom",
-    "item_type": "COMBO_SALE_ITEM",
+    "item_type": "SALE_ITEM",
     "quantity": 20,
     "price": 7.5,               // Rule 3: From detailPrice Small  
     "display_price": 7.5,
@@ -876,7 +912,7 @@ Note the key differences:
   }}, {{
     "item_id": [INDIVIDUAL_ID],
     "item_name": "Sweet Sour Pork",          // "Large" specified → individual item
-    "item_type": "COMBO_SALE_ITEM",
+    "item_type": "SALE_ITEM",
     "quantity": 1,
     "price": 11.50,                         // Rule 3: detailPrice Large
     "display_price": 11.50,

@@ -403,6 +403,39 @@ class MenuSifuTool(Toolkit):
             f"[MenuSifuTool] Converted {len(processed_items)} items to internal dict format"
         )
 
+        # Check for mandatory combo sections for COMBO_SALE_ITEM types
+        for i, item_dict in enumerate(processed_items):
+            if item_dict.get("item_type") == "COMBO_SALE_ITEM":
+                logger.info(
+                    f"[MenuSifuTool] Checking mandatory combo sections for item {i+1}: {item_dict.get('name', 'Unknown')}"
+                )
+
+                # Get the current combo sections
+                current_sections = item_dict.get("combo_sections", [])
+                if not current_sections or len(current_sections) == 0:
+                    logger.warning(
+                        f"[MenuSifuTool] Item {i+1} has no combo sections - this WILL cause API errors for combo items with mandatory selections"
+                    )
+                else:
+                    logger.info(
+                        f"[MenuSifuTool] Item {i+1} has {len(current_sections)} combo sections"
+                    )
+
+                    # Validate each section has selected_items
+                    for section_idx, section in enumerate(current_sections):
+                        section_name = section.get(
+                            "section_name", f"Section {section_idx+1}"
+                        )
+                        selected_items = section.get("selected_items", [])
+                        if not selected_items or len(selected_items) == 0:
+                            logger.warning(
+                                f"[MenuSifuTool] Item {i+1} ({item_dict.get('name', 'Unknown')}) - Section {section_idx+1} ({section_name}) has no selected_items - this may cause API errors"
+                            )
+                        else:
+                            logger.info(
+                                f"[MenuSifuTool] Item {i+1} - Section {section_idx+1} ({section_name}) has {len(selected_items)} selected items"
+                            )
+
         # Log converted items details
         logger.info("[MenuSifuTool] Converted Items Details:")
         for i, item in enumerate(processed_items, 1):
