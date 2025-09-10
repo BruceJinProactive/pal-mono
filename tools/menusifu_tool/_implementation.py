@@ -100,7 +100,7 @@ class MenuSifuTool(Toolkit):
         # Register tools
         self.register(self.create_order_checkout)
 
-        logger.debug(
+        logger.info(
             f"MenuSifuTool instance created: merchant_id={merchant_id}, base_url={base_url}"
         )
 
@@ -317,7 +317,7 @@ class MenuSifuTool(Toolkit):
                 logger.info(f"[MenuSifuTool] {error_msg}")
                 return error_msg
 
-            logger.debug(f"[MenuSifuTool] Extracted order: {extracted_order}")
+            logger.info(f"[MenuSifuTool] Extracted order: {extracted_order}")
             return extracted_order
 
         except ValidationError as e:
@@ -393,30 +393,30 @@ class MenuSifuTool(Toolkit):
             if item.modifiers:
                 logger.info(f"    * Modifiers: {len(item.modifiers)} items")
                 for mod in item.modifiers:
-                    logger.debug(
+                    logger.info(
                         f"      - {mod.name}: ${mod.price} (qty: {mod.quantity})"
                     )
 
         # Convert ExtractedMenuSifuOrder to internal dict format
         processed_items = convert_extracted_order_to_dict(extracted_order)
-        logger.debug(
+        logger.info(
             f"[MenuSifuTool] Converted {len(processed_items)} items to internal dict format"
         )
 
         # Log converted items details
-        logger.debug("[MenuSifuTool] Converted Items Details:")
+        logger.info("[MenuSifuTool] Converted Items Details:")
         for i, item in enumerate(processed_items, 1):
-            logger.debug(f"  - Converted Item {i}: {item.get('name')}")
-            logger.debug(
+            logger.info(f"  - Converted Item {i}: {item.get('name')}")
+            logger.info(
                 f"    * ID: {item.get('id')}, Sale ID: {item.get('sale_item_id')}"
             )
-            logger.debug(
+            logger.info(
                 f"    * Price: {item.get('price')}, Display: {item.get('display_price')}"
             )
-            logger.debug(
+            logger.info(
                 f"    * Type: {item.get('item_type')}, Category: {item.get('category_id')}"
             )
-            logger.debug(f"    * Options: {len(item.get('options', []))}")
+            logger.info(f"    * Options: {len(item.get('options', []))}")
 
         return processed_items
 
@@ -433,7 +433,7 @@ class MenuSifuTool(Toolkit):
             OrderCalculationResponse or error message
         """
         try:
-            logger.debug(
+            logger.info(
                 f"[MenuSifuTool] Starting order total calculation for {len(order_items)} items"
             )
 
@@ -447,21 +447,21 @@ class MenuSifuTool(Toolkit):
             # Convert order_items to OrderSelectedItem instances
             selected_items = []
             failed_items = []  # Track items that failed conversion
-            logger.debug("[MenuSifuTool] Converting items to OrderSelectedItem format")
+            logger.info("[MenuSifuTool] Converting items to OrderSelectedItem format")
             for i, item in enumerate(order_items, 1):
                 try:
-                    logger.debug(
+                    logger.info(
                         f"[MenuSifuTool] Processing item {i}: {item.get('name', 'Unknown')}"
                     )
-                    logger.debug(f"[MenuSifuTool] Raw item data: {item}")
+                    logger.info(f"[MenuSifuTool] Raw item data: {item}")
 
                     # Use helper function for safe field conversion
                     try:
-                        logger.debug(
+                        logger.info(
                             f"[MenuSifuTool] Calling safe_convert_item_fields for item {i}"
                         )
                         safe_fields = safe_convert_item_fields(item)
-                        logger.debug(
+                        logger.info(
                             f"[MenuSifuTool] safe_convert_item_fields succeeded for item {i}"
                         )
                     except Exception as e:
@@ -475,14 +475,14 @@ class MenuSifuTool(Toolkit):
                         continue  # Skip this item and process remaining items
 
                     # Log safe field conversion results
-                    logger.debug(f"[MenuSifuTool] Safe field conversion for item {i}:")
-                    logger.debug(f"  - Raw item: {item}")
-                    logger.debug(f"  - Safe fields: {safe_fields}")
+                    logger.info(f"[MenuSifuTool] Safe field conversion for item {i}:")
+                    logger.info(f"  - Raw item: {item}")
+                    logger.info(f"  - Safe fields: {safe_fields}")
 
                     # Convert price (Decimal) to displayPrice (int cents) - proper rounding from dollars to cents
                     try:
                         price_decimal = safe_fields["price"]
-                        logger.debug(
+                        logger.info(
                             f"[MenuSifuTool] Price decimal: {price_decimal} (type: {type(price_decimal)})"
                         )
                         # Convert dollars to integer cents with HALF_UP rounding
@@ -494,7 +494,7 @@ class MenuSifuTool(Toolkit):
                                 Decimal("0.01"), rounding=ROUND_HALF_UP
                             )
                             display_price_int = int(price_normalized * 100)
-                        logger.debug(
+                        logger.info(
                             f"[MenuSifuTool] Price conversion: {price_decimal} dollars -> {display_price_int} cents"
                         )
                     except Exception as e:
@@ -509,33 +509,42 @@ class MenuSifuTool(Toolkit):
 
                     # Map fields from order_items to OrderSelectedItem format
                     try:
-                        logger.debug(
+                        logger.info(
                             f"[MenuSifuTool] Creating OrderSelectedItem for item {i}"
                         )
-                        logger.debug("[MenuSifuTool] OrderSelectedItem parameters:")
-                        logger.debug(
+                        logger.info("[MenuSifuTool] OrderSelectedItem parameters:")
+                        logger.info(
                             f"  - categoryId: {safe_fields['categoryId']} (type: {type(safe_fields['categoryId'])})"
                         )
-                        logger.debug(
+                        logger.info(
                             f"  - displayPrice: {display_price_int} (type: {type(display_price_int)})"
                         )
-                        logger.debug(
+                        logger.info(
                             f"  - id: {safe_fields['id']} (type: {type(safe_fields['id'])})"
                         )
-                        logger.debug(
+                        logger.info(
                             f"  - itemType: {safe_fields['itemType']} (type: {type(safe_fields['itemType'])})"
                         )
-                        logger.debug(
+                        logger.info(
                             f"  - name: {safe_fields['name']} (type: {type(safe_fields['name'])})"
                         )
-                        logger.debug(
+                        logger.info(
                             f"  - price: {safe_fields['price']} (type: {type(safe_fields['price'])})"
                         )
-                        logger.debug(
+                        logger.info(
                             f"  - quantity: {safe_fields['quantity']} (type: {type(safe_fields['quantity'])})"
                         )
-                        logger.debug(
+                        logger.info(
                             f"  - saleItemId: {safe_fields['saleItemId']} (type: {type(safe_fields['saleItemId'])})"
+                        )
+                        logger.info(
+                            f"  - detailPriceId: {safe_fields.get('detailPriceId')} (type: {type(safe_fields.get('detailPriceId'))})"
+                        )
+                        logger.info(
+                            f"  - sizeId: {safe_fields.get('sizeId')} (type: {type(safe_fields.get('sizeId'))})"
+                        )
+                        logger.info(
+                            f"  - detailPriceInfo: {safe_fields.get('detailPriceInfo')} (type: {type(safe_fields.get('detailPriceInfo'))})"
                         )
 
                         selected_item = OrderSelectedItem(
@@ -550,12 +559,12 @@ class MenuSifuTool(Toolkit):
                             price=safe_fields["price"],
                             quantity=safe_fields["quantity"],
                             saleItemId=safe_fields["saleItemId"],
-                            # Optional detail price fields
-                            detailPriceId=None,
-                            sizeId=None,
-                            detailPriceInfo=None,
+                            # Size-related fields for detailPrice items (Rule 1, Rule 3)
+                            detailPriceId=safe_fields.get("detailPriceId"),
+                            sizeId=safe_fields.get("sizeId"),
+                            detailPriceInfo=safe_fields.get("detailPriceInfo"),
                         )
-                        logger.debug(
+                        logger.info(
                             f"[MenuSifuTool] OrderSelectedItem created successfully for item {i}"
                         )
 
@@ -578,7 +587,7 @@ class MenuSifuTool(Toolkit):
                     )
 
                     selected_items.append(selected_item)
-                    logger.debug(
+                    logger.info(
                         f"[MenuSifuTool] Successfully appended item {i} to selected_items list"
                     )
 
@@ -598,7 +607,7 @@ class MenuSifuTool(Toolkit):
                 f"[MenuSifuTool] Item conversion summary: {successful_items}/{total_items} successful, {failed_count} failed"
             )
             if failed_items:
-                logger.debug(f"[MenuSifuTool] Failed items details: {failed_items}")
+                logger.info(f"[MenuSifuTool] Failed items details: {failed_items}")
 
             if not selected_items:
                 error_msg = "No valid items could be processed for calculation"
@@ -629,8 +638,8 @@ class MenuSifuTool(Toolkit):
             logger.info(f"  - Selected Items: {len(calc_request.selected_items)}")
 
             # Log the JSON payload (debug level)
-            logger.debug("[MenuSifuTool] Calculation API JSON payload:")
-            logger.debug(f"  {calc_request.model_dump_json(by_alias=True)}")
+            logger.info("[MenuSifuTool] Calculation API JSON payload:")
+            logger.info(f"  {calc_request.model_dump_json(by_alias=True)}")
 
             # Call calculation API
             logger.info(
@@ -670,9 +679,9 @@ class MenuSifuTool(Toolkit):
 
                 # Log charge objects details
                 charge_obj = getattr(calc_result, "charge_obj", [])
-                logger.debug(f"[MenuSifuTool] Charge objects: {len(charge_obj)} items")
+                logger.info(f"[MenuSifuTool] Charge objects: {len(charge_obj)} items")
                 for i, charge in enumerate(charge_obj):
-                    logger.debug(
+                    logger.info(
                         f"  - Charge {i+1}: ${charge.charge} (type: {getattr(charge, 'type', 'N/A')})"
                     )
 
@@ -708,7 +717,7 @@ class MenuSifuTool(Toolkit):
             OrderGenerationResponse or error message
         """
         try:
-            logger.debug(
+            logger.info(
                 f"[MenuSifuTool] Starting order generation for {len(order_items)} items"
             )
 
@@ -738,7 +747,7 @@ class MenuSifuTool(Toolkit):
                 "[MenuSifuTool] Processing order for customer - validation passed"
             )
             # Log PII details only at debug level for troubleshooting
-            logger.debug(
+            logger.info(
                 f"[MenuSifuTool] Customer details: {customer_first_name} {customer_last_name or ''} ({customer_email})"
             )
 
@@ -758,7 +767,7 @@ class MenuSifuTool(Toolkit):
                 logger.info(f"[MenuSifuTool] {error_msg}")
                 return error_msg
             payment_method_str = "CASH"  # Hardcoded to cash as requested
-            logger.debug(f"[MenuSifuTool] Using payment method: {payment_method_str}")
+            logger.info(f"[MenuSifuTool] Using payment method: {payment_method_str}")
             # Address fields not needed for pickup orders
 
             # Validate that normalized phone_number is non-empty
@@ -952,14 +961,14 @@ class MenuSifuTool(Toolkit):
             logger.info(f"  - Tax Total: ${order_request.price.tax_total}")
 
             # Log generation request JSON payload (debug level)
-            logger.debug("[MenuSifuTool] Generation API JSON payload:")
-            logger.debug(f"  {order_request.model_dump_json(by_alias=True)}")
+            logger.info("[MenuSifuTool] Generation API JSON payload:")
+            logger.info(f"  {order_request.model_dump_json(by_alias=True)}")
 
             # Call order generation API
             logger.info(
                 f"[MenuSifuTool] Calling MenuSifu order generation API for customer: {customer_first_name}"
             )
-            logger.debug(
+            logger.info(
                 f"[MenuSifuTool] Order details: {len(selected_items)} items, payment: {payment_method}"
             )
 

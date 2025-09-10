@@ -3013,15 +3013,13 @@ def convert_extracted_order_to_dict(
     """
     processed_items = []
     for item in extracted_order.items:
-        logger.debug(
-            f"[convert_extracted_order_to_dict] Processing item: {item.item_name}"
-        )
+        logger.info(f"[MenuSifuTool] Processing item: {item.item_name}")
 
         # Handle combo sections if present (for COMBO_SALE_ITEM)
         combo_sections_list = []
         if hasattr(item, "combo_sections") and item.combo_sections:
-            logger.debug(
-                f"[convert_extracted_order_to_dict] Found {len(item.combo_sections)} combo sections"
+            logger.info(
+                f"[MenuSifuTool] Found {len(item.combo_sections)} combo sections"
             )
             for combo_section in item.combo_sections:
                 # Convert combo section to MenuSifu API format
@@ -3051,18 +3049,14 @@ def convert_extracted_order_to_dict(
                     section_dict["selectSaleItems"].append(sale_item_dict)
 
                 combo_sections_list.append(section_dict)
-                logger.info(
-                    f"[convert_extracted_order_to_dict] Created combo section: {section_dict}"
-                )
+                logger.info(f"[MenuSifuTool] Created combo section: {section_dict}")
 
         # Handle both special notes AND real modifiers (convert to options array)
         options_list = []
 
         # Handle legacy modifiers (real menu options with IDs)
         if hasattr(item, "modifiers") and item.modifiers:
-            logger.debug(
-                f"[convert_extracted_order_to_dict] Found {len(item.modifiers)} modifiers"
-            )
+            logger.info(f"[MenuSifuTool] Found {len(item.modifiers)} modifiers")
             for modifier in item.modifiers:
                 id_text = str(modifier.id).strip() if modifier.id is not None else ""
                 is_real_option = id_text.isdigit()
@@ -3090,9 +3084,7 @@ def convert_extracted_order_to_dict(
                             "zh-cn": modifier.name,  # Could be enhanced with real translations
                         },
                     }
-                    logger.debug(
-                        f"[convert_extracted_order_to_dict] Created real option: {option_dict}"
-                    )
+                    logger.info(f"[MenuSifuTool] Created real option: {option_dict}")
                 else:
                     # Custom note (like "extra spicy") - use simple structure
                     option_dict = {
@@ -3108,9 +3100,7 @@ def convert_extracted_order_to_dict(
                         "isOpenOption": True,
                         "checked": getattr(modifier, "checked", True),
                     }
-                    logger.debug(
-                        f"[convert_extracted_order_to_dict] Created note option: {option_dict}"
-                    )
+                    logger.info(f"[MenuSifuTool] Created note option: {option_dict}")
 
                 options_list.append(option_dict)
 
@@ -3120,9 +3110,7 @@ def convert_extracted_order_to_dict(
             and item.special_notes
             and item.special_notes.strip()
         ):
-            logger.debug(
-                f"[convert_extracted_order_to_dict] Found special notes: {item.special_notes}"
-            )
+            logger.info(f"[MenuSifuTool] Found special notes: {item.special_notes}")
             # Convert special notes text to options format (simple structure)
             option_dict = {
                 "sectionId": "Options",
@@ -3138,9 +3126,7 @@ def convert_extracted_order_to_dict(
                 "checked": True,
             }
             options_list.append(option_dict)
-            logger.info(
-                f"[convert_extracted_order_to_dict] Created option from notes: {option_dict}"
-            )
+            logger.info(f"[MenuSifuTool] Created option from notes: {option_dict}")
 
         # Build item dictionary in internal format
         # Ensure item_id is integer and sale_item_id is set
@@ -3164,9 +3150,7 @@ def convert_extracted_order_to_dict(
             "options": options_list,  # For custom notes/instructions
         }
         processed_items.append(item_dict)
-        logger.debug(
-            f"[convert_extracted_order_to_dict] Created item_dict: {item_dict}"
-        )
+        logger.info(f"[MenuSifuTool] Created item_dict: {item_dict}")
 
     return processed_items
 
@@ -3184,25 +3168,21 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     Raises:
         ValueError: If required fields are missing
     """
-    logger.debug(f"[safe_convert_item_fields] Processing item: {item}")
+    logger.info(f"[MenuSifuTool] Processing item: {item}")
 
     # Extract raw ID from item
     raw_id = item.get("id") or item.get("item_id")
-    logger.debug(f"[safe_convert_item_fields] Raw ID: {raw_id} (type: {type(raw_id)})")
+    logger.info(f"[MenuSifuTool] Raw ID: {raw_id} (type: {type(raw_id)})")
 
     if raw_id is None or raw_id == "":
-        logger.error(
-            f"[safe_convert_item_fields] Item missing required 'id' field: {item}"
-        )
+        logger.error(f"[MenuSifuTool] Item missing required 'id' field: {item}")
         raise ValueError(f"Item missing required 'id' field: {item}")
 
     try:
         item_id = int(raw_id)
-        logger.debug(f"[safe_convert_item_fields] Converted item_id: {item_id}")
+        logger.info(f"[MenuSifuTool] Converted item_id: {item_id}")
     except (ValueError, TypeError) as e:
-        logger.error(
-            f"[safe_convert_item_fields] Failed to convert raw_id '{raw_id}' to int: {e}"
-        )
+        logger.error(f"[MenuSifuTool] Failed to convert raw_id '{raw_id}' to int: {e}")
         raise ValueError(f"Invalid item ID '{raw_id}': {e}")
 
     # For MenuSifu: sale_item_id should always be the same as item_id
@@ -3211,42 +3191,86 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     # Safely convert price with validation (required field, default to 0 or base_price for combo items)
     raw_price = item.get("price")
     item_type = item.get("itemType") or item.get("item_type") or "SALE_ITEM"
-    logger.debug(
-        f"[safe_convert_item_fields] Raw price: {raw_price} (type: {type(raw_price)}), item_type: {item_type}"
+    logger.info(
+        f"[MenuSifuTool] Raw price: {raw_price} (type: {type(raw_price)}), item_type: {item_type}"
     )
 
-    if raw_price is None or raw_price == "":
-        # For combo items, use base_price instead of defaulting to 0
-        if item_type == "COMBO_SALE_ITEM":
-            raw_base_price = item.get("basePrice") or item.get("base_price")
-            if raw_base_price is not None and raw_base_price != "":
-                try:
-                    price_val = Decimal(str(raw_base_price))
-                    logger.debug(
-                        f"[safe_convert_item_fields] Using base_price for combo item: {price_val}"
-                    )
-                except (ValueError, TypeError, ArithmeticError) as e:
-                    logger.error(
-                        f"[safe_convert_item_fields] Failed to convert base_price '{raw_base_price}': {e}"
-                    )
-                    price_val = Decimal("0")
-            else:
-                logger.warning(
-                    "[safe_convert_item_fields] Combo item missing base_price, using default: 0"
+    # MENUSIFU PRICING RULES:
+    # Rule 1: detailPrice field → item price = 0, use selected detailPriceId
+    # Rule 2: comboSections field → use basePrice, price field disappears
+    # Rule 3: Both detailPrice + comboSections → basePrice = 0, use detailPriceId
+    # Rule 4: Detail items need detailPriceId and detailPriceInfo parameters
+
+    raw_detail_price = item.get("detailPrice")
+    raw_base_price = item.get("basePrice") or item.get("base_price")
+    has_combo_sections = bool(item.get("comboSections") or item.get("combo_sections"))
+    has_detail_price = bool(raw_detail_price)
+
+    logger.info(
+        f"[MenuSifuTool] Pricing analysis: item_type={item_type}, "
+        f"has_detail_price={has_detail_price}, has_combo_sections={has_combo_sections}, "
+        f"raw_price={raw_price}, raw_base_price={raw_base_price}"
+    )
+
+    if has_detail_price:
+        # Rule 1 & 3: Items with detailPrice generally have price = 0
+        # Special case: When all prices in detailPrice are identical, price field may contain actual price
+
+        # Check for special case: all detailPrice prices are the same
+        detail_prices = []
+        if isinstance(raw_detail_price, dict) and "prices" in raw_detail_price:
+            detail_prices = [
+                p.get("price", 0) for p in raw_detail_price.get("prices", [])
+            ]
+        elif isinstance(raw_detail_price, list):
+            detail_prices = [p.get("price", 0) for p in raw_detail_price]
+
+        all_prices_same = len(detail_prices) > 0 and len(set(detail_prices)) == 1
+
+        if all_prices_same and raw_price is not None and raw_price != "":
+            # Special case: all detailPrice prices are identical, use existing price
+            try:
+                price_val = Decimal(str(raw_price))
+                logger.info(
+                    f"[MenuSifuTool] Special case: detailPrice prices all identical, using item price: {price_val}"
+                )
+            except (ValueError, TypeError, ArithmeticError) as e:
+                logger.error(
+                    f"[MenuSifuTool] Failed to convert price '{raw_price}': {e}"
                 )
                 price_val = Decimal("0")
         else:
+            # General case: detailPrice item price = 0, actual pricing from detailPriceId
             price_val = Decimal("0")
-            logger.debug(f"[safe_convert_item_fields] Using default price: {price_val}")
+            logger.info(
+                "[MenuSifuTool] General detailPrice case - setting price to 0 (detailPriceId will determine actual price)"
+            )
+    elif has_combo_sections and raw_base_price is not None:
+        # Rule 2: Combo items use basePrice
+        try:
+            price_val = Decimal(str(raw_base_price))
+            logger.info(f"[MenuSifuTool] Combo item - using basePrice: {price_val}")
+        except (ValueError, TypeError, ArithmeticError) as e:
+            logger.error(
+                f"[MenuSifuTool] Failed to convert basePrice '{raw_base_price}': {e}"
+            )
+            price_val = Decimal("0")
+    elif item_type == "COMBO_SALE_ITEM":
+        # Fallback for combo items without explicit basePrice
+        price_val = Decimal("0")
+        logger.info(
+            "[MenuSifuTool] Combo item without basePrice - defaulting price to 0"
+        )
+    elif raw_price is None or raw_price == "":
+        price_val = Decimal("0")
+        logger.info(f"[MenuSifuTool] Using default price: {price_val}")
     else:
         try:
             price_val = Decimal(str(raw_price))
-            logger.debug(f"[safe_convert_item_fields] Converted price: {price_val}")
+            logger.info(f"[MenuSifuTool] Converted price: {price_val}")
         except (ValueError, TypeError, ArithmeticError) as e:
             # Default to 0 if conversion fails
-            logger.error(
-                f"[safe_convert_item_fields] Failed to convert price '{raw_price}': {e}"
-            )
+            logger.error(f"[MenuSifuTool] Failed to convert price '{raw_price}': {e}")
             price_val = Decimal("0")
 
     # Safely convert displayPrice (optional field) - ensure it matches price for combo items
@@ -3254,18 +3278,16 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     # For combo items or when display_price is missing, use the calculated price_val
     if raw_display_price is None or raw_display_price == "":
         display_price_val = price_val  # Use the same value as price
-        logger.debug(
-            f"[safe_convert_item_fields] Setting displayPrice to match price: {display_price_val}"
+        logger.info(
+            f"[MenuSifuTool] Setting displayPrice to match price: {display_price_val}"
         )
     else:
         try:
             display_price_val = Decimal(str(raw_display_price))
-            logger.debug(
-                f"[safe_convert_item_fields] Converted displayPrice: {display_price_val}"
-            )
+            logger.info(f"[MenuSifuTool] Converted displayPrice: {display_price_val}")
         except (ValueError, TypeError, ArithmeticError) as e:
             logger.error(
-                f"[safe_convert_item_fields] Failed to convert displayPrice '{raw_display_price}': {e}"
+                f"[MenuSifuTool] Failed to convert displayPrice '{raw_display_price}': {e}"
             )
             display_price_val = price_val  # Fall back to price value
 
@@ -3303,11 +3325,16 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
         "quantity": quantity_val,
         "itemType": item.get("itemType") or item.get("item_type") or "SALE_ITEM",
         "name": item.get("name") or "",
+        # Size-related fields for detailPrice items (Rule 1, Rule 3)
+        "size": item.get("size"),
+        "sizeId": item.get("size_id") or item.get("sizeId"),
+        "detailPriceId": item.get("detail_price_id") or item.get("detailPriceId"),
+        "detailPriceInfo": item.get("detail_price_info") or item.get("detailPriceInfo"),
     }
 
-    logger.debug(f"[safe_convert_item_fields] Final result: {result}")
-    logger.debug(
-        f"[safe_convert_item_fields] Result types: {[(k, type(v)) for k, v in result.items()]}"
+    logger.info(f"[MenuSifuTool] Final result: {result}")
+    logger.info(
+        f"[MenuSifuTool] Result types: {[(k, type(v)) for k, v in result.items()]}"
     )
 
     return result
@@ -3475,11 +3502,11 @@ def simple_filter_menu_items(menu_dict: Dict[str, Any]) -> Dict[str, Any]:
     filtered_menu["groups"] = filtered_groups
 
     # Add filtering summary
-    logger.debug("Simple Filtering Results:")
-    logger.debug("Total items processed: %s", total_items)
-    logger.debug("Items kept: %s", total_items - filtered_items)
-    logger.debug("Out-of-stock items filtered: %s", filtered_items)
-    logger.debug("Hidden items KEPT (as requested)")
+    print("📊 Simple Filtering Results:")
+    print(f"   Total items processed: {total_items}")
+    print(f"   Items kept: {total_items - filtered_items}")
+    print(f"   Out-of-stock items filtered: {filtered_items}")
+    print("   ✅ Hidden items KEPT (as requested)")
 
     return filtered_menu
 
@@ -3510,7 +3537,7 @@ def save_filtered_menu_data(
     with open(clean_menu_path, "w", encoding="utf-8") as f:
         json.dump(filtered_menu, f, indent=2, ensure_ascii=False, cls=DecimalEncoder)
     created_files["clean_menu_json"] = clean_menu_path
-    logger.debug("Saved filtered menu: %s", clean_menu_path)
+    print(f"💾 Saved filtered menu: {clean_menu_path}")
 
     # Generate text menu if requested
     if generate_text_menu:
@@ -3524,10 +3551,10 @@ def save_filtered_menu_data(
             with open(bilingual_path, "w", encoding="utf-8") as f:
                 f.write(bilingual_content)
             created_files["bilingual_menu"] = bilingual_path
-            logger.debug("Saved bilingual menu: %s", bilingual_path)
+            print(f"📄 Saved bilingual menu: {bilingual_path}")
 
         except Exception as e:
-            logger.debug("Could not generate text menu: %s", e)
+            print(f"⚠️ Could not generate text menu: {e}")
 
     return created_files
 

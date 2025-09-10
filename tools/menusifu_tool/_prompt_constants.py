@@ -94,9 +94,15 @@ Extract the following information from the conversation:
   - `need_utensils`: boolean for utensil requests
   - `need_straws`: boolean for straw requests  
   - `need_condiments`: boolean for condiment requests
+- **Allergy info formatting**: Support both simple and detailed formats:
+  - Simple format: `"Allergies: Allergen1,Allergen2,Allergen3."`
+  - Detailed format: `"Custom instructions.Allergies: Allergen1,Allergen2,Allergen3"`
+  - Example simple: `"Allergies: Fish,Wheat,Peanuts,Egg,Dairy,TreeNuts,Soy,Shellfish."`
+  - Example detailed: `"Please prepare carefully for sensitive customer.Allergies: Shellfish,Soy"`
 - Examples of order-level information:
   - "I have a severe nut allergy" → `"allergy_info": "Severe nut allergy - please ensure no cross-contamination"`
-  - Multiple allergies → `"allergy_info": "Allergies: Peanuts,Egg,Wheat,Fish,Shellfish,Soy,TreeNuts,Dairy"`
+  - Multiple allergies → `"allergy_info": "Allergies: Peanuts,Egg,Wheat,Fish,Shellfish,Soy,TreeNuts,Dairy."`
+  - Complex case → `"allergy_info": "Testing order level instructions.Allergies: Shellfish,Soy"`
   - "I'm vegan, please make all dishes vegan" → `"allergy_info": "Customer is vegan - please substitute all animal products"`
   - "Low sodium diet" → `"allergy_info": "Low sodium diet - please use minimal salt"`
   - "Please include utensils" → `"need_utensils": true`
@@ -122,19 +128,19 @@ Extract the following information from the conversation:
 ## FORMAT FOR ITEMS:
 
 ### For Combo Items (COMBO_SALE_ITEM):
-**IMPORTANT**: If menu context shows "price": null for combo items, use "base_price" value instead!
+**IMPORTANT**: Extract basePrice as the item price for fixed combos, or use price: 0 for size-variant combos!
 ```json
 {{
-  "item_id": 3537,
-  "item_name": "DB3.Beef Lo Mein",
+  "item_id": {LUNCH_COMBO_ID},
+  "item_name": "LC11.Kung Po Chicken",
   "item_type": "COMBO_SALE_ITEM",
-  "price": 10.5,  // Use base_price if menu shows price: null
-  "display_price": 10.5,  // Same as price for combo items
+  "price": {BASE_PRICE},           // Use basePrice from menu (Rule 2)
+  "display_price": {BASE_PRICE},   // Same as price
   "combo_sections": [{{
     "section_id": 18,
     "section_name": "Dinner With",
     "selected_items": [{{
-      "sale_item_id": 3380,
+      "sale_item_id": {RICE_OPTION_ID},
       "name": "Plain Fried Rice",
       "price": 0
     }}]
@@ -142,7 +148,7 @@ Extract the following information from the conversation:
     "section_id": 20,
     "section_name": "Add Sauce", 
     "selected_items": [{{
-      "sale_item_id": 3305,
+      "sale_item_id": {SAUCE_OPTION_ID},
       "name": "Honey Sauce",
       "price": 1
     }}]
@@ -154,7 +160,7 @@ Extract the following information from the conversation:
 ### For Regular Items (SALE_ITEM):
 ```json
 {{
-  "item_id": 3279,
+  "item_id": {REGULAR_ITEM_ID},
   "item_name": "Steamed Mix Vegetable Beef",
   "item_type": "SALE_ITEM",
   "special_notes": "Extra spicy please"
@@ -177,6 +183,36 @@ Extract the following information from the conversation:
 - Include customizations like "no onions", "extra sauce", "no vegetables" in the modifiers array.
 - Default quantity to 1 if not explicitly specified.
 - For combo items, extract modification preferences (Rice Modify, Add Sauce options).
+
+## MENU DISAMBIGUATION RULES - CRITICAL FOR ACCURACY:
+**PROBLEM**: Many dishes appear in multiple versions (lunch combo, dinner combo, individual item)
+**Example**: "Kung Po Chicken" appears as:
+- LC11.Kung Po Chicken ($8.25 lunch combo)
+- DC11.Kung Po Chicken ($10.50 dinner combo)  
+- Kung Po Chicken ($7.50-$12.25 individual with sizes)
+
+### Disambiguation Priority Rules:
+1. **Explicit combo codes**: If user mentions "LC11", "DC11", etc. → use exact match
+2. **Context clues**: 
+   - "lunch" + dish name → prefer LC prefix combo
+   - "dinner" + dish name → prefer DC/DS prefix combo
+   - Size mentioned (Small/Large) → prefer individual item with detailPrice
+   - No size, no combo mention → **default to individual item with detailPrice**
+3. **Price range hints**: If user mentions budget/price, match to appropriate tier
+4. **Ask for clarification**: If truly ambiguous, request clarification from user
+
+### Common Disambiguation Examples:
+- User: "I want Kung Po Chicken" → **Default: Kung Po Chicken (individual with size options)**
+- User: "Large Kung Po Chicken" → **Individual: Kung Po Chicken Large ($12.25)**
+- User: "Kung Po Chicken lunch combo" → **LC11.Kung Po Chicken ($8.25)**
+- User: "Kung Po Chicken dinner" → **DC11.Kung Po Chicken ($10.50)**
+- User: "Small Beef Broccoli" → **Individual: Beef Broccoli Small ($7.50)**
+- User: "Beef Broccoli" (no context) → **Default: Beef Broccoli (individual with size options)**
+
+### When to Ask for Clarification:
+- Multiple valid interpretations with significantly different prices
+- User context suggests different preference than default rules
+- Large quantity orders where combo vs individual makes big price difference
 
 # COMMON CHINESE FOOD CATEGORIES TO RECOGNIZE:
 - Lunch Specials (午餐): Combo meals with specific items
@@ -241,35 +277,171 @@ Based on the following MenuSifu Chinese restaurant menu context and chat history
 
 Please analyze the conversation and extract all Chinese food order information. Use the menu context above to find the correct item IDs, prices, and available sizes/modifications.
 
+**🚨 CRITICAL: USE ONLY PROVIDED CONTEXT DATA 🚨**
+**NEVER use example IDs, prices, or names from this prompt! ALWAYS extract from the actual menu context provided.**
+
 **IMPORTANT EXTRACTION RULES:**
 1. Use the EXACT display name and item_id from the menu context. Do not fabricate or concatenate code prefixes. If the display name itself includes a code prefix (e.g., "LB1.Beef Broccoli"), include it; otherwise use the display name as-is.
 2. Use EXACT modifier names as they appear in the menu context above
 3. **CRITICAL**: When customers use casual names, map them to the correct item_id in the menu and output the menu's display name (include a code prefix only if it is part of that display name).
 Note: Some catalogs separate item codes from names; if so, do not concatenate "CODE.Name" in item_name—use the display name and correct item_id.
-4. Handle Chinese food sizes correctly: Small/Large (not bubble tea sizes)
-5. Extract combo modifications like "Rice Modify" and "Add Sauce" options
-6. Only extract items and information the user has confirmed they want to order
-7. Map bilingual names appropriately (English/Chinese)
+4. **MENU DISAMBIGUATION**: Apply disambiguation rules for items with multiple versions:
+   - Size mentioned (Small/Large) → prefer individual item with detailPrice
+   - "lunch" context → prefer LC/LB/LP prefix combos  
+   - "dinner" context → prefer DC/DS/DB prefix combos
+   - No context → default to individual item version
+   - Explicit codes (LC11, etc.) → use exact match
+5. Handle Chinese food sizes correctly: Small/Large (not bubble tea sizes)
+6. Extract combo modifications like "Rice Modify" and "Add Sauce" options
+7. Only extract items and information the user has confirmed they want to order
+8. Map bilingual names appropriately (English/Chinese)
 
-**CRITICAL PRICE EXTRACTION RULES FOR COMBO ITEMS:**
-8. For COMBO_SALE_ITEM items: If the menu context shows "price": null, use the "base_price" value instead
-9. For COMBO_SALE_ITEM items: Always set both "price" and "display_price" to the base_price value when price is null
-10. Prices must be JSON numbers in dollars (not cents). Do not pad trailing zeros (e.g., 8.5 is fine). UI handles two-decimal display.
-11. **Zero base_price handling**: If base_price is 0, set both "price": 0 and "display_price": 0 (never null)
-12. Example: If menu shows {{"price": null, "base_price": 8.5, "item_type": "COMBO_SALE_ITEM"}} → extract as "price": 8.5, "display_price": 8.5
-13. NEVER leave price as null for combo items when base_price is available in the menu context
+**CRITICAL PRICE EXTRACTION RULES - READ CAREFULLY:**
 
-**EXAMPLES FOR CHINESE FOOD:**
-- If user says "I want General Tso Chicken large size"
-  - Item: "General Tso Chicken" 
-  - Size: "Large" (from available sizes in menu)
-  - Use item_id from menu context
+### MenuSifu Official Pricing Rules:
+8. **Rule 1**: Items with `detailPrice` → **generally** extract `price: 0` + require size selection with `detailPriceId`
+   - **Special Case**: When all prices in `detailPrice` array are identical, the item's `price` field may contain the actual price
+   - **General Case**: When `detailPrice` field appears, the item's `price` field is generally 0
+9. **Rule 2**: Combo items with `basePrice` → extract the `basePrice` value as `price` and `display_price`
+10. **Rule 3**: Items with both `detailPrice` + `comboSections` → extract `price` from selected `detailPriceId` + `detailPriceInfo` (NOT 0)
+11. **Rule 4**: Detail items need `detailPriceId` and `detailPriceInfo` parameters in order
+
+### For COMBO_SALE_ITEM (Combo Items):
+12. **Extract basePrice as price**: If menu shows `"basePrice": 11.05` → extract `"price": 11.05, "display_price": 11.05`
+13. **Combo selections with costs**: Each combo section selection can have individual prices that add to total
+    - Base price: 11.05 (from menu basePrice)
+    - Ham Fried Rice upgrade: +1.5 → displayPrice becomes 12.55
+    - Additional selections add to displayPrice: 12.55 + 0.25 + 1.0 = 13.8
+14. **Size variations with combos (Rule 3)**: If combo has both `detailPrice` + `comboSections` → extract `"price"` from `detailPriceInfo.price` + calculate `display_price` including combo add-ons
+15. **Example Rule 2**: DS1.Shrimp Broccoli has `basePrice: 11.05` → extract as `"price": 11.05`
+16. **Example Rule 3**: Kung Po Chicken Large with combo mods → `"price": 12.25` (from detailPriceInfo) + `"display_price": 14.25` (12.25 + sauce costs)
+
+### For SALE_ITEM (Regular Items):  
+17. **Simple pricing**: Extract "price" and "display_price" from menu `price` field
+18. **Size variations**: If has `detailPrice` → extract `"price": 0` and require size selection
+
+### Size Selection Requirements:
+19. **When user specifies size** (Small/Large): Must include complete detailPrice structure
+20. **Required fields for detailPrice items**:
+    - `size`: User's size choice ("Small"/"Large")  
+    - `detail_price_id`: ID from detailPrice array (e.g., 838 for Large)
+    - `size_id`: Size ID (e.g., 63 for Large, 61 for Small)
+    - `detail_price_info`: Complete object with price and multilingual names
+21. **Size mapping examples**:
+    - User says "Large Kung Po Chicken" + menu shows `detailPrice: [{"id": 838, "size": "Large", "sizeId": 63, "price": 12.25}]`
+    - Extract as: `"size": "Large", "detail_price_id": 838, "size_id": 63, "price": 12.25`
+22. **detailPriceInfo structure**: Always include complete object:
+    ```json
+    "detail_price_info": {
+      "detailPriceId": 838,
+      "sizeId": 63, 
+      "price": 12.25,
+      "name": {"en": "Large", "zh-cn": "大"},
+      "nameMultilingual": {"en": "Large", "zh-cn": "大"}
+    }
+    ```
+21. **High quantities**: Support bulk orders (4, 12, 20+ items) for catering scenarios
+22. **Prices in dollars**: All prices are JSON numbers in dollars (not cents), e.g., 8.25 not 825
+
+**SUMMARY**: 
+- Has `basePrice` → Use basePrice as item price, calculate displayPrice with combo costs
+- Has `detailPrice` → Use 0 as price, require detailPriceId for size
+- Regular `price` field → Use that price value
+- **Price vs DisplayPrice**: `price` = base cost, `display_price` = total after combo upgrades
+- **Combo selections**: Can have individual costs that add to the total item price
+
+**EXAMPLES FOR CHINESE FOOD WITH DISAMBIGUATION:**
+- User: "I want General Tso Chicken large size"
+  → **Individual item**: "General Tso Chicken" Large ($12.25) [detailPrice item]
+  
+- User: "I want Kung Po Chicken"  
+  → **Default to individual item**: "Kung Po Chicken" (requires size selection) [detailPrice item]
+  
+- User: "Large Kung Po Chicken"
+  → **Individual item**: "Kung Po Chicken" Large ($12.25) [detailPrice item]
+  
+- User: "Kung Po Chicken dinner combo"
+  → **Dinner combo**: "DC11.Kung Po Chicken" ($10.50) [basePrice combo]
+  
+- User: "Small Beef Broccoli" 
+  → **Individual item**: "Beef Broccoli" Small ($7.50) [detailPrice item]
+  
+- User: "Beef Broccoli lunch"
+  → **Lunch combo**: "LB1.Beef Broccoli" ($8.50) [basePrice combo]
 
 **CRITICAL NAME MATCHING EXAMPLES:**
-- Customer says "Beef Broccoli lunch combo" → Find the correct item_id in menu and use the menu's display name exactly as shown
-- Customer says "Shrimp Lo Mein dinner" → Map to correct item_id and use the display name from menu context
-- Customer says "Chicken Black Mushroom lunch" → Locate item by matching description, extract correct item_id and display name
+- Customer says "Beef Broccoli lunch combo" → **Lunch prefix (LB)**: Find LB1.Beef Broccoli, use exact menu display name
+- Customer says "Large Shrimp Lo Mein" → **Individual item**: Find "Shrimp Lo Mein" with detailPrice, not combo version
+- Customer says "Chicken Black Mushroom lunch" → **LC prefix**: Find LC15.Chicken Black Mushroom combo
+- Customer says "Sweet Sour Pork" (ambiguous) → **Default**: Find "Sweet Sour Pork" individual item (requires size selection)
+- Customer says "Small Sweet Sour Pork" → **Individual**: Find "Sweet Sour Pork" with Small size option
 - ALWAYS use the EXACT display name from the menu context, whether it includes prefixes or not
+
+**DISAMBIGUATION WORKFLOW:**
+1. Check for explicit combo codes (LC11, DC11, etc.) → use exact match
+2. Check for size indicators (Small/Large) → prefer individual items with detailPrice
+3. Check for meal context (lunch/dinner) → prefer appropriate combo prefix
+4. If ambiguous → default to individual item (with detailPrice) unless combo explicitly mentioned
+5. Verify the selected item matches user intent and pricing expectations
+
+**STEP-BY-STEP ITEM IDENTIFICATION PROCESS:**
+
+When user requests "Kung Po Chicken", analyze the menu context entries:
+
+**STEP 1: Scan all menu entries matching the dish name**
+Look for entries containing "Kung Po Chicken":
+- Entry A: "Item ID: {LUNCH_COMBO_ID}, Item: LC11.Kung Po Chicken, Item Type: COMBO_SALE_ITEM, Dish Category: lunch_combo"
+- Entry B: "Item ID: {INDIVIDUAL_ID}, Item: Kung Po Chicken, Available Sizes: Small, Large, Item Type: SALE_ITEM, Dish Category: individual_item"  
+- Entry C: "Item ID: {DINNER_COMBO_ID}, Item: DC11.Kung Po Chicken, Item Type: COMBO_SALE_ITEM, Dish Category: dinner_combo"
+
+**STEP 2: Apply disambiguation logic**
+- User input: "Kung Po Chicken" (no size, no combo mention)
+- Rule: Default to individual item → Select Entry B
+- **RESULT**: item_id={INDIVIDUAL_ID}, item_name="Kung Po Chicken", price=0 (detailPrice item - requires size selection and detail_price_id)
+
+**🚨 CRITICAL WARNING - NO PLACEHOLDER VALUES:**
+The above IDs ({LUNCH_COMBO_ID}, {INDIVIDUAL_ID}, {DINNER_COMBO_ID}) are ILLUSTRATIVE PLACEHOLDERS ONLY.
+You MUST NEVER use placeholder values in your output. Always extract the actual item IDs, prices, and details from the provided menu context.
+These examples demonstrate the selection process - you must apply this logic to find real values from the context.
+
+**STEP 3: Extract variant-specific details**
+- Check selected entry for pricing structure:
+  - Has basePrice → use basePrice as price
+  - Has detailPrice → use price=0, require size selection
+  - Has comboSections → extract available modifications
+- **RESULT**: price=0, display_price=0 (detailPrice item - size selection determines actual price)
+
+**EXAMPLE: Size-specific selection**
+User input: "Large Kung Po Chicken"
+- STEP 1: Find entries with size options → Entry B (has "Available Sizes: Small, Large")
+- STEP 2: Size specified → Select individual item → Entry B  
+- STEP 3: Extract size details → item_id={INDIVIDUAL_ID}, size="Large", detail_price_id={SIZE_PRICE_ID} (price remains 0; actual price from detailPrice structure)
+
+**⚠️ PLACEHOLDER WARNING:** {INDIVIDUAL_ID} is a placeholder - you must extract the actual ID and detailPrice structure from the provided context.
+
+**CRITICAL**: Always use the exact item_id and price from the selected menu entry, never mix data between entries!
+
+**DISAMBIGUATION METADATA USAGE:**
+Use these menu context fields to identify the correct variant:
+- **Dish Category**: lunch_combo | dinner_combo | individual_item
+- **Price Type**: fixed_price | size_variant | combo_based  
+- **Available Sizes**: ["Small", "Large"] or empty array
+- **Item Type**: COMBO_SALE_ITEM | SALE_ITEM
+- **DISAMBIGUATION tags**: Clear indicators like "This is a lunch combo version" or "This item requires size selection"
+
+**SELECTION PRIORITY EXAMPLES:**
+User: "Beef Broccoli" → Look for dish_category="individual_item" → Select individual entry (e.g., ID {BEEF_INDIVIDUAL_ID}: Beef Broccoli with size options)
+User: "Large Beef Broccoli" → Look for has_sizes=true + "Large" in available_sizes → Select individual entry (e.g., ID {BEEF_INDIVIDUAL_ID}: Beef Broccoli)
+User: "Beef Broccoli dinner" → Look for dish_category="dinner_combo" → Select dinner combo entry (e.g., ID {BEEF_DINNER_ID}: DB1.Beef Broccoli)
+
+**🚨 PLACEHOLDER WARNING:** The IDs above ({BEEF_INDIVIDUAL_ID}, {BEEF_DINNER_ID}) are PLACEHOLDERS ONLY. You MUST extract actual IDs from your provided context. Do not use placeholder values in your extraction output.
+
+**VALIDATION CHECKLIST:**
+Before finalizing extraction, verify:
+✓ Selected item_id matches the chosen menu entry
+✓ Price reflects the variant's pricing structure (basePrice vs detailPrice)
+✓ Item name matches exactly as shown in the selected entry  
+✓ Size/combo selections are compatible with the selected variant
 
 - If user says "Beef Lo Mein small, no onions please"
   - Item: "Beef Lo Mein"
@@ -299,22 +471,24 @@ Return the extracted information as a properly formatted JSON object matching th
 
 # EXPECTED OUTPUT FORMAT EXAMPLES:
 
-For basic combo items with combo selections (e.g., lunch/dinner combos):
+🚨 **CRITICAL**: All JSON examples below contain placeholder values like {LUNCH_COMBO_ID}, {BASE_PRICE}, and literal IDs (e.g., 3553, 3384). These are ILLUSTRATIVE ONLY. You MUST extract actual values from your provided menu context. Never use placeholder values or example IDs in your output.
+
+For simple fixed-price combo items (e.g., lunch combos with basePrice):
 ```json
 {{
   "items": [{{
-    "item_id": 3451,
-    "item_name": "LC15.Chicken Black Mushroom",
+    "item_id": {LUNCH_COMBO_ID},
+    "item_name": "LC11.Kung Po Chicken", 
     "quantity": 1,
-    "price": 8.5,  // Prices are in dollars
-    "display_price": 8.5,
+    "price": {BASE_PRICE},           // From menu basePrice (Rule 2)
+    "display_price": {BASE_PRICE},   // Same as base price for simple combos
     "item_type": "COMBO_SALE_ITEM",
-    "category_id": 329,
+    "category_id": {CATEGORY_ID},
     "special_notes": "",
     "modifiers": [{{
-      "id": 3358,
+      "id": {MODIFIER_ID},
       "name": "^Pork Fried Rice",
-      "price": 0,
+      "price": 0,             // Free combo choice
       "quantity": 1,
       "checked": true
     }}]
@@ -322,30 +496,98 @@ For basic combo items with combo selections (e.g., lunch/dinner combos):
 }}
 ```
 
-For combo items with modifications AND additional options:
+⚠️ **NOTE**: All IDs above ({LUNCH_COMBO_ID}, {BASE_PRICE}, {CATEGORY_ID}, {MODIFIER_ID}) are placeholders - extract actual values from your menu context.
+
+For complex combo items with upgrade costs (e.g., dinner combos):
 ```json
 {{
   "items": [{{
-    "item_id": 3689,
-    "item_name": "Plain Lo Mein",
-    "quantity": 1,
-    "price": 9.2,  // Prices are in dollars
-    "display_price": 9.2,
+    "item_id": {DINNER_COMBO_ID},
+    "item_name": "DS1.Shrimp Broccoli",
+    "quantity": 1, 
+    "price": {BASE_PRICE},          // From menu basePrice (Rule 2)
+    "display_price": {TOTAL_PRICE},   // Base + combo upgrade costs
     "item_type": "COMBO_SALE_ITEM",
-    "category_id": 343,
+    "category_id": {CATEGORY_ID},
     "special_notes": "",
     "modifiers": [{{
-      "id": 3331,
-      "name": "No Veggie",
-      "price": 0,
+      "id": 3384,
+      "name": ".Ham Fried Rice",
+      "price": 1.5,           // Upgrade cost
       "quantity": 1,
       "checked": true
     }}, {{
-      "id": 3333,
-      "name": "No Onion", 
-      "price": 0,
+      "id": 3395,
+      "name": ".Shrimp Roll",
+      "price": 0.25,          // Add-on cost
       "quantity": 1,
       "checked": true
+    }}, {{
+      "id": 3307,
+      "name": "Garlic Sauce",
+      "price": 1,             // Sauce cost
+      "quantity": 1,
+      "checked": true
+    }}],
+    "options": [{{
+      "sectionId": "Options",
+      "sectionName": {{"en": "Option"}},
+      "name": "Testing item level instructions",
+      "nameMultilingual": {{"en": "Testing item level instructions"}},
+      "quantity": 1,
+      "price": 0,
+      "isOpenOption": true,
+      "checked": true
+    }}]
+  }}]
+}}
+```
+
+For size-variant combo items with modifications (Rule 3 - detailPrice + comboSections):
+```json
+{{
+  "items": [{{
+    "item_id": {ITEM_ID},
+    "item_name": "Kung Po Chicken",
+    "quantity": 1,
+    "price": {DETAIL_PRICE},         // From detailPriceInfo (Rule 3)
+    "display_price": {TOTAL_PRICE},  // detailPrice + combo upgrade costs
+    "item_type": "COMBO_SALE_ITEM",
+    "category_id": {CATEGORY_ID},
+    "size": "Large",                 // User's size choice
+    "size_id": {SIZE_ID},           // From detailPriceInfo
+    "detail_price_id": {PRICE_ID},  // From detailPrice array for Large
+    "detail_price_info": {{
+      "detailPriceId": {PRICE_ID},
+      "sizeId": {SIZE_ID},
+      "price": {DETAIL_PRICE},
+      "name": {{"en": "Large", "zh-cn": "大"}},
+      "nameMultilingual": {{"en": "Large", "zh-cn": "大"}}
+    }},
+    "special_notes": "",
+    "combo_sections": [{{
+      "section_id": 19,
+      "section_name": "Rice Modify",
+      "selected_items": [{{
+        "sale_item_id": {MODIFY_ID},
+        "name": "No Pea & Carrot",
+        "price": 0,
+        "quantity": 1
+      }}]
+    }}, {{
+      "section_id": 20,
+      "section_name": "Add Sauce",
+      "selected_items": [{{
+        "sale_item_id": {SAUCE_ID_1},
+        "name": "BBQ Sauce",
+        "price": 1,
+        "quantity": 1
+      }}, {{
+        "sale_item_id": {SAUCE_ID_2},
+        "name": "Garlic Sauce", 
+        "price": 1,
+        "quantity": 1
+      }}]
     }}],
     "options": [{{
       "sectionId": "Options",
@@ -369,6 +611,12 @@ For combo items with modifications AND additional options:
   }}]
 }}
 ```
+
+⚠️ **Rule 3 Price Calculation Example**: If user orders "Large Kung Po Chicken with BBQ sauce and garlic sauce":
+- Base price from detailPriceInfo: 12.25 (Large size)
+- BBQ Sauce add-on: +1.00
+- Garlic Sauce add-on: +1.00  
+- Final: `"price": 12.25, "display_price": 14.25`
 
 The system will automatically convert this to the proper API format with:
 ```json
@@ -418,14 +666,14 @@ The system will automatically convert this to the proper API format with:
 }}
 ```
 
-For items with additional options/modifiers (non-combo items):
+For regular items with additional options/modifiers (non-combo items):
 ```json
 {{
   "items": [{{
     "item_id": 3179,
     "item_name": "Boneless Ribs",
     "quantity": 1,
-    "price": 10.5,  // Prices are in dollars
+    "price": 10.5,  // Prices are in dollars for SALE_ITEM only
     "display_price": 10.5,
     "item_type": "SALE_ITEM",
     "category_id": 339,
@@ -457,15 +705,15 @@ Note the key differences:
 - Modifier names should match exactly what's available in the menu (e.g., "^Steamed Rice", "No Veggie")
 - Special requests without specific IDs should have `"id": null` and will become `isOpenOption: true`
 
-# COMPREHENSIVE EXAMPLE WITH DIETARY RESTRICTIONS:
-For a complex order with both item-specific dietary notes and order-level allergy information:
+# COMPREHENSIVE EXAMPLES WITH DIETARY RESTRICTIONS AND COMPLEX COMBOS:
 
+## Example 1: Simple order with basic dietary restrictions
 **User says**: "I'll have the General Tso Chicken large, make it extra spicy and gluten-free. Also beef lo mein small with no onions. By the way, I have multiple allergies - peanuts, eggs, wheat, fish, shellfish, soy, tree nuts, and dairy. Please include utensils and make sure there's no cross-contamination."
 
 **Extract as**:
 ```json
 {{
-  "allergy_info": "Multiple allergies - please ensure no cross-contamination. Allergies: Peanuts,Egg,Wheat,Fish,Shellfish,Soy,TreeNuts,Dairy",
+  "allergy_info": "Multiple allergies - please ensure no cross-contamination.Allergies: Peanuts,Egg,Wheat,Fish,Shellfish,Soy,TreeNuts,Dairy",
   "need_utensils": true,
   "items": [{{
     "item_id": 3123,
@@ -493,10 +741,177 @@ For a complex order with both item-specific dietary notes and order-level allerg
 }}
 ```
 
+## Example 2: Complex dinner combo with upgrades and custom instructions
+**User says**: "I want the DS1 Shrimp Broccoli dinner combo. For the rice, make it ham fried rice. Add a shrimp roll and garlic sauce. No broccoli on the dish please. Also add special instructions: testing item level instructions. For the whole order, please note: testing order level instructions, and I'm allergic to shellfish and soy."
+
+**Extract as**:
+```json
+{{
+  "allergy_info": "Testing order level instructions.Allergies: Shellfish,Soy",
+  "items": [{{
+    "item_id": 3553,
+    "item_name": "DS1.Shrimp Broccoli",
+    "item_type": "COMBO_SALE_ITEM",
+    "quantity": 1,
+    "price": 11.05,            // From menu basePrice
+    "display_price": 13.8,     // Base + upgrades: 11.05 + 1.5 + 0.25 + 1.0
+    "category_id": 336,
+    "special_notes": "",
+    "modifiers": [{{
+      "id": 3384,
+      "name": ".Ham Fried Rice",
+      "price": 1.5,            // Upgrade cost
+      "quantity": 1,
+      "checked": true
+    }}, {{
+      "id": 3395,
+      "name": ".Shrimp Roll",
+      "price": 0.25,           // Add-on cost
+      "quantity": 1,
+      "checked": true
+    }}, {{
+      "id": 3335,
+      "name": "No Broccoli",
+      "price": 0,              // Free modification
+      "quantity": 1,
+      "checked": true
+    }}, {{
+      "id": 3307,
+      "name": "Garlic Sauce",
+      "price": 1,              // Sauce cost
+      "quantity": 1,
+      "checked": true
+    }}],
+    "options": [{{
+      "sectionId": "Options",
+      "sectionName": {{"en": "Option"}},
+      "name": "Testing item level instructions",
+      "nameMultilingual": {{"en": "Testing item level instructions", "zh-cn": "Testing item level instructions"}},
+      "quantity": 1,
+      "price": 0,
+      "isOpenOption": true,
+      "checked": true
+    }}]
+  }}]
+}}
+```
+
+## Example 3: High-quantity bulk order with mixed pricing rules and comprehensive allergies
+**User says**: "I need a large catering order: 4 Fried Half Chicken, 12 Large Kung Po Chicken, and 20 Small Beef Mushroom. Special instructions for the whole order and I have all major allergies - egg, dairy, peanuts, tree nuts, wheat, soy, fish, and shellfish."
+
+**Extract as**:
+```json
+{{
+  "allergy_info": "Testing to add instruction.Allergies: Egg,Dairy,Peanuts,TreeNuts,Wheat,Soy,Fish,Shellfish",
+  "items": [{{
+    "item_id": 3584,
+    "item_name": "Fried Half Chicken",
+    "item_type": "COMBO_SALE_ITEM",
+    "quantity": 4,
+    "price": 7.75,              // Rule 2: From basePrice
+    "display_price": 7.75,
+    "category_id": 339
+  }}, {{
+    "item_id": 3705,
+    "item_name": "Kung Po Chicken",
+    "item_type": "COMBO_SALE_ITEM", 
+    "quantity": 12,
+    "price": 12.25,             // Rule 3: From detailPrice Large
+    "display_price": 12.25,
+    "category_id": 344,
+    "size": "Large",
+    "detail_price_id": 838,     // For Large size
+    "size_id": 63,
+    "detail_price_info": {{
+      "detailPriceId": 838,
+      "sizeId": 63,
+      "price": 12.25,
+      "name": {{"en": "Large", "zh-cn": "大"}},
+      "nameMultilingual": {{"en": "Large", "zh-cn": "大"}}
+    }}
+  }}, {{
+    "item_id": 3718,
+    "item_name": "Beef Mushroom",
+    "item_type": "COMBO_SALE_ITEM",
+    "quantity": 20,
+    "price": 7.5,               // Rule 3: From detailPrice Small  
+    "display_price": 7.5,
+    "category_id": 345,
+    "size": "Small",
+    "detail_price_id": 863,     // For Small size
+    "size_id": 61,
+    "detail_price_info": {{
+      "detailPriceId": 863,
+      "sizeId": 61,
+      "price": 7.5,
+      "name": {{"en": "Small", "zh-cn": "小"}},
+      "nameMultilingual": {{"en": "Small", "zh-cn": "小"}}
+    }}
+  }}]
+}}
+```
+
+## Example 4: Menu disambiguation in practice
+**User says**: "I want Kung Po Chicken, Beef Broccoli lunch, Large Sweet Sour Pork, and LC15 Chicken Black Mushroom."
+
+⚠️ **REMINDER**: The example below uses literal IDs for illustration. Extract actual IDs from your menu context.
+
+**Analysis & Extraction**:
+```json
+{{
+  "items": [{{
+    "item_id": 3447,
+    "item_name": "LC11.Kung Po Chicken",     // Ambiguous → Default to lunch combo
+    "item_type": "COMBO_SALE_ITEM",
+    "quantity": 1,
+    "price": 8.25,                          // Rule 2: basePrice combo
+    "display_price": 8.25
+  }}, {{
+    "item_id": [LB1_ID],
+    "item_name": "LB1.Beef Broccoli",       // "lunch" context → lunch combo
+    "item_type": "COMBO_SALE_ITEM", 
+    "quantity": 1,
+    "price": 8.50,                          // Rule 2: basePrice combo
+    "display_price": 8.50
+  }}, {{
+    "item_id": [INDIVIDUAL_ID],
+    "item_name": "Sweet Sour Pork",          // "Large" specified → individual item
+    "item_type": "COMBO_SALE_ITEM",
+    "quantity": 1,
+    "price": 11.50,                         // Rule 3: detailPrice Large
+    "display_price": 11.50,
+    "size": "Large",
+    "detail_price_id": [LARGE_ID],
+    "size_id": 63
+  }}, {{
+    "item_id": 3451,
+    "item_name": "LC15.Chicken Black Mushroom", // Explicit code → exact match
+    "item_type": "COMBO_SALE_ITEM",
+    "quantity": 1,
+    "price": 8.25,                          // Rule 2: basePrice combo
+    "display_price": 8.25
+  }}]
+}}
+```
+
 **Key Points**:
-- Order-wide allergies (multiple allergies) → goes in `allergy_info` with format "Allergies: Peanuts,Egg,Wheat,Fish,Shellfish,Soy,TreeNuts,Dairy"
-- Utensil/condiment requests → goes in `need_utensils`, `need_condiments`, `need_straws` boolean fields
-- Item-specific custom notes (extra spicy, gluten-free) → goes in that item's `special_notes` field as text
-- Combo menu selections (No Onion, sauces, rice choices) → goes in that item's `combo_sections` array with proper structure
-- This prevents double-charging and ensures proper categorization of dietary restrictions
+- **Disambiguation logic**: Apply rules systematically for each ambiguous item
+- **Context awareness**: Use "lunch", "Large", explicit codes to resolve ambiguity
+- **Mixed item types**: One order can combine lunch combos, individual sized items, and explicit codes
+- **Consistent pricing**: Each item follows appropriate pricing rule (basePrice vs detailPrice)
+- **Default behavior**: When ambiguous, default to individual item rather than asking for clarification
+- **High quantities**: Support bulk/catering orders with quantities like 4, 12, 20
+- **Mixed pricing rules**: One order can have Rule 2 (basePrice) and Rule 3 (detailPrice) items together
+- **Complete detailPriceInfo**: Include full object structure with multilingual names and IDs
+- **Comprehensive allergies**: All 8 major allergens in standardized format
+- **Size specification**: Always include size, detail_price_id, size_id for detailPrice items
+- **Allergy format validation**: The example `"Allergies: Fish,Wheat,Peanuts,Egg,Dairy,TreeNuts,Soy,Shellfish."` shows the correct API format
+
+🚨 **FINAL CRITICAL WARNING**: All example IDs shown above (such as {LUNCH_COMBO_ID}, {INDIVIDUAL_ID}, {DINNER_COMBO_ID}, etc.) are ILLUSTRATIVE PLACEHOLDERS ONLY. 
+
+**YOU MUST NEVER USE PLACEHOLDER VALUES IN YOUR OUTPUT.** 
+
+Always extract the actual item IDs, prices, names, and details from the menu context provided to you. The examples demonstrate the selection and disambiguation process - apply this logic to find real values from the actual context.
+
+Extract the complete order as JSON matching the ExtractedMenuSifuOrder schema.
 """

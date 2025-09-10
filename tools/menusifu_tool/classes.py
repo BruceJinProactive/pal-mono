@@ -311,6 +311,10 @@ class DetailPriceInfo(BaseModel):
     detail_price_id: int = Field(alias="detailPriceId")
     size_id: int = Field(alias="sizeId")
     price: Money
+    name: Optional[LocalizedName] = None
+    name_multilingual: Optional[MultilingualName] = Field(
+        None, alias="nameMultilingual"
+    )
 
 
 class OrderSelectedItem(BaseModel):
@@ -904,6 +908,13 @@ class ExtractedMenuSifuItem(BaseModel):
     item_type: str = "SALE_ITEM"
     category_id: Optional[int] = None
     special_notes: Optional[str] = None
+
+    # Size-related fields for detailPrice items (Rule 1, Rule 3)
+    size: Optional[str] = None  # e.g., "Small", "Large"
+    size_id: Optional[int] = None  # e.g., 61 for Small, 63 for Large
+    detail_price_id: Optional[int] = None  # ID from detailPrice array
+    detail_price_info: Optional[Dict] = None  # Complete detailPriceInfo object
+
     # New structure for combo items
     combo_sections: Optional[List[ExtractedComboSection]] = Field(default_factory=list)
     # Legacy structure (being phased out)
