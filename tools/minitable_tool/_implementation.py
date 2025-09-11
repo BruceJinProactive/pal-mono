@@ -52,16 +52,30 @@ class MiniTableTool(Toolkit, BaseReservationTool):
 
     @tool
     @params_validate()
-    def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
+    def check_availability(  # type: ignore[misc]
+        self,
+        party_size: int,
+        date: str,
+        time: str,
+    ) -> str:
         """
-        Check availability for restaurant reservations.
+        Check if a reservation is available for the given party size, date, and time.
 
         Args:
-            party_size: Number of people for the reservation
-            date: Date for the reservation in YYYY-MM-DD format (e.g., "2024-03-15")
-            time: Time for the reservation in HH:MM format (24-hour, e.g., "19:30", "12:00")
-        """
+            party_size (int, required):
+                Number of guests in the reservation. Must be greater than 0.
 
+            date (str, required):
+                Reservation date in ISO format "YYYY-MM-DD"
+                (e.g., "2024-03-15").
+
+            time (str, required):
+                Reservation time in 24-hour format "HH:MM".
+                (e.g., "19:30" for 7:30 PM, "12:00" for noon).
+
+        Returns:
+            str: Availability status message or an explanation if input is invalid.
+        """
         try:
             requested_datetime_string = f"{date} {time}"
 
@@ -103,27 +117,51 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         self,
         phone: str,
         first_name: str,
+        last_name: str,
         party_size: int,
         date: str,
         time: str,
-        last_name: str,
         email: str = "",
         notes: str = "",
     ) -> str:
         """
-        Make a reservation at the restaurant.
+        Create a new reservation for the restaurant.
 
         Args:
-            phone: Customer phone number in xxx-xxx-xxxx format (e.g., "123-456-7890")
-            first_name: Customer first name
-            last_name: Customer last name
-            email: Customer email address (optional)
-            party_size: Number of people for the reservation
-            date: Date for the reservation in YYYY-MM-DD format (e.g., "2024-03-15")
-            time: Time for the reservation in HH:MM format (24-hour, e.g., "19:30", "12:00")
-            notes: Optional notes for the reservation
-        """
+            phone (str, required):
+                Customer phone number in US format: XXX-XXX-XXXX.
+                Example: "123-456-7890".
+            first_name (str, required):
+                Customer first name.
+                Example: "Alice".
+            last_name (str, required):
+                Customer last name.
+                Example: "Smith".
+            party_size (int, required):
+                Number of people in the reservation. Must be >= 1.
+                Example: 4.
+            date (str, required):
+                Reservation date in YYYY-MM-DD format.
+                Example: "2024-03-15".
+            time (str, required):
+                Reservation time in HH:MM (24-hour) format.
+                Example: "19:30".
+            email (str, optional):
+                Customer email address for confirmation.
+                Default is "" (not provided).
+            notes (str, optional):
+                Additional notes for the reservation (e.g., "window seat preferred").
+                Default is "".
 
+        Returns:
+            str: A confirmation message containing the booking ID and status if successful.
+                Example: "Reservation created: booking_id=ABC123, status=confirmed".
+                If validation or API errors occur, an error message is returned instead.
+
+        Notes:
+            - Phone numbers are validated and reformatted before submission.
+            - Reservations are created with a default duration of 3600 seconds (1 hour).
+        """
         customer_name = f"{first_name} {last_name}"
         logger.debug(
             f"[MiniTable] Making reservation for {customer_name}, party_size: {party_size}, date: {date}, time: {time}"
@@ -229,14 +267,34 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         notes: str = "",
     ) -> str:
         """
-        Join the waitlist queue for the restaurant.
+        Add a customer to the restaurant's waitlist queue.
 
         Args:
-            first_name: Customer first name
-            last_name: Customer last name
-            phone: Customer phone number
-            party_size: Number of people in the party
-            notes: Optional notes for the waitlist entry
+            first_name (str, required):
+                Customer’s first name.
+
+            last_name (str, required):
+                Customer’s last name.
+
+            phone (str, required):
+                Customer’s phone number in US format
+                (e.g., "123-456-7890" or "(123) 456-7890").
+                Must be valid and will be normalized.
+
+            party_size (int, required):
+                Number of people in the customer’s party. Must be greater than 0.
+
+            notes (str, optional):
+                Additional notes for the waitlist entry, such as
+                special requests (default: empty string).
+
+        Returns:
+            str: A status message describing the result of the operation. Possible values include:
+                - Success messages with waitlist details (e.g., waitlist ID, code, position in line).
+                - User-friendly error messages if the waitlist is full, disabled,
+                or the customer already has an entry.
+                - VALIDATION ERRORS FOR INVALID INPUT (E.G., PHONE NUMBER FORMAT).
+                - A GENERIC ERROR MESSAGE IF AN UNEXPECTED FAILURE OCCURS.
         """
         customer_name = f"{first_name} {last_name}"
         logger.debug(
@@ -298,10 +356,24 @@ class MiniTableTool(Toolkit, BaseReservationTool):
     @params_validate()
     def get_user_wait_status(self, phone: str) -> str:  # type: ignore[misc]
         """
-        Get today's waitlist entries for a specific phone number.
+        Retrieve today's waitlist entries for a customer by phone number.
 
         Args:
-            phone: Customer phone number to check waitlist status for
+            phone (str, required):
+                Customer phone number in US format (e.g., "123-456-7890").
+                The number will be validated and normalized before lookup.
+
+        Returns:
+            str: A human-readable status message. Possible outcomes include:
+                - A summary of one or more active waitlist entries for the given phone number,
+                including status, wait code, party size, number of parties ahead, and time created.
+                - "No waitlist entries found for this phone number today." if none exist.
+                - A validation error message if the phone number is invalid.
+                - A generic error message if an unexpected failure occurs.
+
+        Notes:
+            - Only waitlist entries created today are returned.
+            - Phone number validation ensures consistent lookup against the system.
         """
         try:
             # Validate and format phone number
