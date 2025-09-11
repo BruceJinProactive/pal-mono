@@ -793,7 +793,11 @@ def create_stripe_checkout_url(
         return None
 
     # Validate subscription doesn't already have a Stripe subscription ID
-    if subscription.stripe_subscription_id:
+    # It's ok for cancelled subscriptions to have a stripe ID from previous checkouts.
+    if (
+        subscription.status != SubscriptionStatus.cancelled
+        and subscription.stripe_subscription_id
+    ):
         raise ValueError("Subscription already has a Stripe subscription ID")
 
     # Get project subscriptions to collect project-specific prices
