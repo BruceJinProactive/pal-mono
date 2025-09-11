@@ -41,6 +41,25 @@ from .classes import (
     Size,
 )
 
+
+def _safe_int_convert(value: Any) -> Optional[int]:
+    """
+    Safely convert a value to int, returning None if conversion fails or value is None.
+
+    Args:
+        value: Value to convert to int
+
+    Returns:
+        int if conversion successful, None otherwise
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 # Systematic combo section mapping generated from menu data
 COMBO_SECTION_MAPPINGS = {
     3170: {"section_id": 23, "section_name": "Extra Wing"},  # Extra Wings
@@ -3156,6 +3175,19 @@ def convert_extracted_order_to_dict(
             "special_notes": item.special_notes or "",
             "combo_sections": combo_sections_list,  # For COMBO_SALE_ITEM
             "options": options_list,  # For custom notes/instructions
+            # Size-related fields for detailPrice items (Rule 1, Rule 3) - normalized to API types
+            "size": item.size,
+            # Normalize size_id to int if present, with safe conversion
+            "size_id": _safe_int_convert(item.size_id),
+            "sizeId": _safe_int_convert(item.size_id),  # camelCase version
+            # Normalize detail_price_id to int if present, with safe conversion
+            "detail_price_id": _safe_int_convert(item.detail_price_id),
+            "detailPriceId": _safe_int_convert(
+                item.detail_price_id
+            ),  # camelCase version
+            # Keep detail_price_info as-is (dict/object)
+            "detail_price_info": item.detail_price_info,
+            "detailPriceInfo": item.detail_price_info,  # camelCase version
         }
         processed_items.append(item_dict)
         logger.info(f"[MenuSifuTool] Created item_dict: {item_dict}")
@@ -3212,7 +3244,13 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     raw_detail_price = item.get("detailPrice")
     raw_base_price = item.get("basePrice") or item.get("base_price")
     has_combo_sections = bool(item.get("comboSections") or item.get("combo_sections"))
-    has_detail_price = bool(raw_detail_price)
+
+    # Enhanced detail-price detection: check for detailPrice field OR presence of detail_price_id/detailPriceId/detail_price_info/detailPriceInfo
+    raw_detail_price_id = item.get("detail_price_id") or item.get("detailPriceId")
+    raw_detail_price_info = item.get("detail_price_info") or item.get("detailPriceInfo")
+    has_detail_price = bool(
+        raw_detail_price or raw_detail_price_id or raw_detail_price_info
+    )
 
     logger.info(
         f"[MenuSifuTool] Pricing analysis: item_type={item_type}, "
@@ -3225,13 +3263,22 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
         # Special case: When all prices in detailPrice are identical, price field may contain actual price
 
         # Check for special case: all detailPrice prices are the same
+        # Updated to work with both raw_detail_price and raw_detail_price_info
         detail_prices = []
+
+        # Extract prices from raw_detail_price (original detailPrice field)
         if isinstance(raw_detail_price, dict) and "prices" in raw_detail_price:
             detail_prices = [
                 p.get("price", 0) for p in raw_detail_price.get("prices", [])
             ]
         elif isinstance(raw_detail_price, list):
             detail_prices = [p.get("price", 0) for p in raw_detail_price]
+
+        # Extract price from raw_detail_price_info (extracted detail_price_info field)
+        if not detail_prices and isinstance(raw_detail_price_info, dict):
+            price_value = raw_detail_price_info.get("price")
+            if price_value is not None:
+                detail_prices = [price_value]
 
         all_prices_same = len(detail_prices) > 0 and len(set(detail_prices)) == 1
 
@@ -3345,10 +3392,12 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
         "quantity": quantity_val,
         "itemType": item.get("itemType") or item.get("item_type") or "SALE_ITEM",
         "name": item.get("name") or "",
-        # Size-related fields for detailPrice items (Rule 1, Rule 3)
+        # Size-related fields for detailPrice items (Rule 1, Rule 3) - normalized to API-expected types
         "size": item.get("size"),
-        "sizeId": item.get("size_id") or item.get("sizeId"),
-        "detailPriceId": item.get("detail_price_id") or item.get("detailPriceId"),
+        "sizeId": _safe_int_convert(item.get("size_id") or item.get("sizeId")),
+        "detailPriceId": _safe_int_convert(
+            item.get("detail_price_id") or item.get("detailPriceId")
+        ),
         "detailPriceInfo": item.get("detail_price_info") or item.get("detailPriceInfo"),
     }
 

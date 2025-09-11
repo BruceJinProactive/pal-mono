@@ -886,9 +886,9 @@ class MenuSifuTool(Toolkit):
                         nameMultilingual=None,
                         categoryId=safe_fields["categoryId"],
                         options=item_options if item_options else [],
-                        detailPriceId=None,
-                        sizeId=None,
-                        detailPriceInfo=None,
+                        detailPriceId=safe_fields.get("detailPriceId"),
+                        sizeId=safe_fields.get("sizeId"),
+                        detailPriceInfo=safe_fields.get("detailPriceInfo"),
                     )
                     calc_selected_items.append(order_item)
 
