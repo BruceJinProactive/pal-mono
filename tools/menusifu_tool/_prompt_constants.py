@@ -310,7 +310,7 @@ Note: Some catalogs separate item codes from names; if so, do not concatenate "C
 ### MenuSifu Official Pricing Rules:
 8. **Rule 1 (Enhanced)**: Items with `detailPrice` → **INTELLIGENT PRICE MATCHING**
    - **✅ PREFERRED**: When `price` matches any price in `detailPrice` array, preserve that price (indicates correct size selection)
-     - Example: `price: 12.25` matches Large option in `detailPrice: [{Small: 7.50}, {Large: 12.25}]` → Extract `price: 12.25`
+     - Example: `price: 12.25` matches Large option in `detailPrice: [{{Small: 7.50}}, {{Large: 12.25}}]` → Extract `price: 12.25`
    - **✅ LEGACY**: When all prices in `detailPrice` array are identical, the item's `price` field may contain the actual price
    - **⚠️ FALLBACK**: When `price` doesn't match any detailPrice option, use `price: 0` and rely on detailPriceId
 
