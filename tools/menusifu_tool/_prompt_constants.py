@@ -308,9 +308,21 @@ Note: Some catalogs separate item codes from names; if so, do not concatenate "C
 **CRITICAL PRICE EXTRACTION RULES - READ CAREFULLY:**
 
 ### MenuSifu Official Pricing Rules:
-8. **Rule 1**: Items with `detailPrice` → **generally** extract `price: 0` + require size selection with `detailPriceId`
-   - **Special Case**: When all prices in `detailPrice` array are identical, the item's `price` field may contain the actual price
-   - **General Case**: When `detailPrice` field appears, the item's `price` field is generally 0
+8. **Rule 1 (Enhanced)**: Items with `detailPrice` → **INTELLIGENT PRICE MATCHING**
+   - **✅ PREFERRED**: When `price` matches any price in `detailPrice` array, preserve that price (indicates correct size selection)
+     - Example: `price: 12.25` matches Large option in `detailPrice: [{Small: 7.50}, {Large: 12.25}]` → Extract `price: 12.25`
+   - **✅ LEGACY**: When all prices in `detailPrice` array are identical, the item's `price` field may contain the actual price
+   - **⚠️ FALLBACK**: When `price` doesn't match any detailPrice option, use `price: 0` and rely on detailPriceId
+
+**🔍 Rule 1 Logic Flow:**
+```
+if (price matches any detailPrice option):
+    extract that price  // ← NEW: Most common case
+elif (all detailPrice options are identical):
+    extract the price   // ← EXISTING: Special case
+else:
+    extract price = 0   // ← FALLBACK: Invalid/missing size
+```
 9. **Rule 2**: Combo items with `basePrice` → extract the `basePrice` value as `price` and `display_price`
 10. **Rule 3**: Items with both `detailPrice` + `comboSections` → extract `price` from selected `detailPriceId` + `detailPriceInfo` (NOT 0)
 11. **Rule 4**: Detail items need `detailPriceId` and `detailPriceInfo` parameters in order
@@ -327,7 +339,7 @@ Note: Some catalogs separate item codes from names; if so, do not concatenate "C
 
 ### For SALE_ITEM (Regular Items):  
 17. **Simple pricing**: Extract "price" and "display_price" from menu `price` field
-18. **Size variations**: If has `detailPrice` → extract `"price": 0` and require size selection
+18. **Size variations**: If has `detailPrice` → extract actual `price` when it matches a detailPrice option, otherwise use `"price": 0`
 
 ### Size Selection Requirements:
 19. **When user specifies size** (Small/Large): Must include complete detailPrice structure
@@ -354,7 +366,7 @@ Note: Some catalogs separate item codes from names; if so, do not concatenate "C
 
 **SUMMARY**: 
 - Has `basePrice` → Use basePrice as item price, calculate displayPrice with combo costs
-- Has `detailPrice` → Use 0 as price, require detailPriceId for size
+- Has `detailPrice` → **Use actual price when it matches a detailPrice option** (indicates correct size selection), otherwise use 0
 - Regular `price` field → Use that price value
 - **Price vs DisplayPrice**: `price` = base cost, `display_price` = total after combo upgrades
 - **Combo selections**: Can have individual costs that add to the total item price
@@ -406,7 +418,7 @@ Look for entries containing "Kung Po Chicken":
 **STEP 2: Apply disambiguation logic**
 - User input: "Kung Po Chicken" (no size, no combo mention)
 - Rule: Default to individual item → Select Entry B
-- **RESULT**: item_id={{INDIVIDUAL_ID}}, item_name="Kung Po Chicken", price=0 (detailPrice item - requires size selection and detail_price_id)
+- **RESULT**: item_id={{INDIVIDUAL_ID}}, item_name="Kung Po Chicken", price=0 (detailPrice item without size - requires size selection and detail_price_id)
 
 **🚨 CRITICAL WARNING - NO PLACEHOLDER VALUES:**
 The above IDs ({{LUNCH_COMBO_ID}}, {{INDIVIDUAL_ID}}, {{DINNER_COMBO_ID}}) are ILLUSTRATIVE PLACEHOLDERS ONLY.
@@ -416,15 +428,15 @@ These examples demonstrate the selection process - you must apply this logic to 
 **STEP 3: Extract variant-specific details**
 - Check selected entry for pricing structure:
   - Has basePrice → use basePrice as price
-  - Has detailPrice → use price=0, require size selection
+  - Has detailPrice → **use actual price if it matches a detailPrice option**, otherwise use price=0
   - Has comboSections → extract available modifications
-- **RESULT**: price=0, display_price=0 (detailPrice item - size selection determines actual price)
+- **RESULT**: Use matching price when size is selected, otherwise price=0 (detailPrice item - size selection determines actual price)
 
 **EXAMPLE: Size-specific selection**
 User input: "Large Kung Po Chicken"
 - STEP 1: Find entries with size options → Entry B (has "Available Sizes: Small, Large")
 - STEP 2: Size specified → Select individual item → Entry B  
-- STEP 3: Extract size details → item_id={{INDIVIDUAL_ID}}, size="Large", detail_price_id={{SIZE_PRICE_ID}} (price remains 0; actual price from detailPrice structure)
+- STEP 3: Extract size details → item_id={{INDIVIDUAL_ID}}, size="Large", detail_price_id={{SIZE_PRICE_ID}}, **price=12.25** (matches Large detailPrice option)
 
 **⚠️ PLACEHOLDER WARNING:** {{INDIVIDUAL_ID}} is a placeholder - you must extract the actual ID and detailPrice structure from the provided context.
 

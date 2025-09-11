@@ -3280,7 +3280,33 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
             if price_value is not None:
                 detail_prices = [price_value]
 
-        all_prices_same = len(detail_prices) > 0 and len(set(detail_prices)) == 1
+        # Normalize to cents and compare as money to avoid float pitfalls; also recompute all_prices_same
+        price_matches_detail_price = False
+        detail_prices_dec = []
+        for p in detail_prices:
+            try:
+                # Clean any currency symbols/commas and normalize to 2 decimal places
+                price_str = str(p).replace("$", "").replace(",", "").strip()
+                d = Decimal(price_str).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                detail_prices_dec.append(d)
+            except Exception:
+                continue  # Skip invalid prices
+
+        # Recompute "all_prices_same" using normalized decimals
+        all_prices_same = (
+            len(detail_prices_dec) > 0 and len(set(detail_prices_dec)) == 1
+        )
+
+        if raw_price is not None and raw_price != "" and detail_prices_dec:
+            try:
+                # Clean and normalize raw_price to 2 decimal places
+                raw_price_str = str(raw_price).replace("$", "").replace(",", "").strip()
+                raw_price_dec = Decimal(raw_price_str).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+                price_matches_detail_price = raw_price_dec in detail_prices_dec
+            except Exception:
+                price_matches_detail_price = False
 
         if all_prices_same and raw_price is not None and raw_price != "":
             # Special case: all detailPrice prices are identical, use existing price
@@ -3292,6 +3318,18 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
             except (ValueError, TypeError, ArithmeticError) as e:
                 logger.error(
                     f"[MenuSifuTool] Failed to convert price '{raw_price}': {e}"
+                )
+                price_val = Decimal("0")
+        elif price_matches_detail_price:
+            # Enhanced case: raw_price matches one of the detailPrice options (correct size selection)
+            try:
+                price_val = Decimal(str(raw_price))
+                logger.info(
+                    f"[MenuSifuTool] Price matches detailPrice option, using selected price: {price_val}"
+                )
+            except (ValueError, TypeError, ArithmeticError) as e:
+                logger.error(
+                    f"[MenuSifuTool] Failed to convert matching price '{raw_price}': {e}"
                 )
                 price_val = Decimal("0")
         else:
