@@ -246,6 +246,43 @@ async def create_project(
             create_request.name,
             project_params,
         )
+
+        # If subscription_id is provided, add the project to the subscription
+        if create_request.subscription_id:
+            try:
+                subscription_service.create_project_subscription(
+                    session, db_project, create_request.subscription_id
+                )
+            except ValueError as subscription_err:
+                logger.warning(
+                    f"Project created but failed to add to subscription: {subscription_err}",
+                    extra={
+                        "project_id": str(db_project.id),
+                        "subscription_id": str(create_request.subscription_id),
+                        "account_name": create_request.account_name,
+                    },
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Project created successfully, but failed to add to subscription: {subscription_err}",
+                    headers={"Content-Type": "application/json"},
+                )
+            except Exception as subscription_err:
+                logger.error(
+                    f"Project created but unexpected error adding to subscription: {subscription_err}",
+                    extra={
+                        "project_id": str(db_project.id),
+                        "subscription_id": str(create_request.subscription_id),
+                        "account_name": create_request.account_name,
+                    },
+                    exc_info=True,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Project created successfully, but failed to add to subscription due to an internal error.",
+                    headers={"Content-Type": "application/json"},
+                )
+
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

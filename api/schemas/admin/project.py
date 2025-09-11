@@ -82,6 +82,7 @@ class CreateProjectRequest(UpdateProjectRequest):
     account_name: str = Field(...)
     name: str
     enable_web_widget: bool = False
+    subscription_id: uuid.UUID | None = None
 
     def to_project_params(self):
         params = super().to_project_params()

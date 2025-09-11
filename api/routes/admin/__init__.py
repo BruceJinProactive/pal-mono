@@ -867,6 +867,14 @@ async def create_project(
     """
     Create a new project based on the provided request data. A project must
     have a name and a valid account associated with it.
+
+    Optionally, you can provide a subscription_id to immediately add the project
+    to an existing active subscription. If linking fails, the entire operation
+    is rolled back and no project is created.
+
+    If no subscription_id is provided, the project will be created without any
+    subscription association and can be added to a subscription later via the
+    subscription management endpoints.
     """
     return await _projects.create_project(project, context, session)
 
