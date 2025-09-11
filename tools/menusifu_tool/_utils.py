@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 if TYPE_CHECKING:
@@ -58,6 +58,52 @@ def _safe_int_convert(value: Any) -> Optional[int]:
         return int(value)
     except (ValueError, TypeError):
         return None
+
+
+def _normalize_display_price(raw_value: Any, fallback: Decimal) -> Decimal:
+    """
+    Normalize display price from various formats to consistent Decimal dollars.
+
+    Handles:
+    - Integers or digit-only strings as cents (divide by 100)
+    - Dotted numeric strings/Decimals as dollars (no division)
+    - Quantizes result to 2 decimal places
+    - Returns fallback on parse errors
+
+    Args:
+        raw_value: Raw price value (int, str, Decimal, etc.)
+        fallback: Fallback Decimal value if parsing fails
+
+    Returns:
+        Decimal: Normalized price in dollars, quantized to 2 decimal places
+    """
+    if raw_value is None or raw_value == "":
+        return fallback
+
+    try:
+        # Convert to string and clean currency symbols
+        value_str = str(raw_value).replace("$", "").replace(",", "").strip()
+
+        if not value_str:
+            return fallback
+
+        # Parse as Decimal
+        decimal_value = Decimal(value_str)
+
+        # Determine if this is cents (integer/no decimal) or dollars (has decimal)
+        if "." not in value_str and decimal_value == int(decimal_value):
+            # Integer value - treat as cents, convert to dollars
+            result = decimal_value / 100
+        else:
+            # Decimal value - already in dollars
+            result = decimal_value
+
+        # Quantize to 2 decimal places with proper rounding
+        return result.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    except (ValueError, TypeError, ArithmeticError, InvalidOperation):
+        # Return fallback on any conversion error
+        return fallback
 
 
 # Systematic combo section mapping generated from menu data
@@ -2496,7 +2542,7 @@ def build_selected_items_from_calculation_with_menu_data(
             quantity=item.quantity,
             itemType=item.item_type,
             price=item.price,
-            displayPrice=item.price,
+            displayPrice=_normalize_display_price(item.display_price, item.price),
             name=item.name,
             nameMultilingual=item.name_multilingual,
             categoryId=item.category_id,
@@ -2663,7 +2709,7 @@ def build_selected_items_from_calculation(
             quantity=item.quantity,
             itemType=item.item_type,
             price=item.price,
-            displayPrice=item.price,
+            displayPrice=_normalize_display_price(item.display_price, item.price),
             name=item.name,
             nameMultilingual=item_multilingual,
             categoryId=item.category_id,
@@ -3378,23 +3424,10 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
             logger.error(f"[MenuSifuTool] Failed to convert price '{raw_price}': {e}")
             price_val = Decimal("0")
 
-    # Safely convert displayPrice (optional field) - ensure it matches price for combo items
+    # Safely convert displayPrice using normalized helper function
     raw_display_price = item.get("displayPrice") or item.get("display_price")
-    # For combo items or when display_price is missing, use the calculated price_val
-    if raw_display_price is None or raw_display_price == "":
-        display_price_val = price_val  # Use the same value as price
-        logger.info(
-            f"[MenuSifuTool] Setting displayPrice to match price: {display_price_val}"
-        )
-    else:
-        try:
-            display_price_val = Decimal(str(raw_display_price))
-            logger.info(f"[MenuSifuTool] Converted displayPrice: {display_price_val}")
-        except (ValueError, TypeError, ArithmeticError) as e:
-            logger.error(
-                f"[MenuSifuTool] Failed to convert displayPrice '{raw_display_price}': {e}"
-            )
-            display_price_val = price_val  # Fall back to price value
+    display_price_val = _normalize_display_price(raw_display_price, price_val)
+    logger.info(f"[MenuSifuTool] Normalized displayPrice: {display_price_val}")
 
     # Safely convert categoryId with default (handle 0 as valid value)
     raw_category_id = item.get("categoryId")
