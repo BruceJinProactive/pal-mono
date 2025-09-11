@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
+from api.schemas.admin.user import SignUpRequest
 from db import ConversationStatus
 from services.account_service import AccountParams
 
