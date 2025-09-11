@@ -1,19 +1,24 @@
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from api.schemas.admin.account import AccountParams, AccountStatus
 from api.schemas.admin.onboarding import (
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
     OnboardingRequest,
     OnboardingResponse,
+    SelfOnboardingRequest,
+    SelfOnboardingResponse,
 )
-from services import admin_service
+from services import account_service, admin_service
 from services.admin_service import ProjectSetup
 from services.admin_service.schema import CognitoUser
+from utils.log import logger
 
+from ._account import _set_user_session, get_account_status
 from ._auth import authorize_admin
 from ._builder import build_onboarding_project_info
-from ._utils import UserContext
+from ._utils import UserContext, create_guest_context
 
 
 async def create_onboarding(
@@ -115,3 +120,79 @@ async def generate_agent_prompts_api(
             detail=f"Failed to generate agent prompts: {str(err)}",
             headers={"Content-Type": "application/json"},
         )
+
+
+async def self_onboarding(
+    request: SelfOnboardingRequest, response: Response, session: Session
+) -> SelfOnboardingResponse:
+    """
+    Sign up a new user and create an account. This function first creates an account
+    with the given account_name, then creates a Cognito user. If Cognito user creation
+    fails, the account is hard deleted to maintain consistency.
+
+    Args:
+        request: A SignUpRequest object containing the user's email, password, and account name.
+        response: FastAPI response object for setting cookies.
+        session: Database session for account operations.
+
+    Returns:
+        SelfOnboardingResponse object containing the success status and account response.
+    Raises:
+        HTTPException: If there is an error signing up the user or creating the account.
+    """
+    # Create a guest context for account creation (no authenticated user yet)
+
+    account_name = request.account_name
+    guest_context = create_guest_context(account_name, request.email)
+    params = AccountParams()
+    params.status = AccountStatus.initializing
+    params.display_name = request.account_display_name
+    params.phone_number = request.phone_number
+    try:
+        account_service.create_account(
+            session=session,
+            context=guest_context,
+            account_name=account_name,
+            params=params,
+            lead_id=None,
+            auto_commit=False,  # Don't commit yet, in case Cognito creation fails
+        )
+        logger.info(f"Created account {account_name} for user signup")
+    except ValueError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to create account {account_name}: {e}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        user = admin_service.signup_account_user(
+            account_name=request.account_name,
+            user_email=request.email,
+            user_name=request.name,
+            password=request.password,
+        )
+    except ValueError as e:
+        # undo the account creation
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    if not user.session:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fully create user session",
+            headers={"Content-Type": "application/json"},
+        )
+    session.commit()
+    _set_user_session(response, user.email, user.session)
+    account_response = get_account_status(account_name, guest_context, session)
+    return SelfOnboardingResponse(
+        success=True,
+        account_response=account_response,
+    )
+    # Function completes successfully - no return value needed

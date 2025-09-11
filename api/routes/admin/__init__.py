@@ -80,6 +80,8 @@ from api.schemas.admin.onboarding import (
     GenerateAgentPromptsResponse,
     OnboardingRequest,
     OnboardingResponse,
+    SelfOnboardingRequest,
+    SelfOnboardingResponse,
 )
 from api.schemas.admin.phone_number import (
     EnhancedReleaseProjectNumberRequest,
@@ -191,16 +193,16 @@ def get_user(context: UserContext = Depends(authenticate_user)):
 
 
 @admin_router.post("/signup", status_code=status.HTTP_200_OK)
-async def signup(
-    request: SignUpRequest,
+async def self_onboarding(
+    request: SelfOnboardingRequest,
     response: Response,
     session: Session = Depends(db.get_db),
-) -> AccountStatusResponse:
+) -> SelfOnboardingResponse:
     """
     Sign up a new user and create an account. Creates the account first, then the Cognito user.
     If Cognito user creation fails, the account will be deleted.
     """
-    return await _account.user_signup(request, response, session)
+    return await _onboarding.self_onboarding(request, response, session)
 
 
 """

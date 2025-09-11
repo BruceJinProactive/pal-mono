@@ -15,7 +15,6 @@ from api.schemas.admin.account import (
     UpdateAccountRequest,
 )
 from api.schemas.admin.agent import AgentSummary
-from api.schemas.admin.user import SignUpRequest
 from db import ConversationStatus
 from db.tables.accounts import AccountStatus
 from services import account_service, admin_service, subscription_service, user_service
@@ -25,7 +24,7 @@ from utils.log import logger
 
 from ._auth import authorize_user_account
 from ._builder import build_account, build_account_summary, build_agent_summary
-from ._utils import UserContext, create_guest_context, not_found_error
+from ._utils import UserContext, not_found_error
 
 AWS_ADMIN_CONSOLE_APP_CLIENT_ID = os.environ["AWS_ADMIN_CONSOLE_APP_CLIENT_ID"]
 
@@ -236,70 +235,6 @@ async def accept_account_terms(
             headers={"Content-Type": "application/json"},
         )
     return AcceptTermsResponse(accepted=True)
-
-
-async def user_signup(
-    request: SignUpRequest, response: Response, session: Session
-) -> AccountStatusResponse:
-    """
-    Sign up a new user and create an account. This function first creates an account
-    with the given account_name, then creates a Cognito user. If Cognito user creation
-    fails, the account is hard deleted to maintain consistency.
-
-    Args:
-        request: A SignUpRequest object containing the user's email, password, and account name.
-        response: FastAPI response object for setting cookies.
-        session: Database session for account operations.
-
-    Returns:
-        A SignUpResponse object containing the access token, refresh token,
-        expiration time, and ID token for the newly created user.
-    Raises:
-        HTTPException: If there is an error signing up the user or creating the account.
-    """
-    # Create a guest context for account creation (no authenticated user yet)
-    account_name = request.account_name
-    guest_context = create_guest_context(account_name, request.email)
-
-    try:
-        account_service.create_account(
-            session=session,
-            context=guest_context,
-            account_name=account_name,
-            params=AccountParams(),
-            lead_id=request.lead_id,
-            auto_commit=False,  # Don't commit yet, in case Cognito creation fails
-        )
-        logger.info(f"Created account {account_name} for user signup")
-    except ValueError as e:
-        logger.error(f"Failed to create account {account_name}: {e}")
-        raise ValueError(f"Failed to create account {account_name}: {e}") from e
-
-    try:
-        user = admin_service.signup_account_user(
-            account_name=request.account_name,
-            user_email=request.email,
-            user_name=request.name,
-            password=request.password,
-        )
-    except ValueError as e:
-        # undo the account creation
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-    if not user.session:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fully create user session",
-            headers={"Content-Type": "application/json"},
-        )
-    session.commit()
-    _set_user_session(response, user.email, user.session)
-    return get_account_status(account_name, guest_context, session)
 
 
 def _set_user_session(

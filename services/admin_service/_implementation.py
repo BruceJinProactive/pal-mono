@@ -1125,28 +1125,9 @@ def signup_account_user(
         refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
         expires_in = auth_response["AuthenticationResult"]["ExpiresIn"]
         # ADD EMAIL SENDING HERE
-        try:
-            email_service.send_email_with_template(
-                to_email=user_email,
-                template_id=CREATE_USER_TEMPLATE_ID,  # Different template ID
-                template_model={
-                    "name": user_name,
-                    "email": user_email,
-                    "account_name": account_name,
-                    "product_name": "Palona AI",
-                    "login_url": (
-                        "https://console.palona.ai"
-                        if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                        else f"https://{os.getenv('RUNTIME_ENV','lat')}-console.palona.ai"
-                    ),
-                    "sender_name": "Support Team",
-                    # Note: No password in template since user already has access
-                },
-            )
-            logger.info(f"SIGNUP: Welcome email sent to {user_email}")
-        except Exception as e:
-            logger.error(f"SIGNUP: Failed to send welcome email via Postmark: {e}")
-            # Don't fail the signup if email fails
+
+        # TODO: Add email verification here
+        # email = email_service.send_email_with_template()
 
         return CognitoUser(
             email=user_email,

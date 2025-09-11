@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from api.schemas.admin.account import CreateAccountRequest
+from api.schemas.admin.account import AccountStatusResponse, CreateAccountRequest
 from api.schemas.admin.agent import CreateAgentRequest
 from api.schemas.admin.project import CreateProjectRequest
 
@@ -74,3 +74,21 @@ class OnboardingResponse(BaseModel):
     projects: list[OnboardingProjectInfo] = Field(
         ..., description="List of created projects"
     )
+
+
+class SelfOnboardingRequest(BaseModel):
+    """Self Onboarding Request"""
+
+    account_name: str
+    name: str
+    email: str
+    password: str
+    phone_number: str
+    account_display_name: str
+
+
+class SelfOnboardingResponse(BaseModel):
+    """Self Onboarding Response"""
+
+    success: bool = Field(..., description="Whether the onboarding was successful")
+    account_response: AccountStatusResponse
