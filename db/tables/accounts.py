@@ -28,6 +28,11 @@ class BusinessIndustry(str, enum.Enum):
     E_COMMERCE = "e_commerce"
 
 
+class OnboardingMethod(str, enum.Enum):
+    self_onboarding = "self_onboarding"
+    manage_onboarding = "manage_onboarding"
+
+
 class BusinessSegment(str, enum.Enum):
     smb = "smb"  # small & medium business
     mm = "mm"  # mid-market
@@ -127,4 +132,9 @@ class Account(Base):
     users: Mapped[List["User"]] = relationship("User", back_populates="account")
     subscriptions: Mapped[List["AccountSubscription"]] = relationship(
         "AccountSubscription", back_populates="account"
+    )
+    onboarding_method: Mapped[OnboardingMethod] = mapped_column(
+        Enum(OnboardingMethod),
+        nullable=False,
+        server_default=OnboardingMethod.manage_onboarding.value,
     )
