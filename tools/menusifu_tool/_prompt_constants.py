@@ -286,9 +286,16 @@ Please analyze the conversation and extract all Chinese food order information. 
 3. **CRITICAL**: When customers use casual names, map them to the correct item_id in the menu and output the menu's display name (include a code prefix only if it is part of that display name).
 Note: Some catalogs separate item codes from names; if so, do not concatenate "CODE.Name" in item_name—use the display name and correct item_id.
 3a. **EXTRACT CATEGORY_ID**: Always extract the category_id from the menu context - look for "Category ID:" or "categoryId:" fields associated with each item. Do not leave category_id as null or empty.
-4. **MANDATORY COMBO SECTIONS**: For COMBO_SALE_ITEM types, ALL combo sections are MANDATORY - you MUST extract combo_sections for every combo item. Look for sections like "Lunch With", "Dinner With", "Dinner Choice" in the menu context. Even if the customer says "no modifications" or "plain", extract at least one default selection per section. **DEFAULT SELECTION RULE**: Always select the cheapest option ($0.00 price), or if multiple have same price, pick the first one listed (typically "^Steamed Rice" for rice sections, ".Egg Roll" for appetizer sections). MenuSifu API requires combo_sections field populated for all COMBO_SALE_ITEM types or the order will fail with "Price of order item is error".
+3b. **EXTRACT SIZE FIELDS**: For sized items (Small/Large), extract size, size_id, detail_price_id, and detail_price_info from the menu context detailPrice array. Look for matching size name and use corresponding ID and price values.
+3c. **SIZED ITEM PRICING**: For sized items, price = detailPrice (e.g., 12.25 for Large). If no modifications: display_price = price. If modifications added: display_price = price + modification costs.
+4. **COMBO SECTIONS RULES**: 
+   - **Regular combos** (LC*/DC*/DB*): Extract combo_sections based on customer requests
+   - **Sized combos without mods**: Extract EMPTY combo_sections=[] when customer wants item "as-is" 
+   - **Sized combos with mods**: Extract combo_sections when customer requests modifications (sauce, rice changes, etc.)
+   - **DEFAULT SELECTION RULE**: For regular combos, always select cheapest option ($0.00), or first if tied
+   - **CRITICAL**: All combo items should have itemType="COMBO_SALE_ITEM" - sizing doesn't change this
 5. **MENU DISAMBIGUATION**: Apply disambiguation rules for items with multiple versions:
-   - Size mentioned (Small/Large) → prefer individual item with detailPrice
+   - Size mentioned (Small/Large) → **CRITICAL**: Extract as COMBO_SALE_ITEM with detailPrice/sizeId/detailPriceInfo fields. Include combo_sections ONLY if customer requests modifications
    - "lunch" context → prefer LC/LB/LP prefix combos  
    - "dinner" context → prefer DC/DS/DB prefix combos
    - No context → default to individual item version
@@ -516,14 +523,14 @@ For simple fixed-price combo items (e.g., lunch combos with basePrice):
   API FORMAT: "comboDetail": {{"comboSections": [{{"id": 21, "selectSaleItems": [{{"saleItemId": 3357, ...}}]}}]}}
   ```
 
-🚨 **COMBO EXTRACTION RULE - CONSERVATIVE APPROACH**: 
-- **For COMBO_SALE_ITEM**: Extract MINIMUM required sections only
-- **Core rule**: For lunch combos (LC*), extract ONLY "Lunch With" section unless customer explicitly requests other modifications
-- **Core rule**: For dinner combos (DC*/DB*/DS*), extract ONLY "Dinner With" section unless customer explicitly requests other modifications  
-- **DO NOT extract**: "Rice Modify", "Add Sauce", "Dinner Choice" sections unless customer specifically mentions modifications like "no vegetables", "add sauce", "with egg roll"
-- **Plain/simple orders**: Extract ONLY the core rice/starch section (Lunch With OR Dinner With)
-- **Example**: "LC11.Kung Po Chicken" → Extract ONLY {{"section_id": 21, "section_name": "Lunch With", "selected_items": [steamed rice]}}
-- **Example**: "DB3.Beef Lo Mein" → Extract ONLY {{"section_id": 18, "section_name": "Dinner With", "selected_items": [steamed rice]}}
+🚨 **COMBO EXTRACTION RULE - THREE PATTERNS**: 
+- **Regular combos** (LC*/DC*/DB*): Extract core section ("Lunch With" OR "Dinner With") plus any requested modifications  
+- **Sized combos without mods**: Extract EMPTY combo_sections=[] when customer wants item as-is
+- **Sized combos with mods**: Extract combo_sections when customer requests changes (sauce, rice modifications, etc.)
+- **Key insight**: Customer intent determines combo_sections content, not just item type
+- **Example**: "LC11.Kung Po Chicken" → Extract {{"section_id": 21, "section_name": "Lunch With", "selected_items": [steamed rice]}}
+- **Example**: "Large Kung Po Chicken plain" → combo_sections=[], size fields included
+- **Example**: "Large Kung Po Chicken with BBQ sauce" → combo_sections=[Add Sauce], size fields included
 
 For complex combo items with upgrade costs (e.g., dinner combos):
 ```json
@@ -745,9 +752,14 @@ Note the key differences:
   "items": [{{
     "item_id": 3123,
     "item_name": "General Tso Chicken",
-    "item_type": "SALE_ITEM",
+    "item_type": "COMBO_SALE_ITEM",
     "quantity": 1,
+    "price": 15.25,
+    "display_price": 15.25,
     "size": "Large",
+    "detail_price_id": 456,
+    "size_id": 63,
+    "combo_sections": [],              // Empty - customer wants it plain
     "special_notes": "Extra spicy please. Gluten-free preparation."
   }}, {{
     "item_id": 3537,
@@ -853,7 +865,7 @@ Note the key differences:
   }}, {{
     "item_id": 3705,
     "item_name": "Kung Po Chicken",
-    "item_type": "SALE_ITEM", 
+    "item_type": "COMBO_SALE_ITEM",    // Fixed: Should be COMBO_SALE_ITEM 
     "quantity": 12,
     "price": 12.25,             // Rule 3: From detailPrice Large
     "display_price": 12.25,
@@ -861,6 +873,7 @@ Note the key differences:
     "size": "Large",
     "detail_price_id": 838,     // For Large size
     "size_id": 63,
+    "combo_sections": [],       // Empty - plain sized combo
     "detail_price_info": {{
       "detailPriceId": 838,
       "sizeId": 63,
@@ -904,31 +917,62 @@ Note the key differences:
     "item_type": "COMBO_SALE_ITEM",
     "quantity": 1,
     "price": 8.25,                          // Rule 2: basePrice combo
-    "display_price": 8.25
+    "display_price": 8.25,
+    "combo_sections": [{{                   // Required for regular combos
+      "section_id": 21,
+      "section_name": "Lunch With",
+      "selected_items": [{{
+        "sale_item_id": 3357,
+        "name": "^Steamed Rice",
+        "price": 0,
+        "quantity": 1
+      }}]
+    }}]
   }}, {{
     "item_id": [LB1_ID],
     "item_name": "LB1.Beef Broccoli",       // "lunch" context → lunch combo
     "item_type": "COMBO_SALE_ITEM", 
     "quantity": 1,
     "price": 8.50,                          // Rule 2: basePrice combo
-    "display_price": 8.50
+    "display_price": 8.50,
+    "combo_sections": [{{                   // Required for regular combos
+      "section_id": 21,
+      "section_name": "Lunch With",
+      "selected_items": [{{
+        "sale_item_id": 3357,
+        "name": "^Steamed Rice",
+        "price": 0,
+        "quantity": 1
+      }}]
+    }}]
   }}, {{
     "item_id": [INDIVIDUAL_ID],
-    "item_name": "Sweet Sour Pork",          // "Large" specified → individual item
-    "item_type": "SALE_ITEM",
+    "item_name": "Sweet Sour Pork",          // "Large" specified → sized combo item
+    "item_type": "COMBO_SALE_ITEM",          // Fixed: Should be COMBO_SALE_ITEM
     "quantity": 1,
     "price": 11.50,                         // Rule 3: detailPrice Large
     "display_price": 11.50,
     "size": "Large",
     "detail_price_id": [LARGE_ID],
-    "size_id": 63
+    "size_id": 63,
+    "combo_sections": []                    // Empty - plain sized combo
   }}, {{
     "item_id": 3451,
     "item_name": "LC15.Chicken Black Mushroom", // Explicit code → exact match
     "item_type": "COMBO_SALE_ITEM",
     "quantity": 1,
     "price": 8.25,                          // Rule 2: basePrice combo
-    "display_price": 8.25
+    "display_price": 8.25,
+    "combo_sections": [{{                   // Required for regular combos
+      "section_id": 21,
+      "section_name": "Lunch With",
+      "selected_items": [{{
+        "sale_item_id": 3357,
+        "name": "^Steamed Rice",
+        "price": 0,
+        "quantity": 1
+      }}]
+    }}]
   }}]
 }}
 ```
@@ -943,6 +987,83 @@ Note the key differences:
 - **Mixed pricing rules**: One order can have Rule 2 (basePrice) and Rule 3 (detailPrice) items together
 - **Complete detailPriceInfo**: Include full object structure with multilingual names and IDs
 - **Comprehensive allergies**: All 8 major allergens in standardized format
+
+## Example 5: Three combo patterns in one order
+**User says**: "I want a Large Kung Po Chicken with BBQ sauce and honey sauce. No vegetables in the rice please. Also a small General Tso Chicken plain, and LC11 Kung Po Chicken lunch combo."
+
+**Extract as**:
+```json
+{{
+  "items": [{{
+    "item_id": 3705,
+    "item_name": "Kung Po Chicken",
+    "item_type": "COMBO_SALE_ITEM",           // Pattern 3: Sized combo WITH mods
+    "quantity": 1,
+    "price": 12.25,                          // detailPrice Large
+    "display_price": 14.25,                  // price + sauce costs (2x $1.00)
+    "size": "Large",
+    "detail_price_id": 838,
+    "size_id": 63,
+    "combo_sections": [{{                    // Populated - customer requested mods
+      "section_id": 19,
+      "section_name": "Rice Modify",
+      "selected_items": [{{
+        "sale_item_id": 3331,
+        "name": "No Veggie",
+        "price": 0,
+        "quantity": 1
+      }}]
+    }}, {{
+      "section_id": 20,
+      "section_name": "Add Sauce",
+      "selected_items": [{{
+        "sale_item_id": 3304,
+        "name": "BBQ Sauce",
+        "price": 1,
+        "quantity": 1
+      }}, {{
+        "sale_item_id": 3305,
+        "name": "Honey Sauce", 
+        "price": 1,
+        "quantity": 1
+      }}]
+    }}]
+  }}, {{
+    "item_id": 3123,
+    "item_name": "General Tso Chicken",
+    "item_type": "COMBO_SALE_ITEM",           // Pattern 2: Sized combo WITHOUT mods
+    "quantity": 1,
+    "price": 7.5,                            // detailPrice Small
+    "display_price": 7.5,                    // Same as price - no mods
+    "size": "Small",
+    "detail_price_id": 837,
+    "size_id": 61,
+    "combo_sections": []                     // Empty - customer wants it plain
+  }}, {{
+    "item_id": 3447,
+    "item_name": "LC11.Kung Po Chicken",
+    "item_type": "COMBO_SALE_ITEM",           // Pattern 1: Regular lunch combo
+    "quantity": 1,
+    "price": 8.25,                          // basePrice
+    "display_price": 8.25,
+    "combo_sections": [{{                    // Required for regular combos
+      "section_id": 21,
+      "section_name": "Lunch With",
+      "selected_items": [{{
+        "sale_item_id": 3357,
+        "name": "^Steamed Rice",
+        "price": 0,
+        "quantity": 1
+      }}]
+    }}]
+  }}]
+}}
+```
+
+**This example demonstrates all three patterns**:
+1. **Regular combo** (LC11) → Always has combo_sections with default selection
+2. **Sized combo without mods** (Small General Tso) → Empty combo_sections, price = displayPrice  
+3. **Sized combo with mods** (Large Kung Po) → Populated combo_sections, displayPrice includes upgrade costs
 - **Size specification**: Always include size, detail_price_id, size_id for detailPrice items
 - **Allergy format validation**: The example `"Allergies: Fish,Wheat,Peanuts,Egg,Dairy,TreeNuts,Soy,Shellfish."` shows the correct API format
 
