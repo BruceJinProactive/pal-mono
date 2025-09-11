@@ -975,27 +975,14 @@ class MenuSifuTool(Toolkit):
             )
 
             # Log order generation request details
-            logger.info("[MenuSifuTool] Order Generation Request:")
             logger.info(
-                f"  - Customer: {order_request.customer.first_name} {order_request.customer.last_name}"
+                f"[MenuSifuTool] Order Generation Request: {order_request.model_dump_json(by_alias=True)}"
             )
-            logger.info(
-                f"  - Phone: {order_request.country_code}{order_request.telephone_number}"
-            )
-            logger.info(f"  - Channel: {order_request.channel}")
-            logger.info(f"  - Order Type: {order_request.order_type}")
-            logger.info(
-                f"  - Payment Method: {order_request.payment_method} (value: {order_request.payment_method.value})"
-            )
-            logger.info(f"  - Pay Online: {order_request.pay_online}")
-            logger.info(f"  - Selected Items: {len(order_request.selected_items)}")
-            logger.info(f"  - Total Price: ${order_request.price.total}")
-            logger.info(f"  - Subtotal: ${order_request.price.subtotal}")
-            logger.info(f"  - Tax Total: ${order_request.price.tax_total}")
 
             # Log generation request JSON payload (debug level)
-            logger.info("[MenuSifuTool] Generation API JSON payload:")
-            logger.info(f"  {order_request.model_dump_json(by_alias=True)}")
+            logger.info(
+                f"[MenuSifuTool] Generation API JSON payload: {order_request.model_dump_json(by_alias=True)}"
+            )
 
             # Call order generation API
             logger.info(

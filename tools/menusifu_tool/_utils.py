@@ -535,26 +535,6 @@ def _format_price(price) -> str:
             return ""
 
 
-def _render_subparts(subs, locale: str) -> List[str]:
-    """Render sub-options as name (+price?) strings."""
-    subparts: List[str] = []
-
-    for sub in subs:
-        # Handle both object and dict access patterns
-        if hasattr(sub, "name") and hasattr(sub, "price"):
-            # Object access
-            sub_name = _localized_to_text(sub.name, locale)
-            price_text = _format_price(sub.price)
-        else:
-            # Dict access
-            sub_name = _localized_to_text(sub.get("name", {}), locale)
-            price_text = _format_price(sub.get("price"))
-
-        subparts.append(f"{sub_name}{(' ' + price_text) if price_text else ''}")
-
-    return subparts
-
-
 def _append_option_line(
     option_lines: List[str], name: str, price_text: str, subparts: List[str]
 ) -> None:
@@ -2536,18 +2516,32 @@ def build_selected_items_from_calculation_with_menu_data(
                 converted_options.append(option_note)
 
         # Build the selected item for generation
+        # Convert display_price from cents (int) to dollars (Decimal) for OrderGenerationSelectedItem
+        display_price_dollars = (
+            Decimal(item.display_price) / 100
+            if item.display_price is not None
+            else item.price
+        )
         generation_item = OrderGenerationSelectedItem(
             id=item.id,
             saleItemId=item.id,
             quantity=item.quantity,
             itemType=item.item_type,
             price=item.price,
-            displayPrice=_normalize_display_price(item.display_price, item.price),
+            displayPrice=display_price_dollars,
             name=item.name,
             nameMultilingual=item.name_multilingual,
             categoryId=item.category_id,
             options=converted_options,
             comboDetail=combo_detail,
+            # Add required fields for detail pricing
+            sizeId=getattr(item, "size_id", None),
+            detailPriceId=getattr(item, "detail_price_id", None),
+            detailPriceInfo=(
+                lambda x: x.model_dump() if x and hasattr(x, "model_dump") else x
+            )(getattr(item, "detail_price_info", None)),
+            isGiftItem=False,
+            extendedInformation={},
         )
         selected_items.append(generation_item)
 
@@ -2703,18 +2697,32 @@ def build_selected_items_from_calculation(
         )
 
         # Build the selected item for generation (supporting both comboDetail and options)
+        # Convert display_price from cents (int) to dollars (Decimal) for OrderGenerationSelectedItem
+        display_price_dollars = (
+            Decimal(item.display_price) / 100
+            if item.display_price is not None
+            else item.price
+        )
         generation_item = OrderGenerationSelectedItem(
             id=item.id,
             saleItemId=item.id,
             quantity=item.quantity,
             itemType=item.item_type,
             price=item.price,
-            displayPrice=_normalize_display_price(item.display_price, item.price),
+            displayPrice=display_price_dollars,
             name=item.name,
             nameMultilingual=item_multilingual,
             categoryId=item.category_id,
             options=converted_options,  # Can coexist with comboDetail
             comboDetail=combo_detail,  # May be None for non-combo items
+            # Add required fields for detail pricing
+            sizeId=getattr(item, "size_id", None),
+            detailPriceId=getattr(item, "detail_price_id", None),
+            detailPriceInfo=(
+                lambda x: x.model_dump() if x and hasattr(x, "model_dump") else x
+            )(getattr(item, "detail_price_info", None)),
+            isGiftItem=False,
+            extendedInformation={},
         )
         selected_items.append(generation_item)
 

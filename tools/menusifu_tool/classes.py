@@ -624,6 +624,15 @@ class OrderGenerationSelectedItem(BaseModel):
         None, alias="comboDetail"
     )  # Forward reference
 
+    # Required fields for COMBO_SALE_ITEM with detail pricing
+    size_id: Optional[int] = Field(None, alias="sizeId")
+    detail_price_id: Optional[int] = Field(None, alias="detailPriceId")
+    detail_price_info: Optional[Dict[str, Any]] = Field(None, alias="detailPriceInfo")
+    is_gift_item: bool = Field(False, alias="isGiftItem")
+    extended_information: Dict[str, Any] = Field(
+        default_factory=dict, alias="extendedInformation"
+    )
+
 
 class OrderGenerationRequest(BaseModel):
     """Request for order generation API"""
