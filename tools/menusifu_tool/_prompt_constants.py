@@ -285,6 +285,7 @@ Please analyze the conversation and extract all Chinese food order information. 
 2. Use EXACT modifier names as they appear in the menu context above
 3. **CRITICAL**: When customers use casual names, map them to the correct item_id in the menu and output the menu's display name (include a code prefix only if it is part of that display name).
 Note: Some catalogs separate item codes from names; if so, do not concatenate "CODE.Name" in item_name—use the display name and correct item_id.
+3a. **EXTRACT CATEGORY_ID**: Always extract the category_id from the menu context - look for "Category ID:" or "categoryId:" fields associated with each item. Do not leave category_id as null or empty.
 4. **MANDATORY COMBO SECTIONS**: For COMBO_SALE_ITEM types, ALL combo sections are MANDATORY - you MUST extract combo_sections for every combo item. Look for sections like "Lunch With", "Dinner With", "Dinner Choice" in the menu context. Even if the customer says "no modifications" or "plain", extract at least one default selection per section. **DEFAULT SELECTION RULE**: Always select the cheapest option ($0.00 price), or if multiple have same price, pick the first one listed (typically "^Steamed Rice" for rice sections, ".Egg Roll" for appetizer sections). MenuSifu API requires combo_sections field populated for all COMBO_SALE_ITEM types or the order will fail with "Price of order item is error".
 5. **MENU DISAMBIGUATION**: Apply disambiguation rules for items with multiple versions:
    - Size mentioned (Small/Large) → prefer individual item with detailPrice
@@ -515,12 +516,14 @@ For simple fixed-price combo items (e.g., lunch combos with basePrice):
   API FORMAT: "comboDetail": {{"comboSections": [{{"id": 21, "selectSaleItems": [{{"saleItemId": 3357, ...}}]}}]}}
   ```
 
-🚨 **COMBO EXTRACTION RULE**: 
-- **For COMBO_SALE_ITEM**: Do not leave `combo_sections` empty unless the menu entry defines no combo sections at all (rare)
-- **Mandatory sections**: Always populate with default selections (cheapest option $0.00, or first if tied)
-- **Optional sections**: May be omitted only when unselected by customer
-- **Even for "plain" orders**: If customer says "no modifications", still extract default selections for mandatory sections
-- **Example**: LC11.Kung Po Chicken → MUST include combo_sections with "^Steamed Rice" (free) from "Lunch With" section
+🚨 **COMBO EXTRACTION RULE - CONSERVATIVE APPROACH**: 
+- **For COMBO_SALE_ITEM**: Extract MINIMUM required sections only
+- **Core rule**: For lunch combos (LC*), extract ONLY "Lunch With" section unless customer explicitly requests other modifications
+- **Core rule**: For dinner combos (DC*/DB*/DS*), extract ONLY "Dinner With" section unless customer explicitly requests other modifications  
+- **DO NOT extract**: "Rice Modify", "Add Sauce", "Dinner Choice" sections unless customer specifically mentions modifications like "no vegetables", "add sauce", "with egg roll"
+- **Plain/simple orders**: Extract ONLY the core rice/starch section (Lunch With OR Dinner With)
+- **Example**: "LC11.Kung Po Chicken" → Extract ONLY {{"section_id": 21, "section_name": "Lunch With", "selected_items": [steamed rice]}}
+- **Example**: "DB3.Beef Lo Mein" → Extract ONLY {{"section_id": 18, "section_name": "Dinner With", "selected_items": [steamed rice]}}
 
 For complex combo items with upgrade costs (e.g., dinner combos):
 ```json

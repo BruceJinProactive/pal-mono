@@ -3048,8 +3048,16 @@ def convert_extracted_order_to_dict(
                     }
                     section_dict["selectSaleItems"].append(sale_item_dict)
 
-                combo_sections_list.append(section_dict)
-                logger.info(f"[MenuSifuTool] Created combo section: {section_dict}")
+                # Only include sections that have selected items (MenuSifu API rejects empty sections)
+                if section_dict["selectSaleItems"]:
+                    combo_sections_list.append(section_dict)
+                    logger.info(
+                        f"[MenuSifuTool] Added combo section: {combo_section.section_name} with {len(section_dict['selectSaleItems'])} items"
+                    )
+                else:
+                    logger.warning(
+                        f"[MenuSifuTool] Skipped empty combo section: {combo_section.section_name} (MenuSifu API rejects empty sections)"
+                    )
 
         # Handle both special notes AND real modifiers (convert to options array)
         options_list = []
@@ -3256,11 +3264,23 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
             )
             price_val = Decimal("0")
     elif item_type == "COMBO_SALE_ITEM":
-        # Fallback for combo items without explicit basePrice
-        price_val = Decimal("0")
-        logger.info(
-            "[MenuSifuTool] Combo item without basePrice - defaulting price to 0"
-        )
+        # Fallback for combo items without explicit basePrice - use extracted price
+        if raw_price is not None and raw_price != "":
+            try:
+                price_val = Decimal(str(raw_price))
+                logger.info(
+                    f"[MenuSifuTool] Combo item using extracted price: {price_val}"
+                )
+            except (ValueError, TypeError, ArithmeticError) as e:
+                logger.error(
+                    f"[MenuSifuTool] Failed to convert combo price '{raw_price}': {e}"
+                )
+                price_val = Decimal("0")
+        else:
+            price_val = Decimal("0")
+            logger.info(
+                "[MenuSifuTool] Combo item without basePrice or price - defaulting to 0"
+            )
     elif raw_price is None or raw_price == "":
         price_val = Decimal("0")
         logger.info(f"[MenuSifuTool] Using default price: {price_val}")
