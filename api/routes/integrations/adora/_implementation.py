@@ -8,8 +8,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.session import AsyncSessionLocal
 from utils.log import logger
 
-from ._utils import send_order_notification, update_order_status
-from .schemas import AdoraWebhookRequest, AdoraWebhookResponse
+from ._utils import handle_menu_update, send_order_notification, update_order_status
+from .schemas import AdoraWebhookRequest
 
 
 async def api_adora_webhook(request: Request) -> JSONResponse:
@@ -59,33 +59,89 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
         # Initialize database session
         async with AsyncSessionLocal() as session:
             try:
-                # Update order status and get order object
-                order = await update_order_status(session, webhook_request)
+                # Route based on event type
+                if webhook_request.event == "update_menu":
+                    # Handle menu update
+                    if not webhook_request.brandId:
+                        return JSONResponse(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            content={
+                                "error": "Missing required field for update_menu event: brandId"
+                            },
+                        )
 
-                # Attempt to send notification
-                await send_order_notification(order)
+                    result = await handle_menu_update(session, webhook_request)
 
-            except (SQLAlchemyError, ValueError, RuntimeError) as e:
-                logger.error(f"Failed to update order: {str(e)}")
+                    if result["status"] == "success":
+                        return JSONResponse(
+                            status_code=status.HTTP_200_OK,
+                            content=result,
+                        )
+                    else:
+                        return JSONResponse(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            content=result,
+                        )
+
+                else:
+                    # Handle order status events (all other event types)
+                    # Validate required fields for order events
+                    if not all(
+                        [
+                            webhook_request.PhoneNumber,
+                            webhook_request.transactionId,
+                            webhook_request.orderNumber,
+                            webhook_request.orderDate,
+                        ]
+                    ):
+                        return JSONResponse(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            content={
+                                "error": "Missing required fields for order events: PhoneNumber, transactionId, orderNumber, orderDate"
+                            },
+                        )
+
+                    # Update order status and get order object
+                    order = await update_order_status(session, webhook_request)
+
+                    # Attempt to send notification (do not fail webhook on notification errors)
+                    try:
+                        await send_order_notification(order)
+                    except Exception as e:
+                        logger.error(
+                            f"[AdoraWebhook] Failed to send notification for order {order.order_number} "
+                            f"(store: {order.store_id}, status: {order.status}): {e}",
+                            exc_info=True,
+                        )
+                        # Continue processing - do not fail webhook due to notification errors
+
+                    # Return success response
+                    return JSONResponse(
+                        status_code=status.HTTP_200_OK,
+                        content={
+                            "status": "success",
+                            "message": "Order status updated successfully",
+                        },
+                    )
+
+            except ValueError as e:
+                # Handle validation errors with 400 status
+                await session.rollback()
+                error_msg = f"Validation error for {webhook_request.event} webhook: {e}"
+                logger.warning(error_msg)
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"error": error_msg},
+                )
+            except (SQLAlchemyError, RuntimeError) as e:
+                # Handle system/database errors with 500 status
+                await session.rollback()
+                error_msg = f"Failed to process {webhook_request.event} webhook: {e}"
+                logger.exception(error_msg)
                 return JSONResponse(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    content={"error": f"Failed to update order: {str(e)}"},
+                    content={"error": error_msg},
                 )
-
-        # For now, just log the event
-        logger.info(
-            f"Order status update received - Order: {webhook_request.orderNumber}, Event: {webhook_request.event}",
-            extra={
-                "store_id": webhook_request.storeId,
-                "transaction_id": webhook_request.transactionId,
-                "phone_number": webhook_request.PhoneNumber,
-                "tracking_link": webhook_request.trackingLink,
-                "order_date": webhook_request.orderDate,
-            },
-        )
-
-        # Return success response
-        return JSONResponse(content=AdoraWebhookResponse().model_dump())
 
     except json.JSONDecodeError:
         logger.error("Invalid JSON in request body")

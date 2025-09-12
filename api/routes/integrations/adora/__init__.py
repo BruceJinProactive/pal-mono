@@ -24,18 +24,29 @@ async def adora_webhook(
     request: Request,
 ) -> JSONResponse:
     """
-    Endpoint to receive order status updates from Palona.
+    Endpoint to receive webhooks from Palona for both order status updates and menu updates.
     Handles incoming requests according to the Palona Webhook specification.
 
-    Expected request body:
+    Request body format based on the 'event' field:
+
+    For order status updates:
     {
         "event": string,           // e.g. Paid, Ready to pick up, Picked up, Delivered, etc.
-        "PhoneNumber": string,
-        "trackingLink": string,
-        "storeId": string,
-        "transactionId": string,
-        "orderNumber": string,
-        "orderDate": string
+        "storeId": string,         // Store identifier
+        "PhoneNumber": string,     // Customer phone number
+        "trackingLink": string,    // Optional tracking link
+        "transactionId": string,   // Transaction identifier
+        "orderNumber": string,     // Order number
+        "orderDate": string        // Order date
     }
+
+    For menu updates:
+    {
+        "event": "update_menu",
+        "storeId": string,         // Store identifier
+        "brandId": string          // Brand identifier
+    }
+
+    Menu update events are processed and logged for tracking purposes.
     """
     return await api_adora_webhook(request)

@@ -69,8 +69,11 @@ async def update_order_status(
             f"and order_number: {webhook_request.orderNumber}"
         )
 
-    # Update the order status in orders table
-    order.status = webhook_request.event
+    # Update the order status in orders table (event should not be None for order type)
+    if webhook_request.event is not None:
+        order.status = webhook_request.event
+    else:
+        raise ValueError("Event field is required for order status updates")
 
     # If there's a tracking link in the webhook, update it
     if webhook_request.trackingLink:
@@ -117,6 +120,47 @@ async def update_order_status(
 
     # Return the complete order object
     return order
+
+
+async def handle_menu_update(
+    session: AsyncSession, webhook_request: AdoraWebhookRequest
+) -> dict:
+    """
+    Handle menu update webhook event.
+
+    Args:
+        session: The database session
+        webhook_request: The validated webhook request data
+
+    Returns:
+        dict: Success/failure status
+
+    Raises:
+        ValueError: If required fields are missing for update_menu event
+    """
+    logger.debug(
+        f"[AdoraWebhook] Processing menu update for store: {webhook_request.storeId}"
+    )
+
+    # Validate required fields for menu update
+    if not webhook_request.brandId:
+        raise ValueError("brandId is required for update_menu event")
+
+    # Process the menu update event
+    logger.info(
+        f"[AdoraWebhook] Menu update received - Store: {webhook_request.storeId}, Brand: {webhook_request.brandId}"
+    )
+
+    # TODO: Add any menu update processing logic here if needed
+    # For example: refresh menu cache, trigger menu sync, etc.
+
+    await session.commit()
+
+    logger.info(
+        f"[AdoraWebhook] Successfully processed menu update for store {webhook_request.storeId}"
+    )
+
+    return {"status": "success", "message": "Menu update processed successfully"}
 
 
 def _generate_notification_text(order: AdoraOrder) -> str:
