@@ -288,6 +288,36 @@ def has_conversion_data(totals_summary: dict, unified_accounts: dict) -> bool:
 # =============================================================================
 
 
+def truncate_account_name(account_name: str, max_length: int = 15) -> str:
+    """
+    Truncate account name for table display while keeping it readable.
+
+    Args:
+        account_name: Full account name
+        max_length: Maximum length for display (default 15, including "...")
+
+    Returns:
+        Truncated account name with ellipsis if needed
+    """
+    if len(account_name) <= max_length:
+        return account_name
+
+    # Try to truncate at word boundaries first (for hyphenated names)
+    if "-" in account_name:
+        words = account_name.split("-")
+        truncated = words[0]
+        for word in words[1:]:
+            if len(truncated + "-" + word) <= max_length - 3:  # Leave room for "..."
+                truncated += "-" + word
+            else:
+                break
+        if truncated != account_name:
+            return truncated + "..."
+
+    # Fallback: simple truncation
+    return account_name[: max_length - 3] + "..."
+
+
 def create_account_metrics_table(unified_accounts: dict, columns: list[str]) -> str:
     """Create a proper ASCII table format like the example provided."""
     if not unified_accounts:
@@ -301,7 +331,7 @@ def create_account_metrics_table(unified_accounts: dict, columns: list[str]) -> 
     # Build data rows
     data_rows = []
     for account_name, account_data in unified_accounts.items():
-        row = [account_name]
+        row = [truncate_account_name(account_name)]
         for col_key in columns:
             if col_key in REPORT_COLUMNS:
                 col_config = REPORT_COLUMNS[col_key]
@@ -404,7 +434,7 @@ def create_conversion_table(unified_accounts: dict) -> str:
         paid_rate = safe_float_format(account_data.get("paid_rate", 0), 1)
 
         row = [
-            account_name,
+            truncate_account_name(account_name),
             str(conv),
             str(orders),
             str(paid),
@@ -517,7 +547,7 @@ def create_engagement_table(unified_accounts: dict) -> str:
             transfer_rate = str(transfer_rate)
 
         row = [
-            account_name,
+            truncate_account_name(account_name),
             str(users),
             str(conv),
             str(calls),

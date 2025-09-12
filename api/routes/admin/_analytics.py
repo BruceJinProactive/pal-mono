@@ -49,7 +49,6 @@ async def get_reports(
         account = get_account(session, account_name)
         if not account:
             raise not_found_error(f"Account {account_name} not found.")
-        logger.warning(f"Analytics filter: {filter_by}.")
 
         # Get analytics data
         analytics_reports = await get_account_reports(

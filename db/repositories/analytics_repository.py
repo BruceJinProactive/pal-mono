@@ -78,13 +78,9 @@ class AnalyticsRepository:
         if not filter_by:
             return query
 
-        logger.info(f"Analytics: Applying filters: {filter_by}")
         conditions = []
         if "account_id" in filter_by:
             account_filter = filter_by["account_id"]
-            logger.info(
-                f"Analytics: Account filter - type: {type(account_filter)}, value: {account_filter}"
-            )
             if isinstance(account_filter, list):
                 conditions.append(User.account_id.in_(account_filter))
             else:
@@ -226,52 +222,37 @@ class AnalyticsRepository:
     ) -> list[tuple]:
         """
         Get turn distribution metrics.
-
-
+        OPTIMIZED: Filters early and avoids scanning all messages.
         """
         try:
             start_time = time.time()
             select_fields, group_fields = self._build_group_fields(group_by)
 
-            # Build valid_conversations subquery with early filtering
+            # OPTIMIZED: Build all filter conditions upfront
+            base_conditions = [
+                Conversation.created_at.between(start_date, end_date),
+                ~Conversation.is_test,
+                Account.name != "palona",
+            ]
+
+            # Add account filter early
             if filter_by and "account_id" in filter_by:
                 account_filter = filter_by["account_id"]
-
-                # Handle both single UUID and list of UUIDs
                 if isinstance(account_filter, list):
-                    account_condition = User.account_id.in_(account_filter)
+                    base_conditions.append(User.account_id.in_(account_filter))
                 else:
-                    account_condition = User.account_id == account_filter
+                    base_conditions.append(User.account_id == account_filter)
 
-                valid_conversations = (
-                    select(Conversation.id)
-                    .select_from(Conversation)
-                    .join(User, Conversation.user_id == User.id)
-                    .join(Account, User.account_id == Account.id)
-                    .where(
-                        Conversation.created_at.between(start_date, end_date),
-                        ~Conversation.is_test,
-                        Account.name != "palona",
-                        account_condition,
-                    )
-                    .subquery()
-                )
-            else:
-                valid_conversations = (
-                    select(Conversation.id)
-                    .select_from(Conversation)
-                    .join(User, Conversation.user_id == User.id)
-                    .join(Account, User.account_id == Account.id)
-                    .where(
-                        Conversation.created_at.between(start_date, end_date),
-                        ~Conversation.is_test,
-                        Account.name != "palona",
-                    )
-                    .subquery()
-                )
+            # CRITICAL OPTIMIZATION: Add project filter early (was applied too late before)
+            if filter_by and "project_id" in filter_by:
+                project_filter = filter_by["project_id"]
+                if isinstance(project_filter, list):
+                    base_conditions.append(Conversation.project_id.in_(project_filter))
+                else:
+                    base_conditions.append(Conversation.project_id == project_filter)
 
-            # Then calculate turns for those conversations
-            # Calculate turns as number of agent messages in the conversation
+            # OPTIMIZED: Single query that starts with filtered conversations
+            # and only processes messages from those conversations (not ALL messages)
             conversation_turns = (
                 select(
                     Conversation.id,
@@ -285,9 +266,13 @@ class AnalyticsRepository:
                         0,
                     ).label("turns"),
                 )
-                .select_from(Message)
-                .join(Conversation, Message.conversation_id == Conversation.id)
-                .where(Conversation.id.in_(select(valid_conversations.c.id)))
+                .select_from(Conversation)
+                .join(User, Conversation.user_id == User.id)
+                .join(Account, User.account_id == Account.id)
+                .outerjoin(
+                    Message, Message.conversation_id == Conversation.id
+                )  # LEFT JOIN to include conversations with no messages
+                .where(*base_conditions)
                 .group_by(Conversation.id)
                 .subquery()
             )
