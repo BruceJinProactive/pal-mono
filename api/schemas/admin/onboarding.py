@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from api.schemas.admin.account import AccountStatusResponse, CreateAccountRequest
 from api.schemas.admin.agent import CreateAgentRequest
 from api.schemas.admin.project import CreateProjectRequest
+from db.tables.accounts import OnboardingMethod
 
 
 class OnboardingAgentProject(BaseModel):
@@ -79,12 +80,40 @@ class OnboardingResponse(BaseModel):
 class SelfOnboardingRequest(BaseModel):
     """Self Onboarding Request"""
 
-    account_name: str
-    name: str
-    email: str
-    password: str
-    phone_number: str
-    account_display_name: str
+    # Account parameters
+    account_name: str = Field(..., description="Name of the created account")
+    account_display_name: str = Field(
+        ..., description="Display name of the created account"
+    )
+    phone_number: str = Field(..., description="Phone number of the created account")
+    account_onboarding_method: OnboardingMethod = Field(
+        ..., description="Onboarding method of the created account"
+    )
+
+    # User parameters
+    user_name: str = Field(..., description="Name of the created user")
+    email: str = Field(..., description="Email of the created user")
+    password: str = Field(..., description="Password of the created user")
+
+    # Agent parameters
+    agent_name: str = Field(..., description="Name of the created agent")
+    agent_communication_style: str
+    agent_interaction_guidelines: str = Field(
+        ..., description="Interaction guidelines of the created agent"
+    )
+    agent_voice_id: str = Field(..., description="Voice id of the created agent")
+    agent_background_noise: bool = Field(
+        ..., description="Background noise of the created agent"
+    )
+
+    project_name: str = Field(..., description="Name of the created project")
+    project_display_name: str = Field(
+        ..., description="Display name of the created project"
+    )
+    project_store_hours: str = Field(
+        ..., description="Store hours of the created project"
+    )
+    project_address: str = Field(..., description="Address of the created project")
 
 
 class SelfOnboardingResponse(BaseModel):

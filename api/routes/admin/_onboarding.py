@@ -1,7 +1,9 @@
+import uuid
+
 from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from api.schemas.admin.account import AccountParams, AccountStatus
+from api.schemas.admin.account import AccountParams
 from api.schemas.admin.onboarding import (
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
@@ -10,9 +12,14 @@ from api.schemas.admin.onboarding import (
     SelfOnboardingRequest,
     SelfOnboardingResponse,
 )
-from services import account_service, admin_service
+from db.tables.accounts import AccountStatus, OnboardingMethod
+from services import account_service, admin_service, agent_service, project_service
 from services.admin_service import ProjectSetup
 from services.admin_service.schema import CognitoUser
+from services.agent_service import AgentParams
+from services.number_service import NumberService
+from services.number_service._utils import NumberChannel
+from services.project_service import ProjectParams
 from utils.log import logger
 
 from ._account import _set_user_session, get_account_status
@@ -126,12 +133,15 @@ async def self_onboarding(
     request: SelfOnboardingRequest, response: Response, session: Session
 ) -> SelfOnboardingResponse:
     """
-    Sign up a new user and create an account. This function first creates an account
-    with the given account_name, then creates a Cognito user. If Cognito user creation
+    Self onboard a new user and create an account, agent, and project.
+    This function first creates an account with the given account_name, then creates a Cognito user. If Cognito user creation
     fails, the account is hard deleted to maintain consistency.
+    This function then creates an agent with the given agent_name, then creates a project with the given project_name.
+    This function then assigns a phone number to the project.
+    This function then returns the success status and account response.
 
     Args:
-        request: A SignUpRequest object containing the user's email, password, and account name.
+        request: A SignUpRequest object containing different fields for account, agent, and project.
         response: FastAPI response object for setting cookies.
         session: Database session for account operations.
 
@@ -143,34 +153,14 @@ async def self_onboarding(
     # Create a guest context for account creation (no authenticated user yet)
 
     account_name = request.account_name
+    user_name = request.user_name
     guest_context = create_guest_context(account_name, request.email)
-    params = AccountParams()
-    params.status = AccountStatus.initializing
-    params.display_name = request.account_display_name
-    params.phone_number = request.phone_number
-    try:
-        account_service.create_account(
-            session=session,
-            context=guest_context,
-            account_name=account_name,
-            params=params,
-            lead_id=None,
-            auto_commit=False,  # Don't commit yet, in case Cognito creation fails
-        )
-        logger.info(f"Created account {account_name} for user signup")
-    except ValueError as e:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to create account {account_name}: {e}",
-            headers={"Content-Type": "application/json"},
-        )
 
     try:
         user = admin_service.signup_account_user(
             account_name=request.account_name,
             user_email=request.email,
-            user_name=request.name,
+            user_name=user_name,
             password=request.password,
         )
     except ValueError as e:
@@ -188,6 +178,29 @@ async def self_onboarding(
             detail="Failed to fully create user session",
             headers={"Content-Type": "application/json"},
         )
+    else:
+        account_name = self_onboard_account(request, guest_context, session)
+        if not account_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to create account",
+                headers={"Content-Type": "application/json"},
+            )
+
+        agent_id = self_onboard_agent(request, guest_context, session, account_name)
+        if not agent_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to create agent",
+                headers={"Content-Type": "application/json"},
+            )
+
+        self_onboard_project(request, guest_context, session, account_name, agent_id)
+
+        logger.info(
+            f"[SelfOnboarding] Completed self onboarding for user {request.email}"
+        )
+
     session.commit()
     _set_user_session(response, user.email, user.session)
     account_response = get_account_status(account_name, guest_context, session)
@@ -196,3 +209,184 @@ async def self_onboarding(
         account_response=account_response,
     )
     # Function completes successfully - no return value needed
+
+
+def self_onboard_account(
+    request: SelfOnboardingRequest, context: UserContext, session: Session
+) -> str | None:
+    """
+    Self onboard an account. This function creates an account with the given account_name and other parameters.
+
+    Args:
+        request: A SelfOnboardingRequest object containing the account name, display name, phone number, and onboarding method.
+        context: A UserContext object containing the user context.
+        session: A Session object containing the database session.
+
+    Returns:
+        A SelfOnboardingResponse object containing the account name.
+    """
+    # Account Parameters assigned
+    account_name = request.account_name
+    account_params = AccountParams()
+    account_params.status = AccountStatus.initializing
+    account_params.onboarding_method = OnboardingMethod.self_onboarding
+    account_params.display_name = request.account_display_name
+    account_params.phone_number = request.phone_number
+    try:
+        new_account = account_service.create_account(
+            session=session,
+            context=context,
+            account_name=account_name,
+            params=account_params,
+            lead_id=None,
+            auto_commit=False,  # Don't commit yet, in case Cognito creation fails
+        )
+        logger.info(f"[SelfOnboarding] Created account {account_name} for user signup")
+    except ValueError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to create account {account_name}: {e}",
+            headers={"Content-Type": "application/json"},
+        )
+    return new_account.name if new_account else None
+
+
+def self_onboard_agent(
+    request: SelfOnboardingRequest,
+    context: UserContext,
+    session: Session,
+    account_name: str,
+) -> uuid.UUID | None:
+    """
+    Self onboard an agent. This function creates an agent with the given agent_name
+
+    Args:
+        request: A SelfOnboardingRequest object containing the agent name, communication style, interaction guidelines, voice id, and background noise.
+        context: A UserContext object containing the user context.
+        session: A Session object containing the database session.
+        account_name: A string containing the account name.
+
+    Returns:
+        The agent id.
+    """
+    agent_params = AgentParams()
+    agent_params.name = request.agent_name
+    agent_params.communication_style = request.agent_communication_style
+    agent_params.interaction_guidelines = request.agent_interaction_guidelines
+    agent_params.raw_config = {
+        "vapi_voice_config_enabled": True,
+        "dynamic_prompt_enabled": True,
+    }
+    agent_params.voice_id = request.agent_voice_id
+    agent_params.background_noise = True
+    try:
+        new_agent = agent_service.create_agent(
+            session=session,
+            context=context,
+            account_name=account_name,
+            params=agent_params,
+            auto_commit=False,
+        )
+        logger.info(f"[SelfOnboarding] Created agent {new_agent.name} for user signup")
+    except ValueError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to create agent {request.agent_name}: {e}",
+            headers={"Content-Type": "application/json"},
+        )
+    return new_agent.id if new_agent else None
+
+
+def self_onboard_project(
+    request: SelfOnboardingRequest,
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    agent_id: uuid.UUID,
+) -> uuid.UUID | None:
+    """
+    Self onboard a project. This function creates a project with the given project_name
+
+    Args:
+        request: A SelfOnboardingRequest object containing the project name, display name, store hours, address, and timezone.
+        context: A UserContext object containing the user context.
+        session: A Session object containing the database session.
+        account_name: A string containing the account name.
+        agent_id: A uuid.UUID object containing the agent id.
+
+    Returns:
+        The project id.
+    """
+    # Project Parameters assigned
+    project_params = ProjectParams()
+    project_params.name = request.project_name
+    project_params.display_name = request.project_display_name
+    project_params.agent_id = agent_id
+    # project_params.timezone = request.project_timezone
+    project_params.store_hours = request.project_store_hours
+    project_params.address = request.project_address
+    try:
+        new_project = project_service.create_project(
+            session=session,
+            context=context,
+            project_name=request.project_name,
+            account_name=account_name,
+            params=project_params,
+            auto_commit=False,
+        )
+        logger.info(
+            f"[SelfOnboarding] Created project {new_project.name} for user signup"
+        )
+        self_onboard_phone_number(new_project.name, new_project.id, context, session)
+
+        return new_project.id if new_project else None
+    except ValueError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to create project {request.project_name}: {e}",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+def self_onboard_phone_number(
+    project_name: str,
+    project_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> str | None:
+    """
+    Self onboard a phone number. This function purchases a phone number for the given project
+
+    Args:
+        project_name: A string containing the project name.
+        project_id: A uuid.UUID object containing the project id.
+        context: A UserContext object containing the user context.
+        session: A Session object containing the database session.
+
+    Returns:
+        The phone number.
+    """
+    try:
+        channels = [NumberChannel.VOICE]
+
+        phone_number = NumberService().assign_phone_number_to_project(
+            project_id=project_id,
+            project_name=project_name,
+            channels=channels,
+            session=session,
+            context=context,
+        )
+    except ValueError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to assign phone number to project {project_name}: {e}",
+            headers={"Content-Type": "application/json"},
+        )
+    logger.info(
+        f"[SelfOnboarding] Assigned phone number {phone_number} to project {project_name}"
+    )
+    return phone_number

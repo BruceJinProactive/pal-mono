@@ -1,7 +1,12 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from db.tables.accounts import AccountSegment, AccountStatus, BusinessIndustry
+from db.tables.accounts import (
+    AccountSegment,
+    AccountStatus,
+    BusinessIndustry,
+    OnboardingMethod,
+)
 from db.tables.types import TargetTier
 
 
@@ -27,3 +32,4 @@ class AccountParams:
     terms_accepted: bool | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
+    onboarding_method: OnboardingMethod | None = None
