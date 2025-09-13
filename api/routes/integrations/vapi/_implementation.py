@@ -48,18 +48,20 @@ def _get_webhook_config() -> tuple[str, str, list[str]]:
         tuple[str, str, list[str]]: (webhook_url, bearer_token, allowed_business_numbers)
     """
     # Resolve from environment variables. If missing, disable.
-    webhook_url = os.getenv("CALL_WEBHOOK_URL", "")
+    webhook_url = os.getenv("SALES_AGENT_WEBHOOK_URL", "")
     if not webhook_url:
-        logger.warning("CALL_WEBHOOK_URL not set; hangup webhook disabled")
+        logger.warning("SALES_AGENT_WEBHOOK_URL not set; hangup webhook disabled")
 
-    bearer_token = os.getenv("CALL_WEBHOOK_BEARER_TOKEN", "")
+    bearer_token = os.getenv("SALES_AGENT_WEBHOOK_BEARER_TOKEN", "")
     if not bearer_token:
-        logger.warning("CALL_WEBHOOK_BEARER_TOKEN not set; hangup webhook disabled")
+        logger.warning(
+            "SALES_AGENT_WEBHOOK_BEARER_TOKEN not set; hangup webhook disabled"
+        )
 
     # Allow a single number only
-    single = os.getenv("CALL_WEBHOOK_BUSINESS_NUMBER", "")
+    single = os.getenv("SALES_AGENT_WEBHOOK_BUSINESS_NUMBER", "")
     if not single:
-        logger.debug("CALL_WEBHOOK_BUSINESS_NUMBER not configured")
+        logger.debug("SALES_AGENT_WEBHOOK_BUSINESS_NUMBER not configured")
     allowed_numbers: list[str] = []
     if single.strip():
         allowed_numbers = [single.strip()]
