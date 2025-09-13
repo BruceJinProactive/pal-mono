@@ -1028,8 +1028,27 @@ async def handle_session_closure(message_data, session: AsyncSession):
                 )
             )
         else:
-            # Skip silently to avoid noisy logs when most numbers are not allowlisted
-            pass
+            # Log why the webhook was skipped
+            masked_business = phone_number[-4:] if phone_number else ""
+            masked_caller = customer_number[-4:] if customer_number else ""
+            if not webhook_url:
+                reason = "missing_webhook_url"
+            elif not webhook_secret:
+                reason = "missing_bearer_token"
+            elif not _is_allowed_business_number(phone_number, allowed_numbers):
+                reason = "business_number_not_allowlisted"
+            else:
+                reason = "unknown"
+            logger.info(
+                "Hangup webhook skipped",
+                extra={
+                    "call_id": call_id,
+                    "reason": reason,
+                    "business_last4": masked_business,
+                    "caller_last4": masked_caller,
+                    "allowlist_size": len(allowed_numbers),
+                },
+            )
 
         return {
             "status": "session closed",
