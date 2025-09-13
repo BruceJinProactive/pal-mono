@@ -1,10 +1,9 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, cast, distinct, not_, or_
+from sqlalchemy import Boolean, cast, distinct, not_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.functions import coalesce
 

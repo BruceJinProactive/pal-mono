@@ -2,9 +2,8 @@ import datetime
 import time
 import uuid
 
-from sqlalchemy import Float, case, exists, func
+from sqlalchemy import Float, case, exists, func, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
 from db.tables import (

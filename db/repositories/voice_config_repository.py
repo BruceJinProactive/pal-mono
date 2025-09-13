@@ -1,8 +1,8 @@
 import uuid
 from typing import Dict, List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from db.tables import VoiceConfig
 

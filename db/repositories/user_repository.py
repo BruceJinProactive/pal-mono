@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from sqlalchemy.orm import Session
 
 from db.tables import User

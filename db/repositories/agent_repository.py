@@ -1,9 +1,9 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from sqlalchemy.orm import Session, selectinload
 
 from db.tables import Agent

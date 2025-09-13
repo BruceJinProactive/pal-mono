@@ -1,10 +1,9 @@
 import uuid
 from typing import Any, Dict, List
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from sqlalchemy.orm import Session, selectinload
 
 from db.tables import Project
@@ -190,9 +189,9 @@ class ProjectRepository:
                 text(
                     """
                 EXISTS (
-                    SELECT 1 FROM unnest(channel_identifiers) AS channel_id 
-                    WHERE TRIM(channel_id) LIKE :voice_pattern 
-                       OR TRIM(channel_id) LIKE :sms_pattern 
+                    SELECT 1 FROM unnest(channel_identifiers) AS channel_id
+                    WHERE TRIM(channel_id) LIKE :voice_pattern
+                       OR TRIM(channel_id) LIKE :sms_pattern
                        OR TRIM(channel_id) LIKE :phone_pattern
                 )
                 """
