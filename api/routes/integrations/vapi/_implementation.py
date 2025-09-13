@@ -3,7 +3,9 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +38,165 @@ from ._utils import (
     get_transcriber_and_voice_config,
     validate_vapi_request,
 )
+
+
+def _get_webhook_config() -> tuple[str, str, list[str]]:
+    """
+    Resolve webhook configuration from environment variables.
+
+    Returns:
+        tuple[str, str, list[str]]: (webhook_url, bearer_token, allowed_business_numbers)
+    """
+    # Resolve from environment variables. If missing, disable.
+    webhook_url = os.getenv("CALL_WEBHOOK_URL", "")
+    if not webhook_url:
+        logger.warning("CALL_WEBHOOK_URL not set; hangup webhook disabled")
+
+    bearer_token = os.getenv("CALL_WEBHOOK_BEARER_TOKEN", "")
+    if not bearer_token:
+        logger.warning("CALL_WEBHOOK_BEARER_TOKEN not set; hangup webhook disabled")
+
+    # Allow a single number only
+    single = os.getenv("CALL_WEBHOOK_BUSINESS_NUMBER", "")
+    if not single:
+        logger.debug("CALL_WEBHOOK_BUSINESS_NUMBER not configured")
+    allowed_numbers: list[str] = []
+    if single.strip():
+        allowed_numbers = [single.strip()]
+    # If none provided, keep allowlist empty (webhook will be disabled by caller condition)
+
+    return webhook_url, bearer_token, allowed_numbers
+
+
+def _is_allowed_business_number(phone_number: str, allowed_numbers: list[str]) -> bool:
+    # Compare normalized E.164 strings (assume inputs are already E.164)
+    return phone_number in set(allowed_numbers)
+
+
+async def _post_hangup_webhook(payload: dict) -> bool:
+    webhook_url, bearer_token, _ = _get_webhook_config()
+    if not webhook_url or not bearer_token:
+        logger.warning(
+            "Webhook URL or token missing; skipping hangup webhook",
+            extra={"call_id": payload.get("call_id")},
+        )
+        return False
+    parsed = urlparse(webhook_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        logger.warning(
+            "Invalid webhook URL; must be HTTPS with host",
+            extra={"call_id": payload.get("call_id")},
+        )
+        return False
+
+    # Basic SSRF hardening: block local/privately scoped addresses
+    host = parsed.hostname or ""
+    try:
+        from ipaddress import ip_address
+
+        ip = ip_address(host)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+        ):
+            logger.warning(
+                "Invalid webhook URL; local/private address not allowed",
+                extra={"call_id": payload.get("call_id")},
+            )
+            return False
+    except ValueError:
+        # Not an IP literal; block common local hostnames
+        if host in {"localhost"} or host.endswith(".local"):
+            logger.warning(
+                "Invalid webhook URL; localhost/.local not allowed",
+                extra={"call_id": payload.get("call_id")},
+            )
+            return False
+
+    headers = {
+        "X-Event-Type": "call.hangup",
+        "X-Event-Version": "1",
+        "X-Request-Id": str(payload.get("call_id", "")),
+        "X-Idempotency-Key": str(payload.get("call_id", "")),
+        "User-Agent": "pal-mono/vapi-hangup-webhook",
+        "Authorization": f"Bearer {bearer_token}",
+    }
+
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=timeout, http2=True) as client:
+                resp = await client.post(webhook_url, json=payload, headers=headers)
+            if 200 <= resp.status_code < 300:
+                return True
+            retriable = resp.status_code == 429 or resp.status_code >= 500
+            logger.warning(
+                f"Webhook post non-2xx: status={resp.status_code}",
+                extra={"call_id": payload.get("call_id")},
+            )
+            if retriable and attempt < 2:
+                await _async_sleep(0.5 * (attempt + 1))
+                continue
+            return False
+        except Exception as e:
+            if attempt < 2:
+                await _async_sleep(0.5 * (attempt + 1))
+                continue
+            logger.error(
+                f"Failed to post webhook: {e}",
+                extra={"call_id": payload.get("call_id")},
+            )
+            return False
+
+    # Safety fallback to ensure all code paths return a boolean
+    return False
+
+
+async def _async_sleep(seconds: float) -> None:
+    # Local wrapper to avoid importing asyncio at module import time
+    import asyncio
+
+    await asyncio.sleep(seconds)
+
+
+async def _send_hangup_webhook_background(
+    payload: dict, business_last4: str, caller_last4: str
+) -> None:
+    """
+    Fire-and-forget sender for the hangup webhook with masked logging.
+    """
+    try:
+        ok = await _post_hangup_webhook(payload)
+        if ok:
+            logger.info(
+                "Hangup webhook sent",
+                extra={
+                    "call_id": payload.get("call_id"),
+                    "business_last4": business_last4,
+                    "caller_last4": caller_last4,
+                },
+            )
+        else:
+            logger.error(
+                "Hangup webhook failed",
+                extra={
+                    "call_id": payload.get("call_id"),
+                    "business_last4": business_last4,
+                    "caller_last4": caller_last4,
+                },
+            )
+    except Exception as e:
+        logger.error(
+            f"Hangup webhook error: {e}",
+            extra={
+                "call_id": payload.get("call_id"),
+                "business_last4": business_last4,
+                "caller_last4": caller_last4,
+            },
+        )
 
 
 def send_dd_latency(
@@ -834,6 +995,39 @@ async def handle_session_closure(message_data, session: AsyncSession):
 
         # Measure and record voice-to-voice latency metrics
         await _measure_voice_to_voice_latency(message_data)
+
+        # Send webhook on hangup asynchronously if the business number is allowlisted
+        webhook_url, webhook_secret, allowed_numbers = _get_webhook_config()
+        if (
+            webhook_url
+            and webhook_secret
+            and _is_allowed_business_number(phone_number, allowed_numbers)
+        ):
+            transcript_text = call_data.get("transcript") or ""
+            payload = {
+                "call_id": call_id,
+                "business_number": phone_number,
+                "caller_number": customer_number,
+                "ended_reason": call_data.get("endedReason"),
+                "duration_seconds": call_data.get("durationSeconds"),
+                "transcript": transcript_text,
+            }
+            # Log without PII; include only last 4 of numbers
+            masked_business = phone_number[-4:] if phone_number else ""
+            masked_caller = customer_number[-4:] if customer_number else ""
+            # Schedule background task to avoid blocking the request path
+            import asyncio as _asyncio
+
+            _asyncio.create_task(
+                _send_hangup_webhook_background(
+                    payload=payload,
+                    business_last4=masked_business,
+                    caller_last4=masked_caller,
+                )
+            )
+        else:
+            # Skip silently to avoid noisy logs when most numbers are not allowlisted
+            pass
 
         return {
             "status": "session closed",
