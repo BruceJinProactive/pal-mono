@@ -32,3 +32,4 @@ from .types import (
     UserSatisfaction,
 )
 from .users import User
+from .voice_configs import VoiceConfig
