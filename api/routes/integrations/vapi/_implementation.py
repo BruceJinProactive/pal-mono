@@ -1005,7 +1005,9 @@ async def handle_session_closure(message_data, session: AsyncSession):
             and webhook_secret
             and _is_allowed_business_number(phone_number, allowed_numbers)
         ):
-            transcript_text = call_data.get("transcript") or ""
+            transcript_text = (
+                message_data.get("transcript") or call_data.get("transcript") or ""
+            )
             payload = {
                 "call_id": call_id,
                 "business_number": phone_number,
