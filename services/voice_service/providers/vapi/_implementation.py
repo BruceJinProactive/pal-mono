@@ -1,0 +1,383 @@
+"""VAPI provider implementation."""
+
+import json
+import os
+import re
+from typing import Protocol, cast
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
+from utils.log import logger
+
+from ._utils import CALL_ANALYSIS_PROMPT
+
+
+class VoiceConfigProtocol(Protocol):
+    """Protocol defining the interface for voice configuration objects."""
+
+    language: str
+    voice_id: str
+    first_message: str
+    transfer_message: str
+    replacements: dict
+
+
+class VAPIProvider:
+    """VAPI voice provider implementation."""
+
+    def __init__(self):
+        pass
+
+    async def get_assistant_response(
+        self,
+        caller_info: dict,
+        project_id: UUID,
+        session: AsyncSession,
+    ) -> dict:
+        """
+        Create assistant response for VAPI call.
+
+        Args:
+            caller_info: Dictionary containing caller information with keys:
+                - sender_identifier: customer phone number
+                - recipient_identifier: business phone number
+                - call_id: unique call identifier
+            project_id: The project identifier (UUID)
+            session: The database session
+
+        Returns:
+            dict: Assistant response configuration for VAPI
+        """
+        try:
+            call_id = caller_info.get("call_id")
+            logger.debug(
+                f"Creating assistant response for call {call_id} with caller info: {caller_info}"
+            )
+
+            # Get voice configurations
+            voice_configs = await self._get_voice_configs(session, project_id)
+
+            # Create assistant configuration
+            return self._create_assistant_config(voice_configs, caller_info)
+
+        except Exception as e:
+            logger.error(f"Error creating assistant response: {str(e)}")
+            return {"error": str(e)}
+
+    async def _get_voice_configs(
+        self, session: AsyncSession, project_id: UUID
+    ) -> list[VoiceConfigProtocol]:
+        """Get voice configurations for the project."""
+        voice_repo = VoiceConfigRepositoryAsync(session)
+        voice_configs = await voice_repo.get_voice_configs_by_project(project_id)
+
+        if not voice_configs:
+            logger.error(f"No voice configuration found for project {project_id}")
+            raise ValueError(f"No voice configuration found for project {project_id}")
+
+        # Cast to protocol - VoiceConfig objects satisfy the VoiceConfigProtocol interface
+        return cast(list[VoiceConfigProtocol], voice_configs)
+
+    def _create_transcriber(self, language: str) -> dict:
+        """Create transcriber configuration based on language."""
+        # Map human-readable language names to transcriber configs
+        language_configs = {
+            "english": {"model": "nova-3", "language": "en-US", "provider": "deepgram"},
+            "spanish": {"model": "nova-2", "language": "es", "provider": "deepgram"},
+            "chinese": {
+                "model": "nova-2",
+                "language": "zh-CN",
+                "provider": "deepgram",
+                "endpointing": 300,
+            },
+            "triage": {
+                "model": "gemini-2.5-flash",
+                "language": "Multilingual",
+                "provider": "google",
+            },
+        }
+
+        # Return specific config if language is found, otherwise default to English
+        return language_configs.get(language.lower(), language_configs["english"])
+
+    def _create_voice(self, voice_config: VoiceConfigProtocol) -> dict:
+        """Create voice configuration based on voice_config."""
+        # Base voice configuration
+        vapi_voice_config = {
+            "provider": "cartesia",
+            "voiceId": voice_config.voice_id,
+            "model": "sonic-2",
+            "experimentalControls": {"speed": "normal"},
+        }
+
+        # Add chunkPlan with formatPlan only if replacements exist
+        if voice_config.replacements:
+            chunk_plan = {"formatPlan": {"replacements": []}}
+
+            for key, value in voice_config.replacements.items():
+                escaped_key = re.escape(str(key))
+
+                # Check if key contains "wordy" characters (Latin letters/numbers)
+                # For such keys, use word boundaries (\b)
+                # For non-wordy keys (like Chinese ideographs), match literal token
+                if re.search(r"[a-zA-Z0-9]", str(key)):
+                    # Contains wordy characters - use word boundaries
+                    pattern = f"(?i)\\b{escaped_key}\\b"
+                else:
+                    # Non-wordy characters (like Chinese) - match literally without boundaries
+                    pattern = f"(?i){escaped_key}"
+
+                chunk_plan["formatPlan"]["replacements"].append(
+                    {"type": "regex", "regex": pattern, "value": value}
+                )
+
+            vapi_voice_config["chunkPlan"] = chunk_plan
+
+        return vapi_voice_config
+
+    def _get_analysis_plan(self) -> dict:
+        """
+        Returns the complete analysis plan configuration for VAPI structured data extraction.
+
+        This function creates the analysisPlan configuration that includes:
+        - Structured data plan with the call analysis prompt
+        - System and user message templates
+        - Timeout configuration
+
+        Returns:
+            dict: Complete analysis plan configuration ready for VAPI
+        """
+        return {
+            "structuredDataPlan": {
+                "enabled": True,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": CALL_ANALYSIS_PROMPT,
+                    },
+                    {
+                        "role": "user",
+                        "content": "Here is the transcript: {{transcript}}\n\nHere is the ended reason of the call: {{endedReason}}\n\nAnalyze this conversation and provide the structured data.",
+                    },
+                ],
+                "timeoutSeconds": 15,
+            }
+        }
+
+    def _create_assistant_config(
+        self, voice_configs: list[VoiceConfigProtocol], caller_info: dict
+    ) -> dict:
+        """Create assistant configuration based on number of voice configs."""
+        # Separate triage and non-triage configs
+        triage_configs = [vc for vc in voice_configs if vc.language.lower() == "triage"]
+        non_triage_configs = [
+            vc for vc in voice_configs if vc.language.lower() != "triage"
+        ]
+
+        if not non_triage_configs:
+            call_id = caller_info.get("call_id")
+            logger.error(f"Missing language assistant config for call: {call_id}")
+            raise ValueError("Missing language assistant config")
+
+        if len(non_triage_configs) == 1:
+            assistant_config = self._create_single_assistant_config(
+                non_triage_configs[0], caller_info
+            )
+            return {"assistant": assistant_config}
+        else:
+            if not triage_configs:
+                call_id = caller_info.get("call_id")
+                logger.error(f"Missing triage assistant config for call: {call_id}")
+                raise ValueError("Missing triage assistant config")
+
+            return self._create_multi_assistant_config(
+                non_triage_configs, triage_configs, caller_info
+            )
+
+    def _create_single_assistant_config(
+        self, voice_config: VoiceConfigProtocol, caller_info: dict
+    ) -> dict:
+        """Create single assistant configuration."""
+        # Check if language is 'triage' which is not allowed for single assistant
+        if voice_config.language.lower() == "triage":
+            call_id = caller_info.get("call_id")
+            logger.error(
+                f"Cannot create single assistant with 'triage' language for call {call_id}"
+            )
+            raise ValueError(
+                "Single assistant configuration cannot use 'triage' language"
+            )
+
+        # Use first_message from voice_config or create default greeting
+        if voice_config.first_message:
+            greeting = voice_config.first_message
+        else:
+            greeting = "Hi, this is a voice ai assistant. How can I help you today?"
+
+        # Create transcriber configuration based on language
+        transcriber = self._create_transcriber(voice_config.language)
+
+        # Create voice configuration based on voice_config
+        voice = self._create_voice(voice_config)
+
+        background_sound = "off"
+
+        # Prepare assistant configuration
+        api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
+        assistant_config = {
+            "name": f"{voice_config.language.lower()}_assistant",
+            "firstMessage": greeting,
+            "transcriber": transcriber,
+            "model": {
+                "provider": "custom-llm",
+                "url": f"{api_url}/v1",
+                "model": json.dumps(caller_info),
+            },
+            "voice": voice,
+            "backgroundSound": background_sound,
+            "silenceTimeoutSeconds": 60,
+            "backgroundDenoisingEnabled": True,
+            "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
+            "analysisPlan": self._get_analysis_plan(),
+        }
+
+        return assistant_config
+
+    def _create_triage_assistant(
+        self,
+        triage_config: VoiceConfigProtocol,
+        caller_info: dict,
+        non_triage_configs: list[VoiceConfigProtocol],
+    ) -> dict:
+        """Create triage assistant configuration."""
+        # Use first_message from triage_config or create default greeting
+        if triage_config.first_message:
+            greeting = triage_config.first_message
+        else:
+            greeting = "Hi, this is a voice ai assistant. How can I help you today?"
+
+        # Create transcriber configuration for triage (multilingual)
+        transcriber = self._create_transcriber(triage_config.language)
+
+        # Create voice configuration for triage
+        voice = self._create_voice(triage_config)
+
+        background_sound = "off"
+
+        # Prepare triage assistant configuration
+        api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
+        triage_assistant_config = {
+            "name": "triage_assistant",
+            "firstMessage": greeting,
+            "transcriber": transcriber,
+            "model": {
+                "provider": "custom-llm",
+                "url": f"{api_url}/v1",
+                "model": json.dumps(caller_info),
+            },
+            "voice": voice,
+            "backgroundSound": background_sound,
+            "silenceTimeoutSeconds": 60,
+            "backgroundDenoisingEnabled": True,
+            "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
+        }
+
+        # Add destinations for language assistants if provided
+        if non_triage_configs:
+            destinations = self._create_transfer_destinations(non_triage_configs)
+            triage_assistant_config["assistantDestinations"] = destinations
+
+        return triage_assistant_config
+
+    def _create_transfer_destinations(
+        self, non_triage_configs: list[VoiceConfigProtocol]
+    ) -> list[dict]:
+        """Create transfer destinations for triage assistant."""
+        destinations = []
+
+        for voice_config in non_triage_configs:
+            language = voice_config.language.lower()
+            assistant_name = f"{language}_assistant"
+
+            # Use transfer_message from voice_config or create default
+            transfer_message = voice_config.transfer_message or "One second."
+
+            # Create detailed description based on language
+            description = self._create_transfer_description(language)
+
+            destination = {
+                "assistantName": assistant_name,
+                "message": transfer_message,
+                "description": description,
+                "transferMode": "swap-system-message-in-history",
+                "type": "assistant",
+            }
+            destinations.append(destination)
+
+        return destinations
+
+    def _create_transfer_description(self, language: str) -> str:
+        """Create detailed transfer description for each language."""
+        descriptions = {
+            "english": 'Transfer to English-speaking assistant when customer prefers English, says "english", speaks English, or uses/requests any language other than those explicitly supported.',
+            "spanish": 'Transfer to Spanish-speaking assistant when customer prefers Spanish, says "español", or uses Spanish language.',
+            "chinese": 'Transfer to Chinese-speaking assistant when customer prefers Chinese, says "中文", uses Chinese characters, or indicates Chinese language preference.',
+        }
+
+        # Return specific description or create a generic one
+        return descriptions.get(
+            language,
+            f"Transfer to {language.title()}-speaking assistant when customer prefers {language.title()} language or indicates {language.title()} language preference.",
+        )
+
+    def _create_multi_assistant_config(
+        self,
+        non_triage_configs: list[VoiceConfigProtocol],
+        triage_configs: list[VoiceConfigProtocol],
+        caller_info: dict,
+    ) -> dict:
+        """Create multi-assistant configuration (squad)."""
+        # Create triage assistant
+        triage_assistant = self._create_triage_assistant(
+            triage_configs[0], caller_info, non_triage_configs
+        )
+
+        # Create language assistants
+        language_assistants = []
+        for voice_config in non_triage_configs:
+            # Create individual assistant for each non-triage voice config
+            assistant = self._create_single_assistant_config(voice_config, caller_info)
+            language_assistants.append(assistant)
+
+        return self._build_squad_config(triage_assistant, language_assistants)
+
+    def _build_squad_config(
+        self,
+        triage_assistant: dict,
+        language_assistants: list[dict],
+    ) -> dict:
+        """Build the complete squad configuration with triage and language assistants."""
+        # Build squad members - triage assistant first, then language assistants
+        members = []
+
+        # Add triage assistant as first member
+        members.append(
+            {
+                "assistant": triage_assistant
+                # assistantDestinations already included in the triage assistant config
+            }
+        )
+
+        # Add language assistants as remaining members
+        for assistant in language_assistants:
+            members.append({"assistant": assistant})
+
+        # Return complete squad configuration
+        squad_config = {
+            "name": "Multilingual Support Squad",
+            "members": members,
+        }
+
+        return {"squad": squad_config}
