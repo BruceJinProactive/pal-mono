@@ -137,6 +137,20 @@ class VAPIProvider:
 
         return vapi_voice_config
 
+    def _create_start_speaking_plan(self, language: str) -> dict:
+        """Create startSpeakingPlan configuration based on language."""
+        if language.lower() == "english":
+            return {"waitSeconds": 0.1, "smartEndpointingPlan": {"provider": "livekit"}}
+        else:
+            return {
+                "transcriptionEndpointingPlan": {
+                    "onPunctuationSeconds": 0.1,
+                    "onNoPunctuationSeconds": 0.3,
+                    "onNumberSeconds": 0.5,
+                },
+                "waitSeconds": 0.1,
+            }
+
     def _get_analysis_plan(self) -> dict:
         """
         Returns the complete analysis plan configuration for VAPI structured data extraction.
@@ -240,6 +254,9 @@ class VAPIProvider:
             "silenceTimeoutSeconds": 60,
             "backgroundDenoisingEnabled": True,
             "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
+            "startSpeakingPlan": self._create_start_speaking_plan(
+                voice_config.language
+            ),
             "analysisPlan": self._get_analysis_plan(),
         }
 
@@ -282,6 +299,9 @@ class VAPIProvider:
             "silenceTimeoutSeconds": 60,
             "backgroundDenoisingEnabled": True,
             "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
+            "startSpeakingPlan": self._create_start_speaking_plan(
+                triage_config.language
+            ),
         }
 
         # Add destinations for language assistants if provided
