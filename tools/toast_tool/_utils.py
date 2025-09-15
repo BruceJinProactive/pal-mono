@@ -633,6 +633,7 @@ def parse_service_periods(
 
 
 def get_toast_access_token_from_aws(
+    store_id: str,
     token_api_endpoint: Optional[str] = None,
 ) -> ToastAccessToken:
     """
@@ -643,7 +644,9 @@ def get_toast_access_token_from_aws(
         logger.debug(
             "[ToastTool.get_toast_access_token_from_aws] Getting token from AWS secrets"
         )
-        token_json_str = get_client_secret_with_fallback("toast_access_token")
+        token_json_str = get_client_secret_with_fallback(
+            f"{store_id}_toast_access_token"
+        )
         token_data = json.loads(token_json_str)
         # Reconstruct ToastAccessToken from stored data
         token = ToastAccessToken.from_toast_response(token_data)
@@ -661,7 +664,7 @@ def get_toast_access_token_from_aws(
             exc_info=True,
         )
         return refresh_toast_access_token_from_aws(
-            token_api_endpoint=token_api_endpoint
+            store_id=store_id, token_api_endpoint=token_api_endpoint
         )
 
     # Check expiration outside the try so refresh errors are not swallowed
@@ -670,12 +673,13 @@ def get_toast_access_token_from_aws(
             "[ToastTool.get_toast_access_token_from_aws] Token expired, refreshing"
         )
         return refresh_toast_access_token_from_aws(
-            token_api_endpoint=token_api_endpoint
+            store_id=store_id, token_api_endpoint=token_api_endpoint
         )
     return token
 
 
 def refresh_toast_access_token_from_aws(
+    store_id: str,
     token_api_endpoint: Optional[str] = None,
 ) -> ToastAccessToken:
     """
@@ -684,8 +688,8 @@ def refresh_toast_access_token_from_aws(
     logger.debug(
         "[ToastTool.refresh_toast_access_token_from_aws] Refreshing token from API"
     )
-    api_key = get_client_secret_with_fallback("TOAST_CLIENT_ID")
-    api_secret = get_client_secret_with_fallback("TOAST_CLIENT_SECRET")
+    api_key = get_client_secret_with_fallback(f"{store_id}_TOAST_CLIENT_ID")
+    api_secret = get_client_secret_with_fallback(f"{store_id}_TOAST_CLIENT_SECRET")
     bearer_token = get_toast_access_token(
         api_key,
         api_secret,
@@ -698,7 +702,7 @@ def refresh_toast_access_token_from_aws(
     # Save the complete ToastAccessToken object to AWS secrets
     token_json = bearer_token.model_dump_json()
     try:
-        upsert_client_secret("toast_access_token", token_json)
+        upsert_client_secret(f"{store_id}_toast_access_token", token_json)
     except Exception as e:
         logger.warning(
             f"[ToastTool.refresh_toast_access_token_from_aws] Token refreshed but failed to persist to Secrets Manager: {e}"

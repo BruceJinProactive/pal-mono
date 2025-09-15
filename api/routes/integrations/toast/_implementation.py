@@ -98,14 +98,15 @@ def check_and_refresh_dining_options(session):
         .all()
     )
 
-    # Get bearer token from access token
-    bearer_token = get_toast_access_token_from_aws()
-
     # Iterate over each integration and get dining options for each store
     store_with_take_out_dining_option = set()
     store_without_take_out_dining_option = set()
 
     for integration in integrations:
+        # Get bearer token from access token
+        bearer_token = get_toast_access_token_from_aws(
+            store_id=integration.business_id,
+        )
         if not integration.business_id:
             logger.warning(
                 "[ToastWebhook.check_and_refresh_dining_options] Integration has no business ID, skipping"

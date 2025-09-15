@@ -2,7 +2,6 @@ import asyncio
 import json
 import textwrap
 import traceback
-from functools import cached_property
 from typing import Optional
 
 import polyline
@@ -110,11 +109,12 @@ class ToastTool(Toolkit):
         # loop = asyncio.get_running_loop()
         # loop.create_task(asyncio.to_thread(lambda: self._toast_bearer_token))
 
-    # TODO: Decide how to check and refresh the bearer token when it expires
-    @cached_property
+    @property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
-            return get_toast_access_token_from_aws(self.token_api_endpoint)
+            return get_toast_access_token_from_aws(
+                self.store_id, self.token_api_endpoint
+            )
 
     @tool
     def check_address(self, address: str) -> str:
