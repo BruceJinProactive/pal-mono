@@ -4,7 +4,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from db.tables.accounts import AccountSegment, AccountStatus, BusinessIndustry
+from db.tables.accounts import (
+    AccountSegment,
+    AccountStatus,
+    BusinessIndustry,
+    OnboardingMethod,
+)
 from db.tables.types import TargetTier
 from services.account_service import AccountParams
 
@@ -35,6 +40,7 @@ class Account(BaseModel):
     terms_accepted: bool = False
     phone_number: str | None = None
     channels: list[str] | None = None
+    onboarding_method: OnboardingMethod
 
 
 class AccountSummary(BaseModel):

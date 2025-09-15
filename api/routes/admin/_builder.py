@@ -24,6 +24,7 @@ from api.schemas.admin.subscription import (
     SubscriptionPlan,
 )
 from db.repositories.prompt_repository import PromptRepository
+from db.tables.accounts import OnboardingMethod
 from services.admin_service.schema import CreatedProjectInfo
 from services.integration_service.schema import IntegrationDetail
 
@@ -51,6 +52,8 @@ def build_account(account: db.Account) -> Account:
         contract_signed=account.contract_signed,
         phone_number=account.phone_number,
         channels=account.channels,
+        onboarding_method=account.onboarding_method
+        or OnboardingMethod.manage_onboarding,
     )
 
 

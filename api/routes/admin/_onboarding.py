@@ -123,7 +123,7 @@ async def generate_agent_prompts_api(
         )
     except Exception as err:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to generate agent prompts: {str(err)}",
             headers={"Content-Type": "application/json"},
         )
@@ -151,55 +151,40 @@ async def self_onboarding(
         HTTPException: If there is an error signing up the user or creating the account.
     """
     # Create a guest context for account creation (no authenticated user yet)
-
     account_name = request.account_name
-    user_name = request.user_name
     guest_context = create_guest_context(account_name, request.email)
 
-    try:
-        user = admin_service.signup_account_user(
-            account_name=request.account_name,
-            user_email=request.email,
-            user_name=user_name,
-            password=request.password,
-        )
-    except ValueError as e:
-        # undo the account creation
-        session.rollback()
+    # Create Cognito user
+
+    # Create account, agent, and project
+    account_name = self_onboard_account(request, guest_context, session)
+    if not account_name:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+            detail="Failed to create account",
             headers={"Content-Type": "application/json"},
         )
-    if not user.session:
-        session.rollback()
+
+    agent_id = self_onboard_agent(request, guest_context, session, account_name)
+    if not agent_id:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fully create user session",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create agent",
             headers={"Content-Type": "application/json"},
         )
-    else:
-        account_name = self_onboard_account(request, guest_context, session)
-        if not account_name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to create account",
-                headers={"Content-Type": "application/json"},
-            )
 
-        agent_id = self_onboard_agent(request, guest_context, session, account_name)
-        if not agent_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to create agent",
-                headers={"Content-Type": "application/json"},
-            )
+    self_onboard_project(request, guest_context, session, account_name, agent_id)
+    # Create Cognito user. If this fails, the account and agent will be hard deleted.
 
-        self_onboard_project(request, guest_context, session, account_name, agent_id)
-
-        logger.info(
-            f"[SelfOnboarding] Completed self onboarding for user {request.email}"
+    user = self_onboard_user(request, session)
+    if not user or not user.session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create user",
+            headers={"Content-Type": "application/json"},
         )
+
+    logger.info(f"[SelfOnboarding] Completed self onboarding for user {request.email}")
 
     session.commit()
     _set_user_session(response, user.email, user.session)
@@ -272,6 +257,7 @@ def self_onboard_agent(
     """
     agent_params = AgentParams()
     agent_params.name = request.agent_name
+    agent_params.greeting_message = request.agent_greeting_message
     agent_params.communication_style = request.agent_communication_style
     agent_params.interaction_guidelines = request.agent_interaction_guidelines
     agent_params.raw_config = {
@@ -390,3 +376,44 @@ def self_onboard_phone_number(
         f"[SelfOnboarding] Assigned phone number {phone_number} to project {project_name}"
     )
     return phone_number
+
+
+def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> CognitoUser:
+    """
+    Self onboard a user by creating a Cognito user account.
+
+    Args:
+        request: SelfOnboardingRequest containing user details
+        session: Database session for rollback if needed
+
+    Returns:
+        CognitoUser: The created user with session details
+
+    Raises:
+        HTTPException: If user creation fails
+    """
+    try:
+        user = admin_service.signup_account_user(
+            account_name=request.account_name,
+            user_email=request.email,
+            user_name=request.user_name,
+            password=request.password,
+        )
+        logger.info(f"[SelfOnboarding] Created Cognito user for {request.email}")
+    except ValueError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    if not user.session:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to fully create user session",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return user

@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 from api.schemas.admin.account import AccountStatusResponse, CreateAccountRequest
 from api.schemas.admin.agent import CreateAgentRequest
 from api.schemas.admin.project import CreateProjectRequest
-from db.tables.accounts import OnboardingMethod
 
 
 class OnboardingAgentProject(BaseModel):
@@ -86,9 +85,6 @@ class SelfOnboardingRequest(BaseModel):
         ..., description="Display name of the created account"
     )
     phone_number: str = Field(..., description="Phone number of the created account")
-    account_onboarding_method: OnboardingMethod = Field(
-        ..., description="Onboarding method of the created account"
-    )
 
     # User parameters
     user_name: str = Field(..., description="Name of the created user")
@@ -97,14 +93,16 @@ class SelfOnboardingRequest(BaseModel):
 
     # Agent parameters
     agent_name: str = Field(..., description="Name of the created agent")
-    agent_communication_style: str
+    agent_greeting_message: str = Field(
+        ..., description="Greeting message of the created agent"
+    )
+    agent_communication_style: str = Field(
+        ..., description="Communication style of the created agent"
+    )
     agent_interaction_guidelines: str = Field(
         ..., description="Interaction guidelines of the created agent"
     )
     agent_voice_id: str = Field(..., description="Voice id of the created agent")
-    agent_background_noise: bool = Field(
-        ..., description="Background noise of the created agent"
-    )
 
     project_name: str = Field(..., description="Name of the created project")
     project_display_name: str = Field(
