@@ -10,6 +10,7 @@ from .integration import Integration, ProjectIntegration
 from .lead import Lead
 from .messages import Message
 from .orders import Order
+from .page_versions import PageType, PageVersion
 from .phonecalls import PhoneCall
 from .pos_integration import POSIntegration
 from .projects import Project
