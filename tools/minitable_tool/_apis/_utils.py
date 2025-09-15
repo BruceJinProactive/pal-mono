@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from typing import Dict, Optional
 
 import requests
@@ -8,7 +9,7 @@ from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
 DEFAULT_TIMEOUT = 10
-MINITABLE_HOST = "ai.minitable.link"
+MINITABLE_HOST = os.environ.get("MINITABLE_HOST", "ai.minitable.link")
 
 
 class MiniTableResponse:
