@@ -388,7 +388,7 @@ class SquareTool(Toolkit):
             }
             converted_items.append(item_dict)
 
-            logger.info(
+            logger.debug(
                 f"[SquareTool._validate_extracted_order] Validated '{item.item_name}' "
                 f"(item_id: {item.item_id}, variation_id: {item.variation_id}) "
                 f"with {len(processed_modifiers)} valid modifiers"
@@ -467,7 +467,7 @@ class SquareTool(Toolkit):
                 )
 
             # Step 1: Extract items with modifiers from chat history using Pinecone retrieval
-            logger.info(
+            logger.debug(
                 "[SquareTool] Step 1: Extracting items with modifiers from chat history using Pinecone retrieval"
             )
             extracted_order = self._construct_order()
@@ -478,12 +478,12 @@ class SquareTool(Toolkit):
             if not extracted_order.items:
                 return "No food items found in the conversation history."
 
-            logger.info(
+            logger.debug(
                 f"[SquareTool] Found {len(extracted_order.items)} items to order"
             )
 
             # Step 2: Validate extracted order
-            logger.info("[SquareTool] Step 2: Validating extracted order")
+            logger.debug("[SquareTool] Step 2: Validating extracted order")
             is_valid, error_message, converted_items = self._validate_extracted_order(
                 extracted_order
             )
@@ -492,7 +492,7 @@ class SquareTool(Toolkit):
                 return error_message
 
             # Step 3: Create order with modifiers
-            logger.info("[SquareTool] Step 3: Creating Square order with modifiers")
+            logger.debug("[SquareTool] Step 3: Creating Square order with modifiers")
 
             # Get customer name and phone number
             customer_name = extracted_order.customer_name
@@ -511,7 +511,7 @@ class SquareTool(Toolkit):
                 return "Failed to create order."
 
             # Step 4: Create payment link
-            logger.info("[SquareTool] Step 4: Creating payment link")
+            logger.debug("[SquareTool] Step 4: Creating payment link")
             total_quantity = sum(item["quantity"] for item in converted_items)
             payment_url = self._create_payment_link(created_order, total_quantity)
 
