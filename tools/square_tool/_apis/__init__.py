@@ -269,6 +269,7 @@ def create_payment_link(
                 tax_readonly_fields = {
                     "auto_applied",
                     "applied_money",
+                    "percentage",  # Can't have both percentage and catalog_object_id
                 }
 
                 for i, tax in enumerate(order_data["taxes"]):
