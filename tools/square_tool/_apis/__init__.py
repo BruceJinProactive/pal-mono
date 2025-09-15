@@ -270,6 +270,7 @@ def create_payment_link(
                     "auto_applied",
                     "applied_money",
                     "percentage",  # Can't have both percentage and catalog_object_id
+                    "type",  # Can't have both type and catalog_object_id
                 }
 
                 for i, tax in enumerate(order_data["taxes"]):
