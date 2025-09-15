@@ -116,3 +116,13 @@ class AuthType(str, enum.Enum):
 class PaymentMethod(str, enum.Enum):
     autopay = "autopay"
     invoice = "invoice"
+
+
+class SpeechRate(str, enum.Enum):
+    """Speech rate enum for voice configuration."""
+
+    slowest = "slowest"
+    slower = "slower"
+    normal = "normal"
+    faster = "faster"
+    fastest = "fastest"

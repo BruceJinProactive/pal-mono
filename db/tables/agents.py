@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, List, Optional
@@ -15,21 +14,11 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Enum, String
 
 from .base import Base
-from .types import AgentType, Language
+from .types import AgentType, Language, SpeechRate
 
 if TYPE_CHECKING:
     from .accounts import Account
     from .projects import Project
-
-
-class SpeechRate(str, enum.Enum):
-    """Speech Rate Enum"""
-
-    slowest = "slowest"
-    slower = "slower"
-    normal = "normal"
-    faster = "faster"
-    fastest = "fastest"
 
 
 class Agent(Base):
