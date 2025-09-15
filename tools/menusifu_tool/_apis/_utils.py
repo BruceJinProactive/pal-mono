@@ -22,7 +22,7 @@ def parse_json(model_class, json_str: str):
         data_model = model_class.model_validate_json(json_str)
         return data_model
     except ValidationError as e:
-        logger.info(e)
+        logger.debug(e)
     return None
 
 
@@ -62,7 +62,7 @@ def connect_menusifu_api(
     try:
         # Expect base_url to be just the hostname (e.g., "assistant.mealkeyway.com")
         hostname = base_url.strip("/")
-        logger.info(f"Creating HTTPS connection to hostname: {hostname}")
+        logger.debug(f"Creating HTTPS connection to hostname: {hostname}")
 
         # Create connection
         conn = http.client.HTTPSConnection(hostname)
@@ -114,5 +114,5 @@ def connect_menusifu_api(
 
     except Exception as e:
         error_msg = f"Failed to connect to MenuSifu API: {str(e)}"
-        logger.info(f"[MenuSifuAPI] connect_menusifu_api error: {error_msg}")
+        logger.debug(f"[MenuSifuAPI] connect_menusifu_api error: {error_msg}")
         raise ValueError(error_msg)

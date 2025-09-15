@@ -48,7 +48,7 @@ def get_merchant_menu(
         if response["status"] != 200:
             error_msg = f"MenuSifu API call failed with status {response['status']}: {response['decoded_body']}"
 
-            logger.info(f"[MenuSifuAPI] get_merchant_menu error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] get_merchant_menu error: {error_msg}")
             raise ValueError(error_msg)
 
         # Validate and return structured response using Pydantic model
@@ -56,7 +56,7 @@ def get_merchant_menu(
         if menu_response is None:
             error_msg = "Failed to parse API response into MenuResponse model"
 
-            logger.info(f"[MenuSifuAPI] get_merchant_menu error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] get_merchant_menu error: {error_msg}")
             raise ValueError(error_msg)
 
         return menu_response
@@ -64,7 +64,7 @@ def get_merchant_menu(
     except Exception as e:
         error_msg = f"Failed to get merchant menu: {str(e)}"
 
-        logger.info(f"[MenuSifuAPI] get_merchant_menu error: {error_msg}")
+        logger.debug(f"[MenuSifuAPI] get_merchant_menu error: {error_msg}")
         raise ValueError(error_msg) from e
 
 
@@ -113,7 +113,7 @@ def calculate_order_total(
             else:
                 error_msg += "\nResponse body: (empty)"
 
-            logger.info(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
             raise ValueError(error_msg)
 
         # Parse JSON response
@@ -124,7 +124,7 @@ def calculate_order_total(
                 f"Invalid JSON response from MenuSifu API: {response['decoded_body']}"
             )
 
-            logger.info(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
             raise ValueError(error_msg)
 
         # Check if response indicates success or business logic error
@@ -136,7 +136,7 @@ def calculate_order_total(
             if calculation_response is None:
                 error_msg = "Failed to parse successful response into OrderCalculationResponse model"
 
-                logger.info(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
+                logger.debug(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
                 raise ValueError(error_msg)
             return calculation_response
         else:
@@ -147,14 +147,14 @@ def calculate_order_total(
             if error_response is None:
                 error_msg = "Failed to parse error response into OrderCalculationErrorResponse model"
 
-                logger.info(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
+                logger.debug(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
                 raise ValueError(error_msg)
             return error_response
 
     except Exception as e:
         error_msg = f"Failed to calculate order total: {str(e)}"
 
-        logger.info(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
+        logger.debug(f"[MenuSifuAPI] calculate_order_total error: {error_msg}")
         raise ValueError(error_msg) from e
 
 
@@ -203,7 +203,7 @@ def generate_order(
             else:
                 error_msg += "\nResponse body: (empty)"
 
-            logger.info(f"[MenuSifuAPI] generate_order error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] generate_order error: {error_msg}")
             raise ValueError(error_msg)
 
         # Parse JSON response
@@ -214,14 +214,14 @@ def generate_order(
                 f"Invalid JSON response from MenuSifu API: {response['decoded_body']}"
             )
 
-            logger.info(f"[MenuSifuAPI] generate_order error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] generate_order error: {error_msg}")
             raise ValueError(error_msg)
 
         # Check if response indicates success
         if not response_data.get("successful", False):
             error_msg = f"Order generation failed: {response_data}"
 
-            logger.info(f"[MenuSifuAPI] generate_order error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] generate_order error: {error_msg}")
             raise ValueError(error_msg)
 
         # Parse successful response
@@ -229,7 +229,7 @@ def generate_order(
         if order_response is None:
             error_msg = "Failed to parse response into OrderGenerationResponse model"
 
-            logger.info(f"[MenuSifuAPI] generate_order error: {error_msg}")
+            logger.debug(f"[MenuSifuAPI] generate_order error: {error_msg}")
             raise ValueError(error_msg)
 
         return order_response
@@ -237,5 +237,5 @@ def generate_order(
     except Exception as e:
         error_msg = f"Failed to generate order: {str(e)}"
 
-        logger.info(f"[MenuSifuAPI] generate_order error: {error_msg}")
+        logger.debug(f"[MenuSifuAPI] generate_order error: {error_msg}")
         raise ValueError(error_msg) from e
