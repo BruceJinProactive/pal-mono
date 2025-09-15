@@ -305,6 +305,7 @@ class ToastTool(Toolkit):
             schedule_response = get_ordering_schedule(
                 bearer_token=self._toast_bearer_token,
                 store_id=self.store_id,
+                general_api_endpoint=self.general_api_endpoint,
             )
 
             # Extract timezone and service periods
@@ -348,6 +349,7 @@ class ToastTool(Toolkit):
             schedule_response = get_ordering_schedule(
                 bearer_token=self._toast_bearer_token,
                 store_id=self.store_id,
+                general_api_endpoint=self.general_api_endpoint,
             )
 
             return parse_service_periods(schedule_response.servicePeriods)

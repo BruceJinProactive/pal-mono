@@ -436,6 +436,7 @@ def get_menu_inventory(
 def get_ordering_schedule(
     bearer_token: ToastAccessToken,
     store_id: str,
+    general_api_endpoint: str | None = None,
 ) -> OrderingScheduleResponse:
     """
     Retrieves online ordering schedule information from the Toast API.
@@ -466,6 +467,7 @@ def get_ordering_schedule(
             extra_headers=extra_headers,
             query_params=None,
             payload=None,
+            general_api_endpoint=general_api_endpoint,
         )
     except Exception as e:
         raise Exception(
