@@ -16,6 +16,7 @@ from tools.square_tool.classes import (
     SquareAccessToken,
 )
 from tools.utils.ordering.classes import HttpMethod
+from utils.log import logger
 
 
 def list_catalog(
@@ -247,11 +248,21 @@ def create_payment_link(
                     "total_discount_money",
                     "total_service_charge_money",
                     "gross_sales_money",
+                    "applied_taxes",
+                    "applied_discounts",
+                    "applied_service_charges",
                 }
 
-                for line_item in order_data["line_items"]:
+                for i, line_item in enumerate(order_data["line_items"]):
+                    cleaned_fields = []
                     for field in line_item_readonly_fields:
-                        line_item.pop(field, None)
+                        if field in line_item:
+                            line_item.pop(field, None)
+                            cleaned_fields.append(field)
+                    if cleaned_fields:
+                        logger.debug(
+                            f"[SquareTool] Cleaned read-only fields from line_item[{i}]: {cleaned_fields}"
+                        )
 
             payload["order"] = order_data
 
