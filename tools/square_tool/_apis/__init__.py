@@ -264,6 +264,24 @@ def create_payment_link(
                             f"[SquareTool] Cleaned read-only fields from line_item[{i}]: {cleaned_fields}"
                         )
 
+            # Clean read-only fields from order-level taxes
+            if "taxes" in order_data and order_data["taxes"]:
+                tax_readonly_fields = {
+                    "auto_applied",
+                    "applied_money",
+                }
+
+                for i, tax in enumerate(order_data["taxes"]):
+                    cleaned_tax_fields = []
+                    for field in tax_readonly_fields:
+                        if field in tax:
+                            tax.pop(field, None)
+                            cleaned_tax_fields.append(field)
+                    if cleaned_tax_fields:
+                        logger.debug(
+                            f"[SquareTool] Cleaned read-only fields from taxes[{i}]: {cleaned_tax_fields}"
+                        )
+
             payload["order"] = order_data
 
         # Add checkout_options if provided
