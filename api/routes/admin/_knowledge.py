@@ -12,6 +12,7 @@ from api.schemas.admin.knowledge import (
     ListKnowledgeFileResponse,
     ResourceType,
 )
+from db.tables.types import IntegrationProvider
 from services import admin_service, agent_service, knowledge_service, project_service
 from utils.log import logger
 
@@ -199,24 +200,50 @@ async def update_agent_kb(
         if not store_id:
             raise ValueError("Store identifier not found in the POS integration")
 
-        # Validate required integration fields
-        if not pos_integration.client_id:
-            raise ValueError("Client ID not found in the POS integration")
+        # Provider-aware validation and parameter selection
+        provider = pos_integration.provider
+        cfg = pos_integration.raw_config or {}
 
-        if not pos_integration.client_secret:
-            raise ValueError("Client secret not found in the POS integration")
+        if provider == IntegrationProvider.square:
+            # Square: need business_id (store_id) and an access token
+            access_token = (
+                pos_integration.access_token or pos_integration.client_secret or ""
+            ).strip()
+            if not access_token:
+                raise ValueError("Square: access token missing in POS integration")
 
-        # Get API endpoints from raw config
-        api_endpoints = pos_integration.raw_config.get("api_endpoints", {})
-        token_api_endpoint = api_endpoints.get("token_api_endpoint")
-        general_api_endpoint = api_endpoints.get("general_api_endpoint")
-        # Validate API endpoints
-        if not token_api_endpoint:
-            raise ValueError("Token API endpoint not found in the project's raw config")
-        if not general_api_endpoint:
-            raise ValueError(
-                "General API endpoint not found in the project's raw config"
-            )
+            client_id_value = (pos_integration.client_id or "").strip()
+            client_secret_value = access_token
+            token_api_endpoint = ""
+            general_api_endpoint = ""
+
+        elif provider in (IntegrationProvider.adora, IntegrationProvider.toast):
+            # Adora/Toast: require client_id, client_secret and API endpoints
+            client_id_value = (pos_integration.client_id or "").strip()
+            client_secret_value = (pos_integration.client_secret or "").strip()
+            if not client_id_value:
+                raise ValueError(f"{provider.value.capitalize()}: client_id missing")
+            if not client_secret_value:
+                raise ValueError(
+                    f"{provider.value.capitalize()}: client_secret missing"
+                )
+
+            api_endpoints = cfg.get("api_endpoints", {}) or {}
+            token_api_endpoint = (api_endpoints.get("token_api_endpoint") or "").strip()
+            general_api_endpoint = (
+                api_endpoints.get("general_api_endpoint") or ""
+            ).strip()
+            if not token_api_endpoint:
+                raise ValueError(
+                    f"{provider.value.capitalize()}: token_api_endpoint missing in raw_config"
+                )
+            if not general_api_endpoint:
+                raise ValueError(
+                    f"{provider.value.capitalize()}: general_api_endpoint missing in raw_config"
+                )
+
+        else:
+            raise ValueError(f"Unsupported provider for KB update: {provider}")
 
         # Handle timestamp logic: time + random hex string
         namespace_timestamp = (
@@ -230,10 +257,10 @@ async def update_agent_kb(
         return knowledge_service.update_agent_kb(
             pos_integration.provider,
             store_id,
-            pos_integration.client_id,
-            pos_integration.client_secret,
-            token_api_endpoint,
-            general_api_endpoint,
+            client_id_value or "",
+            client_secret_value or "",
+            token_api_endpoint or "",
+            general_api_endpoint or "",
             pinecone_namespace,
             pinecone_index_name,
             debug,
