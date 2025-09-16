@@ -644,9 +644,7 @@ def get_toast_access_token_from_aws(
         logger.debug(
             "[ToastTool.get_toast_access_token_from_aws] Getting token from AWS secrets"
         )
-        token_json_str = get_client_secret_with_fallback(
-            f"{store_id}_toast_access_token"
-        )
+        token_json_str = get_client_secret_with_fallback("TOAST_ACCESS_TOKEN")
         token_data = json.loads(token_json_str)
         # Reconstruct ToastAccessToken from stored data
         token = ToastAccessToken.from_toast_response(token_data)
@@ -688,8 +686,17 @@ def refresh_toast_access_token_from_aws(
     logger.debug(
         "[ToastTool.refresh_toast_access_token_from_aws] Refreshing token from API"
     )
-    api_key = get_client_secret_with_fallback(f"{store_id}_TOAST_CLIENT_ID")
-    api_secret = get_client_secret_with_fallback(f"{store_id}_TOAST_CLIENT_SECRET")
+    # Get the API credentials from AWS secrets
+    api_credentials = get_client_secret_with_fallback("TOAST_CLIENT_CREDENTIALS")
+    try:
+        api_credentials = json.loads(api_credentials)
+    except json.JSONDecodeError as e:
+        raise ValueError("TOAST_CLIENT_CREDENTIALS is not valid JSON") from e
+    api_key = api_credentials.get("client_id")
+    api_secret = api_credentials.get("client_secret")
+    if not api_key or not api_secret:
+        raise ValueError("Missing client_id/client_secret in TOAST_CLIENT_CREDENTIALS")
+
     bearer_token = get_toast_access_token(
         api_key,
         api_secret,
@@ -702,7 +709,7 @@ def refresh_toast_access_token_from_aws(
     # Save the complete ToastAccessToken object to AWS secrets
     token_json = bearer_token.model_dump_json()
     try:
-        upsert_client_secret(f"{store_id}_toast_access_token", token_json)
+        upsert_client_secret("TOAST_ACCESS_TOKEN", token_json)
     except Exception as e:
         logger.warning(
             f"[ToastTool.refresh_toast_access_token_from_aws] Token refreshed but failed to persist to Secrets Manager: {e}"
