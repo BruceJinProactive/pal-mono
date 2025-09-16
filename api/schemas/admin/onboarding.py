@@ -119,3 +119,20 @@ class SelfOnboardingResponse(BaseModel):
 
     success: bool = Field(..., description="Whether the onboarding was successful")
     account_response: AccountStatusResponse
+
+
+class BuildMenuRequest(BaseModel):
+    """Request model for building menu from URL"""
+
+    url: str = Field(..., description="URL to build menu from")
+    use_stealth_proxy: bool = Field(
+        default=False, description="Whether to use stealth proxy for protected sites"
+    )
+
+
+class BuildMenuResponse(BaseModel):
+    """Response model for built menu data"""
+
+    menu: list[dict] = Field(
+        ..., description="Structured menu data with categories and items"
+    )

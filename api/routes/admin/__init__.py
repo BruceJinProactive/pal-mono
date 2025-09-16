@@ -76,6 +76,8 @@ from api.schemas.admin.lead import (
     UpdateLeadRequest,
 )
 from api.schemas.admin.onboarding import (
+    BuildMenuRequest,
+    BuildMenuResponse,
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
     OnboardingRequest,
@@ -1595,6 +1597,17 @@ async def generate_agent_prompts_api(
     Generate agent prompts for a new account.
     """
     return await _onboarding.generate_agent_prompts_api(request, context)
+
+
+@admin_router.post("/onboarding/build_menu", status_code=status.HTTP_200_OK)
+async def build_menu_api(
+    request: BuildMenuRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> BuildMenuResponse:
+    """
+    Build menu data from a restaurant URL using Firecrawl.
+    """
+    return await _onboarding.build_menu_api(request, context)
 
 
 @admin_router.post("/onboarding", status_code=status.HTTP_201_CREATED)

@@ -12,7 +12,7 @@ from services.account_service import AccountParams
 
 from ..agent_service import AgentParams
 from ..knowledge_service import KnowledgeFile
-from . import _implementation, agent_prompt_generation
+from . import _implementation, agent_prompt_generation, menu_builder
 from .schema import (
     CognitoUser,
     CreatedProjectInfo,
@@ -701,6 +701,29 @@ def get_lead(
     return _implementation.get_lead(session, context, lead_id)
 
 
+async def build_menu_from_url(
+    url: str,
+    use_stealth_proxy: bool = False,
+) -> list[dict]:
+    """
+    Build menu data from a restaurant URL using Firecrawl.
+
+    Args:
+        url (str): The URL to build menu from
+        use_stealth_proxy (bool): Whether to use stealth proxy for protected sites
+
+    Returns:
+        list[dict]: List of menu categories with their items
+
+    Raises:
+        ValueError: If there's an error building the menu
+    """
+    return await menu_builder.build_menu_from_url(
+        url=url,
+        use_stealth_proxy=use_stealth_proxy,
+    )
+
+
 __all__ = [
     "list_conversations_in_account",
     "get_inbox_conversations",
@@ -732,4 +755,5 @@ __all__ = [
     "update_lead",
     "delete_lead",
     "get_lead",
+    "build_menu_from_url",
 ]

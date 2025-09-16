@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import AccountParams
 from api.schemas.admin.onboarding import (
+    BuildMenuRequest,
+    BuildMenuResponse,
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
     OnboardingRequest,
@@ -125,6 +127,56 @@ async def generate_agent_prompts_api(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to generate agent prompts: {str(err)}",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def build_menu_api(
+    request: BuildMenuRequest,
+    context: UserContext,
+) -> BuildMenuResponse:
+    """
+    Build menu data from a restaurant URL using Firecrawl.
+
+    This endpoint handles the building of restaurant menu data from URLs
+    using the Firecrawl service with optional stealth proxy support.
+    """
+    authorize_admin(context)
+
+    try:
+        result = await admin_service.build_menu_from_url(
+            url=request.url,
+            use_stealth_proxy=request.use_stealth_proxy,
+        )
+
+        return BuildMenuResponse(menu=result)
+
+    except ValueError as err:
+        # Client errors: bad URL, no content, timeout, etc.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+    except RuntimeError:
+        # Server errors: API key missing, service unavailable, etc.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Menu building service is currently unavailable",
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception:
+        # Unexpected errors - log and return 500
+        logger.exception(
+            "Unexpected error in build menu API",
+            extra={
+                "url": str(request.url),
+                "use_stealth_proxy": request.use_stealth_proxy,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
             headers={"Content-Type": "application/json"},
         )
 

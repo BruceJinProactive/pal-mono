@@ -20,6 +20,7 @@ dependencies = [
   "ddtrace==3.11.0", # Datadog APM and distributed tracing library
   "email-validator==2.2.0", # Robust email address validation with DNS checking
   "fastapi==0.116.1", # Modern async web framework with automatic API docs
+  "firecrawl-py>=1.5.0", # Web scraping and crawling with LLM extraction
   "geopy==2.4.1", # Geocoding library for location services and mapping
   "google-genai==1.25.0", # Google Gemini AI SDK for generative models
   "groq==0.15.0", # Groq API client for fast LLM inference

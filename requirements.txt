@@ -48,6 +48,7 @@ fastapi==0.116.1
 fastavro==1.11.1
 filelock==3.18.0
 filetype==1.2.0
+firecrawl-py==4.3.6
 frozenlist==1.6.0
 fsspec==2025.3.2
 geographiclib==2.0
