@@ -156,7 +156,6 @@ class AnalyticsRepository:
                     .where(
                         Conversation.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                         account_condition,
                     )
                 )
@@ -169,7 +168,6 @@ class AnalyticsRepository:
                     .where(
                         Conversation.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                     )
                 )
 
@@ -231,7 +229,6 @@ class AnalyticsRepository:
             base_conditions = [
                 Conversation.created_at.between(start_date, end_date),
                 ~Conversation.is_test,
-                Account.name != "palona",
             ]
 
             # Add account filter early
@@ -437,7 +434,6 @@ class AnalyticsRepository:
                     .where(
                         PhoneCall.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                         account_condition,
                     )
                 )
@@ -451,7 +447,6 @@ class AnalyticsRepository:
                     .where(
                         PhoneCall.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                     )
                 )
 
@@ -556,7 +551,6 @@ class AnalyticsRepository:
                     .where(
                         PhoneCall.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                         account_condition,
                     )
                 )
@@ -570,7 +564,6 @@ class AnalyticsRepository:
                     .where(
                         PhoneCall.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                     )
                 )
 
@@ -678,7 +671,6 @@ class AnalyticsRepository:
                     .where(
                         Conversation.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                         account_condition,
                         # Only include accounts with POS integration - early filter
                         exists(
@@ -701,7 +693,6 @@ class AnalyticsRepository:
                     .where(
                         Conversation.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        Account.name != "palona",
                         # Only include accounts with POS integration
                         exists(
                             select(1)
