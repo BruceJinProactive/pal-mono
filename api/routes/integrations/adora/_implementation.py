@@ -40,11 +40,7 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
         # Log the incoming request for debugging
         logger.debug(
             "[AdoraWebhook]Adora webhook request received",
-            extra={
-                "event": body.get("event"),
-                "store_id": body.get("storeId"),
-                "order_number": body.get("orderNumber"),
-            },
+            extra={"webhook_body": body},
         )
 
         # Validate request body against schema

@@ -138,26 +138,9 @@ async def handle_menu_update(
     Raises:
         ValueError: If required fields are missing for update_menu event
     """
+
     logger.debug(
         f"[AdoraWebhook] Processing menu update for store: {webhook_request.storeId}"
-    )
-
-    # Validate required fields for menu update
-    if not webhook_request.brandId:
-        raise ValueError("brandId is required for update_menu event")
-
-    # Process the menu update event
-    logger.info(
-        f"[AdoraWebhook] Menu update received - Store: {webhook_request.storeId}, Brand: {webhook_request.brandId}"
-    )
-
-    # TODO: Add any menu update processing logic here if needed
-    # For example: refresh menu cache, trigger menu sync, etc.
-
-    await session.commit()
-
-    logger.info(
-        f"[AdoraWebhook] Successfully processed menu update for store {webhook_request.storeId}"
     )
 
     return {"status": "success", "message": "Menu update processed successfully"}
