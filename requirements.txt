@@ -70,7 +70,7 @@ groq==0.15.0
 grpcio==1.71.0
 grpcio-status==1.71.0
 h11==0.16.0
-h2==4.2.0
+h2==4.3.0
 hf-xet==1.1.5
 hpack==4.1.0
 httpcore==1.0.9

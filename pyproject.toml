@@ -25,7 +25,7 @@ dependencies = [
   "google-genai==1.25.0", # Google Gemini AI SDK for generative models
   "groq==0.15.0", # Groq API client for fast LLM inference
   "httpcore==1.0.9", # Low-level HTTP transport implementation
-  "httpx>=0.24.0", # Modern async/sync HTTP client with HTTP/2 support
+  "httpx==0.28.1", # Modern async/sync HTTP client with HTTP/2 support
   "instructor==1.9.2", # Structured outputs from LLMs using Pydantic models
   "jinja2==3.1.6", # Modern template engine for Python
   "lingua-language-detector==2.1.1", # Fast and accurate language detection library
