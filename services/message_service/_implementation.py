@@ -579,19 +579,6 @@ def get_conversations_by_user(
     return []
 
 
-def get_session_ids_by_users(
-    session: Session,
-    user_ids: list[uuid.UUID],
-    start_date: datetime.datetime,
-    end_date: datetime.datetime,
-) -> list[uuid.UUID]:
-    conversation_repository = db.ConversationRepository(session)
-    session_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        user_ids, start_date, end_date
-    )
-    return session_ids
-
-
 def get_conversations_by_users(
     session: Session,
     page: int,

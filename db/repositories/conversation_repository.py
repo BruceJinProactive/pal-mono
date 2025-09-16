@@ -154,6 +154,7 @@ class ConversationRepository:
         start_date: datetime,
         end_date: datetime,
         project_id: uuid.UUID | None = None,
+        hide_testing_sessions: bool = False,
     ) -> list[uuid.UUID]:
         try:
             query = self.session.query(Conversation.id).filter(
@@ -164,6 +165,8 @@ class ConversationRepository:
 
             if project_id is not None:
                 query = query.filter(Conversation.project_id == project_id)
+            if hide_testing_sessions:
+                query = query.filter(Conversation.is_test.is_not(True))
 
             return [id for (id,) in query.all()]
         except SQLAlchemyError as e:

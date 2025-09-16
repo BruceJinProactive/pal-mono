@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, cast, distinct, not_, or_, select
+from sqlalchemy import Boolean, cast, distinct, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -418,7 +418,6 @@ class MessageRepository:
         keyword: str,
         channel: str | None,
         escalated: bool,
-        hide_testing_sessions: bool = True,
     ) -> list[uuid.UUID]:
         """
         Search for sessions in the provided session ids by message details.
@@ -467,22 +466,7 @@ class MessageRepository:
                 )
             if channel:
                 conditions.append(Message.body["channel"].astext == channel)
-            if hide_testing_sessions:
-                conditions.extend(
-                    [
-                        not_(
-                            Message.body["sender_identifier"].astext.like("mock-user%")
-                        ),
-                        not_(
-                            cast(
-                                coalesce(
-                                    Message.body["metadata"]["testing"].astext, "false"
-                                ),
-                                Boolean,
-                            )
-                        ),
-                    ]
-                )
+
             query = select(distinct(Message.conversation_id)).where(*conditions)
             result = self.session.execute(query).scalars()
             return list(result.all())

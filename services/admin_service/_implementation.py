@@ -103,11 +103,15 @@ def list_conversations_in_account(
     account_users = user_service.get_users_by_account_id(db_session, account_id)
     account_users_ids = [user.id for user in account_users]
     all_session_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        account_users_ids, start_date, end_date, project_id
+        account_users_ids, start_date, end_date, project_id, hide_testing_sessions
     )
-    filtered_session_ids = message_repository.filter_sessions_by_keyword(
-        all_session_ids, keyword, channel, escalated, hide_testing_sessions
-    )
+    # Only narrow down id list if necessary
+    if keyword or channel or escalated:
+        filtered_session_ids = message_repository.filter_sessions_by_keyword(
+            all_session_ids, keyword, channel, escalated
+        )
+    else:
+        filtered_session_ids = all_session_ids
     total, sessions = conversation_repository.get_paginated_sessions_by_ids(
         filtered_session_ids,
         offset=(page - 1) * page_size,
@@ -757,7 +761,10 @@ def get_escalated_session_count_by_users(
     message_repository = db.MessageRepository(session)
 
     conversation_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        user_ids=user_ids, start_date=start_date, end_date=end_date
+        user_ids=user_ids,
+        start_date=start_date,
+        end_date=end_date,
+        hide_testing_sessions=True,
     )
 
     escalated_conversation_count = message_repository.get_escalated_conversation_count(

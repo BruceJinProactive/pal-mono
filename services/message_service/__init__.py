@@ -1,4 +1,3 @@
-import datetime
 import uuid
 from typing import AsyncIterator
 
@@ -149,20 +148,6 @@ def get_conversations_by_user(
     """
     return _implementation.get_conversations_by_user(
         session, user_id, create_new_conversation
-    )
-
-
-def get_session_ids_by_users(
-    session: Session,
-    user_ids: list[uuid.UUID],
-    start_date: datetime.datetime,
-    end_date: datetime.datetime,
-) -> list[uuid.UUID]:
-    """
-    Returns an id list for the sessions that have the given user ids.
-    """
-    return _implementation.get_session_ids_by_users(
-        session, user_ids, start_date, end_date
     )
 
 
