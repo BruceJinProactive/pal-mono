@@ -40,6 +40,7 @@ def upload_knowledge_file(
     namespace: str,
     file_name: str,
     content: bytes,
+    metadata: dict | None = None,
 ):
     """
     Upload a text file to the project's knowledge base.
@@ -57,7 +58,17 @@ def upload_knowledge_file(
         RuntimeError: If there is an error uploading the file.
     """
     return _implementation.upload_knowledge_file(
-        index_name, namespace, file_name, content
+        index_name, namespace, file_name, content, metadata
+    )
+
+
+def delete_knowledge_file_by_metadata(
+    index_name: str,
+    namespace: str,
+    metadata: dict,
+):
+    return _implementation.delete_knowledge_file_by_metadata(
+        index_name, namespace, metadata
     )
 
 
@@ -188,6 +199,7 @@ __all__ = [
     "list_knowledge_files",
     "upload_knowledge_file",
     "delete_knowledge_file",
+    "delete_knowledge_file_by_metadata",
     "delete_namespace",
     "query_vector_database",
     "update_agent_kb",

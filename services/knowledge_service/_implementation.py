@@ -85,6 +85,7 @@ def upload_knowledge_file(
     namespace: str,
     file_name: str,
     content: bytes,
+    metadata: dict | None = None,
 ):
     # Initialize Cohere embeddings
     cohere_api_key = _get_cohere_api_key()
@@ -119,6 +120,12 @@ def upload_knowledge_file(
             node.metadata["file_name"] = file_name
             node.metadata["size_bytes"] = len(content)
             node.metadata["created_at"] = file_created_at
+            if metadata:
+                reserved = {"file_name", "size_bytes", "created_at"}
+                dedup_metadata = {
+                    k: v for k, v in metadata.items() if k not in reserved
+                }
+                node.metadata.update(dedup_metadata)
             upsert_data.append((str(uuid.uuid4()), embedding, node.metadata))
 
         logger.debug(
@@ -164,6 +171,28 @@ def delete_knowledge_file(
     if ids_to_delete:
         index.delete(ids=ids_to_delete, namespace=namespace)
     return ids_to_delete
+
+
+def delete_knowledge_file_by_metadata(
+    index_name: str,
+    namespace: str,
+    metadata: dict,
+):
+    """
+    Delete vectors matching the provided Pinecone metadata filter within a namespace.
+    """
+    if not isinstance(metadata, dict) or not metadata:
+        raise ValueError("metadata filter must be a non-empty dict")
+    index = _get_index(index_name)
+    logger.debug(
+        f"Deleting knowledge file by metadata {metadata}",
+        extra={
+            "index": index_name,
+            "namespace": namespace,
+            "metadata": metadata,
+        },
+    )
+    index.delete(filter=metadata, namespace=namespace)
 
 
 def delete_namespace(
