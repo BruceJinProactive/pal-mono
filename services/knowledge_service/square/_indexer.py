@@ -24,11 +24,9 @@ Dependencies:
 """
 
 import time
-from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Dict, List
 
-from llama_index.core import Document, Settings, StorageContext, VectorStoreIndex
-from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
@@ -41,355 +39,68 @@ from utils.log import logger
 
 
 def index_to_pinecone(
-    documents: Dict[str, str],
-    menu_data: Dict[str, Any],
+    individual_items: List[Dict[str, str]],
     pinecone_index_name: str,
     pinecone_namespace: str,
-    location_id: str,
-) -> Dict[str, Any]:
-    """Index Square menu documents to Pinecone vector store.
+) -> int:
+    """Index per-item documents to Pinecone (aligned with Adora/Toast)."""
+    pinecone_api_key = _get_pinecone_api_key()
+    cohere_api_key = _get_cohere_api_key()
 
-    Args:
-        documents: Dictionary mapping document names to text content
-        menu_data: Original menu data for metadata
-        pinecone_index_name: Name of the Pinecone index to use
-        pinecone_namespace: Namespace to store the data in (used directly)
-        location_id: Square location ID for metadata
+    logger.debug(
+        "[square._indexer.index_to_pinecone] Indexing %s items...",
+        len(individual_items),
+    )
 
-    Returns:
-        dict: Indexing results including success status and statistics
+    # Guard: no items to index
+    if not individual_items:
+        logger.debug("[square._indexer.index_to_pinecone] No items to index; skipping.")
+        return 0
 
-    Raises:
-        RuntimeError: If indexing fails
-    """
-    try:
-        logger.debug(f"Starting Pinecone indexing for Square location {location_id}")
-
-        if not documents:
-            logger.warning("No documents provided for indexing")
-            return {
-                "success": False,
-                "error": "No documents to index",
-                "documents_processed": 0,
-                "vectors_created": 0,
-            }
-
-        # Get API keys
-        pinecone_api_key = _get_pinecone_api_key()
-        cohere_api_key = _get_cohere_api_key()
-
-        # Use the provided namespace directly (matching Adora pattern)
-        final_namespace = pinecone_namespace
-
-        logger.debug(f"Using namespace: {final_namespace}")
-
-        # Initialize Pinecone
-        pc = Pinecone(api_key=pinecone_api_key)
-        pinecone_index = pc.Index(pinecone_index_name)
-
-        # Setup embedding model
-        embed_model = CohereEmbedding(
-            api_key=cohere_api_key,
-            model_name="embed-english-v3.0",
-        )
-        Settings.embed_model = embed_model
-
-        # Create vector store
-        vector_store = PineconeVectorStore(
-            pinecone_index=pinecone_index, namespace=final_namespace
-        )
-
-        # Convert documents to LlamaIndex Document objects
-        llama_documents = []
-
-        for doc_name, content in documents.items():
-            doc = Document(
-                text=content,
-                metadata={
-                    "source": "square_menu",
-                    "location": location_id,
-                    "location_id": location_id,
-                    "document_type": "menu",
-                    "document_name": doc_name,
-                    "item_count": menu_data.get("item_count", 0),
-                    "total_objects": menu_data.get("total_objects", 0),
-                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "size_bytes": len(content.encode("utf-8")),
-                    "file_name": f"square_{location_id}_{doc_name.lower().replace(' ', '_')}_{datetime.now().strftime('%Y-%m-%d')}.json",
-                },
+    # Prepare documents
+    documents: List[Document] = []
+    for i, item_dict in enumerate(individual_items):
+        for file_name, text in item_dict.items():
+            documents.append(
+                Document(
+                    text=text,
+                    id_=file_name,
+                    metadata={
+                        "include_ids": "True",
+                        "item_index": i,
+                        "file_name": file_name,
+                        "created_at": time.strftime(
+                            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                        ),
+                        "size_bytes": len(text.encode("utf-8")),
+                    },
+                )
             )
-            llama_documents.append(doc)
 
-        logger.debug(f"Created {len(llama_documents)} LlamaIndex documents")
+    # Pinecone + embeddings
+    pc = Pinecone(api_key=pinecone_api_key)
+    pinecone_index = pc.Index(pinecone_index_name)
+    vector_store = PineconeVectorStore(
+        pinecone_index=pinecone_index, namespace=pinecone_namespace
+    )
+    embed_model = CohereEmbedding(
+        api_key=cohere_api_key,
+        model_name="embed-english-v3.0",
+    )
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-        # Parse documents into nodes (optional chunking)
-        node_parser = SentenceSplitter(chunk_size=2048 * 4, chunk_overlap=0)
-        nodes = node_parser.get_nodes_from_documents(
-            llama_documents, show_progress=False
-        )
+    # Index
+    _ = VectorStoreIndex.from_documents(
+        documents, storage_context=storage_context, embed_model=embed_model
+    )
 
-        # Create storage context and index
-        storage_context = StorageContext.from_defaults(vector_store=vector_store)
-
-        index = VectorStoreIndex(
-            nodes=nodes,
-            storage_context=storage_context,
-            embed_model=embed_model,
-        )
-
-        logger.debug(f"Successfully indexed Square menu for location {location_id}")
-
-        return {
-            "success": True,
-            "documents_processed": len(documents),
-            "vectors_created": len(nodes),
-            "pinecone_index": pinecone_index_name,
-            "pinecone_namespace": final_namespace,
-            "location_id": location_id,
-            "nodes_created": len(nodes),
-            "index_object": index,  # Return index for potential queries
-        }
-
-    except Exception as e:
-        logger.error(f"Error indexing Square menu to Pinecone: {e}")
-        raise RuntimeError(f"Failed to index Square menu: {e}")
+    logger.debug(
+        "[square._indexer.index_to_pinecone] Indexed %s docs to %s/%s",
+        len(documents),
+        pinecone_index_name,
+        pinecone_namespace,
+    )
+    return len(documents)
 
 
-def index_individual_items_to_pinecone(
-    menu_data: Dict[str, Any],
-    pinecone_index_name: str,
-    pinecone_namespace: str,
-    location_id: str,
-) -> Dict[str, Any]:
-    """Index individual Square menu items to Pinecone following the notebook pattern.
-
-    Args:
-        menu_data: Processed menu data with individual items
-        pinecone_index_name: Name of the Pinecone index to use
-        pinecone_namespace: Namespace to store the data in (used directly)
-        location_id: Square location ID
-
-    Returns:
-        dict: Indexing results including success status and statistics
-
-    Raises:
-        RuntimeError: If indexing fails
-    """
-    try:
-        logger.debug(
-            f"Starting individual item indexing for Square location {location_id}"
-        )
-
-        menu_items = menu_data.get("menu_items", [])
-        if not menu_items:
-            logger.warning("No menu items provided for indexing")
-            return {
-                "success": False,
-                "error": "No menu items to index",
-                "items_processed": 0,
-                "vectors_created": 0,
-            }
-
-        # Get API keys
-        pinecone_api_key = _get_pinecone_api_key()
-        cohere_api_key = _get_cohere_api_key()
-
-        # Use the provided namespace directly
-        final_namespace = pinecone_namespace
-
-        logger.debug(f"Using namespace: {final_namespace}")
-
-        # Initialize Pinecone
-        pc = Pinecone(api_key=pinecone_api_key)
-        pinecone_index = pc.Index(pinecone_index_name)
-
-        # Setup embedding model
-        embed_model = CohereEmbedding(
-            api_key=cohere_api_key,
-            model_name="embed-english-v3.0",
-        )
-        Settings.embed_model = embed_model
-
-        # Create vector store
-        vector_store = PineconeVectorStore(
-            pinecone_index=pinecone_index, namespace=final_namespace
-        )
-
-        # Convert menu items to LlamaIndex Document objects
-        documents = []
-
-        for item in menu_items:
-            # Create structured text following exact notebook pattern
-            item_name = item.get("name", "Unknown Item")
-            item_text = f"Item: {item_name}\n"
-            item_text += f"Item ID: {item.get('id', 'N/A')}\n"
-            item_text += f"Variation ID: {item.get('_variation_id', 'N/A')}\n"
-
-            # Add modifiers information - follow exact notebook pattern
-            modifiers = item.get("modifiers", [])
-            if modifiers:
-                item_text += "Available Modifiers:\n"
-                for mod_group in modifiers:
-                    list_name = mod_group.get("list_name", "Options")
-                    item_text += f"  {list_name}:\n"
-                    for modifier in mod_group.get("modifiers", []):
-                        mod_name = modifier.get("name", "Unknown")
-                        mod_id = modifier.get("id", "N/A")
-                        item_text += f"    - {mod_name} (ID: {mod_id})\n"
-            else:
-                item_text += "No modifiers available\n"
-
-            # Create document with metadata following notebook pattern
-            doc = Document(
-                text=item_text,
-                metadata={
-                    "source": "modifier_menu",
-                    "location": location_id,
-                    "location_id": location_id,
-                    "type": "menu_item",
-                    "item_name": item_name,
-                    "item_id": item.get("id") or "unknown",
-                    "variation_id": item.get("_variation_id") or "none",
-                    "file_name": f"square_{location_id}_{item_name.replace(' ', '_').lower()}.json",
-                },
-            )
-            documents.append(doc)
-
-        logger.debug(f"Created {len(documents)} individual item documents")
-
-        # Parse documents into nodes
-        node_parser = SentenceSplitter(chunk_size=2048 * 4, chunk_overlap=0)
-        nodes = node_parser.get_nodes_from_documents(documents, show_progress=False)
-
-        # Create storage context and index
-        storage_context = StorageContext.from_defaults(vector_store=vector_store)
-
-        index = VectorStoreIndex(
-            nodes=nodes,
-            storage_context=storage_context,
-            embed_model=embed_model,
-        )
-
-        logger.debug(f"Successfully indexed {len(menu_items)} individual items")
-
-        return {
-            "success": True,
-            "items_processed": len(menu_items),
-            "vectors_created": len(nodes),
-            "pinecone_index": pinecone_index_name,
-            "pinecone_namespace": final_namespace,
-            "location_id": location_id,
-            "nodes_created": len(nodes),
-            "index_object": index,
-        }
-
-    except Exception as e:
-        logger.error(f"Error indexing individual items to Pinecone: {e}")
-        raise RuntimeError(f"Failed to index individual items: {e}")
-
-
-def delete_location_vectors(
-    pinecone_index_name: str,
-    pinecone_namespace: str,
-    location_id: str,
-) -> Dict[str, Any]:
-    """Delete all vectors for a specific Square location namespace.
-
-    Args:
-        pinecone_index_name: Name of the Pinecone index
-        pinecone_namespace: Specific namespace to delete
-        location_id: Square location ID for reference
-
-    Returns:
-        dict: Deletion results including success status
-
-    Raises:
-        RuntimeError: If deletion fails
-    """
-    try:
-        logger.debug(
-            f"Deleting vectors for Square location {location_id} in namespace {pinecone_namespace}"
-        )
-
-        # Get API key
-        pinecone_api_key = _get_pinecone_api_key()
-
-        # Initialize Pinecone
-        pc = Pinecone(api_key=pinecone_api_key)
-        pinecone_index = pc.Index(pinecone_index_name)
-
-        # Delete the specified namespace (this deletes all vectors in that namespace)
-        try:
-            pinecone_index.delete(delete_all=True, namespace=pinecone_namespace)
-            vectors_deleted = (
-                "all"  # Pinecone doesn't return exact count for namespace deletion
-            )
-        except Exception as e:
-            logger.warning(f"Error deleting namespace {pinecone_namespace}: {e}")
-            vectors_deleted = 0
-
-        logger.debug(f"Successfully deleted vectors for Square location {location_id}")
-        return {
-            "success": True,
-            "location_id": location_id,
-            "namespace_deleted": pinecone_namespace,
-            "vectors_deleted": vectors_deleted,
-        }
-
-    except Exception as e:
-        logger.error(f"Error deleting Square vectors: {e}")
-        raise RuntimeError(f"Failed to delete Square vectors: {e}")
-
-
-def get_indexing_stats(
-    pinecone_index_name: str,
-    pinecone_namespace: Optional[str] = None,
-    location_id: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Get statistics about indexed Square menu data.
-
-    Args:
-        pinecone_index_name: Name of the Pinecone index
-        pinecone_namespace: Optional specific namespace to get stats for
-        location_id: Optional location ID for reference
-
-    Returns:
-        dict: Statistics about indexed vectors
-
-    Raises:
-        RuntimeError: If stats retrieval fails
-    """
-    try:
-        logger.debug("Getting indexing stats for Square menu data")
-
-        # Get API key
-        pinecone_api_key = _get_pinecone_api_key()
-
-        # Initialize Pinecone
-        pc = Pinecone(api_key=pinecone_api_key)
-        pinecone_index = pc.Index(pinecone_index_name)
-
-        # Get index stats
-        index_stats = pinecone_index.describe_index_stats()
-
-        # If namespace is specified, try to get namespace-specific stats
-        namespace_stats = None
-        if pinecone_namespace:
-            if (
-                hasattr(index_stats, "namespaces")
-                and pinecone_namespace in index_stats.namespaces
-            ):
-                namespace_stats = index_stats.namespaces[pinecone_namespace]
-
-        return {
-            "success": True,
-            "index_name": pinecone_index_name,
-            "location_filter": location_id,
-            "namespace_filter": pinecone_namespace,
-            "index_stats": index_stats,
-            "namespace_stats": namespace_stats,
-        }
-
-    except Exception as e:
-        logger.error(f"Error getting Square indexing stats: {e}")
-        raise RuntimeError(f"Failed to get indexing stats: {e}")
+# The old Square-specific deletion/stats helpers were unused and removed.

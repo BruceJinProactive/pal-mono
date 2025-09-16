@@ -1,448 +1,358 @@
 """
-Square API client for menu data retrieval and authentication.
+Square API client for menu data retrieval.
 
-This module handles all external API communication with Square's services
-to fetch menu data for processing and indexing.
-
-Key responsibilities:
-- Menu data download from Square Catalog API
-- Location-specific filtering and validation
-- HTTP request handling with proper error management
-- API response validation and error handling
-
-External dependencies:
-- Square Catalog API for menu data retrieval
+This module talks directly to Square's Catalog API using the provided
+access token and composes a location-aware menu structure suitable for
+formatting and indexing.
 """
 
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
-from tools.square_tool._apis import get_catalog_object, list_catalog
-from tools.square_tool._utils import get_item_variation_id
-from tools.square_tool.classes import (
-    CatalogItemObject,
-    GetCatalogObjectInput,
-    ListCatalogInput,
-    SquareAccessToken,
-)
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 from utils.log import logger
 
+SQUARE_API_BASE = "https://connect.squareup.com/v2"
+SQUARE_API_VERSION = "2025-08-20"
 
-def download_menu(
-    access_token: str,
-    location_id: str,
-    default_currency: str = "USD",
-) -> Dict[str, Any]:
-    """Downloads menu data from Square Catalog API.
+# HTTP session with basic retries for transient errors
+_session = requests.Session()
+_session.mount(
+    "https://",
+    HTTPAdapter(
+        max_retries=Retry(
+            total=3,
+            backoff_factor=1.0,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"],
+        )
+    ),
+)
 
-    Args:
-        access_token: The Square access token for authentication
-        location_id: The Square location ID to filter menu items
-        default_currency: Default currency code to use when none is specified (defaults to "USD")
 
-    Returns:
-        dict: The processed menu data with items and modifiers
+def download_menu(access_token: str, location_id: str) -> Dict[str, Any]:
+    """Fetch and assemble Square catalog into extracted menu items.
 
-    Raises:
-        RuntimeError: If menu download fails
-        ValueError: If menu data is invalid
+    Returns a structure similar to the manager’s helper script, with
+    each item containing variations, categories (resolved names), and
+    modifier lists filtered by the target location.
     """
-
-    square_token = SquareAccessToken(access_token=access_token, token_type="Bearer")
-
     try:
         logger.debug(
-            f"[square_client.download_menu] Downloading menu for location {location_id}"
-        )
-
-        # Get all catalog objects using pagination
-        all_catalog_objects = []
-        cursor = None
-        page_count = 0
-
-        while True:
-            page_count += 1
-            logger.debug(f"Fetching page {page_count}...")
-
-            list_input = ListCatalogInput(cursor=cursor, use_production=True)  # type: ignore
-            catalog_response = list_catalog(square_token, list_input)
-
-            if catalog_response.objects:
-                all_catalog_objects.extend(catalog_response.objects)
-                logger.debug(
-                    f"Got {len(catalog_response.objects)} objects on page {page_count}"
-                )
-
-            # Check if there are more pages
-            if hasattr(catalog_response, "cursor") and catalog_response.cursor:
-                cursor = catalog_response.cursor
-            else:
-                logger.debug("No more pages")
-                break
-
-        logger.debug(
-            f"Total objects fetched: {len(all_catalog_objects)} across {page_count} pages"
-        )
-
-        # Filter and process items for the specified location
-        processed_menu = _process_menu_items(
-            square_token,
-            all_catalog_objects,
+            "[square._client.download_menu] Fetching Square catalog for location %s",
             location_id,
-            default_currency,
         )
+
+        # Pull required object types
+        items_data = _fetch_all(access_token, ["ITEM"]) or {"objects": []}
+        mods_data = _fetch_all(access_token, ["MODIFIER", "MODIFIER_LIST"]) or {
+            "objects": []
+        }
+        cats_data = _fetch_all(access_token, ["CATEGORY"]) or {"objects": []}
+
+        extracted_items = _extract_items(items_data, mods_data, cats_data, location_id)
 
         return {
             "location_id": location_id,
-            "total_objects": len(all_catalog_objects),
-            "menu_items": processed_menu,
-            "item_count": len(processed_menu),
+            "items": extracted_items,
+            "item_count": len(extracted_items),
         }
-
     except Exception as e:
         raise RuntimeError(f"Error downloading Square menu: {e}")
 
 
-def _process_menu_items(
-    access_token: SquareAccessToken,
-    catalog_objects: List,
-    location_id: str,
-    default_currency: str = "USD",
-) -> List[Dict[str, Any]]:
-    """Process catalog objects to extract menu items for a specific location.
+def _fetch_all(access_token: str, types: List[str]) -> Optional[Dict[str, Any]]:
+    """List catalog objects for the given types with pagination."""
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+        "Square-Version": SQUARE_API_VERSION,
+    }
+    params = {"types": ",".join(types)}
+    cursor: Optional[str] = None
+    all_objects: List[Dict[str, Any]] = []
 
-    Args:
-        access_token: Square access token object
-        catalog_objects: List of catalog objects from Square API
-        location_id: Target location ID for filtering
-        default_currency: Default currency code to use when none is specified
-
-    Returns:
-        List of processed menu items with modifiers
-    """
-    logger.debug(f"Processing menu items for location {location_id}")
-
-    # Step 1: Get all items available at the location
-    location_items = []
-
-    for obj in catalog_objects:
-        if obj.type == "ITEM" and isinstance(obj, CatalogItemObject):
-            # Check location availability
-            is_available = _is_item_available_at_location(obj, location_id)
-
-            if is_available:
-                # Check if item should be excluded
-                item_name = obj.item_data.name or ""
-                is_curbside_item = "curbside pickup" in item_name.lower()
-                has_ume_tag = "[ume]" in item_name.lower()
-
-                if not is_curbside_item and not has_ume_tag:
-                    # Get item price
-                    price_info = _get_item_price(obj, location_id, default_currency)
-
-                    # Extract all available item data without omitting anything
-                    item_data = {
-                        "id": obj.id,
-                        "name": obj.item_data.name or "Unnamed Item",
-                        "description": getattr(obj.item_data, "description", None),
-                        "price": price_info,
-                    }
-
-                    # Add any additional fields that might be available
-                    label_color = getattr(obj.item_data, "label_color", None)
-                    if label_color:
-                        item_data["label_color"] = label_color
-
-                    available_online = getattr(obj.item_data, "available_online", None)
-                    if available_online is not None:
-                        item_data["available_online"] = available_online
-
-                    available_for_pickup = getattr(
-                        obj.item_data, "available_for_pickup", None
-                    )
-                    if available_for_pickup is not None:
-                        item_data["available_for_pickup"] = available_for_pickup
-
-                    available_electronically = getattr(
-                        obj.item_data, "available_electronically", None
-                    )
-                    if available_electronically is not None:
-                        item_data["available_electronically"] = available_electronically
-
-                    # Add category information if available
-                    category_id = getattr(obj.item_data, "category_id", None)
-                    if category_id:
-                        item_data["category_id"] = category_id
-
-                    # Add abbreviation if available
-                    abbreviation = getattr(obj.item_data, "abbreviation", None)
-                    if abbreviation:
-                        item_data["abbreviation"] = abbreviation
-
-                    location_items.append(item_data)
-                else:
-                    exclusion_reason = []
-                    if is_curbside_item:
-                        exclusion_reason.append("curbside pickup")
-                    if has_ume_tag:
-                        exclusion_reason.append("[ume] tag")
-
-                    reason_text = " and ".join(exclusion_reason)
-                    logger.debug(
-                        f"Item '{obj.item_data.name}' excluded ({reason_text})"
-                    )
-
-    logger.debug(
-        f"Found {len(location_items)} items available at location {location_id}"
-    )
-
-    # Step 2: Get detailed information including modifiers for each item
-    final_menu = []
-
-    for i, item in enumerate(location_items):
-        logger.debug(f"Processing item {i+1}/{len(location_items)}: {item['name']}")
-
-        # Get detailed item information
-        try:
-            get_input = GetCatalogObjectInput(
-                object_id=item["id"],
-                catalog_version=None,
-                include_related_objects=True,
-                include_category_path_to_root=True,
-                use_production=True,
+    while True:
+        if cursor:
+            params["cursor"] = cursor
+        resp = _session.get(
+            f"{SQUARE_API_BASE}/catalog/list",
+            headers=headers,
+            params=params,
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            logger.error(
+                "Square list_catalog failed: %s %s", resp.status_code, resp.text
             )
+            return None
 
-            detailed_response = get_catalog_object(access_token, get_input)
+        data = resp.json()
+        all_objects.extend(data.get("objects", []))
+        cursor = data.get("cursor")
+        if not cursor:
+            break
 
-            if detailed_response and detailed_response.object:
-                item_obj = detailed_response.object
+    return {"objects": all_objects}
 
-                # Process modifiers for this item
-                location_modifiers = _process_item_modifiers(
-                    item_obj,
-                    detailed_response.related_objects,
-                    location_id,
-                    default_currency,
-                )
 
-                # Get variation ID for indexing (but don't include in final structure)
-                variation_id = None
-                try:
-                    variation_id = get_item_variation_id(access_token, item["id"], True)
-                except Exception as e:
-                    logger.debug(
-                        f"Error getting variation ID for item '{item['name']}': {e}"
-                    )
+def _extract_items(
+    item_data: Dict[str, Any],
+    modifier_data: Dict[str, Any],
+    category_data: Dict[str, Any],
+    location_id: str,
+) -> List[Dict[str, Any]]:
+    """Compose location-aware items with variations, categories, and modifiers."""
+    # Lookups
+    modifier_lookup: Dict[str, Dict[str, Any]] = {}
+    modifier_list_lookup: Dict[str, Dict[str, Any]] = {}
+    category_lookup: Dict[str, Dict[str, Any]] = {}
 
-                final_menu.append(
-                    {
-                        "id": item["id"],
-                        "name": item["name"],
-                        "description": item["description"],
-                        "price": item["price"],
-                        "modifiers": location_modifiers,
-                        "_variation_id": variation_id,  # Keep for indexing but prefix with _
-                    }
-                )
+    for obj in modifier_data.get("objects", []):
+        if obj.get("type") == "MODIFIER" and _meets_location(obj, location_id):
+            modifier_lookup[obj.get("id")] = obj
+        elif obj.get("type") == "MODIFIER_LIST" and _meets_location(obj, location_id):
+            modifier_list_lookup[obj.get("id")] = obj
 
-        except Exception as e:
-            logger.debug(f"Error processing item '{item['name']}': {e}")
-            # Add item without detailed modifiers
-            final_menu.append(
+    for obj in category_data.get("objects", []):
+        if obj.get("type") == "CATEGORY" and _meets_location(obj, location_id):
+            category_lookup[obj.get("id")] = obj
+
+    results: List[Dict[str, Any]] = []
+    for item_obj in item_data.get("objects", []):
+        if item_obj.get("type") != "ITEM":
+            continue
+
+        item_id = item_obj.get("id")
+        item_data_block = item_obj.get("item_data", {})
+        item_name = item_data_block.get("name") or "Unnamed Item"
+
+        # Skip items with names starting with T + digits (script behavior)
+        if item_name and re.match(r"^T\s*\d+\b", item_name):
+            continue
+
+        # Collect valid variations (respect location overrides first)
+        variations_out: List[Dict[str, Any]] = []
+        for var in item_data_block.get("variations", []) or []:
+            if not _variation_meets_location(var, item_obj, location_id):
+                continue
+            var_id = var.get("id")
+            var_name = var.get("item_variation_data", {}).get("name") or ""
+            price = _get_var_price_string(var, location_id)
+            variations_out.append(
                 {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "description": item["description"],
-                    "price": item["price"],
-                    "modifiers": [],
+                    "variation_id": var_id,
+                    "variation_name": var_name,
+                    "price": price,
                 }
             )
 
-    return final_menu
+        if not variations_out:
+            continue
 
+        # Categories with resolved names
+        categories_out: List[Dict[str, Any]] = []
+        for cat_ref in item_data_block.get("categories", []) or []:
+            cat_id = cat_ref.get("id")
+            cat_obj = category_lookup.get(cat_id)
+            categories_out.append(
+                {
+                    "category_id": cat_id,
+                    "category_name": (
+                        (cat_obj or {}).get("category_data", {}).get("name")
+                        or "Category None"
+                    ),
+                    "ordinal": cat_ref.get("ordinal", 0),
+                }
+            )
 
-def _is_item_available_at_location(
-    item_obj: CatalogItemObject, location_id: str
-) -> bool:
-    """Check if an item is available at the specified location.
+        # Modifier lists: include only modifiers available at location
+        modifier_lists_out: List[Dict[str, Any]] = []
+        for info in item_data_block.get("modifier_list_info", []) or []:
+            mod_list_id = info.get("modifier_list_id")
+            mod_list_obj = modifier_list_lookup.get(mod_list_id)
+            if not mod_list_obj:
+                continue
+            mod_list_data = mod_list_obj.get("modifier_list_data", {})
 
-    Args:
-        item_obj: Catalog item object
-        location_id: Target location ID
-
-    Returns:
-        bool: True if item is available at location
-    """
-    present_at_all_locations = getattr(item_obj, "present_at_all_locations", False)
-    present_at_location_ids = getattr(item_obj, "present_at_location_ids", []) or []
-    absent_at_location_ids = getattr(item_obj, "absent_at_location_ids", []) or []
-
-    return (
-        present_at_all_locations and location_id not in absent_at_location_ids
-    ) or location_id in present_at_location_ids
-
-
-def _get_item_price(
-    item_obj: CatalogItemObject, location_id: str, default_currency: str = "USD"
-) -> str:
-    """Get the price information for an item at a specific location.
-
-    Args:
-        item_obj: Catalog item object
-        location_id: Target location ID
-        default_currency: Default currency code to use when none is specified
-
-    Returns:
-        str: Formatted price string
-    """
-    price_info = ""
-
-    if hasattr(item_obj.item_data, "variations") and item_obj.item_data.variations:
-        first_variation = item_obj.item_data.variations[0]
-        if (
-            hasattr(first_variation, "item_variation_data")
-            and first_variation.item_variation_data
-        ):
-            var_data = first_variation.item_variation_data
-
-            # Check for location-specific price overrides first
-            location_overrides = getattr(var_data, "location_overrides", []) or []
-            location_price_found = False
-
-            for override in location_overrides:
-                if getattr(override, "location_id", None) == location_id:
-                    if hasattr(override, "price_money") and override.price_money:
-                        price = override.price_money.amount / 100
-                        currency = getattr(
-                            override.price_money, "currency", default_currency
-                        )
-                        price_info = f"${price:.2f} {currency}"
-                        location_price_found = True
+            modifiers_out: List[Dict[str, Any]] = []
+            for mod_ref in mod_list_data.get("modifiers", []) or []:
+                mod_id = mod_ref.get("id")
+                mod_obj = modifier_lookup.get(mod_id)
+                if not mod_obj or not _meets_location(mod_obj, location_id):
+                    continue
+                mod_data = mod_obj.get("modifier_data", {})
+                # Prefer location override price when available
+                price_money = None
+                for ov in mod_data.get("location_overrides", []) or []:
+                    if ov.get("location_id") == location_id and ov.get("price_money"):
+                        price_money = ov["price_money"]
                         break
+                if price_money is None:
+                    price_money = mod_data.get("price_money") or {}
+                amount = int(price_money.get("amount", 0) or 0)
+                currency = price_money.get("currency", "USD") or "USD"
+                modifiers_out.append(
+                    {
+                        "modifier_id": mod_id,
+                        "name": mod_data.get("name", ""),
+                        "price_amount": amount,
+                        "price_currency": currency,
+                    }
+                )
 
-            # If no location override found, use default price
-            if (
-                not location_price_found
-                and hasattr(var_data, "price_money")
-                and var_data.price_money
-            ):
-                price = var_data.price_money.amount / 100
-                currency = getattr(var_data.price_money, "currency", default_currency)
-                price_info = f"${price:.2f} {currency}"
+            if not modifiers_out:
+                continue
 
-    return price_info
+            min_sel, max_sel = _resolve_selection_limits(info, mod_list_data)
+            modifier_lists_out.append(
+                {
+                    "modifier_list_id": mod_list_id,
+                    "name": mod_list_data.get("name", ""),
+                    "selection_type": mod_list_data.get("selection_type", "SINGLE"),
+                    "min_selected": min_sel,
+                    "max_selected": max_sel,
+                    "modifiers": modifiers_out,
+                }
+            )
+
+        description = item_data_block.get(
+            "description_plaintext"
+        ) or item_data_block.get("description", "")
+
+        results.append(
+            {
+                "item_id": item_id,
+                "item_name": item_name,
+                "description": description or "",
+                "categories": categories_out,
+                "variations": variations_out,
+                "modifier_lists": modifier_lists_out,
+                "is_taxable": item_data_block.get("is_taxable", True),
+                "product_type": item_data_block.get("product_type", ""),
+            }
+        )
+
+    return results
 
 
-def _process_item_modifiers(
-    item_obj,
-    related_objects: Optional[List],
-    location_id: str,
-    default_currency: str = "USD",
-) -> List[Dict[str, Any]]:
-    """Process modifiers for an item at a specific location.
-
-    Args:
-        item_obj: Catalog item object
-        related_objects: Related objects from the detailed response
-        location_id: Target location ID
-        default_currency: Default currency code to use when none is specified
-
-    Returns:
-        List of modifier groups available at the location
-    """
-    location_modifiers = []
-
-    if (
-        item_obj.type == "ITEM"
-        and isinstance(item_obj, CatalogItemObject)
-        and item_obj.item_data
+def _meets_location(obj: Dict[str, Any], location_id: str) -> bool:
+    if obj.get("present_at_all_locations", False) and location_id not in (
+        obj.get("absent_at_location_ids", []) or []
     ):
-        modifier_list_info = getattr(item_obj.item_data, "modifier_list_info", None)
-
-        if modifier_list_info and related_objects:
-            logger.debug(f"Found {len(modifier_list_info)} modifier list(s) for item")
-
-            # Process each modifier list
-            for mod_list_ref in modifier_list_info:
-                modifier_list_id = mod_list_ref.modifier_list_id
-
-                # Find the corresponding modifier list in related_objects
-                for related_obj in related_objects:
-                    if (
-                        related_obj.type == "MODIFIER_LIST"
-                        and related_obj.id == modifier_list_id
-                    ):
-                        mod_list_data = getattr(related_obj, "modifier_list_data", None)
-                        if mod_list_data:
-                            # Process modifiers in this list
-                            modifiers_info = []
-                            has_location_modifiers = False
-
-                            if mod_list_data.modifiers:
-                                for modifier_obj in mod_list_data.modifiers:
-                                    # Check modifier availability at location
-                                    is_available = _is_modifier_available_at_location(
-                                        modifier_obj, location_id
-                                    )
-
-                                    if is_available:
-                                        has_location_modifiers = True
-                                        mod_data = getattr(
-                                            modifier_obj, "modifier_data", None
-                                        )
-                                        if mod_data:
-                                            # Get modifier price info
-                                            price_info = ""
-                                            if mod_data.price_money:
-                                                price = (
-                                                    mod_data.price_money.amount / 100
-                                                )
-                                                currency = getattr(
-                                                    mod_data.price_money,
-                                                    "currency",
-                                                    default_currency,
-                                                )
-                                                if price > 0:
-                                                    price_info = (
-                                                        f" (+{currency} ${price:.2f})"
-                                                    )
-                                                elif price < 0:
-                                                    price_info = f" (-{currency} ${abs(price):.2f})"
-
-                                            modifiers_info.append(
-                                                {
-                                                    "id": modifier_obj.id,
-                                                    "name": mod_data.name,
-                                                    "price_info": price_info,
-                                                }
-                                            )
-
-                            # Add modifier list if it has location-available modifiers
-                            if has_location_modifiers:
-                                location_modifiers.append(
-                                    {
-                                        "list_name": mod_list_data.name,
-                                        "modifiers": modifiers_info,
-                                    }
-                                )
-                        break
-
-    return location_modifiers
+        return True
+    return location_id in (obj.get("present_at_location_ids", []) or [])
 
 
-def _is_modifier_available_at_location(modifier_obj, location_id: str) -> bool:
-    """Check if a modifier is available at the specified location.
+def _variation_meets_location(
+    variation: Dict[str, Any], item_obj: Dict[str, Any], location_id: str
+) -> bool:
+    # Respect explicit absences first
+    if location_id in (variation.get("absent_at_location_ids", []) or []):
+        return False
+    if location_id in (item_obj.get("absent_at_location_ids", []) or []):
+        return False
 
-    Args:
-        modifier_obj: Modifier object
-        location_id: Target location ID
+    overrides = (
+        variation.get("item_variation_data", {}).get("location_overrides", []) or []
+    )
+    for ov in overrides:
+        if ov.get("location_id") == location_id:
+            return True
 
-    Returns:
-        bool: True if modifier is available at location
+    if variation.get("present_at_all_locations", False):
+        return True
+    if location_id in (variation.get("present_at_location_ids", []) or []):
+        return True
+
+    if item_obj.get("present_at_all_locations", False):
+        return True
+    if location_id in (item_obj.get("present_at_location_ids", []) or []):
+        return True
+    return False
+
+
+def _format_money(amount_minor: int, currency: str) -> str:
+    """Format Square Money using ISO 4217 minor unit digits.
+
+    Square's Money.amount is in minor units. Convert to major units using
+    the currency's number of minor unit digits (default 2).
     """
-    present_at_all_locations = getattr(modifier_obj, "present_at_all_locations", False)
-    present_at_location_ids = getattr(modifier_obj, "present_at_location_ids", []) or []
-    absent_at_location_ids = getattr(modifier_obj, "absent_at_location_ids", []) or []
+    minor_unit_digits: Dict[str, int] = {
+        # Common currencies
+        "USD": 2,
+        "EUR": 2,
+        "GBP": 2,
+        "CAD": 2,
+        "AUD": 2,
+        "NZD": 2,
+        "JPY": 0,
+        "KRW": 0,
+        "VND": 0,
+        "TND": 3,
+        "BHD": 3,
+        "KWD": 3,
+        "OMR": 3,
+    }
+    code = (currency or "USD").upper()
+    digits = minor_unit_digits.get(code, 2)
+    if digits == 0:
+        major = str(int(amount_minor))
+    else:
+        major = f"{amount_minor / (10 ** digits):.{digits}f}"
+    if code == "USD":
+        return f"${major}"
+    return f"{major} {code}"
 
-    return (
-        present_at_all_locations and location_id not in absent_at_location_ids
-    ) or location_id in present_at_location_ids
+
+def _get_var_price_string(variation: Dict[str, Any], location_id: str) -> str:
+    var_data = variation.get("item_variation_data", {})
+    # location overrides first
+    for ov in var_data.get("location_overrides", []) or []:
+        if ov.get("location_id") == location_id and ov.get("price_money"):
+            amt = int(ov["price_money"].get("amount", 0) or 0)
+            cur = ov["price_money"].get("currency", "USD") or "USD"
+            return _format_money(amt, cur)
+    # fallback to default
+    price_money = var_data.get("price_money") or {}
+    amt = int(price_money.get("amount", 0) or 0)
+    cur = price_money.get("currency", "USD") or "USD"
+    return _format_money(amt, cur)
+
+
+def _resolve_selection_limits(
+    info: Dict[str, Any], mod_list_data: Dict[str, Any]
+) -> Tuple[int, Optional[int]]:
+    """Resolve min/max selection like the manager’s script logic."""
+    info_min = info.get("min_selected_modifiers", -1)
+    info_max = info.get("max_selected_modifiers", -1)
+    list_min = mod_list_data.get("minimum_selected_modifiers", -1)
+    list_max = mod_list_data.get("maximum_selected_modifiers", -1)
+
+    # minimum
+    if info_min == -1:
+        min_selected = (
+            0 if list_min in (-1, None) or list_min < -1 else max(0, list_min)
+        )
+    else:
+        min_selected = 0 if info_min < -1 else max(0, info_min)
+
+    # maximum: None means unbounded
+    max_selected: Optional[int]
+    if info_max == -1:
+        if list_max in (-1, None) or list_max < -1:
+            max_selected = 1
+        elif list_max == 0:
+            max_selected = None
+        else:
+            max_selected = int(list_max)
+    else:
+        if info_max == 0 or info_max < -1:
+            max_selected = None
+        else:
+            max_selected = int(info_max)
+
+    return int(min_selected), max_selected
