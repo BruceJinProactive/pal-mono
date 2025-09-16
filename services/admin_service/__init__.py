@@ -704,7 +704,7 @@ def get_lead(
 async def build_menu_from_url(
     url: str,
     use_stealth_proxy: bool = False,
-) -> list[dict]:
+) -> str:
     """
     Build menu data from a restaurant URL using Firecrawl.
 
@@ -713,7 +713,7 @@ async def build_menu_from_url(
         use_stealth_proxy (bool): Whether to use stealth proxy for protected sites
 
     Returns:
-        list[dict]: List of menu categories with their items
+        str: Menu data formatted as markdown
 
     Raises:
         ValueError: If there's an error building the menu

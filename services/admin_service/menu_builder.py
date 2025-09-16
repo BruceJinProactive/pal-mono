@@ -17,11 +17,6 @@ class MenuBuilder:
         except ValueError as e:
             raise ValueError("Firecrawl API key required.") from e
 
-        if not Firecrawl:
-            raise ValueError(
-                "Firecrawl package not available. Please install firecrawl-py."
-            )
-
         self.firecrawl = Firecrawl(api_key=api_key)
 
     def _get_default_extract_prompt(self):
@@ -83,15 +78,9 @@ class MenuBuilder:
         """
 
     def build(self, url: str, proxy_type: str = "auto") -> Optional[dict[str, Any]]:
-        """Build menu data from a URL"""
-        extract_prompt = self._get_default_extract_prompt()
-        return self._attempt_build(url, extract_prompt, proxy_type)
-
-    def _attempt_build(
-        self, url: str, extract_prompt: str, proxy_type: str
-    ) -> Optional[dict[str, Any]]:
-        """Attempt to build menu data with LLM extraction"""
+        """Build menu data from a URL using LLM extraction"""
         try:
+            extract_prompt = self._get_default_extract_prompt()
             formats = [{"type": "json", "prompt": extract_prompt}]
 
             scrape_options = {
@@ -119,7 +108,8 @@ class MenuBuilder:
             return json_attr if isinstance(json_attr, dict) else None
 
         except Exception as e:
-            raise Exception(f"Menu building failed: {str(e)}")
+            # Preserve original stack/type; message for logs only
+            raise RuntimeError("Menu building failed") from e
 
     def output_content_as_markdown(self, menu_data: dict[str, Any]) -> Optional[str]:
         """Convert menu data to markdown format"""
@@ -127,7 +117,7 @@ class MenuBuilder:
             return None
 
         menu_list = menu_data["menu"]
-        if not menu_list or len(menu_list) == 0:
+        if not menu_list:
             return None
 
         return self._convert_menu_to_markdown(menu_list)
@@ -168,7 +158,7 @@ class MenuBuilder:
 async def build_menu_from_url(
     url: str,
     use_stealth_proxy: bool = False,
-) -> list[dict[str, Any]]:
+) -> str:
     """
     Build menu data from a restaurant URL using Firecrawl.
 
@@ -177,7 +167,7 @@ async def build_menu_from_url(
         use_stealth_proxy (bool): Whether to use stealth proxy for protected sites
 
     Returns:
-        list[dict]: List of menu categories with their items
+        str: Menu data formatted as markdown
 
     Raises:
         ValueError: If there's an error building the menu
@@ -189,24 +179,23 @@ async def build_menu_from_url(
         proxy_type = "stealth" if use_stealth_proxy else "auto"
 
         # Offload blocking work to thread to avoid blocking event loop
-        logger.info(
-            f"Offloading blocking menu build operation to thread for URL: {url}"
-        )
         menu_data = await asyncio.wait_for(
-            asyncio.to_thread(builder.build, url, proxy_type=proxy_type), timeout=90
+            asyncio.to_thread(builder.build, url, proxy_type=proxy_type), timeout=150
         )
 
         # Validate the returned menu data
         if not menu_data:
             raise ValueError("No menu data could be extracted from the URL")
 
-        # Extract just the menu array from the response
-        menu_list = menu_data.get("menu", [])
-        if not menu_list:
+        # Convert to markdown format
+        menu_markdown = builder.output_content_as_markdown(menu_data)
+        if not menu_markdown:
             raise ValueError("No menu categories found in the extracted data")
 
-        logger.info(f"Successfully built menu: {len(menu_list)} categories")
-        return menu_list
+        logger.info(
+            f"Successfully built menu markdown: {len(menu_markdown)} characters"
+        )
+        return menu_markdown
 
     except ValueError:
         # Client/content issues (no menu data, no categories) → 400 at route layer
@@ -214,7 +203,7 @@ async def build_menu_from_url(
     except asyncio.TimeoutError as e:
         # Timeout is a client issue (site too slow) → 400 at route layer
         raise ValueError(
-            "Menu building timed out - site may be too slow or unresponsive"
+            "Menu building timed out after 150 seconds - site may be too slow or unresponsive"
         ) from e
     except Exception as e:
         # Internal/server issues (API key, imports, network) → 500 at route layer

@@ -133,6 +133,4 @@ class BuildMenuRequest(BaseModel):
 class BuildMenuResponse(BaseModel):
     """Response model for built menu data"""
 
-    menu: list[dict] = Field(
-        ..., description="Structured menu data with categories and items"
-    )
+    menu: str = Field(..., description="Menu data formatted as markdown")
