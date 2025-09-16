@@ -22,6 +22,7 @@ from tools.toast_tool._apis import (
     submit_order,
 )
 from tools.toast_tool._prompt_constants import (
+    DINING_OPTIONS_INSTRUCTION,
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
     RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
@@ -484,6 +485,10 @@ class ToastTool(Toolkit):
             openai=False,
         )
 
+        # Append dining options to the sub-queries
+        if isinstance(sub_queries, SubQueries):
+            sub_queries.queries.append("dining options")
+
         if not isinstance(sub_queries, SubQueries):
             return "Failed to identify the items the user ordered in the conversation."
 
@@ -531,6 +536,13 @@ class ToastTool(Toolkit):
 
                     # Indent the text
                     node_text = textwrap.indent(node.text, 2 * "\t")
+                    # If the document name is "dining_options", add it to the context
+                    if node.metadata.get("isDiningOptions", False):
+                        node_text = (
+                            textwrap.indent(DINING_OPTIONS_INSTRUCTION, 2 * "\t")
+                            + "\n"
+                            + node_text
+                        )
 
                     context += (
                         f"<document name='{doc_name}'>\n"

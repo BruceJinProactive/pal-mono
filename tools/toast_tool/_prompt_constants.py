@@ -1,3 +1,9 @@
+# near imports, module scope
+DINING_OPTIONS_INSTRUCTION = (
+    "The following is the list of dining options available for the restaurant. "
+    "Select the Online TAKE_OUT dining option only and use the GUID associated with it. Do not include any other dining options."
+)
+
 RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """You are a helpful assistant that extracts full and specific order items' names from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items with proper modifiers (e.g. size or toppings) the user has added to their final order.
 Requirements:
 - Extract the **complete dish or drink name**, but **remove size or quantity information**.
@@ -65,12 +71,6 @@ WRONG STRUCTURE (missing modifiers field):
 - If any field is missing, output "N/A" for that field, i.e., if the user did not
 provide a delivery address, output "N/A" for all fields.
 - If any modifier group id or modifier item id is missing, do not include them in the output.
-
-# RULES FOR BUILDING THE DiningOption OBJECT:
-- If the user places a **takeout** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "db44f25f-479f-4d9c-852c-aebff86e6923"}.
-- If the user places a **dinein** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "030189e2-9689-49aa-a2dd-6fde46191240"}.
-- If the user places a **curbside pickup** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "141b2c60-a232-4387-9ba3-80f6f9f35b34"}.
-- If the user places a **delivery** order, you must use the exact guid in the following DiningOption object when creating the order object: {"guid": "2581adcf-3b04-4598-8df4-4c79cfcfc2dd"}.
 
 # RULES FOR ADDING SPECIAL NOTES TO THE ORDER:
 - You must recognize any notes/requests that the user wants to add to the order from the chat history.
