@@ -205,6 +205,23 @@ def delete_project(
         project_repository.delete_project(project_id)
 
 
+async def get_project_by_id_async(
+    session: AsyncSession, project_id: uuid.UUID
+) -> db.Project | None:
+    """
+    Asynchronously gets a specific project using its unique identifier.
+
+    Args:
+        session (AsyncSession): The asynchronous database connection.
+        project_id (uuid.UUID): The unique identifier of the project.
+
+    Returns:
+        The Project with the matching unique identifier, or None if no such Project exists.
+    """
+    project_repo = db.ProjectRepositoryAsync(session)
+    return await project_repo.get_project(project_id)
+
+
 async def get_project_async(session: AsyncSession, message: Message) -> db.Project:
     project_channel_identifier = (
         f"{message.channel.value}:{message.recipient_identifier}"

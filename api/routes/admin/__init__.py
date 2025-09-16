@@ -134,6 +134,12 @@ from api.schemas.admin.user_management import (
     ListUsersResponse,
     UserInfo,
 )
+from api.schemas.admin.voice_config import (
+    CreateVoiceConfigRequest,
+    ListVoiceConfigsResponse,
+    UpdateVoiceConfigRequest,
+    VoiceConfig,
+)
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel
@@ -163,6 +169,7 @@ from . import (
     _prompt,
     _subscription,
     _users,
+    _voice_config,
 )
 from ._auth import authenticate_user
 
@@ -2104,6 +2111,79 @@ async def search_places(
     Search for places by name using Google Maps Places API.
     """
     return await search_places_by_name(context, request)
+
+
+"""
+---------- Voice Config Endpoints ----------
+--------------------------------------------
+"""
+
+
+@admin_router.get("/projects/{project_id}/voice_configs")
+async def list_voice_configs(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> ListVoiceConfigsResponse:
+    """
+    Retrieve a list of voice configs for the specified project.
+    """
+    return await _voice_config.list_voice_configs_by_project(
+        project_id, context, async_session
+    )
+
+
+@admin_router.get("/voice_configs/{voice_config_id}")
+async def get_voice_config(
+    voice_config_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> VoiceConfig:
+    """
+    Retrieve voice config details by voice config ID.
+    """
+    return await _voice_config.get_voice_config(voice_config_id, context, async_session)
+
+
+@admin_router.put("/voice_configs", status_code=status.HTTP_201_CREATED)
+async def create_voice_config(
+    voice_config: CreateVoiceConfigRequest,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> VoiceConfig:
+    """
+    Create a new voice config for a project.
+    """
+    return await _voice_config.create_voice_config(voice_config, context, async_session)
+
+
+@admin_router.patch("/voice_configs/{voice_config_id}")
+async def update_voice_config(
+    voice_config_id: uuid.UUID,
+    voice_config: UpdateVoiceConfigRequest,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> VoiceConfig:
+    """
+    Update an existing voice config.
+    """
+    return await _voice_config.update_voice_config(
+        voice_config_id, voice_config, context, async_session
+    )
+
+
+@admin_router.delete("/voice_configs/{voice_config_id}")
+async def delete_voice_config(
+    voice_config_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+):
+    """
+    Delete a voice config.
+    """
+    return await _voice_config.delete_voice_config(
+        voice_config_id, context, async_session
+    )
 
 
 """Square Integration Endpoints"""
