@@ -37,6 +37,9 @@ class PlaceResult(BaseModel):
     place_id: str = Field(..., description="Unique Google Places identifier")
     name: str = Field(..., description="Business name")
     formatted_address: str = Field(..., description="Full formatted address")
+    geometry: Optional[dict] = Field(
+        None, description="Location geometry data from Google Places API"
+    )
     formatted_phone_number: Optional[str] = Field(
         None, description="Formatted phone number"
     )
