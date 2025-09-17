@@ -41,6 +41,8 @@ class Account(BaseModel):
     phone_number: str | None = None
     channels: list[str] | None = None
     onboarding_method: OnboardingMethod
+    created_at: int  # Unix timestamp in seconds
+    updated_at: int | None  # Unix timestamp in seconds
 
 
 class AccountSummary(BaseModel):

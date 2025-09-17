@@ -50,6 +50,8 @@ def build_account(account: db.Account) -> Account:
         segment=account.segment.value if account.segment else None,
         tier=account.tier.value if account.tier else None,
         notes=account.notes,
+        created_at=int(account.created_at.timestamp()),
+        updated_at=int(account.updated_at.timestamp() if account.updated_at else 0),
         contract_signed=account.contract_signed,
         phone_number=account.phone_number,
         channels=account.channels,
