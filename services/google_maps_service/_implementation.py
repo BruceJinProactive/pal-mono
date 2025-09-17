@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from typing import List, Optional
 
 import httpx
@@ -18,6 +19,7 @@ from utils.log import logger
 GOOGLE_MAPS_API_BASE_URL = "https://maps.googleapis.com/maps/api"
 PLACES_SEARCH_ENDPOINT = "/place/textsearch/json"
 PLACE_DETAILS_ENDPOINT = "/place/details/json"
+TIMEZONE_ENDPOINT = "/timezone/json"
 
 
 def _get_api_key() -> str:
@@ -118,7 +120,6 @@ async def _get_place_details(place_id: str, language: str = "en") -> dict:
         "formatted_phone_number",
         "international_phone_number",
         "website",
-        "utc_offset",
         "opening_hours",
         "business_status",
         "types",
@@ -153,6 +154,53 @@ async def _get_place_details(place_id: str, language: str = "en") -> dict:
         return {}
 
 
+async def _get_timezone_id(latitude: float, longitude: float) -> Optional[str]:
+    """
+    Get timezone ID for a location using Google Time Zone API.
+
+    Args:
+        latitude: Latitude coordinate
+        longitude: Longitude coordinate
+
+    Returns:
+        Timezone ID (e.g., "America/Los_Angeles") or None if failed
+    """
+    api_key = _get_api_key()
+
+    # Use current timestamp for timezone lookup
+    timestamp = int(time.time())
+
+    params = {
+        "location": f"{latitude},{longitude}",
+        "timestamp": timestamp,
+        "key": api_key,
+    }
+
+    url = f"{GOOGLE_MAPS_API_BASE_URL}{TIMEZONE_ENDPOINT}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=5.0)
+            response.raise_for_status()
+
+        data = response.json()
+
+        if data.get("status") == "OK":
+            return data.get("timeZoneId")
+        else:
+            logger.warning(
+                "[GoogleMaps] Timezone API returned status: %s", data.get("status")
+            )
+            return None
+
+    except json.JSONDecodeError as e:
+        logger.warning("[GoogleMaps] JSON decode error in timezone API: %s", e)
+        return None
+    except (httpx.RequestError, httpx.HTTPStatusError) as e:
+        logger.warning("[GoogleMaps] Failed to get timezone: %s", e)
+        return None
+
+
 def _extract_menu_url(place_data: dict) -> Optional[str]:
     """
     Extract menu URL from place data if available.
@@ -179,7 +227,7 @@ def _extract_menu_url(place_data: dict) -> Optional[str]:
     return None
 
 
-def _convert_to_place_result(
+async def _convert_to_place_result(
     place_data: dict, detailed_data: Optional[dict] = None
 ) -> PlaceResult:
     """
@@ -193,6 +241,13 @@ def _convert_to_place_result(
         PlaceResult object
     """
     data = detailed_data if detailed_data else place_data
+
+    timezone_id = None
+    geometry = data.get("geometry")
+    if geometry and "location" in geometry:
+        location = geometry["location"]
+        if "lat" in location and "lng" in location:
+            timezone_id = await _get_timezone_id(location["lat"], location["lng"])
 
     opening_hours_data = data.get("opening_hours")
     opening_hours = None
@@ -210,10 +265,10 @@ def _convert_to_place_result(
         name=data.get("name", ""),
         formatted_address=data.get("formatted_address", ""),
         geometry=data.get("geometry"),
+        timezone_id=timezone_id,
         formatted_phone_number=data.get("formatted_phone_number"),
         international_phone_number=data.get("international_phone_number"),
         website=data.get("website"),
-        utc_offset=data.get("utc_offset"),
         opening_hours=opening_hours,
         business_status=data.get("business_status"),
         types=data.get("types"),
@@ -266,7 +321,7 @@ async def search_places_by_name(
 
             detailed_data = await _get_place_details(place_id, request.language or "en")
 
-            place_result = _convert_to_place_result(place_data, detailed_data)
+            place_result = await _convert_to_place_result(place_data, detailed_data)
             place_results.append(place_result)
 
         return GoogleMapsSearchResponse(

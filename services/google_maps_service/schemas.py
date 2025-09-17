@@ -40,6 +40,9 @@ class PlaceResult(BaseModel):
     geometry: Optional[dict] = Field(
         None, description="Location geometry data from Google Places API"
     )
+    timezone_id: Optional[str] = Field(
+        None, description="Timezone ID (e.g., 'America/Los_Angeles')"
+    )
     formatted_phone_number: Optional[str] = Field(
         None, description="Formatted phone number"
     )
@@ -47,7 +50,6 @@ class PlaceResult(BaseModel):
         None, description="International phone number format"
     )
     website: Optional[str] = Field(None, description="Business website URL")
-    utc_offset: Optional[int] = Field(None, description="UTC offset in minutes")
     opening_hours: Optional[OpeningHours] = Field(
         None, description="Opening hours information"
     )
