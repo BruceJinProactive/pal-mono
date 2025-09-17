@@ -281,6 +281,30 @@ class MenuSifuTool(Toolkit):
                         logger.debug(
                             f"[MenuSifuTool] firstName value: {order_dict['firstName']}"
                         )
+
+                    # Check for error response first
+                    if "error" in order_dict:
+                        return order_dict["error"]
+
+                    # Check for missing required fields and provide helpful messages
+                    missing_fields = []
+                    if not order_dict.get("firstName") and not order_dict.get(
+                        "first_name"
+                    ):
+                        missing_fields.append("customer's name")
+                    if not order_dict.get("phone") and not order_dict.get(
+                        "telephone_number"
+                    ):
+                        missing_fields.append("phone number")
+                    if not order_dict.get("items"):
+                        missing_fields.append("order items")
+
+                    if missing_fields:
+                        if len(missing_fields) == 1:
+                            return f"Please provide {missing_fields[0]}."
+                        else:
+                            return f"Please provide {' and '.join(missing_fields)}."
+
                     extracted_order = ExtractedMenuSifuOrder(**order_dict)
                 except (json.JSONDecodeError, ValueError) as e:
                     error_msg = f"Failed to parse extracted order JSON: {str(e)}"
@@ -592,8 +616,7 @@ class MenuSifuTool(Toolkit):
                             itemType=safe_fields["itemType"],
                             name=safe_fields["name"],
                             nameMultilingual=None,  # Optional field
-                            options=item.get("options")
-                            or [],  # List of options/modifiers
+                            options=getattr(item, "options", None) or [],
                             price=safe_fields["price"],
                             quantity=safe_fields["quantity"],
                             saleItemId=safe_fields["saleItemId"],
@@ -931,9 +954,15 @@ class MenuSifuTool(Toolkit):
                     # Handle combo sections for combo items
                     combo_detail = None
                     if item.combo_sections and item.item_type == "COMBO_SALE_ITEM":
+                        logger.debug(
+                            f"[MenuSifuTool] Processing {len(item.combo_sections)} combo sections for {item.item_name}"
+                        )
 
                         combo_sections_list = []
                         for combo_section in item.combo_sections:
+                            logger.debug(
+                                f"[MenuSifuTool] Processing combo section: {combo_section}"
+                            )
                             # Convert selected items (support both shapes)
                             select_src = (
                                 self._get_field(combo_section, "selectSaleItems")
@@ -943,9 +972,19 @@ class MenuSifuTool(Toolkit):
                             select_sale_items = []
                             for selected_item in select_src:
                                 # Get fields safely from either Pydantic or dict
-                                sale_item_id = self._get_field(
-                                    selected_item, "saleItemId", 0
-                                )
+                                # Safe int conversion for sale_item_id
+                                raw_sale_id = self._get_field(
+                                    selected_item, "saleItemId"
+                                ) or self._get_field(selected_item, "sale_item_id")
+                                try:
+                                    sale_item_id = (
+                                        int(raw_sale_id)
+                                        if raw_sale_id not in (None, "")
+                                        else 0
+                                    )
+                                except (ValueError, TypeError):
+                                    sale_item_id = 0
+
                                 quantity = self._get_field(selected_item, "quantity", 1)
                                 name = self._get_field(selected_item, "name", "")
                                 name_multilingual = self._get_field(
@@ -953,15 +992,13 @@ class MenuSifuTool(Toolkit):
                                 )
                                 price_val = self._get_field(selected_item, "price")
                                 detail_price_id = self._get_field(
-                                    selected_item, "detailPriceId", ""
+                                    selected_item, "detailPriceId"
+                                ) or self._get_field(
+                                    selected_item, "detail_price_id", ""
                                 )
 
                                 select_item = SelectSaleItem(
-                                    saleItemId=(
-                                        int(sale_item_id)
-                                        if sale_item_id is not None
-                                        else 0
-                                    ),
+                                    saleItemId=sale_item_id,
                                     quantity=(
                                         int(quantity) if quantity is not None else 1
                                     ),
@@ -982,7 +1019,9 @@ class MenuSifuTool(Toolkit):
 
                             # Build multilingual name for section safely
                             section_name = self._get_field(
-                                combo_section, "name", "Section"
+                                combo_section, "name"
+                            ) or self._get_field(
+                                combo_section, "section_name", "Section"
                             )
                             name_ml = self._get_field(combo_section, "nameMultilingual")
 
@@ -1000,9 +1039,21 @@ class MenuSifuTool(Toolkit):
                                 **{"zh-cn": zh or section_name},
                             )
 
-                            section_id = self._get_field(combo_section, "id", 0)
+                            # Safe int conversion for section_id
+                            raw_section_id = self._get_field(
+                                combo_section, "id"
+                            ) or self._get_field(combo_section, "section_id")
+                            try:
+                                section_id = (
+                                    int(raw_section_id)
+                                    if raw_section_id not in (None, "")
+                                    else 0
+                                )
+                            except (ValueError, TypeError):
+                                section_id = 0
+
                             combo_section_obj = ComboSectionForOrder(
-                                id=int(section_id) if section_id is not None else 0,
+                                id=section_id,
                                 name=str(section_name),
                                 nameMultilingual=section_multilingual,
                                 selectSaleItems=select_sale_items,
@@ -1010,6 +1061,9 @@ class MenuSifuTool(Toolkit):
                             combo_sections_list.append(combo_section_obj)
 
                         combo_detail = ComboDetail(comboSections=combo_sections_list)
+                        logger.debug(
+                            f"[MenuSifuTool] Created combo detail with {len(combo_sections_list)} sections: {combo_detail}"
+                        )
 
                     # Create OrderGenerationSelectedItem
                     order_item = OrderGenerationSelectedItem(
