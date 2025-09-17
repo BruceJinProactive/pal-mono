@@ -31,6 +31,7 @@ async def create_voice_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
+    await async_session.refresh(project, ["account"])
     authorize_user_account(context, project.account.name)
 
     voice_service = VoiceService()
@@ -55,6 +56,8 @@ async def get_voice_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
+
+    await async_session.refresh(project, ["account"])
     authorize_user_account(context, project.account.name)
 
     return voice_config
@@ -73,6 +76,7 @@ async def list_voice_configs_by_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
+    await async_session.refresh(project, ["account"])
     authorize_user_account(context, project.account.name)
 
     voice_service = VoiceService()
@@ -102,6 +106,7 @@ async def update_voice_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
+    await async_session.refresh(project, ["account"])
     authorize_user_account(context, project.account.name)
 
     return await voice_service.update_voice_config(
@@ -131,6 +136,7 @@ async def delete_voice_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
+    await async_session.refresh(project, ["account"])
     authorize_user_account(context, project.account.name)
 
     return await voice_service.delete_voice_config(voice_config_id, async_session)
