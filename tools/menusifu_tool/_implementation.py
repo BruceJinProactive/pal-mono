@@ -181,9 +181,9 @@ class MenuSifuTool(Toolkit):
 
         # Add item-level special notes
         for item in order_items:
-            special_notes = item.get("special_notes", "")
+            special_notes = getattr(item, "special_notes", "") or ""
             if special_notes and special_notes.strip():
-                item_name = item.get("name", "Item")
+                item_name = getattr(item, "item_name", "Item") or "Item"
                 allergy_parts.append(f"{item_name}: {special_notes.strip()}")
 
         # Combine all parts
