@@ -412,21 +412,26 @@ def create_conversion_table(unified_accounts: dict) -> str:
         "Paid%",
     ]
 
-    # Build data rows - filter out accounts with 0 orders
-    data_rows = []
+    # First filter out accounts with 0 orders and sort by orders (high to low)
+    filtered_accounts = []
     for account_name, account_data in unified_accounts.items():
-        conv = account_data.get("total_conversations", "0")
         orders = account_data.get("conversations_with_orders", "0")
-
-        # Skip accounts with 0 orders
         try:
             orders_int = int(orders)
-            if orders_int == 0:
-                continue
+            if orders_int > 0:
+                filtered_accounts.append((account_name, account_data, orders_int))
         except (ValueError, TypeError):
-            # If orders can't be converted to int, skip this account
             continue
 
+    # Sort by orders (high to low) and limit to first 15
+    filtered_accounts.sort(key=lambda x: x[2], reverse=True)
+    limited_accounts = filtered_accounts[:15]
+
+    # Build data rows
+    data_rows = []
+    for account_name, account_data, _ in limited_accounts:
+        conv = account_data.get("total_conversations", "0")
+        orders = account_data.get("conversations_with_orders", "0")
         paid = account_data.get("paid_orders", "0")
         conv_value = safe_float_format(account_data.get("total_subtotal", 0), 1)
         paid_value = safe_float_format(account_data.get("paid_total", 0), 1)
@@ -520,9 +525,13 @@ def create_engagement_table(unified_accounts: dict) -> str:
     # Headers with key engagement metrics
     headers = ["Account", "Users", "Conv", "Calls", "Dur", "Xfer%"]
 
-    # Build data rows
+    # Build data rows - limit to first 15 accounts
     data_rows = []
+    account_count = 0
     for account_name, account_data in unified_accounts.items():
+        if account_count >= 15:
+            break
+        account_count += 1
         users = account_data.get("active_users", "0")
         conv = account_data.get("total_conversations", "0")
         calls = account_data.get("total_calls", "0")
