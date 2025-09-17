@@ -647,7 +647,7 @@ def get_toast_access_token_from_aws(
         token_json_str = get_client_secret_with_fallback("TOAST_ACCESS_TOKEN")
         token_data = json.loads(token_json_str)
         # Reconstruct ToastAccessToken from stored data
-        token = ToastAccessToken.from_toast_response(token_data)
+        token = ToastAccessToken(**token_data)
     except (
         ValueError,
         KeyError,
@@ -673,6 +673,9 @@ def get_toast_access_token_from_aws(
         return refresh_toast_access_token_from_aws(
             store_id=store_id, token_api_endpoint=token_api_endpoint
         )
+    logger.debug(
+        f"[ToastTool.get_toast_access_token_from_aws] Token retrieved successfully expiring at: {token.expires_at}"
+    )
     return token
 
 
