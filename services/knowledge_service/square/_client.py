@@ -15,6 +15,31 @@ from urllib3.util.retry import Retry
 
 from utils.log import logger
 
+
+class SquareAPIError(ValueError):
+    """Raised for non-successful Square API responses.
+
+    Carries HTTP status, endpoint, and response text so callers/UI can
+    surface clear diagnostics (e.g., invalid token, insufficient scopes).
+    """
+
+    def __init__(
+        self,
+        status_code: int,
+        endpoint: str,
+        response_text: str,
+        request_id: str | None = None,
+    ):
+        self.status_code = status_code
+        self.endpoint = endpoint
+        self.response_text = response_text
+        self.request_id = request_id
+        rid = f" request_id={request_id}" if request_id else ""
+        super().__init__(
+            f"Square API {endpoint} failed: HTTP {status_code}{rid}. Body: {response_text[:500]}"
+        )
+
+
 SQUARE_API_BASE = "https://connect.squareup.com/v2"
 SQUARE_API_VERSION = "2025-08-20"
 
@@ -42,8 +67,11 @@ def download_menu(access_token: str, location_id: str) -> Dict[str, Any]:
     """
     try:
         logger.debug(
-            "[square._client.download_menu] Fetching Square catalog for location %s",
-            location_id,
+            "[square._client.download_menu] Fetching Square catalog",
+            extra={
+                "location_id": location_id,
+                "square_api_version": SQUARE_API_VERSION,
+            },
         )
 
         # Pull required object types
@@ -53,13 +81,51 @@ def download_menu(access_token: str, location_id: str) -> Dict[str, Any]:
         }
         cats_data = _fetch_all(access_token, ["CATEGORY"]) or {"objects": []}
 
+        raw_counts = {
+            "items_objects": len(items_data.get("objects", [])),
+            "modifiers_objects": len(
+                [o for o in mods_data.get("objects", []) if o.get("type") == "MODIFIER"]
+            ),
+            "modifier_lists_objects": len(
+                [
+                    o
+                    for o in mods_data.get("objects", [])
+                    if o.get("type") == "MODIFIER_LIST"
+                ]
+            ),
+            "categories_objects": len(cats_data.get("objects", [])),
+        }
+
+        logger.debug(
+            "[square._client.download_menu] Raw catalog counts",
+            extra={
+                "location_id": location_id,
+                **raw_counts,
+            },
+        )
+
         extracted_items = _extract_items(items_data, mods_data, cats_data, location_id)
 
-        return {
+        result = {
             "location_id": location_id,
             "items": extracted_items,
             "item_count": len(extracted_items),
+            "raw_counts": raw_counts,
         }
+
+        if result["item_count"] == 0:
+            logger.warning(
+                "[square._client.download_menu] Extracted 0 items. Possible causes: empty catalog, token lacks catalog read scopes, or location mismatch.",
+                extra={
+                    "location_id": location_id,
+                    **raw_counts,
+                },
+            )
+
+        return result
+    except SquareAPIError:
+        # Propagate explicit API failures so the admin route can return 4xx with details
+        raise
     except Exception as e:
         raise RuntimeError(f"Error downloading Square menu: {e}")
 
@@ -85,10 +151,24 @@ def _fetch_all(access_token: str, types: List[str]) -> Optional[Dict[str, Any]]:
             timeout=30,
         )
         if resp.status_code != 200:
-            logger.error(
-                "Square list_catalog failed: %s %s", resp.status_code, resp.text
+            request_id = resp.headers.get("x-request-id") or resp.headers.get(
+                "X-Request-Id"
             )
-            return None
+            logger.error(
+                "Square list_catalog failed",
+                extra={
+                    "status": resp.status_code,
+                    "endpoint": "/v2/catalog/list",
+                    "request_id": request_id,
+                    "square_api_version": SQUARE_API_VERSION,
+                    "response_excerpt": resp.text[:500],
+                    "types": ",".join(types),
+                    "cursor_present": bool(cursor),
+                },
+            )
+            raise SquareAPIError(
+                resp.status_code, "/v2/catalog/list", resp.text, request_id
+            )
 
         data = resp.json()
         all_objects.extend(data.get("objects", []))

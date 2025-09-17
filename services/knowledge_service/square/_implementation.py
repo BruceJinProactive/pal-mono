@@ -38,11 +38,20 @@ class SquareMenuProcessor:
             # 1) Fetch items directly from Square
             menu = download_menu(access_token=access_token, location_id=location_id)
             items: List[Dict[str, Any]] = menu.get("items", [])
+            raw_counts = menu.get("raw_counts", {})
             logger.debug(
                 "[square._implementation] Downloaded %s items for location %s",
                 len(items),
                 location_id,
             )
+            if raw_counts:
+                logger.debug(
+                    "[square._implementation] Catalog object counts",
+                    extra={
+                        "location_id": location_id,
+                        **raw_counts,
+                    },
+                )
 
             # 2) Build per-item documents
             individual_items: List[Dict[str, str]] = []
@@ -85,6 +94,7 @@ class SquareMenuProcessor:
                 "pinecone_index_name": pinecone_index_name,
                 "processed_items": doc_count,
                 "store_id": location_id,
+                "raw_counts": raw_counts,
             }
 
         except Exception as e:
