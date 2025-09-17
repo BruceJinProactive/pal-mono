@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 from utils.log import logger
 
-from ._client import download_menu
+from ._client import SQUARE_API_BASE, SQUARE_API_VERSION, download_menu
 from ._formatter import format_consolidated_menu, generate_item_text
 from ._indexer import index_to_pinecone
 
@@ -28,7 +28,19 @@ class SquareMenuProcessor:
         include_location_in_doc_name: bool = False,
     ) -> Dict[str, Any]:
         try:
-            logger.debug("[square._implementation] Starting Square menu processing...")
+            env_target = (
+                "sandbox" if "squareupsandbox" in SQUARE_API_BASE else "production"
+            )
+            logger.debug(
+                "[square._implementation] Starting Square menu processing...",
+                extra={
+                    "square_api_base": SQUARE_API_BASE,
+                    "square_api_version": SQUARE_API_VERSION,
+                    "env_target": env_target,
+                    "location_id": location_id,
+                    "access_token_prefix": (access_token or "")[:5],
+                },
+            )
 
             if not access_token or not access_token.strip():
                 raise ValueError("Square access token is required")
@@ -95,6 +107,11 @@ class SquareMenuProcessor:
                 "processed_items": doc_count,
                 "store_id": location_id,
                 "raw_counts": raw_counts,
+                "square_api": {
+                    "base": SQUARE_API_BASE,
+                    "version": SQUARE_API_VERSION,
+                    "env": env_target,
+                },
             }
 
         except Exception as e:

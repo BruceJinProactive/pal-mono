@@ -206,14 +206,44 @@ async def update_agent_kb(
 
         if provider == IntegrationProvider.square:
             # Square: need business_id (store_id) and an access token
-            access_token = (
+            chosen_token = (
                 pos_integration.access_token or pos_integration.client_secret or ""
             ).strip()
-            if not access_token:
+            token_source = (
+                "access_token"
+                if (pos_integration.access_token or "").strip()
+                else (
+                    "client_secret"
+                    if (pos_integration.client_secret or "").strip()
+                    else "none"
+                )
+            )
+            access_token_prefix = (pos_integration.access_token or "")[:5]
+            client_secret_prefix = (pos_integration.client_secret or "")[:5]
+            logger.debug(
+                "[admin._knowledge] Square token selection",
+                extra={
+                    "project_id": str(project_id),
+                    "store_id": store_id,
+                    "token_source": token_source,
+                    "access_token_present": bool(
+                        (pos_integration.access_token or "").strip()
+                    ),
+                    "client_secret_present": bool(
+                        (pos_integration.client_secret or "").strip()
+                    ),
+                    "access_token_prefix": access_token_prefix,
+                    "client_secret_prefix": client_secret_prefix,
+                    "chosen_token_prefix": (chosen_token or "")[:5],
+                    # KB client currently targets Production base URL
+                    "square_env_target": "production",
+                },
+            )
+            if not chosen_token:
                 raise ValueError("Square: access token missing in POS integration")
 
             client_id_value = (pos_integration.client_id or "").strip()
-            client_secret_value = access_token
+            client_secret_value = chosen_token
             token_api_endpoint = ""
             general_api_endpoint = ""
 

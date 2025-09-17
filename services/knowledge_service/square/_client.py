@@ -66,11 +66,14 @@ def download_menu(access_token: str, location_id: str) -> Dict[str, Any]:
     modifier lists filtered by the target location.
     """
     try:
+        env_target = "sandbox" if "squareupsandbox" in SQUARE_API_BASE else "production"
         logger.debug(
             "[square._client.download_menu] Fetching Square catalog",
             extra={
                 "location_id": location_id,
                 "square_api_version": SQUARE_API_VERSION,
+                "square_api_base": SQUARE_API_BASE,
+                "env_target": env_target,
             },
         )
 
@@ -161,6 +164,12 @@ def _fetch_all(access_token: str, types: List[str]) -> Optional[Dict[str, Any]]:
                     "endpoint": "/v2/catalog/list",
                     "request_id": request_id,
                     "square_api_version": SQUARE_API_VERSION,
+                    "square_api_base": SQUARE_API_BASE,
+                    "env_target": (
+                        "sandbox"
+                        if "squareupsandbox" in SQUARE_API_BASE
+                        else "production"
+                    ),
                     "response_excerpt": resp.text[:500],
                     "types": ",".join(types),
                     "cursor_present": bool(cursor),
