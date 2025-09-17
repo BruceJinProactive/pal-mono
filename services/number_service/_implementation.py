@@ -599,6 +599,7 @@ class NumberService:
         phone_number: Optional[str] = None,
         country_code: str = "US",
         toll_free: bool = True,
+        auto_commit: bool = True,
     ) -> str:
         """Assign a phone number to a project with complete channel setup.
 
@@ -657,6 +658,7 @@ class NumberService:
                 log_message=f"Added phone number {assigned_phone_number} to project channels",
                 phone_number=assigned_phone_number,
                 channels=channels,
+                auto_commit=auto_commit,
             )
 
             logger.info(
@@ -684,6 +686,7 @@ class NumberService:
         log_message: str,
         phone_number: Optional[str] = None,
         channels: Optional[List[NumberChannel]] = None,
+        auto_commit: bool = True,
     ):
         """Generic method to modify project channel identifiers.
 
@@ -695,12 +698,13 @@ class NumberService:
             log_message: Message to log on successful update
             phone_number: Optional phone number for logging context
             channels: Optional channels list for logging context
+            auto_commit: Whether to commit changes immediately (default: True)
 
         Raises:
             ValueError: If project not found or update fails
         """
         # Get current project using repository
-        project_repo = ProjectRepository(session, auto_commit=True)
+        project_repo = ProjectRepository(session, auto_commit=auto_commit)
         project = project_repo.get_project(project_id)
         if not project:
             raise ValueError(f"Project with id {project_id} not found")
@@ -771,6 +775,7 @@ class NumberService:
         release_type: Any,  # Enum or string
         session,
         context,
+        auto_commit: bool = True,
     ) -> str:
         """Release a phone number from a project with complete validation and cleanup.
 
@@ -785,6 +790,7 @@ class NumberService:
             release_type: Either 'return_to_pool' or 'delete_permanently' (str or Enum)
             session: Database session for project operations
             context: User context for project updates
+            auto_commit: Whether to commit changes immediately (default: True)
 
         Returns:
             str: Success message describing what was done
@@ -815,6 +821,7 @@ class NumberService:
             ],
             log_message=f"Removed phone number {phone_number} from project channels",
             phone_number=phone_number,
+            auto_commit=auto_commit,
         )
 
         # Step 4: Generate success message based on release type
@@ -904,7 +911,6 @@ class NumberService:
             ValueError: If release from Vapi fails
         """
         try:
-
             vapi_numbers = self.vapi_client.phone_numbers.list()
             for n in vapi_numbers:
                 if n.number == number:
@@ -934,7 +940,6 @@ class NumberService:
                     if n.friendly_name and "INACTIVATED" in n.friendly_name:
                         n.delete()
                     else:
-
                         n.update(friendly_name=self._get_friendly_name(RELEASED_LABEL))
                     break
         except Exception as e:
@@ -1066,7 +1071,6 @@ class NumberService:
             phone_number: The phone number to add to the messaging service
         """
         try:
-
             # Get the messaging service SID for this environment
             messaging_service_sid = os.environ.get("MESSAGING_SERVICE_SID")
             if not messaging_service_sid:

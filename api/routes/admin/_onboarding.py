@@ -416,6 +416,7 @@ def self_onboard_phone_number(
             channels=channels,
             session=session,
             context=context,
+            auto_commit=False,
         )
     except ValueError as e:
         session.rollback()
