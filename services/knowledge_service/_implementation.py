@@ -446,38 +446,19 @@ def update_agent_kb(
                 "Successfully updated knowledge base for Square agent",
                 extra={
                     "location_id": square_location_id,
-                    "processed_items": result.get("processing_summary", {}).get(
-                        "menu_items_processed", 0
-                    ),
+                    "processed_items": result.get("processed_items", 0),
                     "final_namespace": pinecone_namespace,
                 },
             )
 
             if debug:
-                # Import here to avoid any circular import concerns
-                try:
-                    from services.knowledge_service.square._client import (
-                        SQUARE_API_BASE as _SQ_BASE,
-                    )
-                    from services.knowledge_service.square._client import (
-                        SQUARE_API_VERSION as _SQ_VER,
-                    )
-                except Exception:
-                    _SQ_BASE, _SQ_VER = "unknown", "unknown"
-
                 square_debug_info = {
                     "pos_provider": pos_provider,
                     "store_id": store_id,
-                    # show prefixes only for safety
-                    "token_prefix": (client_secret or "")[:5],
-                    "location_id": square_location_id,
-                    "square_api_base": _SQ_BASE,
-                    "square_api_version": _SQ_VER,
-                    "env_target": (
-                        "sandbox"
-                        if isinstance(_SQ_BASE, str) and "squareupsandbox" in _SQ_BASE
-                        else "production"
+                    "client_secret": (
+                        client_secret[:5] + "..." if client_secret else None
                     ),
+                    "location_id": square_location_id,
                 }
                 result["debug"] = square_debug_info
 

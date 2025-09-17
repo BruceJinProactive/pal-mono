@@ -14,12 +14,6 @@ from api.schemas.admin.knowledge import (
 )
 from db.tables.types import IntegrationProvider
 from services import admin_service, agent_service, knowledge_service, project_service
-
-try:
-    # Import Square error for structured frontend details
-    from services.knowledge_service.square._client import SquareAPIError  # type: ignore
-except Exception:  # pragma: no cover
-    SquareAPIError = Exception  # type: ignore
 from utils.log import logger
 
 from . import UserContext, _auth, _integration
@@ -210,55 +204,18 @@ async def update_agent_kb(
         provider = pos_integration.provider
         cfg = pos_integration.raw_config or {}
 
-        # Initialize debug/context variables to satisfy type checkers
-        token_source: str = "unknown"
-        access_token_prefix: str = ""
-        client_secret_prefix: str = ""
-        client_id_value: str = ""
-        client_secret_value: str = ""
-        token_api_endpoint: str = ""
-        general_api_endpoint: str = ""
-
         if provider == IntegrationProvider.square:
             # Square: need business_id (store_id) and an access token
-            chosen_token = (
+            access_token = (
                 pos_integration.access_token or pos_integration.client_secret or ""
             ).strip()
-            token_source = (
-                "access_token"
-                if (pos_integration.access_token or "").strip()
-                else (
-                    "client_secret"
-                    if (pos_integration.client_secret or "").strip()
-                    else "none"
-                )
-            )
-            access_token_prefix = (pos_integration.access_token or "")[:5]
-            client_secret_prefix = (pos_integration.client_secret or "")[:5]
-            logger.debug(
-                "[admin._knowledge] Square token selection",
-                extra={
-                    "project_id": str(project_id),
-                    "store_id": store_id,
-                    "token_source": token_source,
-                    "access_token_present": bool(
-                        (pos_integration.access_token or "").strip()
-                    ),
-                    "client_secret_present": bool(
-                        (pos_integration.client_secret or "").strip()
-                    ),
-                    "access_token_prefix": access_token_prefix,
-                    "client_secret_prefix": client_secret_prefix,
-                    "chosen_token_prefix": (chosen_token or "")[:5],
-                    # KB client currently targets Production base URL
-                    "square_env_target": "production",
-                },
-            )
-            if not chosen_token:
+            if not access_token:
                 raise ValueError("Square: access token missing in POS integration")
 
             client_id_value = (pos_integration.client_id or "").strip()
-            client_secret_value = chosen_token
+            client_secret_value = access_token
+            token_api_endpoint = ""
+            general_api_endpoint = ""
 
         elif provider in (IntegrationProvider.adora, IntegrationProvider.toast):
             # Adora/Toast: require client_id, client_secret and API endpoints
@@ -297,7 +254,7 @@ async def update_agent_kb(
         pinecone_namespace = f"{project.name}_{store_id}_{namespace_timestamp}"
 
         # Update the knowledge base for the agent
-        result = knowledge_service.update_agent_kb(
+        return knowledge_service.update_agent_kb(
             pos_integration.provider,
             store_id,
             client_id_value or "",
@@ -310,63 +267,7 @@ async def update_agent_kb(
             include_category_in_doc_name,
             menu_last_updated,
         )
-
-        # Enrich debug payload for Square so frontend can render token/env context
-        if (
-            provider == IntegrationProvider.square
-            and debug
-            and isinstance(result, dict)
-        ):
-            try:
-                dbg = result.get("debug", {}) or {}
-                dbg.update(
-                    {
-                        "token_source": token_source,
-                        "access_token_prefix": access_token_prefix,
-                        "client_secret_prefix": client_secret_prefix,
-                        "chosen_token_prefix": (client_secret_value or "")[:5],
-                    }
-                )
-                result["debug"] = dbg
-            except Exception:
-                pass
-
-        return result
     except ValueError as e:
-        # Surface Square API details to frontend when available
-        if isinstance(e, SquareAPIError):  # type: ignore
-            detail_payload = {
-                "message": "Square API call failed during knowledge update",
-                "error": str(e),
-                "square": {
-                    "status_code": getattr(e, "status_code", None),
-                    "endpoint": getattr(e, "endpoint", None),
-                    "request_id": getattr(e, "request_id", None),
-                    "response_excerpt": (getattr(e, "response_text", "") or "")[:500],
-                },
-            }
-            # Include token selection context if available
-            try:
-                detail_payload["debug"] = {
-                    "provider": str(provider),  # type: ignore[name-defined]
-                    "project_id": str(project_id),
-                    "store_id": store_id,  # type: ignore[name-defined]
-                    "token_source": token_source,  # type: ignore[name-defined]
-                    "access_token_prefix": access_token_prefix,  # type: ignore[name-defined]
-                    "client_secret_prefix": client_secret_prefix,  # type: ignore[name-defined]
-                    "chosen_token_prefix": (client_secret_value or ""),  # type: ignore[name-defined]
-                    "square_env_target": "production",
-                }
-            except Exception:
-                pass
-
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=detail_payload,
-                headers={"Content-Type": "application/json"},
-            )
-
-        # Fallback for other validation errors
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error updating knowledge base:\n{str(e)}",
