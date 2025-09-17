@@ -22,7 +22,6 @@ from tools.menusifu_tool._utils import (
     build_address_info,
     build_customer_info,
     build_order_price_from_calculation,
-    build_selected_items_from_calculation,
     safe_convert_item_fields,
 )
 from tools.menusifu_tool.classes import (
@@ -862,94 +861,15 @@ class MenuSifuTool(Toolkit):
             # Build order price from calculation using helper function
             order_price = build_order_price_from_calculation(calc_result)
 
-            # Use the updated utility function to convert items properly
+            # Build OrderGenerationSelectedItem objects directly from the original items
+            # The calculation has already been done, now we need proper generation format
 
-            calc_selected_items = []
+            selected_items = []
             for item in order_items:
                 try:
-                    # Convert Pydantic object to dict for processing
-                    # Note: item.display_price is already in dollars (float), so we handle it separately
-                    # to avoid double conversion in safe_convert_item_fields
-                    item_dict = {
-                        "id": item.item_id,
-                        "name": item.item_name,
-                        "price": item.price,
-                        "quantity": item.quantity,
-                        "categoryId": item.category_id,
-                        "itemType": item.item_type,
-                        "size": getattr(item, "size", None),
-                        "sizeId": getattr(item, "size_id", None),
-                        "detailPriceId": getattr(item, "detail_price_id", None),
-                        "detailPriceInfo": getattr(item, "detail_price_info", None),
-                        "combo_sections": getattr(item, "combo_sections", None),
-                    }
-                    safe_fields = safe_convert_item_fields(item_dict)
-
-                    # Handle display_price separately since it's already in dollars
-                    if item.display_price is not None:
-                        safe_fields["displayPrice"] = Decimal(str(item.display_price))
-                    else:
-                        safe_fields["displayPrice"] = safe_fields["price"]
-
-                    # Handle all modifier types: legacy modifiers, special notes, etc.
-
-                    item_options = []
-
-                    # 1. Handle legacy modifiers (actual menu options like "Extra cheese")
-                    if item.modifiers:
-                        for modifier in item.modifiers:
-                            option_obj = OrderItemOptionNote(
-                                id=modifier.id,  # Fixed: was modifier.modifier_id
-                                name=modifier.name,
-                                nameMultilingual=None,
-                                optionPrice=(
-                                    Decimal(str(modifier.price))
-                                    if modifier.price
-                                    else None
-                                ),
-                                price=(
-                                    Decimal(str(modifier.price))
-                                    if modifier.price
-                                    else Decimal("0")
-                                ),
-                                priceOriginal=None,
-                                quantity=max(1, int(modifier.quantity)),
-                                sectionId="Options",
-                                sectionName=MultilingualName(
-                                    en="Option", **{"zh-cn": "Option"}
-                                ),
-                                detailPriceId="",
-                                subOptions=[],
-                                isOpenOption=False,  # Real menu options
-                                checked=modifier.checked,
-                            )
-                            item_options.append(option_obj)
-
-                    # 2. Handle special notes/instructions (custom text)
-                    if item.special_notes and item.special_notes.strip():
-                        special_note_obj = OrderItemOptionNote(
-                            id=None,  # No ID for custom notes
-                            name=item.special_notes.strip(),
-                            nameMultilingual=MultilingualName(
-                                en=item.special_notes.strip(),
-                                **{"zh-cn": item.special_notes.strip()},
-                            ),
-                            optionPrice=None,
-                            price=Decimal("0"),  # Notes have no price
-                            priceOriginal=None,
-                            quantity=1,
-                            sectionId="Options",  # Should be "Options" per prompt examples
-                            sectionName=MultilingualName(
-                                en="Option", **{"zh-cn": "Option"}
-                            ),
-                            detailPriceId=None,
-                            subOptions=[],
-                            isOpenOption=True,  # Custom text notes
-                            checked=True,
-                        )
-                        item_options.append(special_note_obj)
-
-                    # Note: OrderGenerationSelectedItem uses displayPrice as Decimal (dollars), not cents
+                    logger.debug(
+                        f"[MenuSifuTool] Processing item for generation: {item.item_name}"
+                    )
 
                     # Handle combo sections for combo items
                     combo_detail = None
@@ -963,7 +883,8 @@ class MenuSifuTool(Toolkit):
                             logger.debug(
                                 f"[MenuSifuTool] Processing combo section: {combo_section}"
                             )
-                            # Convert selected items (support both shapes)
+
+                            # Convert selected items
                             select_src = (
                                 self._get_field(combo_section, "selectSaleItems")
                                 or self._get_field(combo_section, "selected_items")
@@ -971,7 +892,6 @@ class MenuSifuTool(Toolkit):
                             )
                             select_sale_items = []
                             for selected_item in select_src:
-                                # Get fields safely from either Pydantic or dict
                                 # Safe int conversion for sale_item_id
                                 raw_sale_id = self._get_field(
                                     selected_item, "saleItemId"
@@ -1017,7 +937,7 @@ class MenuSifuTool(Toolkit):
                                 )
                                 select_sale_items.append(select_item)
 
-                            # Build multilingual name for section safely
+                            # Build section
                             section_name = self._get_field(
                                 combo_section, "name"
                             ) or self._get_field(
@@ -1062,48 +982,100 @@ class MenuSifuTool(Toolkit):
 
                         combo_detail = ComboDetail(comboSections=combo_sections_list)
                         logger.debug(
-                            f"[MenuSifuTool] Created combo detail with {len(combo_sections_list)} sections: {combo_detail}"
+                            f"[MenuSifuTool] Created combo detail with {len(combo_sections_list)} sections"
                         )
 
+                    # Handle modifiers and special notes as options
+                    item_options = []
+
+                    # Add legacy modifiers
+                    if getattr(item, "modifiers", None):
+                        for modifier in item.modifiers:
+                            item_options.append(
+                                OrderItemOptionNote(
+                                    id=getattr(modifier, "id", None),
+                                    name=modifier.name,
+                                    nameMultilingual=MultilingualName(
+                                        en=modifier.name, **{"zh-cn": modifier.name}
+                                    ),
+                                    optionPrice=(
+                                        Decimal(str(modifier.price))
+                                        if getattr(modifier, "price", None) is not None
+                                        else None
+                                    ),
+                                    price=(
+                                        Decimal(str(modifier.price))
+                                        if getattr(modifier, "price", None) is not None
+                                        else Decimal("0")
+                                    ),
+                                    priceOriginal=None,
+                                    quantity=max(
+                                        1, int(getattr(modifier, "quantity", 1) or 1)
+                                    ),
+                                    sectionId="Options",
+                                    sectionName=MultilingualName(
+                                        en="Option", **{"zh-cn": "Option"}
+                                    ),
+                                    detailPriceId="",
+                                    subOptions=[],
+                                    isOpenOption=False,
+                                    checked=bool(getattr(modifier, "checked", True)),
+                                )
+                            )
+
+                    # Add special notes
+                    if getattr(item, "special_notes", None):
+                        note = item.special_notes.strip()
+                        if note:
+                            item_options.append(
+                                OrderItemOptionNote(
+                                    id=None,
+                                    name=note,
+                                    nameMultilingual=MultilingualName(
+                                        en=note, **{"zh-cn": note}
+                                    ),
+                                    optionPrice=None,
+                                    price=Decimal("0"),
+                                    priceOriginal=None,
+                                    quantity=1,
+                                    sectionId="Options",
+                                    sectionName=MultilingualName(
+                                        en="Option", **{"zh-cn": "Option"}
+                                    ),
+                                    detailPriceId=None,
+                                    subOptions=[],
+                                    isOpenOption=True,
+                                    checked=True,
+                                )
+                            )
+
                     # Create OrderGenerationSelectedItem
-                    order_item = OrderGenerationSelectedItem(
-                        id=safe_fields["id"],
-                        saleItemId=safe_fields["saleItemId"],
-                        quantity=safe_fields["quantity"],
-                        price=safe_fields["price"],
-                        displayPrice=safe_fields[
-                            "displayPrice"
-                        ],  # Keep as Decimal for OrderGenerationSelectedItem
-                        itemType=safe_fields["itemType"],
-                        name=safe_fields["name"],
-                        nameMultilingual=None,
-                        categoryId=safe_fields["categoryId"],
+                    generation_item = OrderGenerationSelectedItem(
+                        id=item.item_id,
+                        saleItemId=item.item_id,
+                        quantity=item.quantity,
+                        itemType=item.item_type,
+                        price=Decimal(str(item.price)),
+                        displayPrice=Decimal(str(item.display_price or item.price)),
+                        name=item.item_name,
+                        nameMultilingual=MultilingualName(
+                            en=item.item_name, **{"zh-cn": item.item_name}
+                        ),
+                        categoryId=item.category_id,
                         options=item_options if item_options else None,
                         comboDetail=combo_detail,
-                        sizeId=safe_fields.get("sizeId"),
-                        detailPriceId=safe_fields.get("detailPriceId"),
-                        detailPriceInfo=safe_fields.get("detailPriceInfo"),
+                        sizeId=getattr(item, "size_id", None),
+                        detailPriceId=getattr(item, "detail_price_id", None),
+                        detailPriceInfo=getattr(item, "detail_price_info", None),
                         isGiftItem=False,
                         extendedInformation={},
                     )
-                    calc_selected_items.append(order_item)
+                    selected_items.append(generation_item)
 
                 except Exception as e:
                     error_msg = f"Failed to process item '{item.item_name}': {str(e)}"
                     logger.debug(f"[MenuSifuTool] {error_msg}")
                     return error_msg
-
-            # Create a temporary calculation request to use the conversion logic
-            temp_calc_request = OrderCalculationRequest(
-                orderType=OrderType.ONLINE_PICKUP,
-                paymentMethod=PaymentMethod.CASH,
-                totalTips=Decimal("0"),
-                deliveryFee=Decimal("0"),
-                selectedItems=calc_selected_items,
-            )
-
-            # Use the updated utility function to convert to proper format
-            selected_items = build_selected_items_from_calculation(temp_calc_request)
 
             # Remove any failed conversions
             selected_items = [item for item in selected_items if item is not None]
