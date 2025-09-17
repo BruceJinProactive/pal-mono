@@ -325,7 +325,6 @@ class ValidatedBasketTotals(BaseModel):
     totalfees: float
     totaldonations: float
     upsellgroups: Optional[list[UpsellGroup]] = None
-    posreferenceresponse: str
     taxexemptaccountidentifier: Optional[str] = None
 
 

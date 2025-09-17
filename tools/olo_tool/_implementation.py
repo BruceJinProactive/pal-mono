@@ -13,6 +13,7 @@ from tools.olo_tool._apis import (  # TODO: Add request_ccsf_token
     get_billing_schemes_info,
     get_online_ordering_status,
     get_store_info,
+    request_ccsf_token,
     set_basket_handoff_mode,
     submit_order,
     validate_address,
@@ -83,7 +84,7 @@ class OloTool(Toolkit):
             ValueError: If the required environment variable is not set.
         """
         with LLMObs.task(name="get_olo_token"):
-            api_key = get_client_secret_with_fallback("OLOSANDBOX_API_KEY")
+            api_key = get_client_secret_with_fallback("OLO_MOOYAH_API_KEY")
             bearer_token = OloAccessToken(
                 access_token=api_key,
                 token_type="OloKey",
@@ -285,45 +286,46 @@ class OloTool(Toolkit):
             #######
             # Request a CCSF token
             # This is the test case for paying with credit card
-            # credit_token = self.test_request_ccsf_token_success(
-            #     basket_id=basket_id
-            # ).accesstoken
+            credit_token = request_ccsf_token(
+                basket_id=basket.id,
+                olo_token=self._olo_token,
+            ).accesstoken
 
             # # Create order submission body
-            # order_submission = OloOrderSubmissionBody(
-            #     billingmethod=BillingMethod.creditcardtoken,
-            #     usertype=UserType.guest,
-            #     token=credit_token,
-            #     expiryyear=2025,
-            #     expirymonth=12,
-            #     cardtype="Visa",
-            #     cardlastfour="1234",
-            #     streetaddress="123 Main St",
-            #     city="Anytown",
-            #     state="CA",
-            #     zip="12345",
-            #     country="US",
-            #     saveonfile="false",
-            #     firstname="John",
-            #     lastname="Doe",
-            #     emailaddress="john.doe@example.com",
-            #     contactnumber="1234567890",
-            # )
-
-            #######
-            # Pay in store
-            #######
-            # Submit the order
             order_submission = OloOrderSubmissionBody(
-                billingmethod=BillingMethod.payinstore,
+                billingmethod=BillingMethod.creditcardtoken,
                 usertype=UserType.guest,
-                billingschemeid=order_input.billingschemeid,
+                token=credit_token,
+                expiryyear=2025,
+                expirymonth=12,
+                cardtype="Visa",
+                cardlastfour="1234",
+                streetaddress="123 Main St",
+                city="Anytown",
+                state="CA",
+                zip="12345",
+                country="US",
                 saveonfile="false",
                 firstname=order_input.firstname,
                 lastname=order_input.lastname,
                 emailaddress=order_input.emailaddress,
                 contactnumber=order_input.contactnumber,
             )
+
+            #######
+            # Pay in store
+            #######
+            # Submit the order
+            # order_submission = OloOrderSubmissionBody(
+            #     billingmethod=BillingMethod.payinstore,
+            #     usertype=UserType.guest,
+            #     billingschemeid=order_input.billingschemeid,
+            #     saveonfile="false",
+            #     firstname=order_input.firstname,
+            #     lastname=order_input.lastname,
+            #     emailaddress=order_input.emailaddress,
+            #     contactnumber=order_input.contactnumber,
+            # )
             order_response = submit_order(
                 basket_id=basket.id,
                 olo_token=self._olo_token,

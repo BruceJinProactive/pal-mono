@@ -28,7 +28,7 @@ def handle_olo_response(
         error_msg = (
             f"API call failed with status {response.status}: {response.decoded_body}"
         )
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         raise ValueError(error_msg)
 
     if response_type:
@@ -38,7 +38,7 @@ def handle_olo_response(
             error_msg = (
                 f"Failed to validate response as {response_type.__name__}: {str(e)}"
             )
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             raise ValueError(error_msg)
 
     return response.decoded_body
