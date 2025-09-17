@@ -23,7 +23,6 @@ from tools.menusifu_tool._utils import (
     build_customer_info,
     build_order_price_from_calculation,
     convert_extracted_order_to_dict,
-    extract_order_summary,
     safe_convert_item_fields,
     safe_convert_option_fields,
 )
@@ -1063,22 +1062,16 @@ class MenuSifuTool(Toolkit):
         special_instructions: Optional[str] = None,
     ) -> str:
         """
-        Create and place a MenuSifu order for the customer.
-
         **When to use this tool:**
-        - Customer explicitly requests to place/complete/finalize their order
-        - Customer says things like: "checkout", "place order", "complete order", "finalize order"
-        - Customer has finished selecting items and confirmed they want to proceed
-        - All required ordering information has been collected through conversation
-
-        **Expected behavior:**
-        - Extracts order details, customer info, and items from chat history
-        - Calculates order total and generates the order with MenuSifu
-        - Returns order confirmation with totals and order ID
+        - Customer requests to place/complete/finalize/etc their order
+        - Customer says things like: "checkout", "place order", "complete order", "finalize order", "confirm order", "ready to checkout"
+        - Customer has finished selecting items and is ready to proceed
+        - Required ordering information (name, phone number, items) has been collected through conversation
 
         Args:
-            customer_name: Customer's full name for the order.
-            phone_number: Customer's phone number for order pickup.
+            customer_name: Customer's full name for the order (extracted from chat history).
+            phone_number: Customer's phone number for order pickup (extracted from chat history).
+            special_instructions: Any special instructions (extracted from chat history).
 
         Note: All parameters are optional placeholders. Actual values are extracted from chat history.
 
@@ -1127,37 +1120,11 @@ class MenuSifuTool(Toolkit):
                 logger.debug(f"[MenuSifuTool] Step 4: Error message: {order_result}")
                 return order_result  # Error message
 
-            # Step 5: Format success response (database saving disabled for now)
-            logger.debug("[MenuSifuTool] Step 5: Formatting success response")
-            order_summary = extract_order_summary(order_result)
-            order_id = order_summary.get("order_id", "N/A")
-            logger.debug(
-                f"[MenuSifuTool] Order checkout completed successfully - Final Order ID: {order_id}"
-            )
+            # Step 5: Return order response directly
+            logger.debug("[MenuSifuTool] Step 5: Returning order response")
+            logger.debug("[MenuSifuTool] Order checkout completed successfully")
 
-            success_message = f"""Order Successfully Placed!
-
-**Order Details:**
-• Order ID: {order_summary.get('order_id', 'N/A')}
-• Order Number: {order_summary.get('order_number', 'N/A')}  
-• Status: {order_summary.get('status', 'N/A')}
-• Order Type: {order_summary.get('order_type', 'N/A')}
-
-**Order Total:**
-• Subtotal: ${order_summary.get('subtotal', 0):.2f}
-• Tax: ${order_summary.get('tax_total', 0):.2f}
-• Tips: ${order_summary.get('tips', 0):.2f}
-• **Total: ${order_summary.get('total_amount', 0):.2f}**
-
-**Customer Info:**
-• Name: {order_summary.get('customer_name', 'N/A')}
-• Email: {order_summary.get('customer_email', 'N/A')}
-
-**Items Ordered:** {order_summary.get('item_count', 0)} items
-
-Your order has been sent to the restaurant. Please wait for confirmation and pickup instructions."""
-
-            return success_message
+            return str(order_result)
 
         except Exception as e:
             error_msg = f"Failed to process order checkout: {str(e)}"
