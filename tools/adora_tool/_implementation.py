@@ -37,6 +37,7 @@ from . import _apis, _llm, _query_engine, _utils
 
 ADORA_QA_STORE = "UQ5ZT"
 ADORA_QA_STORE_2 = "LE5AR"
+VIA_AGENT_SUFFIX = "(via PalonaAI)"
 
 
 class AdoraTool(Toolkit):
@@ -957,11 +958,11 @@ class AdoraTool(Toolkit):
                 return "We'll need your phone number."
 
             # Set user's last name
-            # If the account name is "pizzamyheart", append "(via Jimmy)" to the last name; otherwise, append "(via PalonaAI)"
+            # If the account name is "pizzamyheart", append "(via Jimmy)" to the last name; otherwise, append VIA_AGENT_SUFFIX
             via_text = (
                 "(via Jimmy)"
                 if self.tool_metadata.account_name == "pizzamyheart"
-                else "(via PalonaAI)"
+                else VIA_AGENT_SUFFIX
             )
             last_name_parts = []
             if order.customer.last_name:

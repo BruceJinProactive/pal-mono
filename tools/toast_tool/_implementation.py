@@ -53,6 +53,9 @@ from tools.utils.ordering._utils import (
 )
 from utils.log import logger
 
+# Agent identification suffix for customer names
+VIA_AGENT_SUFFIX = "(via PalonaAI)"
+
 
 class ToastTool(Toolkit):
     def __init__(
@@ -87,11 +90,8 @@ class ToastTool(Toolkit):
 
         # Register tools
         self.register(self.checkout_order)
-        self.register(self.check_address)
 
         # Do not register get_menu_inventory_tool and get_ordering_schedule_tool for now
-        # TODO: Figure out how to check if the store is open for online ordering
-        # self.register(self.check_online_ordering_status)
         self.register(self.get_ordering_schedule_tool)
         self.register(self.is_online_order_available)
         # TODO: Figure out how to check if an item is out of stock or has low quantity
@@ -117,7 +117,6 @@ class ToastTool(Toolkit):
                 self.store_id, self.token_api_endpoint
             )
 
-    @tool
     def check_address(self, address: str) -> str:
         """
         Validates if the given address (using x and y coordinates) is within the restaurant's delivery area.
@@ -633,6 +632,8 @@ class ToastTool(Toolkit):
                 )
             logger.debug(f"Constructed order: {order}")
 
+            # Note: lastName suffix will be added in _post_process_order after validation
+
             return order
         except ValidationError as e:
             logger.warning(e)
@@ -750,6 +751,13 @@ class ToastTool(Toolkit):
                     f"[ToastTool._post_process_order] Customer phone number is missing or invalid. Phone: {check.customer.phone}"
                 )
                 return "We'll need your phone number."
+
+            # Add suffix to lastName after all validation passes
+            # Append if lastName is not user provided
+            if check.customer.lastName and check.customer.lastName.strip():
+                trimmed_lastname = check.customer.lastName.strip()
+                if VIA_AGENT_SUFFIX not in trimmed_lastname:
+                    check.customer.lastName = f"{trimmed_lastname} {VIA_AGENT_SUFFIX}"
 
     def _submit_order(self, order: OrderInput) -> str:
         # Retrieve the bearer token
