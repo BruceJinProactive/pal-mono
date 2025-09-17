@@ -94,6 +94,7 @@ def update_agent(
     context: UserContext,
     agent_id: uuid.UUID,
     params: AgentParams,
+    expected_version: int | None = None,
 ) -> db.Agent:
     """
     Update the specified agent with the parameters provided
@@ -106,7 +107,9 @@ def update_agent(
     Returns:
         Agent: The database model object representing the updated agent.
     """
-    return _implementation.update_agent(session, context, agent_id, params)
+    return _implementation.update_agent(
+        session, context, agent_id, params, expected_version
+    )
 
 
 def delete_agent(

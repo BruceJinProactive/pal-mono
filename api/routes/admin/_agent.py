@@ -69,7 +69,9 @@ async def update_agent(
 
     agent_params = update_request.to_agent_params()
     try:
-        db_agent = agent_service.update_agent(session, context, agent_id, agent_params)
+        db_agent = agent_service.update_agent(
+            session, context, agent_id, agent_params, update_request.expected_version
+        )
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

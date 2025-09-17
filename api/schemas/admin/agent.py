@@ -50,6 +50,7 @@ class UpdateAgentRequest(BaseModel):
     speech_rate: SpeechRate | None = None
     background_noise: bool | None = None
     language: Language | None = None
+    expected_version: int | None = None
 
     def to_agent_params(self) -> AgentParams:
         return AgentParams(

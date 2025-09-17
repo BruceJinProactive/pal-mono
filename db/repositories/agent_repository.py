@@ -67,12 +67,20 @@ class AgentRepository:
             logger.error(f"Error creating agent: {e}")
             raise
 
-    def update_agent(self, agent_id: uuid.UUID, **kwargs) -> Agent | None:
+    def update_agent(
+        self, agent_id: uuid.UUID, expected_version: int | None = None, **kwargs
+    ) -> Agent | None:
         """Update an agent's details based on the agent ID and provided fields."""
         try:
             db_agent = self.session.query(Agent).filter(Agent.id == agent_id).first()
             if not db_agent:
                 return None
+
+            if expected_version and db_agent.updated_at:
+                if int(db_agent.updated_at.timestamp()) != expected_version:
+                    raise ValueError(
+                        f"Version mismatch: expected {expected_version}, found {int(db_agent.updated_at.timestamp())}"
+                    )
             for key, value in kwargs.items():
                 if value is not None and hasattr(db_agent, key):
                     setattr(db_agent, key, value)

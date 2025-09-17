@@ -124,6 +124,7 @@ def update_agent(
     context: UserContext,
     agent_id: uuid.UUID,
     params: AgentParams,
+    expected_version: int | None = None,
 ) -> db.Agent:
     # Update the specified agent with the provided params
     agent_repository = db.AgentRepository(session)
@@ -144,7 +145,9 @@ def update_agent(
         resource_id=str(agent_id),
         old_record=old_agent,
     ) as ctx:
-        new_agent = agent_repository.update_agent(agent_id, **agent_params)
+        new_agent = agent_repository.update_agent(
+            agent_id, expected_version, **agent_params
+        )
         ctx.new_record = new_agent
         return new_agent
 
