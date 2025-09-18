@@ -1177,6 +1177,7 @@ def signup_self_onboarding_user(
                 # Only set email_verified if you truly verified it out-of-band:
                 # {"Name": "email_verified", "Value": "true"},
                 {"Name": "name", "Value": user_name},
+                {"Name": "custom:account_name", "Value": account_name},
             ],
         )
     except ClientError as e:
