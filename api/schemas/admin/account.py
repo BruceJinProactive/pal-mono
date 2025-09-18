@@ -89,6 +89,7 @@ class UpdateAccountRequest(BaseModel):
     contract_signed: bool | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
+    expected_version: int | None = None
 
     def to_account_params(self) -> AccountParams:
         return AccountParams(

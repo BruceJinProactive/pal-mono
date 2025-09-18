@@ -109,7 +109,9 @@ class AccountRepository:
             logger.error(f"Error filtering accounts by name: {e}")
             return []
 
-    def update_account(self, account_name: str, **kwargs) -> Account | None:
+    def update_account(
+        self, account_name: str, expected_version: int | None = None, **kwargs
+    ) -> Account | None:
         """Update account details based on the account ID and provided fields."""
         try:
             db_account = (
@@ -120,6 +122,13 @@ class AccountRepository:
             )
             if not db_account:
                 return None
+
+            if expected_version and db_account.updated_at:
+                if expected_version != int(db_account.updated_at.timestamp()):
+                    raise ValueError(
+                        "Version mismatch: Account has been modified by another process."
+                    )
+
             for key, value in kwargs.items():
                 if value is not None and hasattr(db_account, key):
                     setattr(db_account, key, value)

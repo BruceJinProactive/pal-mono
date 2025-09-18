@@ -105,6 +105,7 @@ def update_account(
     context: UserContext,
     account_name: str,
     params: AccountParams,
+    expected_version: int | None = None,
 ) -> db.Account:
     """
     Updates the account details with the provided parameters.
@@ -121,7 +122,9 @@ def update_account(
     Raises:
         ValueError: If the account name does not exist in the database.
     """
-    return _implementation.update_account(session, account_name, params, context)
+    return _implementation.update_account(
+        session, account_name, params, context, expected_version
+    )
 
 
 def delete_account(

@@ -103,7 +103,11 @@ def create_account(
 
 
 def update_account(
-    session: Session, account_name: str, params: AccountParams, context: UserContext
+    session: Session,
+    account_name: str,
+    params: AccountParams,
+    context: UserContext,
+    expected_version: int | None = None,
 ) -> db.Account:
     """
     Update an account with the supplied params.
@@ -128,7 +132,7 @@ def update_account(
     ) as ctx:
         # Update the account
         updated_account = account_repository.update_account(
-            account_name, **asdict(params)
+            account_name, expected_version, **asdict(params)
         )
         ctx.new_record = updated_account
 
