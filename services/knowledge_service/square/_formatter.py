@@ -7,7 +7,9 @@ Generates per item documents (with IDs) and a consolidated menu prompt with Squa
 from typing import Any, Dict, List, Tuple
 
 
-def generate_item_text(item: Dict[str, Any], with_ids: bool = True) -> Tuple[str, str]:
+def generate_item_text(
+    item: Dict[str, Any], with_ids: bool = True, location_id: str | None = None
+) -> Tuple[str, str]:
     """Generate a single item document text and return with the item name.
 
     The document includes IDs to make it useful for debugging and indexing.
@@ -24,6 +26,8 @@ def generate_item_text(item: Dict[str, Any], with_ids: bool = True) -> Tuple[str
     if with_ids:
         lines.append("IDS:")
         lines.append(f"* Item ID: {item_id}")
+        if location_id:
+            lines.append(f"* Location ID: {location_id}")
         lines.append("")
 
     # Basic info
@@ -207,14 +211,63 @@ def format_consolidated_menu(items: List[Dict[str, Any]]) -> str:
                 out.append(f"**** {', '.join(options)}")
         out.append("")
 
-    # Stats section (optional but helpful)
+    # Stats section expanded to match the reference builder
     out.append("=" * 60)
     out.append("STATISTICS")
     out.append("=" * 60)
     out.append(f"Total items: {len(items)}")
 
-    taxable = [it for it in items if it.get("is_taxable", True)]
-    out.append(f"Taxable items: {len(taxable)}")
-    out.append(f"Non-taxable items: {len(items) - len(taxable)}")
+    taxable_items = [it for it in items if it.get("is_taxable", True)]
+    non_taxable_items = [it for it in items if not it.get("is_taxable", True)]
+    out.append(f"Taxable items: {len(taxable_items)}")
+    out.append(f"Non-taxable items: {len(non_taxable_items)}")
+    out.append("")
+
+    # Category statistics
+    category_item_count: Dict[str, int] = {}
+    category_name_to_ids: Dict[str, set] = {}
+    all_category_names: List[str] = []
+
+    for it in items:
+        for cat in it.get("categories", []) or []:
+            cat_name = cat.get("category_name", "")
+            cat_id = cat.get("category_id", "")
+            all_category_names.append(cat_name)
+            category_item_count[cat_name] = category_item_count.get(cat_name, 0) + 1
+            if cat_name not in category_name_to_ids:
+                category_name_to_ids[cat_name] = set()
+            category_name_to_ids[cat_name].add(cat_id)
+
+    unique_category_names = set(all_category_names)
+    total_category_ids = sum(len(ids) for ids in category_name_to_ids.values())
+    out.append(f"Total unique category names: {len(unique_category_names)}")
+    out.append(f"Total category IDs: {total_category_ids}")
+    out.append("")
+
+    out.append("ITEMS PER CATEGORY:")
+    for cat_name in sorted(category_item_count.keys()):
+        out.append(f"  {cat_name}: {category_item_count[cat_name]} items")
+    out.append("")
+
+    out.append("CATEGORY NAMES WITH MULTIPLE IDS:")
+    duplicate_names = {
+        n: len(ids) for n, ids in category_name_to_ids.items() if len(ids) > 1
+    }
+    if duplicate_names:
+        for cat_name in sorted(duplicate_names.keys()):
+            out.append(
+                f"  {cat_name}: {duplicate_names[cat_name]} different category IDs"
+            )
+    else:
+        out.append("  No duplicate category names found")
+    out.append("")
+
+    items_without_categories = [it for it in items if not (it.get("categories") or [])]
+    if items_without_categories:
+        out.append(f"Items without categories: {len(items_without_categories)}")
+        for it in items_without_categories:
+            out.append(f"  - {it.get('item_name','')}")
+    else:
+        out.append("Items without categories: 0")
 
     return "\n".join(out)

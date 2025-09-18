@@ -57,7 +57,9 @@ class SquareMenuProcessor:
             individual_items: List[Dict[str, str]] = []
             for i, item in enumerate(items):
                 try:
-                    item_text, item_name = generate_item_text(item, with_ids=True)
+                    item_text, item_name = generate_item_text(
+                        item, with_ids=True, location_id=location_id
+                    )
                 except Exception as e:
                     logger.warning(
                         "[square._implementation] Failed to format item %s: %s", i, e
