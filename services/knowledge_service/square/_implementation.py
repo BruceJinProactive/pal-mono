@@ -16,9 +16,6 @@ from ._indexer import index_to_pinecone
 
 
 class SquareMenuProcessor:
-    def __init__(self, debug: bool = False):
-        self.debug = debug
-
     def process_and_index_menu(
         self,
         access_token: str,
@@ -44,14 +41,13 @@ class SquareMenuProcessor:
                 len(items),
                 location_id,
             )
-            if raw_counts:
-                logger.debug(
-                    "[square._implementation] Catalog object counts",
-                    extra={
-                        "location_id": location_id,
-                        **raw_counts,
-                    },
-                )
+            logger.debug(
+                "[square._implementation] Catalog object counts",
+                extra={
+                    "location_id": location_id,
+                    **raw_counts,
+                },
+            )
 
             # 2) Build per-item documents
             individual_items: List[Dict[str, str]] = []

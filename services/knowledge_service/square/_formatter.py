@@ -91,10 +91,7 @@ def generate_item_text(
 
 
 def format_consolidated_menu(items: List[Dict[str, Any]]) -> str:
-    """Create a single customer-facing menu text from extracted items.
-
-    Mirrors the structure of the manager’s demo script for readability.
-    """
+    """Create a single customer-facing menu text from extracted items."""
     out: List[str] = []
     for item in items:
         variations = item.get("variations", []) or []

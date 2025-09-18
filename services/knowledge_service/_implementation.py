@@ -433,7 +433,7 @@ def update_agent_kb(
                     "store_id (location_id) is required for Square integration"
                 )
 
-            processor = SquareMenuProcessor(debug=debug)
+            processor = SquareMenuProcessor()
             result = processor.process_and_index_menu(
                 access_token=square_access_token,
                 location_id=square_location_id,

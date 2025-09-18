@@ -61,9 +61,8 @@ _session.mount(
 def download_menu(access_token: str, location_id: str) -> Dict[str, Any]:
     """Fetch and assemble Square catalog into extracted menu items.
 
-    Returns a structure similar to the manager’s helper script, with
-    each item containing variations, categories (resolved names), and
-    modifier lists filtered by the target location.
+    Items include resolved categories, location-aware modifiers, and
+    variations pre-filtered for the requested location.
     """
     try:
         logger.debug(
@@ -406,7 +405,7 @@ def _get_var_price_string(variation: Dict[str, Any], location_id: str) -> str:
 def _resolve_selection_limits(
     info: Dict[str, Any], mod_list_data: Dict[str, Any]
 ) -> Tuple[int, Optional[int]]:
-    """Resolve min/max selection like the manager’s script logic."""
+    """Resolve min/max selection using Square modifier metadata."""
     info_min = info.get("min_selected_modifiers", -1)
     info_max = info.get("max_selected_modifiers", -1)
     list_min = mod_list_data.get("minimum_selected_modifiers", -1)
