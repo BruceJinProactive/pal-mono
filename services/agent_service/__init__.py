@@ -33,6 +33,22 @@ async def construct_agent_config(
     )
 
 
+async def get_agent_async(
+    async_session: AsyncSession, agent_id: uuid.UUID
+) -> Optional[db.Agent]:
+    """
+    Retrieve an Agent instance based on the provided agent ID asynchronously.
+
+    Args:
+        async_session (AsyncSession): The async database session to use for the query.
+        agent_id (uuid.UUID): The unique identifier of the agent.
+
+    Returns:
+        Optional[Agent]: The retrieved Agent instance if found, otherwise None.
+    """
+    return await _implementation.get_agent_async(async_session, agent_id)
+
+
 def get_agent(session: Session, agent_id: uuid.UUID) -> Optional[db.Agent]:
     """
     Retrieve an Agent instance based on the provided agent ID.
@@ -125,6 +141,7 @@ def delete_agent(
 
 __all__ = [
     "get_agent",
+    "get_agent_async",
     "replace_agent_config",
     "create_agent",
     "update_agent",

@@ -20,11 +20,6 @@ from .. import account_service, agent_service
 from .schema import ProjectParams
 
 
-async def get_agent_async(async_session: AsyncSession, agent_id: uuid.UUID):
-    """Placeholder for async agent retrieval - to be implemented."""
-    raise NotImplementedError("Async agent service not yet implemented")
-
-
 def create_project(
     session: Session,
     context: UserContext,
@@ -284,8 +279,6 @@ async def create_project_async(
     params: ProjectParams,
 ) -> db.Project:
     """Create a project asynchronously."""
-    # TODO: Implement proper async account and agent validation in separate PR
-    # For now, using placeholder functions that raise NotImplementedError
 
     # validate parameters
     account = await account_service.get_account_async(async_session, account_name)
@@ -294,7 +287,7 @@ async def create_project_async(
     if not params.agent_id:
         raise ValueError("Missing agent_id in request")
 
-    agent = await get_agent_async(async_session, params.agent_id)
+    agent = await agent_service.get_agent_async(async_session, params.agent_id)
     if not agent or agent.account_id != account.id:
         raise ValueError("selected agent is not available in the account")
 

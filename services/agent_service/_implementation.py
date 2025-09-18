@@ -76,6 +76,15 @@ async def construct_agent_config(
     return raw_config.build()
 
 
+async def get_agent_async(
+    async_session: AsyncSession, agent_id: uuid.UUID
+) -> Optional[db.Agent]:
+    """Retrieve an agent by ID asynchronously."""
+    agent_repository = db.AgentRepositoryAsync(async_session)
+    agent = await agent_repository.get_agent(agent_id=agent_id)
+    return agent
+
+
 def get_agent(session: Session, agent_id: uuid.UUID) -> Optional[db.Agent]:
     # Retrieve the agent from the database
     agent_repository = db.AgentRepository(session)
