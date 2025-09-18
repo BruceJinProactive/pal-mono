@@ -152,3 +152,27 @@ class VoiceConfigRepositoryAsync:
             await self.session.flush()
 
         return True
+
+    async def delete_voice_configs_by_project(self, project_id: uuid.UUID) -> int:
+        """
+        Delete all voice configs for a project asynchronously.
+
+        Args:
+            project_id (uuid.UUID): The project ID
+
+        Returns:
+            int: Number of voice configs deleted
+        """
+        voice_configs = await self.get_voice_configs_by_project(project_id)
+        deleted_count = 0
+
+        for voice_config in voice_configs:
+            await self.session.delete(voice_config)
+            deleted_count += 1
+
+        if self.auto_commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
+
+        return deleted_count

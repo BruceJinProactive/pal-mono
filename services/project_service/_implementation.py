@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin import UserContext
 from api.schemas.chat.message import Message
-from db.repositories.project_repository import ProjectRepository
+from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
+from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.change_log import ChangeResourceType
 from services.history_service import change_log_context
 from services.number_service import NumberService
@@ -17,6 +18,17 @@ from utils.log import logger
 
 from .. import account_service, agent_service
 from .schema import ProjectParams
+
+
+# Placeholder async functions - to be implemented in a separate PR
+async def get_account_async(async_session: AsyncSession, account_name: str):
+    """Placeholder for async account retrieval - to be implemented."""
+    raise NotImplementedError("Async account service not yet implemented")
+
+
+async def get_agent_async(async_session: AsyncSession, agent_id: uuid.UUID):
+    """Placeholder for async agent retrieval - to be implemented."""
+    raise NotImplementedError("Async agent service not yet implemented")
 
 
 def create_project(
@@ -268,3 +280,82 @@ def get_projects_by_phone_number(
     """
     repository = ProjectRepository(session)
     return repository.get_projects_by_phone_number(phone_number)
+
+
+async def create_project_async(
+    async_session: AsyncSession,
+    context: UserContext,
+    account_name: str,
+    project_name: str,
+    params: ProjectParams,
+) -> db.Project:
+    """Create a project asynchronously."""
+    # TODO: Implement proper async account and agent validation in separate PR
+    # For now, using placeholder functions that raise NotImplementedError
+
+    # validate parameters
+    account = await get_account_async(async_session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+    if not params.agent_id:
+        raise ValueError("Missing agent_id in request")
+
+    agent = await get_agent_async(async_session, params.agent_id)
+    if not agent or agent.account_id != account.id:
+        raise ValueError("selected agent is not available in the account")
+
+    account_id = account.id
+
+    # Add API channel with project name as identifier
+    api_channel_identifier = f"api:{project_name}"
+    if params.channel_identifiers is None:
+        params.channel_identifiers = []
+    if api_channel_identifier not in params.channel_identifiers:
+        params.channel_identifiers.append(api_channel_identifier)
+
+    # Create project using async repository
+    project_repository = ProjectRepositoryAsync(async_session)
+    project = await project_repository.create_project(
+        account_id, project_name, **asdict(params)
+    )
+
+    # Create default voice_config for the project
+    voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+    await voice_repo.create_voice_config(
+        project_id=project.id,
+        language="english",
+        voice_id="placeholder_voice_id",
+        first_message="placeholder_first_message",
+        transfer_message="placeholder_transfer_message",
+    )
+
+    return project
+
+
+async def delete_project_async(
+    async_session: AsyncSession,
+    context: UserContext,
+    project_id: uuid.UUID,
+) -> None:
+    """Delete a project and its voice_configs asynchronously (ignoring phone number cleanup)."""
+    project_repository = ProjectRepositoryAsync(async_session)
+
+    # Check if project exists
+    existing_project = await project_repository.get_project(project_id)
+    if not existing_project:
+        return
+
+    # Delete associated voice_configs first
+    voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+    deleted_voice_configs = await voice_repo.delete_voice_configs_by_project(project_id)
+
+    logger.debug(
+        f"Deleted {deleted_voice_configs} voice configs for project",
+        extra={
+            "project_id": str(project_id),
+            "deleted_voice_configs": deleted_voice_configs,
+        },
+    )
+
+    # Delete the project
+    await project_repository.delete_project(project_id)

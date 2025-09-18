@@ -48,6 +48,64 @@ class ProjectRepositoryAsync:
         project = result.scalar_one_or_none()
         return project
 
+    async def create_project(
+        self, account_id: uuid.UUID, project_name: str, **kwargs
+    ) -> Project:
+        """
+        Create a new project asynchronously.
+
+        Args:
+            account_id (uuid.UUID): The unique identifier of the account.
+            project_name (str): The name of the project.
+            **kwargs: Additional project attributes.
+
+        Returns:
+            Project: The created project.
+
+        Raises:
+            ValueError: If there is a validation error.
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            db_project = Project(account_id=account_id, name=project_name)
+            for key, value in kwargs.items():
+                if value is not None and hasattr(db_project, key):
+                    setattr(db_project, key, value)
+
+            self.session.add(db_project)
+            await self.session.commit()
+            await self.session.refresh(db_project)
+            return db_project
+        except IntegrityError as e:
+            await self.session.rollback()
+            logger.error(f"Error creating project: {e}")
+            error_summary = str(e).split("\n")[0]
+            raise ValueError(f"Error creating project: {error_summary}")
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error creating project: {e}")
+            raise
+
+    async def delete_project(self, project_id: uuid.UUID) -> None:
+        """
+        Delete a project from the database asynchronously.
+
+        Args:
+            project_id (uuid.UUID): The unique identifier of the project.
+
+        Raises:
+            SQLAlchemyError: If there is an error committing the transaction to the database.
+        """
+        try:
+            project = await self.get_project(project_id)
+            if project:
+                await self.session.delete(project)
+                await self.session.commit()
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error deleting project: {e}")
+            raise
+
 
 class ProjectRepository:
     def __init__(self, session: Session, auto_commit: bool = True):
