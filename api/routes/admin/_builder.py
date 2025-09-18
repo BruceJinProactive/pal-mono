@@ -76,7 +76,9 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         notes=account.notes,
         phone_number=account.phone_number,
         channels=account.channels,
+        onboarding_method=account.onboarding_method,
         created_at=int(account.created_at.timestamp()),
+        updated_at=int(account.updated_at.timestamp()) if account.updated_at else None,
     )
 
 
