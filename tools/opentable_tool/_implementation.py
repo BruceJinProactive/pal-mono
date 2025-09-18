@@ -20,7 +20,6 @@ from utils.log import logger
 
 
 class OpenTableTool(Toolkit, BaseReservationTool):
-
     # Required fields for each tool method
     REQUIRED_CHECK_AVAILABILITY_FIELDS = ["party_size", "date", "time"]
     REQUIRED_MAKE_RESERVATION_FIELDS = ["party_size", "date", "time"]
@@ -111,10 +110,7 @@ class OpenTableTool(Toolkit, BaseReservationTool):
             return f"Error: {error_message}"
 
         # Create search parameters
-        search_params = AvailabilitySearchRequest(
-            start_date_time=validated_params["start_date_time"],
-            party_size=validated_params["party_size"],
-        )
+        search_params = AvailabilitySearchRequest(**validated_params)
 
         try:
             # Search for availability
@@ -183,7 +179,6 @@ class OpenTableTool(Toolkit, BaseReservationTool):
             str: A short summary plus a direct link to complete the reservation on OpenTable.
         """
         try:
-            # Combine date/time and validate
             start_date_time = f"{date}T{time}"
             is_valid, error_message, validated = validate_search_parameters(
                 party_size=party_size, start_time=start_date_time
@@ -195,22 +190,25 @@ class OpenTableTool(Toolkit, BaseReservationTool):
                 return f"Error: {error_message}"
 
             normalized_dt = validated["start_date_time"]
+            booking_url = (
+                "https://www.opentable.com/booking/details?"
+                f"dateTime={urllib.parse.quote(normalized_dt)}"
+                f"&partySize={party_size}"
+                f"&rid={self.restaurant_id}"
+            )
 
-            # URL encode the dateTime parameter to match OpenTable's format
-            encoded_date_time = urllib.parse.quote(normalized_dt)
-
-            # Create the booking URL with the provided parameters
-            booking_url = f"https://www.opentable.com/booking/details?dateTime={encoded_date_time}&partySize={party_size}&rid={self.restaurant_id}"
-
-            # Format the response with the booking link
-            response = "I've prepared your reservation request!\n\n"
-            response += f"Date & Time: {normalized_dt}\n"
-            response += f"Party Size: {party_size}\n"
-            response += f"Restaurant ID: {self.restaurant_id}\n\n"
-            response += f"Click here to complete your reservation: {booking_url}\n\n"
-            response += "This link takes you to OpenTable to complete your reservation."
-
-            return response
+            lines = [
+                "I've prepared your reservation request!",
+                "",
+                f"Date & Time: {normalized_dt}",
+                f"Party Size: {party_size}",
+                f"Restaurant ID: {self.restaurant_id}",
+                "",
+                f"Click here to complete your reservation: {booking_url}",
+                "",
+                "This link takes you to OpenTable to complete your reservation.",
+            ]
+            return "\n".join(lines)
 
         except Exception as e:
             logger.error(f"Error in make_reservation: {str(e)}", exc_info=True)
