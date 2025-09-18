@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -18,6 +18,7 @@ class ConversationUpdate(BaseModel):
     status: Optional[ConversationStatus] = None
     is_escalated: Optional[bool] = None
     project_id: Optional[uuid.UUID] = None
+    vapi_control_url: Optional[str] = None
 
 
 class ConversationRepositoryAsync:
@@ -56,6 +57,57 @@ class ConversationRepositoryAsync:
             .limit(limit)
         )
         return result.scalars().all()
+
+    async def update_conversation(
+        self, conversation_id: uuid.UUID, update_data: ConversationUpdate
+    ) -> Conversation | None:
+        """
+        Update a conversation with the given fields.
+
+        Args:
+            conversation_id (uuid.UUID): The ID of the conversation to update.
+            update_data (ConversationUpdate): The fields to update and their new values.
+
+        Returns:
+            Conversation | None: The updated conversation if successful, None if the conversation doesn't exist.
+
+        Raises:
+            SQLAlchemyError: If there is an error updating the conversation.
+        """
+        try:
+            conversation = await self.get_conversation_by_id(conversation_id)
+            if not conversation:
+                return None
+
+            if update_data.status is not None:
+                conversation.status = update_data.status
+
+            if update_data.project_id is not None:
+                conversation.project_id = update_data.project_id
+
+            if update_data.vapi_control_url is not None:
+                conversation.vapi_control_url = update_data.vapi_control_url
+
+            if update_data.is_escalated is not None:
+                await self.session.execute(
+                    update(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .values(
+                        body=func.jsonb_set(
+                            func.coalesce(Message.body, "{}"),
+                            "{extras,escalated}",
+                            func.to_jsonb(str(update_data.is_escalated).lower()),
+                        )
+                    )
+                )
+
+            await self.session.commit()
+            await self.session.refresh(conversation)
+            return conversation
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error updating conversation: {e}")
+            raise
 
 
 class ConversationRepository:
@@ -292,6 +344,9 @@ class ConversationRepository:
 
             if update_data.project_id is not None:
                 conversation.project_id = update_data.project_id
+
+            if update_data.vapi_control_url is not None:
+                conversation.vapi_control_url = update_data.vapi_control_url
 
             if update_data.is_escalated is not None:
                 self.session.query(Message).filter(

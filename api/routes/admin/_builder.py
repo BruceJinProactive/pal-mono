@@ -159,7 +159,9 @@ def build_message(message: db.Message) -> Message:
         channel_info=message.body.get("channel_info"),
         sender_identifier=message.body.get("sender_identifier"),
         recipient_identifier=message.body.get("recipient_identifier"),
-        escalated=bool(extras.get("escalated")),
+        escalated=bool(
+            extras.get("escalated")
+        ),  # TODO: bool("false") will return True. Need to fix this.
         sent_at=message.body.get("timestamp"),
         conversation_id=message.conversation_id,
         created_at=message.created_at,

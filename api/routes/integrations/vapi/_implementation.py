@@ -20,6 +20,7 @@ from api.schemas.chat.message import (
     TextObject,
     Type,
 )
+from db.repositories.conversation_repository import ConversationUpdate
 from db.tables.agents import SpeechRate
 from db.tables.types import Channel
 from services import (
@@ -704,6 +705,7 @@ async def handle_status_update(message_data, session: AsyncSession):
                         f"User not found for this message: account_id: {project.account_id}, channel_identifier:{channel_identifier}"
                     )
                 conversation_repo = db.ConversationRepositoryAsync(session)
+
                 conversations = (
                     await conversation_repo.get_open_conversations_by_user_id(user.id)
                 )
@@ -719,12 +721,16 @@ async def handle_status_update(message_data, session: AsyncSession):
                     conversation = sorted(
                         conversations, key=lambda c: c.created_at, reverse=True
                     )[0]
+                    await conversation_repo.update_conversation(
+                        conversation_id=conversation.id,
+                        update_data=ConversationUpdate(
+                            vapi_control_url=control_url,
+                        ),
+                    )
 
                     logger.debug(
                         f"Found conversation: {conversation.id} with url: {conversation.vapi_control_url} for call {call_id}"
                     )
-                    if not conversation.vapi_control_url:
-                        conversation.vapi_control_url = control_url
             else:
                 logger.warning(
                     f"Missing phone number data for customer_number: {customer_number} and phone_number: {phone_number}"
