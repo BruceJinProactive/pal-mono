@@ -44,6 +44,7 @@ def update_project(
     context: UserContext,
     project_id: uuid.UUID,
     params: ProjectParams,
+    expected_version: int | None = None,
     auto_commit: bool = True,
 ) -> db.Project:
     """
@@ -60,7 +61,7 @@ def update_project(
         Project: The updated project.
     """
     return _implementation.update_project(
-        session, context, project_id, params, auto_commit
+        session, context, project_id, params, auto_commit, expected_version
     )
 
 

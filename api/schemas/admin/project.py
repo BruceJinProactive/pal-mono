@@ -57,6 +57,7 @@ class UpdateProjectRequest(BaseModel):
     transfer_phone_number: str | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
+    expected_version: int | None = None
 
     def to_project_params(self):
         return ProjectParams(

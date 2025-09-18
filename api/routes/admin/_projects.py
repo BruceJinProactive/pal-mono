@@ -309,7 +309,11 @@ async def update_project(
     project_params = update_request.to_project_params()
     try:
         db_project = project_service.update_project(
-            session, context, project_id, project_params
+            session,
+            context,
+            project_id,
+            project_params,
+            update_request.expected_version,
         )
     except ValueError as err:
         raise HTTPException(

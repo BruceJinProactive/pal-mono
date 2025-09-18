@@ -69,6 +69,7 @@ def update_project(
     project_id: uuid.UUID,
     params: ProjectParams,
     auto_commit: bool,
+    expected_version: int | None = None,
 ) -> db.Project:
     project_repository = db.ProjectRepository(session, auto_commit=False)
 
@@ -94,7 +95,7 @@ def update_project(
         auto_commit=auto_commit,
     ) as ctx:
         updated_project = project_repository.update_project(
-            project_id, **asdict(params)
+            project_id, expected_version, **asdict(params)
         )
         ctx.new_record = updated_project
         return updated_project

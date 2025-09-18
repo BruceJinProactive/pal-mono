@@ -139,13 +139,25 @@ class ProjectRepository:
             logger.error(f"Error creating project: {e}")
             raise
 
-    def update_project(self, project_id: uuid.UUID, **kwargs) -> Project | None:
+    def update_project(
+        self, project_id: uuid.UUID, expected_version: int | None = None, **kwargs
+    ) -> Project | None:
         try:
             db_project = (
                 self.session.query(Project).filter(Project.id == project_id).first()
             )
             if not db_project:
                 return None
+
+            if expected_version and db_project.updated_at:
+                if (
+                    expected_version
+                    and int(db_project.updated_at.timestamp()) != expected_version
+                ):
+                    raise ValueError(
+                        f"Version mismatch: Project {project_id} has been modified since last retrieval."
+                    )
+
             for key, value in kwargs.items():
                 if value is not None and hasattr(db_project, key):
                     setattr(db_project, key, value)
