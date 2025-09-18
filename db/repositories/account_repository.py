@@ -1,12 +1,49 @@
 import uuid
 from typing import List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from db.tables import Account
 from db.tables.accounts import AccountStatus
 from utils.log import logger
+
+
+class AccountRepositoryAsync:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_account(self, account_name: str) -> Account | None:
+        """Retrieve an account by name asynchronously."""
+        try:
+            query = (
+                select(Account)
+                .filter(Account.name == account_name)
+                .filter(Account.status != AccountStatus.deleted)
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving account: {e}")
+            return None
+
+    async def get_account_by_id(self, account_id: uuid.UUID) -> Account | None:
+        """Retrieve an account by its ID asynchronously."""
+        try:
+            query = (
+                select(Account)
+                .filter(Account.id == account_id)
+                .filter(Account.status != AccountStatus.deleted)
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving account by ID: {e}")
+            return None
 
 
 class AccountRepository:

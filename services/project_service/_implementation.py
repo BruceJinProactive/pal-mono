@@ -20,12 +20,6 @@ from .. import account_service, agent_service
 from .schema import ProjectParams
 
 
-# Placeholder async functions - to be implemented in a separate PR
-async def get_account_async(async_session: AsyncSession, account_name: str):
-    """Placeholder for async account retrieval - to be implemented."""
-    raise NotImplementedError("Async account service not yet implemented")
-
-
 async def get_agent_async(async_session: AsyncSession, agent_id: uuid.UUID):
     """Placeholder for async agent retrieval - to be implemented."""
     raise NotImplementedError("Async agent service not yet implemented")
@@ -294,7 +288,7 @@ async def create_project_async(
     # For now, using placeholder functions that raise NotImplementedError
 
     # validate parameters
-    account = await get_account_async(async_session, account_name)
+    account = await account_service.get_account_async(async_session, account_name)
     if not account:
         raise ValueError(f"Account {account_name} does not exist")
     if not params.agent_id:

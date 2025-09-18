@@ -1,6 +1,7 @@
 import uuid
 from typing import List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
@@ -8,6 +9,22 @@ from api.routes.admin import UserContext
 
 from . import _implementation
 from .schema import AccountParams
+
+
+async def get_account_async(
+    async_session: AsyncSession, account_name: str
+) -> Optional[db.Account]:
+    """
+    Retrieve an Account by its name asynchronously.
+
+    Args:
+        async_session (AsyncSession): The async database session.
+        account_name (str): The name of the Account to retrieve.
+
+    Returns:
+        Account: The Account with the given name, or None if no such Account is found.
+    """
+    return await _implementation.get_account_async(async_session, account_name)
 
 
 def get_account(session: Session, account_name: str) -> Optional[db.Account]:
@@ -136,6 +153,7 @@ def filter_accounts_by_name(
 __all__ = [
     "AccountParams",
     "get_account",
+    "get_account_async",
     "mget_accounts",
     "filter_accounts_by_name",
     "create_account",

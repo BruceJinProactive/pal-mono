@@ -3,14 +3,25 @@ import uuid
 from dataclasses import asdict
 from typing import List, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin import UserContext
+from db.repositories.account_repository import AccountRepositoryAsync
 from db.tables.change_log import ChangeResourceType
 from services.account_service.schema import AccountParams
 from services.history_service import change_log_context
 from utils.log import logger
+
+
+async def get_account_async(
+    async_session: AsyncSession, account_name: str
+) -> Optional[db.Account]:
+    """Get an account by name asynchronously."""
+    account_repository = AccountRepositoryAsync(async_session)
+    account = await account_repository.get_account(account_name=account_name)
+    return account
 
 
 def get_account(session: Session, account_name: str) -> Optional[db.Account]:
