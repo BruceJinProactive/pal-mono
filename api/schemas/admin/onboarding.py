@@ -112,6 +112,7 @@ class SelfOnboardingRequest(BaseModel):
         ..., description="Store hours of the created project"
     )
     project_address: str = Field(..., description="Address of the created project")
+    project_timezone: str = Field(..., description="Timezone of the created project")
 
 
 class SelfOnboardingResponse(BaseModel):

@@ -569,6 +569,17 @@ def signup_account_user(
     )
 
 
+def signup_self_onboarding_user(
+    account_name: str,
+    user_email: str,
+    user_name: str,
+    password: str,
+) -> CognitoUser:
+    return _implementation.signup_self_onboarding_user(
+        account_name, user_email, user_name, password
+    )
+
+
 def delete_account_user(account_name: str, user_email: str) -> None:
     """
     Delete an admin user for a specific account.
@@ -748,6 +759,7 @@ __all__ = [
     "list_account_users",
     "create_account_user",
     "signup_account_user",
+    "signup_self_onboarding_user",
     "delete_account_user",
     "update_conversation",
     "list_leads",

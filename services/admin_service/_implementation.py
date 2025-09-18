@@ -1154,6 +1154,106 @@ def signup_account_user(
         raise ValueError(f"Failed to obtain user session for user {user_email}") from e
 
 
+def signup_self_onboarding_user(
+    account_name: str,  # not used here; map user->account in your DB
+    user_email: str,
+    user_name: str,
+    password: str,
+) -> CognitoUser:
+    """
+    Creates (or reuses) a Cognito user without sending email and sets a permanent password.
+    Returns True if the user is ready to sign in; raises on real errors.
+    """
+    cognito = boto3.client("cognito-idp", region_name=AWS_REGION)
+
+    # 1) Try to create user (suppress invite)
+    try:
+        cognito.admin_create_user(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Username=user_email,
+            MessageAction="SUPPRESS",
+            UserAttributes=[
+                {"Name": "email", "Value": user_email},
+                # Only set email_verified if you truly verified it out-of-band:
+                # {"Name": "email_verified", "Value": "true"},
+                {"Name": "name", "Value": user_name},
+            ],
+        )
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code == "UsernameExistsException":
+            # Idempotent: user already exists; continue to set permanent password
+            logger.info(
+                f"[Cognito] User {user_email} already exists; ensuring permanent password."
+            )
+        else:
+            logger.error(f"[Cognito] admin_create_user failed for {user_email}: {e}")
+            raise ValueError(
+                f"Failed to create Cognito user for {user_email}: {e}"
+            ) from e
+
+    # 2) Set permanent password so client can sign in immediately
+    try:
+        cognito.admin_set_user_password(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Username=user_email,
+            Password=password,
+            Permanent=True,
+        )
+    except ClientError as e:
+        logger.error(f"[Cognito] admin_set_user_password failed for {user_email}: {e}")
+        raise ValueError(
+            f"Failed to set permanent password for {user_email}: {e}"
+        ) from e
+    try:
+        auth_response = cognito.admin_initiate_auth(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            ClientId=AWS_ADMIN_CONSOLE_APP_CLIENT_ID,
+            AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+            AuthParameters={
+                "USERNAME": user_email,
+                "PASSWORD": password,  # Same password that was just set
+            },
+        )
+    except ClientError as e:
+        logger.error(f"[Cognito] admin_initiate_auth failed for {user_email}: {e}")
+        raise ValueError(
+            f"Failed to authenticate Cognito user for {user_email}: {e}"
+        ) from e
+    try:
+        user_response = cognito.admin_get_user(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID, Username=user_email
+        )
+        user_sub = None
+        for attr in user_response["UserAttributes"]:
+            if attr["Name"] == "sub":
+                user_sub = attr["Value"]
+                break
+        if not user_sub:
+            raise ValueError(f"User sub not found for {user_email}")
+    except ClientError as e:
+        logger.error(f"[Cognito] admin_get_user failed for {user_email}: {e}")
+        raise ValueError(f"Failed to get Cognito user for {user_email}: {e}") from e
+
+    # Extract tokens
+    id_token = auth_response["AuthenticationResult"]["IdToken"]
+    access_token = auth_response["AuthenticationResult"]["AccessToken"]
+    refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
+    expires_in = auth_response["AuthenticationResult"]["ExpiresIn"]
+
+    return CognitoUser(
+        email=user_email,
+        name=user_name,
+        session=CognitoUserSession(
+            user_sub=user_sub,
+            id_token=id_token,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=expires_in,
+        ),
+    )
+
+
 def delete_account_user(account_name: str, user_email: str) -> None:
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
     try:

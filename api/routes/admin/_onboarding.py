@@ -365,6 +365,7 @@ def self_onboard_project(
     # project_params.timezone = request.project_timezone
     project_params.store_hours = request.project_store_hours
     project_params.address = request.project_address
+    project_params.timezone = request.project_timezone
     try:
         new_project = project_service.create_project(
             session=session,
@@ -446,7 +447,7 @@ def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> Cogni
         HTTPException: If user creation fails
     """
     try:
-        user = admin_service.signup_account_user(
+        user = admin_service.signup_self_onboarding_user(
             account_name=request.account_name,
             user_email=request.email,
             user_name=request.user_name,
@@ -461,7 +462,7 @@ def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> Cogni
             headers={"Content-Type": "application/json"},
         )
 
-    if not user.session:
+    if not user or not user.session:
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
