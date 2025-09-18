@@ -19,6 +19,10 @@ from tools.olo_tool._apis import (  # TODO: Add request_ccsf_token
     validate_address,
     validate_basket,
 )
+from tools.olo_tool._apis._utils import (
+    connect_olo_order_hub,
+    connect_olo_order_hub_signed,
+)
 from tools.olo_tool._prompt_constants import (
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_PROMPT,
@@ -31,6 +35,7 @@ from tools.olo_tool.classes import (
     OloAccessToken,
     OloOrderSubmissionBody,
     OloProductInput,
+    OloSignedToken,
     UserType,
 )
 from tools.utils.ordering._query_engine import create_query_engine
@@ -39,7 +44,7 @@ from tools.utils.ordering._utils import (
     get_chat_history,
     get_relevant_docs,
 )
-from tools.utils.ordering.classes import SubQueries
+from tools.utils.ordering.classes import HttpMethod, SubQueries
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -51,6 +56,8 @@ class OloTool(Toolkit):
         namespace: str,
         index_name: str,
         tool_metadata: ToolMetadata,
+        client_credentials: str | None = None,
+        use_signed_auth: bool = False,
     ):
         super().__init__(name="olo_tool")
 
@@ -59,7 +66,8 @@ class OloTool(Toolkit):
         self.index_name = index_name
         self.tool_metadata = tool_metadata
         self._cached_store_info: str | None = None
-
+        self.client_credentials = client_credentials
+        self.use_signed_auth = use_signed_auth
         # Register tools
         self.register(self.get_store_info_tool)
         self.register(self.check_online_ordering_status)
@@ -73,23 +81,109 @@ class OloTool(Toolkit):
         )
 
     @cached_property
-    def _olo_token(self) -> OloAccessToken:
+    def _olo_token(self) -> OloAccessToken | OloSignedToken:
         """
-        Retrieves and caches the Olo API access token from environment variables.
+        Retrieves and caches the Olo API access token or signed credentials.
 
         Returns:
-            OloAccessToken: An object containing the access token for Olo API calls.
+            OloAccessToken or OloSignedToken: Authentication object for Olo API calls.
 
         Raises:
-            ValueError: If the required environment variable is not set.
+            ValueError: If the required credentials are not set.
         """
         with LLMObs.task(name="get_olo_token"):
-            api_key = get_client_secret_with_fallback("OLO_MOOYAH_API_KEY")
-            bearer_token = OloAccessToken(
-                access_token=api_key,
-                token_type="OloKey",
+            if self.use_signed_auth:
+                if not self.client_credentials:
+                    raise ValueError(
+                        "client_credentials is required when use_signed_auth=True"
+                    )
+                credentials = self._get_olo_credentials(self.client_credentials)
+                return OloSignedToken(
+                    client_id=credentials["client_id"],
+                    client_secret=credentials["client_secret"],
+                )
+            else:
+                api_key = get_client_secret_with_fallback("OLO_MOOYAH_API_KEY")
+                return OloAccessToken(
+                    access_token=api_key,
+                    token_type="OloKey",
+                )
+
+    def _get_olo_credentials(self, client_credentials: str) -> dict[str, str]:
+        """
+        Retrieves the Olo credentials from the secrets manager.
+
+        Args:
+            client_credentials: The client credentials to use. We will use this to get the Olo credentials from the secrets manager.
+
+        Returns:
+            dict: {"client_id": "...", "client_secret": "..."}
+        """
+        raw = get_client_secret_with_fallback(client_credentials)
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Secret '{client_credentials}' is not valid JSON: {e.msg}"
+            ) from e
+
+        for key in ("client_id", "client_secret"):
+            val = data.get(key)
+            if not isinstance(val, str) or not val.strip():
+                raise ValueError(
+                    f"Secret '{client_credentials}' is missing required field '{key}'"
+                )
+
+        return {
+            "client_id": data["client_id"].strip(),
+            "client_secret": data["client_secret"].strip(),
+        }
+
+    def _connect_olo_api(
+        self,
+        http_method,
+        api_function,
+        query_params=None,
+        extra_headers=None,
+        payload=None,
+    ):
+        """
+        Helper method to connect to Olo API using the appropriate authentication method.
+
+        Args:
+            http_method: The HTTP method to use
+            api_function: The API endpoint to call
+            query_params: Optional query parameters
+            extra_headers: Optional additional headers
+            payload: Optional request payload
+
+        Returns:
+            GenericHubResponse: The API response
+        """
+        # Convert string method to HttpMethod enum if needed
+        if isinstance(http_method, str):
+            http_method = HttpMethod(http_method.upper())
+
+        token = self._olo_token
+
+        if isinstance(token, OloSignedToken):
+            return connect_olo_order_hub_signed(
+                http_method=http_method,
+                signed_token=token,
+                api_function=api_function,
+                query_params=query_params,
+                extra_headers=extra_headers,
+                payload=payload,
             )
-            return bearer_token
+        else:
+            return connect_olo_order_hub(
+                http_method=http_method,
+                bearer_token=token,
+                api_function=api_function,
+                query_params=query_params,
+                extra_headers=extra_headers,
+                payload=payload,
+            )
 
     @tool
     def get_store_info_tool(self) -> str:

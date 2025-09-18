@@ -1,6 +1,13 @@
+import base64
+import hashlib
+import hmac
+import http.client
+import json
+import urllib.parse
+from email.utils import formatdate
 from typing import Type, TypeVar, Union
 
-from tools.olo_tool.classes import OloAccessToken
+from tools.olo_tool.classes import OloAccessToken, OloSignedToken
 from tools.utils.ordering._utils import connect_order_hub
 from tools.utils.ordering.classes import ApiProvider, GenericHubResponse, HttpMethod
 from utils.log import logger
@@ -78,3 +85,171 @@ def connect_olo_order_hub(
         extra_headers=extra_headers,
         payload=payload,
     )
+
+
+def _create_signature(
+    client_secret: str,
+    client_id: str,
+    http_verb: str,
+    content_type: str,
+    hashed_body: str,
+    path_and_query: str,
+    time_stamp: str,
+) -> str:
+    """
+    Creates HMAC-SHA256 signature for Olo signed requests.
+
+    Args:
+        client_secret: The client secret for signing
+        client_id: The client ID
+        http_verb: HTTP method (GET, POST, etc.)
+        content_type: Content-Type header value
+        hashed_body: Base64-encoded SHA256 hash of request body
+        path_and_query: The path and query string
+        time_stamp: RFC 2822 formatted timestamp
+
+    Returns:
+        Base64-encoded signature string
+    """
+    message_to_sign = f"{client_id}\n{http_verb}\n{content_type}\n{hashed_body}\n{path_and_query}\n{time_stamp}"
+    hmac_sha256 = hmac.new(
+        client_secret.encode("utf-8"),
+        message_to_sign.encode("utf-8"),
+        hashlib.sha256,
+    )
+    return base64.b64encode(hmac_sha256.digest()).decode("utf-8")
+
+
+def _hash_request_body(body: str) -> str:
+    """
+    Creates SHA256 hash of request body.
+
+    Args:
+        body: The request body string
+
+    Returns:
+        Base64-encoded SHA256 hash
+    """
+    sha256_hasher = hashlib.sha256()
+    sha256_hasher.update(body.encode("utf-8"))
+    hash_bytes = sha256_hasher.digest()
+    return base64.b64encode(hash_bytes).decode("utf-8")
+
+
+def connect_olo_order_hub_signed(
+    http_method: HttpMethod,
+    signed_token: OloSignedToken,
+    api_function: str,
+    query_params: dict | None = None,
+    extra_headers: dict | None = None,
+    payload: dict | str | None = None,
+    base_url: str = "ordering.api.olosandbox.com",
+) -> GenericHubResponse:
+    """
+    Make a request to the Olo Order Hub API using signed signature authentication.
+
+    Args:
+        http_method: The HTTP method to use
+        signed_token: The Olo signed token with client credentials
+        api_function: The API endpoint to call
+        query_params: Optional query parameters
+        extra_headers: Optional additional headers
+        payload: Optional request payload
+        base_url: The base URL for the Olo API
+
+    Returns:
+        GenericHubResponse: The API response
+
+    Raises:
+        ValueError: If the HTTP method is invalid or the request fails
+    """
+    logger.debug(
+        f"[OloUtils.connect_olo_order_hub_signed] Calling OLO Signed API: {http_method} {api_function} | "
+        f"Query Params: {query_params} | "
+        f"Extra Headers: {extra_headers} | "
+        f"Payload: {payload}"
+    )
+
+    # Build the full path
+    path_and_query = api_function
+    if query_params:
+        path_and_query += "?" + urllib.parse.urlencode(query_params)
+
+    # Prepare request body
+    request_body = ""
+    if payload is not None:
+        if isinstance(payload, dict):
+            request_body = json.dumps(payload)
+        else:
+            request_body = str(payload)
+
+    # Content type
+    content_type = "application/json"
+
+    # Generate timestamp
+    time_stamp = formatdate(timeval=None, localtime=False, usegmt=True)
+
+    # Hash the request body
+    hashed_body = _hash_request_body(request_body)
+
+    # Convert http_method to string
+    if isinstance(http_method, HttpMethod):
+        method_str = http_method.value
+    else:
+        method_str = str(http_method).upper()
+
+    # Create signature
+    signed_message = _create_signature(
+        client_secret=signed_token.client_secret,
+        client_id=signed_token.client_id,
+        http_verb=method_str,
+        content_type=content_type,
+        hashed_body=hashed_body,
+        path_and_query=path_and_query,
+        time_stamp=time_stamp,
+    )
+
+    # Build headers
+    headers = {
+        "Authorization": f"{signed_token.token_type} {signed_token.client_id}:{signed_message}",
+        "Date": time_stamp,
+        "Content-Type": content_type,
+    }
+
+    # Add any extra headers
+    if extra_headers:
+        headers.update(extra_headers)
+
+    try:
+        conn = http.client.HTTPSConnection(base_url, timeout=30)
+
+        # Make the request
+        conn.request(method_str, path_and_query, request_body, headers)
+        response = conn.getresponse()
+        response_data = response.read().decode("utf-8")
+
+        # Check for success
+        if response.status != 200:
+            raise Exception(
+                f"Error: {response.status} - {response.reason} - {response_data}"
+            )
+
+        hub_response = GenericHubResponse(
+            status=response.status,
+            reason=response.reason,
+            decoded_body=response_data,
+        )
+
+        logger.debug(
+            f"[OloUtils.connect_olo_order_hub_signed] OLO Signed Response: {hub_response}"
+        )
+        return hub_response
+
+    except Exception as e:
+        raise Exception(
+            f"[OloUtils.connect_olo_order_hub_signed] Error while calling {method_str} {api_function} for OLO Signed: {str(e)}"
+        ) from e
+    finally:
+        conn_var = locals().get("conn")
+        if conn_var:
+            conn_var.close()

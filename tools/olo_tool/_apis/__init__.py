@@ -1,7 +1,11 @@
 import json
 from typing import Optional
 
-from tools.olo_tool._apis._utils import connect_olo_order_hub, handle_olo_response
+from tools.olo_tool._apis._utils import (
+    connect_olo_order_hub,
+    connect_olo_order_hub_signed,
+    handle_olo_response,
+)
 from tools.olo_tool.classes import (
     Address,
     BillingScheme,
@@ -13,27 +17,61 @@ from tools.olo_tool.classes import (
     OloOrderSubmissionBody,
     OloOrderSubmissionResponse,
     OloProductInput,
+    OloSignedToken,
     OloStore,
     ValidatedBasketTotals,
 )
 from tools.utils.ordering.classes import HttpMethod
 
 
-def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
+def _connect_olo_api_auto(
+    http_method: HttpMethod,
+    olo_token: OloAccessToken | OloSignedToken,
+    api_function: str,
+    query_params: dict | None = None,
+    extra_headers: dict | None = None,
+    payload: dict | str | None = None,
+):
+    """
+    Automatically choose the appropriate connection method based on token type.
+    """
+    if isinstance(olo_token, OloSignedToken):
+        return connect_olo_order_hub_signed(
+            http_method=http_method,
+            signed_token=olo_token,
+            api_function=api_function,
+            query_params=query_params,
+            extra_headers=extra_headers,
+            payload=payload,
+        )
+    else:
+        return connect_olo_order_hub(
+            http_method=http_method,
+            bearer_token=olo_token,
+            api_function=api_function,
+            query_params=query_params,
+            extra_headers=extra_headers,
+            payload=payload,
+        )
+
+
+def get_store_info(
+    restaurant_id: int, olo_token: OloAccessToken | OloSignedToken
+) -> OloStore:
     """
     Get the store info for a given restaurant ID
 
     Args:
         restaurant_id (int): The restaurant ID
-        olo_token (OloAccessToken): The Olo access token
+        olo_token (OloAccessToken | OloSignedToken): The Olo access token or signed token
 
     Returns:
         OloStore: A validated store object from the API response
     """
     try:
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.GET,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/restaurants/{restaurant_id}",
             query_params=None,
             payload=None,
@@ -49,7 +87,7 @@ def get_store_info(restaurant_id: int, olo_token: OloAccessToken) -> OloStore:
 
 
 def get_online_ordering_status(
-    restaurant_id: int, olo_token: OloAccessToken
+    restaurant_id: int, olo_token: OloAccessToken | OloSignedToken
 ) -> int | str:
     """
     Get the online ordering status for ONE given restaurant ID
@@ -65,9 +103,9 @@ def get_online_ordering_status(
         request_body = {
             "vendorids": [restaurant_id],
         }
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.POST,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function="/v1.1/restaurants/capacity/leadtimes",
             query_params=None,
             payload=request_body,
@@ -97,7 +135,7 @@ def get_online_ordering_status(
 
 
 def validate_address(
-    restaurant_id: int, address: Address, olo_token: OloAccessToken
+    restaurant_id: int, address: Address, olo_token: OloAccessToken | OloSignedToken
 ) -> DeliveryAddressValidationResponse:
     """
     Validates an address for a given restaurant ID.
@@ -105,7 +143,7 @@ def validate_address(
     Args:
         restaurant_id (int): The restaurant ID
         address (Address): The address to validate
-        olo_token (OloAccessToken): The Olo access token
+        olo_token (OloAccessToken | OloSignedToken): The Olo access token or signed token
 
     Returns:
         DeliveryAddressValidationResponse: A validated address response object from the API response
@@ -120,9 +158,9 @@ def validate_address(
             # The time the user wants the order to be ready, formatted "yyyymmdd hh:mm". Only send if timewantedmode is "advance". We ONLY handle ASAP for now.
             "timewantedutc": None,
         }
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.POST,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/restaurants/{restaurant_id}/checkdeliverycoverage",
             query_params=None,
             payload=request_body,
@@ -140,7 +178,9 @@ def validate_address(
 
 
 def create_basket(
-    restaurant_id: int, olo_token: OloAccessToken, auth_token: Optional[str] = None
+    restaurant_id: int,
+    olo_token: OloAccessToken | OloSignedToken,
+    auth_token: Optional[str] = None,
 ) -> OloBasket:
     """
     Creates a basket for a restaurant.
@@ -158,9 +198,9 @@ def create_basket(
             "vendorid": restaurant_id,
             "authtoken": auth_token,
         }
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.POST,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function="/v1.1/baskets/create",
             query_params=None,
             payload=request_body,
@@ -176,7 +216,9 @@ def create_basket(
 
 
 def add_items_to_basket(
-    basket_id: str, olo_token: OloAccessToken, olo_product_input: OloProductInput
+    basket_id: str,
+    olo_token: OloAccessToken | OloSignedToken,
+    olo_product_input: OloProductInput,
 ) -> dict:
     """
     Adds items to a basket.
@@ -193,9 +235,9 @@ def add_items_to_basket(
         request_body = olo_product_input.model_dump(
             exclude_none=True,
         )
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.POST,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/products/batch",
             query_params=None,
             payload=request_body,
@@ -215,7 +257,9 @@ def add_items_to_basket(
 
 
 def set_basket_handoff_mode(
-    basket_id: str, olo_token: OloAccessToken, handoff_mode: OloBasketHandoffMode
+    basket_id: str,
+    olo_token: OloAccessToken | OloSignedToken,
+    handoff_mode: OloBasketHandoffMode,
 ) -> OloBasket:
     """
     Sets the handoff mode for a basket.
@@ -230,11 +274,11 @@ def set_basket_handoff_mode(
     """
     try:
         request_body = {
-            "deliverymode": handoff_mode,
+            "deliverymode": handoff_mode.value,
         }
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.PUT,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/deliverymode",
             query_params=None,
             payload=request_body,
@@ -249,7 +293,9 @@ def set_basket_handoff_mode(
         ) from e
 
 
-def validate_basket(basket_id: str, olo_token: OloAccessToken) -> ValidatedBasketTotals:
+def validate_basket(
+    basket_id: str, olo_token: OloAccessToken | OloSignedToken
+) -> ValidatedBasketTotals:
     """
     Validates a basket.
 
@@ -262,9 +308,9 @@ def validate_basket(basket_id: str, olo_token: OloAccessToken) -> ValidatedBaske
 
     """
     try:
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.POST,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/validate",
         )
         result = handle_olo_response(response, ValidatedBasketTotals)
@@ -289,9 +335,9 @@ def get_order_status(
         OloOrderSubmissionResponse: A validated order response object from the API response
     """
     try:
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.GET,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/orders/{order_id}",
             query_params=None,
             payload=None,
@@ -309,7 +355,9 @@ def get_order_status(
 
 
 def request_ccsf_token(
-    basket_id: str, olo_token: OloAccessToken, auth_token: Optional[str] = None
+    basket_id: str,
+    olo_token: OloAccessToken | OloSignedToken,
+    auth_token: Optional[str] = None,
 ) -> OloCCSFToken:
     """
     Requests a CCSF token for a given basket ID.
@@ -327,9 +375,9 @@ def request_ccsf_token(
             "authtoken": auth_token,
         }
 
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.POST,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/checkout",
             query_params=None,
             payload=request_body,
@@ -346,7 +394,7 @@ def request_ccsf_token(
 
 def submit_order(
     basket_id: str,
-    olo_token: OloAccessToken,
+    olo_token: OloAccessToken | OloSignedToken,
     olo_order_submission_body: OloOrderSubmissionBody,
 ) -> OloOrderSubmissionResponse:
     """
@@ -361,9 +409,9 @@ def submit_order(
         OloOrderSubmissionResponse: A validated order submission response object from the API response
     """
     try:
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.POST,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/submit",
             query_params=None,
             payload=olo_order_submission_body.model_dump(exclude_none=True),
@@ -381,7 +429,7 @@ def submit_order(
 
 
 def get_billing_schemes_info(
-    basket_id: str, olo_token: OloAccessToken
+    basket_id: str, olo_token: OloAccessToken | OloSignedToken
 ) -> list[BillingScheme]:
     """
     Get the billing schemes info for a specified basket's restaurant.
@@ -394,9 +442,9 @@ def get_billing_schemes_info(
         list[BillingScheme]: A list of BillingScheme objects containing the `id` and the `type` of the billing scheme
     """
     try:
-        response = connect_olo_order_hub(
+        response = _connect_olo_api_auto(
             http_method=HttpMethod.GET,
-            bearer_token=olo_token,
+            olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/billingschemes",
         )
         response_json = json.loads(handle_olo_response(response))

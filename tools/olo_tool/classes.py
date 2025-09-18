@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 ######### OLO API CLASS START ############
@@ -12,6 +12,26 @@ class OloAccessToken(BaseModel):
 
     def get_token_header_value(self) -> str:
         return f"{self.token_type} {self.access_token}"
+
+
+class OloSignedToken(BaseModel):
+    """
+    Token class for Olo signed signature authentication.
+    Unlike OloAccessToken, this doesn't contain the actual token but the credentials
+    needed to generate signed signatures for each request.
+    """
+
+    client_id: str
+    client_secret: str = Field(repr=False)
+    token_type: str = "OloSignature"
+
+    def get_token_header_value(self) -> str:
+        """
+        For signed signatures, this method is not used directly.
+        Instead, the authorization header is built dynamically for each request.
+        This method is kept for interface compatibility.
+        """
+        return f"{self.token_type} {self.client_id}"
 
 
 class BaseCustomField(BaseModel):
