@@ -1180,6 +1180,7 @@ def signup_self_onboarding_user(
                 {"Name": "custom:account_name", "Value": account_name},
             ],
         )
+
     except ClientError as e:
         code = e.response.get("Error", {}).get("Code")
         if code == "UsernameExistsException":
@@ -1187,6 +1188,7 @@ def signup_self_onboarding_user(
             logger.info(
                 f"[Cognito] User {user_email} already exists; ensuring permanent password."
             )
+            raise ValueError(f"User {user_email} already exists") from e
         else:
             logger.error(f"[Cognito] admin_create_user failed for {user_email}: {e}")
             raise ValueError(
