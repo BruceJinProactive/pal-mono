@@ -229,45 +229,42 @@ class YelpTool(Toolkit):
         self, first_name: Optional[str], last_name: Optional[str]
     ) -> tuple[str, str]:
         """
-        Intelligently process name inputs for Yelp reservations.
-
-        Yelp requires both first and last names, but customers may only provide a single name.
-        This method handles the following cases:
-        1. If both first_name and last_name are provided, use them as-is
-        2. If only first_name is provided and it contains multiple words, split into first/last
-        3. If only first_name is provided as a single word, use "Palona AI" as last_name
-        4. If only last_name is provided, treat it as the first_name and use "Palona AI" as last_name
-        5. If neither are provided, return empty strings
+        Process name inputs for Yelp reservations with phone identification.
 
         Args:
             first_name: Optional first name from user input
             last_name: Optional last name from user input
 
         Returns:
-            tuple[str, str]: (processed_first_name, processed_last_name)
+            tuple[str, str]: (processed_first_name, processed_last_name_with_phone)
         """
-        # If both names are provided, use them as-is
-        if first_name and last_name:
-            return first_name.strip(), last_name.strip()
+        # Get customer phone from tool metadata
+        customer_phone = self.tool_metadata.customer_phone
 
-        # If only first name is provided
-        if first_name and not last_name:
-            first_name_cleaned = first_name.strip()
-            name_parts = first_name_cleaned.split()
-
-            if len(name_parts) >= 2:
-                # Split the name: first part becomes first_name, rest becomes last_name
-                return name_parts[0], " ".join(name_parts[1:])
+        # Extract last 4 digits
+        if customer_phone and len(customer_phone) >= 4:
+            last_four = customer_phone[-4:]
+        else:
+            last_four = "0000"
+            if not customer_phone:
+                logger.warning(
+                    "[YelpTool._process_name_for_reservation] No customer phone available in tool metadata"
+                )
             else:
-                # Single name provided - use "Palona AI" as last name
-                return first_name_cleaned, "Palona AI"
+                logger.warning(
+                    f"[YelpTool._process_name_for_reservation] Customer phone '{customer_phone}' is too short (< 4 digits), using '0000' as fallback"
+                )
 
-        # If only last name is provided, treat it as first name
-        if last_name and not first_name:
-            return last_name.strip(), "Palona AI"
+        # Process first name (use as-is)
+        processed_first_name = first_name.strip() if first_name else ""
 
-        # If neither name is provided
-        return "", ""
+        # Process last name with phone digits
+        if last_name and last_name.strip():
+            processed_last_name = f"{last_name.strip()} (*{last_four} via Palona)"
+        else:
+            processed_last_name = f"(*{last_four} via Palona)"
+
+        return processed_first_name, processed_last_name
 
     def _get_current_date(self) -> str:
         """
