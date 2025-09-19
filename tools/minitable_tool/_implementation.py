@@ -164,7 +164,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             last_four = (
                 customer_phone[-4:] if len(customer_phone) >= 4 else customer_phone
             )
-            customer_name_with_phone = f"{name} ({last_four} via Palona)"
+            customer_name_with_phone = f"{name} (*{last_four} via Palona)"
 
             reservation_params = {
                 "telephone": formatted_telephone,
