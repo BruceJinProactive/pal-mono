@@ -97,6 +97,8 @@ from api.schemas.admin.phone_number import (
     ReserveProjectNumberRequest,
 )
 from api.schemas.admin.project import (
+    BatchCreateProjectsRequest,
+    BatchCreateProjectsResponse,
     CreateProjectRequest,
     Project,
     ProjectSummary,
@@ -891,6 +893,30 @@ async def create_project(
     subscription management endpoints.
     """
     return await _projects.create_project(project, context, session)
+
+
+@admin_router.post("/projects/batch", status_code=status.HTTP_201_CREATED)
+async def batch_create_projects(
+    request: BatchCreateProjectsRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> BatchCreateProjectsResponse:
+    """
+    Create multiple projects in batch for a given account.
+
+    This endpoint allows you to create many projects at once from JSON data,
+    such as restaurant locations. Each project can include:
+
+    - Unique project name and display name
+    - Location address and timezone
+    - Store hours and contact information
+    - Product/menu information
+    - Service instructions for the AI agent
+
+    The response includes detailed results for each project creation attempt,
+    including success/failure status and error messages for any failed creations.
+    """
+    return await _projects.batch_create_projects(request, context, session)
 
 
 @admin_router.get("/projects/{project_id}")

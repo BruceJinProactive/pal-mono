@@ -4,11 +4,19 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.project import (
+    BatchCreateProjectsRequest,
+    BatchCreateProjectsResponse,
     CreateProjectRequest,
     Project,
+    ProjectCreationResult,
     UpdateProjectRequest,
 )
-from services import account_service, project_service, subscription_service
+from services import (
+    account_service,
+    agent_service,
+    project_service,
+    subscription_service,
+)
 from services.admin_service import (
     deauthorize_instagram_access_token,
     get_instagram_connected,
@@ -356,3 +364,69 @@ async def delete_project(
             exc_info=True,
         )
         raise
+
+
+async def batch_create_projects(
+    request: BatchCreateProjectsRequest, context: UserContext, session: Session
+) -> BatchCreateProjectsResponse:
+    """
+    Create multiple projects for an account.
+    """
+    authorize_admin(context)
+
+    account = account_service.get_account(session, request.account_name)
+    if not account:
+        raise not_found_error(f"Account '{request.account_name}' not found.")
+
+    agent_obj = agent_service.get_agent(session, request.agent_id)
+    if not agent_obj or agent_obj.account_id != account.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Agent {request.agent_id} not found or not associated with account {request.account_name}",
+        )
+
+    try:
+        location_data = []
+        for location in request.locations:
+            params = location.to_project_params(request.agent_id)
+            location_data.append(params)
+
+        result = project_service.batch_create_projects(
+            session=session,
+            context=context,
+            account_name=request.account_name,
+            agent_id=request.agent_id,
+            location_data=location_data,
+            auto_commit=True,
+        )
+
+        creation_results = []
+        for res in result["results"]:
+            creation_results.append(
+                ProjectCreationResult(
+                    project_name=res["project_name"],
+                    project_id=(
+                        uuid.UUID(res["project_id"]) if res["project_id"] else None
+                    ),
+                    display_name=res.get("display_name"),
+                    success=res["success"],
+                    error_message=res.get("error_message"),
+                )
+            )
+
+        return BatchCreateProjectsResponse(
+            account_name=result["account_name"],
+            total_requested=result["total_requested"],
+            total_created=result["total_created"],
+            total_failed=result["total_failed"],
+            results=creation_results,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Batch project creation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during batch project creation",
+        )

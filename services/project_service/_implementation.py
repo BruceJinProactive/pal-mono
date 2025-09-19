@@ -368,6 +368,103 @@ def get_projects_by_phone_number(
     return repository.get_projects_by_phone_number(phone_number)
 
 
+def batch_create_projects(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    agent_id: uuid.UUID,
+    location_data: List["ProjectParams"],
+    auto_commit: bool = True,
+) -> Dict[str, Any]:
+    """
+    Create multiple projects for a given account.
+
+    Args:
+        session: Database session
+        context: User context for authentication
+        account_name: Name of the account to create projects under
+        agent_id: Agent ID to use for all projects
+        location_data: List of project parameters for each location
+        auto_commit: Whether to commit changes automatically
+
+    Returns:
+        Dict containing creation results
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    agent = agent_service.get_agent(session, agent_id)
+    if not agent or agent.account_id != account.id:
+        raise ValueError("Selected agent is not available in the account")
+
+    results = []
+    created_projects = []
+
+    try:
+        for i, project_params in enumerate(location_data):
+            project_name = project_params.name or f"project_{i}"
+
+            try:
+                if getattr(project_params, "agent_id", None) is None:
+                    project_params.agent_id = agent_id
+
+                # Create the project
+                project = create_project(
+                    session=session,
+                    context=context,
+                    account_name=account_name,
+                    project_name=project_name,
+                    params=project_params,
+                    auto_commit=False,
+                )
+
+                results.append(
+                    {
+                        "project_name": project.name,
+                        "project_id": str(project.id),
+                        "display_name": project.display_name,
+                        "success": True,
+                        "error_message": None,
+                    }
+                )
+
+                created_projects.append(project)
+
+                logger.info(f"Successfully created project: {project.name}")
+
+            except Exception as e:
+                logger.error(f"Failed to create project {project_name}: {e}")
+                results.append(
+                    {
+                        "project_name": project_name,
+                        "project_id": None,
+                        "display_name": project_params.display_name,
+                        "success": False,
+                        "error_message": str(e),
+                    }
+                )
+
+        if auto_commit:
+            session.commit()
+            logger.info(f"Successfully created {len(created_projects)} projects")
+        else:
+            session.flush()
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Batch project creation failed: {e}")
+        raise
+
+    return {
+        "account_name": account_name,
+        "total_requested": len(location_data),
+        "total_created": len(created_projects),
+        "total_failed": len(location_data) - len(created_projects),
+        "results": results,
+    }
+
+
 async def create_project_async(
     async_session: AsyncSession,
     context: UserContext,

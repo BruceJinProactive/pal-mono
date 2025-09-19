@@ -262,6 +262,38 @@ def get_projects_by_phone_number(
     return _implementation.get_projects_by_phone_number(session, phone_number)
 
 
+def batch_create_projects(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    agent_id: uuid.UUID,
+    location_data: List[ProjectParams],
+    auto_commit: bool = True,
+) -> Dict[str, Any]:
+    """
+    Create multiple projects for a given account.
+
+    Args:
+        session (Session): The database connection.
+        context (UserContext): Information for the current user.
+        account_name (str): The name of the account to create projects under.
+        agent_id (uuid.UUID): The agent ID to use for all projects.
+        location_data (List[ProjectParams]): List of project parameters for each location.
+        auto_commit (bool): Whether to commit changes automatically.
+
+    Returns:
+        Dict containing creation results.
+    """
+    return _implementation.batch_create_projects(
+        session,
+        context,
+        account_name,
+        agent_id,
+        location_data,
+        auto_commit,
+    )
+
+
 __all__ = [
     "create_project",
     "update_project",
@@ -276,5 +308,6 @@ __all__ = [
     "get_project_async",
     "get_project_sync",
     "get_projects_by_phone_number",
+    "batch_create_projects",
     "ProjectParams",
 ]

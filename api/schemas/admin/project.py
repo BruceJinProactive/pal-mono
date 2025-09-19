@@ -1,4 +1,5 @@
 import uuid
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -89,3 +90,75 @@ class CreateProjectRequest(UpdateProjectRequest):
         params = super().to_project_params()
         params.name = self.name
         return params
+
+
+class LocationProjectData(BaseModel):
+    """Single location data for project creation"""
+
+    name: str = Field(..., description="Unique project name")
+    display_name: str = Field(..., description="Human-readable display name")
+    address: str | None = Field(None, description="Full address of the location")
+    store_hours: str | None = Field(None, description="Store operating hours")
+    transfer_phone_number: str | None = Field(
+        None, description="Phone number for transfers"
+    )
+    timezone: str | None = Field(None, description="Timezone for the location")
+    product_info: str | None = Field(None, description="Product/menu information")
+    service_instruction: str | None = Field(
+        None, description="Service instructions for the agent"
+    )
+    ordering_link: str | None = Field(None, description="Online ordering link")
+    reservation_link: str | None = Field(None, description="Reservation link")
+
+    def to_project_params(self, agent_id: uuid.UUID) -> ProjectParams:
+        """Convert to ProjectParams for service layer"""
+        return ProjectParams(
+            name=self.name,
+            display_name=self.display_name,
+            agent_id=agent_id,
+            address=self.address,
+            store_hours=self.store_hours,
+            transfer_phone_number=self.transfer_phone_number,
+            timezone=self.timezone,
+            product_info=self.product_info,
+            service_instruction=self.service_instruction,
+            ordering_link=self.ordering_link,
+            reservation_link=self.reservation_link,
+        )
+
+
+class BatchCreateProjectsRequest(BaseModel):
+    """Request schema for batch project creation"""
+
+    account_name: str = Field(..., description="Account name to create projects under")
+    agent_id: uuid.UUID = Field(..., description="Agent ID to use for all projects")
+    locations: List[LocationProjectData] = Field(
+        ..., min_length=1, description="List of location data for creating projects"
+    )
+
+
+class ProjectCreationResult(BaseModel):
+    """Result of creating a single project"""
+
+    project_name: str
+    project_id: uuid.UUID | None = None
+    display_name: str | None = None
+    success: bool
+    error_message: str | None = None
+
+
+class BatchCreateProjectsResponse(BaseModel):
+    """Response schema for batch project creation"""
+
+    account_name: str
+    total_requested: int
+    total_created: int
+    total_failed: int
+    results: List[ProjectCreationResult]
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate as percentage"""
+        if self.total_requested == 0:
+            return 0.0
+        return (self.total_created / self.total_requested) * 100.0
