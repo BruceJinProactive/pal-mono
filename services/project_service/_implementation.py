@@ -465,6 +465,112 @@ def batch_create_projects(
     }
 
 
+def batch_update_projects(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    project_updates: List[Dict[str, Any]],
+    auto_commit: bool = True,
+) -> Dict[str, Any]:
+    """
+    Update multiple projects for a given account.
+
+    Args:
+        session: Database session
+        context: User context for authentication
+        account_name: Name of the account that owns the projects
+        project_updates: List of dicts with project_id, project_params, expected_version
+        auto_commit: Whether to commit changes automatically
+
+    Returns:
+        Dict containing update results
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    results = []
+    updated_projects = []
+
+    try:
+        for i, project_update in enumerate(project_updates):
+            project_id = project_update.get("project_id")
+            project_params = project_update.get("project_params")
+            expected_version = project_update.get("expected_version")
+
+            if not project_id:
+                results.append(
+                    {
+                        "project_id": None,
+                        "project_name": f"update_{i}",
+                        "success": False,
+                        "error_message": "Missing project_id in update data",
+                    }
+                )
+                continue
+
+            try:
+                if isinstance(project_id, str):
+                    project_id = uuid.UUID(project_id)
+
+                if not project_params:
+                    raise ValueError("Missing project_params in update data")
+
+                updated_project = update_project(
+                    session=session,
+                    context=context,
+                    project_id=project_id,
+                    params=project_params,
+                    auto_commit=False,
+                    expected_version=expected_version,
+                )
+
+                results.append(
+                    {
+                        "project_id": str(updated_project.id),
+                        "project_name": updated_project.name,
+                        "display_name": updated_project.display_name,
+                        "success": True,
+                        "error_message": None,
+                    }
+                )
+
+                updated_projects.append(updated_project)
+
+                logger.info(f"Successfully updated project: {updated_project.name}")
+
+            except Exception as e:
+                logger.error(f"Failed to update project {project_id}: {e}")
+                results.append(
+                    {
+                        "project_id": str(project_id) if project_id else None,
+                        "project_name": f"unknown_{i}",
+                        "display_name": None,
+                        "success": False,
+                        "error_message": str(e),
+                    }
+                )
+
+        if auto_commit:
+            session.commit()
+            logger.info(f"Successfully updated {len(updated_projects)} projects")
+        else:
+            session.flush()
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Batch project update failed: {e}")
+        raise
+
+    return {
+        "account_name": account_name,
+        "total_requested": len(project_updates),
+        "total_updated": len(updated_projects),
+        "total_failed": len(project_updates) - len(updated_projects),
+        "results": results,
+    }
+
+
 async def create_project_async(
     async_session: AsyncSession,
     context: UserContext,

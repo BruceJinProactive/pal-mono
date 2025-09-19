@@ -162,3 +162,76 @@ class BatchCreateProjectsResponse(BaseModel):
         if self.total_requested == 0:
             return 0.0
         return (self.total_created / self.total_requested) * 100.0
+
+
+class ProjectUpdateData(BaseModel):
+    """Single project update data"""
+
+    project_id: uuid.UUID = Field(..., description="ID of the project to update")
+    agent_id: uuid.UUID | None = None
+    display_name: str | None = None
+    raw_config: dict | None = None
+    channel_identifiers: list[str] | None = None
+    store_hours: str | None = None
+    address: str | None = None
+    product_info: str | None = None
+    service_instruction: str | None = None
+    timezone: str | None = None
+    transfer_message: str | None = None
+    transfer_phone_number: str | None = None
+    reservation_link: str | None = None
+    ordering_link: str | None = None
+    expected_version: int | None = None
+
+    def to_project_params(self):
+        return ProjectParams(
+            display_name=self.display_name,
+            agent_id=self.agent_id,
+            raw_config=self.raw_config,
+            channel_identifiers=self.channel_identifiers,
+            store_hours=self.store_hours,
+            address=self.address,
+            product_info=self.product_info,
+            service_instruction=self.service_instruction,
+            timezone=self.timezone,
+            transfer_message=self.transfer_message,
+            transfer_phone_number=self.transfer_phone_number,
+            reservation_link=self.reservation_link,
+            ordering_link=self.ordering_link,
+        )
+
+
+class BatchUpdateProjectsRequest(BaseModel):
+    """Request schema for batch project updates"""
+
+    account_name: str = Field(..., description="Account name that owns the projects")
+    project_updates: List[ProjectUpdateData] = Field(
+        ..., min_length=1, description="List of project updates to apply"
+    )
+
+
+class ProjectUpdateResult(BaseModel):
+    """Result of updating a single project"""
+
+    project_id: uuid.UUID | None = None
+    project_name: str
+    display_name: str | None = None
+    success: bool
+    error_message: str | None = None
+
+
+class BatchUpdateProjectsResponse(BaseModel):
+    """Response schema for batch project updates"""
+
+    account_name: str
+    total_requested: int
+    total_updated: int
+    total_failed: int
+    results: List[ProjectUpdateResult]
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate as percentage"""
+        if self.total_requested == 0:
+            return 0.0
+        return (self.total_updated / self.total_requested) * 100.0

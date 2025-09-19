@@ -294,6 +294,34 @@ def batch_create_projects(
     )
 
 
+def batch_update_projects(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    project_updates: List[Dict[str, Any]],
+    auto_commit: bool = True,
+) -> Dict[str, Any]:
+    """Update multiple projects for a given account.
+
+    Args:
+        session (Session): Database session.
+        context (UserContext): User context for authentication.
+        account_name (str): Name of the account that owns the projects.
+        project_updates (List[Dict[str, Any]]): List of project updates.
+        auto_commit (bool): Whether to commit changes automatically.
+
+    Returns:
+        Dict containing update results.
+    """
+    return _implementation.batch_update_projects(
+        session,
+        context,
+        account_name,
+        project_updates,
+        auto_commit,
+    )
+
+
 __all__ = [
     "create_project",
     "update_project",
@@ -309,5 +337,6 @@ __all__ = [
     "get_project_sync",
     "get_projects_by_phone_number",
     "batch_create_projects",
+    "batch_update_projects",
     "ProjectParams",
 ]

@@ -99,6 +99,8 @@ from api.schemas.admin.phone_number import (
 from api.schemas.admin.project import (
     BatchCreateProjectsRequest,
     BatchCreateProjectsResponse,
+    BatchUpdateProjectsRequest,
+    BatchUpdateProjectsResponse,
     CreateProjectRequest,
     Project,
     ProjectSummary,
@@ -917,6 +919,26 @@ async def batch_create_projects(
     including success/failure status and error messages for any failed creations.
     """
     return await _projects.batch_create_projects(request, context, session)
+
+
+@admin_router.patch("/projects/batch", status_code=status.HTTP_200_OK)
+async def batch_update_projects(
+    request: BatchUpdateProjectsRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> BatchUpdateProjectsResponse:
+    """
+    Update multiple projects in batch for a given account.
+
+    This endpoint allows you to update many projects at once from JSON data.
+
+    Only fields that are provided in the request will be updated - fields set to null
+    or omitted will remain unchanged. This allows for partial updates of projects.
+
+    The response includes detailed results for each project update attempt,
+    including success/failure status and error messages for any failed updates.
+    """
+    return await _projects.batch_update_projects(request, context, session)
 
 
 @admin_router.get("/projects/{project_id}")

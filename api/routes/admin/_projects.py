@@ -6,9 +6,12 @@ from sqlalchemy.orm import Session
 from api.schemas.admin.project import (
     BatchCreateProjectsRequest,
     BatchCreateProjectsResponse,
+    BatchUpdateProjectsRequest,
+    BatchUpdateProjectsResponse,
     CreateProjectRequest,
     Project,
     ProjectCreationResult,
+    ProjectUpdateResult,
     UpdateProjectRequest,
 )
 from services import (
@@ -429,4 +432,69 @@ async def batch_create_projects(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during batch project creation",
+        )
+
+
+async def batch_update_projects(
+    request: BatchUpdateProjectsRequest, context: UserContext, session: Session
+) -> BatchUpdateProjectsResponse:
+    """
+    Update multiple projects for an account.
+    """
+    authorize_admin(context)
+
+    account = account_service.get_account(session, request.account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account '{request.account_name}' not found.",
+        )
+
+    try:
+        update_data = []
+        for project_update in request.project_updates:
+            update_dict = {
+                "project_id": project_update.project_id,
+                "project_params": project_update.to_project_params(),
+                "expected_version": project_update.expected_version,
+            }
+            update_data.append(update_dict)
+
+        result = project_service.batch_update_projects(
+            session=session,
+            context=context,
+            account_name=request.account_name,
+            project_updates=update_data,
+            auto_commit=True,
+        )
+
+        update_results = []
+        for res in result["results"]:
+            update_results.append(
+                ProjectUpdateResult(
+                    project_id=(
+                        uuid.UUID(res["project_id"]) if res["project_id"] else None
+                    ),
+                    project_name=res["project_name"],
+                    display_name=res.get("display_name"),
+                    success=res["success"],
+                    error_message=res.get("error_message"),
+                )
+            )
+
+        return BatchUpdateProjectsResponse(
+            account_name=result["account_name"],
+            total_requested=result["total_requested"],
+            total_updated=result["total_updated"],
+            total_failed=result["total_failed"],
+            results=update_results,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Batch project update failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during batch project update",
         )
