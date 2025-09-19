@@ -1,9 +1,128 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import stripe
 from stripe import InvalidRequestError
 
 from utils.log import logger
+
+
+@dataclass
+class CustomerInfo:
+    id: str
+    name: str | None
+    email: str | None
+    balance: int | None = None
+    currency: str | None = None
+
+
+def create_stripe_customer(
+    account_name: str,
+    customer_name: str | None = None,
+    customer_email: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> CustomerInfo:
+    """
+    Create a Stripe customer for an account.
+    """
+    try:
+        customer_params = {
+            "name": customer_name or account_name,
+            "metadata": {
+                "account_name": account_name,
+                **(metadata or {}),
+            },
+        }
+
+        if customer_email:
+            customer_params["email"] = customer_email
+
+        customer = stripe.Customer.create(**customer_params)
+
+        logger.info(
+            "Successfully created Stripe customer",
+            extra={
+                "account_name": account_name,
+                "customer_id": customer.id,
+                "customer_name": customer_name,
+                "customer_email": customer_email,
+            },
+        )
+        return CustomerInfo(
+            id=customer.id,
+            name=customer.name,
+            email=customer.email,
+        )
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to create Stripe customer: {e}",
+            extra={
+                "account_name": account_name,
+                "customer_name": customer_name,
+                "customer_email": customer_email,
+            },
+        )
+        raise
+
+
+def get_stripe_customer_info(stripe_customer_id: str) -> CustomerInfo:
+    try:
+        customer = stripe.Customer.retrieve(stripe_customer_id)
+        return CustomerInfo(
+            id=customer.id,
+            name=customer.name,
+            email=customer.email,
+            balance=customer.balance,
+            currency=customer.currency,
+        )
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to retrieve Stripe customer: {e}",
+            extra={"stripe_customer_id": stripe_customer_id},
+        )
+        raise
+
+
+def update_stripe_customer(
+    stripe_customer_id: str,
+    name: str | None = None,
+    email: str | None = None,
+) -> CustomerInfo:
+    """
+    Update a Stripe customer's information.
+    """
+    try:
+        update_params = {}
+        if name is not None:
+            update_params["name"] = name
+        if email is not None:
+            update_params["email"] = email
+
+        if not update_params:
+            raise ValueError("No fields provided for update")
+
+        customer = stripe.Customer.modify(stripe_customer_id, **update_params)
+
+        logger.info(
+            "Successfully updated Stripe customer",
+            extra={
+                "stripe_customer_id": stripe_customer_id,
+                "updated_fields": list(update_params.keys()),
+            },
+        )
+        return CustomerInfo(
+            id=customer.id,
+            name=customer.name,
+            email=customer.email,
+            balance=customer.balance,
+            currency=customer.currency,
+        )
+    except stripe.StripeError as e:
+        logger.error(
+            f"Failed to update Stripe customer: {e}",
+            extra={"stripe_customer_id": stripe_customer_id},
+        )
+        raise
 
 
 def grant_credit_balance(

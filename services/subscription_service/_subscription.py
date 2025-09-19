@@ -22,10 +22,11 @@ from services import account_service, project_service
 from services.account_service import AccountParams
 from services.history_service import change_log_context
 from services.subscription_service import (
-    _stripe_credit,
+    _stripe_customer,
     _stripe_product,
     _stripe_subscription,
 )
+from services.subscription_service._stripe_customer import CustomerInfo
 from services.subscription_service._stripe_product import MeterTier
 from services.subscription_service.schema import (
     StripeCheckoutResponse,
@@ -1159,7 +1160,7 @@ def grant_credit_to_account(
         }
     )
 
-    return _stripe_credit.grant_credit_balance(
+    return _stripe_customer.grant_credit_balance(
         account.stripe_customer_id,
         credit_amount_cents,
         currency,
@@ -1178,7 +1179,7 @@ def get_account_credit_balance(
             "Account does not have a stripe customer associated, does it have a subscription?"
         )
 
-    return _stripe_credit.get_credit_balance(account.stripe_customer_id)
+    return _stripe_customer.get_credit_balance(account.stripe_customer_id)
 
 
 def get_account_credit_grants(
@@ -1189,7 +1190,7 @@ def get_account_credit_grants(
             "Account does not have a stripe customer associated, does it have a subscription?"
         )
 
-    return _stripe_credit.get_credit_grants_history(
+    return _stripe_customer.get_credit_grants_history(
         account.stripe_customer_id,
     )
 
@@ -1544,38 +1545,23 @@ def unlink_subscription_from_account(
 def create_stripe_customer_for_account(
     session: Session,
     context: UserContext,
-    account_id: uuid.UUID,
-    account_email: str | None = None,
-) -> str:
+    account: db.Account,
+    customer_name: str | None = None,
+    customer_email: str | None = None,
+) -> CustomerInfo:
     """
     Create a Stripe customer for an account and update the account record.
-
-    Args:
-        session: Database session
-        context: User context for authorization
-        account_id: The account ID to create a customer for
-        account_email: Optional email for the customer
-
-    Returns:
-        str: The created Stripe customer ID
-
-    Raises:
-        ValueError: If account not found or already has a customer
-        stripe.StripeError: If customer creation fails
     """
-    account = account_service.get_account_by_id(session, account_id)
-    if not account:
-        raise ValueError(f"Account {account_id} not found")
-
     if account.stripe_customer_id:
         raise ValueError(
             f"Account {account.name} already has a Stripe customer: {account.stripe_customer_id}"
         )
 
     try:
-        customer_id = _stripe_subscription.create_stripe_customer(
+        customer_info = _stripe_customer.create_stripe_customer(
             account_name=account.name,
-            account_email=account_email,
+            customer_name=customer_name,
+            customer_email=customer_email,
             metadata={
                 "account_id": str(account.id),
                 "created_via": "admin_api",
@@ -1590,7 +1576,7 @@ def create_stripe_customer_for_account(
             resource_id=str(account.id),
             auto_commit=False,
         ):
-            account.stripe_customer_id = customer_id
+            account.stripe_customer_id = customer_info.id
             session.commit()
 
         logger.info(
@@ -1598,12 +1584,10 @@ def create_stripe_customer_for_account(
             extra={
                 "account_id": str(account.id),
                 "account_name": account.name,
-                "customer_id": customer_id,
+                "customer_id": customer_info.id,
             },
         )
-
-        return customer_id
-
+        return customer_info
     except Exception as e:
         session.rollback()
         logger.error(
@@ -1611,6 +1595,60 @@ def create_stripe_customer_for_account(
             extra={
                 "account_id": str(account.id),
                 "account_name": account.name,
+                "error": str(e),
+            },
+        )
+        raise
+
+
+def get_stripe_customer_info_for_account(
+    account: db.Account,
+) -> CustomerInfo | None:
+    """
+    Get Stripe customer information for an account.
+    """
+    if not account.stripe_customer_id:
+        return None
+
+    try:
+        return _stripe_customer.get_stripe_customer_info(account.stripe_customer_id)
+    except Exception as e:
+        logger.error(
+            f"Failed to retrieve Stripe customer info for account: {e}",
+            extra={
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "stripe_customer_id": account.stripe_customer_id,
+                "error": str(e),
+            },
+        )
+        raise
+
+
+def update_stripe_customer_for_account(
+    account: db.Account,
+    name: str | None = None,
+    email: str | None = None,
+) -> CustomerInfo | None:
+    """
+    Update Stripe customer information for an account.
+    """
+    if not account.stripe_customer_id:
+        return None
+
+    try:
+        return _stripe_customer.update_stripe_customer(
+            stripe_customer_id=account.stripe_customer_id,
+            name=name,
+            email=email,
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to update Stripe customer info for account: {e}",
+            extra={
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "stripe_customer_id": account.stripe_customer_id,
                 "error": str(e),
             },
         )

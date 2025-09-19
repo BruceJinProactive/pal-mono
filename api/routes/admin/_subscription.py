@@ -8,6 +8,7 @@ import db
 from api.routes.admin._auth import authorize_admin, authorize_user_account
 from api.routes.admin._builder import (
     build_project_subscription,
+    build_stripe_customer,
     build_subscription,
     build_subscription_plan,
 )
@@ -26,6 +27,7 @@ from api.schemas.admin.subscription import (
     ListAccountSubscriptionsResponse,
     ListProjectSubscriptionsResponse,
     RemoveProjectSubscriptionResponse,
+    StripeCustomer,
     Subscription,
     SubscriptionPlan,
     SwitchPlanRequest,
@@ -33,6 +35,7 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
+    UpdateStripeCustomerRequest,
     UpdateSubscriptionPlanRequest,
 )
 from services import account_service, project_service, subscription_service
@@ -605,7 +608,7 @@ def grant_credit_for_account(
     session: Session,
     account_name: str,
     request: GrantAccountCreditRequest,
-):
+) -> StripeCustomer:
     # Only admin user can issue credit
     authorize_admin(context)
 
@@ -642,6 +645,11 @@ def grant_credit_for_account(
             "description": request.description,
         },
     )
+    customer = subscription_service.get_stripe_customer_info_for_account(account)
+    if not customer:
+        raise not_found_error(f"Stripe customer not found for account: {account_name}")
+
+    return build_stripe_customer(customer)
 
 
 def get_credit_amount(
@@ -787,8 +795,9 @@ def create_stripe_customer(
     context: UserContext,
     session: Session,
     account_name: str,
-    account_email: str | None = None,
-) -> dict:
+    customer_name: str | None = None,
+    customer_email: str | None = None,
+) -> StripeCustomer:
     """Create a Stripe customer for an account."""
     authorize_admin(context)
 
@@ -797,18 +806,15 @@ def create_stripe_customer(
         raise not_found_error("Account not found")
 
     try:
-        customer_id = subscription_service.create_stripe_customer_for_account(
+        customer_info = subscription_service.create_stripe_customer_for_account(
             session=session,
             context=context,
-            account_id=account.id,
-            account_email=account_email,
+            account=account,
+            customer_name=customer_name,
+            customer_email=customer_email,
         )
 
-        return {
-            "message": "Stripe customer created successfully",
-            "customer_id": customer_id,
-        }
-
+        return build_stripe_customer(customer_info)
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
     except Exception as err:
@@ -824,3 +830,63 @@ def create_stripe_customer(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create Stripe customer",
         )
+
+
+def get_stripe_customer_info(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+) -> StripeCustomer:
+    """Get Stripe customer information for an account."""
+    authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    try:
+        customer_data = subscription_service.get_stripe_customer_info_for_account(
+            account=account,
+        )
+        if customer_data is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Account has no Stripe customer",
+            )
+        return build_stripe_customer(customer_data)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get Stripe customer information",
+        )
+
+
+def update_stripe_customer_info(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    request: UpdateStripeCustomerRequest,
+) -> StripeCustomer:
+    """Update Stripe customer information for an account."""
+    authorize_user_account(context, account_name)
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    try:
+        customer_data = subscription_service.update_stripe_customer_for_account(
+            account=account,
+            name=request.name,
+            email=request.email,
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update Stripe customer information",
+        )
+    if customer_data is None:
+        raise not_found_error("Account has no Stripe customer")
+    return build_stripe_customer(customer_data)

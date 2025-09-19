@@ -338,3 +338,21 @@ class SwitchPlanResponse(BaseModel):
     new_plan_name: str
     effective_date: datetime
     prorated: bool
+
+
+class StripeCustomer(BaseModel):
+    id: str
+    name: str | None
+    email: str | None
+    balance: int
+    currency: str | None
+
+
+class UpdateStripeCustomerRequest(BaseModel):
+    name: str | None = None
+    email: str | None = None
+
+
+class CreateStripeCustomerRequest(BaseModel):
+    name: str | None = None
+    email: str | None = None

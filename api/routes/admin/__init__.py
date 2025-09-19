@@ -112,6 +112,7 @@ from api.schemas.admin.prompt import (
 from api.schemas.admin.subscription import (
     CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
+    CreateStripeCustomerRequest,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     GetAccountCreditResponse,
@@ -119,6 +120,7 @@ from api.schemas.admin.subscription import (
     GrantAccountCreditRequest,
     ListAccountCreditGrantsResponse,
     ListAccountSubscriptionsResponse,
+    StripeCustomer,
     Subscription,
     SubscriptionPlan,
     SwitchPlanRequest,
@@ -126,6 +128,7 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
+    UpdateStripeCustomerRequest,
     UpdateSubscriptionPlanRequest,
 )
 from api.schemas.admin.user import SignUpRequest
@@ -1895,22 +1898,6 @@ def remove_project_subscription(
     )
 
 
-@admin_router.post("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)
-def grant_account_credit(
-    account_name: str,
-    request: GrantAccountCreditRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-):
-    """
-    Grant additional credit to the account. The amount must be in the smallest divisible
-    unit like "cents" for USD.
-    Positive value issues a credit for the user, and a negative value issues a debit for
-    the user. For our use cases, this number is almost always positive!
-    """
-    _subscription.grant_credit_for_account(context, session, account_name, request)
-
-
 @admin_router.post(
     "/accounts/{account_name}/switch_plan", status_code=status.HTTP_200_OK
 )
@@ -1925,30 +1912,6 @@ def switch_subscription_plan(
         session=session,
         account_name=account_name,
         request=request,
-    )
-
-
-@admin_router.get("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)
-def get_account_credit(
-    account_name: str,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> GetAccountCreditResponse:
-    return _subscription.get_credit_amount(context, session, account_name)
-
-
-@admin_router.get(
-    "/accounts/{account_name}/credits/grants", status_code=status.HTTP_200_OK
-)
-def list_account_credit_grants(
-    account_name: str,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> ListAccountCreditGrantsResponse:
-    return _subscription.list_account_credit_grants(
-        context=context,
-        session=session,
-        account_name=account_name,
     )
 
 
@@ -1974,17 +1937,91 @@ def unlink_subscription_from_account(
 @admin_router.post("/accounts/{account_name}/stripe_customer")
 def create_stripe_customer(
     account_name: str,
-    account_email: str | None = Query(
-        None, description="Optional email for the customer"
-    ),
+    request: CreateStripeCustomerRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> dict:
+) -> StripeCustomer:
     """
     Create a Stripe customer for an account.
     """
     return _subscription.create_stripe_customer(
-        context, session, account_name, account_email
+        context,
+        session,
+        account_name,
+        request.name,
+        request.email,
+    )
+
+
+@admin_router.get("/accounts/{account_name}/stripe_customer")
+def get_stripe_customer(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> StripeCustomer:
+    """
+    Get Stripe customer information for an account.
+    """
+    return _subscription.get_stripe_customer_info(context, session, account_name)
+
+
+@admin_router.patch("/accounts/{account_name}/stripe_customer")
+def update_stripe_customer(
+    account_name: str,
+    request: UpdateStripeCustomerRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> StripeCustomer:
+    """
+    Update Stripe customer information for an account.
+    """
+    return _subscription.update_stripe_customer_info(
+        context, session, account_name, request
+    )
+
+
+@admin_router.post("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)
+@admin_router.post(
+    "/accounts/{account_name}/stripe_customer/credits", status_code=status.HTTP_200_OK
+)
+def grant_account_credit(
+    account_name: str,
+    request: GrantAccountCreditRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> StripeCustomer:
+    """
+    Grant additional credit to the account. The amount must be in the smallest divisible
+    unit like "cents" for USD.
+    Positive value issues a credit for the user, and a negative value issues a debit for
+    the user. For our use cases, this number is almost always positive!
+    """
+    return _subscription.grant_credit_for_account(
+        context, session, account_name, request
+    )
+
+
+@admin_router.get("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)
+def get_account_credit(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> GetAccountCreditResponse:
+    return _subscription.get_credit_amount(context, session, account_name)
+
+
+@admin_router.get(
+    "/accounts/{account_name}/credits/grants", status_code=status.HTTP_200_OK
+)
+def list_account_credit_grants(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListAccountCreditGrantsResponse:
+    return _subscription.list_account_credit_grants(
+        context=context,
+        session=session,
+        account_name=account_name,
     )
 
 

@@ -864,8 +864,8 @@ def _create_stripe_customer(session, context, account: db.Account):
             subscription_service.create_stripe_customer_for_account(
                 session=session,
                 context=context,
-                account_id=account.id,
-                account_email=None,
+                account=account,
+                customer_email=None,
             )
             logger.info(
                 "Created Stripe customer during onboarding",

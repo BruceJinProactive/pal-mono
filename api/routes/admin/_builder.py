@@ -20,6 +20,7 @@ from api.schemas.admin.project import Project, ProjectSummary
 from api.schemas.admin.prompt import Prompt, PromptDetails
 from api.schemas.admin.subscription import (
     ProjectSubscription,
+    StripeCustomer,
     Subscription,
     SubscriptionPlan,
 )
@@ -28,6 +29,7 @@ from db.repositories.prompt_repository import PromptRepository
 from db.tables.accounts import OnboardingMethod
 from services.admin_service.schema import CreatedProjectInfo
 from services.integration_service.schema import IntegrationDetail
+from services.subscription_service._stripe_customer import CustomerInfo
 
 
 def build_account(account: db.Account) -> Account:
@@ -452,4 +454,14 @@ def build_voice_config(voice_config: db.VoiceConfig) -> VoiceConfig:
         updated_at=int(
             voice_config.updated_at.timestamp() if voice_config.updated_at else 0
         ),
+    )
+
+
+def build_stripe_customer(customer_info: CustomerInfo) -> StripeCustomer:
+    return StripeCustomer(
+        id=customer_info.id,
+        name=customer_info.name,
+        email=customer_info.email,
+        balance=customer_info.balance or 0,
+        currency=customer_info.currency or "usd",
     )

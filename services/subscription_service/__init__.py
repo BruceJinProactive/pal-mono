@@ -22,6 +22,7 @@ from ._subscription import (
     get_current_subscription_async,
     get_project_subscriptions_by_subscription_external_id,
     get_stripe_customer_id_for_project,
+    get_stripe_customer_info_for_account,
     get_subscription_plan_by_id,
     grant_credit_to_account,
     handle_stripe_checkout_success,
@@ -31,6 +32,7 @@ from ._subscription import (
     unlink_subscription_from_account,
     update_account_subscription,
     update_account_subscription_status,
+    update_stripe_customer_for_account,
 )
 
 # Initialize the Stripe API key once, at module load
@@ -51,6 +53,7 @@ __all__ = [
     "delete_subscription_plan",
     "create_stripe_checkout_url",
     "create_stripe_customer_for_account",
+    "get_stripe_customer_info_for_account",
     "handle_stripe_checkout_success",
     "get_project_subscriptions_by_subscription_external_id",
     "create_project_subscription",
@@ -62,4 +65,5 @@ __all__ = [
     "should_allow_calls_async",
     "switch_subscription_plan",
     "unlink_subscription_from_account",
+    "update_stripe_customer_for_account",
 ]
