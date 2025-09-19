@@ -17,22 +17,16 @@ from utils.log import logger
 class MiniTableTool(Toolkit, BaseReservationTool):
     REQUIRED_CHECK_AVAILABILITY_FIELDS = ["party_size", "date", "time"]
     REQUIRED_MAKE_RESERVATION_FIELDS = [
-        "phone",
-        "first_name",
-        "last_name",
+        "name",
         "party_size",
         "date",
         "time",
     ]
     REQUIRED_JOIN_WAITLIST_QUEUE_FIELDS = [
-        "first_name",
-        "last_name",
-        "phone",
+        "name",
         "party_size",
     ]
-    REQUIRED_GET_USER_WAIT_STATUS_FIELDS = [
-        "phone",
-    ]
+    REQUIRED_GET_USER_WAIT_STATUS_FIELDS = []
 
     def __init__(
         self,
@@ -115,9 +109,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,
-        phone: str,
-        first_name: str,
-        last_name: str,
+        name: str,
         party_size: int,
         date: str,
         time: str,
@@ -128,15 +120,9 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         Create a new reservation for the restaurant.
 
         Args:
-            phone (str, required):
-                Customer phone number in US format: XXX-XXX-XXXX.
-                Example: "123-456-7890".
-            first_name (str, required):
-                Customer first name.
-                Example: "Alice".
-            last_name (str, required):
-                Customer last name.
-                Example: "Smith".
+            name (str, required):
+                Customer name.
+                Example: "Alice Smith".
             party_size (int, required):
                 Number of people in the reservation. Must be >= 1.
                 Example: 4.
@@ -159,21 +145,30 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 If validation or API errors occur, an error message is returned instead.
 
         Notes:
-            - Phone numbers are validated and reformatted before submission.
             - Reservations are created with a default duration of 3600 seconds (1 hour).
         """
-        customer_name = f"{first_name} {last_name}"
         logger.debug(
-            f"[MiniTable] Making reservation for {customer_name}, party_size: {party_size}, date: {date}, time: {time}"
+            f"[MiniTable] Making reservation for {name}, party_size: {party_size}, date: {date}, time: {time}"
         )
 
         try:
+            # Get customer phone from tool metadata
+            customer_phone = self.tool_metadata.customer_phone
+            if not customer_phone:
+                return "Error: Customer phone number is required for reservations"
+
             # Validate and format phone number
-            formatted_telephone = validate_and_format_phone(phone)
+            formatted_telephone = validate_and_format_phone(customer_phone)
+
+            # Append last 4 digits of phone and "via Palona" to customer name
+            last_four = (
+                customer_phone[-4:] if len(customer_phone) >= 4 else customer_phone
+            )
+            customer_name_with_phone = f"{name} ({last_four} via Palona)"
 
             reservation_params = {
                 "telephone": formatted_telephone,
-                "customer_name": customer_name,
+                "customer_name": customer_name_with_phone,
                 "start_sec": f"{date} {time}",
                 "party_size": party_size,
                 "note": notes,
@@ -200,9 +195,6 @@ class MiniTableTool(Toolkit, BaseReservationTool):
 
         except ValueError as e:
             error_msg = str(e)
-            # Handle phone number validation errors specifically
-            if "phone number" in error_msg.lower():
-                return f"{error_msg}. Please provide a valid US phone number."
             return f"Validation error: {error_msg}"
         except Exception as e:
             logger.error(f"[MiniTable] Error creating reservation: {str(e)}")
@@ -260,9 +252,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
     @params_validate()
     def join_waitlist_queue(  # type: ignore[misc]
         self,
-        first_name: str,
-        last_name: str,
-        phone: str,
+        name: str,
         party_size: int,
         notes: str = "",
     ) -> str:
@@ -270,19 +260,11 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         Add a customer to the restaurant's waitlist queue.
 
         Args:
-            first_name (str, required):
-                Customer’s first name.
-
-            last_name (str, required):
-                Customer’s last name.
-
-            phone (str, required):
-                Customer’s phone number in US format
-                (e.g., "123-456-7890" or "(123) 456-7890").
-                Must be valid and will be normalized.
+            name (str, required):
+                Customer name.
 
             party_size (int, required):
-                Number of people in the customer’s party. Must be greater than 0.
+                Number of people in the customer's party. Must be greater than 0.
 
             notes (str, optional):
                 Additional notes for the waitlist entry, such as
@@ -293,23 +275,33 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 - Success messages with waitlist details (e.g., waitlist ID, code, position in line).
                 - User-friendly error messages if the waitlist is full, disabled,
                 or the customer already has an entry.
-                - VALIDATION ERRORS FOR INVALID INPUT (E.G., PHONE NUMBER FORMAT).
+                - VALIDATION ERRORS FOR INVALID INPUT.
                 - A GENERIC ERROR MESSAGE IF AN UNEXPECTED FAILURE OCCURS.
         """
-        customer_name = f"{first_name} {last_name}"
         logger.debug(
-            f"[MiniTable] Adding to waitlist: {customer_name}, party_size: {party_size}"
+            f"[MiniTable] Adding to waitlist: {name}, party_size: {party_size}"
         )
 
         try:
+            # Get customer phone from tool metadata
+            customer_phone = self.tool_metadata.customer_phone
+            if not customer_phone:
+                return "Error: Customer phone number is required for waitlist"
+
             # Validate and format phone number
-            formatted_telephone = validate_and_format_phone(phone)
+            formatted_telephone = validate_and_format_phone(customer_phone)
+
+            # Append last 4 digits of phone and "via Palona" to customer name
+            last_four = (
+                customer_phone[-4:] if len(customer_phone) >= 4 else customer_phone
+            )
+            customer_name_with_phone = f"{name} ({last_four} via Palona)"
 
             result = create_waitlist(
                 merchant_id=str(self.restaurant_id),
                 party_size=party_size,
                 telephone=formatted_telephone,
-                customer_name=customer_name,
+                customer_name=customer_name_with_phone,
                 note=notes,
             )
 
@@ -344,9 +336,6 @@ class MiniTableTool(Toolkit, BaseReservationTool):
 
         except ValueError as e:
             error_msg = str(e)
-            # Handle phone number validation errors specifically
-            if "phone number" in error_msg.lower():
-                return f"{error_msg}. Please provide a valid US phone number."
             return f"Validation error: {error_msg}"
         except Exception as e:
             logger.error(f"[MiniTable] Error joining waitlist: {str(e)}")
@@ -354,30 +343,24 @@ class MiniTableTool(Toolkit, BaseReservationTool):
 
     @tool
     @params_validate()
-    def get_user_wait_status(self, phone: str) -> str:  # type: ignore[misc]
+    def get_user_wait_status(self) -> str:  # type: ignore[misc]
         """
-        Retrieve today's waitlist entries for a customer by phone number.
+        Get today's waitlist entries for a specific phone number.
 
         Args:
-            phone (str, required):
-                Customer phone number in US format (e.g., "123-456-7890").
-                The number will be validated and normalized before lookup.
+            None
 
         Returns:
-            str: A human-readable status message. Possible outcomes include:
-                - A summary of one or more active waitlist entries for the given phone number,
-                including status, wait code, party size, number of parties ahead, and time created.
-                - "No waitlist entries found for this phone number today." if none exist.
-                - A validation error message if the phone number is invalid.
-                - A generic error message if an unexpected failure occurs.
-
-        Notes:
-            - Only waitlist entries created today are returned.
-            - Phone number validation ensures consistent lookup against the system.
+            str: Waitlist entries and status information for the phone number
         """
         try:
+            # Get customer phone from tool metadata
+            customer_phone = self.tool_metadata.customer_phone
+            if not customer_phone:
+                return "Error: Customer phone number is required to check wait status"
+
             # Validate and format phone number
-            formatted_telephone = validate_and_format_phone(phone)
+            formatted_telephone = validate_and_format_phone(customer_phone)
 
             logger.debug(
                 f"[MiniTable] Getting user wait status for phone: {formatted_telephone}"
@@ -415,9 +398,6 @@ class MiniTableTool(Toolkit, BaseReservationTool):
 
         except ValueError as e:
             error_msg = str(e)
-            # Handle phone number validation errors specifically
-            if "phone number" in error_msg.lower():
-                return f"{error_msg}. Please provide a valid US phone number."
             return f"Validation error: {error_msg}"
         except Exception as e:
             logger.error(f"[MiniTable] Error getting user wait status: {str(e)}")

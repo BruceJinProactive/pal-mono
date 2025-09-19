@@ -48,6 +48,7 @@ class RawConfig:
         conversation_id: UUID,
         channel: Channel,
         integration: IntegrationDetail | None = None,
+        sender_identifier: str | None = None,
     ):
         self.agent = agent
         self.project = project
@@ -56,6 +57,7 @@ class RawConfig:
         self.conversation_id = conversation_id
         self.channel = channel
         self.integration = integration
+        self.sender_identifier = sender_identifier
 
     def build(self) -> AgentConfig:
         try:
@@ -296,6 +298,17 @@ class RawConfig:
         return updated_args
 
     def _get_agent_tools(self) -> ToolConfig:
+        # Extract customer phone from sender_identifier based on channel type
+        customer_phone = None
+        if self.sender_identifier:
+            is_phone_channel = self.channel and self.channel.value.lower() in [
+                "sms",
+                "voice",
+                "whatsapp",
+            ]
+            if is_phone_channel:
+                customer_phone = self.sender_identifier
+
         metadata = ToolMetadata(
             agent_id=self.agent.id,
             account_id=self.account.id,
@@ -304,6 +317,7 @@ class RawConfig:
             session_id=self.conversation_id,
             project_id=self.project.id,
             timezone=self.project.timezone,
+            customer_phone=customer_phone,
         )
 
         # Extract the tools from agent config

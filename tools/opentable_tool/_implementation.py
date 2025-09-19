@@ -149,12 +149,10 @@ class OpenTableTool(Toolkit, BaseReservationTool):
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,
-        phone: str,
-        first_name: str,
+        name: str,
         party_size: int,
         date: str,
         time: str,
-        last_name: str = "",
         email: str = "",
         notes: str = "",
     ) -> str:
@@ -162,16 +160,14 @@ class OpenTableTool(Toolkit, BaseReservationTool):
         Make a reservation at the restaurant (via booking link).
 
         Notes:
-            OpenTable flow completes on their website. Customer details (name, phone, email, notes)
+            OpenTable flow completes on their website. Customer details (name, email, notes)
             are not processed here and are not required by this tool. They may be ignored.
 
         Args:
-            phone: Customer phone number (optional, ignored)
-            first_name: Customer first name (optional, ignored)
+            name: Customer name (optional, ignored)
             party_size: Number of people for the reservation
             date: Date for the reservation in YYYY-MM-DD format
             time: Time for the reservation in HH:MM format (24-hour)
-            last_name: Customer last name (optional, ignored)
             email: Customer email address (optional, ignored)
             notes: Optional notes for the reservation (optional, ignored)
 
@@ -222,13 +218,11 @@ class OpenTableTool(Toolkit, BaseReservationTool):
 
     def join_waitlist_queue(  # type: ignore[misc]
         self,
-        first_name: str,
-        phone: str,
+        name: str,
         party_size: int,
-        last_name: str = "",
         notes: str = "",
     ) -> str:
         return "Joining a waitlist is not supported for OpenTable."
 
-    def get_user_wait_status(self, phone: str) -> str:  # type: ignore[misc]
+    def get_user_wait_status(self) -> str:  # type: ignore[misc]
         return "User wait status is not supported for OpenTable."

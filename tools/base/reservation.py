@@ -81,12 +81,10 @@ class BaseReservationTool(ABC):
     @abstractmethod
     def make_reservation(
         self,
-        phone: str,
-        first_name: str,
+        name: str,
         party_size: int,
         date: str,
         time: str,
-        last_name: str = "",
         email: str = "",
         notes: str = "",
     ) -> str:
@@ -94,12 +92,10 @@ class BaseReservationTool(ABC):
         Make a reservation at the restaurant.
 
         Args:
-            phone: Customer phone number (format may vary by tool)
-            first_name: Customer first name
+            name: Customer name
             party_size: Number of people for the reservation
             date: Date for the reservation in YYYY-MM-DD format
             time: Time for the reservation in HH:MM format (24-hour)
-            last_name: Customer last name (optional)
             email: Customer email address (optional)
             notes: Optional notes for the reservation
 
@@ -121,20 +117,16 @@ class BaseReservationTool(ABC):
     @abstractmethod
     def join_waitlist_queue(
         self,
-        first_name: str,
-        phone: str,
+        name: str,
         party_size: int,
-        last_name: str = "",
         notes: str = "",
     ) -> str:
         """
         Join the waitlist queue for the restaurant.
 
         Args:
-            first_name: Customer first name
-            phone: Customer phone number
+            name: Customer name
             party_size: Number of people in the party
-            last_name: Customer last name (optional)
             notes: Optional notes for the waitlist entry
 
         Returns:
@@ -143,12 +135,12 @@ class BaseReservationTool(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_user_wait_status(self, phone: str) -> str:
+    def get_user_wait_status(self) -> str:
         """
         Get today's waitlist entries for a specific phone number.
 
         Args:
-            phone: Customer phone number to check waitlist status for
+            None
 
         Returns:
             str: Waitlist entries and status information for the phone number

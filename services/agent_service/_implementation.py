@@ -26,6 +26,7 @@ async def construct_agent_config(
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
     channel: Channel,
+    sender_identifier: str | None = None,
 ) -> AgentConfig:
     """
     Builds an Agent Config based on the Raw Config.
@@ -37,6 +38,7 @@ async def construct_agent_config(
         project_id (uuid.UUID): The project id.
         conversation_id (uuid.UUID): The conversation (session) id of the user-agent interaction.
         channel (Channel): For which comm channel should this agent config build for, e.g. sms, voice
+        sender_identifier (str | None): The sender identifier (phone for voice/sms, user ID for other channels) (optional).
 
     Raises:
         ValueError: If the agent_id or project_id is invalid.
@@ -69,6 +71,7 @@ async def construct_agent_config(
         conversation_id=conversation_id,
         channel=channel,
         integration=integration,
+        sender_identifier=sender_identifier,
     )
 
     # Convert blueprint to agent config

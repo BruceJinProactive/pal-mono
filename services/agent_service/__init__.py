@@ -22,6 +22,7 @@ async def construct_agent_config(
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
     channel: Channel,
+    sender_identifier: str | None = None,
 ) -> AgentConfig:
     return await _implementation.construct_agent_config(
         session,
@@ -30,6 +31,7 @@ async def construct_agent_config(
         project_id,
         conversation_id,
         channel,
+        sender_identifier,
     )
 
 
