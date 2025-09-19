@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import uuid
 from dataclasses import asdict
@@ -18,6 +19,101 @@ from utils.log import logger
 
 from .. import account_service, agent_service
 from .schema import ProjectParams
+
+# Helper functions for change logging
+
+
+def _create_project_data_snapshot(project):
+    """Create a primitive data snapshot of project for cross-thread logging."""
+    if project is None:
+        return None
+
+    return {
+        "id": project.id,
+        "name": project.name,
+        "display_name": getattr(project, "display_name", None),
+        "raw_config": getattr(project, "raw_config", getattr(project, "config", {})),
+        "channel_identifiers": project.channel_identifiers,
+        "store_hours": getattr(project, "store_hours", None),
+        "address": getattr(project, "address", None),
+        "product_info": getattr(project, "product_info", None),
+        "service_instruction": getattr(project, "service_instruction", None),
+        "order_integration_id": getattr(project, "order_integration_id", None),
+        "timezone": getattr(project, "timezone", None),
+        "transfer_message": getattr(project, "transfer_message", None),
+        "transfer_phone_number": getattr(project, "transfer_phone_number", None),
+        "reservation_link": getattr(project, "reservation_link", None),
+        "ordering_link": getattr(project, "ordering_link", None),
+        "created_at": project.created_at,
+        "updated_at": project.updated_at,
+        "account_id": project.account_id,
+        "agent_id": project.agent_id,
+    }
+
+
+def _create_mock_project_from_data(project_data):
+    """Build a transient instance of the real Project model for diffing."""
+    Project = db.Project  # mapped class from our model registry
+    obj = Project()
+    for key, value in (project_data or {}).items():
+        setattr(obj, key, value)
+    return obj
+
+
+def _log_project_change_sync(
+    sync_engine,
+    author: str,
+    account_id: uuid.UUID,
+    project_id: uuid.UUID,
+    operation_type: str,  # 'create' or 'delete'
+    project_data=None,  # For delete operations, contains the project data before deletion
+) -> None:
+    """Helper function to run sync project change logging by re-querying ORM instances."""
+    from sqlalchemy.orm import sessionmaker
+
+    sync_session_factory = sessionmaker(bind=sync_engine)
+
+    try:
+        with sync_session_factory() as sync_session:
+            if operation_type == "create":
+                # For creation, create mock ORM object from captured project data
+                new_project = _create_mock_project_from_data(project_data)
+                old_project = None
+
+                with change_log_context(
+                    session=sync_session,
+                    resource_type=ChangeResourceType.Project,
+                    author=author,
+                    account_id=account_id,
+                    resource_id=str(project_id),
+                    old_record=old_project,
+                    new_record=new_project,
+                    auto_commit=True,
+                ):
+                    pass
+
+            elif operation_type == "delete":
+                # For deletion, create mock ORM object from captured project data
+                old_project = _create_mock_project_from_data(project_data)
+                new_project = None
+
+                with change_log_context(
+                    session=sync_session,
+                    resource_type=ChangeResourceType.Project,
+                    author=author,
+                    account_id=account_id,
+                    resource_id=str(project_id),
+                    old_record=old_project,
+                    new_record=new_project,
+                    auto_commit=True,
+                ):
+                    pass
+
+            else:
+                logger.warning(f"Unknown operation type: {operation_type}")
+
+    except Exception as e:
+        logger.error(f"Failed to log project {operation_type}: {e}", exc_info=True)
 
 
 def create_project(
@@ -309,12 +405,29 @@ async def create_project_async(
 
     # Create default voice_config for the project
     voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+
+    default_voice_id = "da69d796-4603-4419-8a95-293bfc5679eb"
     await voice_repo.create_voice_config(
         project_id=project.id,
         language="english",
-        voice_id="placeholder_voice_id",
-        first_message="placeholder_first_message",
-        transfer_message="placeholder_transfer_message",
+        voice_id=default_voice_id,
+        first_message=f"Hello, this is {project_name} AI Agent, how can I help you today?!",
+        transfer_message="",
+    )
+
+    # Capture project data for change logging
+    project_data_snapshot = _create_project_data_snapshot(project)
+
+    # Schedule background logging (non-blocking) with captured project data
+    asyncio.get_event_loop().run_in_executor(
+        None,
+        _log_project_change_sync,
+        async_session.bind.sync_engine,
+        context.email,
+        account.id,
+        project.id,
+        "create",  # operation type
+        project_data_snapshot,  # captured project data
     )
 
     return project
@@ -345,5 +458,20 @@ async def delete_project_async(
         },
     )
 
-    # Delete the project
+    # Capture project data before deletion for change logging
+    project_data_snapshot = _create_project_data_snapshot(existing_project)
+
+    # Delete the project using async repository
     await project_repository.delete_project(project_id)
+
+    # Schedule background logging (non-blocking) with captured project data
+    asyncio.get_event_loop().run_in_executor(
+        None,
+        _log_project_change_sync,
+        async_session.bind.sync_engine,
+        context.email,
+        existing_project.account_id,
+        project_id,
+        "delete",  # operation type
+        project_data_snapshot,  # captured project data
+    )
