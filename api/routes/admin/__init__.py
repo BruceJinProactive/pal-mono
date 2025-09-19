@@ -99,6 +99,8 @@ from api.schemas.admin.phone_number import (
 from api.schemas.admin.project import (
     BatchCreateProjectsRequest,
     BatchCreateProjectsResponse,
+    BatchDeleteProjectsRequest,
+    BatchDeleteProjectsResponse,
     BatchUpdateProjectsRequest,
     BatchUpdateProjectsResponse,
     CreateProjectRequest,
@@ -939,6 +941,24 @@ async def batch_update_projects(
     including success/failure status and error messages for any failed updates.
     """
     return await _projects.batch_update_projects(request, context, session)
+
+
+@admin_router.delete("/projects/batch", status_code=status.HTTP_200_OK)
+async def batch_delete_projects(
+    request: BatchDeleteProjectsRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> BatchDeleteProjectsResponse:
+    """
+    Delete multiple projects in batch for a given account.
+
+    This endpoint allows you to delete many projects at once by providing their IDs.
+    All projects must belong to the specified account.
+
+    The response includes detailed results for each project deletion attempt,
+    including success/failure status and error messages for any failed deletions.
+    """
+    return await _projects.batch_delete_projects(request, context, session)
 
 
 @admin_router.get("/projects/{project_id}")

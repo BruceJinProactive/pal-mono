@@ -322,6 +322,34 @@ def batch_update_projects(
     )
 
 
+def batch_delete_projects(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    project_ids: List[uuid.UUID],
+    auto_commit: bool = True,
+) -> Dict[str, Any]:
+    """Delete multiple projects for a given account.
+
+    Args:
+        session (Session): Database session.
+        context (UserContext): User context for authentication.
+        account_name (str): Name of the account that owns the projects.
+        project_ids (List[uuid.UUID]): List of project UUIDs to delete.
+        auto_commit (bool): Whether to commit changes automatically.
+
+    Returns:
+        Dict containing deletion results.
+    """
+    return _implementation.batch_delete_projects(
+        session,
+        context,
+        account_name,
+        project_ids,
+        auto_commit,
+    )
+
+
 __all__ = [
     "create_project",
     "update_project",
@@ -338,5 +366,6 @@ __all__ = [
     "get_projects_by_phone_number",
     "batch_create_projects",
     "batch_update_projects",
+    "batch_delete_projects",
     "ProjectParams",
 ]

@@ -235,3 +235,38 @@ class BatchUpdateProjectsResponse(BaseModel):
         if self.total_requested == 0:
             return 0.0
         return (self.total_updated / self.total_requested) * 100.0
+
+
+class BatchDeleteProjectsRequest(BaseModel):
+    """Request schema for batch project deletion"""
+
+    account_name: str = Field(..., description="Account name that owns the projects")
+    project_ids: List[uuid.UUID] = Field(
+        ..., min_length=1, description="List of project IDs to delete"
+    )
+
+
+class ProjectDeletionResult(BaseModel):
+    """Result of deleting a single project"""
+
+    project_id: uuid.UUID
+    project_name: str
+    success: bool
+    error_message: str | None = None
+
+
+class BatchDeleteProjectsResponse(BaseModel):
+    """Response schema for batch project deletion"""
+
+    account_name: str
+    total_requested: int
+    total_deleted: int
+    total_failed: int
+    results: List[ProjectDeletionResult]
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate as percentage"""
+        if self.total_requested == 0:
+            return 0.0
+        return (self.total_deleted / self.total_requested) * 100.0

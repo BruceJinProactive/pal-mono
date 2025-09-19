@@ -17,7 +17,7 @@ from services.history_service import change_log_context
 from services.number_service import NumberService
 from utils.log import logger
 
-from .. import account_service, agent_service
+from .. import account_service, agent_service, subscription_service
 from .schema import ProjectParams
 
 # Helper functions for change logging
@@ -567,6 +567,135 @@ def batch_update_projects(
         "total_requested": len(project_updates),
         "total_updated": len(updated_projects),
         "total_failed": len(project_updates) - len(updated_projects),
+        "results": results,
+    }
+
+
+def batch_delete_projects(
+    session: Session,
+    context: UserContext,
+    account_name: str,
+    project_ids: List[uuid.UUID],
+    auto_commit: bool = True,
+) -> Dict[str, Any]:
+    """
+    Delete multiple projects for a given account.
+
+    Args:
+        session: Database session
+        context: User context for authentication
+        account_name: Name of the account that owns the projects
+        project_ids: List of project UUIDs to delete
+        auto_commit: Whether to commit changes automatically
+
+    Returns:
+        Dict containing deletion results
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} does not exist")
+
+    results = []
+    deleted_projects = []
+
+    try:
+        for i, project_id in enumerate(project_ids):
+            try:
+                if isinstance(project_id, str):
+                    project_id = uuid.UUID(project_id)
+
+                project = get_project(session, project_id)
+                if not project:
+                    results.append(
+                        {
+                            "project_id": str(project_id),
+                            "project_name": f"unknown_{i}",
+                            "success": False,
+                            "error_message": f"Project {project_id} not found",
+                        }
+                    )
+                    continue
+
+                if project.account.name != account_name:
+                    results.append(
+                        {
+                            "project_id": str(project_id),
+                            "project_name": project.name,
+                            "success": False,
+                            "error_message": f"Project {project_id} does not belong to account {account_name}",
+                        }
+                    )
+                    continue
+
+                project_name = project.name
+
+                try:
+                    curr_sub, _ = subscription_service.get_account_subscriptions(
+                        session, project.account_id
+                    )
+                    if curr_sub:
+                        subscription_service.remove_project_subscription(
+                            session, project, curr_sub.external_id
+                        )
+                except Exception:
+                    logger.error(
+                        "Failed to remove project from subscription before deletion",
+                        extra={
+                            "project_id": str(project_id),
+                            "account_id": str(project.account_id),
+                        },
+                        exc_info=True,
+                    )
+                    raise
+
+                delete_project(
+                    session=session,
+                    context=context,
+                    project_id=project_id,
+                )
+
+                results.append(
+                    {
+                        "project_id": str(project_id),
+                        "project_name": project_name,
+                        "success": True,
+                        "error_message": None,
+                    }
+                )
+
+                deleted_projects.append(project_id)
+
+                logger.info(
+                    f"Successfully deleted project: {project_name} ({project_id})"
+                )
+
+            except Exception as e:
+                logger.error(f"Failed to delete project {project_id}: {e}")
+                results.append(
+                    {
+                        "project_id": str(project_id),
+                        "project_name": f"unknown_{i}",
+                        "success": False,
+                        "error_message": str(e),
+                    }
+                )
+
+        if auto_commit:
+            session.commit()
+            logger.info(f"Successfully deleted {len(deleted_projects)} projects")
+        else:
+            session.flush()
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Batch project deletion failed: {e}")
+        raise
+
+    return {
+        "account_name": account_name,
+        "total_requested": len(project_ids),
+        "total_deleted": len(deleted_projects),
+        "total_failed": len(project_ids) - len(deleted_projects),
         "results": results,
     }
 

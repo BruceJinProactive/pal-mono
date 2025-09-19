@@ -6,11 +6,14 @@ from sqlalchemy.orm import Session
 from api.schemas.admin.project import (
     BatchCreateProjectsRequest,
     BatchCreateProjectsResponse,
+    BatchDeleteProjectsRequest,
+    BatchDeleteProjectsResponse,
     BatchUpdateProjectsRequest,
     BatchUpdateProjectsResponse,
     CreateProjectRequest,
     Project,
     ProjectCreationResult,
+    ProjectDeletionResult,
     ProjectUpdateResult,
     UpdateProjectRequest,
 )
@@ -497,4 +500,57 @@ async def batch_update_projects(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during batch project update",
+        )
+
+
+async def batch_delete_projects(
+    request: BatchDeleteProjectsRequest, context: UserContext, session: Session
+) -> BatchDeleteProjectsResponse:
+    """
+    Delete multiple projects for an account.
+    """
+    authorize_admin(context)
+
+    account = account_service.get_account(session, request.account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account '{request.account_name}' not found.",
+        )
+
+    try:
+        result = project_service.batch_delete_projects(
+            session=session,
+            context=context,
+            account_name=request.account_name,
+            project_ids=request.project_ids,
+            auto_commit=True,
+        )
+
+        deletion_results = []
+        for res in result["results"]:
+            deletion_results.append(
+                ProjectDeletionResult(
+                    project_id=uuid.UUID(res["project_id"]),
+                    project_name=res["project_name"],
+                    success=res["success"],
+                    error_message=res.get("error_message"),
+                )
+            )
+
+        return BatchDeleteProjectsResponse(
+            account_name=result["account_name"],
+            total_requested=result["total_requested"],
+            total_deleted=result["total_deleted"],
+            total_failed=result["total_failed"],
+            results=deletion_results,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Batch project deletion failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during batch project deletion",
         )
