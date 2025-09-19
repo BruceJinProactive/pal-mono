@@ -17,7 +17,7 @@ def validate_date_range(
     )
     if start_date is None and end_date is None:
         end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=10)
+        start_date = end_date - timedelta(days=7)
     if start_date is None:
         start_date = start_today
     if end_date is None:

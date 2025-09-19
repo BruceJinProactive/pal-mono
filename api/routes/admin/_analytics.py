@@ -8,7 +8,7 @@ from api.schemas.admin.analytics import (
     PerformanceReport,
 )
 from services.account_service import get_account
-from services.analytics_service import get_account_reports
+from services.analytics_service import get_account_reports, get_reports
 from utils.log import logger
 
 from . import UserContext
@@ -16,7 +16,7 @@ from ._auth import authorize_user_account
 from ._utils import not_found_error
 
 
-async def get_reports(
+async def get_accounts_reports(
     account_name: str | None,
     context: UserContext,
     session: Session,
@@ -85,3 +85,23 @@ async def get_reports(
         ]
         result: GetAllReportsResponse = GetAllReportsResponse(reports=empty_reports)
         return result
+
+
+async def get_company_reports(
+    context: UserContext,
+    session: Session,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    group_by: list[str] | None = None,
+) -> GetAllReportsResponse:
+    """
+    Get analytics data with company breakdowns.
+    """
+
+    return await get_reports(
+        session=session,
+        account_id=None,
+        start_date=start_date,
+        end_date=end_date,
+        group_by=group_by,
+    )
