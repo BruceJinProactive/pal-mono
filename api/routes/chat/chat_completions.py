@@ -1,7 +1,7 @@
 import datetime
 import json
 import uuid
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -16,18 +16,11 @@ from api.routes.chat.chat import chat_router
 from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
-from services.message_service import get_chat_response_async, get_chat_response_stream
+from services.message_service import get_chat_response_stream
 from services.relay_service import send_message
 from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
 from utils.request_context import RequestContext
-
-
-# Define message types that match the OpenAI API
-class ChatMessage(BaseModel):
-    role: Literal["system", "user", "assistant", "function", "tool"]
-    content: str
-    name: Optional[str] = None
 
 
 # Request model with FastAPI validation
@@ -38,7 +31,7 @@ class ChatCompletionRequest(BaseModel):
     temperature: Optional[float] = 1.0
     top_p: Optional[float] = 1.0
     n: Optional[int] = 1
-    stream: Optional[bool] = False
+    stream: Optional[bool] = True
     max_tokens: Optional[int] = None
     presence_penalty: Optional[float] = 0.0
     frequency_penalty: Optional[float] = 0.0
@@ -160,34 +153,6 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
             }
         ],
     }
-
-
-def _create_response_data(model: str, content: str, is_chunk: bool = False) -> dict:
-    """Create a standard response data object."""
-    content_key = "delta" if is_chunk else "message"
-    response = {
-        "id": f"chatcmpl-{uuid.uuid4().hex}",
-        "object": "chat.completion" if not is_chunk else "chat.completion.chunk",
-        "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-        "model": model,
-        "choices": [
-            {
-                "index": 0,
-                f"{content_key}": {
-                    "role": "assistant",
-                    "content": content,
-                },
-                "finish_reason": "stop" if not is_chunk else None,
-            }
-        ],
-    }
-    if not is_chunk:
-        response["usage"] = {
-            "prompt_tokens": 0,  # We don't track these
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
-    return response
 
 
 async def _send_urls_via_sms(
@@ -320,6 +285,18 @@ async def chat_completions_agno(
 ):
     # Log the request
     logger.info(f"Agno chat completions request: {json.dumps(request.model_dump())}")
+
+    # Guardrail: Ensure streaming mode is always used
+    if not request.stream:
+        logger.error("Non-streaming mode is not supported. Streaming mode is required.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="STREAMING_REQUIRED",
+                error_message="This API only supports streaming mode. Please set 'stream': true in your request.",
+            ).model_dump(),
+        )
+
     try:
         # Extract content from request
         content = _extract_content_from_request(request)
@@ -339,143 +316,112 @@ async def chat_completions_agno(
         )
 
         fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
-        if request.stream:
 
-            async def generate_stream():
-                try:
-                    # Log stream start
-                    logger.info(f"Starting streaming response for model={model}")
+        async def generate_stream():
+            try:
+                # Log stream start
+                logger.info(f"Starting streaming response for model={model}")
+                send_dd_histogram_metrics(
+                    "chat_completions.start_streaming", request_context.request_time
+                )
+
+                response_stream = await get_chat_response_stream(
+                    session=session,
+                    message=message,
+                    request_context=request_context,
+                )
+
+                collected_content = []
+                if response_stream:
+                    chunk_count = 0
+                    url_filter = create_url_filter()
                     send_dd_histogram_metrics(
-                        "chat_completions.start_streaming", request_context.request_time
+                        "chat_completions.waiting_first_chunk",
+                        request_context.request_time,
+                        [
+                            f"sender_identifier:{sender_identifier}",
+                            f"recipient_identifier:{recipient_identifier}",
+                        ],
                     )
 
-                    response_stream = await get_chat_response_stream(
-                        session=session,
-                        message=message,
-                        request_context=request_context,
+                    async for chunk in response_stream:
+                        chunk_count += 1
+                        chunk_data = _convert_chunk_to_dict(chunk)
+
+                        choices = chunk_data.get("choices", [])
+                        content = (
+                            choices[0].get("delta", {}).get("content", "")
+                            if choices
+                            else ""
+                        )
+                        collected_content.append(content)
+                        filtered_content = url_filter.filter_content(content)
+                        if filtered_content is not None:
+                            # Replace the original content in chunk_data with filtered_content
+                            if (
+                                chunk_data.get("choices")
+                                and len(chunk_data["choices"]) > 0
+                            ):
+                                if "delta" in chunk_data["choices"][0]:
+                                    chunk_data["choices"][0]["delta"][
+                                        "content"
+                                    ] = filtered_content
+
+                            yield f"data: {json.dumps(chunk_data)}\n\n"
+
+                            if chunk_count == 1:
+                                time_diff = (
+                                    datetime.datetime.now(datetime.timezone.utc)
+                                    - request_context.request_time
+                                ).total_seconds() * 1000
+                                logger.debug(
+                                    f"[ChatCompletions] TTFT is {time_diff}",
+                                    extra={
+                                        "recipient_identifier": recipient_identifier,
+                                        "sender_identifier": sender_identifier,
+                                    },
+                                )
+
+                                send_dd_histogram_metrics(
+                                    "chat_completions.sent_first_chunk",
+                                    request_context.request_time,
+                                    [
+                                        f"sender_identifier:{sender_identifier}",
+                                        f"recipient_identifier:{recipient_identifier}",
+                                    ],
+                                )
+
+                    # Log completion of stream
+                    logger.info(
+                        f"Completed streaming response after {chunk_count} chunks."
                     )
-
-                    collected_content = []
-                    if response_stream:
-                        chunk_count = 0
-                        url_filter = create_url_filter()
-                        send_dd_histogram_metrics(
-                            "chat_completions.waiting_first_chunk",
-                            request_context.request_time,
-                            [
-                                f"sender_identifier:{sender_identifier}",
-                                f"recipient_identifier:{recipient_identifier}",
-                            ],
-                        )
-
-                        async for chunk in response_stream:
-                            chunk_count += 1
-                            chunk_data = _convert_chunk_to_dict(chunk)
-
-                            content = (
-                                chunk_data.get("choices", [])[0]
-                                .get("delta", {})
-                                .get("content", "")
-                            )
-                            collected_content.append(content)
-                            filtered_content = url_filter.filter_content(content)
-                            if filtered_content is not None:
-                                # Replace the original content in chunk_data with filtered_content
-                                if (
-                                    chunk_data.get("choices")
-                                    and len(chunk_data["choices"]) > 0
-                                ):
-                                    if "delta" in chunk_data["choices"][0]:
-                                        chunk_data["choices"][0]["delta"][
-                                            "content"
-                                        ] = filtered_content
-
-                                yield f"data: {json.dumps(chunk_data)}\n\n"
-
-                                if chunk_count == 1:
-                                    time_diff = (
-                                        datetime.datetime.now(datetime.timezone.utc)
-                                        - request_context.request_time
-                                    ).total_seconds() * 1000
-                                    logger.debug(
-                                        f"[ChatCompletions] TTFT is {time_diff}",
-                                        extra={
-                                            "recipient_identifier": recipient_identifier,
-                                            "sender_identifier": sender_identifier,
-                                        },
-                                    )
-
-                                    send_dd_histogram_metrics(
-                                        "chat_completions.sent_first_chunk",
-                                        request_context.request_time,
-                                        [
-                                            f"sender_identifier:{sender_identifier}",
-                                            f"recipient_identifier:{recipient_identifier}",
-                                        ],
-                                    )
-
-                        # Log completion of stream
-                        logger.info(
-                            f"Completed streaming response after {chunk_count} chunks."
-                        )
-                        yield "data: [DONE]\n\n"
-
-                        # Send URLs via SMS if any are found in the collected content
-                        try:
-                            await _send_urls_via_sms(
-                                collected_content,
-                                sender_identifier,
-                                recipient_identifier,
-                            )
-                        except Exception as sms_err:
-                            logger.error(f"Error sending URLs via SMS: {sms_err}")
-
-                except Exception as e:
-                    logger.error(f"Error in streaming response: {str(e)}")
-                    fallback_chunk = _create_fallback_chunk(model, fallback_content)
-                    yield f"data: {json.dumps(fallback_chunk)}\n\n"
                     yield "data: [DONE]\n\n"
 
-            return StreamingResponse(
-                generate_stream(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",  # For nginx
-                },
-            )
+                    # Send URLs via SMS if any are found in the collected content
+                    try:
+                        await _send_urls_via_sms(
+                            collected_content,
+                            sender_identifier,
+                            recipient_identifier,
+                        )
+                    except Exception as sms_err:
+                        logger.error(f"Error sending URLs via SMS: {sms_err}")
 
-        try:
-            # Non-streaming response
-            response_messages = await get_chat_response_async(
-                session=session, message=message, request_context=request_context
-            )
+            except Exception as e:
+                logger.error(f"Error in streaming response: {str(e)}")
+                fallback_chunk = _create_fallback_chunk(model, fallback_content)
+                yield f"data: {json.dumps(fallback_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
 
-            if not response_messages:
-                # Fall back to a default response if no messages are returned
-                logger.warning(
-                    f"No response messages from agent for model {model}, using fallback"
-                )
-                response_messages = []
-        except Exception as e:
-            # Log the specific error and use a fallback response
-            logger.error(f"Error getting response from agent: {str(e)}")
-            response_messages = []
-
-        # Extract content from the first message or use fallback
-        if response_messages and response_messages[0].text:
-            content = response_messages[0].text.body
-        else:
-            content = fallback_content
-
-        # Create a response similar to OpenAI format
-        response_data = _create_response_data(model, content)
-
-        # Log the response
-        logger.info(f"Agno chat completions response: {json.dumps(response_data)}")
-
-        return response_data
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # For nginx
+            },
+        )
 
     except ValueError as ve:
         logger.error(f"Error validating agno chat completion request: {ve}")
