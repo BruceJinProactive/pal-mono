@@ -466,6 +466,7 @@ class YelpTool(Toolkit):
                 )
             )
 
+            customer_phone = self.tool_metadata.customer_phone
             # Check required fields individually
             missing_fields = []
             if not reservation_query.covers:
@@ -476,7 +477,7 @@ class YelpTool(Toolkit):
                 missing_fields.append("time")
             if not processed_first_name:
                 missing_fields.append("name")
-            if not reservation_query.phone:
+            if not customer_phone:
                 missing_fields.append("phone")
 
             if missing_fields:
@@ -544,7 +545,7 @@ class YelpTool(Toolkit):
                     holds_request=hold_request,
                     first_name=processed_first_name,  # Use processed names
                     last_name=processed_last_name,  # Use processed names
-                    phone=reservation_query.phone,  # type: ignore
+                    phone=customer_phone,  # type: ignore
                     email="inbox@proactiveailab.com",  # Hardcoded email instead of asking user
                     notes=notes,
                 )
@@ -877,9 +878,14 @@ class YelpTool(Toolkit):
 
             # Check for required fields and provide specific feedback
             logger.debug("[YelpTool.join_waitlist_queue] Validating required fields")
+
+            customer_phone = waitlist_query.phone
+            if not customer_phone:
+                customer_phone = self.tool_metadata.customer_phone
+
             all_present, missing_prompts = check_waitlist_join_queue_required_fields(
                 business_id=self.business_id_or_alias,
-                phone=waitlist_query.phone,
+                phone=customer_phone,
                 party_size=waitlist_query.party_size,
                 name=waitlist_query.name,
             )
@@ -902,7 +908,7 @@ class YelpTool(Toolkit):
             # Create waitlist join queue request
             success, message, request_obj = create_waitlist_join_queue_request(
                 business_id=self.business_id_or_alias,
-                phone=waitlist_query.phone,  # type: ignore
+                phone=customer_phone,  # type: ignore
                 party_size=waitlist_query.party_size,  # type: ignore
                 name=waitlist_query.name,  # type: ignore
                 party_notes=waitlist_query.party_notes,
