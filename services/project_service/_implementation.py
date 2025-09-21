@@ -23,6 +23,17 @@ from .schema import ProjectParams
 # Helper functions for change logging
 
 
+def _release_number_safe(number: str) -> None:
+    """Safely release a phone number with error handling."""
+    try:
+        number_service = NumberService()
+        number_service.release_number_with_options(number, "return_to_pool")
+    except Exception as e:
+        logger.error(
+            f"Failed to release phone number {number}: {str(e)}", exc_info=True
+        )
+
+
 def _create_project_data_snapshot(project):
     """Create a primitive data snapshot of project for cross-thread logging."""
     if project is None:
@@ -770,13 +781,35 @@ async def delete_project_async(
     context: UserContext,
     project_id: uuid.UUID,
 ) -> None:
-    """Delete a project and its voice_configs asynchronously (ignoring phone number cleanup)."""
+    """Delete a project and its voice_configs asynchronously."""
     project_repository = ProjectRepositoryAsync(async_session)
 
     # Check if project exists
     existing_project = await project_repository.get_project(project_id)
     if not existing_project:
         return
+
+    # Release phone numbers in background (fire-and-forget)
+    unique_numbers = set()
+    for identifier in existing_project.channel_identifiers or []:
+        if identifier.startswith(("sms:", "voice:", "phone:")):
+            number = identifier.split(":", 1)[1]
+            unique_numbers.add(number)
+
+    if unique_numbers:
+        for number in unique_numbers:
+            logger.info(
+                "Returning phone number to pool from project.",
+                extra={
+                    "project_id": project_id,
+                    "phone_number": number,
+                },
+            )
+            # Execute phone number release in thread pool (fire-and-forget)
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda n=number: _release_number_safe(n),
+            )
 
     # Delete associated voice_configs first
     voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
