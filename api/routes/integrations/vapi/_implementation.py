@@ -540,29 +540,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         # ================= Step 3: Construct assistant(s) =================
 
         #########################################################
-        # Try to use new voice_configs table first, fallback to existing logic
-        #########################################################
-
-        try:
-            # Try using the new voice configuration system
-            from services import (
-                voice_service,  # Lazy import to avoid circular dependency
-            )
-
-            voice_response = (
-                await voice_service.VoiceService().create_vapi_assistant_response(
-                    caller_info=caller_info, project_id=project.id, session=session
-                )
-            )
-            logger.debug(f"Using new voice_configs system for call {call_id}")
-            return voice_response
-        except Exception as e:
-            logger.warning(
-                f"Failed to use voice_configs system for call {call_id}, falling back to original logic: {str(e)}"
-            )
-            # Continue with original logic below
-
-        #########################################################
         # Check if multilingual squad should be used
         #########################################################
 
