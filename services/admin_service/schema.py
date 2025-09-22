@@ -50,6 +50,7 @@ class CognitoUserSession:
 class CognitoUser:
     email: str
     name: str
+    status: str | None = None
     session: CognitoUserSession | None = None
 
 

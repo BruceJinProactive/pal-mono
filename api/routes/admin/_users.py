@@ -30,10 +30,7 @@ async def list_account_users(
     try:
         users_data = admin_service.list_account_users(account_name)
         users = [
-            UserInfo(
-                email=user.email,
-                name=user.name,
-            )
+            UserInfo(email=user.email, name=user.name, status=user.status)
             for user in users_data
         ]
         return ListUsersResponse(users=users)

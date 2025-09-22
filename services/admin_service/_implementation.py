@@ -1006,8 +1006,9 @@ def list_account_users(account_name: str) -> list[CognitoUser]:
 
                 email = get_attr(attributes, "email")
                 name = get_attr(attributes, "name")
+                status = user.get("UserStatus")
 
-                users.append(CognitoUser(email=email, name=name))
+                users.append(CognitoUser(email=email, name=name, status=status))
 
             pagination_token = response.get("PaginationToken")
             if not pagination_token or not fetched_users:

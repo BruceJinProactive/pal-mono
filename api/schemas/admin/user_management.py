@@ -8,6 +8,7 @@ class UserInfo(BaseModel):
 
     email: str
     name: str
+    status: str | None = None
 
 
 class ListUsersResponse(BaseModel):
