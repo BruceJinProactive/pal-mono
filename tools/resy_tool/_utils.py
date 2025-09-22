@@ -96,6 +96,7 @@ def format_resy_availability(slots: List[Dict[str, Any]], *, party_size: int) ->
 
     lines = [f"Availability for {header_name} (Party of {party_size}):"]
 
+    seen_times: set[str] = set()
     for slot in slots:
         start_dt = _parse_iso(slot.get("start"))
         if start_dt:
@@ -103,16 +104,12 @@ def format_resy_availability(slots: List[Dict[str, Any]], *, party_size: int) ->
         else:
             pretty_time = slot.get("start") or "Unknown time"
 
-        area = slot.get("area")
-        qty = slot.get("quantity")
-        details = []
-        if area:
-            details.append(area)
-        if qty is not None:
-            details.append(f"{qty} tables left")
-
-        suffix = f" ({', '.join(details)})" if details else ""
-        lines.append(f"* {pretty_time}{suffix}")
+        if pretty_time in seen_times:
+            continue
+        seen_times.add(pretty_time)
+        lines.append(f"* {pretty_time}")
+        if len(lines) >= 8:  # header + up to 7 slots keeps output concise
+            break
 
     return "\n".join(lines)
 

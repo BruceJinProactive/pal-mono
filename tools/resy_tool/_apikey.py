@@ -33,6 +33,8 @@ class _CachedKey:
 
 
 _CACHE: Optional[_CachedKey] = None
+_ORIGINAL_API_KEY = "VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5"
+_WARNED_KEY_MISMATCH = False
 
 
 def get_resy_api_key(
@@ -102,6 +104,13 @@ def get_resy_api_key(
         if _CACHE:
             return _CACHE.api_key
         raise RuntimeError("Resy apiKey not found in bundle")
+
+    global _WARNED_KEY_MISMATCH
+    if api_key != _ORIGINAL_API_KEY and not _WARNED_KEY_MISMATCH:
+        logger.warning(
+            "[Resy API] Extracted apiKey differs from the original reference key."
+        )
+        _WARNED_KEY_MISMATCH = True
 
     _CACHE = _CachedKey(
         api_key=api_key,
