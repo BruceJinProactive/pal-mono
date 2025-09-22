@@ -196,6 +196,8 @@ Based on the MenuSifu Chinese restaurant menu context and chat history below, ex
     "display_price": 15.25,
     "category_id": 344,
     "size": "Large",
+    "detail_price_id": 456,
+    "size_id": 63,
     "special_notes": "Extra spicy",
     "options": [{{
       "sectionId": "Options",

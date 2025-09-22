@@ -2372,13 +2372,16 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
         or item.get("detailPriceId")
     )
 
-    # Simple pricing logic
-    if has_detail and not has_combo:
-        price_val = Decimal("0")  # Detail price items use 0
-    elif has_combo and raw_base_price:
-        price_val = Decimal(str(raw_base_price)) if raw_base_price else Decimal("0")
+    # Simple pricing logic - always use actual price, never 0
+    if raw_base_price is not None:
+        # Use base price for combo items (already in dollars)
+        price_val = Decimal(str(raw_base_price))
+    elif raw_price is not None:
+        # Use regular price - normalize in case it's in cents
+        price_val = _normalize_display_price(raw_price, Decimal("0"))
     else:
-        price_val = Decimal(str(raw_price)) if raw_price else Decimal("0")
+        # Fallback to 0 only if no price information is available
+        price_val = Decimal("0")
 
     # Convert other fields with defaults
     display_price = item.get("displayPrice") or item.get("display_price")
