@@ -669,7 +669,11 @@ class OrderGenerationRequest(BaseModel):
     selected_gift_items_crm: List = Field(
         default_factory=list, alias="selectedGiftItemsCrm"
     )
-    allergy_info: str = Field("", alias="allergyInfo")
+    allergy_info: str = Field(
+        "",
+        alias="allergyInfo",
+        description="Order-level special instructions and allergy information. Format: 'Custom instructions: Extra onioins and no peanuts.Allergies: Egg,Dairy,Peanuts,TreeNuts,Wheat,Soy,Fish,Shellfish.' or simple 'Allergies: Allergen1,Allergen2.' or just custom instructions without allergies.",
+    )
     need_utensils: bool = Field(False, alias="needUtensils")
     need_straws: bool = Field(False, alias="needStraws")
     need_condiments: bool = Field(False, alias="needCondiments")
@@ -959,7 +963,10 @@ class ExtractedMenuSifuOrder(BaseModel):
 
     # Additional notes and dietary information
     special_instructions: Optional[str] = None
-    allergy_info: Optional[str] = None
+    allergy_info: Optional[str] = Field(
+        None,
+        description="Order-level special instructions and allergy information. Format: 'Custom instructions: Extra onioins and no peanuts.Allergies: Egg,Dairy,Peanuts,TreeNuts,Wheat,Soy,Fish,Shellfish.' or simple 'Allergies: Allergen1,Allergen2.' or just custom instructions without allergies.",
+    )
     need_utensils: Optional[bool] = None
     need_straws: Optional[bool] = None
     need_condiments: Optional[bool] = None

@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.menusifu_tool._apis import calculate_order_total, generate_order
-from tools.menusifu_tool._prompt_constants import (
+from tools.menusifu_tool._prompt_constants_new import (
     MENUSIFU_EXTRACTOR_SYSTEM_PROMPT,
     MENUSIFU_EXTRACTOR_USER_PROMPT,
     RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
