@@ -49,7 +49,7 @@ class VoiceConfigRepositoryAsync:
             first_message=first_message,
             transfer_message=transfer_message,
             replacements=replacements or {},
-            speech_rate=SpeechRate(speech_rate) if speech_rate else None,
+            speech_rate=SpeechRate(speech_rate) if speech_rate else SpeechRate.normal,
             background_sound=background_sound,
             raw_config=raw_config or {},
         )

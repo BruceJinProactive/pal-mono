@@ -9,9 +9,19 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
+from db.tables.types import SpeechRate
 from utils.log import logger
 
 from ._utils import CALL_ANALYSIS_PROMPT
+
+# Cartesia speed mapping for voice configuration
+CARTESIA_SPEED_MAPPING = {
+    SpeechRate.slowest: "slowest",
+    SpeechRate.slower: "slow",
+    SpeechRate.normal: "normal",
+    SpeechRate.faster: "fast",
+    SpeechRate.fastest: "fastest",
+}
 
 
 class VoiceConfigProtocol(Protocol):
@@ -23,6 +33,7 @@ class VoiceConfigProtocol(Protocol):
     transfer_message: str
     replacements: dict
     background_sound: str
+    speech_rate: SpeechRate
 
 
 class VAPIProvider:
@@ -109,7 +120,9 @@ class VAPIProvider:
             "provider": "cartesia",
             "voiceId": voice_config.voice_id,
             "model": "sonic-2",
-            "experimentalControls": {"speed": "normal"},
+            "experimentalControls": {
+                "speed": CARTESIA_SPEED_MAPPING.get(voice_config.speech_rate, "normal")
+            },
         }
 
         # Add chunkPlan with formatPlan only if replacements exist
