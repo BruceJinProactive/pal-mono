@@ -22,6 +22,7 @@ class VoiceConfigProtocol(Protocol):
     first_message: str
     transfer_message: str
     replacements: dict
+    background_sound: str
 
 
 class VAPIProvider:
@@ -90,7 +91,6 @@ class VAPIProvider:
                 "model": "nova-2",
                 "language": "zh-CN",
                 "provider": "deepgram",
-                "endpointing": 300,
             },
             "triage": {
                 "model": "gemini-2.5-flash",
@@ -236,7 +236,7 @@ class VAPIProvider:
         # Create voice configuration based on voice_config
         voice = self._create_voice(voice_config)
 
-        background_sound = "off"
+        background_sound = voice_config.background_sound
 
         # Prepare assistant configuration
         api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
@@ -252,7 +252,6 @@ class VAPIProvider:
             "voice": voice,
             "backgroundSound": background_sound,
             "silenceTimeoutSeconds": 60,
-            "backgroundDenoisingEnabled": True,
             "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
             "startSpeakingPlan": self._create_start_speaking_plan(
                 voice_config.language
@@ -265,6 +264,7 @@ class VAPIProvider:
     def _create_triage_assistant(
         self,
         triage_config: VoiceConfigProtocol,
+        non_triage_configs: list[VoiceConfigProtocol],
         caller_info: dict,
     ) -> dict:
         """Create triage assistant configuration."""
@@ -280,23 +280,24 @@ class VAPIProvider:
         # Create voice configuration for triage
         voice = self._create_voice(triage_config)
 
-        background_sound = "off"
+        background_sound = triage_config.background_sound
+
+        # Create system content for triage assistant
+        system_content = self._create_system_content(non_triage_configs)
 
         # Prepare triage assistant configuration
-        api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
         triage_assistant_config = {
             "name": "triage_assistant",
             "firstMessage": greeting,
             "transcriber": transcriber,
             "model": {
-                "provider": "custom-llm",
-                "url": f"{api_url}/v1",
-                "model": json.dumps(caller_info),
+                "provider": "openai",
+                "model": "gpt-4o",
+                "messages": [{"role": "system", "content": system_content}],
             },
             "voice": voice,
             "backgroundSound": background_sound,
             "silenceTimeoutSeconds": 60,
-            "backgroundDenoisingEnabled": True,
             "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
             "startSpeakingPlan": self._create_start_speaking_plan(
                 triage_config.language
@@ -304,6 +305,45 @@ class VAPIProvider:
         }
 
         return triage_assistant_config
+
+    def _create_system_content(
+        self, non_triage_configs: list[VoiceConfigProtocol]
+    ) -> str:
+        """Create system content for triage assistant."""
+        # Build language list and transfer rules dynamically
+        languages = [config.language.lower() for config in non_triage_configs]
+
+        if not languages:
+            raise ValueError("No languages provided in the voice configuration")
+
+        language_list = (
+            ", ".join(languages[:-1]) + f", or {languages[-1]}"
+            if len(languages) > 1
+            else languages[0]
+        )
+
+        transfer_rules = []
+        for voice_config in non_triage_configs:
+            language = voice_config.language.lower()
+            assistant_name = f"{language}_assistant"
+            transfer_rules.append(
+                f"- For {language.title()} speakers or {language.title()} requests → transfer to {assistant_name}"
+            )
+
+        transfer_rules_text = "\n".join(transfer_rules)
+
+        return f"""You are the initial contact assistant.
+
+Your ONLY responsibility is to:
+1. Greet the customer warmly
+2. Identify their preferred language ({language_list})
+3. Transfer them to the appropriate language specialist
+4. If the user gives an request in English, transfer them to the English-speaking assistant.
+
+IMPORTANT TRANSFER RULES:
+{transfer_rules_text}
+
+DO NOT attempt to help with their actual request - only identify language preference and transfer immediately."""
 
     def _create_transfer_destinations(
         self, non_triage_configs: list[VoiceConfigProtocol]
@@ -354,7 +394,9 @@ class VAPIProvider:
     ) -> dict:
         """Create multi-assistant configuration (squad)."""
         # Create triage assistant
-        triage_assistant = self._create_triage_assistant(triage_configs[0], caller_info)
+        triage_assistant = self._create_triage_assistant(
+            triage_configs[0], non_triage_configs, caller_info
+        )
 
         # Create language assistants
         language_assistants = []
