@@ -130,17 +130,15 @@ class VAPIProvider:
             chunk_plan = {"formatPlan": {"replacements": []}}
 
             for key, value in voice_config.replacements.items():
-                escaped_key = re.escape(str(key))
-
                 # Check if key contains "wordy" characters (Latin letters/numbers)
                 # For such keys, use word boundaries (\b)
                 # For non-wordy keys (like Chinese ideographs), match literal token
                 if re.search(r"[a-zA-Z0-9]", str(key)):
                     # Contains wordy characters - use word boundaries
-                    pattern = f"(?i)\\b{escaped_key}\\b"
+                    pattern = f"(?i)\\b{str(key)}\\b"
                 else:
                     # Non-wordy characters (like Chinese) - match literally without boundaries
-                    pattern = f"(?i){escaped_key}"
+                    pattern = f"(?i){str(key)}"
 
                 chunk_plan["formatPlan"]["replacements"].append(
                     {"type": "regex", "regex": pattern, "value": value}
