@@ -975,8 +975,15 @@ async def handle_session_closure(message_data, session: AsyncSession):
             and metadata.get("source") == "admin-console"
         ):
             assistant_id = call_data.get("assistantId")
-            logger.debug(f"brucetest: {metadata}, id:{assistant_id}")
-        logger.debug("brucetest", call_data)
+            try:
+                logger.info(
+                    f"Self-onboarding: assistant {assistant_id} started to be deleted"
+                )
+                await handle_delete_vapi_assistant(assistant_id)
+            except Exception as e:
+                logger.error(
+                    f"Self-onboarding: failed to delete assistant {assistant_id}: {e}"
+                )
 
         # Extract caller information
         customer_data = message_data.get("customer", {})
@@ -1159,7 +1166,7 @@ async def handle_create_vapi_assistant(create_request) -> str:
     return assistant.id
 
 
-async def handle_delete_vapi_assistant(assistant_id: str) -> str:
+async def handle_delete_vapi_assistant(assistant_id: str):
     """Delete a VAPI assistant."""
 
     vapi_client = _get_vapi_client()
@@ -1168,4 +1175,4 @@ async def handle_delete_vapi_assistant(assistant_id: str) -> str:
     await vapi_client.assistants.delete(assistant_id)
 
     logger.info(f"Successfully deleted VAPI assistant: {assistant_id}")
-    return assistant_id
+    return

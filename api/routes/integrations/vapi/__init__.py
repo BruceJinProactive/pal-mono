@@ -7,11 +7,7 @@ import db
 from api.routes.endpoints import endpoints
 from api.schemas.error.error import ErrorResponse
 
-from ._implementation import (
-    api_vapi_server,
-    handle_create_vapi_assistant,
-    handle_delete_vapi_assistant,
-)
+from ._implementation import api_vapi_server, handle_create_vapi_assistant
 
 
 class CreateVapiAssistantRequest(BaseModel):
@@ -30,13 +26,6 @@ class CreateVapiAssistantResponse(BaseModel):
     """Response model for creating a VAPI assistant."""
 
     assistantId: str = Field(..., description="The ID of the created VAPI assistant")
-
-
-class DeleteVapiAssistantResponse(BaseModel):
-    """Response model for deleting a VAPI assistant."""
-
-    assistantId: str = Field(..., description="The ID of the deleted VAPI assistant")
-    message: str = Field(..., description="Confirmation message")
 
 
 vapi_router = APIRouter(prefix="/vapi", tags=["Integrations"])
@@ -113,48 +102,4 @@ async def create_vapi_assistant(
         # All other errors
         raise HTTPException(
             status_code=500, detail=f"Failed to create VAPI assistant: {str(e)}"
-        )
-
-
-@vapi_router.delete(
-    "/assistants/{assistant_id}",
-    status_code=status.HTTP_200_OK,
-    response_model=DeleteVapiAssistantResponse,
-    responses={
-        200: {
-            "model": DeleteVapiAssistantResponse,
-            "description": "Assistant deleted successfully",
-        },
-        404: {"model": ErrorResponse},
-        400: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
-)
-async def delete_vapi_assistant(
-    assistant_id: str,
-) -> DeleteVapiAssistantResponse:
-    """
-    Delete a VAPI assistant.
-
-    Permanently deletes a VAPI assistant and all its configurations.
-    This action cannot be undone.
-    """
-    try:
-        deleted_assistant_id = await handle_delete_vapi_assistant(assistant_id)
-        return DeleteVapiAssistantResponse(
-            assistantId=deleted_assistant_id, message="Assistant deleted successfully"
-        )
-    except ValueError as e:
-        # Validation or input errors (e.g., invalid assistant_id format)
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        # Check if it's a 404 error (assistant not found)
-        error_msg = str(e).lower()
-        if "not found" in error_msg or "404" in error_msg:
-            raise HTTPException(
-                status_code=404, detail=f"Assistant with ID '{assistant_id}' not found"
-            )
-        # All other errors
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete VAPI assistant: {str(e)}"
         )
