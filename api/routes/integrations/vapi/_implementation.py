@@ -484,11 +484,12 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             session, project.account
         ):
             logger.info(
-                "VAPI call blocked due to subscription enforcement",
+                "VAPI call blocked due to subscription enforcement for self-onboarded account",
                 extra={
                     "account_id": str(project.account.id),
                     "account_name": project.account.name,
                     "account_status": project.account.status.value,
+                    "onboarding_method": project.account.onboarding_method.value,
                     "has_current_subscription": project.account.current_subscription_id
                     is not None,
                     "has_stripe_customer": project.account.stripe_customer_id

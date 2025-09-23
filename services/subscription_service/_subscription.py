@@ -1469,7 +1469,12 @@ def _update_stripe_subscription_for_plan_switch(
 
 
 async def should_allow_calls_async(session: AsyncSession, account: db.Account) -> bool:
+    from db.tables.accounts import OnboardingMethod
+
     if account.current_subscription_id is None:
+        # Only block calls for self-onboarded accounts without subscriptions
+        if account.onboarding_method == OnboardingMethod.self_onboarding:
+            return False
         return True
 
     current_subscription = await get_current_subscription_async(session, account)
