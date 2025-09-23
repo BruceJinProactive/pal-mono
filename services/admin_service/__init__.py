@@ -28,7 +28,7 @@ def list_conversations_in_account(
     keyword: str,
     channel: str | None,
     project_id: uuid.UUID | None,
-    start_date: datetime,
+    start_date: datetime | None,
     end_date: datetime,
     page: int,
     page_size: int,

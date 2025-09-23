@@ -24,7 +24,7 @@ async def list_account_conversations(
     keyword: str,
     channel: Channel | None,
     project_id: uuid.UUID | None,
-    lookback: int,
+    lookback: int | None,
     page: int,
     page_size: int,
     escalated: bool,
@@ -37,7 +37,10 @@ async def list_account_conversations(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
-    start_date = datetime.datetime.now() - datetime.timedelta(seconds=lookback)
+    if lookback:
+        start_date = datetime.datetime.now() - datetime.timedelta(seconds=lookback)
+    else:
+        start_date = None
     end_date = datetime.datetime.now()
     total, user_session_previews = admin_service.list_conversations_in_account(
         account_id=account.id,

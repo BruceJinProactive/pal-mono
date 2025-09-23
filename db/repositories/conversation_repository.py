@@ -203,7 +203,7 @@ class ConversationRepository:
     def get_conversation_ids_by_user_ids(
         self,
         user_ids: list[uuid.UUID],
-        start_date: datetime,
+        start_date: datetime | None,
         end_date: datetime,
         project_id: uuid.UUID | None = None,
         hide_testing_sessions: bool = False,
@@ -211,10 +211,11 @@ class ConversationRepository:
         try:
             query = self.session.query(Conversation.id).filter(
                 Conversation.user_id.in_(user_ids),
-                Conversation.created_at >= start_date,
                 Conversation.created_at <= end_date,
             )
 
+            if start_date:
+                query = query.filter(Conversation.created_at >= start_date)
             if project_id is not None:
                 query = query.filter(Conversation.project_id == project_id)
             if hide_testing_sessions:

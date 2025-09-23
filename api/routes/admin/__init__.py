@@ -705,7 +705,6 @@ async def list_account_campaigns(
 ---------- Conversation Endpoints ----------
 --------------------------------------------
 """
-DEFAULT_SESSION_AGE = 3600 * 24 * 7  # 7 days of history
 
 
 @admin_router.get("/accounts/{account_name}/conversations")
@@ -718,8 +717,8 @@ async def list_account_conversations(
     project_id: uuid.UUID | None = Query(
         None, description="Optional project ID to filter conversations by"
     ),
-    lookback: int = Query(
-        DEFAULT_SESSION_AGE,
+    lookback: int | None = Query(
+        None,
         description="Only retrieve sessions created within the specified lookback period in seconds.",
         gt=0,
     ),
