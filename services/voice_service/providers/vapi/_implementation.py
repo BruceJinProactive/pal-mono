@@ -377,15 +377,14 @@ class VAPIProvider:
         assistant_destinations: list[dict],
     ) -> dict:
         """Build the complete squad configuration with triage and language assistants."""
-        # Build squad members - triage assistant first, then assistantDestinations, then language assistants
+        # Build squad members - triage assistant first with assistantDestinations, then language assistants
         members = []
 
-        # Add triage assistant as first member
-        members.append({"assistant": triage_assistant})
-
-        # Add assistantDestinations as separate member if provided
+        # Add triage assistant as first member with assistantDestinations if provided
+        triage_member: dict = {"assistant": triage_assistant}
         if assistant_destinations:
-            members.append({"assistantDestinations": assistant_destinations})
+            triage_member["assistantDestinations"] = assistant_destinations
+        members.append(triage_member)
 
         # Add language assistants as remaining members
         for assistant in language_assistants:
