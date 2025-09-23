@@ -1,12 +1,43 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from api.routes.endpoints import endpoints
 from api.schemas.error.error import ErrorResponse
 
-from ._implementation import api_vapi_server
+from ._implementation import (
+    api_vapi_server,
+    handle_create_vapi_assistant,
+    handle_delete_vapi_assistant,
+)
+
+
+class CreateVapiAssistantRequest(BaseModel):
+    """Request model for creating a VAPI assistant."""
+
+    name: str = Field(..., description="Assistant name")
+    firstMessage: str | None = Field(None, description="Optional greeting message")
+    maxDurationSeconds: int | None = Field(
+        None, description="Optional call duration limit in seconds"
+    )
+    systemPrompt: str = Field(..., description="System prompt for the AI model")
+    voiceId: str = Field(..., description="Voice ID for speech synthesis")
+
+
+class CreateVapiAssistantResponse(BaseModel):
+    """Response model for creating a VAPI assistant."""
+
+    assistantId: str = Field(..., description="The ID of the created VAPI assistant")
+
+
+class DeleteVapiAssistantResponse(BaseModel):
+    """Response model for deleting a VAPI assistant."""
+
+    assistantId: str = Field(..., description="The ID of the deleted VAPI assistant")
+    message: str = Field(..., description="Confirmation message")
+
 
 vapi_router = APIRouter(prefix="/vapi", tags=["Integrations"])
 
@@ -36,3 +67,94 @@ async def vapi_server(
     - transcript-update: when new transcripts are available
     """
     return await api_vapi_server(request, session)
+
+
+# VAPI Assistant Management Endpoints
+
+
+@vapi_router.post(
+    "/assistants",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CreateVapiAssistantResponse,
+    responses={
+        201: {
+            "model": CreateVapiAssistantResponse,
+            "description": "Assistant created successfully",
+        },
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_vapi_assistant(
+    create_request: CreateVapiAssistantRequest,
+) -> CreateVapiAssistantResponse:
+    """
+    Create a new VAPI assistant.
+
+    This endpoint creates a new assistant with the provided configurable fields:
+    - name: Assistant name
+    - firstMessage: Optional greeting message
+    - maxDurationSeconds: Optional call duration limit
+    - systemPrompt: System prompt for the AI model
+    - voiceId: Voice ID for speech synthesis
+
+    Fixed configuration:
+    - Transcriber: Deepgram with en-US language
+    - Model: OpenAI GPT-4o with temperature 0.7
+    - Voice Provider: Cartesia
+    """
+    try:
+        assistant_id = await handle_create_vapi_assistant(create_request)
+        return CreateVapiAssistantResponse(assistantId=assistant_id)
+    except ValueError as e:
+        # Validation or input errors
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # All other errors
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create VAPI assistant: {str(e)}"
+        )
+
+
+@vapi_router.delete(
+    "/assistants/{assistant_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=DeleteVapiAssistantResponse,
+    responses={
+        200: {
+            "model": DeleteVapiAssistantResponse,
+            "description": "Assistant deleted successfully",
+        },
+        404: {"model": ErrorResponse},
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_vapi_assistant(
+    assistant_id: str,
+) -> DeleteVapiAssistantResponse:
+    """
+    Delete a VAPI assistant.
+
+    Permanently deletes a VAPI assistant and all its configurations.
+    This action cannot be undone.
+    """
+    try:
+        deleted_assistant_id = await handle_delete_vapi_assistant(assistant_id)
+        return DeleteVapiAssistantResponse(
+            assistantId=deleted_assistant_id, message="Assistant deleted successfully"
+        )
+    except ValueError as e:
+        # Validation or input errors (e.g., invalid assistant_id format)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Check if it's a 404 error (assistant not found)
+        error_msg = str(e).lower()
+        if "not found" in error_msg or "404" in error_msg:
+            raise HTTPException(
+                status_code=404, detail=f"Assistant with ID '{assistant_id}' not found"
+            )
+        # All other errors
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete VAPI assistant: {str(e)}"
+        )

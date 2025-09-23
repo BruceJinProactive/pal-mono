@@ -41,6 +41,17 @@ from ._utils import (
 )
 
 
+def _get_vapi_client() -> AsyncVapi:
+    """
+    Get the VAPI client.
+    """
+    vapi_token = os.environ.get("VAPI_API_KEY")
+    if not vapi_token:
+        raise ValueError("VAPI_API_KEY environment variable is required")
+
+    return AsyncVapi(token=vapi_token)
+
+
 def _get_webhook_config() -> tuple[str, str, list[str]]:
     """
     Resolve webhook configuration from environment variables.
@@ -1090,3 +1101,60 @@ async def handle_session_closure(message_data, session: AsyncSession):
     except Exception as e:
         logger.error(f"Error in handle_session_closure: {str(e)}")
         return {"error": str(e)}
+
+
+async def handle_create_vapi_assistant(create_request) -> str:
+    """Create a new VAPI assistant using the server SDK."""
+
+    vapi_client = _get_vapi_client()
+
+    # Prepare assistant data with fixed defaults and configurable fields
+    assistant_data = {
+        "name": create_request.name,
+        # Fixed transcriber configuration
+        "transcriber": {
+            "provider": "deepgram",
+            "language": "en-US",
+        },
+        # Fixed model configuration with configurable system prompt
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "temperature": 0.7,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": create_request.systemPrompt,
+                }
+            ],
+        },
+        # Voice configuration with configurable voiceId
+        "voice": {
+            "provider": "cartesia",
+            "voice_id": create_request.voiceId,  # Fixed snake_case
+        },
+    }
+
+    # Add optional configurable fields with correct snake_case names
+    if create_request.firstMessage is not None:
+        assistant_data["first_message"] = create_request.firstMessage
+    if create_request.maxDurationSeconds is not None:
+        assistant_data["max_duration_seconds"] = create_request.maxDurationSeconds
+
+    # Create assistant via VAPI API - let exceptions propagate
+    assistant = await vapi_client.assistants.create(**assistant_data)
+
+    logger.info(f"Successfully created VAPI assistant: {assistant.id}")
+    return assistant.id
+
+
+async def handle_delete_vapi_assistant(assistant_id: str) -> str:
+    """Delete a VAPI assistant."""
+
+    vapi_client = _get_vapi_client()
+
+    # Delete assistant via VAPI API - let exceptions propagate
+    await vapi_client.assistants.delete(assistant_id)
+
+    logger.info(f"Successfully deleted VAPI assistant: {assistant_id}")
+    return assistant_id
