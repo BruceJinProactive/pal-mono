@@ -27,6 +27,7 @@ import time
 from typing import Dict, List
 
 from llama_index.core import Document, StorageContext, VectorStoreIndex
+from llama_index.core.node_parser import SimpleNodeParser
 from llama_index.embeddings.cohere import CohereEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
@@ -97,13 +98,18 @@ def index_to_pinecone(
         model_name="embed-english-v3.0",
     )
 
+    node_parser = SimpleNodeParser.from_defaults(
+        chunk_size=1000000,  # effectively disables chunking for menu items
+        chunk_overlap=0,
+    )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    # Index documents
+    # Index
     _ = VectorStoreIndex.from_documents(
         documents,
         storage_context=storage_context,
         embed_model=embed_model,
+        transformations=[node_parser],
     )
 
     logger.debug("Successfully indexed to Pinecone namespace: %s", pinecone_namespace)
