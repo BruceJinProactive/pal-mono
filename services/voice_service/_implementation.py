@@ -1,18 +1,11 @@
 """Voice service implementation."""
 
-import asyncio
-import os
 import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.admin._builder import build_voice_config
-from api.schemas.admin.onboarding import (
-    CreateVAPIAssistantRequest,
-    DeleteVAPIAssistantResponse,
-    VAPIAssistantResponse,
-)
 from api.schemas.admin.voice_config import (
     CreateVoiceConfigRequest,
     ListVoiceConfigsResponse,
@@ -21,7 +14,6 @@ from api.schemas.admin.voice_config import (
 )
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from services.voice_service.providers.vapi._implementation import VAPIProvider
-from utils.log import logger
 
 
 class VoiceService:
@@ -29,23 +21,6 @@ class VoiceService:
 
     def __init__(self):
         self.vapi_provider = VAPIProvider()
-        self._vapi_client = None
-
-    def _get_vapi_client(self):
-        """Get or create VAPI client instance."""
-        if self._vapi_client is None:
-            try:
-                from vapi import Vapi
-
-                api_key = os.environ.get("VAPI_API_KEY")
-                if not api_key:
-                    raise ValueError("VAPI_API_KEY environment variable is required")
-                self._vapi_client = Vapi(token=api_key)
-            except ImportError:
-                raise ImportError(
-                    "vapi-server-sdk is required for VAPI assistant management"
-                )
-        return self._vapi_client
 
     async def create_vapi_assistant_response(
         self,
@@ -195,144 +170,5 @@ class VoiceService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to delete voice config: {str(e)}",
-                headers={"Content-Type": "application/json"},
-            )
-
-    # VAPI Assistant Management Methods
-
-    async def create_vapi_assistant(
-        self, create_request: CreateVAPIAssistantRequest
-    ) -> VAPIAssistantResponse:
-        """Create a new VAPI assistant using the server SDK."""
-        try:
-            vapi_client = self._get_vapi_client()
-
-            # Prepare assistant data with fixed defaults and configurable fields
-            assistant_data = {
-                "name": create_request.name,
-                # Fixed transcriber configuration
-                "transcriber": {
-                    "provider": "deepgram",
-                    "language": "en-US",
-                },
-                # Fixed model configuration with configurable system prompt
-                "model": {
-                    "provider": "openai",
-                    "model": "gpt-4o",
-                    "temperature": 0.7,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": create_request.systemPrompt,
-                        }
-                    ],
-                },
-                # Voice configuration with configurable voiceId
-                "voice": {
-                    "provider": "cartesia",
-                    "voiceId": create_request.voiceId,
-                },
-            }
-
-            # Add optional configurable fields
-            if create_request.firstMessage is not None:
-                assistant_data["firstMessage"] = create_request.firstMessage
-            if create_request.maxDurationSeconds is not None:
-                assistant_data["maxDurationSeconds"] = create_request.maxDurationSeconds
-
-            # Create assistant via VAPI API
-            assistant = await asyncio.to_thread(
-                vapi_client.assistants.create, **assistant_data
-            )
-
-            logger.info(f"Successfully created VAPI assistant: {assistant.id}")
-
-            # Convert to response format
-            return VAPIAssistantResponse(
-                id=assistant.id,
-                name=assistant.name or "",
-                firstMessage=getattr(assistant, "firstMessage", None),
-                maxDurationSeconds=getattr(assistant, "maxDurationSeconds", None),
-                createdAt=getattr(
-                    assistant, "created_at", getattr(assistant, "createdAt", "")
-                ),
-                updatedAt=getattr(
-                    assistant, "updated_at", getattr(assistant, "updatedAt", "")
-                ),
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to create VAPI assistant: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to create VAPI assistant: {str(e)}",
-                headers={"Content-Type": "application/json"},
-            )
-
-    async def get_vapi_assistant(self, assistant_id: str) -> VAPIAssistantResponse:
-        """Get a VAPI assistant by ID."""
-        try:
-            vapi_client = self._get_vapi_client()
-            assistant = await asyncio.to_thread(
-                vapi_client.assistants.get, assistant_id
-            )
-
-            if not assistant:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="VAPI assistant not found",
-                )
-
-            return VAPIAssistantResponse(
-                id=assistant.id,
-                name=assistant.name or "",
-                firstMessage=getattr(assistant, "firstMessage", None),
-                maxDurationSeconds=getattr(assistant, "maxDurationSeconds", None),
-                createdAt=getattr(
-                    assistant, "created_at", getattr(assistant, "createdAt", "")
-                ),
-                updatedAt=getattr(
-                    assistant, "updated_at", getattr(assistant, "updatedAt", "")
-                ),
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to get VAPI assistant {assistant_id}: {str(e)}")
-            if "not found" in str(e).lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="VAPI assistant not found",
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to get VAPI assistant: {str(e)}",
-                headers={"Content-Type": "application/json"},
-            )
-
-    async def delete_vapi_assistant(
-        self, assistant_id: str
-    ) -> DeleteVAPIAssistantResponse:
-        """Delete a VAPI assistant."""
-        try:
-            vapi_client = self._get_vapi_client()
-            await asyncio.to_thread(vapi_client.assistants.delete, assistant_id)
-
-            logger.info(f"Successfully deleted VAPI assistant: {assistant_id}")
-
-            return DeleteVAPIAssistantResponse(
-                message="VAPI assistant deleted successfully",
-                deleted_id=assistant_id,
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to delete VAPI assistant {assistant_id}: {str(e)}")
-            if "not found" in str(e).lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="VAPI assistant not found",
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to delete VAPI assistant: {str(e)}",
                 headers={"Content-Type": "application/json"},
             )
