@@ -213,7 +213,6 @@ def create_payment_link(
                 exclude_none=True,
                 exclude={
                     # System-managed fields
-                    "id",
                     "created_at",
                     "updated_at",
                     "closed_at",
