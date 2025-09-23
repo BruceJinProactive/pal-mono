@@ -266,7 +266,6 @@ class VAPIProvider:
         self,
         triage_config: VoiceConfigProtocol,
         caller_info: dict,
-        non_triage_configs: list[VoiceConfigProtocol],
     ) -> dict:
         """Create triage assistant configuration."""
         # Use first_message from triage_config or create default greeting
@@ -303,11 +302,6 @@ class VAPIProvider:
                 triage_config.language
             ),
         }
-
-        # Add destinations for language assistants if provided
-        if non_triage_configs:
-            destinations = self._create_transfer_destinations(non_triage_configs)
-            triage_assistant_config["assistantDestinations"] = destinations
 
         return triage_assistant_config
 
@@ -360,9 +354,7 @@ class VAPIProvider:
     ) -> dict:
         """Create multi-assistant configuration (squad)."""
         # Create triage assistant
-        triage_assistant = self._create_triage_assistant(
-            triage_configs[0], caller_info, non_triage_configs
-        )
+        triage_assistant = self._create_triage_assistant(triage_configs[0], caller_info)
 
         # Create language assistants
         language_assistants = []
@@ -371,24 +363,29 @@ class VAPIProvider:
             assistant = self._create_single_assistant_config(voice_config, caller_info)
             language_assistants.append(assistant)
 
-        return self._build_squad_config(triage_assistant, language_assistants)
+        # Create transfer destinations for the triage assistant
+        assistant_destinations = self._create_transfer_destinations(non_triage_configs)
+
+        return self._build_squad_config(
+            triage_assistant, language_assistants, assistant_destinations
+        )
 
     def _build_squad_config(
         self,
         triage_assistant: dict,
         language_assistants: list[dict],
+        assistant_destinations: list[dict],
     ) -> dict:
         """Build the complete squad configuration with triage and language assistants."""
-        # Build squad members - triage assistant first, then language assistants
+        # Build squad members - triage assistant first, then assistantDestinations, then language assistants
         members = []
 
         # Add triage assistant as first member
-        members.append(
-            {
-                "assistant": triage_assistant
-                # assistantDestinations already included in the triage assistant config
-            }
-        )
+        members.append({"assistant": triage_assistant})
+
+        # Add assistantDestinations as separate member if provided
+        if assistant_destinations:
+            members.append({"assistantDestinations": assistant_destinations})
 
         # Add language assistants as remaining members
         for assistant in language_assistants:
