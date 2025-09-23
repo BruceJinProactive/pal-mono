@@ -185,13 +185,6 @@ def update_project(
         raise ValueError(f"Project {project_id} does not exist.")
 
     old_project = copy.copy(existing_project)
-
-    api_channel_identifier = f"api:{existing_project.name}"
-    if params.channel_identifiers is None:
-        params.channel_identifiers = []
-    if api_channel_identifier not in params.channel_identifiers:
-        params.channel_identifiers.append(api_channel_identifier)
-
     with change_log_context(
         session=session,
         resource_type=ChangeResourceType.Project,
