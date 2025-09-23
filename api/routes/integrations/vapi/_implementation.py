@@ -967,6 +967,17 @@ async def handle_session_closure(message_data, session: AsyncSession):
         call_data = message_data.get("call", {})
         call_id = call_data.get("id")
 
+        # this is for deleting the temporary assistant from the admin console self-onboarding
+        metadata = message_data.get("assistant", {}).get("metadata", {})
+        if (
+            call_data.get("type") == "webCall"
+            and call_data.get("assistantId")
+            and metadata.get("source") == "admin-console"
+        ):
+            assistant_id = call_data.get("assistantId")
+            logger.debug(f"brucetest: {metadata}, id:{assistant_id}")
+        logger.debug("brucetest", call_data)
+
         # Extract caller information
         customer_data = message_data.get("customer", {})
         customer_number = customer_data.get("number", "")
@@ -1132,6 +1143,7 @@ async def handle_create_vapi_assistant(create_request) -> str:
             "provider": "cartesia",
             "voice_id": create_request.voiceId,  # Fixed snake_case
         },
+        "metadata": {"source": "admin-console"},
     }
 
     # Add optional configurable fields with correct snake_case names
