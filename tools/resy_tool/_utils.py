@@ -85,7 +85,12 @@ def extract_resy_availability(
     return deduped
 
 
-def format_resy_availability(slots: List[Dict[str, Any]], *, party_size: int) -> str:
+def format_resy_availability(
+    slots: List[Dict[str, Any]],
+    *,
+    party_size: int,
+    requested_time: datetime.datetime | None,
+) -> str:
     """Format available slots in a human-readable way for the agent reply."""
 
     if not slots:
@@ -96,21 +101,31 @@ def format_resy_availability(slots: List[Dict[str, Any]], *, party_size: int) ->
 
     lines = [f"Availability for {header_name} (Party of {party_size}):"]
 
-    seen_times: set[str] = set()
+    parsed_times: List[datetime.datetime] = []
     for slot in slots:
-        start_dt = _parse_iso(slot.get("start"))
-        if start_dt:
-            pretty_time = start_dt.strftime("%A, %B %d, %Y at %I:%M %p")
-        else:
-            pretty_time = slot.get("start") or "Unknown time"
+        slot_dt = _parse_iso(slot.get("start"))
+        if slot_dt:
+            parsed_times.append(slot_dt.replace(second=0, microsecond=0))
 
-        if pretty_time in seen_times:
+    if not parsed_times:
+        return "No availability found."
+
+    unique_times: List[datetime.datetime] = []
+    seen: set[datetime.datetime] = set()
+    for dt in parsed_times:
+        if dt in seen:
             continue
-        seen_times.add(pretty_time)
-        lines.append(f"* {pretty_time}")
-        if len(lines) >= 8:  # header + up to 7 slots keeps output concise
-            break
+        seen.add(dt)
+        unique_times.append(dt)
 
+    if requested_time:
+        center = requested_time.replace(second=0, microsecond=0)
+        unique_times.sort(key=lambda dt: (abs(dt - center), dt))
+    else:
+        unique_times.sort()
+
+    selected = sorted(unique_times[:5])
+    lines.extend(f"* {dt.strftime('%A, %B %d, %Y at %I:%M %p')}" for dt in selected)
     return "\n".join(lines)
 
 

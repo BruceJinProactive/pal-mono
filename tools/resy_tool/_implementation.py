@@ -1,4 +1,5 @@
 import urllib.error
+from datetime import datetime
 from functools import cached_property
 
 from agno.tools.toolkit import Toolkit
@@ -66,7 +67,7 @@ class ResyTool(Toolkit, BaseReservationTool):
     @params_validate()
     def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
-        Check availability for the configured Resy venue.
+        Check reservation availability for the Resy venue.
 
         Args:
             party_size: Number of guests for the reservation.
@@ -111,7 +112,14 @@ class ResyTool(Toolkit, BaseReservationTool):
             )
             return f"No availability found for venue {self.venue_id} (Party of {party_size})."
 
-        formatted = format_resy_availability(slots, party_size=party_size)
+        try:
+            requested_dt = datetime.fromisoformat(f"{date}T{time}")
+        except ValueError:
+            requested_dt = None
+
+        formatted = format_resy_availability(
+            slots, party_size=party_size, requested_time=requested_dt
+        )
         logger.info("[Resy Tool] Formatted availability: %s", formatted)
         return formatted
 
@@ -127,7 +135,7 @@ class ResyTool(Toolkit, BaseReservationTool):
         notes: str = "",
     ) -> str:
         """
-        Provide a Resy booking link that completes the reservation flow.
+        Make sure to use check_availability before making the reservation. Provides a Resy booking link that completes the reservation flow.
 
         Args:
             name: Optional Guest name (ignored by this tool).
@@ -150,11 +158,13 @@ class ResyTool(Toolkit, BaseReservationTool):
             )
             return f"Error: Invalid reservation time: {exc}"
 
-        time_component = normalized_dt.split("T")[1]
-        booking_url = (
-            f"{self.booking_base_url}?seats={party_size}&date={date}&time="
-            f"{time_component.replace(':', '')}"
+        normalized_dt_obj = datetime.fromisoformat(normalized_dt)
+        floored_minutes = normalized_dt_obj.minute - (normalized_dt_obj.minute % 30)
+        floored_dt = normalized_dt_obj.replace(
+            minute=floored_minutes, second=0, microsecond=0
         )
+        booking_time = floored_dt.strftime("%H%M")
+        booking_url = f"{self.booking_base_url}?seats={party_size}&date={date}&time={booking_time}"
 
         lines = [
             "The reservation request is prepared",
