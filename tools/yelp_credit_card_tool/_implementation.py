@@ -10,6 +10,7 @@ from ddtrace.llmobs.decorators import retrieval, tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from tools.base.reservation import BaseReservationTool, params_validate
 from tools.utils.ordering._llm import llm_call
 from tools.yelp_credit_card_tool._apis import cancel_visit as api_cancel_visit
 from tools.yelp_credit_card_tool._apis import (
@@ -24,15 +25,8 @@ from tools.yelp_credit_card_tool._apis import (
 from tools.yelp_credit_card_tool._prompt_constants import (
     CANCEL_VISIT_EXTRACTION_SYSTEM_PROMPT,
     CANCEL_VISIT_EXTRACTION_USER_PROMPT,
-    OPENINGS_EXTRACTION_SYSTEM_PROMPT,
-    OPENINGS_EXTRACTION_USER_PROMPT,
-    RESERVATION_EXTRACTION_SYSTEM_PROMPT,
-    RESERVATION_EXTRACTION_USER_PROMPT,
-    WAITLIST_JOIN_QUEUE_EXTRACTION_SYSTEM_PROMPT,
-    WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT,
     WAITLIST_ON_MY_WAY_EXTRACTION_SYSTEM_PROMPT,
     WAITLIST_ON_MY_WAY_EXTRACTION_USER_PROMPT,
-    WEEKDAY_CONVERSION_RULES,
 )
 from tools.yelp_credit_card_tool._utils import (
     OPENINGS_ANY_TIME_LIST_COUNT,
@@ -56,7 +50,6 @@ from tools.yelp_credit_card_tool._utils import (
 from tools.yelp_credit_card_tool.classes import (
     CancelVisitQuery,
     OpeningsQuery,
-    WaitlistJoinQueueQuery,
     WaitlistOnMyWayQuery,
     YelpAccessToken,
 )
@@ -64,7 +57,12 @@ from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
 
-class YelpCreditCardTool(Toolkit):
+class YelpCreditCardTool(Toolkit, BaseReservationTool):
+    # Required fields for each tool method (BaseReservationTool interface)
+    REQUIRED_CHECK_AVAILABILITY_FIELDS = ["party_size", "date", "time"]
+    REQUIRED_MAKE_RESERVATION_FIELDS = ["party_size", "date", "time"]
+    REQUIRED_JOIN_WAITLIST_QUEUE_FIELDS = ["name", "party_size"]
+
     def __init__(
         self,
         business_id_or_alias: str,
@@ -143,9 +141,9 @@ class YelpCreditCardTool(Toolkit):
             self.biz_lat = biz_lat
             self.biz_long = biz_long
 
-            # Register credit card workflow tools
-            self.register(self.get_openings_open_api_creditcard_required)
-            self.register(self.make_reservation_creditcard_required)
+            # Register credit card workflow tools (BaseReservationTool interface)
+            self.register(self.check_availability)
+            self.register(self.make_reservation)
         else:
             # No reservations enabled - set business parameters to None
             self.biz_id = None
@@ -289,8 +287,7 @@ class YelpCreditCardTool(Toolkit):
         LLMObs.annotate(output_data=chat_history)
         return chat_history
 
-    @tool
-    def get_waitlist_status(self) -> str:
+    def get_waitlist_status(self) -> str:  # type: ignore[misc]
         """
         Get current waitlist status and wait times for a restaurant using the Yelp Waitlist API.
         This endpoint returns real-time waitlist status including current wait estimates by party size,
@@ -537,13 +534,12 @@ class YelpCreditCardTool(Toolkit):
             return f"Failed to create waitlist on-my-way visit. {str(e)}"
 
     @tool
-    def join_waitlist_queue(
+    @params_validate()
+    def join_waitlist_queue(  # type: ignore[misc]
         self,
-        name: Optional[str] = None,
-        phone: Optional[str] = None,
-        party_size: Optional[int] = None,
-        party_notes: Optional[str] = None,
-        idempotency_token: Optional[str] = None,
+        name: str,
+        party_size: int,
+        notes: str = "",
     ) -> str:
         """
         Join the waitlist queue for a restaurant using the Yelp Waitlist API.
@@ -555,11 +551,9 @@ class YelpCreditCardTool(Toolkit):
         - Join the wait when they know there's currently a wait time
 
         Args:
-            name: Full name of the person for the waitlist.
-            phone: Phone number in E.164 format (e.g., +15551234567).
-            party_size: Number of people in the party.
-            party_notes: Additional notes or special requests for the waitlist visit.
-            idempotency_token: Unique token to prevent duplicate requests.
+            name: Full name of the person for the waitlist
+            party_size: Number of people in the party
+            notes: Additional notes or special requests for the waitlist visit (optional)
 
         Returns:
             str: Confirmation of waitlist queue join with visit details, expected seating times,
@@ -578,44 +572,17 @@ class YelpCreditCardTool(Toolkit):
                 )
                 return "Unable to authenticate with Yelp. Please verify your API credentials."
 
-            # Get chat history and extract waitlist parameters
-            chat_history = self._get_chat_history()  # type: ignore
-
-            # Extract using WaitlistJoinQueueQuery class
-            logger.debug(
-                "[YelpTool.join_waitlist_queue] Extracting waitlist parameters using LLM"
-            )
-            waitlist_query = llm_call(
-                system_prompt=WAITLIST_JOIN_QUEUE_EXTRACTION_SYSTEM_PROMPT,
-                prompt=WAITLIST_JOIN_QUEUE_EXTRACTION_USER_PROMPT.format(
-                    chat_history=chat_history
-                ),
-                response_format=WaitlistJoinQueueQuery,
-                openai=True,
-            )
-
-            if not isinstance(waitlist_query, WaitlistJoinQueueQuery):
-                logger.debug(
-                    f"[YelpTool.join_waitlist_queue] LLM extraction failed - invalid response type: {type(waitlist_query)}"
-                )
-                return "I couldn't understand your waitlist request. Please provide your name, phone number, and party size to join the queue."
-
-            logger.debug(
-                f"[YelpTool.join_waitlist_queue] Extracted parameters - name: {waitlist_query.name}, phone: {waitlist_query.phone}, party_size: {waitlist_query.party_size}, party_notes: {waitlist_query.party_notes}"
-            )
+            # Use customer phone from metadata
+            customer_phone = self.tool_metadata.customer_phone
 
             # Check for required fields and provide specific feedback
             logger.debug("[YelpTool.join_waitlist_queue] Validating required fields")
 
-            customer_phone = waitlist_query.phone
-            if not customer_phone:
-                customer_phone = self.tool_metadata.customer_phone
-
             all_present, missing_prompts = check_waitlist_join_queue_required_fields(
                 business_id=self.business_id_or_alias,
                 phone=customer_phone,
-                party_size=waitlist_query.party_size,
-                name=waitlist_query.name,
+                party_size=party_size,
+                name=name,
             )
 
             if not all_present:
@@ -637,10 +604,10 @@ class YelpCreditCardTool(Toolkit):
             success, message, request_obj = create_waitlist_join_queue_request(
                 business_id=self.business_id_or_alias,
                 phone=customer_phone,  # type: ignore
-                party_size=waitlist_query.party_size,  # type: ignore
-                name=waitlist_query.name,  # type: ignore
-                party_notes=waitlist_query.party_notes,
-                idempotency_token=waitlist_query.idempotency_token,
+                party_size=party_size,
+                name=name,
+                party_notes=notes if notes else None,
+                idempotency_token=None,  # Generate if needed internally
             )
 
             if not success or not request_obj:
@@ -692,81 +659,33 @@ class YelpCreditCardTool(Toolkit):
             return f"Failed to join the waitlist queue. {str(e)}"
 
     @tool
-    def get_openings_open_api_creditcard_required(
-        self,
-        covers: Optional[int] = None,
-        date: Optional[str] = None,
-        time: Optional[str] = None,
-        get_covers_range: Optional[bool] = None,
-        after: Optional[bool] = None,
-        before: Optional[bool] = None,
-    ) -> str:
+    @params_validate()
+    def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
-        Get available reservation times for restaurants using their open API search endpoint.
+        Check availability for restaurant reservations (Credit Card Required).
 
-        Use when: User wants to check availability or see time options for open API restaurants.
+        Use when: User wants to check availability or see time options before booking.
+        This restaurant requires credit card information to complete reservations.
 
         Args:
-            covers: Number of people for the reservation (1-10).
-            date: Desired reservation date in YYYY-MM-DD format.
-            time: Desired reservation time in HH:MM format.
-            get_covers_range: Whether to include covers range information in response.
-            after: Whether user wants openings after a specific time.
-            before: Whether user wants openings before a specific time.
+            party_size: Number of people for the reservation (1-10)
+            date: Desired reservation date in YYYY-MM-DD format
+            time: Desired reservation time in HH:MM format (24-hour)
 
         Returns:
             str: Formatted string containing available reservation times, or error message
         """
         try:
-            # Get chat history and extract search parameters
-            chat_history = self._get_chat_history()  # type: ignore
+            # Use default result limits for openings query
+            num_results_before = OPENINGS_DEFAULT_LIST_COUNT
+            num_results_after = OPENINGS_DEFAULT_LIST_COUNT
 
-            # Extract using OpeningsQuery class
-            current_date = self._get_current_date()
-            openings_query = llm_call(
-                system_prompt=OPENINGS_EXTRACTION_SYSTEM_PROMPT.format(
-                    current_date=current_date,
-                    weekday_conversion_rules=WEEKDAY_CONVERSION_RULES.format(
-                        current_date=current_date
-                    ),
-                ),
-                prompt=OPENINGS_EXTRACTION_USER_PROMPT.format(
-                    chat_history=chat_history
-                ),
-                response_format=OpeningsQuery,
-                openai=True,
-            )
-
-            if not isinstance(openings_query, OpeningsQuery):
-                return "I couldn't understand your reservation search request. Please specify the number of people, date, and time you'd like to search for."
-
-            # Validate required fields
-            if (
-                not openings_query.covers
-                or not openings_query.date
-                or not openings_query.time
-            ):
-                missing_fields = []
-                if not openings_query.covers:
-                    missing_fields.append("number of people")
-                if not openings_query.date:
-                    missing_fields.append("date")
-                if not openings_query.time:
-                    missing_fields.append("time")
-
-                return f"To search for available times, I need the following information: {', '.join(missing_fields)}. Please provide these details."
-
-            # Determine result limits for the openings query
-            num_results_before, num_results_after = self._get_result_limits_for_query(
-                openings_query
-            )
-
-            # Create request object
+            # Create request object directly from provided parameters
             success, message, request_obj = create_openings_request_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
-                covers=openings_query.covers,  # type: ignore
-                date=openings_query.date,  # type: ignore
-                time=openings_query.time,  # type: ignore
+                covers=party_size,
+                date=date,
+                time=time,
                 biz_id=self.biz_id,  # type: ignore
                 biz_lat=self.biz_lat,  # type: ignore
                 biz_long=self.biz_long,  # type: ignore
@@ -797,17 +716,18 @@ class YelpCreditCardTool(Toolkit):
             return "Failed to get restaurant openings. Please try again."
 
     @tool
-    def make_reservation_creditcard_required(
+    @params_validate()
+    def make_reservation(  # type: ignore[misc]
         self,
-        covers: Optional[int] = None,
-        date: Optional[str] = None,
-        time: Optional[str] = None,
-        get_covers_range: Optional[bool] = None,
-        after: Optional[bool] = None,
-        before: Optional[bool] = None,
+        name: str,
+        party_size: int,
+        date: str,
+        time: str,
+        email: str = "",
+        notes: str = "",
     ) -> str:
         """
-        Make a restaurant reservation and completion on Yelp's website.
+        Make a restaurant reservation (Credit Card Required).
 
         **When to use this tool:**
         - User explicitly requests to book/place/make a reservation (e.g., "Book a table", "Make a reservation", "Reserve a table")
@@ -817,68 +737,31 @@ class YelpCreditCardTool(Toolkit):
         - If exact requested time is available: Returns booking URL to complete reservation
         - If exact requested time is NOT available: Returns all available times and asks user to confirm a different time (does not provide booking URL)
 
+        Note: Customer details (name, email, notes) are ignored as the reservation is completed on Yelp's website with credit card information.
+
         Args:
-            covers: Number of people for the reservation (1-10).
-            date: Desired reservation date in YYYY-MM-DD format.
-            time: Desired reservation time in HH:MM format.
-            get_covers_range: Whether to include covers range information in response.
-            after: Whether user wants openings after a specific time.
-            before: Whether user wants openings before a specific time.
+            name: Customer name (ignored - reservation completed on Yelp)
+            party_size: Number of people for the reservation (1-10)
+            date: Desired reservation date in YYYY-MM-DD format
+            time: Desired reservation time in HH:MM format (24-hour)
+            email: Customer email address (optional, ignored)
+            notes: Optional notes for the reservation (optional, ignored)
 
         Returns:
             str: Secure Yelp booking link if exact time is available, or list of all available times
                  asking user to confirm if exact time is not available, or error message if no availability.
         """
         try:
-            # Get chat history and extract search parameters
-            chat_history = self._get_chat_history()  # type: ignore
+            # Use default result limits for openings query
+            num_results_before = OPENINGS_DEFAULT_LIST_COUNT
+            num_results_after = OPENINGS_DEFAULT_LIST_COUNT
 
-            # Extract using OpeningsQuery class for basic parameters
-            current_date = self._get_current_date()
-            openings_query = llm_call(
-                system_prompt=RESERVATION_EXTRACTION_SYSTEM_PROMPT.format(
-                    current_date=current_date,
-                    weekday_conversion_rules=WEEKDAY_CONVERSION_RULES.format(
-                        current_date=current_date
-                    ),
-                ),
-                prompt=RESERVATION_EXTRACTION_USER_PROMPT.format(
-                    chat_history=chat_history
-                ),
-                response_format=OpeningsQuery,
-                openai=True,
-            )
-
-            if not isinstance(openings_query, OpeningsQuery):
-                return "I couldn't understand your reservation request. Please specify the number of people, date, and time you'd like to book."
-
-            # Validate required fields
-            if (
-                not openings_query.covers
-                or not openings_query.date
-                or not openings_query.time
-            ):
-                missing_fields = []
-                if not openings_query.covers:
-                    missing_fields.append("number of people")
-                if not openings_query.date:
-                    missing_fields.append("date")
-                if not openings_query.time:
-                    missing_fields.append("time")
-
-                return f"To make a reservation, I need the following information: {', '.join(missing_fields)}. Please provide these details."
-
-            # Determine result limits for the openings query
-            num_results_before, num_results_after = self._get_result_limits_for_query(
-                openings_query
-            )
-
-            # Create request object
+            # Create request object directly from provided parameters
             success, message, request_obj = create_openings_request_creditcard_required(
                 business_id_or_alias=self.business_id_or_alias,
-                covers=openings_query.covers,  # type: ignore
-                date=openings_query.date,  # type: ignore
-                time=openings_query.time,  # type: ignore
+                covers=party_size,
+                date=date,
+                time=time,
                 biz_id=self.biz_id,  # type: ignore
                 biz_lat=self.biz_lat,  # type: ignore
                 biz_long=self.biz_long,  # type: ignore
@@ -913,7 +796,7 @@ class YelpCreditCardTool(Toolkit):
                     f"[YelpTool.make_reservation_open_api] is getting: reservation_url:{reservation_url}"
                 )
 
-                return f"I found availability for {openings_query.covers} people on {openings_query.date} at your requested time {response.exact_match.formatted_time}.\n\nPlease complete your reservation through this link: {reservation_url}. The complete link must be sent, must not be shortened or modified in any way.\n\nYou MUST include the EXACT reservation url in your response:\n{reservation_url}"
+                return f"I found availability for {party_size} people on {date} at your requested time {response.exact_match.formatted_time}.\n\nPlease complete your reservation through this link: {reservation_url}. The complete link must be sent, must not be shortened or modified in any way.\n\nYou MUST include the EXACT reservation url in your response:\n{reservation_url}"
 
             else:
                 # No exact match - show all available times and ask user to confirm
@@ -921,7 +804,7 @@ class YelpCreditCardTool(Toolkit):
                 logger.debug(
                     f"[YelpTool.make_reservation_open_api] is getting: formatted_times:{formatted_times}"
                 )
-                return f"We cannot find the exact time you requested for {openings_query.covers} people on {openings_query.date}.\nCurrent found times:\n{formatted_times}\n\nPlease let me know which time you'd prefer and I'll help you make the reservation."
+                return f"We cannot find the exact time you requested for {party_size} people on {date}.\nCurrent found times:\n{formatted_times}\n\nPlease let me know which time you'd prefer and I'll help you make the reservation."
 
         except Exception as e:
             logger.debug(f"[YelpTool.make_reservation_open_api] Error: {e}")
@@ -1033,3 +916,14 @@ class YelpCreditCardTool(Toolkit):
             logger.debug(traceback.format_exc())
 
             return f"Failed to cancel the visit. {str(e)}"
+
+    def get_user_wait_status(self) -> str:  # type: ignore[misc]
+        """
+        Get today's waitlist entries for a specific phone number.
+
+        Note: This functionality is not currently supported by Yelp's waitlist API.
+
+        Returns:
+            str: Message indicating that user wait status is not supported
+        """
+        return "User wait status lookup is not supported by Yelp waitlist API."
