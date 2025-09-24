@@ -99,7 +99,7 @@ def index_to_pinecone(
         documents,
         storage_context=storage_context,
         embed_model=embed_model,
-        node_parser=node_parser,
+        transformations=[node_parser],
     )
 
     logger.debug(
