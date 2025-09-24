@@ -267,7 +267,7 @@ class VAPIProvider:
             "startSpeakingPlan": self._create_start_speaking_plan(
                 voice_config.language
             ),
-            "firstMessageInterruptionsEnabled": False if only_assistant else True,
+            "firstMessageInterruptionsEnabled": not only_assistant,
             "firstMessageMode": "assistant-speaks-first",
             "analysisPlan": self._get_analysis_plan(),
         }
