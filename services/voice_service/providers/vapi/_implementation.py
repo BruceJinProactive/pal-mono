@@ -208,7 +208,7 @@ class VAPIProvider:
 
         if len(non_triage_configs) == 1:
             assistant_config = self._create_single_assistant_config(
-                non_triage_configs[0], caller_info
+                non_triage_configs[0], caller_info, only_assistant=True
             )
             return {"assistant": assistant_config}
         else:
@@ -222,7 +222,7 @@ class VAPIProvider:
             )
 
     def _create_single_assistant_config(
-        self, voice_config: VoiceConfigProtocol, caller_info: dict
+        self, voice_config: VoiceConfigProtocol, caller_info: dict, only_assistant: bool
     ) -> dict:
         """Create single assistant configuration."""
         # Check if language is 'triage' which is not allowed for single assistant
@@ -267,6 +267,8 @@ class VAPIProvider:
             "startSpeakingPlan": self._create_start_speaking_plan(
                 voice_config.language
             ),
+            "firstMessageInterruptionsEnabled": False if only_assistant else True,
+            "firstMessageMode": "assistant-speaks-first",
             "analysisPlan": self._get_analysis_plan(),
         }
 
@@ -309,6 +311,8 @@ class VAPIProvider:
             "voice": voice,
             "backgroundSound": background_sound,
             "silenceTimeoutSeconds": 60,
+            "firstMessageInterruptionsEnabled": False,
+            "firstMessageMode": "assistant-speaks-first",
             "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
             "startSpeakingPlan": self._create_start_speaking_plan(
                 triage_config.language
@@ -413,7 +417,9 @@ DO NOT attempt to help with their actual request - only identify language prefer
         language_assistants = []
         for voice_config in non_triage_configs:
             # Create individual assistant for each non-triage voice config
-            assistant = self._create_single_assistant_config(voice_config, caller_info)
+            assistant = self._create_single_assistant_config(
+                voice_config, caller_info, only_assistant=False
+            )
             language_assistants.append(assistant)
 
         # Create transfer destinations for the triage assistant
