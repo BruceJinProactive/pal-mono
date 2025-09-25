@@ -84,6 +84,9 @@ class SelfOnboardingRequest(BaseModel):
     account_display_name: str = Field(
         ..., description="Display name of the created account"
     )
+    account_description: str = Field(
+        ..., description="Business description of the created account"
+    )
     phone_number: str = Field(..., description="Phone number of the created account")
 
     # User parameters
