@@ -735,6 +735,16 @@ async def build_menu_from_url(
     )
 
 
+## Brand Scraper
+async def scrape_brand_from_url(
+    url: str,
+) -> str:
+    """
+    Scrape a description of the brand from a URL using Firecrawl.
+    """
+    return _implementation.scrape_brand_from_url(url)
+
+
 __all__ = [
     "list_conversations_in_account",
     "get_inbox_conversations",
@@ -768,4 +778,5 @@ __all__ = [
     "delete_lead",
     "get_lead",
     "build_menu_from_url",
+    "scrape_brand_from_url",
 ]

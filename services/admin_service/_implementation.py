@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 from botocore.exceptions import ClientError
+from firecrawl import Firecrawl
+from pydantic import BaseModel
 from sqlalchemy import Table
 from sqlalchemy.orm import Session, declarative_base
 
@@ -46,6 +48,7 @@ from services.project_service import get_project, replace_project_channel_identi
 from services.user_service import get_users_by_account_id
 from utils import secret
 from utils.log import logger
+from utils.secret import get_client_secret_with_fallback
 
 MOCK_USER_PREFIX = "mock-user"
 
@@ -1480,3 +1483,69 @@ def get_lead(
     lead_repo = db.LeadRepository(session)
     lead = lead_repo.get_lead_by_id(lead_id)
     return lead
+
+
+## Brand Scraper
+class JsonSchema(BaseModel):
+    company_description: str
+
+
+def get_brand_extract_prompt() -> str:
+    return """
+    Extract a concise company description from the given webpage text. 
+    The description should summarize:
+    - What the company does (products/services)
+    - The industry or sector it operates in
+    - Who its customers or target audience are (if mentioned)
+    - Any unique value proposition, mission, or vision
+    - What food or items the company sells and are known for
+
+    Write the description in 2–5 clear professional sentences. 
+    Do not include irrelevant information, navigation text, or job postings. 
+    If no description can be found, respond with: "No clear company description found."
+    """
+
+
+def scrape_brand_from_url(url: str):
+    """
+    Scrape a description of the brand from a URL using Firecrawl.
+    """
+    ## Set up Firecrawl
+    try:
+        api_key = get_client_secret_with_fallback("FIRECRAWL_API_KEY")
+    except ValueError as e:
+        raise ValueError("Firecrawl API key required.") from e
+    firecrawl = Firecrawl(api_key=api_key)
+
+    ## Firecrawl Map
+    mappedPage = None
+    search_queries = ["about", "story", "overview", "home"]
+
+    for search_query in search_queries:
+        res = firecrawl.map(url=url, limit=50, sitemap="include", search=search_query)
+        if res:
+            mappedPage = res
+            break
+
+    ## Firecrawl Scrape
+    if mappedPage and hasattr(mappedPage, "links") and mappedPage.links:
+        links = mappedPage.links
+        if links:
+            for link in links:
+                if "xml" not in link.url:
+                    res = firecrawl.scrape(
+                        link.url,
+                        formats=[
+                            {
+                                "type": "json",
+                                "schema": JsonSchema,
+                                "prompt": get_brand_extract_prompt(),
+                            }
+                        ],
+                        only_main_content=False,
+                        timeout=120000,
+                        proxy="auto",
+                    )
+                    if res and res.json and res.json.get("company_description"):
+                        return res.json["company_description"]
+    return ""

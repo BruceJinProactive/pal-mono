@@ -11,6 +11,8 @@ from api.schemas.admin.onboarding import (
     GenerateAgentPromptsResponse,
     OnboardingRequest,
     OnboardingResponse,
+    ScrapeBrandFromUrlRequest,
+    ScrapeBrandFromUrlResponse,
     SelfOnboardingRequest,
     SelfOnboardingResponse,
 )
@@ -174,6 +176,26 @@ async def build_menu_api(
                 "use_stealth_proxy": request.use_stealth_proxy,
             },
         )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def scrape_brand_from_url(
+    request: ScrapeBrandFromUrlRequest,
+) -> ScrapeBrandFromUrlResponse:
+    try:
+        res = await admin_service.scrape_brand_from_url(request.url)
+        return ScrapeBrandFromUrlResponse(brand_info=res)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",

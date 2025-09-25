@@ -135,3 +135,16 @@ class BuildMenuResponse(BaseModel):
     """Response model for built menu data"""
 
     menu: str = Field(..., description="Menu data formatted as markdown")
+
+
+class ScrapeBrandFromUrlRequest(BaseModel):
+    """Request model for scraping brand from URL"""
+
+    url: str = Field(..., description="URL to scrape brand from")
+
+
+class ScrapeBrandFromUrlResponse(BaseModel):
+    brand_info: str = Field(
+        ...,
+        description="A short description of the company's brand which is found through the URL provided",
+    )

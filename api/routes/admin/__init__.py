@@ -82,6 +82,8 @@ from api.schemas.admin.onboarding import (
     GenerateAgentPromptsResponse,
     OnboardingRequest,
     OnboardingResponse,
+    ScrapeBrandFromUrlRequest,
+    ScrapeBrandFromUrlResponse,
     SelfOnboardingRequest,
     SelfOnboardingResponse,
 )
@@ -1685,6 +1687,16 @@ async def build_menu_api(
     Build menu data from a restaurant URL using Firecrawl.
     """
     return await _onboarding.build_menu_api(request, context)
+
+
+@admin_router.post("/onboarding/scrape_brand_from_url", status_code=status.HTTP_200_OK)
+async def scrape_brand_from_url_api(
+    request: ScrapeBrandFromUrlRequest,
+) -> ScrapeBrandFromUrlResponse:
+    """
+    Scrape brand from a URL using Firecrawl.
+    """
+    return await _onboarding.scrape_brand_from_url(request)
 
 
 @admin_router.post("/onboarding", status_code=status.HTTP_201_CREATED)
