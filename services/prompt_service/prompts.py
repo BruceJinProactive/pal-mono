@@ -144,16 +144,6 @@ prompt_factory = PromptFactory()
 
 prompt_factory.register(
     Prompt(
-        id="language-guideline-t2",
-        plan_tiers=[TargetTier.t2],
-        title="Language Guideline",
-        instructions="""
-- If the user uses Spanish, be sure to reply with American version of Spanish.""",
-    )
-)
-
-prompt_factory.register(
-    Prompt(
         id="closing-conversation-general-sales",
         agent_types=[AgentType.general, AgentType.sales],
         title="Closing Conversation Guideline",
