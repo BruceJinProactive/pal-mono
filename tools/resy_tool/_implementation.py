@@ -135,7 +135,7 @@ class ResyTool(Toolkit, BaseReservationTool):
         notes: str = "",
     ) -> str:
         """
-        Make sure to use check_availability before making the reservation. Provides a Resy booking link that completes the reservation flow.
+        Make sure to use check_availability before making the reservation. Provides a Resy booking link for the user to reserve a slot.
 
         Args:
             name: Optional Guest name (ignored by this tool).
@@ -167,13 +167,12 @@ class ResyTool(Toolkit, BaseReservationTool):
         booking_url = f"{self.booking_base_url}?seats={party_size}&date={date}&time={booking_time}"
 
         lines = [
-            "The reservation request is prepared",
+            "Inform the user that the reservation link is available",
             f"Date & Time: {normalized_dt}",
             f"Party Size: {party_size}",
-            f"Venue ID: {self.venue_id}",
             "",
-            f"Click here to complete your reservation: {booking_url}",
-            "This link takes you to Resy. On the Resy site you will have to click the specified time to complete the reservation.",
+            f"Tell the user they have to click this link sent to complete their reservation: {booking_url}",
+            f"This link takes the user to Resy. Inform the user that on the Resy site they will have to click the blue {time} button, then press complete reservation and then give their phone number to complete the reservation.",
         ]
         return "\n".join(lines)
 
