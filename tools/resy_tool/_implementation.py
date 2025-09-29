@@ -135,7 +135,7 @@ class ResyTool(Toolkit, BaseReservationTool):
         notes: str = "",
     ) -> str:
         """
-        Make sure to use check_availability before making the reservation. Provides a Resy booking link for the user to reserve a slot.
+        Make sure to use check_availability before making the reservation link. This tool DOES NOT make a reservation, it will just give a link for the user to complete their reservation. Tool provides a Resy booking link for the user to reserve a slot.
 
         Args:
             name: Optional Guest name (ignored by this tool).
