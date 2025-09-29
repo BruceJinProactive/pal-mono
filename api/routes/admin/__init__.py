@@ -1692,22 +1692,23 @@ async def build_menu_api(
 
 @admin_router.post("/onboarding/upload_menu", status_code=status.HTTP_200_OK)
 async def upload_menu_api(
-    request: Request,
+    files: list[UploadFile] = File(
+        ..., description="Menu image files to process (supports multiple files)"
+    ),
     context: UserContext = Depends(authenticate_user),
 ) -> MenuUploaderResponse:
     """
-    Build menu data from uploaded image file(s) using OpenAI.
-    Flexible endpoint that handles various multiple file upload formats.
+    Build menu data from uploaded image file(s) using OpenAI API.
 
-    Supports:
-    - Single file with any field name (file, files, upload, etc.)
-    - Multiple files with same field name
-    - Multiple files with different field names
-    - Mixed file upload formats
+    Upload one or more menu images to extract structured menu data.
+    Supports multiple file uploads - all files will be processed and combined into a single menu.
 
-    All uploaded files will be processed and combined into a single menu.
+    Accepts common image formats (JPEG, PNG, etc.).
     """
-    return await _onboarding.upload_menu_api_with_validation(request, context)
+    # Handle single file vs multiple files for the backend
+    upload_files = files[0] if len(files) == 1 else files
+
+    return await _onboarding.upload_menu_api(upload_files)
 
 
 @admin_router.post("/onboarding/scrape_brand_from_url", status_code=status.HTTP_200_OK)
