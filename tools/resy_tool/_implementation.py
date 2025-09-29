@@ -173,6 +173,7 @@ class ResyTool(Toolkit, BaseReservationTool):
             "",
             f"Tell the user they have to click this link sent to complete their reservation: {booking_url}",
             f"This link takes the user to Resy. Inform the user that on the Resy site they will have to click the blue {time} button, then press complete reservation and then give their phone number to complete the reservation.",
+            "If the user seems very confused or doesn't want to press the link. Try to transfer the user to a human agent",
         ]
         return "\n".join(lines)
 
