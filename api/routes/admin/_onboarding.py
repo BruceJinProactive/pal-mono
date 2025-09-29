@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import HTTPException, Response, status
+from fastapi import HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import AccountParams
@@ -9,6 +9,7 @@ from api.schemas.admin.onboarding import (
     BuildMenuResponse,
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
+    MenuUploaderResponse,
     OnboardingRequest,
     OnboardingResponse,
     ScrapeBrandFromUrlRequest,
@@ -176,6 +177,119 @@ async def build_menu_api(
                 "use_stealth_proxy": request.use_stealth_proxy,
             },
         )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def upload_menu_api(
+    upload_files,
+) -> MenuUploaderResponse:
+    """
+    Build menu data from uploaded image file(s) using OpenAI Vision.
+
+    This endpoint handles the uploading and processing of restaurant menu images
+    using OpenAI's vision model to extract structured menu data.
+    Supports single or multiple file uploads.
+    """
+
+    try:
+        result = await admin_service.build_menu_from_upload(upload_files)
+        return MenuUploaderResponse(menu=result)
+
+    except ValueError as err:
+        # Client errors: invalid file type, empty file, no content, etc.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+    except RuntimeError:
+        # Server errors: API key missing, service unavailable, etc.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Menu building service is currently unavailable",
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception:
+        # Unexpected errors - log and return 500
+        logger.exception(
+            "Unexpected error in upload menu API",
+            extra={
+                "file_count": (
+                    len(upload_files) if isinstance(upload_files, list) else 1
+                ),
+                "filenames": [
+                    getattr(f, "filename", "unknown")
+                    for f in (
+                        upload_files
+                        if isinstance(upload_files, list)
+                        else [upload_files]
+                    )
+                ],
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def upload_menu_api_with_validation(
+    request: Request, context: UserContext
+) -> MenuUploaderResponse:
+    """
+    Build menu data from uploaded image file(s) using OpenAI Vision with file validation.
+
+    This function handles file validation and then calls the core upload_menu_api function.
+    Flexible endpoint that handles various multiple file upload formats.
+
+    Supports:
+    - Single file with any field name (file, files, upload, etc.)
+    - Multiple files with same field name
+    - Multiple files with different field names
+    - Mixed file upload formats
+
+    All uploaded files will be processed and combined into a single menu.
+    """
+    authorize_admin(context)
+    try:
+        form = await request.form()
+        files: list[UploadFile] = []
+
+        # Collect all uploaded files (supports multiple values per field)
+        for key in form.keys():
+            for value in form.getlist(key):
+                if isinstance(value, UploadFile) and value.filename:
+                    files.append(value)
+
+        if not files:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No files were uploaded. Please select at least one image file.",
+            )
+
+        # Validate that all files are images
+        for file in files:
+            if not file.content_type or not file.content_type.startswith("image/"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"File '{file.filename}' is not an image. Only image files are supported.",
+                )
+
+        # Handle single file vs multiple files for the backend
+        upload_files = files[0] if len(files) == 1 else files
+
+        return await upload_menu_api(upload_files)
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception:
+        logger.exception("Unexpected error in upload menu validation")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",

@@ -80,6 +80,7 @@ from api.schemas.admin.onboarding import (
     BuildMenuResponse,
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
+    MenuUploaderResponse,
     OnboardingRequest,
     OnboardingResponse,
     ScrapeBrandFromUrlRequest,
@@ -1687,6 +1688,26 @@ async def build_menu_api(
     Build menu data from a restaurant URL using Firecrawl.
     """
     return await _onboarding.build_menu_api(request, context)
+
+
+@admin_router.post("/onboarding/upload_menu", status_code=status.HTTP_200_OK)
+async def upload_menu_api(
+    request: Request,
+    context: UserContext = Depends(authenticate_user),
+) -> MenuUploaderResponse:
+    """
+    Build menu data from uploaded image file(s) using OpenAI.
+    Flexible endpoint that handles various multiple file upload formats.
+
+    Supports:
+    - Single file with any field name (file, files, upload, etc.)
+    - Multiple files with same field name
+    - Multiple files with different field names
+    - Mixed file upload formats
+
+    All uploaded files will be processed and combined into a single menu.
+    """
+    return await _onboarding.upload_menu_api_with_validation(request, context)
 
 
 @admin_router.post("/onboarding/scrape_brand_from_url", status_code=status.HTTP_200_OK)

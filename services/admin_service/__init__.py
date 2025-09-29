@@ -735,6 +735,24 @@ async def build_menu_from_url(
     )
 
 
+async def build_menu_from_upload(
+    upload_file,
+) -> str:
+    """
+    Build menu data from an uploaded images file using OpenAI Vision.
+
+    Args:
+        upload_file: FastAPI UploadFile object containing the images
+
+    Returns:
+        str: Menu data formatted as markdown
+
+    Raises:
+        ValueError: If there's an error building the menu from the images
+    """
+    return await menu_builder.build_menu_from_upload(upload_file)
+
+
 ## Brand Scraper
 async def scrape_brand_from_url(
     url: str,
@@ -778,5 +796,6 @@ __all__ = [
     "delete_lead",
     "get_lead",
     "build_menu_from_url",
+    "build_menu_from_upload",
     "scrape_brand_from_url",
 ]

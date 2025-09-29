@@ -151,3 +151,9 @@ class ScrapeBrandFromUrlResponse(BaseModel):
         ...,
         description="A short description of the company's brand which is found through the URL provided",
     )
+
+
+class MenuUploaderResponse(BaseModel):
+    """Response model for uploaded menu data"""
+
+    menu: str = Field(..., description="Menu data in markdown format")
