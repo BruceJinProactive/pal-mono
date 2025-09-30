@@ -79,6 +79,11 @@ class ProjectIntegration(Base):
         UUID(as_uuid=True), nullable=False, index=True
     )
     store_identifier: Mapped[str] = mapped_column(String, nullable=False)
+    config: Mapped[Dict] = mapped_column(
+        MutableDict.as_mutable(JSONB()),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
