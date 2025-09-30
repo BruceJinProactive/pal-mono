@@ -158,6 +158,7 @@ class CreateProjectIntegrationRequest(BaseModel):
 
     integration_id: uuid.UUID = Field(..., description="Integration ID to link")
     store_identifier: str = Field(..., description="Store identifier for this project")
+    config: Dict = Field(default_factory=dict, description="Integration configuration")
 
     def to_project_integration_params(self, project_id: uuid.UUID):
         from services.integration_service.schema import ProjectIntegrationParams
@@ -166,6 +167,7 @@ class CreateProjectIntegrationRequest(BaseModel):
             project_id=str(project_id),
             integration_id=str(self.integration_id),
             store_identifier=self.store_identifier,
+            config=self.config,
         )
 
 
@@ -173,6 +175,9 @@ class UpdateProjectIntegrationRequest(BaseModel):
     """Update Project Integration Request"""
 
     store_identifier: str = Field(..., description="Store identifier for this project")
+    config: Optional[Dict] = Field(
+        default=None, description="Integration configuration overrides"
+    )
 
     def to_project_integration_params(
         self, project_id: uuid.UUID, integration_id: uuid.UUID
@@ -183,6 +188,7 @@ class UpdateProjectIntegrationRequest(BaseModel):
             project_id=str(project_id),
             integration_id=str(integration_id),
             store_identifier=self.store_identifier,
+            config=self.config,
         )
 
 
@@ -193,6 +199,7 @@ class ProjectIntegrationResponse(BaseModel):
     project_id: uuid.UUID = Field(..., description="Project ID")
     integration_id: uuid.UUID = Field(..., description="Integration ID")
     store_identifier: str = Field(..., description="Store identifier for this project")
+    config: Dict = Field(default_factory=dict, description="Integration configuration")
     created_at: datetime = Field(..., description="Creation timestamp")
 
 
@@ -202,6 +209,7 @@ class ProjectIntegrationSummaryResponse(BaseModel):
     id: uuid.UUID = Field(..., description="Project Integration ID")
     integration_id: uuid.UUID = Field(..., description="Integration ID")
     store_identifier: str = Field(..., description="Store identifier for this project")
+    config: Dict = Field(default_factory=dict, description="Integration configuration")
     created_at: datetime = Field(..., description="Creation timestamp")
 
 
