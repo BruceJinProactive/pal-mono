@@ -32,6 +32,14 @@ from services.integration_service.schema import IntegrationDetail
 from services.subscription_service._stripe_customer import CustomerInfo
 
 
+def _str_to_bool(value) -> bool:
+    """Convert string to boolean, treating 'false' as False."""
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return normalized in ("true", "1", "yes")
+    return bool(value) if value is not None else False
+
+
 def build_account(account: db.Account) -> Account:
     return Account(
         id=str(account.id),
@@ -163,9 +171,7 @@ def build_message(message: db.Message) -> Message:
         channel_info=message.body.get("channel_info"),
         sender_identifier=message.body.get("sender_identifier"),
         recipient_identifier=message.body.get("recipient_identifier"),
-        escalated=bool(
-            extras.get("escalated")
-        ),  # TODO: bool("false") will return True. Need to fix this.
+        escalated=_str_to_bool(extras.get("escalated")),
         sent_at=message.body.get("timestamp"),
         conversation_id=message.conversation_id,
         created_at=message.created_at,
