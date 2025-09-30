@@ -49,8 +49,9 @@ def get_waitlist_status(
     )
 
     if response.status != 200:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
+        logger.debug(
+            f"[YelpCreditCardTool]: get_waitlist_status - Yelp API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
+        )
         raise Exception(
             f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
         )
@@ -58,8 +59,9 @@ def get_waitlist_status(
     try:
         return YelpWaitlistStatusResponse(**response.decoded_body)
     except Exception as e:
-        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
+        logger.debug(
+            f"[YelpCreditCardTool]: get_waitlist_status - Failed to parse Yelp API response: {str(e)}, Response data: {response.decoded_body}"
+        )
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
@@ -97,8 +99,9 @@ def get_waitlist_info(
     )
 
     if response.status != 200:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
+        logger.debug(
+            f"[YelpCreditCardTool]: get_waitlist_info - Yelp API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
+        )
         raise Exception(
             f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
         )
@@ -106,8 +109,9 @@ def get_waitlist_info(
     try:
         return YelpWaitlistInfoResponse(**response.decoded_body)
     except Exception as e:
-        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
+        logger.debug(
+            f"[YelpCreditCardTool]: get_waitlist_info - Failed to parse Yelp API response: {str(e)}, Response data: {response.decoded_body}"
+        )
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
@@ -177,8 +181,9 @@ def join_waitlist_queue(
     )
 
     if response.status != 201:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
+        logger.debug(
+            f"[YelpCreditCardTool]: join_waitlist_queue - Yelp API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
+        )
         raise Exception(
             f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
         )
@@ -186,8 +191,9 @@ def join_waitlist_queue(
     try:
         return YelpWaitlistJoinQueueResponse(**response.decoded_body)
     except Exception as e:
-        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
+        logger.debug(
+            f"[YelpCreditCardTool]: join_waitlist_queue - Failed to parse Yelp API response: {str(e)}, Response data: {response.decoded_body}"
+        )
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
@@ -258,9 +264,8 @@ def get_openings_creditcard_required(
 
             if response.status != 200:
                 logger.debug(
-                    f"Open API returned error: {response.status} {response.reason}"
+                    f"[YelpCreditCardTool]: get_openings_creditcard_required - Open API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
                 )
-                logger.debug(f"Response body: {response.decoded_body}")
                 raise Exception(f"Open API error: {response.status} {response.reason}")
 
             try:
@@ -268,19 +273,22 @@ def get_openings_creditcard_required(
                     **response.decoded_body
                 )
             except Exception as e:
-                logger.debug(f"Failed to parse Open API response: {str(e)}")
-                logger.debug(f"Response data: {response.decoded_body}")
+                logger.debug(
+                    f"[YelpCreditCardTool]: get_openings_creditcard_required - Failed to parse Open API response: {str(e)}, Response data: {response.decoded_body}"
+                )
                 raise Exception(f"Failed to parse Open API response: {str(e)}") from e
 
         except Exception as e:
             last_exception = e
-            if attempt == max_retries:
-                logger.debug(f"Open API failed after {attempt + 1} attempts: {e}")
+            if attempt == max_retries - 1:
+                logger.debug(
+                    f"[YelpCreditCardTool]: get_openings_creditcard_required - Open API failed after {attempt + 1} attempts: {e}"
+                )
                 break
 
             # Add 0.2 second delay between retries
             logger.debug(
-                f"Open API attempt {attempt + 1} failed ({e}). Retrying in 0.2s..."
+                f"[YelpCreditCardTool]: get_openings_creditcard_required - Open API attempt {attempt + 1} failed ({e}). Retrying in 0.2s..."
             )
             time.sleep(0.2)
 
