@@ -1,224 +1,24 @@
 import time
+from typing import Optional
 
 from ddtrace.llmobs.decorators import task
 
 from tools.yelp_credit_card_tool._apis._utils import YELP_API_HOST, connect_yelp_api
 from tools.yelp_credit_card_tool.classes import (
     YelpAccessToken,
-    YelpBookingsHoldsRequestCreditCardNotRequired,
-    YelpBookingsHoldsResponseCreditCardNotRequired,
-    YelpBookingsOpeningsRequestCreditCardNotRequired,
     YelpBookingsOpeningsRequestCreditCardRequired,
-    YelpBookingsOpeningsResponseCreditCardNotRequired,
     YelpBookingsOpeningsResponseCreditCardRequired,
-    YelpBookingsReservationsRequestCreditCardNotRequired,
-    YelpBookingsReservationsResponseCreditCardNotRequired,
-    YelpCancelVisitRequest,
-    YelpCancelVisitResponse,
-    YelpWaitlistInfoRequest,
     YelpWaitlistInfoResponse,
-    YelpWaitlistJoinQueueRequest,
     YelpWaitlistJoinQueueResponse,
-    YelpWaitlistOnMyWayRequest,
-    YelpWaitlistOnMyWayResponse,
-    YelpWaitlistStatusRequest,
     YelpWaitlistStatusResponse,
 )
 from utils.log import logger
 
 
-@task(name="get_openings_creditcard_not_required")
-def get_openings_creditcard_not_required(
-    bearer_token: YelpAccessToken,
-    request_params: YelpBookingsOpeningsRequestCreditCardNotRequired,
-) -> YelpBookingsOpeningsResponseCreditCardNotRequired:
-    """
-    Get available reservation times for a restaurant using the Yelp Bookings API (credit card not required workflow).
-
-    This endpoint returns available reservation times around the requested timeslot
-    and across several days (typically 4 days: day before, current day, and 2 days after).
-    This workflow supports direct reservation completion without requiring credit card entry.
-
-    Args:
-        bearer_token: Yelp bearer token for authentication
-        request_params: YelpBookingsOpeningsRequest object containing the search parameters
-
-    Returns:
-        YelpBookingsOpeningsResponse object containing available reservation times
-
-    Raises:
-        Exception: If the API request fails or returns an error
-    """
-    api_function = f"/v3/bookings/{request_params.business_id_or_alias}/openings"
-
-    query_params = {
-        "covers": str(request_params.covers),
-        "date": request_params.date,
-        "time": request_params.time,
-    }
-
-    if request_params.get_covers_range is not None:
-        query_params["get_covers_range"] = str(request_params.get_covers_range).lower()
-
-    response = connect_yelp_api(
-        http_method="GET",
-        api_function=api_function,
-        api_host=YELP_API_HOST,
-        bearer_token=bearer_token,
-        query_params=query_params,
-    )
-
-    if response.status != 200:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
-        )
-
-    try:
-        return YelpBookingsOpeningsResponseCreditCardNotRequired(
-            **response.decoded_body
-        )
-    except Exception as e:
-        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
-        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
-
-
-@task(name="create_hold_creditcard_not_required")
-def create_hold_creditcard_not_required(
-    bearer_token: YelpAccessToken,
-    request_params: YelpBookingsHoldsRequestCreditCardNotRequired,
-) -> YelpBookingsHoldsResponseCreditCardNotRequired:
-    """
-    Create a temporary hold on a reservation time slot using the Yelp Bookings API (credit card not required workflow).
-
-    This endpoint places a temporary hold on the requested time slot so that the partner
-    can request all the required reservation information from the user. Holds are only
-    valid for 5 minutes and you must use the hold_id returned from this endpoint to
-    place the reservation or you will get a conflict.
-
-    Note: All parameters are sent as form data in the request body, not as query parameters.
-
-    Args:
-        bearer_token: Yelp bearer token for authentication
-        request_params: YelpBookingsHoldsRequest object containing the hold parameters
-
-    Returns:
-        YelpBookingsHoldsResponse object containing the hold information
-
-    Raises:
-        Exception: If the API request fails or returns an error
-    """
-    api_function = f"/v3/bookings/{request_params.business_id_or_alias}/holds"
-
-    payload = {
-        "covers": str(request_params.covers),
-        "date": request_params.date,
-        "time": request_params.time,
-        "unique_id": request_params.unique_id,
-    }
-
-    response = connect_yelp_api(
-        http_method="POST",
-        api_function=api_function,
-        api_host=YELP_API_HOST,
-        bearer_token=bearer_token,
-        payload=payload,
-        extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-
-    if response.status != 200:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
-        )
-
-    try:
-        return YelpBookingsHoldsResponseCreditCardNotRequired(**response.decoded_body)
-    except Exception as e:
-        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
-        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
-
-
-@task(name="create_reservation_creditcard_not_required")
-def create_reservation_creditcard_not_required(
-    bearer_token: YelpAccessToken,
-    request_params: YelpBookingsReservationsRequestCreditCardNotRequired,
-) -> YelpBookingsReservationsResponseCreditCardNotRequired:
-    """
-    Create a physical reservation at a restaurant using the Yelp Bookings API (credit card not required workflow).
-
-    This endpoint places a physical reservation at a restaurant with all the information
-    provided. This endpoint will take an optional hold id if the partner previously
-    placed a hold. This workflow supports direct reservation completion without credit card requirements.
-
-    In this case, you should use the reserve_url provided in the hold endpoint or the
-    opening endpoint to prompt the user for a reservation.
-
-    Note: All parameters are sent as form data in the request body, not as query parameters.
-    Additionally, you will receive an error if you don't pass the exact same reservation
-    time, date and covers values as you supplied to the Holds endpoint.
-
-    Args:
-        bearer_token: Yelp bearer token for authentication
-        request_params: YelpBookingsReservationsRequest object containing the reservation parameters
-
-    Returns:
-        YelpBookingsReservationsResponse object containing the reservation confirmation
-
-    Raises:
-        Exception: If the API request fails or returns an error
-    """
-    api_function = f"/v3/bookings/{request_params.business_id_or_alias}/reservations"
-
-    payload = {
-        "covers": int(request_params.covers),
-        "date": request_params.date,
-        "time": request_params.time,
-        "first_name": request_params.first_name,
-        "last_name": request_params.last_name,
-        "phone": request_params.phone,
-        "email": request_params.email,
-        "hold_id": request_params.hold_id,
-        "unique_id": request_params.unique_id,
-    }
-
-    if request_params.notes is not None:
-        payload["notes"] = request_params.notes
-
-    response = connect_yelp_api(
-        http_method="POST",
-        api_function=api_function,
-        api_host=YELP_API_HOST,
-        bearer_token=bearer_token,
-        payload=payload,
-        extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-
-    if response.status != 200:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
-        )
-
-    try:
-        return YelpBookingsReservationsResponseCreditCardNotRequired(
-            **response.decoded_body
-        )
-    except Exception as e:
-        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
-        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
-
-
 @task(name="get_waitlist_status")
 def get_waitlist_status(
     bearer_token: YelpAccessToken,
-    request_params: YelpWaitlistStatusRequest,
+    business_id: str,
 ) -> YelpWaitlistStatusResponse:
     """
     Get waitlist status for a business using the Yelp Waitlist API.
@@ -231,7 +31,7 @@ def get_waitlist_status(
 
     Args:
         bearer_token: Yelp bearer token for authentication
-        request_params: YelpWaitlistStatusRequest object containing the business_id
+        business_id: Encrypted Yelp business identifier
 
     Returns:
         YelpWaitlistStatusResponse object containing waitlist status information
@@ -239,7 +39,7 @@ def get_waitlist_status(
     Raises:
         Exception: If the API request fails or returns an error
     """
-    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/status"
+    api_function = f"/v3/businesses/{business_id}/waitlist/status"
 
     response = connect_yelp_api(
         http_method="GET",
@@ -266,7 +66,7 @@ def get_waitlist_status(
 @task(name="get_waitlist_info")
 def get_waitlist_info(
     bearer_token: YelpAccessToken,
-    request_params: YelpWaitlistInfoRequest,
+    business_id: str,
 ) -> YelpWaitlistInfoResponse:
     """
     Get waitlist information for a business using the Yelp Waitlist API.
@@ -279,7 +79,7 @@ def get_waitlist_info(
 
     Args:
         bearer_token: Yelp bearer token for authentication
-        request_params: YelpWaitlistInfoRequest object containing the business_id
+        business_id: Encrypted Yelp business identifier
 
     Returns:
         YelpWaitlistInfoResponse object containing waitlist configuration information
@@ -287,7 +87,7 @@ def get_waitlist_info(
     Raises:
         Exception: If the API request fails or returns an error
     """
-    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/info"
+    api_function = f"/v3/businesses/{business_id}/waitlist/info"
 
     response = connect_yelp_api(
         http_method="GET",
@@ -311,76 +111,15 @@ def get_waitlist_info(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
-@task(name="create_waitlist_on_my_way")
-def create_waitlist_on_my_way(
-    bearer_token: YelpAccessToken,
-    request_params: YelpWaitlistOnMyWayRequest,
-) -> YelpWaitlistOnMyWayResponse:
-    """
-    Create a waitlist on-my-way visit at a restaurant using the Yelp Waitlist API.
-
-    This endpoint creates an "on-my-way" visit in the restaurant's waitlist system,
-    allowing customers to indicate they are coming to the restaurant and will arrive
-    within a specified time range. This helps restaurants manage their waitlist
-    and reduce wait times.
-
-    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
-    The restaurant must allow remote entry and not have any special events or conflicts.
-
-    Args:
-        bearer_token: Yelp bearer token for authentication
-        request_params: YelpWaitlistOnMyWayRequest object containing the visit parameters
-
-    Returns:
-        YelpWaitlistOnMyWayResponse object containing the visit confirmation details
-
-    Raises:
-        Exception: If the API request fails or returns an error. Common error scenarios:
-            - 409: Visit limit reached (max 9 active on-my-way visits per restaurant)
-            - 422: Validation errors (phone already in line, invalid arrival time, etc.)
-            - 401: Authentication issues
-    """
-    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/on-my-way"
-
-    payload = {
-        "phone": request_params.phone,
-        "party_size": request_params.party_size,
-        "name": request_params.name,
-        "arrival_range_max": request_params.arrival_range_max,
-        "arrival_range_min": request_params.arrival_range_min,
-    }
-
-    if request_params.party_notes is not None:
-        payload["party_notes"] = request_params.party_notes
-
-    response = connect_yelp_api(
-        http_method="POST",
-        api_function=api_function,
-        api_host=YELP_API_HOST,
-        bearer_token=bearer_token,
-        payload=payload,
-        extra_headers={"Content-Type": "application/json"},
-    )
-
-    if response.status != 201:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
-        )
-
-    try:
-        return YelpWaitlistOnMyWayResponse(**response.decoded_body)
-    except Exception as e:
-        logger.debug(f"Failed to parse Yelp API response: {str(e)}")
-        logger.debug(f"Response data: {response.decoded_body}")
-        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
-
-
 @task(name="join_waitlist_queue")
 def join_waitlist_queue(
     bearer_token: YelpAccessToken,
-    request_params: YelpWaitlistJoinQueueRequest,
+    business_id: str,
+    phone: str,
+    party_size: int,
+    name: str,
+    party_notes: Optional[str] = None,
+    idempotency_token: Optional[str] = None,
 ) -> YelpWaitlistJoinQueueResponse:
     """
     Join the waitlist queue for a restaurant using the Yelp Waitlist API.
@@ -397,7 +136,12 @@ def join_waitlist_queue(
 
     Args:
         bearer_token: Yelp bearer token for authentication
-        request_params: YelpWaitlistJoinQueueRequest object containing the queue parameters
+        business_id: Encrypted Yelp business identifier
+        phone: Patron's phone number in E.164 format (e.g., +19050000000)
+        party_size: Number of guests in the party
+        name: Patron's name
+        party_notes: Notes from the patron (optional)
+        idempotency_token: Idempotency token to uniquely identify request (optional)
 
     Returns:
         YelpWaitlistJoinQueueResponse object containing the queue confirmation details
@@ -408,20 +152,20 @@ def join_waitlist_queue(
             - 401: Authentication issues
             - 404: Business not found
     """
-    api_function = f"/v3/businesses/{request_params.business_id}/waitlist/visits"
+    api_function = f"/v3/businesses/{business_id}/waitlist/visits"
 
     payload = {
-        "phone": request_params.phone,
-        "party_size": request_params.party_size,
-        "name": request_params.name,
+        "phone": phone,
+        "party_size": party_size,
+        "name": name,
     }
 
     # Add optional parameters if provided
-    if request_params.party_notes is not None:
-        payload["party_notes"] = request_params.party_notes
+    if party_notes is not None:
+        payload["party_notes"] = party_notes
 
-    if request_params.idempotency_token is not None:
-        payload["idempotency_token"] = request_params.idempotency_token
+    if idempotency_token is not None:
+        payload["idempotency_token"] = idempotency_token
 
     response = connect_yelp_api(
         http_method="POST",
@@ -544,51 +288,3 @@ def get_openings_creditcard_required(
     raise Exception(
         f"Open API failed after {max_retries + 1} attempts. Last error: {last_exception}"
     ) from last_exception
-
-
-@task(name="cancel_visit")
-def cancel_visit(
-    bearer_token: YelpAccessToken,
-    request_params: YelpCancelVisitRequest,
-) -> YelpCancelVisitResponse:
-    """
-    Cancel a visit from the waitlist using the Yelp Waitlist API.
-
-    This endpoint allows a customer to cancel their visit from the waitlist.
-    This is useful if they change their mind or if they are no longer able to
-    make it to the restaurant.
-
-    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
-
-    Args:
-        bearer_token: Yelp bearer token for authentication
-        request_params: YelpCancelVisitRequest object containing the visit_id
-
-    Returns:
-        YelpCancelVisitResponse object containing the cancellation confirmation
-
-    Raises:
-        Exception: If the API request fails or returns an error. Common error scenarios:
-            - 404: Visit not found
-            - 409: Visit already in terminal state
-            - 401: Authentication issues
-    """
-    api_function = f"/v3/visits/{request_params.visit_id}/cancel"
-
-    response = connect_yelp_api(
-        http_method="POST",
-        api_function=api_function,
-        api_host=YELP_API_HOST,
-        bearer_token=bearer_token,
-        extra_headers={"Content-Type": "application/json"},
-    )
-
-    if response.status != 204:
-        logger.debug(f"Yelp API returned error: {response.status} {response.reason}")
-        logger.debug(f"Response body: {response.decoded_body}")
-        raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
-        )
-
-    # 204 No Content response means success - return success response
-    return YelpCancelVisitResponse(success=True)
