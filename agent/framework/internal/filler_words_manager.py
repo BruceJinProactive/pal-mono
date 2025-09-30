@@ -14,6 +14,10 @@ class LanguageDetectorProtocol(Protocol):
         """Detect multiple languages in the given text."""
         ...
 
+    def compute_language_confidence(self, text: str, language: Language) -> float:
+        """Compute the confidence value for the given language and input text."""
+        ...
+
 
 class FillerType(StrEnum):
     CHAT = "chat"
@@ -152,9 +156,29 @@ class FillerWordsManager:
             detected_languages = language_detector.detect_multiple_languages_of(
                 input_content
             )
-            return [
-                detected_language.language for detected_language in detected_languages
-            ]
+
+            # Filter languages based on confidence threshold
+            filtered_languages = []
+            for detected_language in detected_languages:
+                language = detected_language.language
+                confidence_value = language_detector.compute_language_confidence(
+                    input_content, language
+                )
+
+                if confidence_value >= 0.5:
+                    filtered_languages.append(language)
+                else:
+                    logger.debug(
+                        f"[FillerWordsManager] Filtered out {language.name} due to low confidence: {confidence_value:.2f}",
+                        extra={
+                            "agent_id": self.agent_id,
+                            "account_name": self.account_name,
+                            "language": language.name,
+                            "confidence": confidence_value,
+                        },
+                    )
+
+            return filtered_languages
         except Exception as e:
             logger.error(f"[FillerWordsManager] Language detection failed: {e}")
             return []
