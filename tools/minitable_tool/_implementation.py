@@ -187,11 +187,15 @@ class MiniTableTool(Toolkit, BaseReservationTool):
 
             booking_id = booking.get("booking_id")
             status = booking.get("status")
+            status_link = booking.get("status_link")
 
             if not booking_id or not status:
                 return f"Error: Incomplete booking response - booking_id: {booking_id}, status: {status}"
 
-            return f"Reservation created: booking_id={booking_id}, status={status}"
+            message = f"Reservation created: booking_id={booking_id}, status={status}"
+            if status_link:
+                message += f", you can change or cancel it by this link: {status_link}"
+            return message
 
         except ValueError as e:
             error_msg = str(e)
@@ -328,11 +332,21 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             waitlist_id = result.get("waitlist_id")
             wait_code = result.get("wait_code")
             left_count = result.get("left_count", 0)
+            status_link = result.get("status_link")
 
             if waitlist_id and wait_code:
-                return f"Successfully added to waitlist! Waitlist ID: {waitlist_id}, Wait code: {wait_code}, Position: {left_count + 1} parties ahead of you."
-            else:
-                return "Successfully added to waitlist, but some details are missing from the response."
+                return f"Successfully added to waitlist! Waitlist ID: {waitlist_id}, Wait code: {wait_code}, Position: {left_count + 1} parties ahead of you. It can be changed or cancelled by this link: {status_link}"
+
+            message = (
+                "Successfully added to waitlist! "
+                f"Waitlist ID: {waitlist_id}, Wait code: {wait_code}, "
+                f"Position: {left_count + 1} parties ahead of you."
+            )
+            if status_link:
+                message += (
+                    f" It can be changed or cancelled by this link: {status_link}"
+                )
+            return message
 
         except ValueError as e:
             error_msg = str(e)
