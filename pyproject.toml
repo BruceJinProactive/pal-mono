@@ -55,7 +55,6 @@ dependencies = [
   "twilio==9.3.2", # Twilio API client for SMS, voice, and messaging
   "urlextract==1.9.0", # URL extraction from text using regular expressions
   "uvicorn==0.30.6", # Lightning-fast ASGI server for async Python web apps
-  "uvloop==0.21.0", # Ultra fast asyncio event loop implementation
   "vapi-server-sdk==1.6.0" # Voice AI platform SDK for conversational interfaces
 ]
 

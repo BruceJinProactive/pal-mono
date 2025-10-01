@@ -197,7 +197,6 @@ uritools==5.0.0
 urlextract==1.9.0
 urllib3==2.5.0
 uvicorn==0.30.6
-uvloop==0.21.0
 vapi-server-sdk==1.6.0
 virtualenv==20.31.2
 watchdog==6.0.0
