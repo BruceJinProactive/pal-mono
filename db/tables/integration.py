@@ -79,6 +79,7 @@ class ProjectIntegration(Base):
         UUID(as_uuid=True), nullable=False, index=True
     )
     store_identifier: Mapped[str] = mapped_column(String, nullable=False)
+    tool_name: Mapped[str | None] = mapped_column(String, nullable=True)
     config: Mapped[Dict] = mapped_column(
         MutableDict.as_mutable(JSONB()),
         nullable=False,
