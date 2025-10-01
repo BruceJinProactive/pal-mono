@@ -62,8 +62,11 @@ class SquareMenuProcessor:
                     )
                     continue
 
-                # Sanitize filename
-                safe_name = re.sub(r"[^\w\s-]", "", item_name).strip()
+                # Sanitize filename - ensure ASCII-only characters
+                # First, encode to ASCII and decode to remove non-ASCII characters
+                ascii_name = item_name.encode("ascii", "ignore").decode("ascii")
+                # Then remove any remaining non-alphanumeric characters except spaces and hyphens
+                safe_name = re.sub(r"[^a-zA-Z0-9\s-]", "", ascii_name).strip()
                 safe_name = re.sub(r"\s+", "_", safe_name)
                 doc_name = f"item_{i}_{safe_name}"
                 if include_location_in_doc_name:
