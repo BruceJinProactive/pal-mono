@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import HTTPException, Request, Response, UploadFile, status
@@ -17,6 +18,7 @@ from api.schemas.admin.onboarding import (
     SelfOnboardingRequest,
     SelfOnboardingResponse,
 )
+from db.session import SyncSessionLocal
 from db.tables.accounts import AccountStatus, OnboardingMethod
 from services import account_service, admin_service, agent_service, project_service
 from services.admin_service import ProjectSetup
@@ -184,62 +186,117 @@ async def build_menu_api(
         )
 
 
-async def upload_menu_api(
+async def process_menu_upload_background(
     upload_files,
-) -> MenuUploaderResponse:
+    context: UserContext,
+    project_id: uuid.UUID,
+) -> None:
     """
-    Build menu data from uploaded image file(s) using OpenAI Vision.
-
-    This endpoint handles the uploading and processing of restaurant menu images
-    using OpenAI's vision model to extract structured menu data.
-    Supports single or multiple file uploads.
+    Background task to process menu upload and update project.
+    Creates its own database session to avoid using the closed request-scoped session.
     """
-
+    # Create a new session for this background task
+    session = SyncSessionLocal()
     try:
+        logger.info(
+            f"[Background] Starting menu upload processing for project {project_id}"
+        )
+
+        # Process the menu files
         result = await admin_service.build_menu_from_upload(upload_files)
-        return MenuUploaderResponse(menu=result)
+
+        # Update the project with the menu
+        project_params = ProjectParams()
+        project_params.product_info = result
+        project_service.update_project(session, context, project_id, project_params)
+
+        # Commit the transaction
+        session.commit()
+
+        logger.info(
+            f"[Background] Successfully processed and updated menu for project {project_id}"
+        )
 
     except ValueError as err:
-        # Client errors: invalid file type, empty file, no content, etc.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(err),
-            headers={"Content-Type": "application/json"},
+        session.rollback()
+        logger.error(
+            f"[Background] Client error processing menu for project {project_id}: {err}"
         )
-    except RuntimeError:
-        # Server errors: API key missing, service unavailable, etc.
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Menu building service is currently unavailable",
-            headers={"Content-Type": "application/json"},
+    except RuntimeError as err:
+        session.rollback()
+        logger.error(
+            f"[Background] Service error processing menu for project {project_id}: {err}"
         )
-    except Exception:
-        # Unexpected errors - log and return 500
+    except Exception as err:
+        session.rollback()
         logger.exception(
-            "Unexpected error in upload menu API",
-            extra={
-                "file_count": (
-                    len(upload_files) if isinstance(upload_files, list) else 1
-                ),
-                "filenames": [
-                    getattr(f, "filename", "unknown")
-                    for f in (
-                        upload_files
-                        if isinstance(upload_files, list)
-                        else [upload_files]
-                    )
-                ],
-            },
+            f"[Background] Unexpected error processing menu for project {project_id}",
+            extra={"error": str(err)},
+        )
+    finally:
+        # Always close the session to avoid connection leaks
+        session.close()
+
+
+async def upload_menu_api(
+    upload_files,
+    context: UserContext,
+    project_id: uuid.UUID,
+) -> MenuUploaderResponse:
+    """
+    Start async menu upload processing and return immediately.
+
+    Returns a response indicating that processing has started.
+    The menu will be updated in the background.
+    """
+    try:
+        # Validate files before starting background task
+        files_list = upload_files if isinstance(upload_files, list) else [upload_files]
+
+        # Basic validation
+        for file in files_list:
+            if not file.content_type or not file.content_type.startswith("image/"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid file type. Expected image, got: {file.content_type}",
+                    headers={"Content-Type": "application/json"},
+                )
+
+        logger.info(
+            f"Starting background menu upload for project {project_id} with {len(files_list)} file(s)"
+        )
+
+        # Start background task
+        asyncio.create_task(
+            process_menu_upload_background(upload_files, context, project_id)
+        )
+
+        return MenuUploaderResponse(
+            status="accepted",
+            message="The menu starts to update. Processing in background and will be available shortly.",
+            project_id=str(project_id),
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception:
+        logger.exception(
+            "Error starting menu upload background task",
+            extra={"project_id": str(project_id)},
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+            detail="Failed to start menu processing",
             headers={"Content-Type": "application/json"},
         )
 
 
 async def upload_menu_api_with_validation(
-    request: Request, context: UserContext
+    request: Request,
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
 ) -> MenuUploaderResponse:
     """
     Build menu data from uploaded image file(s) using OpenAI Vision with file validation.
@@ -283,7 +340,7 @@ async def upload_menu_api_with_validation(
         # Handle single file vs multiple files for the backend
         upload_files = files[0] if len(files) == 1 else files
 
-        return await upload_menu_api(upload_files)
+        return await upload_menu_api(upload_files, context, project_id)
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is

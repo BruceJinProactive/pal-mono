@@ -1690,25 +1690,38 @@ async def build_menu_api(
     return await _onboarding.build_menu_api(request, context)
 
 
-@admin_router.post("/onboarding/upload_menu", status_code=status.HTTP_200_OK)
+@admin_router.post(
+    "/onboarding/{project_id}/upload_menu", status_code=status.HTTP_202_ACCEPTED
+)
 async def upload_menu_api(
+    project_id: uuid.UUID,
     files: list[UploadFile] = File(
         ..., description="Menu image files to process (supports multiple files)"
     ),
     context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
 ) -> MenuUploaderResponse:
     """
-    Build menu data from uploaded image file(s) using OpenAI API.
+    Start menu upload processing from image file(s) using OpenAI API.
 
     Upload one or more menu images to extract structured menu data.
+    The processing happens asynchronously in the background, and this endpoint
+    returns immediately with a status response.
+
     Supports multiple file uploads - all files will be processed and combined into a single menu.
+    The project's menu will be automatically updated once processing completes.
 
     Accepts common image formats (JPEG, PNG, etc.).
+
+    Returns:
+        - status: "processing"
+        - message: Description of the operation
+        - project_id: The project being updated
     """
     # Handle single file vs multiple files for the backend
     upload_files = files[0] if len(files) == 1 else files
 
-    return await _onboarding.upload_menu_api(upload_files)
+    return await _onboarding.upload_menu_api(upload_files, context, project_id)
 
 
 @admin_router.post("/onboarding/scrape_brand_from_url", status_code=status.HTTP_200_OK)

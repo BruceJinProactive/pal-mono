@@ -154,6 +154,8 @@ class ScrapeBrandFromUrlResponse(BaseModel):
 
 
 class MenuUploaderResponse(BaseModel):
-    """Response model for uploaded menu data"""
+    """Response model for async menu upload processing"""
 
-    menu: str = Field(..., description="Menu data in markdown format")
+    status: str = Field(..., description="Processing status (e.g., 'accepted')")
+    message: str = Field(..., description="Status message for the user")
+    project_id: str = Field(..., description="UUID of the project being updated")
