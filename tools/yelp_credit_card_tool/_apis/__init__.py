@@ -8,7 +8,6 @@ from tools.yelp_credit_card_tool.classes import (
     YelpAccessToken,
     YelpBookingsOpeningsRequestCreditCardRequired,
     YelpBookingsOpeningsResponseCreditCardRequired,
-    YelpWaitlistInfoResponse,
     YelpWaitlistJoinQueueResponse,
     YelpWaitlistStatusResponse,
 )
@@ -53,7 +52,7 @@ def get_waitlist_status(
             f"[YelpCreditCardTool]: get_waitlist_status - Yelp API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
         )
         raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+            f"Yelp API error: status {response.status}; {response.reason}; {response.decoded_body}"
         )
 
     try:
@@ -61,56 +60,6 @@ def get_waitlist_status(
     except Exception as e:
         logger.debug(
             f"[YelpCreditCardTool]: get_waitlist_status - Failed to parse Yelp API response: {str(e)}, Response data: {response.decoded_body}"
-        )
-        raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
-
-
-@task(name="get_waitlist_info")
-def get_waitlist_info(
-    bearer_token: YelpAccessToken,
-    business_id: str,
-) -> YelpWaitlistInfoResponse:
-    """
-    Get waitlist information for a business using the Yelp Waitlist API.
-
-    This endpoint returns waitlist configuration information about a specific business
-    including the maximum join radius, maximum party size, and seating areas supported
-    by the restaurant.
-
-    Note: This endpoint requires the caller to be an onboarded Yelp Waitlist partner.
-
-    Args:
-        bearer_token: Yelp bearer token for authentication
-        business_id: Encrypted Yelp business identifier
-
-    Returns:
-        YelpWaitlistInfoResponse object containing waitlist configuration information
-
-    Raises:
-        Exception: If the API request fails or returns an error
-    """
-    api_function = f"/v3/businesses/{business_id}/waitlist/info"
-
-    response = connect_yelp_api(
-        http_method="GET",
-        api_function=api_function,
-        api_host=YELP_API_HOST,
-        bearer_token=bearer_token,
-    )
-
-    if response.status != 200:
-        logger.debug(
-            f"[YelpCreditCardTool]: get_waitlist_info - Yelp API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
-        )
-        raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
-        )
-
-    try:
-        return YelpWaitlistInfoResponse(**response.decoded_body)
-    except Exception as e:
-        logger.debug(
-            f"[YelpCreditCardTool]: get_waitlist_info - Failed to parse Yelp API response: {str(e)}, Response data: {response.decoded_body}"
         )
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
@@ -185,7 +134,7 @@ def join_waitlist_queue(
             f"[YelpCreditCardTool]: join_waitlist_queue - Yelp API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
         )
         raise Exception(
-            f"Yelp API error: {response.status} {response.reason} {response.decoded_body}"
+            f"Yelp API error: status {response.status}; {response.reason}; {response.decoded_body}"
         )
 
     try:
@@ -266,7 +215,9 @@ def get_openings_creditcard_required(
                 logger.debug(
                     f"[YelpCreditCardTool]: get_openings_creditcard_required - Open API returned error: {response.status} {response.reason}, Response body: {response.decoded_body}"
                 )
-                raise Exception(f"Open API error: {response.status} {response.reason}")
+                raise Exception(
+                    f"Open API error: status {response.status}; {response.reason}; {response.decoded_body}"
+                )
 
             try:
                 return YelpBookingsOpeningsResponseCreditCardRequired(

@@ -10,7 +10,6 @@ from agent.tool import ToolMetadata
 from tools.base.reservation import BaseReservationTool, params_validate
 from tools.yelp_credit_card_tool._apis import (
     get_openings_creditcard_required,
-    get_waitlist_info,
     get_waitlist_status,
 )
 from tools.yelp_credit_card_tool._apis import (
@@ -87,7 +86,6 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
 
         # Register waitlist tools (independent of credit card workflow)
         self.register(self.get_waitlist_status)
-        self.register(self.get_waitlist_info)
         self.register(self.join_waitlist_queue)
 
         logger.debug(
@@ -112,12 +110,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
     def _is_401_error(self, error: Exception) -> bool:
         """Check if the error is a 401 Unauthorized error."""
         error_str = str(error).lower()
-        return (
-            "401" in error_str
-            or "unauthorized" in error_str
-            or "token_invalid" in error_str
-            or "unauthorized_api_key" in error_str
-        )
+        return "status 401" in error_str
 
     def _yelp_bearer_token(self) -> YelpAccessToken:
         """Get Yelp bearer token with caching to avoid repeated secret fetching."""
@@ -156,7 +149,6 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
         - Current waitlist state or status
 
         Do NOT use for:
-        - Restaurant waitlist configuration/settings (use get_waitlist_info instead)
         - Joining the waitlist (use join_waitlist_queue)
         - General restaurant information
 
@@ -201,68 +193,6 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
                     )
                     return f"Failed to get waitlist status after retry. {str(retry_e)}"
             return f"Failed to get waitlist status. {str(e)}"
-
-    @tool
-    def get_waitlist_info(self) -> str:
-        """
-        This endpoint returns waitlist configuration fields including operational parameters and
-        available options for customers. This is static configuration data, not real-time status.
-
-        Use when: User asks about:
-        - Maximum party size allowed on waitlist ("What's the largest party size you accept?")
-        - Available seating area options ("What seating areas can I choose from?", "Do you have patio seating?")
-        - Join radius requirements ("How close do I need to be to join the waitlist?")
-        - Waitlist configuration or settings ("What are your waitlist options?")
-        - Whether specific seating areas are supported ("Do you have bar seating available?")
-        - Waitlist operational parameters and capabilities
-
-        Do NOT use for:
-        - Current wait times or real-time status (use get_waitlist_status instead)
-        - Joining the waitlist (use join_waitlist_queue)
-        - Checking if there's currently a wait (use get_waitlist_status instead)
-
-        Returns:
-            str: Raw API response containing waitlist configuration data, or error message
-        """
-        try:
-            bearer_token = self._yelp_bearer_token()
-
-            # Validate bearer token before proceeding
-            if not bearer_token:
-                logger.debug(
-                    "[YelpCreditCardTool]: get_waitlist_info - Failed to obtain Yelp bearer token"
-                )
-                return "Unable to authenticate with Yelp. Please verify your API credentials."
-
-            # Get waitlist info from Yelp API
-            response = get_waitlist_info(
-                bearer_token=bearer_token,
-                business_id=self.business_id_or_alias,
-            )
-
-            return str(response)
-
-        except Exception as e:
-            logger.debug(
-                f"[YelpCreditCardTool]: get_waitlist_info - Error: {str(e)}, {traceback.format_exc()}"
-            )
-            if self._is_401_error(e):
-                logger.debug(
-                    "[YelpCreditCardTool]: get_waitlist_info - 401 error detected, resetting cached token and retrying"
-                )
-                try:
-                    # Reset cache and get fresh token, then retry
-                    response = get_waitlist_info(
-                        bearer_token=self._reset_and_refetch_token(),
-                        business_id=self.business_id_or_alias,
-                    )
-                    return str(response)
-                except Exception as retry_e:
-                    logger.debug(
-                        f"[YelpCreditCardTool]: get_waitlist_info - Retry failed: {str(retry_e)}"
-                    )
-                    return f"Failed to get waitlist configuration after retry. {str(retry_e)}"
-            return f"Failed to get waitlist configuration. {str(e)}"
 
     @tool
     @params_validate()

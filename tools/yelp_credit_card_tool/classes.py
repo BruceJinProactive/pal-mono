@@ -107,17 +107,6 @@ class YelpWaitlistStatusResponse(BaseModel):
     )
 
 
-class YelpWaitlistInfoResponse(BaseModel):
-    """Response from Yelp Waitlist Info endpoint"""
-
-    join_radius: int = Field(description="The maximum join radius", ge=0)
-    join_radius_unit: str = Field(description="Join radius unit (miles or kilometers)")
-    max_party_size: int = Field(description="The maximum party size", gt=0)
-    seating_areas: dict[str, str] = Field(
-        description="The seating areas supported by the restaurant (key-value pairs where key is the area code and value is the display name)"
-    )
-
-
 class YelpWaitlistJoinQueueResponse(BaseModel):
     """Response from Yelp Waitlist Join Queue endpoint"""
 
