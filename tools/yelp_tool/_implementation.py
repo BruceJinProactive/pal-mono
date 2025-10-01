@@ -546,7 +546,7 @@ class YelpTool(Toolkit):
                     first_name=processed_first_name,  # Use processed names
                     last_name=processed_last_name,  # Use processed names
                     phone=customer_phone,  # type: ignore
-                    email="inbox@proactiveailab.com",  # Hardcoded email instead of asking user
+                    email=f"inbox+{customer_phone.lstrip('+') if customer_phone else ''}@proactiveailab.com",  # Hardcoded email instead of asking user
                     notes=notes,
                 )
             )
