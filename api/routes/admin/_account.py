@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
@@ -15,9 +15,15 @@ from api.schemas.admin.account import (
     UpdateAccountRequest,
 )
 from api.schemas.admin.agent import AgentSummary
-from db import ConversationStatus
+from db import AccountRepository, ConversationStatus
 from db.tables.accounts import AccountStatus
-from services import account_service, admin_service, subscription_service, user_service
+from services import (
+    account_service,
+    admin_service,
+    subscription_service,
+    terms_service,
+    user_service,
+)
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
 from utils.log import logger
@@ -221,6 +227,141 @@ def get_account_terms_status(
         terms_accepted=account.terms_accepted,
         display_name=account.display_name,
     )
+
+
+async def initiate_terms_signing(
+    account_name: str,
+    signer_name: str,
+    signer_email: str,
+    redirect_url: str,
+    frame_ancestors: list[str] | None,
+    context: UserContext,
+    session: Session,
+) -> dict:
+    """
+    Initiate terms of service signing via DocuSign.
+    Returns signing URL for embedded signing.
+    """
+    authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if account.terms_accepted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Terms already accepted for account {account_name}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        result = terms_service.initiate_terms_signing(
+            account=account,
+            signer_name=signer_name,
+            signer_email=signer_email,
+            redirect_url=redirect_url,
+            frame_ancestors=None,
+        )
+
+        account_repo = AccountRepository(session)
+        updated = account_repo.update_account(
+            account_name=account_name,
+            terms_envelope_id=result["envelope_id"],
+        )
+
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update account with envelope ID",
+                headers={"Content-Type": "application/json"},
+            )
+
+        return {
+            "success": True,
+            "envelope_id": result["envelope_id"],
+            "signing_url": result["signing_url"],
+            "signer_client_user_id": result["signer_client_user_id"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to initiate terms signing: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to initiate terms signing. Please try again later.",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def complete_terms_signing(
+    account_name: str,
+    envelope_id: str,
+    context: UserContext,
+    session: Session,
+) -> dict:
+    """
+    Mark terms as accepted after user completes signing.
+    Frontend calls this after DocuSign JS fires 'signing_complete' event.
+    """
+    authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if account.terms_envelope_id != envelope_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Envelope ID mismatch",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        status_info = terms_service.get_envelope_status(envelope_id)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to verify envelope status with DocuSign",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if status_info.get("status") != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Envelope is not completed yet",
+            headers={"Content-Type": "application/json"},
+        )
+
+    signed_at = datetime.now(UTC)
+    account_repo = AccountRepository(session)
+    updated_account = account_repo.update_account(
+        account_name=account_name,
+        terms_accepted=True,
+        terms_signed_at=signed_at,
+    )
+
+    if not updated_account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return {
+        "success": True,
+        "terms_accepted": updated_account.terms_accepted,
+        "terms_signed_at": signed_at,
+    }
 
 
 async def accept_account_terms(
