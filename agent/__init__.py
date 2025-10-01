@@ -3,6 +3,7 @@ from agent.config import (
     AgentConfig,
     AgentMetadata,
     AgentPersona,
+    FeatureConfig,
     LanguageAssistantMultilingConfig,
     MultilingualSquadConfig,
     TranscriberConfig,

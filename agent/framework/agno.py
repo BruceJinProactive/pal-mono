@@ -77,6 +77,8 @@ class AgnoAgent:
         self.filler_manager = FillerWordsManager(
             agent_id=config.metadata.agent_id,
             account_name=config.metadata.account_name,
+            chat_filler_words_percentage=config.feature_config.chat_filler_words_percentage,
+            tool_calling_filler_words_percentage=config.feature_config.tool_calling_filler_words_percentage,
         )
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:

@@ -114,9 +114,13 @@ class FillerWordsManager:
         self,
         agent_id: str,
         account_name: str,
+        chat_filler_words_percentage: int = 80,
+        tool_calling_filler_words_percentage: int = 80,
     ):
         self.agent_id = agent_id
         self.account_name = account_name
+        self.chat_filler_words_percentage = chat_filler_words_percentage
+        self.tool_calling_filler_words_percentage = tool_calling_filler_words_percentage
 
     def _build_language_detector(self):
         """
@@ -266,9 +270,11 @@ class FillerWordsManager:
         # Get the appropriate filler words dictionary based on type
         if filler_type == FillerType.CHAT:
             filler_words_dict = self._CHAT_FILLER_WORDS
+            percentage_threshold = self.chat_filler_words_percentage
             type_name = "chat"
         elif filler_type == FillerType.TOOL_CALLING:
             filler_words_dict = self._TOOL_CALLING_FILLER_WORDS
+            percentage_threshold = self.tool_calling_filler_words_percentage
             type_name = "tool calling"
         else:
             logger.error(f"[FillerWordsManager] Unknown filler type: {filler_type}")
@@ -284,9 +290,9 @@ class FillerWordsManager:
             )
             return ""
 
-        if random.randint(1, 100) > 75:
+        if random.randint(1, 100) > percentage_threshold:
             logger.debug(
-                f"[FillerWordsManager] Skipping {type_name} filler words due to possibility",
+                f"[FillerWordsManager] Skipping {type_name} filler words due to possibility ({percentage_threshold}%)",
                 extra={
                     "agent_id": self.agent_id,
                     "account_name": self.account_name,

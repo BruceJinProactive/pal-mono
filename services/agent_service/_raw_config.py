@@ -11,6 +11,7 @@ from agent import (
     AgentConfig,
     AgentMetadata,
     AgentPersona,
+    FeatureConfig,
     KnowledgeConfig,
     KnowledgeProvider,
     LlamaIndexSettings,
@@ -63,6 +64,7 @@ class RawConfig:
         try:
 
             memory_enabled = self.agent.raw_config.get("memory_enabled", True)
+            filler_words_config = self.agent.filler_words or {}
 
             return AgentConfig(
                 persona=self._get_agent_persona(self.channel),
@@ -74,6 +76,14 @@ class RawConfig:
                 ),
                 knowledge=self._get_agent_knowledge(),
                 tool=self._get_agent_tools(),
+                feature_config=FeatureConfig(
+                    chat_filler_words_percentage=filler_words_config.get(
+                        "chat_filler_words_percentage", 80
+                    ),
+                    tool_calling_filler_words_percentage=filler_words_config.get(
+                        "tool_calling_filler_words_percentage", 80
+                    ),
+                ),
                 metadata=AgentMetadata(
                     account_name=self.account.name,
                     agent_id=str(self.agent.id),

@@ -259,6 +259,11 @@ class MultilingualSquadConfig(BaseModel):
 # ============================================================================
 
 
+class FeatureConfig(BaseModel):
+    chat_filler_words_percentage: int = Field(default=80, ge=0, le=100)
+    tool_calling_filler_words_percentage: int = Field(default=80, ge=0, le=100)
+
+
 class AgentConfig(BaseModel):
     persona: AgentPersona
 
@@ -267,6 +272,7 @@ class AgentConfig(BaseModel):
     knowledge: KnowledgeConfig
     tool: ToolConfig
     voice_config: VoiceConfig
+    feature_config: FeatureConfig = Field(default_factory=FeatureConfig)
 
     metadata: AgentMetadata
 
