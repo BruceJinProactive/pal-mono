@@ -110,6 +110,7 @@ def build_agent(agent: db.Agent) -> Agent:
         speech_rate=agent.speech_rate,
         background_noise=agent.background_noise,
         language=agent.language,
+        filler_words=agent.filler_words,
     )
 
 

@@ -25,6 +25,7 @@ class Agent(BaseModel):
     speech_rate: SpeechRate | None = None
     background_noise: bool | None = None
     language: Language | None = None
+    filler_words: dict | None = None
 
 
 class AgentSummary(BaseModel):
@@ -50,6 +51,7 @@ class UpdateAgentRequest(BaseModel):
     speech_rate: SpeechRate | None = None
     background_noise: bool | None = None
     language: Language | None = None
+    filler_words: dict | None = None
     expected_version: int | None = None
 
     def to_agent_params(self) -> AgentParams:
@@ -65,6 +67,7 @@ class UpdateAgentRequest(BaseModel):
             speech_rate=self.speech_rate,
             background_noise=self.background_noise,
             language=self.language,
+            filler_words=self.filler_words,
         )
 
 
