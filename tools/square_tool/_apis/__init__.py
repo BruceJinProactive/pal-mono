@@ -213,6 +213,7 @@ def create_payment_link(
                 exclude_none=True,
                 exclude={
                     # System-managed fields
+                    "id",
                     "created_at",
                     "updated_at",
                     "closed_at",
@@ -311,6 +312,9 @@ def create_payment_link(
 
         # Handle response and parse with Pydantic
         result = handle_square_response(response)
+        logger.info(
+            "Square payment link response", extra={"payment_link_response": result}
+        )
         if isinstance(result, str):
             result = json.loads(result)
 
