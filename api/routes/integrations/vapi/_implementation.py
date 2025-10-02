@@ -491,8 +491,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         # ================= Step 1.5: Check subscription enforcement =================
         # Check if calls should be allowed based on subscription status
-        if not await subscription_service.should_allow_calls_async(
-            session, project.account
+        if await subscription_service.should_block_calls_async(
+            session,
+            project.account,
         ):
             logger.info(
                 "VAPI call blocked due to subscription enforcement for self-onboarded account",

@@ -58,6 +58,27 @@ class ConversationRepositoryAsync:
         )
         return result.scalars().all()
 
+    async def count_conversations_by_account_id(self, account_id: uuid.UUID) -> int:
+        """
+        Count the total number of conversations for a given account id.
+
+        Args:
+            account_id (uuid.UUID): The ID of the account.
+
+        Returns:
+            int: The total number of conversations for the account.
+        """
+        try:
+            result = await self.session.execute(
+                select(func.count(func.distinct(Conversation.id)))
+                .join(User, Conversation.user_id == User.id)
+                .filter(User.account_id == account_id)
+            )
+            return result.scalar() or 0
+        except SQLAlchemyError as e:
+            logger.error(f"Error counting conversations by account id: {e}")
+            raise
+
     async def update_conversation(
         self, conversation_id: uuid.UUID, update_data: ConversationUpdate
     ) -> Conversation | None:

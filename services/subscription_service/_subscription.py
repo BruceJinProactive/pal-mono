@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin import UserContext
+from db import ConversationRepositoryAsync
 from db.db_utils import duplicate_row
 from db.repositories.subscription_repository import (
     AccountSubscriptionRepository,
@@ -16,6 +17,7 @@ from db.repositories.subscription_repository import (
     ProjectSubscriptionRepository,
     SubscriptionPlanRepository,
 )
+from db.tables.accounts import OnboardingMethod
 from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
 from services import account_service, project_service
@@ -1468,21 +1470,34 @@ def _update_stripe_subscription_for_plan_switch(
         )
 
 
-async def should_allow_calls_async(session: AsyncSession, account: db.Account) -> bool:
-    from db.tables.accounts import OnboardingMethod
-
-    if account.current_subscription_id is None:
-        # Only block calls for self-onboarded accounts without subscriptions
-        if account.onboarding_method == OnboardingMethod.self_onboarding:
+async def should_block_calls_async(session: AsyncSession, account: db.Account) -> bool:
+    if account.current_subscription_id:
+        current_subscription = await get_current_subscription_async(session, account)
+        # if subscription status is invalid, block right away
+        if current_subscription and current_subscription.status in [
+            SubscriptionStatus.cancelled,
+            SubscriptionStatus.expired,
+            SubscriptionStatus.deleted,
+        ]:
+            return True
+        # if subscription status is valid, the call should not be blocked
+        elif current_subscription and current_subscription.status in [
+            SubscriptionStatus.active,
+        ]:
             return False
-        return True
-
-    current_subscription = await get_current_subscription_async(session, account)
-
-    if not current_subscription:
+    # at this point, we don't have a confirmed subscription status
+    if account.onboarding_method == OnboardingMethod.self_onboarding:
+        # for self onboarded accounts, only block if their call count exceeds 100
+        # this parameter will be moved to the accounts table in the future so we
+        # configure it dynamically.
+        conversation_repository = ConversationRepositoryAsync(session)
+        call_count = await conversation_repository.count_conversations_by_account_id(
+            account.id
+        )
+        return call_count > 100
+    else:
+        # for all other accounts, do not block
         return False
-
-    return current_subscription.status == SubscriptionStatus.active
 
 
 def unlink_subscription_from_account(
