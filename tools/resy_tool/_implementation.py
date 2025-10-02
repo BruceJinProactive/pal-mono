@@ -60,7 +60,6 @@ class ResyTool(Toolkit, BaseReservationTool):
             venue_name=self.venue_name,
             day=day,
             party_size=party_size,
-            time_filter=time_filter,
         )
 
     @tool
@@ -75,7 +74,7 @@ class ResyTool(Toolkit, BaseReservationTool):
             time: Desired reservation time in HH:MM (24-hour) format.
 
         Returns:
-            Human-readable availability summary or an error message.
+            up to 5 available time slots closest to desired time, or an error message.
         """
 
         try:

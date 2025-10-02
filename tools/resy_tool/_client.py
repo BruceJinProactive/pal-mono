@@ -18,7 +18,6 @@ def find_resy_availability(
     venue_name: str,
     day: str,
     party_size: int,
-    time_filter: str,
     latitude: float = 0.0,
     longitude: float = 0.0,
     timeout: int = 30,
@@ -35,7 +34,6 @@ def find_resy_availability(
         "day": day,
         "party_size": party_size,
         "venue_id": venue_id,
-        "time_filter": time_filter,
     }
 
     headers = {
@@ -55,7 +53,6 @@ def find_resy_availability(
             "venue_id": venue_id,
             "day": day,
             "party_size": party_size,
-            "time_filter": time_filter,
         },
     )
 
