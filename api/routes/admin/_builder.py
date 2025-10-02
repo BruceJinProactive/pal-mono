@@ -359,6 +359,7 @@ def build_project_integration(
         project_id=project_integration.project_id,
         integration_id=project_integration.integration_id,
         store_identifier=project_integration.store_identifier,
+        tool_name=project_integration.tool_name,
         config=project_integration.config or {},
         created_at=project_integration.created_at,
     )
@@ -372,6 +373,7 @@ def build_project_integration_summary(
         id=project_integration.id,
         integration_id=project_integration.integration_id,
         store_identifier=project_integration.store_identifier,
+        tool_name=project_integration.tool_name,
         config=project_integration.config or {},
         created_at=project_integration.created_at,
     )

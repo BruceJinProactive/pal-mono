@@ -214,6 +214,7 @@ def create_project_integration(
             project_id=uuid.UUID(params.project_id),
             integration_id=uuid.UUID(params.integration_id),
             store_identifier=params.store_identifier,
+            tool_name=params.tool_name,
             config=params.config or {},
         )
     except Exception as e:
@@ -236,6 +237,7 @@ def update_project_integration(
         return project_integration_repository.update_project_integration(
             project_integration_id=project_integration_id,
             store_identifier=params.store_identifier,
+            tool_name=params.tool_name,
             config=params.config,
         )
     except Exception as e:
