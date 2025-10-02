@@ -2365,12 +2365,6 @@ def safe_convert_item_fields(item: Dict[str, Any]) -> Dict[str, Any]:
     # Convert price with fallback logic
     raw_price = item.get("price")
     raw_base_price = item.get("basePrice") or item.get("base_price")
-    has_combo = bool(item.get("comboSections") or item.get("combo_sections"))
-    has_detail = bool(
-        item.get("detailPrice")
-        or item.get("detail_price_id")
-        or item.get("detailPriceId")
-    )
 
     # Simple pricing logic - always use actual price, never 0
     if raw_base_price is not None:
