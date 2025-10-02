@@ -18,7 +18,8 @@ from api.schemas.admin.onboarding import (
     SelfOnboardingRequest,
     SelfOnboardingResponse,
 )
-from db.session import SyncSessionLocal
+from api.schemas.admin.voice_config import CreateVoiceConfigRequest
+from db.session import AsyncSessionLocal, SyncSessionLocal
 from db.tables.accounts import AccountStatus, OnboardingMethod
 from services import account_service, admin_service, agent_service, project_service
 from services.admin_service import ProjectSetup
@@ -27,6 +28,7 @@ from services.agent_service import AgentParams
 from services.number_service import NumberService
 from services.number_service._utils import NumberChannel
 from services.project_service import ProjectParams
+from services.voice_service import VoiceService
 from utils.log import logger
 
 from ._account import _set_user_session, get_account_status
@@ -367,9 +369,20 @@ async def self_onboarding(
             headers={"Content-Type": "application/json"},
         )
 
-    self_onboard_project(request, guest_context, session, account_name, agent_id)
-    # Create Cognito user. If this fails, the account and agent will be hard deleted.
+    project_id = self_onboard_project(
+        request, guest_context, session, account_name, agent_id
+    )
+    if not project_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create project",
+            headers={"Content-Type": "application/json"},
+        )
 
+    # Create voice config for the project
+    await self_onboard_voice_config(project_id, request, guest_context, session)
+
+    # Create Cognito user. If this fails, the account and agent will be hard deleted.
     user = self_onboard_user(request, session)
     if not user or not user.session:
         raise HTTPException(
@@ -573,6 +586,62 @@ def self_onboard_phone_number(
         f"[SelfOnboarding] Assigned phone number {phone_number} to project {project_name}"
     )
     return phone_number
+
+
+async def self_onboard_voice_config(
+    project_id: uuid.UUID,
+    request: SelfOnboardingRequest,
+    context: UserContext,
+    session: Session,
+) -> uuid.UUID | None:
+    """
+    Self onboard a voice config. This function creates a voice config for the given project
+
+    Args:
+        project_id: UUID of the project
+        request: SelfOnboardingRequest containing voice configuration
+        context: UserContext for authorization
+        session: Database session (not used, but kept for consistency)
+
+    Returns:
+        UUID of the created voice config, or None if creation fails
+    """
+    # Create async session for voice service
+    async_session = AsyncSessionLocal()
+    try:
+        # Create voice config request with available data
+        voice_config_request = CreateVoiceConfigRequest(
+            project_id=project_id,
+            language="English",  # Default to English
+            voice_id=request.agent_voice_id,
+            first_message=request.agent_greeting_message,
+            transfer_message="Please hold while I transfer your call.",  # Default message
+        )
+
+        # Create voice config using voice service
+        voice_service = VoiceService()
+        voice_config = await voice_service.create_voice_config(
+            create_request=voice_config_request,
+            async_session=async_session,
+        )
+
+        logger.info(
+            f"[SelfOnboarding] Created voice config {voice_config.id} for project {project_id}"
+        )
+        return voice_config.id
+
+    except Exception as e:
+        await async_session.rollback()
+        logger.error(
+            f"[SelfOnboarding] Failed to create voice config for project {project_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to create voice config: {e}",
+            headers={"Content-Type": "application/json"},
+        )
+    finally:
+        await async_session.close()
 
 
 def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> CognitoUser:
