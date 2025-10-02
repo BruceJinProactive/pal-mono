@@ -72,7 +72,6 @@ def join_waitlist_queue(
     party_size: int,
     name: str,
     party_notes: Optional[str] = None,
-    idempotency_token: Optional[str] = None,
 ) -> YelpWaitlistJoinQueueResponse:
     """
     Join the waitlist queue for a restaurant using the Yelp Waitlist API.
@@ -94,7 +93,6 @@ def join_waitlist_queue(
         party_size: Number of guests in the party
         name: Patron's name
         party_notes: Notes from the patron (optional)
-        idempotency_token: Idempotency token to uniquely identify request (optional)
 
     Returns:
         YelpWaitlistJoinQueueResponse object containing the queue confirmation details
@@ -116,9 +114,6 @@ def join_waitlist_queue(
     # Add optional parameters if provided
     if party_notes is not None:
         payload["party_notes"] = party_notes
-
-    if idempotency_token is not None:
-        payload["idempotency_token"] = idempotency_token
 
     response = connect_yelp_api(
         http_method="POST",

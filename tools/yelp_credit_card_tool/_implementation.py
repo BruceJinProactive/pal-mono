@@ -95,15 +95,24 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
     def _reset_and_refetch_token(self) -> YelpAccessToken:
         """Reset the cached bearer token and fetch a fresh one."""
         global _CACHED_BEARER_TOKEN
+        logger.debug(
+            "[YelpCreditCardTool]: _reset_and_refetch_token - Resetting cached bearer token and fetching fresh token"
+        )
         with _CACHED_BEARER_TOKEN_LOCK:
             _CACHED_BEARER_TOKEN = None
             # Fetch fresh API key
             api_key = get_client_secret_with_fallback("YELP_API_KEY")
             if not api_key:
+                logger.debug(
+                    "[YelpCreditCardTool]: _reset_and_refetch_token - Failed to obtain Yelp API key"
+                )
                 raise Exception("Failed to obtain Yelp API key")
             # Create and cache the new bearer token
             _CACHED_BEARER_TOKEN = YelpAccessToken(
                 access_token=api_key, token_type="Bearer"
+            )
+            logger.debug(
+                "[YelpCreditCardTool]: _reset_and_refetch_token - Successfully created and cached new bearer token"
             )
             return _CACHED_BEARER_TOKEN
 
