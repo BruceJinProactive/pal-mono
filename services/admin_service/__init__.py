@@ -739,16 +739,17 @@ async def build_menu_from_upload(
     upload_file,
 ) -> str:
     """
-    Build menu data from an uploaded images file using OpenAI Vision.
+    Build menu data from uploaded file(s) using OpenAI API.
+    Supports images and PDF files.
 
     Args:
-        upload_file: FastAPI UploadFile object containing the images
+        upload_file: FastAPI UploadFile object or list of UploadFile objects containing images or PDFs
 
     Returns:
         str: Menu data formatted as markdown
 
     Raises:
-        ValueError: If there's an error building the menu from the images
+        ValueError: If there's an error building the menu from the file(s)
     """
     return await menu_builder.build_menu_from_upload(upload_file)
 

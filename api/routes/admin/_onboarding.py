@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from fastapi import HTTPException, Request, Response, UploadFile, status
+from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import AccountParams
@@ -208,6 +208,7 @@ async def process_menu_upload_background(
         # Update the project with the menu
         project_params = ProjectParams()
         project_params.product_info = result
+        logger.info("Project result: %s", result)
         project_service.update_project(session, context, project_id, project_params)
 
         # Commit the transaction
@@ -253,12 +254,22 @@ async def upload_menu_api(
         # Validate files before starting background task
         files_list = upload_files if isinstance(upload_files, list) else [upload_files]
 
-        # Basic validation
+        # Basic validation - accept images and PDFs
         for file in files_list:
-            if not file.content_type or not file.content_type.startswith("image/"):
+            if not file.content_type:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid file type. Expected image, got: {file.content_type}",
+                    detail="File type could not be determined",
+                    headers={"Content-Type": "application/json"},
+                )
+
+            is_image = file.content_type.startswith("image/")
+            is_pdf = file.content_type == "application/pdf"
+
+            if not (is_image or is_pdf):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid file type. Expected image or PDF, got: {file.content_type}",
                     headers={"Content-Type": "application/json"},
                 )
 
@@ -288,68 +299,6 @@ async def upload_menu_api(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to start menu processing",
-            headers={"Content-Type": "application/json"},
-        )
-
-
-async def upload_menu_api_with_validation(
-    request: Request,
-    context: UserContext,
-    session: Session,
-    project_id: uuid.UUID,
-) -> MenuUploaderResponse:
-    """
-    Build menu data from uploaded image file(s) using OpenAI Vision with file validation.
-
-    This function handles file validation and then calls the core upload_menu_api function.
-    Flexible endpoint that handles various multiple file upload formats.
-
-    Supports:
-    - Single file with any field name (file, files, upload, etc.)
-    - Multiple files with same field name
-    - Multiple files with different field names
-    - Mixed file upload formats
-
-    All uploaded files will be processed and combined into a single menu.
-    """
-    authorize_admin(context)
-    try:
-        form = await request.form()
-        files: list[UploadFile] = []
-
-        # Collect all uploaded files (supports multiple values per field)
-        for key in form.keys():
-            for value in form.getlist(key):
-                if isinstance(value, UploadFile) and value.filename:
-                    files.append(value)
-
-        if not files:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No files were uploaded. Please select at least one image file.",
-            )
-
-        # Validate that all files are images
-        for file in files:
-            if not file.content_type or not file.content_type.startswith("image/"):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"File '{file.filename}' is not an image. Only image files are supported.",
-                )
-
-        # Handle single file vs multiple files for the backend
-        upload_files = files[0] if len(files) == 1 else files
-
-        return await upload_menu_api(upload_files, context, project_id)
-
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
-    except Exception:
-        logger.exception("Unexpected error in upload menu validation")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
             headers={"Content-Type": "application/json"},
         )
 
