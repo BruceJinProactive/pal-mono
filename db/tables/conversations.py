@@ -74,6 +74,9 @@ class Conversation(Base):
     # Vapi control URL for call transfer
     vapi_control_url: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
+    # Call ID for call transfer
+    call_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+
     # Relationships
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
