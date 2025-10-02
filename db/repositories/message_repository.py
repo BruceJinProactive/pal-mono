@@ -20,7 +20,11 @@ class MessageRepositoryAsync:
         self.session = session
 
     async def create_message(
-        self, user_id: uuid.UUID, project_id: uuid.UUID, message_body: dict
+        self,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        message_body: dict,
+        call_id: str | None = None,
     ):
         # Step 1: Get the user from the database
         result = await self.session.execute(select(User).filter(User.id == user_id))
@@ -109,7 +113,10 @@ class MessageRepositoryAsync:
             is_test_message = metadata.get("testing", False)
 
             new_conversation = Conversation(
-                user_id=user.id, project_id=project_id, is_test=is_test_message
+                user_id=user.id,
+                project_id=project_id,
+                is_test=is_test_message,
+                call_id=call_id,
             )
             self.session.add(new_conversation)
             await self.session.flush()
