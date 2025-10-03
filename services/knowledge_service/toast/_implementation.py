@@ -39,8 +39,8 @@ from tools.toast_tool._apis import get_toast_access_token
 from tools.toast_tool.classes import ToastAccessToken
 from utils.log import logger
 
-from ._client import download_menu, get_menu_metadata
-from ._indexer import index_to_pinecone
+from ._client import download_menu, get_dining_options, get_menu_metadata
+from ._indexer import index_dining_options_to_pinecone, index_to_pinecone
 from ._utils import _sanitize_filename, parse_menu
 
 
@@ -152,6 +152,7 @@ class ToastMenuProcessor:
         system_prompt_menu: str,
         infinite_loop_items: List[Dict[str, str]],
         debug_output_dir: Optional[str] = None,
+        dining_options_json: Optional[str] = None,
     ) -> None:
         """Save debug files to disk (similar to dummy_menu.py logic).
 
@@ -160,6 +161,7 @@ class ToastMenuProcessor:
             system_prompt_menu: System prompt menu text
             infinite_loop_items: Items with infinite loops
             debug_output_dir: Directory to save files (optional)
+            dining_options_json: Raw JSON string of dining options (optional)
         """
         # Use provided directory or create default one
         if debug_output_dir is None:
@@ -188,6 +190,23 @@ class ToastMenuProcessor:
             os.path.join(dirname, "system_prompt_menu.md"), "w", encoding="utf-8"
         ) as f:
             f.write(system_prompt_menu)
+
+        # Save dining options if provided
+        if dining_options_json:
+            dining_options_dirname = os.path.join(dirname, "dining_options")
+            os.makedirs(dining_options_dirname, exist_ok=True)
+
+            with open(
+                os.path.join(dining_options_dirname, "dining_options.txt"),
+                "w",
+                encoding="utf-8",
+            ) as f:
+                f.write(dining_options_json)
+
+            logger.debug(
+                "[toast._implementation._save_debug_files] Saved dining options to: %s",
+                dining_options_dirname,
+            )
 
         # Save infinite loop items to separate directory
         if infinite_loop_items:
@@ -391,6 +410,51 @@ class ToastMenuProcessor:
         )
         return document_count
 
+    def _get_and_index_dining_options(
+        self,
+        bearer_token: ToastAccessToken,
+        store_id: str,
+        pinecone_index_name: str,
+        pinecone_namespace: str,
+        general_api_endpoint: Optional[str] = None,
+    ) -> tuple[int, str]:
+        """Get dining options from Toast API and index to Pinecone.
+
+        Args:
+            bearer_token: Bearer token for API authentication
+            store_id: Store ID
+            pinecone_index_name: Pinecone index name
+            pinecone_namespace: Pinecone namespace
+            general_api_endpoint: Optional custom API endpoint
+
+        Returns:
+            tuple: (Number of documents indexed, raw JSON string)
+        """
+        logger.debug(
+            "[toast._implementation._get_and_index_dining_options] Getting dining options..."
+        )
+
+        # Get raw JSON string from API
+        dining_options_json = get_dining_options(
+            bearer_token=bearer_token,
+            store_id=store_id,
+            general_api_endpoint=general_api_endpoint,
+        )
+
+        # Index to Pinecone
+        document_count = index_dining_options_to_pinecone(
+            dining_options_json=dining_options_json,
+            pinecone_index_name=pinecone_index_name,
+            pinecone_namespace=pinecone_namespace,
+            store_id=store_id,
+            debug=self.debug,
+        )
+
+        logger.debug(
+            "[toast._implementation._get_and_index_dining_options] Successfully indexed dining options to Pinecone"
+        )
+        return document_count, dining_options_json
+
     def process_and_index_menu_from_api(
         self,
         client_id: str,
@@ -462,25 +526,49 @@ class ToastMenuProcessor:
                 )
             )
 
-            # Step 4: Save debug files if requested
+            # Step 4: Index menu to Pinecone
+            document_count = self._index_menu_to_pinecone(
+                individual_items, pinecone_index_name, pinecone_namespace
+            )
+
+            # Step 5: Get and index dining options
+            dining_options_count = 0
+            dining_options_json = None
+            try:
+                dining_options_count, dining_options_json = (
+                    self._get_and_index_dining_options(
+                        access_token,
+                        restaurant_external_id,
+                        pinecone_index_name,
+                        pinecone_namespace,
+                        general_api_endpoint,
+                    )
+                )
+                logger.debug(
+                    "[toast._implementation.process_and_index_menu_from_api] Successfully indexed %s dining options",
+                    dining_options_count,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[toast._implementation.process_and_index_menu_from_api] Failed to index dining options: {e}. Continuing with menu indexing."
+                )
+
+            # Step 6: Save debug files if requested (including dining options)
             if save_debug_files:
                 self._save_debug_files(
                     individual_items,
                     system_prompt_menu,
                     infinite_loop_items,
                     debug_output_dir,
+                    dining_options_json,
                 )
-
-            # Step 5: Index to Pinecone
-            document_count = self._index_menu_to_pinecone(
-                individual_items, pinecone_index_name, pinecone_namespace
-            )
 
             return {
                 "system_prompt_menu": system_prompt_menu,
                 "pinecone_namespace": pinecone_namespace,
                 "pinecone_index_name": pinecone_index_name,
                 "processed_items": document_count,
+                "dining_options_indexed": dining_options_count,
                 "restaurant_external_id": restaurant_external_id,
                 "restaurant_guid": metadata.get("restaurantGuid"),
                 "menu_last_updated": metadata.get("lastUpdated"),

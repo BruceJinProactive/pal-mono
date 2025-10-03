@@ -7,6 +7,7 @@ to fetch menu data for processing and indexing.
 Key responsibilities:
 - OAuth token management and authentication
 - Menu metadata and menu data download from Toast API endpoints
+- Dining options retrieval from Toast API
 - HTTP request handling with proper error management
 - API response validation and error handling
 
@@ -142,3 +143,57 @@ def download_menu(
         if isinstance(e, (RuntimeError, ValueError)):
             raise
         raise RuntimeError(f"Network error downloading menu: {e}") from e
+
+
+def get_dining_options(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    general_api_endpoint: Optional[str] = None,
+) -> str:
+    """Retrieves available dining options from the Toast API for a restaurant.
+
+    Args:
+        bearer_token: Toast access token
+        store_id: External ID for the restaurant
+        general_api_endpoint: Optional custom API endpoint
+
+    Returns:
+        Raw JSON string of dining options from the API
+
+    Raises:
+        RuntimeError: If dining options retrieval fails
+    """
+    try:
+        logger.debug(
+            f"[toast._client.get_dining_options] Getting dining options for restaurant {store_id}"
+        )
+
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function="/config/v2/diningOptions",
+            store_id=store_id,
+            query_params=None,
+            payload=None,
+            general_api_endpoint=general_api_endpoint,
+        )
+
+        if response.status == 200:
+            # Parse and re-format with tabs to match the expected format
+            dining_options_data = json.loads(response.decoded_body)
+            formatted_json = json.dumps(dining_options_data, indent="\t")
+
+            logger.debug(
+                f"[toast._client.get_dining_options] Successfully retrieved {len(dining_options_data)} dining options"
+            )
+
+            return formatted_json
+        else:
+            raise RuntimeError(
+                f"Error getting dining options: {response.status} - {response.decoded_body}"
+            )
+
+    except Exception as e:
+        if isinstance(e, RuntimeError):
+            raise
+        raise RuntimeError(f"Network error getting dining options: {e}") from e

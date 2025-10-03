@@ -7,6 +7,7 @@ vector store for semantic search and retrieval by AI agents.
 Key responsibilities:
 - Convert Toast menu text into vector embeddings using Cohere
 - Index menu items into Pinecone vector database
+- Index dining options with specialized metadata
 - Manage namespaces with timestamp-based organization
 - Handle embedding generation and vector store operations
 - Extract and use itemGuid as document ID and metadata
@@ -157,3 +158,87 @@ def index_to_pinecone(
     )
 
     return len(documents)
+
+
+def index_dining_options_to_pinecone(
+    dining_options_json: str,
+    pinecone_index_name: str,
+    pinecone_namespace: str,
+    store_id: str,
+    debug: bool = False,
+) -> int:
+    """Index dining options to Pinecone vector store with specialized metadata.
+
+    Args:
+        dining_options_json: Raw JSON string of dining options from Toast API
+        pinecone_index_name: Pinecone index name
+        pinecone_namespace: Pinecone namespace for indexing
+        store_id: Store ID to include in metadata
+        debug: Enable debug logging
+
+    Returns:
+        int: Number of documents indexed (1 for dining options)
+
+    Raises:
+        Exception: If indexing fails
+    """
+    # Get API keys from centralized functions
+    pinecone_api_key = get_pinecone_api_key()
+    cohere_api_key = get_cohere_api_key()
+
+    logger.debug(
+        "[toast._indexer.index_dining_options_to_pinecone] Indexing dining options to Pinecone..."
+    )
+
+    # Create a single document for dining options with specialized metadata
+    doc_id = f"dining_options_{store_id}"
+    doc = Document(
+        text=dining_options_json,
+        metadata={
+            "source": "toast_dining_options",
+            "isDiningOptions": True,
+            "store_id": store_id,
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "size_bytes": len(dining_options_json.encode("utf-8")),
+        },
+        doc_id=doc_id,
+    )
+
+    if debug:
+        logger.debug(
+            f"[toast._indexer.index_dining_options_to_pinecone] Created dining options document with ID: {doc_id}"
+        )
+
+    # Initialize Pinecone
+    pc = Pinecone(api_key=pinecone_api_key)
+    pinecone_index = pc.Index(pinecone_index_name)
+
+    vector_store = PineconeVectorStore(
+        pinecone_index=pinecone_index, namespace=pinecone_namespace
+    )
+
+    embed_model = CohereEmbedding(
+        api_key=cohere_api_key,
+        model_name="embed-english-v3.0",
+    )
+
+    node_parser = SimpleNodeParser.from_defaults(
+        chunk_size=1000000,  # effectively disables chunking
+        chunk_overlap=0,
+    )
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+
+    # Index document
+    _ = VectorStoreIndex.from_documents(
+        [doc],
+        storage_context=storage_context,
+        embed_model=embed_model,
+        transformations=[node_parser],
+    )
+
+    logger.debug(
+        "[toast._indexer.index_dining_options_to_pinecone] Successfully indexed dining options to Pinecone namespace: %s",
+        pinecone_namespace,
+    )
+
+    return 1
