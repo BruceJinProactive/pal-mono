@@ -25,21 +25,30 @@ class ResyTool(Toolkit, BaseReservationTool):
 
     def __init__(
         self,
-        venue_id: int,
+        venue_id: int | str,
         city: str,
         venue_name: str,
-        tool_metadata: ToolMetadata,
+        tool_metadata: ToolMetadata | None = None,
     ):
         super().__init__(name="resy_tool")
 
-        if not venue_id:
+        try:
+            parsed_venue_id = int(venue_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Resy venue_id is required") from exc
+
+        if not parsed_venue_id:
             raise ValueError("Resy venue_id is required")
+
+        city = (city or "").strip()
         if not city:
             raise ValueError("Resy city is required")
+
+        venue_name = (venue_name or "").strip()
         if not venue_name:
             raise ValueError("Resy venue name is required")
 
-        self.venue_id = venue_id
+        self.venue_id = parsed_venue_id
         self.city = city
         self.venue_name = venue_name
         self.tool_metadata = tool_metadata

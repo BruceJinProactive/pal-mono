@@ -3,6 +3,7 @@ import uuid
 from dataclasses import asdict
 from typing import Any, Dict, Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -63,6 +64,13 @@ async def construct_agent_config(
         db_session, db_project.account_id, db_project.id, IntegrationType.pos
     )
 
+    result = await db_session.execute(
+        select(db.ProjectIntegration).filter(
+            db.ProjectIntegration.project_id == db_project.id
+        )
+    )
+    project_integrations = list(result.scalars())
+
     raw_config = _raw_config.RawConfig(
         agent=db_agent,
         project=db_project,
@@ -72,6 +80,7 @@ async def construct_agent_config(
         channel=channel,
         integration=integration,
         sender_identifier=sender_identifier,
+        project_integrations=project_integrations,
     )
 
     # Convert blueprint to agent config

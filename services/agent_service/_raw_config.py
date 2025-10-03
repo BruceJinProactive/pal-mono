@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -50,6 +50,7 @@ class RawConfig:
         channel: Channel,
         integration: IntegrationDetail | None = None,
         sender_identifier: str | None = None,
+        project_integrations: Sequence[db.ProjectIntegration] | None = None,
     ):
         self.agent = agent
         self.project = project
@@ -59,10 +60,10 @@ class RawConfig:
         self.channel = channel
         self.integration = integration
         self.sender_identifier = sender_identifier
+        self.project_integrations = list(project_integrations or [])
 
     def build(self) -> AgentConfig:
         try:
-
             memory_enabled = self.agent.raw_config.get("memory_enabled", True)
             filler_words_config = self.agent.filler_words or {}
 
@@ -126,6 +127,17 @@ class RawConfig:
             raise ValueError(f"Invalid RawConfig: {e}") from e
         except Exception as e:
             raise ValueError(f"Failed to convert to AgentConfig: {e}") from e
+
+    @staticmethod
+    def _coerce_bool(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return normalized in {"true", "1", "yes", "y", "on"}
+        if value is None:
+            return False
+        return bool(value)
 
     def _get_multilingual_squad_config(self) -> MultilingualSquadConfig | None:
         """
@@ -281,6 +293,42 @@ class RawConfig:
 
         return result
 
+    def _get_project_integration_tools(self) -> List[Tuple[str, Dict[str, Any], bool]]:
+        tools: List[Tuple[str, Dict[str, Any], bool]] = []
+
+        sorted_integrations = sorted(
+            self.project_integrations,
+            key=lambda integration: (integration.created_at, integration.id),
+        )
+
+        for integration in sorted_integrations:
+            tool_name = integration.tool_name
+            if not tool_name:
+                continue
+
+            config_payload: Dict[str, Any] = integration.config or {}
+            if not isinstance(config_payload, dict):
+                raise ValueError(
+                    "Project integration config must be a dict for tool entries."
+                )
+
+            config_copy: Dict[str, Any] = dict(config_payload)
+            access_metadata = self._coerce_bool(
+                config_copy.pop("access_metadata", False)
+            )
+
+            nested_args = config_copy.pop("tool_args", None)
+            if nested_args is not None:
+                if not isinstance(nested_args, dict):
+                    raise ValueError(
+                        f"tool_args must be a dict for project integration tool {tool_name}."
+                    )
+                config_copy = {**config_copy, **nested_args}
+
+            tools.append((tool_name, config_copy, access_metadata))
+
+        return tools
+
     def _populate_vapi_tool_args(self, tool_args: dict) -> dict:
         """
         Populate VAPI tool arguments with transfer settings from project columns.
@@ -330,36 +378,85 @@ class RawConfig:
             customer_phone=customer_phone,
         )
 
-        # Extract the tools from agent config
-        raw_tools = self.agent.raw_config.get("tools", {})
-        raw_identifiers = raw_tools.get("identifiers", []) or []
+        raw_tools: Dict[str, Any] = self.agent.raw_config.get("tools", {})
+        raw_identifiers: List[Dict[str, Any]] = raw_tools.get("identifiers", []) or []
         if not isinstance(raw_identifiers, list):
             raise ValueError("'identifiers' should be a list.")
 
-        # Load overrides from project config
         project_tool_overrides = self._get_project_tools_override()
+        integration_tool_entries = self._get_project_integration_tools()
 
-        seen_tools = set()
-        final_identifiers: list[ToolIdentifier] = []
+        tool_order: List[str] = []
+
+        class _MergedToolEntry(TypedDict):
+            args: Dict[str, Any]
+            access_metadata: bool
+
+        merged_tools: Dict[str, _MergedToolEntry] = {}
+
+        def _ensure_dict(value: object) -> Dict[str, Any]:
+            if not isinstance(value, dict):
+                raise ValueError("'tool_args' should be a dict.")
+            return dict(value)
+
+        def _set_tool(
+            tool_name: str, args: Dict[str, Any], access_metadata: object
+        ) -> None:
+            if not tool_name:
+                raise ValueError("tool_name cannot be empty.")
+            if tool_name not in merged_tools:
+                tool_order.append(tool_name)
+            merged_tools[tool_name] = _MergedToolEntry(
+                args=dict(args),
+                access_metadata=self._coerce_bool(access_metadata),
+            )
 
         for raw_tool in raw_identifiers:
             if not isinstance(raw_tool, dict):
                 raise ValueError("'identifiers' should be a list of dict.")
 
-            tool_name = raw_tool.get("tool_name", "")
-            tool_args = raw_tool.get("tool_args", {})
+            tool_name = str(raw_tool.get("tool_name", "") or "")
+            tool_args: Dict[str, Any] = _ensure_dict(
+                raw_tool.get("tool_args", {}) or {}
+            )
             access_metadata = raw_tool.get("access_metadata", False)
 
-            # Apply override if available
-            if tool_name in project_tool_overrides:
-                tool_override = project_tool_overrides[tool_name]
-                tool_args = {
-                    **tool_args,
-                    **tool_override.get("tool_args", {}),
-                }  # shallow merge
-                access_metadata = tool_override.get("access_metadata", access_metadata)
+            _set_tool(tool_name, tool_args, access_metadata)
 
-            # Auto-populate VAPI tool args from project columns
+        for tool_name, overrides in project_tool_overrides.items():
+            override_args_raw = overrides.get("tool_args", {}) or {}
+            override_args: Dict[str, Any] = _ensure_dict(override_args_raw)
+            override_access_metadata = overrides.get("access_metadata", None)
+
+            if tool_name in merged_tools:
+                existing_args: Dict[str, Any] = merged_tools[tool_name]["args"]
+                merged_args: Dict[str, Any] = {**existing_args, **override_args}
+                merged_tools[tool_name]["args"] = merged_args
+                if override_access_metadata is not None:
+                    merged_tools[tool_name]["access_metadata"] = self._coerce_bool(
+                        override_access_metadata
+                    )
+            else:
+                _set_tool(
+                    tool_name,
+                    dict(override_args),
+                    (
+                        override_access_metadata
+                        if override_access_metadata is not None
+                        else False
+                    ),
+                )
+
+        # Apply ProjectIntegration-provided tools
+        for tool_name, tool_args, access_metadata in integration_tool_entries:
+            _set_tool(tool_name, tool_args, access_metadata)
+
+        final_identifiers: List[ToolIdentifier] = []
+
+        for tool_name in tool_order:
+            entry = merged_tools[tool_name]
+            tool_args: Dict[str, Any] = dict(entry["args"])
+
             if tool_name == "vapi_tool":
                 tool_args = self._populate_vapi_tool_args(tool_args)
 
@@ -367,27 +464,9 @@ class RawConfig:
                 ToolIdentifier(
                     tool_name=tool_name,
                     args=tool_args,
-                    access_metadata=access_metadata,
+                    access_metadata=bool(entry["access_metadata"]),
                 )
             )
-            seen_tools.add(tool_name)
-
-        # Add new tools from project config that weren't in agent config
-        for tool_name, overrides in project_tool_overrides.items():
-            if tool_name not in seen_tools:
-                tool_args = overrides.get("tool_args", {})
-
-                # Auto-populate VAPI tool args from project columns for new tools too
-                if tool_name == "vapi_tool":
-                    tool_args = self._populate_vapi_tool_args(tool_args)
-
-                final_identifiers.append(
-                    ToolIdentifier(
-                        tool_name=tool_name,
-                        args=tool_args,
-                        access_metadata=overrides.get("access_metadata", False),
-                    )
-                )
 
         return ToolConfig(identifiers=final_identifiers, metadata=metadata)
 
