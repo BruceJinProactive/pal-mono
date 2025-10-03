@@ -26,6 +26,10 @@ class MessageRepositoryAsync:
         message_body: dict,
         call_id: str | None = None,
     ):
+        logger.debug(
+            f"[db.message_repository.create_message] Creating message with call_id: {call_id}"
+        )
+
         # Step 1: Get the user from the database
         result = await self.session.execute(select(User).filter(User.id == user_id))
         user = result.scalar_one_or_none()
@@ -111,7 +115,9 @@ class MessageRepositoryAsync:
         ):
             metadata = message_body.get("metadata", {})
             is_test_message = metadata.get("testing", False)
-
+            logger.debug(
+                f"[db.message_repository.create_message] Creating new conversation with call id: {call_id}"
+            )
             new_conversation = Conversation(
                 user_id=user.id,
                 project_id=project_id,
@@ -121,6 +127,9 @@ class MessageRepositoryAsync:
             self.session.add(new_conversation)
             await self.session.flush()
             conversation_id = new_conversation.id
+            logger.debug(
+                f"[db.message_repository.create_message] Successfully created conversation {conversation_id} with call id {call_id}"
+            )
 
         # Step 6: Create a message with message_body and add it to the conversation
         message = Message(conversation_id=conversation_id, body=message_body)

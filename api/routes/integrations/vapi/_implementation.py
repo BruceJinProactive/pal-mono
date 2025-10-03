@@ -435,7 +435,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         customer_number = customer_data.get("number", "")
 
         logger.debug(
-            f"Handling assistant request for call {call_id} from {customer_number} to {phone_number}"
+            f"[vapi._implementation.handle_assistant_request] Handling assistant request for call {call_id} from {customer_number} to {phone_number}"
         )
 
         # Create a Message object for this call request
@@ -459,7 +459,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         )
 
         # Log the created message
-        logger.debug(f"Created message: {message.id} for call {call_id}")
+        logger.debug(
+            f"[vapi._implementation.handle_assistant_request] Created message: {message.id} for call {call_id}"
+        )
 
         # ==== Step 1: Get project, user, and save request message ====
         project = await project_service.get_project_async(session, message)

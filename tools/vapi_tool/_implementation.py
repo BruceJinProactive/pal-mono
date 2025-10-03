@@ -43,38 +43,41 @@ def _get_control_url_from_vapi(call_id: str) -> str:
 
         if not control_url:
             logger.error(
-                "[VapiTool._get_control_url_from_vapi] No control URL found in Vapi call response"
+                f"[VapiTool._get_control_url_from_vapi] No control URL found in Vapi call response for call id {call_id}"
             )
             raise Exception(
-                "[VapiTool._get_control_url_from_vapi] No control URL found in Vapi call response"
+                f"[VapiTool._get_control_url_from_vapi] No control URL found in Vapi call response for call id {call_id}"
             )
 
+        logger.debug(
+            f"[VapiTool._get_control_url_from_vapi] Successfully retrieved control URL for call id {call_id}: {control_url}"
+        )
         return control_url
 
     except httpx.RequestError as e:
         logger.error(
-            f"[VapiTool._get_control_url_from_vapi] Network error occurred while fetching call data from Vapi: {e}",
+            f"[VapiTool._get_control_url_from_vapi] Network error occurred while fetching call data from Vapi for call id {call_id}: {e}",
             exc_info=True,
         )
         raise Exception(
-            f"[VapiTool._get_control_url_from_vapi] Network error occurred while fetching call data from Vapi: {e}"
+            f"[VapiTool._get_control_url_from_vapi] Network error occurred while fetching call data from Vapi for call id {call_id}: {e}"
         )
 
     except httpx.HTTPStatusError as e:
         logger.error(
-            f"[VapiTool._get_control_url_from_vapi] HTTP error {e.response.status_code} occurred while fetching call data from Vapi: {e.response.text}",
+            f"[VapiTool._get_control_url_from_vapi] HTTP error {e.response.status_code} occurred while fetching call data from Vapi for call id {call_id}: {e.response.text}",
             exc_info=True,
         )
         raise Exception(
-            f"[VapiTool._get_control_url_from_vapi] HTTP error {e.response.status_code} occurred while fetching call data from Vapi: {e.response.text}"
+            f"[VapiTool._get_control_url_from_vapi] HTTP error {e.response.status_code} occurred while fetching call data from Vapi for call id {call_id}: {e.response.text}"
         )
     except Exception as e:
         logger.error(
-            f"[VapiTool._get_control_url_from_vapi] Unexpected error occurred while fetching call data from Vapi: {e}",
+            f"[VapiTool._get_control_url_from_vapi] Unexpected error occurred while fetching call data from Vapi for call id {call_id}: {e}",
             exc_info=True,
         )
         raise Exception(
-            f"[VapiTool._get_control_url_from_vapi] Unexpected error occurred while fetching call data from Vapi: {e}"
+            f"[VapiTool._get_control_url_from_vapi] Unexpected error occurred while fetching call data from Vapi for call id {call_id}: {e}"
         )
 
 
@@ -113,6 +116,9 @@ class VapiTool(Toolkit):
             error_msg = "No conversation ID available. Call transfer is not possible."
             logger.error(f"[VapiTool.call_transfer] {error_msg}")
             return error_msg
+        logger.debug(
+            f"[VapiTool.call_transfer] Initiating call transfer for conversation {conversation_id}"
+        )
         db = SyncSessionLocal()
 
         # Get conversation and fetch control URL from Vapi API
@@ -126,12 +132,19 @@ class VapiTool(Toolkit):
                 return error_msg
 
             call_id = conversation.call_id
+            logger.debug(
+                f"[VapiTool.call_transfer] Call id for conversation {conversation_id}: {call_id}"
+            )
+
             if not call_id:
                 error_msg = "No call ID available for this conversation. Call transfer is not possible."
                 logger.error(f"[VapiTool.call_transfer] {error_msg}")
                 return error_msg
 
             control_url = _get_control_url_from_vapi(call_id)
+            logger.debug(
+                f"[VapiTool.call_transfer] Retrieved control URL for conversation {conversation_id}: {control_url}"
+            )
 
         except Exception as e:
             error_msg = f"Error fetching call data: {e}"
@@ -148,10 +161,13 @@ class VapiTool(Toolkit):
 
         try:
             # Make the POST request to transfer the call
+            logger.debug(
+                f"[VapiTool.call_transfer] Sending transfer request to {control_url} with destination {self.destination_number}"
+            )
             response = httpx.post(control_url, json=transfer_payload, timeout=30.0)
             response.raise_for_status()
 
-            logger.info(
+            logger.debug(
                 f"[VapiTool.call_transfer] Successfully initiated call transfer to {self.destination_number}"
             )
             return "Call has been transfered"
