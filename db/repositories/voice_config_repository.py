@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from db.tables import VoiceConfig
 from db.tables.types import SpeechRate
@@ -174,5 +175,99 @@ class VoiceConfigRepositoryAsync:
             await self.session.commit()
         else:
             await self.session.flush()
+
+        return deleted_count
+
+
+class VoiceConfigRepository:
+    def __init__(self, session: Session, auto_commit: bool = True):
+        self.session = session
+        self.auto_commit = auto_commit
+
+    def create_voice_config(
+        self,
+        project_id: uuid.UUID,
+        language: str,
+        voice_id: str,
+        first_message: str,
+        transfer_message: str,
+        replacements: Optional[Dict] = None,
+        speech_rate: Optional[str] = None,
+        background_sound: Optional[str] = None,
+        raw_config: Optional[Dict] = None,
+    ) -> VoiceConfig:
+        """
+        Create a new voice config synchronously.
+
+        Args:
+            project_id (uuid.UUID): The project ID
+            language (str): The language code
+            voice_id (str): The voice ID
+            first_message (str): The first message
+            transfer_message (str): The transfer message
+            replacements (Optional[Dict]): Replacements dictionary, defaults to empty dict
+            speech_rate (Optional[str]): The speech rate
+            background_sound (Optional[str]): The background sound
+            raw_config (Optional[Dict]): Raw configuration dictionary
+
+        Returns:
+            VoiceConfig: The created voice config
+        """
+        db_voice_config = VoiceConfig(
+            project_id=project_id,
+            language=language,
+            voice_id=voice_id,
+            first_message=first_message,
+            transfer_message=transfer_message,
+            replacements=replacements or {},
+            speech_rate=SpeechRate(speech_rate) if speech_rate else SpeechRate.normal,
+            background_sound=background_sound,
+            raw_config=raw_config or {},
+        )
+        self.session.add(db_voice_config)
+
+        if self.auto_commit:
+            self.session.commit()
+        else:
+            self.session.flush()
+
+        self.session.refresh(db_voice_config)
+        return db_voice_config
+
+    def get_voice_configs_by_project(self, project_id: uuid.UUID) -> List[VoiceConfig]:
+        """
+        Get all voice configs for a project synchronously.
+
+        Args:
+            project_id (uuid.UUID): The project ID
+
+        Returns:
+            List[VoiceConfig]: List of voice configs for the project
+        """
+        query = select(VoiceConfig).filter(VoiceConfig.project_id == project_id)
+        result = self.session.execute(query)
+        return list(result.scalars().all())
+
+    def delete_voice_configs_by_project(self, project_id: uuid.UUID) -> int:
+        """
+        Delete all voice configs for a project synchronously.
+
+        Args:
+            project_id (uuid.UUID): The project ID
+
+        Returns:
+            int: Number of voice configs deleted
+        """
+        voice_configs = self.get_voice_configs_by_project(project_id)
+        deleted_count = 0
+
+        for voice_config in voice_configs:
+            self.session.delete(voice_config)
+            deleted_count += 1
+
+        if self.auto_commit:
+            self.session.commit()
+        else:
+            self.session.flush()
 
         return deleted_count

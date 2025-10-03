@@ -17,6 +17,7 @@ from api.schemas.admin.project import (
     ProjectUpdateResult,
     UpdateProjectRequest,
 )
+from db.repositories.voice_config_repository import VoiceConfigRepository
 from services import (
     account_service,
     agent_service,
@@ -297,6 +298,20 @@ async def create_project(
                     headers={"Content-Type": "application/json"},
                 )
 
+        # Create default voice config if project has no voice configs
+        voice_repo = VoiceConfigRepository(session, auto_commit=True)
+        existing_voice_configs = voice_repo.get_voice_configs_by_project(db_project.id)
+
+        if not existing_voice_configs:
+            default_voice_id = "da69d796-4603-4419-8a95-293bfc5679eb"
+            voice_repo.create_voice_config(
+                project_id=db_project.id,
+                language="english",
+                voice_id=default_voice_id,
+                first_message=f"Hello, this is {create_request.name} AI Agent, how can I help you today?!",
+                transfer_message="",
+            )
+
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -357,6 +372,14 @@ async def delete_project(
             subscription_service.remove_project_subscription(
                 session, project, curr_sub.external_id
             )
+
+        # Delete all voice configs for this project
+        voice_repo = VoiceConfigRepository(session, auto_commit=False)
+        deleted_voice_configs = voice_repo.delete_voice_configs_by_project(project_id)
+        logger.info(
+            f"Deleted {deleted_voice_configs} voice configs for project {project.name}"
+        )
+
         project_service.delete_project(session, context, project_id)
         session.commit()
     except Exception as e:
