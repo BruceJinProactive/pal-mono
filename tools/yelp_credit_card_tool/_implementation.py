@@ -143,6 +143,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
             )
             return _CACHED_BEARER_TOKEN
 
+    @tool
     def get_waitlist_status(self) -> str:  # type: ignore[misc]
         """
         Get current waitlist status and wait times for a restaurant using the Yelp Waitlist API.
@@ -242,14 +243,16 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
             digits_only = re.sub(r"[^\d]", "", cleaned)
 
             # If already in E.164 format, use as-is
-            if cleaned.startswith("+"):
+            if cleaned.startswith("+") and len(digits_only) >= 10:
                 normalized_phone = cleaned
             elif len(digits_only) == 10:
                 normalized_phone = f"+1{digits_only}"
             elif len(digits_only) == 11 and digits_only.startswith("1"):
                 normalized_phone = f"+{digits_only}"
-            else:
+            elif len(digits_only) >= 11:
                 normalized_phone = f"+{digits_only}"
+            else:
+                return "Please provide a valid phone number for the waitlist."
         except Exception:
             return "Please provide a valid phone number for the waitlist."
 

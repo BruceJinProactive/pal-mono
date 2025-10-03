@@ -13,6 +13,8 @@ from tools.resy_tool import ResyTool
 from tools.square_tool import SquareTool
 from tools.toast_tool import ToastTool
 from tools.vapi_tool import VapiTool
+from tools.yelp_credit_card_tool import YelpCreditCardTool
+from tools.yelp_no_credit_card_tool import YelpNoCreditCardTool
 from tools.yelp_tool import YelpTool
 from utils.log import logger
 
@@ -31,6 +33,8 @@ class ToolRegistry:
             "olo_tool": OloTool,
             "vapi_tool": VapiTool,
             "yelp_tool": YelpTool,
+            "yelp_credit_card_tool": YelpCreditCardTool,
+            "yelp_no_credit_card_tool": YelpNoCreditCardTool,
             "square_tool": SquareTool,
             "opentable_tool": OpenTableTool,
             "resy_tool": ResyTool,
