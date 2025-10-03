@@ -459,14 +459,3 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
                     )
                     return f"Failed to make reservation after retry. {str(retry_e)}"
             return f"Failed to make reservation. {str(e)}"
-
-    def get_user_wait_status(self) -> str:  # type: ignore[misc]
-        """
-        Get today's waitlist entries for a specific phone number.
-
-        Note: This functionality is not currently supported by Yelp's waitlist API.
-
-        Returns:
-            str: Message indicating that user wait status is not supported
-        """
-        return "User wait status lookup is not supported by Yelp waitlist API."

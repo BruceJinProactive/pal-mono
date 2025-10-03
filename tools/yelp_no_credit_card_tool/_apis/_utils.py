@@ -39,10 +39,8 @@ def connect_yelp_api(
         Exception: If the API request fails
     """
     logger.debug(
-        f"[YelpTool._apis._utils.connect_yelp_api] Calling Yelp API: {http_method} {api_function} | "
-        f"Query Params: {query_params} | "
-        f"Extra Headers: {extra_headers} | "
-        f"Payload: {payload}"
+        f"[YelpNoCreditCardTool]: connect_yelp_api - Calling Yelp API: {http_method} {api_function}, "
+        f"Query Params: {query_params}, Extra Headers: {extra_headers}, Payload: {payload}"
     )
 
     headers = {"Accept": "application/json"}
@@ -79,7 +77,9 @@ def connect_yelp_api(
             try:
                 decoded_body = json.loads(response_data)
             except json.JSONDecodeError:
-                logger.debug(f"Failed to decode JSON response: {response_data[:200]}")
+                logger.debug(
+                    f"[YelpNoCreditCardTool]: connect_yelp_api - Failed to decode JSON response: {response_data[:200]}"
+                )
                 decoded_body = {"raw_content": response_data}
         elif response_data:
             decoded_body = {"raw_content": response_data}
@@ -89,14 +89,14 @@ def connect_yelp_api(
         )
 
         logger.debug(
-            f"[YelpTool._apis._utils.connect_yelp_api] {http_method} {api_function} -> {yelp_response.status} - {yelp_response.reason}"
+            f"[YelpNoCreditCardTool]: connect_yelp_api - {http_method} {api_function} -> {yelp_response.status} - {yelp_response.reason}"
         )
 
         return yelp_response
 
     except Exception as e:
         raise Exception(
-            f"[YelpTool._apis._utils.connect_yelp_api] Error while calling {http_method} {api_function}: {str(e)}"
+            f"[YelpNoCreditCardTool]: connect_yelp_api - Error while calling {http_method} {api_function}: {str(e)}"
         ) from e
     finally:
         conn_var = locals().get("conn")
