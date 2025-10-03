@@ -256,6 +256,13 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
         except Exception:
             return "Please provide a valid phone number for the waitlist."
 
+        # Format party notes with Palona AI attribution
+        party_notes = (
+            f"Join waitlist via Palona AI: {notes.strip()}"
+            if notes.strip()
+            else "Join waitlist via Palona AI"
+        )
+
         try:
             logger.debug(
                 "[YelpCreditCardTool]: join_waitlist_queue - Starting waitlist queue join request"
@@ -279,7 +286,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
                 phone=normalized_phone,
                 party_size=party_size,
                 name=name.strip(),
-                party_notes=notes.strip() if notes else None,
+                party_notes=party_notes,
             )
 
             logger.debug(
@@ -304,7 +311,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
                         phone=normalized_phone,
                         party_size=party_size,
                         name=name.strip(),
-                        party_notes=notes.strip() if notes else None,
+                        party_notes=party_notes,
                     )
                     return str(response)
                 except Exception as retry_e:

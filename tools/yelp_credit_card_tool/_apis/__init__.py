@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 
 from ddtrace.llmobs.decorators import task
 
@@ -71,7 +70,7 @@ def join_waitlist_queue(
     phone: str,
     party_size: int,
     name: str,
-    party_notes: Optional[str] = None,
+    party_notes: str = "",
 ) -> YelpWaitlistJoinQueueResponse:
     """
     Join the waitlist queue for a restaurant using the Yelp Waitlist API.
@@ -112,7 +111,7 @@ def join_waitlist_queue(
     }
 
     # Add optional parameters if provided
-    if party_notes is not None:
+    if party_notes:
         payload["party_notes"] = party_notes
 
     response = connect_yelp_api(

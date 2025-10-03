@@ -35,7 +35,6 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
         self,
         business_id_or_alias: str,
         tool_metadata: ToolMetadata,
-        waitlist_enabled: bool = False,
     ):
         """
         Initialize YelpNoCreditCardTool for restaurants that don't require credit cards for reservations.
@@ -46,7 +45,6 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
         Args:
             business_id_or_alias: The Yelp business ID or alias
             tool_metadata: Tool metadata containing session information
-            waitlist_enabled: Whether to enable waitlist functionality (default: False)
         """
         super().__init__(name="yelp_no_credit_card_tool")
 
@@ -58,12 +56,11 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
         self.register(self.make_reservation)
 
         # Register waitlist tools (independent of credit card workflow)
-        if waitlist_enabled:
-            self.register(self.get_waitlist_status)
-            self.register(self.join_waitlist_queue)
+        self.register(self.get_waitlist_status)
+        self.register(self.join_waitlist_queue)
 
         logger.debug(
-            f"[YelpNoCreditCardTool]: __init__ - YelpNoCreditCardTool instance created: business id={self.business_id_or_alias}, waitlist_enabled={waitlist_enabled}"
+            f"[YelpNoCreditCardTool]: __init__ - YelpNoCreditCardTool instance created: business id={self.business_id_or_alias}"
         )
 
     def _reset_and_refetch_token(self) -> YelpAccessToken:
@@ -458,6 +455,13 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
         except Exception:
             return "Please provide a valid phone number for the waitlist."
 
+        # Format party notes with Palona AI attribution
+        party_notes = (
+            f"Join waitlist via Palona AI: {notes.strip()}"
+            if notes.strip()
+            else "Join waitlist via Palona AI"
+        )
+
         try:
             logger.debug(
                 "[YelpNoCreditCardTool]: join_waitlist_queue - Starting waitlist queue join request"
@@ -481,7 +485,7 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
                 phone=normalized_phone,
                 party_size=party_size,
                 name=name.strip(),
-                party_notes=notes.strip() if notes else "",
+                party_notes=party_notes,
             )
 
             logger.debug(
@@ -506,7 +510,7 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
                         phone=normalized_phone,
                         party_size=party_size,
                         name=name.strip(),
-                        party_notes=notes.strip() if notes else "",
+                        party_notes=party_notes,
                     )
                     return str(response)
                 except Exception as retry_e:
