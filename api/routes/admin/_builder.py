@@ -63,6 +63,7 @@ def build_account(account: db.Account) -> Account:
         created_at=int(account.created_at.timestamp()),
         updated_at=int(account.updated_at.timestamp() if account.updated_at else 0),
         contract_signed=account.contract_signed,
+        terms_accepted=account.terms_accepted,
         phone_number=account.phone_number,
         channels=account.channels,
         onboarding_method=account.onboarding_method
@@ -83,6 +84,7 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         segment=account.segment.value if account.segment else None,
         tier=account.tier.value if account.tier else None,
         contract_signed=account.contract_signed,
+        terms_accepted=account.terms_accepted,
         notes=account.notes,
         phone_number=account.phone_number,
         channels=account.channels,

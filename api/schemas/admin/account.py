@@ -37,7 +37,7 @@ class Account(BaseModel):
     tier: str | None = None
     notes: str | None = None
     contract_signed: bool = False
-    terms_accepted: bool = False
+    terms_accepted: bool | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
     onboarding_method: OnboardingMethod
@@ -58,6 +58,7 @@ class AccountSummary(BaseModel):
     segment: str | None = None
     tier: str | None = None
     contract_signed: bool = False
+    terms_accepted: bool = False
     notes: str | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
@@ -89,6 +90,7 @@ class UpdateAccountRequest(BaseModel):
     tier: TargetTier | None = None
     notes: str | None = None
     contract_signed: bool | None = None
+    terms_accepted: bool | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
     expected_version: int | None = None
@@ -109,6 +111,7 @@ class UpdateAccountRequest(BaseModel):
             tier=self.tier,
             notes=self.notes,
             contract_signed=self.contract_signed,
+            terms_accepted=self.terms_accepted,
             phone_number=self.phone_number,
             channels=self.channels,
         )
