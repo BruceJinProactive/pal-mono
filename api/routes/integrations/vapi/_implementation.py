@@ -584,6 +584,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         # Check if multilingual squad should be used
         #########################################################
 
+        logger.debug(f"Using legacy voice_configs for call {call_id}")
         if config.multiling_squad_config and config.voice_config.enabled:
             logger.debug(f"Creating multilingual squad for call {call_id}")
             return create_multilingual_squad(
