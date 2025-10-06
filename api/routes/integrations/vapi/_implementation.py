@@ -983,7 +983,7 @@ async def handle_session_closure(message_data, session: AsyncSession):
         ):
             assistant_type = metadata.get("type", {})
             if assistant_type == "multilingual_squad":
-                assistant_ids = call_data.get("squad", {}).get("assistantId")
+                assistant_ids = metadata.get("assistant_ids", [])
                 try:
                     for assistant_id in assistant_ids:
                         logger.info(
