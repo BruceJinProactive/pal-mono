@@ -978,19 +978,36 @@ async def handle_session_closure(message_data, session: AsyncSession):
         metadata = message_data.get("assistant", {}).get("metadata", {})
         if (
             call_data.get("type") == "webCall"
-            and call_data.get("assistantId")
+            and (call_data.get("assistantId") or call_data.get("squadId"))
             and metadata.get("source") == "admin-console"
         ):
-            assistant_id = call_data.get("assistantId")
-            try:
-                logger.info(
-                    f"Self-onboarding: assistant {assistant_id} started to be deleted"
-                )
-                await handle_delete_vapi_assistant(assistant_id)
-            except Exception as e:
-                logger.error(
-                    f"Self-onboarding: failed to delete assistant {assistant_id}: {e}"
-                )
+            assistant_type = metadata.get("type", {})
+            if assistant_type == "multilingual_squad":
+                assistant_ids = call_data.get("squad", {}).get("assistantId")
+                try:
+                    for assistant_id in assistant_ids:
+                        logger.info(
+                            f"Self-onboarding: assistant {assistant_id} started to be deleted"
+                        )
+                        await handle_delete_vapi_assistant(assistant_id)
+                    await handle_delete_vapi_squad(call_data.get("squadId"))
+
+                except Exception as e:
+                    logger.error(
+                        f"Self-onboarding: failed to delete squad {assistant_ids}: {e}"
+                    )
+
+            elif assistant_type == "single_assistant":
+                assistant_id = call_data.get("assistantId")
+                try:
+                    logger.info(
+                        f"Self-onboarding: assistant {assistant_id} started to be deleted"
+                    )
+                    await handle_delete_vapi_assistant(assistant_id)
+                except Exception as e:
+                    logger.error(
+                        f"Self-onboarding: failed to delete assistant {assistant_id}: {e}"
+                    )
 
         # Extract caller information
         customer_data = message_data.get("customer", {})
@@ -1127,24 +1144,252 @@ async def handle_session_closure(message_data, session: AsyncSession):
         return {"error": str(e)}
 
 
-async def handle_create_vapi_assistant(create_request) -> str:
-    """Create a new VAPI assistant using the server SDK."""
+async def handle_create_vapi_assistant(
+    create_request,
+) -> str:
+    """Create a new VAPI assistant or squad using the server SDK."""
 
     vapi_client = _get_vapi_client()
+    logger.info(f"Creating VAPI assistant for {create_request.name}")
 
-    # Prepare assistant data with fixed defaults and configurable fields
-    assistant_data = {
-        "name": create_request.name,
-        # Fixed transcriber configuration
+    # For Multilingual: create a squad instead of a single assistant
+    if create_request.language == "Multilingual":
+        logger.info(f"Creating multilingual squad for {create_request.name}")
+
+        # Step 1: Create all assistant members first
+        triage_config, english_config, spanish_config, chinese_config = (
+            _build_multilingual_squad(create_request)
+        )
+
+        # Create assistants
+        triage = await vapi_client.assistants.create(**triage_config)
+        english = await vapi_client.assistants.create(**english_config)
+        spanish = await vapi_client.assistants.create(**spanish_config)
+        chinese = await vapi_client.assistants.create(**chinese_config)
+
+        logger.info(
+            f"Created assistants: triage={triage.id} ({triage.name}), english={english.id} ({english.name}), spanish={spanish.id} ({spanish.name}), chinese={chinese.id} ({chinese.name})"
+        )
+
+        # Step 2: Create squad with assistant IDs and routing configuration
+        squad_data = {
+            "name": create_request.name,
+            "members": [
+                {
+                    "assistant_id": triage.id,
+                    "assistant_destinations": [
+                        {
+                            "type": "assistant",
+                            "assistant_name": english.name,
+                            "message": "Transferring you to our English specialist...",
+                            "description": "Transfer to English language assistant",
+                            "transfer_mode": "rolling-history",
+                        },
+                        {
+                            "type": "assistant",
+                            "assistant_name": spanish.name,
+                            "message": "Transfiriéndote a nuestro especialista en español...",
+                            "description": "Transfer to Spanish language assistant",
+                            "transfer_mode": "rolling-history",
+                        },
+                        {
+                            "type": "assistant",
+                            "assistant_name": chinese.name,
+                            "message": "正在为您转接中文客服专员...",
+                            "description": "Transfer to Chinese language assistant",
+                            "transfer_mode": "rolling-history",
+                        },
+                    ],
+                },
+                {"assistant_id": english.id},
+                {"assistant_id": spanish.id},
+                {"assistant_id": chinese.id},
+            ],
+            "members_overrides": {
+                "metadata": {
+                    "source": "admin-console",
+                    "type": "multilingual_squad",
+                    "assistant_ids": [triage.id, english.id, spanish.id, chinese.id],
+                }
+            },
+        }
+        squad = await vapi_client.squads.create(**squad_data)
+        logger.info(f"Successfully created VAPI squad: {squad.id}")
+        return squad.id
+
+    # For single language: create a single assistant
+    assistant_data = _build_assistant(create_request)
+    assistant = await vapi_client.assistants.create(**assistant_data)
+    logger.info(f"Successfully created VAPI assistant: {assistant.id}")
+    return assistant.id
+
+
+def _build_multilingual_squad(create_request) -> tuple[dict, dict, dict, dict]:
+    """Build multilingual squad configuration with triage and language assistants.
+
+    System Prompt Assignment:
+    - English: Uses create_request.systemPrompt directly
+    - Spanish: Prepends language enforcement rules + create_request.systemPrompt
+    - Chinese: Prepends language enforcement rules + create_request.systemPrompt
+
+    First Message (Language-Specific):
+    - English: "Hello! How can I help you today?"
+    - Spanish: "¡Hola! ¿Cómo puedo ayudarte hoy?"
+    - Chinese: "你好！我今天能帮你什么？"
+
+    This ensures each language assistant greets in the appropriate language
+    and has the full system instructions from create_request.
+
+    Returns:
+        tuple: (triage_config, english_config, spanish_config, chinese_config)
+    """
+    # Language configuration for each supported language
+    # Each assistant will receive: system_prefix + create_request.systemPrompt
+    languages = {
+        "english": {
+            "display": "English",
+            "transcriber_code": "en",
+            "system_prefix": "",  # No prefix, uses systemPrompt as-is
+            "first_message": "Hello! How can I help you today?",
+        },
+        "spanish": {
+            "display": "Spanish",
+            "transcriber_code": "es",
+            "system_prefix": "=== REGLA CRÍTICA DE IDIOMA ===\nDEBES responder SIEMPRE y ÚNICAMENTE en ESPAÑOL. \n\n",
+            "first_message": "¡Hola! ¿Cómo puedo ayudarte hoy?",
+        },
+        "chinese": {
+            "display": "Chinese",
+            "transcriber_code": "zh",
+            "system_prefix": "=== 关键语言规则 ===\n你必须始终只用中文回复。请用中文回复数字 比如念时间的时候用中文回复 “1234” 是 “一二三四”。\n\n",
+            "first_message": "你好！我今天能帮你什么？",
+        },
+    }
+
+    # Build triage assistant
+    triage = _build_squad_triage_assistant(create_request, languages)
+
+    # Build language-specific assistants
+    assistants = {
+        lang: _build_squad_language_assistant(create_request, lang, config)
+        for lang, config in languages.items()
+    }
+
+    return triage, assistants["english"], assistants["spanish"], assistants["chinese"]
+
+
+def _build_squad_triage_assistant(create_request, languages: dict) -> dict:
+    """Build triage assistant for multilingual squad."""
+    triage_name = f"{create_request.name} (Language Triage)"
+
+    # Build transfer instructions dynamically
+    transfer_rules = [
+        f"- For {config['display']} → transfer to {create_request.name} ({config['display']})"
+        for config in languages.values()
+    ]
+
+    system_prompt = f"""You are the initial language detection assistant.
+
+Your ONLY responsibility is to:
+1. Greet the customer warmly
+2. Identify their preferred language (English, Spanish, or Chinese)
+3. Transfer them to the appropriate language specialist immediately
+
+Say: "Hello! I can help you in English, español, or 中文. Which language would you prefer?"
+
+IMPORTANT: As soon as you detect the language, transfer immediately to the appropriate assistant:
+{chr(10).join(transfer_rules)}
+
+DO NOT attempt to help with their actual request."""
+
+    return {
+        "name": triage_name,
+        "transcriber": {
+            "provider": "google",
+            "model": "gemini-2.5-flash",
+            "language": "Multilingual",
+        },
+        "model": _build_squad_model_config(0.3, system_prompt),
+        "voice": _build_squad_voice_config(create_request.voiceId),
+        "first_message": create_request.firstMessage
+        or "Hello! I can help you in English, español, or 中文. Which language would you prefer?",
+        "metadata": {
+            "source": "admin-console",
+            "type": "squad_member",
+            "role": "triage",
+        },
+    }
+
+
+def _build_squad_language_assistant(
+    create_request, language: str, config: dict
+) -> dict:
+    """Build language-specific assistant for multilingual squad.
+
+    Each language assistant receives:
+    - The base system prompt from create_request.systemPrompt
+    - A language-specific prefix (if applicable) to enforce language use
+    - A first message in the appropriate language
+    """
+    assistant_name = f"{create_request.name} ({config['display']})"
+
+    # Combine language-specific prefix with the base system prompt
+    # This ensures each assistant has the full system instructions
+    system_content = config["system_prefix"] + create_request.systemPrompt
+
+    logger.debug(
+        f"Building {language} assistant with system prompt (length: {len(system_content)} chars)"
+    )
+
+    return {
+        "name": assistant_name,
         "transcriber": {
             "provider": "deepgram",
-            "language": "en-US",
+            "model": "nova-2",
+            "language": config["transcriber_code"],
         },
-        # Fixed model configuration with configurable system prompt
+        "model": _build_squad_model_config(0.3, system_content),
+        "voice": _build_squad_voice_config(create_request.voiceId),
+        "first_message": config["first_message"],
+        "metadata": {
+            "source": "admin-console",
+            "type": "squad_member",
+            "role": "language",
+            "language": language,
+        },
+    }
+
+
+def _build_squad_model_config(temperature: float, system_content: str) -> dict:
+    """Build model configuration for squad assistants."""
+    return {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": temperature,
+        "messages": [{"role": "system", "content": system_content}],
+    }
+
+
+def _build_squad_voice_config(voice_id: str) -> dict:
+    """Build voice configuration for squad assistants."""
+    return {
+        "provider": "cartesia",
+        "model": "sonic-2",
+        "voice_id": voice_id,
+    }
+
+
+def _build_assistant(create_request) -> dict:
+    """Build assistant configuration."""
+    language = create_request.language
+
+    # Base assistant configuration
+    assistant_data = {
+        "name": create_request.name,
         "model": {
             "provider": "openai",
             "model": "gpt-4o",
-            "temperature": 0.7,
+            "temperature": 0.3,
             "messages": [
                 {
                     "role": "system",
@@ -1152,12 +1397,16 @@ async def handle_create_vapi_assistant(create_request) -> str:
                 }
             ],
         },
-        # Voice configuration with configurable voiceId
         "voice": {
             "provider": "cartesia",
-            "voice_id": create_request.voiceId,  # Fixed snake_case
+            "model": "sonic-2",
+            "voice_id": create_request.voiceId,
         },
-        "metadata": {"source": "admin-console"},
+        "metadata": {
+            "source": "admin-console",
+            "type": "single_assistant",
+            "language": language.lower() if language else "english",
+        },
     }
 
     # Add optional configurable fields with correct snake_case names
@@ -1166,15 +1415,51 @@ async def handle_create_vapi_assistant(create_request) -> str:
     if create_request.maxDurationSeconds is not None:
         assistant_data["max_duration_seconds"] = create_request.maxDurationSeconds
 
-    # Create assistant via VAPI API - let exceptions propagate
-    assistant = await vapi_client.assistants.create(**assistant_data)
+    # For English: use standard Deepgram transcriber
+    if language == "English":
+        return assistant_data
 
-    logger.info(f"Successfully created VAPI assistant: {assistant.id}")
-    return assistant.id
+    # For Spanish and Chinese: add language-specific transcriber configurations
+    language_settings = {
+        "Spanish": {
+            "transcriber": {
+                "provider": "deepgram",
+                "model": "nova-2",
+                "language": "es",
+            },
+            "language_instruction": "\n\n=== REGLA CRÍTICA DE IDIOMA ===\nDEBES responder SIEMPRE y ÚNICAMENTE en ESPAÑOL.\nNUNCA uses inglés u otro idioma.\nToda tu conversación debe ser 100% en español.\nMantén una conversación natural con el usuario.\nNo termines la llamada a menos que el usuario lo pida explícitamente.",
+        },
+        "Chinese": {
+            "transcriber": {
+                "provider": "deepgram",
+                "model": "nova-2",
+                "language": "zh-CN",
+            },
+            "language_instruction": "\n\n=== 关键语言规则 ===\n你必须始终只用中文回复。\n绝对不要使用英语或其他语言。\n你的整个对话必须100%用中文。\n与用户进行自然对话。\n除非用户明确要求，否则不要结束通话.",
+        },
+    }
+
+    if language in language_settings:
+        settings = language_settings[language]
+
+        # Add transcriber configuration
+        assistant_data["transcriber"] = settings["transcriber"]
+
+        # Prepend language instruction to system prompt (at the beginning for maximum prominence)
+        assistant_data["model"]["messages"][0]["content"] = (
+            settings["language_instruction"] + "\n\n" + create_request.systemPrompt
+        )
+
+    return assistant_data
 
 
 async def handle_delete_vapi_assistant(assistant_id: str):
-    """Delete a VAPI assistant."""
+    """Delete a VAPI assistant or squad.
+
+    Metadata helps identify what type of assistant is being deleted:
+    - single_assistant: A standalone assistant (delete only this assistant)
+    - squad_member: Part of a squad (may need to delete entire squad)
+    """
 
     vapi_client = _get_vapi_client()
 
@@ -1182,4 +1467,12 @@ async def handle_delete_vapi_assistant(assistant_id: str):
     await vapi_client.assistants.delete(assistant_id)
 
     logger.info(f"Successfully deleted VAPI assistant: {assistant_id}")
+    return
+
+
+async def handle_delete_vapi_squad(squad_id: str):
+    """Delete a VAPI squad."""
+    vapi_client = _get_vapi_client()
+    await vapi_client.squads.delete(squad_id)
+    logger.info(f"Successfully deleted VAPI squad: {squad_id}")
     return

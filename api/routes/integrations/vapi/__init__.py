@@ -20,12 +20,19 @@ class CreateVapiAssistantRequest(BaseModel):
     )
     systemPrompt: str = Field(..., description="System prompt for the AI model")
     voiceId: str = Field(..., description="Voice ID for speech synthesis")
+    language: str = Field(
+        ...,
+        description="Language: English, Spanish, Chinese, or Multilingual (creates a squad with all languages)",
+    )
 
 
 class CreateVapiAssistantResponse(BaseModel):
-    """Response model for creating a VAPI assistant."""
+    """Response model for creating a VAPI assistant or squad."""
 
-    assistantId: str = Field(..., description="The ID of the created VAPI assistant")
+    assistantId: str = Field(
+        ...,
+        description="The ID of the created VAPI assistant (or squad ID if language is Multilingual)",
+    )
 
 
 vapi_router = APIRouter(prefix="/vapi", tags=["Integrations"])
@@ -78,10 +85,10 @@ async def create_vapi_assistant(
     create_request: CreateVapiAssistantRequest,
 ) -> CreateVapiAssistantResponse:
     """
-    Create a new VAPI assistant.
+    Create a new VAPI assistant or squad.
 
-    This endpoint creates a new assistant with the provided configurable fields:
-    - name: Assistant name
+    This endpoint creates a new assistant or squad with the provided configurable fields:
+    - name: Assistant or squad name
     - firstMessage: Optional greeting message
     - maxDurationSeconds: Optional call duration limit
     - systemPrompt: System prompt for the AI model
