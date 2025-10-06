@@ -484,3 +484,54 @@ def get_ordering_schedule(
         raise ValueError(
             f"Ordering schedule retrieval failed with status {response.status}: {response.decoded_body}"
         )
+
+
+def get_existing_order(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    order_guid: str,
+    general_api_endpoint: str | None = None,
+) -> Optional[Order]:
+    """
+    Retrieves an existing order from the Toast API by its GUID.
+
+    Args:
+        bearer_token (ToastAccessToken): The Toast access token.
+        store_id (str): The external ID of the restaurant.
+        order_guid (str): The GUID of the order to retrieve.
+        general_api_endpoint (str | None): Optional custom API endpoint.
+
+    Returns:
+        Optional[Order]: The order object with all its details if found, None if not found (404).
+    """
+    try:
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function=f"/orders/v2/orders/{order_guid}",
+            store_id=store_id,
+            query_params=None,
+            extra_headers=None,
+            payload=None,
+            general_api_endpoint=general_api_endpoint,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_existing_order] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        # Convert the JSON string to an Order object
+        return Order.model_validate_json(response.decoded_body)
+    elif response.status == 404:
+        logger.debug(
+            f"[ToastAPI.get_existing_order] Order with GUID {order_guid} not found."
+        )
+        return None
+    else:
+        logger.error(
+            f"Order retrieval failed with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Order retrieval failed with status {response.status}: {response.decoded_body}"
+        )

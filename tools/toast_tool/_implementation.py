@@ -14,6 +14,7 @@ from shapely import Point, Polygon
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.toast_tool._apis import (
+    get_existing_order,
     get_menu_inventory,
     get_online_ordering_status,
     get_order_prices,
@@ -38,6 +39,7 @@ from tools.toast_tool.classes import (
     DeliveryAddress,
     DiningBehavior,
     Modifier,
+    Order,
     OrderInput,
     Price,
     SelectionType,
@@ -405,16 +407,62 @@ class ToastTool(Toolkit):
             )
             return "Failed to retrieve menu inventory information, please try again."
 
+    def _get_existing_order_tool(self) -> Optional[Order]:
+        """
+        Checks if an existing order is associated with the current conversation.
+
+        Returns:
+            Optional[Order]: The existing order if found, otherwise None.
+
+        Raises:
+            ValueError: If bearer token is not available.
+        """
+        if not self._toast_bearer_token:
+            raise RuntimeError(
+                "[ToastTool._get_existing_order] No bearer token available."
+            )
+
+        try:
+            return get_existing_order(
+                bearer_token=self._toast_bearer_token,
+                store_id=self.store_id,
+                order_guid=str(self.tool_metadata.session_id),
+            )
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool._get_existing_order] Failed to check for existing order: {e}",
+                exc_info=True,
+            )
+            # Return None to allow order creation to proceed rather than blocking checkout
+            return None
+
     # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
     @tool
     def checkout_order(self) -> str:
         """
-        Validates an order for checkout by extracting structured ordering data from chat
-        history. This function absolutely must be invoked when all the required information is collected and the user asks to checkout,
-        pay, place the order, etc.
+        **WHEN TO USE THIS TOOL:**
+        - When the customer has CONFIRMED they want to place/complete their order
+        - When the customer says things like: "checkout", "pay now", "place order", "complete order", "finalize order"
+        - When the customer has finished adding items and is ready to pay
+        - When all required ordering information has been collected through the conversation
+        - IMPORTANT: Before using this tool, make sure to ask for the customer's name for order pickup
 
-        Args:
-            None
+        **ORDERING PROCESS REQUIREMENTS:**
+        1. Customer selects items from the menu
+        2. Customer confirms their order items, modifiers if any, and quantities
+        3. Ask for customer name and phone number (e.g., "Can I get your name and phone number for the order?" or "What's your name and phone number?"), do not ask if they are already provided in the chat history
+        4. Customer confirms they want to proceed with payment
+        5. THEN use this tool to create the order and payment link
+
+        **DO NOT USE THIS TOOL WHEN:**
+        - Customer is just browsing the menu or asking questions
+        - Customer is still deciding what to order
+        - Customer hasn't confirmed they want to proceed with payment
+        - Customer is just asking about prices or availability
+        - You haven't asked for the customer's name and phone number yet
+
+        **ONLY USE THIS TOOL ONCE PER ORDER!**
 
         Returns:
             str: Order checkout confirmation details
@@ -425,6 +473,12 @@ class ToastTool(Toolkit):
             if not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
 
+            # Check if an order with the current conversationId (externalId) already exists.
+            # If yes, skip placing a new order and return a message that the order is already successfully placed
+            if_order_exists = self._get_existing_order_tool() is not None
+            if if_order_exists:
+                return "Your order has been successfully placed."
+
             order = self._construct_order()
 
             # If the order is a string, it indicates an error message
@@ -433,7 +487,7 @@ class ToastTool(Toolkit):
                 return order
 
             # Validate and check the order
-            error_message = self._post_process_order(order)
+            error_message = self._finalize_order_details(order)
             if error_message:
                 return error_message
 
@@ -555,38 +609,39 @@ class ToastTool(Toolkit):
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
         return context
 
-    def _clean_mods(self, mods: list[Modifier]) -> list[Modifier]:
-        """Recursively clean and validate modifiers at all nesting levels."""
+    @staticmethod
+    def _is_invalid_guid(guid) -> bool:
+        """Check if a GUID is invalid (None, 'N/A', empty, or whitespace-only)."""
+        return guid in (None, "N/A", "") or (isinstance(guid, str) and not guid.strip())
+
+    def _get_valid_modifiers(self, mods: list[Modifier]) -> list[Modifier]:
+        """Remove modifiers with invalid or missing GUIDs. Processes nested modifiers recursively."""
         cleaned: list[Modifier] = []
         for m in mods:
             # Basic validation: require both GUIDs (reject None, "N/A", empty, or whitespace-only)
             if m.selectionType == SelectionType.SPECIAL_REQUEST:
                 cleaned.append(m)
                 continue
+
             og_guid = getattr(m.optionGroup, "guid", None)
             it_guid = getattr(m.item, "guid", None)
 
-            def _invalid(g):
-                return g in (None, "N/A", "") or (isinstance(g, str) and not g.strip())
-
-            if _invalid(og_guid) or _invalid(it_guid):
+            if self._is_invalid_guid(og_guid) or self._is_invalid_guid(it_guid):
                 continue
-            # Recursively clean nested modifiers
+
+            # Recursively clean nested modifiers or normalize to empty list for Toast API
             nested_mods = getattr(m, "modifiers", None)
-            if nested_mods is not None:
-                m.modifiers = self._clean_mods(nested_mods)
-            else:
-                # Normalize missing nested modifiers to empty list to satisfy Toast API
-                m.modifiers = []
+            m.modifiers = self._get_valid_modifiers(nested_mods) if nested_mods else []
             cleaned.append(m)
         return cleaned
 
     def _remove_invalid_modifiers(self, order: OrderInput) -> OrderInput:
+        """Remove invalid modifiers from all items in the order."""
         try:
             for check in order.checks:  # type: ignore
                 for selection in check.selections:
                     if selection.modifiers:
-                        selection.modifiers = self._clean_mods(
+                        selection.modifiers = self._get_valid_modifiers(
                             list(selection.modifiers)
                         )
 
@@ -602,15 +657,14 @@ class ToastTool(Toolkit):
     def _construct_order(self) -> OrderInput | str:
         chat_history: str = self._get_chat_history()  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
-        # TODO: Get dining options
-        # TODO: Update Extractor system prompt to include dining option
+
         order = llm_call(
             system_prompt=EXTRACTOR_SYSTEM_PROMPT,
             prompt=EXTRACTOR_USER_PROMPT.format(
                 context=context, chat_history=chat_history
             ),
             response_format=OrderInput,
-            openai=False,
+            openai=True,
         )
 
         # Check if the order is a string and convert it to an OrderInput object, catching any errors
@@ -632,7 +686,7 @@ class ToastTool(Toolkit):
                 )
             logger.debug(f"Constructed order: {order}")
 
-            # Note: lastName suffix will be added in _post_process_order after validation
+            # Note: lastName suffix will be added in _finalize_order_details after validation
 
             return order
         except ValidationError as e:
@@ -651,22 +705,20 @@ class ToastTool(Toolkit):
             logger.error(e)
             return f"Failed to construct order: {e}"
 
-    def _post_process_order(self, order: OrderInput) -> str | None:
+    def _finalize_order_details(self, order: OrderInput) -> str | None:
         """
-        Validates and processes an order before submission.
+        Validate order requirements and add agent suffix to customer lastName.
 
-        Args:
-            order (OrderInput): The order object to validate and process.
+        Checks: dining option, customer info (name, email, phone), and authentication.
 
         Returns:
             str | None: Error message if validation fails, None if successful.
-
         """
         # Check if the order type non-empty and takeout. For now, we only support takeout orders
 
         if not order.diningOption or not order.diningOption.guid:
             logger.warning(
-                "[ToastTool._post_process_order] Order diningOption is missing or its guid is empty."
+                "[ToastTool._finalize_order_details] Order diningOption is missing or its guid is empty."
             )
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
 
@@ -681,7 +733,7 @@ class ToastTool(Toolkit):
             _ = validate_item_modifier_quantity(order.checks[0].selections)
         except Exception as e:
             logger.error(
-                f"[ToastTool._post_process_order] Could not validate order type: {e}"
+                f"[ToastTool._finalize_order_details] Could not validate order type: {e}"
             )
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
 
@@ -697,43 +749,35 @@ class ToastTool(Toolkit):
                 "for assistance."
             )
 
-        # TODO: Discuss with the team if we want to adopt Adora agent's approach to handling last names and email addresses.
         ### Validate checks ###
         if not order.checks:
-            logger.error("[ToastTool._post_process_order] Order checks are missing.")
+            logger.error(
+                "[ToastTool._finalize_order_details] Order checks are missing."
+            )
             return "We'll need to check your order to place it."
 
         # Validate each check in the order
         for check in order.checks:
             if not check.customer:
                 logger.warning(
-                    "[ToastTool._post_process_order] Customer info is missing."
+                    "[ToastTool._finalize_order_details] Customer info is missing."
                 )
                 return "We'll need your first name, last name, email, and phone number to place the order."
             if not check.customer.firstName:
                 logger.warning(
-                    "[ToastTool._post_process_order] Customer first name is missing."
+                    "[ToastTool._finalize_order_details] Customer first name is missing."
                 )
                 return "We'll need your first name."
             if not check.customer.lastName:
                 logger.warning(
-                    "[ToastTool._post_process_order] Customer last name is missing."
+                    "[ToastTool._finalize_order_details] Customer last name is missing."
                 )
                 return "We'll need your last name."
-
-            ########## NOTE: if we want to append "(via Toast Agent)" to the customer last name ##########
-
-            # check.customer.lastName = (
-            #     "(via Toast Agent)"
-            #     if not check.customer.lastName
-            #     else f"{check.customer.lastName} (via Jimmy)"
-            # )
-            ##############################################
 
             email = check.customer.email
             if not email or not is_valid_email(email):
                 logger.warning(
-                    f"[ToastTool._post_process_order] Invalid email address: {email}"
+                    f"[ToastTool._finalize_order_details] Invalid email address: {email}"
                 )
                 return "We'll need your email address."
 
@@ -748,7 +792,7 @@ class ToastTool(Toolkit):
                 format_phone_number(check.customer.phone)
             ):
                 logger.warning(
-                    f"[ToastTool._post_process_order] Customer phone number is missing or invalid. Phone: {check.customer.phone}"
+                    f"[ToastTool._finalize_order_details] Customer phone number is missing or invalid. Phone: {check.customer.phone}"
                 )
                 return "We'll need your phone number."
 
@@ -770,7 +814,8 @@ class ToastTool(Toolkit):
             )
         # First let toast API fill in the prices
         try:
-            # order = get_order_prices(toast_bearer_token, self.store_id, order)
+            # Set the order externalId to the session id to track the order
+            order.externalId = str(self.tool_metadata.session_id)
             order = submit_order(
                 toast_bearer_token,
                 self.store_id,
