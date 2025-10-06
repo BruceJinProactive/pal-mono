@@ -425,6 +425,7 @@ def self_onboard_account(
     account_params.display_name = request.account_display_name
     account_params.phone_number = request.phone_number
     account_params.business_description = request.account_description
+    account_params.terms_accepted = request.terms_accepted
     try:
         new_account = account_service.create_account(
             session=session,

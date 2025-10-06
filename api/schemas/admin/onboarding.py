@@ -88,6 +88,10 @@ class SelfOnboardingRequest(BaseModel):
         ..., description="Business description of the created account"
     )
     phone_number: str = Field(..., description="Phone number of the created account")
+    terms_accepted: bool | None = Field(
+        default=None,
+        description="Whether terms are accepted at signup (optional)",
+    )
 
     # User parameters
     user_name: str = Field(..., description="Name of the created user")
