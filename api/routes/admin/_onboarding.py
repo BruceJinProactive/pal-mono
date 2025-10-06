@@ -469,10 +469,7 @@ def self_onboard_agent(
     agent_params.greeting_message = request.agent_greeting_message
     agent_params.communication_style = request.agent_communication_style
     agent_params.interaction_guidelines = request.agent_interaction_guidelines
-    agent_params.raw_config = {
-        "vapi_voice_config_enabled": True,
-        "dynamic_prompt_enabled": True,
-    }
+    agent_params.raw_config = {}
     agent_params.voice_id = request.agent_voice_id
     agent_params.background_noise = True
     try:
