@@ -841,6 +841,10 @@ def parse_menu(
     for menu in json_data.get("menus", []):
         menu_name = menu.get("name", "")
 
+        # We only add first party menu and skip third party delivery menus for now.
+        if "(delivery)" in menu_name.lower():
+            continue
+
         # Create temporary list to check if menu has any items [[memory:5262012]]
         temp_system_prompt_results: List[str] = []
 
