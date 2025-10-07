@@ -68,8 +68,25 @@ class VAPIProvider:
                 f"Creating assistant response for call {call_id} with caller info: {caller_info}"
             )
 
+            # Check for fallback environment variables
+            use_fallback_transcriber = (
+                os.environ.get("USE_FALLBACK_TRANSCRIBER", "false").lower() == "true"
+            )
+            use_fallback_voice = (
+                os.environ.get("USE_FALLBACK_VOICE", "false").lower() == "true"
+            )
+
             # Get voice configurations
             voice_configs = await self._get_voice_configs(session, project_id)
+
+            # Use fallback config if either environment variable is true
+            if use_fallback_transcriber or use_fallback_voice:
+                return self._create_fallback_assistant_config(
+                    use_fallback_transcriber,
+                    use_fallback_voice,
+                    voice_configs,
+                    caller_info,
+                )
 
             # Create assistant configuration
             return self._create_assistant_config(voice_configs, caller_info)
@@ -456,3 +473,83 @@ DO NOT attempt to help with their actual request - only identify language prefer
         }
 
         return {"squad": squad_config}
+
+    def _create_fallback_assistant_config(
+        self,
+        use_fallback_transcriber: bool,
+        use_fallback_voice: bool,
+        voice_configs: list[VoiceConfigProtocol],
+        caller_info: dict,
+    ) -> dict:
+        """Create fallback assistant configuration with optional voice config data.
+
+        Args:
+            use_fallback_transcriber: Whether to use fallback transcriber configuration
+            use_fallback_voice: Whether to use fallback voice configuration
+            voice_configs: List of voice configurations to use for non-fallback settings
+            caller_info: Dictionary containing caller information
+        """
+        # Find English voice config or use defaults
+        english_config = None
+        for config in voice_configs:
+            if config.language.lower() == "english":
+                english_config = config
+                break
+
+        # Use voice config data if available, otherwise defaults
+        if english_config:
+            greeting = (
+                english_config.first_message
+                or "Hi, this is a voice ai assistant. How can I help you today?"
+            )
+            background_sound = english_config.background_sound
+        else:
+            greeting = "Hi, this is a voice ai assistant. How can I help you today?"
+            background_sound = "office"
+
+        language = "english"
+
+        # Create transcriber configuration - use fallback if specified
+        if use_fallback_transcriber:
+            # Default fallback transcriber configuration
+            transcriber = {
+                "model": "gemini-2.5-flash-lite",
+                "language": "English",
+                "provider": "google",
+            }
+        else:
+            transcriber = self._create_transcriber(language)
+
+        # Create voice configuration - use voice config if available and not using fallback
+        if english_config and not use_fallback_voice:
+            voice = self._create_voice(english_config)
+        else:
+            # Default fallback voice configuration
+            voice = {
+                "provider": "11labs",
+                "voiceId": "cgSgspJ2msm6clMCkdW9",
+                "model": "eleven_turbo_v2",
+            }
+
+        # Prepare assistant configuration
+        api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
+        assistant_config = {
+            "name": "fallback_assistant",
+            "firstMessage": greeting,
+            "transcriber": transcriber,
+            "model": {
+                "provider": "custom-llm",
+                "url": f"{api_url}/v1",
+                "model": json.dumps(caller_info),
+            },
+            "voice": voice,
+            "backgroundSound": background_sound,
+            "silenceTimeoutSeconds": 60,
+            "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
+            "startSpeakingPlan": self._create_start_speaking_plan(language),
+            "firstMessageInterruptionsEnabled": True,
+            "firstMessageMode": "assistant-speaks-first",
+            "analysisPlan": self._get_analysis_plan(),
+        }
+
+        return {"assistant": assistant_config}
