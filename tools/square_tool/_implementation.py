@@ -32,6 +32,7 @@ from tools.square_tool.classes import (
     CreatePaymentLinkInput,
     ExtractedOrderWithModifiers,
     Order,
+    PaymentLink,
     SquareAccessToken,
 )
 from tools.utils.ordering._llm import llm_call
@@ -226,7 +227,7 @@ class SquareTool(Toolkit):
 
     def _create_payment_link(
         self, order: Order, total_item_count: int
-    ) -> Optional[str]:
+    ) -> Optional[PaymentLink]:
         """Create payment link using the actual order and return URL."""
         try:
             payment_link_response = create_payment_link(
@@ -258,11 +259,7 @@ class SquareTool(Toolkit):
                 )
                 return None
 
-            return (
-                payment_link_response.payment_link.url
-                or payment_link_response.payment_link.long_url
-            )
-
+            return payment_link_response.payment_link
         except Exception as e:
             logger.error(f"[SquareTool._create_payment_link] Error: {e}")
             return None
@@ -513,7 +510,14 @@ class SquareTool(Toolkit):
             # Step 4: Create payment link
             logger.debug("[SquareTool] Step 4: Creating payment link")
             total_quantity = sum(item["quantity"] for item in converted_items)
-            payment_url = self._create_payment_link(created_order, total_quantity)
+            payment_link = self._create_payment_link(created_order, total_quantity)
+
+            if payment_link:
+                payment_url = payment_link.url or payment_link.long_url
+                # update order id to use the newly generated one from payment link request
+                created_order.id = payment_link.order_id
+            else:
+                payment_url = None
 
             # Persist order and transaction records
             try:
