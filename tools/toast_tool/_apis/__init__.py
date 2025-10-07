@@ -510,9 +510,6 @@ def get_existing_order(
             bearer_token=bearer_token,
             api_function=f"/orders/v2/orders/{order_guid}",
             store_id=store_id,
-            query_params=None,
-            extra_headers=None,
-            payload=None,
             general_api_endpoint=general_api_endpoint,
         )
     except Exception as e:

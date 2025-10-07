@@ -426,7 +426,7 @@ class ToastTool(Toolkit):
             return get_existing_order(
                 bearer_token=self._toast_bearer_token,
                 store_id=self.store_id,
-                order_guid=str(self.tool_metadata.session_id),
+                order_guid=f"TPC-PALONA:{self.tool_metadata.session_id}",
             )
 
         except Exception as e:
@@ -469,7 +469,9 @@ class ToastTool(Toolkit):
         """
         try:
             # First check if the store is open for ordering
-            logger.info("Checking if the store is open for ordering")
+            logger.debug(
+                "[ToastTool.checkout_order] Checking if the store is open for ordering"
+            )
             if not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
 
@@ -684,7 +686,7 @@ class ToastTool(Toolkit):
                     f"`order` object in type {type(order)} but expected type Order.\n"
                     f"`order` object: {order}"
                 )
-            logger.debug(f"Constructed order: {order}")
+            logger.debug(f"[ToastTool._construct_order] Constructed order: {order}")
 
             # Note: lastName suffix will be added in _finalize_order_details after validation
 
@@ -815,7 +817,7 @@ class ToastTool(Toolkit):
         # First let toast API fill in the prices
         try:
             # Set the order externalId to the session id to track the order
-            order.externalId = str(self.tool_metadata.session_id)
+            order.externalId = f"TPC-PALONA:{self.tool_metadata.session_id}"
             order = submit_order(
                 toast_bearer_token,
                 self.store_id,

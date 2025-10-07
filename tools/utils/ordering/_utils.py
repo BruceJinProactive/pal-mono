@@ -448,8 +448,14 @@ def connect_order_hub(
         if provider == ApiProvider.ADORA:
             # Adora allows non-200 responses (like 404 for customer not found)
             pass
+        elif provider == ApiProvider.TOAST:
+            # Toast requires 200 status or 404 status
+            if response.status != 200 and response.status != 404:
+                raise Exception(
+                    f"Error: {response.status} - {response.reason} - {response_data}"
+                )
         else:
-            # Olo and Toast require 200 status
+            # Olo require 200 status
             if response.status != 200:
                 raise Exception(
                     f"Error: {response.status} - {response.reason} - {response_data}"
