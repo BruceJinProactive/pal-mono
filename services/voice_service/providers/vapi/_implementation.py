@@ -81,6 +81,11 @@ class VAPIProvider:
 
             # Use fallback config if either environment variable is true
             if use_fallback_transcriber or use_fallback_voice:
+                logger.debug(
+                    f"Using fallback assistant config for call {call_id} - "
+                    f"fallback_transcriber: {use_fallback_transcriber}, "
+                    f"fallback_voice: {use_fallback_voice}"
+                )
                 return self._create_fallback_assistant_config(
                     use_fallback_transcriber,
                     use_fallback_voice,
