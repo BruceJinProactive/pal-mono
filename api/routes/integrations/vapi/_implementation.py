@@ -52,6 +52,34 @@ def _get_vapi_client() -> AsyncVapi:
     return AsyncVapi(token=vapi_token)
 
 
+def _format_assistant_name(base_name: str, suffix: str, max_length: int = 40) -> str:
+    """
+    Format an assistant name by truncating the base name if necessary to fit within max_length.
+
+    This helper ensures that assistant/squad names with suffixes don't exceed VAPI's
+    character limits during self-onboarding.
+
+    Args:
+        base_name: The base name to be formatted
+        suffix: The suffix to append (e.g., " (English)", " (Language Triage)")
+        max_length: Maximum total length allowed (default: 40)
+
+    Returns:
+        str: Formatted name with suffix, truncated if necessary
+
+    Example:
+        >>> _format_assistant_name("Very Long Restaurant Name", " (English)", 40)
+        "Very Long Restaurant Name (English)"
+        >>> _format_assistant_name("Very Long Restaurant Name Here", " (Spanish)", 40)
+        "Very Long Restaurant N (Spanish)"
+    """
+    max_base_len = max_length - len(suffix)
+    truncated_base = (
+        base_name[:max_base_len] if len(base_name) > max_base_len else base_name
+    )
+    return f"{truncated_base}{suffix}"
+
+
 def _get_webhook_config() -> tuple[str, str, list[str]]:
     """
     Resolve webhook configuration from environment variables.
@@ -1188,14 +1216,14 @@ async def handle_create_vapi_assistant(
                         {
                             "type": "assistant",
                             "assistant_name": spanish.name,
-                            "message": "Transfiriéndote a nuestro especialista en español...",
+                            "message": "¡Está bien, no hay problema!",
                             "description": "Transfer to Spanish language assistant",
                             "transfer_mode": "rolling-history",
                         },
                         {
                             "type": "assistant",
                             "assistant_name": chinese.name,
-                            "message": "正在为您转接中文客服专员...",
+                            "message": "好的，没问题！",
                             "description": "Transfer to Chinese language assistant",
                             "transfer_mode": "rolling-history",
                         },
@@ -1280,11 +1308,11 @@ def _build_multilingual_squad(create_request) -> tuple[dict, dict, dict, dict]:
 
 def _build_squad_triage_assistant(create_request, languages: dict) -> dict:
     """Build triage assistant for multilingual squad."""
-    triage_name = f"{create_request.name} (Language Triage)"
+    triage_name = _format_assistant_name(create_request.name, " (Language Triage)")
 
     # Build transfer instructions dynamically
     transfer_rules = [
-        f"- For {config['display']} → transfer to {create_request.name} ({config['display']})"
+        f"- For {config['display']} → transfer to {_format_assistant_name(create_request.name, config['display'])}"
         for config in languages.values()
     ]
 
@@ -1331,7 +1359,8 @@ def _build_squad_language_assistant(
     - A language-specific prefix (if applicable) to enforce language use
     - A first message in the appropriate language
     """
-    assistant_name = f"{create_request.name} ({config['display']})"
+
+    assistant_name = _format_assistant_name(create_request.name, config["display"])
 
     # Combine language-specific prefix with the base system prompt
     # This ensures each assistant has the full system instructions
