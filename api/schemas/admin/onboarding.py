@@ -110,6 +110,10 @@ class SelfOnboardingRequest(BaseModel):
         ..., description="Interaction guidelines of the created agent"
     )
     agent_voice_id: str = Field(..., description="Voice id of the created agent")
+    agent_language: str = Field(
+        default="English",
+        description="Language for the agent (English, Spanish, Chinese, Multilingual)",
+    )
 
     project_name: str = Field(..., description="Name of the created project")
     project_display_name: str = Field(
