@@ -504,6 +504,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         # Save request message to database
         message_repo = db.MessageRepositoryAsync(session)
+
+        logger.debug(
+            f"[vapi._implementation.handle_assistant_request] Saving request message {message.id} for user {user.id} and call {call_id} in project {project.id}"
+        )
         request_message = await message_repo.create_message(
             user_id=user.id,
             project_id=project.id,
@@ -513,6 +517,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         await session.refresh(user, attribute_names=["id"])
 
         if not request_message:
+            logger.error(
+                f"[vapi._implementation.handle_assistant_request] Failed to create request message for user {user.id} and call {call_id} in project {project.id}",
+            )
             raise ValueError("Failed to create request message")
 
         await session.refresh(project, attribute_names=["account"])
