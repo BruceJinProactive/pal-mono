@@ -427,6 +427,7 @@ class ToastTool(Toolkit):
                 bearer_token=self._toast_bearer_token,
                 store_id=self.store_id,
                 order_guid=f"TPC-PALONA:{self.tool_metadata.session_id}",
+                general_api_endpoint=self.general_api_endpoint,
             )
 
         except Exception as e:

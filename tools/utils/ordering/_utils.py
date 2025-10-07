@@ -402,6 +402,7 @@ def connect_order_hub(
     """
     logger.debug(
         f"[OrderingUtils.connect_order_hub] Calling {provider.upper()} API: {http_method} {api_function} | "
+        f"General Endpoint: {general_api_endpoint} | "
         f"Query Params: {query_params} | "
         f"Extra Headers: {extra_headers} | "
         f"Payload: {payload}"
