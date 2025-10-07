@@ -11,7 +11,6 @@ from .lead import Lead
 from .messages import Message
 from .orders import Order
 from .phonecalls import PhoneCall
-from .pos_integration import POSIntegration
 from .projects import Project
 from .prompts import Prompt, PromptDetails
 from .reservations import Reservation

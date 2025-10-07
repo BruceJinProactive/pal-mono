@@ -9,7 +9,6 @@ from .lead_repository import LeadFilter, LeadRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync
 from .order_repository import OrderRepository
 from .phone_call_repository import PhoneCallRepository, PhoneCallRepositoryAsync
-from .pos_integration_repository import POSIntegrationRepository
 from .project_integration_repository import ProjectIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
 from .prompt_repository import PromptRepository
