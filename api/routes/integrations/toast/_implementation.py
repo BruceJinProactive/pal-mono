@@ -10,7 +10,12 @@ from services.knowledge_service import (
     query_vector_database,
     upload_knowledge_file,
 )
-from tools.toast_tool._apis import connect_toast_order_hub
+from tools.toast_tool._apis import (
+    connect_toast_order_hub,
+    get_existing_order,
+    get_payment,
+    post_payment_to_order,
+)
 from tools.toast_tool._utils import get_toast_access_token_from_aws
 from tools.utils.ordering.classes import HttpMethod
 from utils.log import logger
@@ -279,3 +284,110 @@ def check_and_refresh_dining_options(session):
         status_code=status.HTTP_200_OK,
         content={"message": "Dining options successfully checked"},
     )
+
+
+async def update_order_payment(request: Request) -> JSONResponse:
+    """
+    Process incoming checkout requests from Toast Iframe.
+    Authentication and validation are handled by AWS API Gateway.
+
+    Args:
+        request: The FastAPI request object
+
+    Returns:
+        JSONResponse: The response to send back to Toast Iframe UI
+    """
+    # Retrieve store ID, order External ID, payment external ID from request body
+    try:
+        body = await request.json()
+        store_id = body.get("storeId")
+        order_external_id = body.get("orderExternalId")
+        payment_external_id = body.get("paymentExternalId")
+
+        logger.debug(
+            f"[update_order_payment] Processing checkout request for store {store_id}, order {order_external_id}, payment {payment_external_id}"
+        )
+
+        if not (store_id and order_external_id and payment_external_id):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "Missing required fields: storeId, orderExternalId, paymentExternalId"
+                },
+            )
+
+        toast_bearer_token = get_toast_access_token_from_aws(store_id=store_id)
+        if not toast_bearer_token:
+            logger.error(
+                f"[update_order_payment] Failed to obtain Toast access token for store {store_id}"
+            )
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"error": "Failed to obtain Toast access token"},
+            )
+
+        # 1. Fetch payment details from Toast API using payment_external_id
+        payment = get_payment(toast_bearer_token, store_id, payment_external_id)
+        if not payment:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"error": f"Payment with ID {payment_external_id} not found"},
+            )
+        logger.debug(
+            f"[update_order_payment] Retrieved payment {payment.guid} with amount ${payment.amount}"
+        )
+
+        # 2. Fetch order details from Toast API using order_external_id
+        order = get_existing_order(toast_bearer_token, store_id, order_external_id)
+        if not order:
+            return JSONResponse(
+                status_code=status.HTTP_404_NOT_FOUND,
+                content={"error": f"Order with ID {order_external_id} not found"},
+            )
+        logger.debug(
+            f"[update_order_payment] Retrieved order {order.guid} with {len(order.checks)} check(s)"
+        )
+
+        if not order.checks or len(order.checks) == 0:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": f"Order with ID {order_external_id} has no checks"},
+            )
+        if not hasattr(order.checks[0], "guid") or not getattr(order.checks[0], "guid"):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": f"Order with ID {order_external_id} has no valid check GUID"
+                },
+            )
+        # 3. Post the payment to the first check of the order using Toast API (orders/v2/orders/" + order_guid + "/checks/" + check_guid + "/payments")
+        post_payment_to_order(
+            toast_bearer_token,
+            store_id,
+            order.guid,  # type: ignore # order guid is validated to be not None
+            order.checks[0].guid,  # type: ignore # order check guid is validated to be not empty
+            payment,
+        )  # type: ignore
+        logger.debug(
+            f"[update_order_payment] Successfully posted payment {payment.guid} to order {order.guid}"
+        )
+
+        # 4. Return success response to Toast Iframe UI
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"message": "Payment processed successfully"},
+        )
+
+    except (json.JSONDecodeError, ValueError) as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": f"Invalid JSON in request body: {str(e)}"},
+        )
+    except Exception as e:
+        logger.error(
+            f"[update_order_payment] Unexpected error: {str(e)}", exc_info=True
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": "Internal server error processing checkout"},
+        )

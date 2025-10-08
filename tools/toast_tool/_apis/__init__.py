@@ -15,11 +15,12 @@ from tools.toast_tool.classes import (
     RestaurantInfo,
     RestaurantOrderingStatus,
     ToastAccessToken,
+    ToastPayment,
 )
 from tools.utils.ordering.classes import HttpMethod
 from utils.log import logger
 
-BASE_URL = "ws-sandbox-api.eng.toasttab.com"
+BASE_URL = "ws-api.toasttab.com"
 
 
 def get_toast_access_token(
@@ -594,4 +595,112 @@ def get_existing_order(
         )
         raise ValueError(
             f"Order retrieval failed with status {response.status}: {response.decoded_body}"
+        )
+
+
+def get_payment(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    payment_id: str,
+    general_api_endpoint: str | None = None,
+) -> ToastPayment | None:
+    """
+    Retrieves payment details from the Toast API.
+
+    Args:
+        bearer_token: Toast access token with payment credentials
+        store_id: External ID for the restaurant
+        payment_id: The GUID of the payment to retrieve
+        general_api_endpoint: Optional custom API endpoint
+
+    Returns:
+        ToastPayment: The payment object with all its details if found, None if not found (404).
+
+    Raises:
+        ValueError: If payment retrieval fails with an error other than 404
+    """
+    try:
+        # The Toast payments API requires the store_id as a header parameter
+        extra_headers = {"Toast-Restaurant-External-ID": store_id}
+
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function=f"/orders/v2/payments/{payment_id}",
+            store_id=store_id,
+            extra_headers=extra_headers,
+            query_params=None,
+            payload=None,
+            general_api_endpoint=general_api_endpoint,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.get_payment] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        # Convert the JSON string to a ToastPayment object
+        return ToastPayment.model_validate_json(response.decoded_body)
+    elif response.status == 404:
+        logger.debug(f"[ToastAPI.get_payment] Payment with ID {payment_id} not found.")
+        return None
+    else:
+        logger.error(
+            f"Payment retrieval failed with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Payment retrieval failed with status {response.status}: {response.decoded_body}"
+        )
+
+
+def post_payment_to_order(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    order_guid: str,
+    check_guid: str,
+    payment: ToastPayment,
+    general_api_endpoint: str | None = None,
+) -> None:
+    """
+    Posts a payment to a specific check of an order in the Toast API.
+
+    Args:
+        bearer_token (ToastAccessToken): The Toast access token.
+        store_id (str): The external ID of the restaurant.
+        order_guid (str): The GUID of the order to which the payment will be applied.
+        check_guid (str): The GUID of the check within the order.
+        payment (ToastPayment): The payment details to be posted.
+        general_api_endpoint (str | None): Optional custom API endpoint.
+
+    Returns:
+        None
+
+    Raises:
+        ValueError: If posting the payment fails
+    """
+
+    try:
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=bearer_token,
+            api_function=f"/orders/v2/orders/{order_guid}/checks/{check_guid}/payments",
+            store_id=store_id,
+            payload=payment.model_dump(exclude_none=True),
+            general_api_endpoint=general_api_endpoint,
+        )
+    except Exception as e:
+        raise Exception(
+            f"[ToastAPI.post_payment_to_order] Error while calling Toast API: {str(e)}"
+        ) from e
+
+    if response.status == 200:
+        logger.debug(
+            f"[ToastAPI.post_payment_to_order] Successfully posted payment {payment.guid} to order {order_guid}, check {check_guid}"
+        )
+    else:
+        logger.error(
+            f"Posting payment failed with status {response.status}: {response.decoded_body}"
+        )
+        raise ValueError(
+            f"Posting payment failed with status {response.status}: {response.decoded_body}"
         )

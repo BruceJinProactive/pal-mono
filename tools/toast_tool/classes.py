@@ -237,6 +237,10 @@ class Check(Price):
     )
     payments: Optional[List[Payment]] = None
 
+    class Config:
+        # Allow extra fields in case API response includes additional data
+        extra = "allow"
+
 
 class ToastDeliveryInfo(BaseModel):
     address1: str = Field(description="Street address")
@@ -407,6 +411,27 @@ class PaymentIntentResponse(BaseModel):
     status: Optional[str] = Field(None, description="Payment intent status")
 
     class Config:
+        extra = "allow"
+
+
+class ToastPayment(BaseModel):
+    """
+    Toast payment object for creating payments.
+    Based on Toast API payment schema with required fields and optional externalId.
+    """
+
+    amount: float = Field(description="The amount of this payment, excluding tips")
+    entityType: str = Field(description="The type of object this is")
+    guid: str = Field(description="The GUID maintained by the Toast platform")
+    tipAmount: float = Field(description="The amount tipped on this payment")
+    type: str = Field(description="The payment method (e.g., CREDIT, OTHER)")
+    externalId: Optional[str] = Field(
+        None,
+        description="External identifier string that is prefixed by the naming authority",
+    )
+
+    class Config:
+        # Allow extra fields in case API response includes additional data
         extra = "allow"
 
 
