@@ -121,11 +121,26 @@ def format_resy_availability(
     if requested_time:
         center = requested_time.replace(second=0, microsecond=0)
         unique_times.sort(key=lambda dt: (abs(dt - center), dt))
+
+        if center in unique_times:
+            pretty = center.strftime("%A, %B %d, %Y at %I:%M %p")
+            return (
+                f"Availability for {header_name} (Party of {party_size}):\n"
+                f"* {pretty} (requested time is available)"
+            )
     else:
         unique_times.sort()
 
     selected = sorted(unique_times[:5])
     lines.extend(f"* {dt.strftime('%A, %B %d, %Y at %I:%M %p')}" for dt in selected)
+
+    if requested_time:
+        requested_str = requested_time.replace(second=0, microsecond=0).strftime(
+            "%A, %B %d, %Y at %I:%M %p"
+        )
+        lines.append(
+            f"No exact availability at {requested_str}. Please mention these closest alternatives."
+        )
     return "\n".join(lines)
 
 

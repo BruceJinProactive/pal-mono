@@ -62,7 +62,7 @@ class ResyTool(Toolkit, BaseReservationTool):
 
         return f"https://resy.com/cities/{self.city}/venues/{self.venue_name}"
 
-    def _search_resy(self, *, day: str, time_filter: str, party_size: int) -> dict:
+    def _search_resy(self, *, day: str, party_size: int) -> dict:
         return find_resy_availability(
             venue_id=self.venue_id,
             city=self.city,
@@ -83,14 +83,12 @@ class ResyTool(Toolkit, BaseReservationTool):
             time: Desired reservation time in HH:MM (24-hour) format.
 
         Returns:
-            up to 5 available time slots closest to desired time, or an error message.
+            The exact requested time if available, otherwise up to 5 closest alternatives.
         """
 
         try:
             with LLMObs.task(name="search_resy_availability"):
-                response = self._search_resy(
-                    day=date, time_filter=time, party_size=party_size
-                )
+                response = self._search_resy(day=date, party_size=party_size)
         except urllib.error.HTTPError as exc:
             body = (
                 exc.read().decode("utf-8", errors="ignore")
