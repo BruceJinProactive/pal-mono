@@ -10,6 +10,8 @@ from tools.toast_tool.classes import (
     Order,
     OrderingScheduleResponse,
     OrderInput,
+    PaymentIntentRequest,
+    PaymentIntentResponse,
     RestaurantInfo,
     RestaurantOrderingStatus,
     ToastAccessToken,
@@ -484,6 +486,67 @@ def get_ordering_schedule(
         raise ValueError(
             f"Ordering schedule retrieval failed with status {response.status}: {response.decoded_body}"
         )
+
+
+def create_payment_intent(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    payment_request: PaymentIntentRequest,
+    payments_api_endpoint: str | None = None,
+) -> PaymentIntentResponse:
+    """
+    Creates a Toast payment intent for hosted checkout.
+
+    Args:
+        bearer_token: Toast access token with payment credentials
+        store_id: External ID for the restaurant
+        payment_request: Payment intent request with amount and details
+        payments_api_endpoint: Optional custom payments API endpoint
+
+    Returns:
+        PaymentIntentResponse: Contains session secret and payment intent ID
+
+    Raises:
+        ValueError: If payment intent creation fails
+    """
+    # Use payments endpoint if not provided
+    endpoint = payments_api_endpoint or "payments.sandbox.eng.toasttab.com"
+
+    logger.debug(
+        f"[ToastAPI.create_payment_intent] Creating payment intent for store {store_id}"
+    )
+
+    payload = payment_request.model_dump(exclude_none=True)
+
+    try:
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=bearer_token,
+            api_function="/v1/payment-intents",
+            store_id=store_id,
+            payload=payload,
+            general_api_endpoint=endpoint,
+        )
+
+        if response.status == 200:
+            data = json.loads(response.decoded_body)
+            logger.debug(
+                f"[ToastAPI.create_payment_intent] Successfully created payment intent: {data.get('id')}"
+            )
+            return PaymentIntentResponse(**data)
+        else:
+            logger.error(
+                f"Payment intent creation failed with status {response.status}: {response.decoded_body}"
+            )
+            raise ValueError(
+                f"Payment intent creation failed with status {response.status}: {response.decoded_body}"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"[ToastAPI.create_payment_intent] Error creating payment intent: {e}"
+        )
+        raise
 
 
 def get_existing_order(

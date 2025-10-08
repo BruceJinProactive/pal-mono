@@ -635,6 +635,8 @@ def parse_service_periods(
 def get_toast_access_token_from_aws(
     store_id: str,
     token_api_endpoint: Optional[str] = None,
+    token_name: str = "TOAST_ACCESS_TOKEN",
+    credential_name: str = "TOAST_CLIENT_CREDENTIALS",
 ) -> ToastAccessToken:
     """
     Get a Toast access token from AWS Secrets; refresh via API if missing/expired.
@@ -644,7 +646,7 @@ def get_toast_access_token_from_aws(
         logger.debug(
             "[ToastTool.get_toast_access_token_from_aws] Getting token from AWS secrets"
         )
-        token_json_str = get_client_secret_with_fallback("TOAST_ACCESS_TOKEN")
+        token_json_str = get_client_secret_with_fallback(token_name)
         token_data = json.loads(token_json_str)
         # Reconstruct ToastAccessToken from stored data
         token = ToastAccessToken(**token_data)
@@ -662,7 +664,8 @@ def get_toast_access_token_from_aws(
             exc_info=True,
         )
         return refresh_toast_access_token_from_aws(
-            store_id=store_id, token_api_endpoint=token_api_endpoint
+            token_api_endpoint=token_api_endpoint,
+            credential_name=credential_name,
         )
 
     # Check expiration outside the try so refresh errors are not swallowed
@@ -671,7 +674,8 @@ def get_toast_access_token_from_aws(
             "[ToastTool.get_toast_access_token_from_aws] Token expired, refreshing"
         )
         return refresh_toast_access_token_from_aws(
-            store_id=store_id, token_api_endpoint=token_api_endpoint
+            token_api_endpoint=token_api_endpoint,
+            credential_name=credential_name,
         )
     logger.debug(
         f"[ToastTool.get_toast_access_token_from_aws] Token retrieved successfully expiring at: {token.expires_at}"
@@ -680,8 +684,8 @@ def get_toast_access_token_from_aws(
 
 
 def refresh_toast_access_token_from_aws(
-    store_id: str,
     token_api_endpoint: Optional[str] = None,
+    credential_name: str = "TOAST_CLIENT_CREDENTIALS",
 ) -> ToastAccessToken:
     """
     Refresh Toast access token from API.
@@ -690,15 +694,15 @@ def refresh_toast_access_token_from_aws(
         "[ToastTool.refresh_toast_access_token_from_aws] Refreshing token from API"
     )
     # Get the API credentials from AWS secrets
-    api_credentials = get_client_secret_with_fallback("TOAST_CLIENT_CREDENTIALS")
+    api_credentials = get_client_secret_with_fallback(credential_name)
     try:
         api_credentials = json.loads(api_credentials)
     except json.JSONDecodeError as e:
-        raise ValueError("TOAST_CLIENT_CREDENTIALS is not valid JSON") from e
+        raise ValueError(f"{credential_name} is not valid JSON") from e
     api_key = api_credentials.get("client_id")
     api_secret = api_credentials.get("client_secret")
     if not api_key or not api_secret:
-        raise ValueError("Missing client_id/client_secret in TOAST_CLIENT_CREDENTIALS")
+        raise ValueError(f"Missing client_id/client_secret in {credential_name}")
 
     bearer_token = get_toast_access_token(
         api_key,

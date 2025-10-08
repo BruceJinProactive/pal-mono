@@ -2,6 +2,7 @@ import asyncio
 import json
 import textwrap
 import traceback
+import uuid
 from typing import Optional
 
 import polyline
@@ -14,6 +15,7 @@ from shapely import Point, Polygon
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.toast_tool._apis import (
+    create_payment_intent,
     get_existing_order,
     get_menu_inventory,
     get_online_ordering_status,
@@ -41,6 +43,8 @@ from tools.toast_tool.classes import (
     Modifier,
     Order,
     OrderInput,
+    PaymentIntentRequest,
+    PaymentIntentResponse,
     Price,
     SelectionType,
     SubQueries,
@@ -117,6 +121,26 @@ class ToastTool(Toolkit):
         with LLMObs.task(name="get_toast_bearer_token"):
             return get_toast_access_token_from_aws(
                 self.store_id, self.token_api_endpoint
+            )
+
+    @property
+    def _toast_hosted_payment_checkout_bearer_token(self) -> ToastAccessToken | None:
+        with LLMObs.task(name="get_toast_hosted_payment_checkout_bearer_token"):
+            return get_toast_access_token_from_aws(
+                self.store_id,
+                self.token_api_endpoint,
+                token_name="TOAST_PAYMENT_CHECKOUT_ACCESS_TOKEN",
+                credential_name="TOAST_PAYMENT_CHECKOUT_CLIENT_CREDENTIALS",
+            )
+
+    @property
+    def _toast_hosted_payment_iframe_bearer_token(self) -> ToastAccessToken | None:
+        with LLMObs.task(name="get_toast_hosted_payment_iframe_bearer_token"):
+            return get_toast_access_token_from_aws(
+                self.store_id,
+                self.token_api_endpoint,
+                token_name="TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
+                credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
             )
 
     def check_address(self, address: str) -> str:
@@ -438,6 +462,105 @@ class ToastTool(Toolkit):
             # Return None to allow order creation to proceed rather than blocking checkout
             return None
 
+    # TODO: decide if we want to use order.externalId for payment intent's externalReferenceId
+    @tool
+    def checkout_order_with_payment_intent(self) -> str:
+        """
+        Creates a payment intent for an order with hosted checkout iframe support.
+
+        **WHEN TO USE THIS TOOL:**
+        - When the customer has CONFIRMED they want to place/complete their order
+        - When the customer says: "checkout", "pay now", "place order", "complete order"
+        - When all required ordering information has been collected
+        - IMPORTANT: Before using, ask for customer's name and phone number
+
+        **ORDERING PROCESS:**
+        1. Customer selects items from the menu
+        2. Customer confirms order items, modifiers, and quantities
+        3. Ask for customer name and phone number
+        4. Customer confirms they want to proceed with payment
+        5. Use this tool to create payment intent
+
+        **DO NOT USE WHEN:**
+        - Customer is browsing or asking questions
+        - Customer is still deciding what to order
+        - Customer hasn't confirmed payment
+        - Missing customer name and phone number
+
+        Returns:
+            str: JSON with payment intent details including sessionSecret for iframe
+        """
+        try:
+            # Check if store is open
+            logger.debug(
+                "[ToastTool.checkout_order_with_payment_intent] Checking store status"
+            )
+            if not self._is_online_order_available():
+                return "The store is currently closed for online ordering. Please try again later."
+
+            # Check for existing order
+            if self._get_existing_order_tool() is not None:
+                return "Your order has been successfully placed."
+
+            # Construct order
+            order = self._construct_order()
+            if isinstance(order, str):
+                return order
+
+            # Validate order
+            error_message = self._finalize_order_details(order)
+            if error_message:
+                return error_message
+
+            result = self._submit_order(order)
+
+            # Handle both success (tuple) and error (string) cases
+            if isinstance(result, tuple):
+                order, confirmation_message = result
+            else:
+                # If result is a string, it indicates an error message
+                return result
+
+            # Create payment intent
+            payment_intent_external_reference_id = str(uuid.uuid4())
+            payment_intent_result = self._create_payment_intent_for_order(
+                order, external_reference_id=payment_intent_external_reference_id
+            )
+            # If payment intent result is a string, it indicates an error message
+            if isinstance(payment_intent_result, str):
+                return payment_intent_result
+
+            # Check if order.externalId is set after successful order submission. This absolutely must not be empty because we need it later to update the order's check.
+            if order.externalId is None:
+                raise ValueError("Order externalId is None after submission")
+
+            # Sanity check for iframe bearer token
+            toast_hosted_payment_iframe_bearer_token = (
+                self._toast_hosted_payment_iframe_bearer_token
+            )
+            if not toast_hosted_payment_iframe_bearer_token:
+                logger.error(
+                    "[ToastTool.checkout_order_with_payment_intent] No hosted checkout payment bearer token available"
+                )
+                return "Failed to authenticate payment tool. Please contact the store to complete your order."
+
+            # Generate iframe payment link
+            payment_link = self._generate_iframe_payment_link(
+                toast_hosted_payment_iframe_bearer_token.get_token_header_value(),
+                self.store_id,
+                order.externalId,
+                payment_intent_external_reference_id,
+                payment_intent_result.sessionSecret,
+            )
+
+            # Return payment intent details
+            return payment_link
+
+        except Exception as e:
+            logger.error(f"[ToastTool.checkout_order_with_payment_intent] Error: {e}")
+            logger.error(traceback.format_exc())
+            return "Failed to create payment intent. Please try again."
+
     # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
     @tool
     def checkout_order(self) -> str:
@@ -494,7 +617,15 @@ class ToastTool(Toolkit):
             if error_message:
                 return error_message
 
-            return self._submit_order(order)
+            result = self._submit_order(order)
+
+            # Handle both success (tuple) and error (string) cases
+            if isinstance(result, tuple):
+                order, confirmation_message = result
+                return confirmation_message
+            else:
+                # Error message string
+                return result
 
         except Exception as e:
             logger.error(f"[ToastTool.checkout_order] Error in submit order: {e}")
@@ -806,7 +937,7 @@ class ToastTool(Toolkit):
                 if VIA_AGENT_SUFFIX not in trimmed_lastname:
                     check.customer.lastName = f"{trimmed_lastname} {VIA_AGENT_SUFFIX}"
 
-    def _submit_order(self, order: OrderInput) -> str:
+    def _submit_order(self, order: OrderInput) -> str | tuple[Order, str]:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
         if not toast_bearer_token:
@@ -831,10 +962,11 @@ class ToastTool(Toolkit):
                 f"[ToastTool._submit_order] Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order summary: {order.checks[0].selections}.\n\nYour order will be ready for pickup at {order.estimatedFulfillmentDate}"
             )
             return (
+                order,
                 f"Order #{order.guid} submitted successfully! "
                 f"Your total is ${order.checks[0].totalAmount}. "
                 f"Your order summary: {order.checks[0].selections}.\n\n"
-                f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
+                f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}",
             )
         except Exception as e:
             logger.error(f"[ToastTool._submit_order] Failed to submit the order: {e}")
@@ -896,3 +1028,89 @@ class ToastTool(Toolkit):
             return (
                 "There was an error while getting the order prices. Please try again."
             )
+
+    def _create_payment_intent_for_order(
+        self,
+        order: OrderInput,
+        external_reference_id: str | None = None,
+        payments_api_endpoint: str | None = None,
+    ) -> PaymentIntentResponse | str:
+        """
+        Creates a payment intent for an order.
+
+        Args:
+            order: The order to create a payment intent for
+            external_reference_id: Optional unique identifier for this payment
+
+        Returns:
+            PaymentIntentResponse with session secret, or error message string
+        """
+        # Get bearer token
+        toast_bearer_token = self._toast_hosted_payment_checkout_bearer_token
+        if not toast_bearer_token:
+            return (
+                "Failed to authenticate ordering tool. "
+                "Please reach out to our support team at help@palona.ai "
+                "for assistance."
+            )
+
+        try:
+
+            # Calculate total amount in cents
+            total_amount_cents = int(order.checks[0].totalAmount * 100)  # type: ignore
+
+            if not external_reference_id:
+                external_reference_id = str(uuid.uuid4())
+
+            # Create payment intent request
+            payment_request = PaymentIntentRequest(
+                amount=total_amount_cents,
+                amountDetails={
+                    "tip": 0
+                },  # TODO: Set tip to 0 for now. Later we can consider asking the user for tip amount.
+                currency="USD",
+                externalReferenceId=external_reference_id,
+                captureMethod="MANUAL",
+            )
+
+            # Create payment intent
+            payment_intent_response = create_payment_intent(
+                bearer_token=toast_bearer_token,
+                store_id=self.store_id,
+                payment_request=payment_request,
+                payments_api_endpoint=payments_api_endpoint,  # Use default sandbox endpoint
+            )
+
+            logger.debug(
+                f"[ToastTool._create_payment_intent_for_order] Created payment intent: {payment_intent_response.id}"
+            )
+
+            return payment_intent_response
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool._create_payment_intent_for_order] Error creating payment intent: {e}"
+            )
+            return "Failed to create payment intent. Please try again."
+
+    def _generate_iframe_payment_link(
+        self,
+        bearer_token: str,
+        store_id: str,
+        order_external_id: str,
+        payment_intent_external_reference_id: str,
+        session_secret: str,
+    ) -> str:
+        """
+        Generates a hosted payment iframe link for the given order and payment intent.
+
+        Args:
+            bearer_token (str): The bearer token for authentication.
+            store_id (str): The store ID.
+            order_external_id (str): The external ID of the order.
+            payment_intent_external_reference_id (str): The external reference ID of the payment intent.
+            session_secret (str): The session secret from the payment intent.
+        Returns:
+            str: The URL for the hosted payment iframe.
+        """
+        return ""

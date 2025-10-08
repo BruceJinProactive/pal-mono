@@ -375,6 +375,41 @@ class OrderingScheduleResponse(BaseModel):
     timeZoneId: str = Field(description="The time zone of the restaurant location")
 
 
+class PaymentIntentRequest(BaseModel):
+    """Request model for creating a Toast payment intent."""
+
+    amount: int = Field(description="Payment amount in cents (e.g., 1000 = $10.00)")
+    amountDetails: dict = Field(
+        default_factory=lambda: {"tip": 0},
+        description="Breakdown of amount details including tip",
+    )
+    currency: str = Field(default="USD", description="Currency code")
+    externalReferenceId: str = Field(
+        description="Merchant's unique identifier for this payment intent"
+    )
+    captureMethod: str = Field(
+        default="MANUAL", description="Payment capture method (MANUAL or AUTOMATIC)"
+    )
+
+
+class PaymentIntentResponse(BaseModel):
+    """Response model from Toast payment intent creation."""
+
+    id: str = Field(description="Toast payment intent ID")
+    sessionSecret: str = Field(
+        description="Session secret needed to initialize the checkout iframe"
+    )
+    amount: int = Field(description="Payment amount in cents")
+    currency: str = Field(description="Currency code", default="USD")
+    externalReferenceId: str = Field(
+        description="Merchant's unique identifier for this payment intent"
+    )
+    status: Optional[str] = Field(None, description="Payment intent status")
+
+    class Config:
+        extra = "allow"
+
+
 ########### TOAST API CLASS END ############
 
 
