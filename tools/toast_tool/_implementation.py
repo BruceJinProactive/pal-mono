@@ -1,12 +1,16 @@
 import asyncio
 import json
 import textwrap
+import time
 import traceback
 import uuid
 from typing import Optional
 
+import jwt
 import polyline
 from agno.tools.toolkit import Toolkit
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, tool
 from pydantic import ValidationError
@@ -93,6 +97,8 @@ class ToastTool(Toolkit):
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
         self._cached_store_info: str | None = None
+        # TODO: Replace with actual endpoint
+        self.hosted_payment_iframe_endpoint = "<HOSTED_PAYMENT_IFRAME_ENDPOINT>"
 
         # Register tools
         self.register(self.checkout_order)
@@ -546,7 +552,6 @@ class ToastTool(Toolkit):
 
             # Generate iframe payment link
             payment_link = self._generate_iframe_payment_link(
-                toast_hosted_payment_iframe_bearer_token.get_token_header_value(),
                 self.store_id,
                 order.externalId,
                 payment_intent_external_reference_id,
@@ -1095,7 +1100,6 @@ class ToastTool(Toolkit):
 
     def _generate_iframe_payment_link(
         self,
-        bearer_token: str,
         store_id: str,
         order_external_id: str,
         payment_intent_external_reference_id: str,
@@ -1113,4 +1117,41 @@ class ToastTool(Toolkit):
         Returns:
             str: The URL for the hosted payment iframe.
         """
-        return ""
+
+        try:
+            # Generate RSA private key
+            private_key = rsa.generate_private_key(
+                public_exponent=65537, key_size=2048, backend=default_backend()
+            )
+
+            # Create JWT payload with required claims
+            payload = {
+                "storeId": store_id,
+                "orderExternalId": order_external_id,
+                "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
+                "sessionSecret": session_secret,
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 15 * 60,  # Token valid for 15 minutes
+            }
+
+            # Sign JWT with RS256 algorithm
+            token = jwt.encode(
+                payload,
+                private_key,
+                algorithm="RS256",
+            )
+
+            # Construct the iframe URL
+            iframe_url = f"{self.hosted_payment_iframe_endpoint}/checkout?token={token}"
+
+            logger.debug(
+                f"[ToastTool._generate_iframe_payment_link] Generated iframe URL: {iframe_url}"
+            )
+
+            return iframe_url
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool._generate_iframe_payment_link] Error generating iframe payment link: {e}"
+            )
+            return "Failed to generate payment link. Please try again."
