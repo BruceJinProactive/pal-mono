@@ -645,6 +645,7 @@ class NumberService:
                     country_code=country_code,
                     toll_free=toll_free,
                     merchant_name=project_name,
+                    purchase_number=True,
                 )
                 assigned_phone_number = number_response.number
 
