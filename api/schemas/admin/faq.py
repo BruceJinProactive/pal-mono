@@ -1,12 +1,9 @@
-from uuid import UUID
-
 from pydantic import BaseModel
 
 
 class CreateFAQRequest(BaseModel):
     """Create FAQ Request Model"""
 
-    account_id: UUID
     question: str
     answer: str
 
@@ -20,3 +17,10 @@ class FAQ(BaseModel):
     answer: str
     created_at: str
     updated_at: str
+
+
+class ListFAQsResponse(BaseModel):
+    """List FAQs Response Model"""
+
+    faqs: list[FAQ]
+    total: int

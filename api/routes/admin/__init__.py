@@ -51,7 +51,7 @@ from api.schemas.admin.email import (
     SendBatchEmailsRequest,
     SendEmailRequest,
 )
-from api.schemas.admin.faq import FAQ, CreateFAQRequest
+from api.schemas.admin.faq import FAQ, CreateFAQRequest, ListFAQsResponse
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
     Feedback,
@@ -940,8 +940,21 @@ async def delete_feedback(
 """
 
 
-@admin_router.put("/faqs", status_code=status.HTTP_201_CREATED)
+@admin_router.get("/accounts/{account_name}/faqs")
+async def get_faqs(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListFAQsResponse:
+    """
+    Get all FAQs for an account.
+    """
+    return await _faq.get_faqs(account_name, context, session)
+
+
+@admin_router.put("/accounts/{account_name}/faqs", status_code=status.HTTP_201_CREATED)
 async def create_faq(
+    account_name: str,
     faq: CreateFAQRequest,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
@@ -949,7 +962,7 @@ async def create_faq(
     """
     Create a FAQ for an account.
     """
-    return await _faq.create_faq(faq, context, session)
+    return await _faq.create_faq(account_name, faq, context, session)
 
 
 """
