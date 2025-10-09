@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import re
 import traceback
 from datetime import datetime
@@ -9,11 +8,9 @@ from typing import List
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, task, tool
-from mixpanel import Mixpanel
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from api.schemas.admin.analytics import Event as AnalyticsEvent
 from db.session import SyncSessionLocal
 from db.tables.adora_orders import AdoraOrder as DBOrder
 from db.tables.types import IntegrationProvider
@@ -98,12 +95,6 @@ class AdoraTool(Toolkit):
         # Create query engine and query messages tool
         self.query_engine = _query_engine.create_query_engine(self.namespace)
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
-
-        # Initialize Mixpanel
-        MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
-        self.mp = None
-        if MIXPANEL_PROJECT_TOKEN:
-            self.mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
 
     def _prefetch_adora_bearer_token(self) -> AdoraAccessToken | None:
         """
@@ -548,26 +539,6 @@ class AdoraTool(Toolkit):
             )
 
         text_payment_url = validated_order.paymentUrl
-
-        if self.mp:
-            event_properties = {
-                "runtime_env": os.getenv("RUNTIME_ENV", "dev"),
-                "action_name": AdoraTool.checkout_order.__name__,
-                "account_name": self.tool_metadata.account_name,
-                "conversation_id": str(self.tool_metadata.session_id),
-                "order_key": validated_order.key,
-                "order_payment_url": text_payment_url,
-                "order_total": (
-                    float(validated_order.total)
-                    if validated_order.total is not None
-                    else 0.0
-                ),
-            }
-            self.mp.track(
-                str(self.tool_metadata.user_id),
-                AnalyticsEvent.CRITICAL_ACTION,
-                event_properties,
-            )
 
         output = (
             f"Your order is pending!\n"

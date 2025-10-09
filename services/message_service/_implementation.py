@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 import db
 from agent import Agent
 from agent.input_output import Output
-from api.schemas.admin.analytics import Event as AnalyticsEvent
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
@@ -23,13 +22,7 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from db.tables.types import Channel
-from services import (
-    agent_service,
-    analytics_service,
-    project_service,
-    subscription_service,
-    user_service,
-)
+from services import agent_service, project_service, subscription_service, user_service
 from services.subscription_service import _stripe_product
 from services.subscription_service.stripe_usage_billing import send_meter_event
 from utils.dd import send_dd_histogram_metrics, trace_async_block
@@ -92,22 +85,12 @@ async def get_chat_response_async(
             user_id=user.id, project_id=project_id, message_body=message.to_dict()
         )
 
-        # Send analytics event
+        # Get account info for metadata
         await session.refresh(user, attribute_names=["id"])
         await session.refresh(project, attribute_names=["account"])
         account_name = project.account.name
         testing = (
             getattr(message.metadata, "testing", False) if message.metadata else False
-        )
-        analytics_service.track_event(
-            user_id=str(user.id),
-            event_name=AnalyticsEvent.USER_MESSAGE,
-            event_properties={
-                "account_name": account_name,
-                "channel": message.channel.value,
-                "conversation_id": str(request_message.conversation_id),
-                "testing": testing,
-            },
         )
 
         if not request_message:
@@ -206,19 +189,6 @@ async def get_chat_response_async(
 
         await session.refresh(user, attribute_names=["id"])
         await session.refresh(request_message, attribute_names=["conversation_id"])
-        # Track only one event (for example, using the first message):
-        if output_messages:
-            first_msg = output_messages[0]
-            analytics_service.track_event(
-                user_id=str(user.id),
-                event_name=AnalyticsEvent.AGENT_MESSAGE,
-                event_properties={
-                    "account_name": account_name,
-                    "channel": first_msg.channel.value,
-                    "conversation_id": str(request_message.conversation_id),
-                    "testing": testing,
-                },
-            )
 
         # Make sure to handle the case after the response messages are created
         # Check if output.closing_conversation is True and mark the conversation as closing
@@ -269,7 +239,7 @@ async def get_chat_response_stream(
             if not request_message:
                 raise ValueError("Failed to create request message")
 
-            # Track user message event
+            # Get account info for metadata
             await session.refresh(user, attribute_names=["id"])
             await session.refresh(project, attribute_names=["account"])
             account_name = project.account.name
@@ -277,18 +247,6 @@ async def get_chat_response_stream(
                 getattr(message.metadata, "testing", False)
                 if message.metadata
                 else False
-            )
-            event_properties = {
-                "account_name": account_name,
-                "channel": message.channel.value,
-                "conversation_id": str(request_message.conversation_id),
-                "testing": testing,
-            }
-
-            analytics_service.track_event(
-                user_id=str(user.id),
-                event_name=AnalyticsEvent.USER_MESSAGE,
-                event_properties=event_properties,
             )
 
             # ==== Step 2: Set up agent and generate streaming response ====
@@ -474,12 +432,6 @@ async def get_chat_response_stream(
                     )
 
                     await session.refresh(user, attribute_names=["id"])
-                    # Send analytics for agent response (only once)
-                    analytics_service.track_event(
-                        user_id=str(user.id),
-                        event_name=AnalyticsEvent.AGENT_MESSAGE,
-                        event_properties=event_properties,
-                    )
 
         except Exception as e:
             # Log error and return a single error chunk

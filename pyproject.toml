@@ -36,7 +36,6 @@ dependencies = [
   "llama-index-llms-groq==0.4.1", # Groq LLM integration for LlamaIndex
   "llama-index-vector-stores-pinecone==0.7.1", # Pinecone vector database integration for LlamaIndex
   "mem0ai==0.1.48", # Personalized AI memory layer for context retention
-  "mixpanel==4.10.1", # Product analytics and user behavior tracking
   "openai==1.95.1", # Official OpenAI API client for GPT models
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications

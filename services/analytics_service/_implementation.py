@@ -1,15 +1,15 @@
 import asyncio
-import os
 import uuid
 from datetime import datetime
 
-from mixpanel import Mixpanel
 from sqlalchemy.orm import Session
 
 import db
-from api.schemas.admin.analytics import AnalyticsReportType
-from api.schemas.admin.analytics import Event as AnalyticsEvent
-from api.schemas.admin.analytics import GetAllReportsResponse, PerformanceReport
+from api.schemas.admin.analytics import (
+    AnalyticsReportType,
+    GetAllReportsResponse,
+    PerformanceReport,
+)
 from utils.log import logger
 
 from ._utils import (
@@ -17,17 +17,6 @@ from ._utils import (
     process_analytics_data_generic,
     validate_date_range,
 )
-
-# BRUCETODO: DELETE - Mixpanel related variables
-MIXPANEL_BASE_URL = "https://mixpanel.com/api"
-MIXPANEL_PROJECT_ID = 3584752
-MIXPANEL_WORKSPACE_ID = 9701744
-BOOKMARK_ID_MAPPING = {
-    "ORDER": 81979859,
-}
-MIXPANEL_REPORTS = [
-    (81979859, "Total Order Value"),
-]
 
 
 async def get_reports(
@@ -644,21 +633,3 @@ def get_conversion_summary(
     except Exception as e:
         logger.error(f"Error generating conversion summary: {e}")
         raise
-
-
-# BRUCETODO: DELETE - Mixpanel related variables
-def track_event(user_id: str, event_name: AnalyticsEvent, event_properties: dict):
-    def _track():
-        try:
-            MIXPANEL_PROJECT_TOKEN = os.getenv("MIXPANEL_PROJECT_TOKEN")
-            mp = None
-            if MIXPANEL_PROJECT_TOKEN:
-                mp = Mixpanel(MIXPANEL_PROJECT_TOKEN)
-            if mp:
-                runtime_env = os.getenv("RUNTIME_ENV", "dev")
-                event_properties["runtime_env"] = runtime_env
-                mp.track(user_id, event_name, event_properties)
-        except Exception as e:
-            logger.error(f"Error tracking event {event_name} for user {user_id}: {e}")
-
-    asyncio.create_task(asyncio.to_thread(_track))
