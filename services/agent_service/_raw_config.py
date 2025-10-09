@@ -64,7 +64,7 @@ class RawConfig:
 
     def build(self) -> AgentConfig:
         try:
-            memory_enabled = self.agent.raw_config.get("memory_enabled", True)
+            memory_enabled = self.agent.memory_enabled
             filler_words_config = self.agent.filler_words or {}
 
             return AgentConfig(
