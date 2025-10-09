@@ -20,3 +20,4 @@ class AgentParams:
     background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
     language: Language | None = None
     filler_words: dict | None = None
+    memory_enabled: bool | None = None

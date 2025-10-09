@@ -113,6 +113,7 @@ def build_agent(agent: db.Agent) -> Agent:
         background_noise=agent.background_noise,
         language=agent.language,
         filler_words=agent.filler_words,
+        memory_enabled=agent.memory_enabled,
     )
 
 

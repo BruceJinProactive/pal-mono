@@ -26,6 +26,7 @@ class Agent(BaseModel):
     background_noise: bool | None = None
     language: Language | None = None
     filler_words: dict | None = None
+    memory_enabled: bool | None = None
 
 
 class AgentSummary(BaseModel):
@@ -52,6 +53,7 @@ class UpdateAgentRequest(BaseModel):
     background_noise: bool | None = None
     language: Language | None = None
     filler_words: dict | None = None
+    memory_enabled: bool | None = None
     expected_version: int | None = None
 
     def to_agent_params(self) -> AgentParams:
@@ -68,6 +70,7 @@ class UpdateAgentRequest(BaseModel):
             background_noise=self.background_noise,
             language=self.language,
             filler_words=self.filler_words,
+            memory_enabled=self.memory_enabled,
         )
 
 
