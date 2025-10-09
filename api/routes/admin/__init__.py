@@ -984,6 +984,19 @@ async def update_faq(
     return await _faq.update_faq(account_name, faq_id, update_faq, context, session)
 
 
+@admin_router.delete("/accounts/{account_name}/faqs/{faq_id}")
+async def delete_faq(
+    account_name: str,
+    faq_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> None:
+    """
+    Delete an FAQ
+    """
+    return await _faq.delete_faq(account_name, faq_id, context, session)
+
+
 """
 ---------- Projects Endpoints ----------
 ----------------------------------------

@@ -23,3 +23,8 @@ def get_faqs_by_account_id(session: Session, account_id: UUID) -> list[db.FAQ]:
 def update_faq(session: Session, faq_id: UUID, updates: dict) -> db.FAQ | None:
     faq_repository = db.FAQRepository(session)
     return faq_repository.update_faq(faq_id, updates)
+
+
+def delete_faq(session: Session, faq_id: UUID) -> bool:
+    faq_repository = db.FAQRepository(session)
+    return faq_repository.delete_faq(faq_id)

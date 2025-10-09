@@ -63,3 +63,17 @@ class FAQRepository:
             self.session.rollback()
             logger.error(f"Error updating FAQ: {e}")
             raise
+
+    def delete_faq(self, faq_id: UUID) -> bool:
+        try:
+            faq = self.session.query(FAQ).filter(FAQ.id == faq_id).first()
+            if not faq:
+                return False
+
+            self.session.delete(faq)
+            self.session.commit()
+            return True
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error deleting FAQ: {e}")
+            raise
