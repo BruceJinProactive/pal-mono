@@ -5,6 +5,7 @@ from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
 from .change_log import ChangeAction, ChangeField, ChangeLog
 from .conversations import Conversation, ConversationStatus
+from .faqs import FAQ
 from .feedback import Feedback
 from .integration import Integration, ProjectIntegration
 from .lead import Lead
