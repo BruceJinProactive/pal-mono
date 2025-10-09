@@ -6,6 +6,7 @@ from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
 from api.schemas.admin.conversation import Conversation, ConversationDetail, Message
+from api.schemas.admin.faq import FAQ
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
 from api.schemas.admin.integration import (
@@ -493,4 +494,18 @@ def build_stripe_customer(customer_info: CustomerInfo) -> StripeCustomer:
         email=customer_info.email,
         balance=customer_info.balance or 0,
         currency=customer_info.currency or "usd",
+    )
+
+
+def build_faq(faq: db.FAQ) -> FAQ:
+    """Build FAQ response from database FAQ."""
+    return FAQ(
+        id=str(faq.id),
+        account_id=str(faq.account_id),
+        question=faq.question,
+        answer=faq.answer,
+        created_at=faq.created_at.isoformat(),
+        updated_at=(
+            faq.updated_at.isoformat() if faq.updated_at else faq.created_at.isoformat()
+        ),
     )

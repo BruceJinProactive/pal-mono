@@ -51,6 +51,7 @@ from api.schemas.admin.email import (
     SendBatchEmailsRequest,
     SendEmailRequest,
 )
+from api.schemas.admin.faq import FAQ, CreateFAQRequest
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
     Feedback,
@@ -172,6 +173,7 @@ from . import (
     _campaign,
     _conversation,
     _email,
+    _faq,
     _feedback,
     _history,
     _integration,
@@ -930,6 +932,24 @@ async def delete_feedback(
     deleted or if it doesn't exist. No response content is returned.
     """
     await _feedback.delete_feedback(feedback_id, context, session)
+
+
+"""
+---------- FAQ Endpoints ----------
+------------------------------------
+"""
+
+
+@admin_router.put("/faqs", status_code=status.HTTP_201_CREATED)
+async def create_faq(
+    faq: CreateFAQRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> FAQ:
+    """
+    Create a FAQ for an account.
+    """
+    return await _faq.create_faq(faq, context, session)
 
 
 """
