@@ -4,6 +4,8 @@ from .agents import Agent
 from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
 from .change_log import ChangeAction, ChangeField, ChangeLog
+from .checkpoint_results import CheckpointResult
+from .checkpoints import CheckPoint
 from .conversations import Conversation, ConversationStatus
 from .faqs import FAQ
 from .feedback import Feedback
@@ -23,6 +25,7 @@ from .types import (
     CallLanguage,
     CallPurpose,
     Channel,
+    CheckStatus,
     IntegrationProvider,
     IntegrationType,
     Language,

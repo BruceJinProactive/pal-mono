@@ -126,3 +126,12 @@ class SpeechRate(str, enum.Enum):
     normal = "normal"
     faster = "faster"
     fastest = "fastest"
+
+
+class CheckStatus(str, enum.Enum):
+    """Status enum for check results."""
+
+    processing = "processing"
+    active = "active"
+    failed = "failed"
+    expired = "expired"
