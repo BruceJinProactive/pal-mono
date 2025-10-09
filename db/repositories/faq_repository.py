@@ -45,3 +45,21 @@ class FAQRepository:
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving FAQs by account ID: {e}")
             raise
+
+    def update_faq(self, faq_id: UUID, updates: dict) -> FAQ | None:
+        try:
+            faq = self.session.query(FAQ).filter(FAQ.id == faq_id).first()
+            if not faq:
+                return None
+
+            for key, value in updates.items():
+                if value is not None and hasattr(FAQ, key):
+                    setattr(faq, key, value)
+
+            self.session.commit()
+            self.session.refresh(faq)
+            return faq
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating FAQ: {e}")
+            raise

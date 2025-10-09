@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -6,6 +8,13 @@ class CreateFAQRequest(BaseModel):
 
     question: str
     answer: str
+
+
+class UpdateFAQRequest(BaseModel):
+    """Update FAQ Request Model"""
+
+    question: Optional[str] = None
+    answer: Optional[str] = None
 
 
 class FAQ(BaseModel):

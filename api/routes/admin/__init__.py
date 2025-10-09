@@ -51,7 +51,12 @@ from api.schemas.admin.email import (
     SendBatchEmailsRequest,
     SendEmailRequest,
 )
-from api.schemas.admin.faq import FAQ, CreateFAQRequest, ListFAQsResponse
+from api.schemas.admin.faq import (
+    FAQ,
+    CreateFAQRequest,
+    ListFAQsResponse,
+    UpdateFAQRequest,
+)
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
     Feedback,
@@ -960,9 +965,23 @@ async def create_faq(
     session: Session = Depends(db.get_db),
 ) -> FAQ:
     """
-    Create a FAQ for an account.
+    Create an FAQ for an account.
     """
     return await _faq.create_faq(account_name, faq, context, session)
+
+
+@admin_router.patch("/accounts/{account_name}/faqs/{faq_id}")
+async def update_faq(
+    account_name: str,
+    faq_id: uuid.UUID,
+    update_faq: UpdateFAQRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> FAQ:
+    """
+    Update an FAQ
+    """
+    return await _faq.update_faq(account_name, faq_id, update_faq, context, session)
 
 
 """
