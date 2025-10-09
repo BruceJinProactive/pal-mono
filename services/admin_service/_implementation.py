@@ -1057,9 +1057,11 @@ def create_account_user(
                     "product_name": "Palona AI",
                     "password": password,
                     "login_url": (
-                        "https://console.palona.ai"
-                        if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                        else f"https://{os.getenv('RUNTIME_ENV','lat')}-console.palona.ai"
+                        (
+                            "https://console.palona.ai"
+                            if os.getenv("RUNTIME_ENV", "prd") == "prd"
+                            else f"https://{os.getenv('RUNTIME_ENV','lat')}-console.palona.ai"
+                        )
                         + f"/signin?email={user_email}"
                     ),
                     "sender_name": "Support Team",
