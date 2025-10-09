@@ -717,7 +717,20 @@ class ToastTool(Toolkit):
         for res in results:
             for node in res.source_nodes:
                 if node.metadata:
-                    doc_name = node.metadata["file_name"]
+                    # Indent the text
+                    node_text = textwrap.indent(node.text, 2 * "\t")
+                    # If the metadata isDiningOptions boolean is True, prepend the DINING_OPTIONS_INSTRUCTION to the node_text
+                    if node.metadata.get("isDiningOptions", False):
+                        node_text = (
+                            textwrap.indent(DINING_OPTIONS_INSTRUCTION, 2 * "\t")
+                            + "\n"
+                            + node_text
+                        )
+                        doc_name = node.metadata.get("file_name", "dining_options.txt")
+                    else:
+                        doc_name = node.metadata.get(
+                            "file_name", f"document_{node.id_}"
+                        )
 
                     # Check if the document name is already in the set
                     # If it is, skip to the next node
@@ -725,16 +738,6 @@ class ToastTool(Toolkit):
                     if doc_name in found_doc_names:
                         continue
                     found_doc_names.add(doc_name)
-
-                    # Indent the text
-                    node_text = textwrap.indent(node.text, 2 * "\t")
-                    # If the document name is "dining_options", add it to the context
-                    if node.metadata.get("isDiningOptions", False):
-                        node_text = (
-                            textwrap.indent(DINING_OPTIONS_INSTRUCTION, 2 * "\t")
-                            + "\n"
-                            + node_text
-                        )
 
                     context += (
                         f"<document name='{doc_name}'>\n"
