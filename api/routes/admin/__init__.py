@@ -40,6 +40,7 @@ from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
+    ConversationDetail,
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
     UpdateConversationRequest,
@@ -796,6 +797,21 @@ async def list_account_conversations(
         hide_testing_sessions,
         context,
         session,
+    )
+
+
+@admin_router.get("/accounts/{account_name}/conversations/{conversation_id}")
+async def get_conversation_detail(
+    account_name: str,
+    conversation_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ConversationDetail:
+    """
+    Get conversation details for the given conversation ID, excluding messages.
+    """
+    return await _conversation.get_conversation_detail(
+        account_name, conversation_id, context, session
     )
 
 

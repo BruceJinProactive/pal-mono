@@ -119,6 +119,28 @@ async def list_conversation_messages(
     )
 
 
+async def get_conversation_detail(
+    account_name: str,
+    conversation_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+):
+    """
+    Get conversation details without messages.
+    """
+    authorize_user_account(context, account_name)
+
+    conversation = admin_service.get_conversation_by_id(session, conversation_id)
+    if not conversation:
+        raise not_found_error(f"Conversation not found for id: {conversation_id}")
+
+    account = conversation.user.account
+    if account_name != account.name:
+        raise not_found_error(f"Conversation not found for id: {conversation_id}")
+
+    return _builder.build_conversation_detail(conversation)
+
+
 async def update_conversation(
     context: UserContext,
     session: Session,

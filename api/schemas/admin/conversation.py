@@ -70,6 +70,20 @@ class ListConversationMessagesResponse(BaseModel):
     total_messages: int
 
 
+class ConversationDetail(BaseModel):
+    """Conversation detail without messages"""
+
+    id: uuid.UUID
+    status: str
+    project_id: uuid.UUID | None
+    user_id: uuid.UUID
+    is_test: bool
+    vapi_control_url: str | None
+    call_id: str | None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime | None
+
+
 class UpdateConversationRequest(BaseModel):
     is_escalated: bool | None = None
     project_id: uuid.UUID | None = None

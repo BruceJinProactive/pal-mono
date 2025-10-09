@@ -5,7 +5,7 @@ from api.routes.admin._utils import get_agent_type
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
-from api.schemas.admin.conversation import Conversation, Message
+from api.schemas.admin.conversation import Conversation, ConversationDetail, Message
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
 from api.schemas.admin.integration import (
@@ -213,6 +213,21 @@ def build_conversation(
         created_at=conversation.created_at,
         last_message=build_message(last_message) if last_message else None,
         total_messages=message_count,
+    )
+
+
+def build_conversation_detail(conversation: db.Conversation) -> ConversationDetail:
+    """Build conversation detail response without messages"""
+    return ConversationDetail(
+        id=conversation.id,
+        status=conversation.status.value,
+        project_id=conversation.project_id,
+        user_id=conversation.user_id,
+        is_test=conversation.is_test,
+        vapi_control_url=conversation.vapi_control_url,
+        call_id=conversation.call_id,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
     )
 
 
