@@ -48,6 +48,9 @@ class Agent(Base):
     background_noise: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    memory_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
     language: Mapped[Language] = mapped_column(
         Enum(Language, name="agent_language"),
         nullable=False,
