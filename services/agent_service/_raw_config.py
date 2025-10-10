@@ -51,6 +51,7 @@ class RawConfig:
         integration: IntegrationDetail | None = None,
         sender_identifier: str | None = None,
         project_integrations: Sequence[db.ProjectIntegration] | None = None,
+        faqs: Sequence[db.FAQ] | None = None,
     ):
         self.agent = agent
         self.project = project
@@ -61,6 +62,7 @@ class RawConfig:
         self.integration = integration
         self.sender_identifier = sender_identifier
         self.project_integrations = list(project_integrations or [])
+        self.faqs = list(faqs or [])
 
     def build(self) -> AgentConfig:
         try:
@@ -511,9 +513,18 @@ class RawConfig:
         return f"You are {agent_name} from {account_name}. {intro}"
 
     def _get_brand_info(self):
+        faq_content = None
+        if self.faqs:
+            faq_items = []
+            for faq in self.faqs:
+                faq_items.append(f"Q: {faq.question}\nA: {faq.answer}")
+            faq_content = "\n\n".join(faq_items)
+        else:
+            faq_content = self.account.business_faq
+
         return [
             ("## Description", self.account.business_description),
-            ("## F.A.Q.", self.account.business_faq),
+            ("## F.A.Q.", faq_content),
             ("## Catalog", self.account.business_catalog),
             ("## Current Promotions", self.account.business_promotions),
             ("## Others", self.account.business_others),

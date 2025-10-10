@@ -71,6 +71,12 @@ async def construct_agent_config(
     )
     project_integrations = list(result.scalars())
 
+    # Fetch FAQs for the account
+    faq_result = await db_session.execute(
+        select(db.FAQ).filter(db.FAQ.account_id == db_agent.account.id)
+    )
+    faqs = list(faq_result.scalars())
+
     raw_config = _raw_config.RawConfig(
         agent=db_agent,
         project=db_project,
@@ -81,6 +87,7 @@ async def construct_agent_config(
         integration=integration,
         sender_identifier=sender_identifier,
         project_integrations=project_integrations,
+        faqs=faqs,
     )
 
     # Convert blueprint to agent config
