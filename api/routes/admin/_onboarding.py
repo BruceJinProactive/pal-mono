@@ -17,6 +17,8 @@ from api.schemas.admin.onboarding import (
     ScrapeBrandFromUrlResponse,
     SelfOnboardingRequest,
     SelfOnboardingResponse,
+    SigninGoogleUserRequest,
+    SigninGoogleUserResponse,
 )
 from api.schemas.admin.voice_config import CreateVoiceConfigRequest
 from db.session import AsyncSessionLocal, SyncSessionLocal
@@ -383,7 +385,11 @@ async def self_onboarding(
     await self_onboard_voice_config(project_id, request, guest_context, session)
 
     # Create Cognito user. If this fails, the account and agent will be hard deleted.
-    user = self_onboard_user(request, session)
+    if request.is_google_user:
+        user = signup_google_user(request, session)
+    else:
+        user = self_onboard_user(request, session)
+
     if not user or not user.session:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -756,3 +762,80 @@ def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> Cogni
         )
 
     return user
+
+
+def signup_google_user(request: SelfOnboardingRequest, session: Session) -> CognitoUser:
+    """
+    Sign up a user using Google OAuth and create a Cognito user account.
+
+    Args:
+        request: GoogleSignUpRequest containing user details
+        session: Database session for rollback if needed
+    """
+    try:
+        user = admin_service.signup_google_user(
+            google_credential=request.google_credential,
+            account_name=request.account_name,
+        )
+    except ValueError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+    if not user or not user.session:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to fully create user session",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return user
+
+
+def signin_google_user(request: SigninGoogleUserRequest) -> SigninGoogleUserResponse:
+    """
+    Sign in a user using Google OAuth and retrieve a Cognito user session.
+
+    Args:
+        request: SigninGoogleUserRequest containing Google credential
+        session: Database session for rollback if needed
+    """
+    try:
+        response = admin_service.signin_google_user(google_credential=request.token)
+
+        print("response", response)
+
+        if response:
+            return SigninGoogleUserResponse(
+                is_signed_in=response["is_signed_in"],
+                next_step=response["next_step"],
+                tokens=response.get("tokens"),
+                session=response.get("session"),
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to sign in user",
+                headers={"Content-Type": "application/json"},
+            )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+
+
+def is_google_user(request: str) -> bool:
+    """
+    Test if the user is a Google user.
+    Args:
+        request: Email address to check
+    Returns:
+        bool: True if the user is a Google user, False otherwise
+    """
+    return admin_service.is_google_user(request)

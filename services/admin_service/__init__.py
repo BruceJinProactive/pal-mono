@@ -580,6 +580,15 @@ def signup_self_onboarding_user(
     )
 
 
+def signup_google_user(
+    account_name: str,
+    google_credential: str,
+) -> CognitoUser:
+    return _implementation.signup_google_onboarding_user(
+        account_name, google_credential
+    )
+
+
 def delete_account_user(account_name: str, user_email: str) -> None:
     """
     Delete an admin user for a specific account.
@@ -592,6 +601,20 @@ def delete_account_user(account_name: str, user_email: str) -> None:
         ValueError: If the user is not found or there's an error deleting the user
     """
     return _implementation.delete_account_user(account_name, user_email)
+
+
+def signin_google_user(google_credential: str):
+    """
+    Sign in a user using Google credentials.
+    """
+    return _implementation.signin_google_user(google_credential)
+
+
+def is_google_user(request: str) -> bool:
+    """
+    Test if the user is a Google user.
+    """
+    return _implementation.is_google_user(request)
 
 
 def update_conversation(
@@ -789,6 +812,9 @@ __all__ = [
     "create_account_user",
     "signup_account_user",
     "signup_self_onboarding_user",
+    "signup_google_user",
+    "signin_google_user",
+    "is_google_user",
     "delete_account_user",
     "update_conversation",
     "list_leads",

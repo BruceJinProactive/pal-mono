@@ -124,6 +124,10 @@ class SelfOnboardingRequest(BaseModel):
     )
     project_address: str = Field(..., description="Address of the created project")
     project_timezone: str = Field(..., description="Timezone of the created project")
+    is_google_user: bool = Field(
+        ..., description="Specifies whether the user is a google user or not"
+    )
+    google_credential: str = Field(..., description="Specifies google credentials")
 
 
 class SelfOnboardingResponse(BaseModel):
@@ -167,3 +171,20 @@ class MenuUploaderResponse(BaseModel):
     status: str = Field(..., description="Processing status (e.g., 'accepted')")
     message: str = Field(..., description="Status message for the user")
     project_id: str = Field(..., description="UUID of the project being updated")
+
+
+class SigninGoogleUserRequest(BaseModel):
+    """Request model for signing in a Google user"""
+
+    token: str = Field(..., description="Google OAuth token")
+
+
+class SigninGoogleUserResponse(BaseModel):
+    """Response model for signing in a Google user"""
+
+    is_signed_in: bool = Field(
+        ..., description="Whether the user is signed in successfully"
+    )
+    next_step: str = Field(..., description="Next step for the user after sign-in")
+    tokens: Optional[dict] = None
+    session: Optional[dict] = None

@@ -7,6 +7,7 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
 import boto3
+import requests
 from botocore.exceptions import ClientError
 from firecrawl import Firecrawl
 from pydantic import BaseModel
@@ -1166,6 +1167,7 @@ def signup_self_onboarding_user(
     user_email: str,
     user_name: str,
     password: str,
+    is_google_user: bool = False,
 ) -> CognitoUser:
     """
     Creates (or reuses) a Cognito user without sending email and sets a permanent password.
@@ -1175,18 +1177,32 @@ def signup_self_onboarding_user(
 
     # 1) Try to create user (suppress invite)
     try:
-        cognito.admin_create_user(
-            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
-            Username=user_email,
-            MessageAction="SUPPRESS",
-            UserAttributes=[
-                {"Name": "email", "Value": user_email},
-                # Only set email_verified if you truly verified it out-of-band:
-                # {"Name": "email_verified", "Value": "true"},
-                {"Name": "name", "Value": user_name},
-                {"Name": "custom:account_name", "Value": account_name},
-            ],
-        )
+        if is_google_user:
+            # Google users are already verified by Google, so we can set email_verified to true
+            cognito.admin_create_user(
+                UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+                Username=user_email,
+                MessageAction="SUPPRESS",
+                UserAttributes=[
+                    {"Name": "email", "Value": user_email},
+                    {"Name": "name", "Value": user_name},
+                    {"Name": "custom:is_google_user", "Value": "true"},
+                    {"Name": "custom:account_name", "Value": account_name},
+                ],
+            )
+        else:
+            cognito.admin_create_user(
+                UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+                Username=user_email,
+                MessageAction="SUPPRESS",
+                UserAttributes=[
+                    {"Name": "email", "Value": user_email},
+                    # Only set email_verified if you truly verified it out-of-band:
+                    # {"Name": "email_verified", "Value": "true"},
+                    {"Name": "name", "Value": user_name},
+                    {"Name": "custom:account_name", "Value": account_name},
+                ],
+            )
 
     except ClientError as e:
         code = e.response.get("Error", {}).get("Code")
@@ -1262,6 +1278,148 @@ def signup_self_onboarding_user(
             expires_in=expires_in,
         ),
     )
+
+
+def check_user_exists(email: str) -> bool:
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+    try:
+        response = cognito_client.list_users(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Filter=f'email="{email}"',
+        )
+        users = response.get("Users", [])
+        return len(users) > 0
+    except ClientError as e:
+        logger.error(f"Error checking if user exists: {e}")
+        return False
+
+
+def verify_and_decode_google_credential(google_credential: str) -> dict:
+    try:
+        response = requests.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": google_credential},
+            timeout=10,
+        )
+        if response.status_code != 200:
+            raise ValueError("Invalid Google token")
+        payload = response.json()
+        if payload.get("aud") != os.environ.get("GOOGLE_CLIENT_ID"):
+            raise ValueError("Token is for another application")
+        if int(payload.get("exp", 0)) < int(datetime.now().timestamp()):
+            raise ValueError("Token has expired")
+        if payload.get("iss") not in [
+            "accounts.google.com",
+            "https://accounts.google.com",
+        ]:
+            raise ValueError("Invalid token issuer")
+        if not payload.get("email_verified", False):
+            raise ValueError("Email not verified by Google")
+        return {
+            "email": payload.get("email"),
+            "name": payload.get("name"),
+        }
+    except requests.RequestException as e:
+        raise ValueError(f"Failed to verify Google token: {e}") from e
+    except (KeyError, json.JSONDecodeError) as e:
+        raise ValueError(f"Invalid token format: {str(e)}")
+
+
+def signup_google_onboarding_user(
+    account_name: str, google_credential: str
+) -> CognitoUser:
+    try:
+        user_info = verify_and_decode_google_credential(google_credential)
+        email = user_info["email"]
+        name = user_info["name"]
+        # Generate a random secure password since Google users won't use it
+        password = os.getenv("GOOGLE_SHARED_PASSWORD", "")
+        if check_user_exists(user_info.get("email", "")):
+            raise ValueError("User with this email already exists")
+        return signup_self_onboarding_user(
+            account_name=account_name,
+            user_email=email,
+            user_name=name,
+            password=password,
+            is_google_user=True,
+        )
+    except ValueError as e:
+        raise ValueError(f"Google credential verification failed: {e}") from e
+
+
+def signin_google_user(google_credential: str):
+    try:
+        user_info = verify_and_decode_google_credential(google_credential)
+        cognito = boto3.client("cognito-idp", region_name=AWS_REGION)
+        email = user_info["email"]
+        password = os.getenv("GOOGLE_SHARED_PASSWORD", "")
+
+        try:
+            response = cognito.admin_initiate_auth(
+                UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+                ClientId=AWS_ADMIN_CONSOLE_APP_CLIENT_ID,
+                AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+                AuthParameters={
+                    "USERNAME": email,
+                    "PASSWORD": password,  # Same password that was just set
+                },
+            )
+
+            if "AuthenticationResult" in response:
+                return {
+                    "is_signed_in": True,
+                    "next_step": "DONE",
+                    "tokens": {
+                        "id_token": response["AuthenticationResult"]["IdToken"],
+                        "access_token": response["AuthenticationResult"]["AccessToken"],
+                        "refresh_token": response["AuthenticationResult"][
+                            "RefreshToken"
+                        ],
+                    },
+                }
+            elif "ChallengeName" in response:
+                challenge_name = response["ChallengeName"]
+                if challenge_name == "NEW_PASSWORD_REQUIRED":
+                    return {
+                        "is_signed_in": False,
+                        "next_step": "NEW_PASSWORD_REQUIRED",
+                        "session": response.get("Session"),
+                    }
+                return {
+                    "is_signed_in": False,
+                    "next_step": "UNKNOWN",
+                    "session": response.get("Session"),
+                }
+        except ClientError as e:
+            logger.error(f"[Cognito] admin_initiate_auth failed for {email}: {e}")
+            raise ValueError(
+                f"Failed to authenticate Cognito user for {email}: {e}"
+            ) from e
+    except ValueError as e:
+        raise ValueError(f"Google Authentication Failed: {e}") from e
+
+
+def is_google_user(email: str) -> bool:
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+    try:
+        response = cognito_client.list_users(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Filter=f'email="{email}"',
+        )
+        users = response.get("Users", [])
+        if not users:
+            raise ValueError(f"User not found for email: {email}")
+
+        user = users[0]
+        is_google_user = get_attr(user.get("Attributes", []), "custom:is_google_user")
+        return is_google_user.lower() == "true"
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "UserNotFoundException":
+            logger.error(f"User {email} not found: {e}")
+            raise ValueError(f"User {email} not found")
+        else:
+            logger.error(f"Error checking if user is Google user: {e}")
+            raise ValueError(f"Failed to check if user is Google user: {str(e)}")
 
 
 def delete_account_user(account_name: str, user_email: str) -> None:

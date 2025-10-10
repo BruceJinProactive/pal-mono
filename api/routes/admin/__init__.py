@@ -94,6 +94,8 @@ from api.schemas.admin.onboarding import (
     ScrapeBrandFromUrlResponse,
     SelfOnboardingRequest,
     SelfOnboardingResponse,
+    SigninGoogleUserRequest,
+    SigninGoogleUserResponse,
 )
 from api.schemas.admin.phone_number import (
     EnhancedReleaseProjectNumberRequest,
@@ -163,6 +165,7 @@ from api.schemas.admin.voice_config import (
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel
+from services.admin_service.schema import CognitoUser
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 from services.google_maps_service import search_places_by_name
 from services.google_maps_service.schemas import (
@@ -233,6 +236,22 @@ async def self_onboarding(
     If Cognito user creation fails, the account will be deleted.
     """
     return await _onboarding.self_onboarding(request, response, session)
+
+
+@admin_router.post("/signin/google", status_code=status.HTTP_200_OK)
+def signin_google(request: SigninGoogleUserRequest) -> SigninGoogleUserResponse:
+    """
+    Sign in a user using Google credentials. If the user does not exist, create a new user.
+    """
+    return _onboarding.signin_google_user(request)
+
+
+@admin_router.get("/signin/google/verify", status_code=status.HTTP_200_OK)
+def is_google_user(email: str = Query(..., description="Email to Check")) -> bool:
+    """
+    Test if the user is a Google user.
+    """
+    return _onboarding.is_google_user(email)
 
 
 """
