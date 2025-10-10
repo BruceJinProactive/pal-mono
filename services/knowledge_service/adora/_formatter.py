@@ -19,7 +19,12 @@ Output formats:
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 
-from ._utils import get_category_name, get_modifier_group_name, get_size_description
+from ._utils import (
+    get_category_name,
+    get_modifier_group_constraints,
+    get_modifier_group_name,
+    get_size_description,
+)
 
 
 def _get_modifier_pricing_text(mod: Dict[str, Any], sizes: List[Dict[str, Any]]) -> str:
@@ -160,7 +165,26 @@ def generate_item_text(
         for group in modifier_groups_item:
             group_id = group.get("modifier_group_id")
             group_name = get_modifier_group_name(global_modifier_groups, group_id)
-            lines.append(f"### {group_name}")
+            constraints = get_modifier_group_constraints(
+                global_modifier_groups, group_id
+            )
+
+            # Add constraint information to the group header
+            constraint_text = ""
+            min_req = constraints.get("min_required_modifier")
+            max_allowed = constraints.get("max_allowed_modifier")
+
+            if min_req is not None and max_allowed is not None:
+                if min_req == max_allowed:
+                    constraint_text = f" (Select exactly {min_req})"
+                else:
+                    constraint_text = f" (Select {min_req}-{max_allowed})"
+            elif min_req is not None:
+                constraint_text = f" (Select at least {min_req})"
+            elif max_allowed is not None:
+                constraint_text = f" (Select up to {max_allowed})"
+
+            lines.append(f"### {group_name}{constraint_text}")
 
             # Separate included and optional modifiers
             included = []
@@ -201,54 +225,11 @@ def generate_item_text(
     return item_text, item_name, category_name
 
 
-def _format_customizations(modifier_groups: List[Dict[str, Any]]) -> str:
-    """Format modifier groups into customizations line.
-
-    Args:
-        modifier_groups: List of modifier group dictionaries with pricing info
-
-    Returns:
-        str: Formatted customizations string
-    """
-    if not modifier_groups:
-        return ""
-
-    customization_parts = []
-
-    for group in modifier_groups:
-        group_name = group["name"].lower()
-        optional_modifiers = group.get("optional", [])
-
-        if optional_modifiers:
-            # Format: group_name (Optional, Select any number): item1 (+$0.0), item2 (+$0.0)
-            modifier_list = []
-            for modifier in optional_modifiers:
-                # Extract pricing info if available
-                pricing_text = modifier.get("pricing", "")
-                if pricing_text:
-                    modifier_list.append(f"{modifier['name']}{pricing_text}")
-                else:
-                    modifier_list.append(
-                        f"{modifier['name']}"
-                    )  # Just the name, no pricing info
-
-            customization_part = f"{group_name} (Optional, Select any number): {', '.join(modifier_list)}"
-            customization_parts.append(customization_part)
-
-    if customization_parts:
-        return f"  Customizations: {'; '.join(customization_parts)}"
-
-    return ""
-
-
-def format_consolidated_menu(
-    menu_items: List[Dict[str, Any]], include_customizations: bool = True
-) -> str:
+def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
     """Format menu items into consolidated text format using original structure.
 
     Args:
         menu_items: List of parsed menu item dictionaries
-        include_customizations: Whether to include customization information in the output
 
     Returns:
         str: Formatted consolidated menu text in original format
@@ -313,11 +294,10 @@ def format_consolidated_menu(
                     f"Included in the price: {', '.join(included_items)}"
                 )
 
-            # Add customizations section (NEW) - only if enabled
-            if include_customizations:
-                customizations_line = _format_customizations_legacy(modifier_groups)
-                if customizations_line:
-                    output_parts.append(customizations_line)
+            # Add customizations section
+            customizations_line = _format_customizations_legacy(modifier_groups)
+            if customizations_line:
+                output_parts.append(customizations_line)
 
             output_parts.append("")  # Empty line between items
 
@@ -342,6 +322,24 @@ def _format_customizations_legacy(modifier_groups: List[Dict[str, Any]]) -> str:
         optional_modifiers = group.get("optional", [])
 
         if optional_modifiers:
+            # Get constraint information from parsed data
+            constraints = group.get("constraints", {})
+            min_req = constraints.get("min_required")
+            max_allowed = constraints.get("max_allowed")
+
+            # Format constraint text
+            if min_req is not None and max_allowed is not None:
+                if min_req == max_allowed:
+                    constraint_text = f"Select exactly {min_req}"
+                else:
+                    constraint_text = f"Select {min_req}-{max_allowed}"
+            elif min_req is not None:
+                constraint_text = f"Select at least {min_req}"
+            elif max_allowed is not None:
+                constraint_text = f"Select up to {max_allowed}"
+            else:
+                constraint_text = "Optional, Select any number"
+
             modifier_list = []
             for modifier in optional_modifiers:
                 if isinstance(modifier, dict):
@@ -349,16 +347,14 @@ def _format_customizations_legacy(modifier_groups: List[Dict[str, Any]]) -> str:
                     if pricing_text:
                         modifier_list.append(f"{modifier['name']}{pricing_text}")
                     else:
-                        modifier_list.append(
-                            f"{modifier['name']}"
-                        )  # Just the name, no pricing info
+                        modifier_list.append(f"{modifier['name']}")
                 else:
-                    modifier_list.append(
-                        f"{modifier}"
-                    )  # Just the name, no pricing info
+                    modifier_list.append(f"{modifier}")
 
             if modifier_list:
-                customization_part = f"{group_name} (Optional, Select any number): {', '.join(modifier_list)}"
+                customization_part = (
+                    f"{group_name} ({constraint_text}): {', '.join(modifier_list)}"
+                )
                 customization_parts.append(customization_part)
 
     if customization_parts:

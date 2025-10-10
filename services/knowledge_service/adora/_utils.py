@@ -109,6 +109,27 @@ def get_modifier_group_name(
     )
 
 
+def get_modifier_group_constraints(
+    modifier_groups: List[Dict[str, Any]], group_id: str
+) -> Dict[str, Optional[int]]:
+    """Get modifier group constraints by ID.
+
+    Args:
+        modifier_groups: List of modifier group dictionaries
+        group_id: The modifier group ID to look up
+
+    Returns:
+        dict: Dictionary with 'min_required_modifier' and 'max_allowed_modifier' keys
+    """
+    for group in modifier_groups:
+        if group.get("modifier_group_id") == group_id:
+            return {
+                "min_required_modifier": group.get("min_required_modifier"),
+                "max_allowed_modifier": group.get("max_allowed_modifier"),
+            }
+    return {"min_required_modifier": None, "max_allowed_modifier": None}
+
+
 def _parse_modifier_lines(lines_text: str) -> List[Dict[str, str]]:
     """Parse modifier lines and extract name and pricing information."""
     modifiers = []
@@ -201,7 +222,55 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
             r"### (.+?)\n(.*?)(?=\n###(?:\s|\Z)|\Z)", modifier_content, re.DOTALL
         )
         for group_name, group_content in group_sections:
-            group_data = {"name": group_name.strip(), "included": [], "optional": []}
+            # Parse group name and constraints
+            # Group name might have constraint info like "Extra Toppings (Select 0-3)"
+            clean_group_name = group_name.strip()
+            constraints = {}
+
+            # Extract constraint information from group name if present
+            constraint_match = re.search(r"(.+?)\s*\((Select.*?)\)", clean_group_name)
+            if constraint_match:
+                clean_group_name = constraint_match.group(1).strip()
+                constraint_text = constraint_match.group(2)
+
+                # Parse different constraint patterns
+                if "exactly" in constraint_text:
+                    # "Select exactly 1"
+                    exact_match = re.search(r"exactly (\d+)", constraint_text)
+                    if exact_match:
+                        num = int(exact_match.group(1))
+                        constraints = {"min_required": num, "max_allowed": num}
+                elif "at least" in constraint_text:
+                    # "Select at least 2"
+                    min_match = re.search(r"at least (\d+)", constraint_text)
+                    if min_match:
+                        constraints = {
+                            "min_required": int(min_match.group(1)),
+                            "max_allowed": None,
+                        }
+                elif "up to" in constraint_text:
+                    # "Select up to 3"
+                    max_match = re.search(r"up to (\d+)", constraint_text)
+                    if max_match:
+                        constraints = {
+                            "min_required": None,
+                            "max_allowed": int(max_match.group(1)),
+                        }
+                elif re.match(r"Select \d+-\d+", constraint_text):
+                    # "Select 1-3"
+                    range_match = re.search(r"Select (\d+)-(\d+)", constraint_text)
+                    if range_match:
+                        constraints = {
+                            "min_required": int(range_match.group(1)),
+                            "max_allowed": int(range_match.group(2)),
+                        }
+
+            group_data = {
+                "name": clean_group_name,
+                "included": [],
+                "optional": [],
+                "constraints": constraints,
+            }
 
             # Extract included modifiers
             included_sections = re.findall(
