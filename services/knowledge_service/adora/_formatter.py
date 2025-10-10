@@ -353,11 +353,11 @@ def _format_customizations_legacy(modifier_groups: List[Dict[str, Any]]) -> str:
 
             if modifier_list:
                 customization_part = (
-                    f"{group_name} ({constraint_text}): {', '.join(modifier_list)}"
+                    f"  - {group_name} ({constraint_text}): {', '.join(modifier_list)}"
                 )
                 customization_parts.append(customization_part)
 
     if customization_parts:
-        return f"Customizations: {'; '.join(customization_parts)}"
+        return "Customizations:\n" + "\n".join(customization_parts)
 
     return ""
