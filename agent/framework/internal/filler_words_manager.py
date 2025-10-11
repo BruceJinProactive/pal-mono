@@ -58,7 +58,6 @@ class FillerWordsManager:
             "One second, let me check on that.",
             "Sure thing, let me check for you.",
             "Alright, I can look into that for you.",
-            "I see what you mean!",
             "Understood, let me look into that for you.",
             "Okay, let's see what we can do here.",
         ],
