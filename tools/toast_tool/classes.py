@@ -421,7 +421,9 @@ class ToastPayment(BaseModel):
     """
 
     amount: float = Field(description="The amount of this payment, excluding tips")
-    entityType: str = Field(description="The type of object this is")
+    entityType: Optional[str] = Field(
+        None, description="The type of object this is (response-only)"
+    )
     guid: str = Field(description="The GUID maintained by the Toast platform")
     tipAmount: float = Field(description="The amount tipped on this payment")
     type: str = Field(description="The payment method (e.g., CREDIT, OTHER)")

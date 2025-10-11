@@ -694,25 +694,65 @@ def refresh_toast_access_token_from_aws(
         "[ToastTool.refresh_toast_access_token_from_aws] Refreshing token from API"
     )
     # Get the API credentials from AWS secrets
-    api_credentials = get_client_secret_with_fallback(credential_name)
+    try:
+        api_credentials = get_client_secret_with_fallback(credential_name)
+    except ValueError as e:
+        error_msg = f"[ToastTool.refresh_toast_access_token_from_aws] Failed to retrieve {credential_name}: {e}"
+        logger.error(error_msg)
+        raise ValueError(
+            f"Missing credential '{credential_name}' in AWS Secrets Manager or environment variables. "
+            f"Please ensure this credential is configured as JSON: {{'client_id': '...', 'client_secret': '...'}}"
+        ) from e
+
+    # Parse and validate credential format
     try:
         api_credentials = json.loads(api_credentials)
     except json.JSONDecodeError as e:
-        raise ValueError(f"{credential_name} is not valid JSON") from e
+        error_msg = f"[ToastTool.refresh_toast_access_token_from_aws] {credential_name} is not valid JSON: {e}"
+        logger.error(error_msg)
+        raise ValueError(
+            f"Credential '{credential_name}' must be valid JSON with format: {{'client_id': '...', 'client_secret': '...'}}"
+        ) from e
+
+    # Validate required fields
     api_key = api_credentials.get("client_id")
     api_secret = api_credentials.get("client_secret")
-    if not api_key or not api_secret:
-        raise ValueError(f"Missing client_id/client_secret in {credential_name}")
 
+    if not api_key or not api_secret:
+        error_msg = (
+            f"[ToastTool.refresh_toast_access_token_from_aws] "
+            f"Missing required fields in {credential_name}. "
+            f"Found keys: {list(api_credentials.keys())}"
+        )
+        logger.error(error_msg)
+        raise ValueError(
+            f"Credential '{credential_name}' must contain both 'client_id' and 'client_secret' fields. "
+            f"Found keys: {list(api_credentials.keys())}"
+        )
+
+    # Mask credentials for logging
+    masked_key = f"{'*' * 8}{api_key[-4:] if len(api_key) > 4 else '****'}"
+    logger.debug(
+        f"[ToastTool.refresh_toast_access_token_from_aws] Using client_id: {masked_key}"
+    )
+
+    # Call Toast API to get access token
+    endpoint = token_api_endpoint if token_api_endpoint else BASE_URL
     bearer_token = get_toast_access_token(
         api_key,
         api_secret,
-        token_api_endpoint=(token_api_endpoint if token_api_endpoint else BASE_URL),
+        token_api_endpoint=endpoint,
     )
+
     if bearer_token is None:
-        raise ValueError(
-            "[ToastTool.refresh_toast_access_token_from_aws] Failed to get Toast access token"
+        error_msg = (
+            f"[ToastTool.refresh_toast_access_token_from_aws] Failed to get Toast access token. "
+            f"Credential: {credential_name}, Endpoint: {endpoint}. "
+            f"Check that credentials are valid and authorized for this endpoint."
         )
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
     # Save the complete ToastAccessToken object to AWS secrets
     token_json = bearer_token.model_dump_json()
     try:
@@ -723,6 +763,10 @@ def refresh_toast_access_token_from_aws(
         )
     finally:
         logger.debug(
-            "[ToastTool.refresh_toast_access_token_from_aws] Token refreshed successfully"
+            "[ToastTool.refresh_toast_access_token_from_aws] Skipping token save - AWS Secrets Manager not configured"
         )
-        return bearer_token
+
+    logger.debug(
+        "[ToastTool.refresh_toast_access_token_from_aws] Token refresh completed successfully"
+    )
+    return bearer_token

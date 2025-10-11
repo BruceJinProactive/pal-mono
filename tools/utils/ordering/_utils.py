@@ -276,7 +276,7 @@ def _build_base_url(
             base_url = "public.api.adorapos.net"
         path_prefix = "/api/v1/OrderHub/"
     elif provider == ApiProvider.TOAST:
-        base_url = "ws-sandbox-api.eng.toasttab.com"
+        base_url = "ws-api.toasttab.com"
         path_prefix = ""
     else:
         raise ValueError(f"Unsupported API provider: {provider}")

@@ -633,6 +633,7 @@ def get_payment(
             payload=None,
             general_api_endpoint=general_api_endpoint,
         )
+        logger.debug(f"[ToastAPI.get_payment] Response: {response}")
     except Exception as e:
         raise Exception(
             f"[ToastAPI.get_payment] Error while calling Toast API: {str(e)}"
@@ -685,7 +686,9 @@ def post_payment_to_order(
             bearer_token=bearer_token,
             api_function=f"/orders/v2/orders/{order_guid}/checks/{check_guid}/payments",
             store_id=store_id,
-            payload=payment.model_dump(exclude_none=True),
+            payload=json.dumps(
+                [payment.model_dump(exclude_none=True)]
+            ),  # Send as JSON string of array as required by Toast API
             general_api_endpoint=general_api_endpoint,
         )
     except Exception as e:

@@ -97,8 +97,10 @@ class ToastTool(Toolkit):
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
         self._cached_store_info: str | None = None
-        # TODO: Replace with actual endpoint
-        self.hosted_payment_iframe_endpoint = "<HOSTED_PAYMENT_IFRAME_ENDPOINT>"
+        # Use sandbox iframe endpoint for hosted checkout
+        self.hosted_payment_iframe_endpoint = (
+            "https://payments.sandbox.eng.toasttab.com/hosted-checkout"
+        )
 
         # Register tools
         self.register(self.checkout_order)
@@ -552,6 +554,7 @@ class ToastTool(Toolkit):
 
             # Generate iframe payment link
             payment_link = self._generate_iframe_payment_link(
+                order.checks[0].customer.email,
                 self.store_id,
                 order.externalId,
                 payment_intent_external_reference_id,
@@ -957,7 +960,11 @@ class ToastTool(Toolkit):
         # First let toast API fill in the prices
         try:
             # Set the order externalId to the session id to track the order
-            order.externalId = f"TPC-PALONA:{self.tool_metadata.session_id}"
+            order.externalId = (
+                f"TPC-PALONA:{self.tool_metadata.session_id}"
+                if "sandbox" not in str(self.general_api_endpoint)
+                else f"PALONA:{self.tool_metadata.session_id}"
+            )
             order = submit_order(
                 toast_bearer_token,
                 self.store_id,
@@ -967,7 +974,7 @@ class ToastTool(Toolkit):
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
             logger.debug(
-                f"[ToastTool._submit_order] Order #{order.guid} submitted successfully! Your total is ${order.checks[0].totalAmount}. Your order summary: {order.checks[0].selections}.\n\nYour order will be ready for pickup at {order.estimatedFulfillmentDate}"
+                f"[ToastTool._submit_order] Order #{order.guid} submitted successfully! External ID: {order.externalId}. Your total is ${order.checks[0].totalAmount}. Your order summary: {order.checks[0].selections}.\n\nYour order will be ready for pickup at {order.estimatedFulfillmentDate}"
             )
             return (
                 order,
@@ -1103,16 +1110,17 @@ class ToastTool(Toolkit):
 
     def _generate_iframe_payment_link(
         self,
+        email: str,
         store_id: str,
         order_external_id: str,
         payment_intent_external_reference_id: str,
         session_secret: str,
+        payment_api_endpoint: str = "https://ws-sandbox-api.eng.toasttab.com",
     ) -> str:
         """
         Generates a hosted payment iframe link for the given order and payment intent.
 
         Args:
-            bearer_token (str): The bearer token for authentication.
             store_id (str): The store ID.
             order_external_id (str): The external ID of the order.
             payment_intent_external_reference_id (str): The external reference ID of the payment intent.
@@ -1122,17 +1130,46 @@ class ToastTool(Toolkit):
         """
 
         try:
-            # Generate RSA private key
+            # Use sandbox API endpoints for iframe bearer token
+
+            # Get iframe bearer token (for iframe initialization)
+            # This uses TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS
+            try:
+                iframe_bearer_token = get_toast_access_token_from_aws(
+                    store_id=store_id,
+                    token_api_endpoint=payment_api_endpoint,
+                    token_name="TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
+                    credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
+                )
+            except ValueError as e:
+                logger.error(
+                    f"[ToastTool._generate_iframe_payment_link] Failed to get iframe bearer token: {e}"
+                )
+                return "Failed to authenticate for iframe. Please try again."
+
+            if not iframe_bearer_token:
+                logger.error(
+                    "[ToastTool._generate_iframe_payment_link] Failed to get iframe bearer token"
+                )
+                return "Failed to get iframe bearer token. Please try again."
+
+            logger.debug(
+                "[ToastTool._generate_iframe_payment_link] Got iframe bearer token"
+            )
+
+            # Generate RSA private key for JWT
             private_key = rsa.generate_private_key(
                 public_exponent=65537, key_size=2048, backend=default_backend()
             )
 
             # Create JWT payload with required claims
             payload = {
+                "email": email,
                 "storeId": store_id,
                 "orderExternalId": order_external_id,
                 "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
                 "sessionSecret": session_secret,
+                "iframeBearerToken": iframe_bearer_token.access_token,
                 "iat": int(time.time()),
                 "exp": int(time.time()) + 15 * 60,  # Token valid for 15 minutes
             }
@@ -1145,7 +1182,7 @@ class ToastTool(Toolkit):
             )
 
             # Construct the iframe URL
-            iframe_url = f"{self.hosted_payment_iframe_endpoint}/checkout?token={token}"
+            iframe_url = f"{self.hosted_payment_iframe_endpoint}?token={token}"
 
             logger.debug(
                 f"[ToastTool._generate_iframe_payment_link] Generated iframe URL: {iframe_url}"

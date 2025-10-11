@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 
 from api.schemas.error.error import ErrorResponse
 
-from ._implementation import api_toast_webhook, update_order_payment
+from ._implementation import add_payment_to_order, api_toast_webhook
 
 toast_router = APIRouter(prefix="/toast", tags=["Integrations"])
 
@@ -39,9 +39,9 @@ async def toast_webhook(
     return await api_toast_webhook(request)
 
 
-@toast_router.post("/checkout")
-async def checkout_order(request: Request) -> JSONResponse:
+@toast_router.post("/add_payment_to_order")
+async def add_payment_to_order_api(request: Request) -> JSONResponse:
     """
-    Endpoint to handle checkout requests.
+    Endpoint to handle adding payment to order requests.
     """
-    return await update_order_payment(request)
+    return await add_payment_to_order(request)
