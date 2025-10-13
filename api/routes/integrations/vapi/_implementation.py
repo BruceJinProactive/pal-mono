@@ -21,10 +21,8 @@ from api.schemas.chat.message import (
     Type,
 )
 from db.repositories.conversation_repository import ConversationUpdate
-from db.tables.agents import SpeechRate
 from db.tables.types import Channel
 from services import (
-    agent_service,
     message_service,
     project_service,
     subscription_service,
@@ -33,12 +31,8 @@ from services import (
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
-from ._squad import create_multilingual_squad, get_squad_model
-from ._utils import (
-    get_analysis_plan,
-    get_transcriber_and_voice_config,
-    validate_vapi_request,
-)
+from ._squad import get_squad_model
+from ._utils import validate_vapi_request
 
 
 def _get_vapi_client() -> AsyncVapi:
@@ -573,16 +567,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         if not agent_id:
             raise ValueError("Agent ID not found")
 
-        # Construct agent config
-        config = await agent_service.construct_agent_config(
-            session=session,
-            agent_id=agent_id,
-            user_id=user.id,
-            project_id=project.id,
-            conversation_id=request_message.conversation_id,
-            channel=message.channel,
-        )
-
         # Create caller_info with required fields for message routing
         caller_info = {
             "sender_identifier": customer_number,
@@ -613,95 +597,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             logger.warning(
                 f"Failed to use voice_configs system for call {call_id}, falling back to original logic: {str(e)}"
             )
-            # Continue with original logic below
 
-        #########################################################
-        # Check if multilingual squad should be used
-        #########################################################
-
-        logger.debug(f"Using legacy voice_configs for call {call_id}")
-        if config.multiling_squad_config and config.voice_config.enabled:
-            logger.debug(f"Creating multilingual squad for call {call_id}")
-            return create_multilingual_squad(
-                agent_config=config,
-                account_display_name=account_display_name,
-                caller_info=caller_info,
-                call_id=call_id,
-            )
-
-        #########################################################
-        # Continue with existing single-language assistant configuration
-        #########################################################
-
-        dynamic_vapi_config = config.voice_config.enabled
-
-        greeting = f"Hi this is {config.persona.name} from {account_display_name}. How can I help you today?"
-
-        if dynamic_vapi_config and config.voice_config.greeting_message:
-            greeting = config.voice_config.greeting_message
-
-        # Get voice_id from config
-        if dynamic_vapi_config and config.voice_config.voice_id:
-            voice_id = config.voice_config.voice_id
-        else:
-            voice_id = config.persona.voice_id
-
-        # Get speech rate from config
-        if dynamic_vapi_config and config.voice_config.speech_rate:
-            speech_rate = config.voice_config.speech_rate
-        else:
-            # Default to normal if not configured
-            speech_rate = SpeechRate.normal
-
-        # Get transcriber and voice configuration
-        transcriber, voice = get_transcriber_and_voice_config(
-            config, voice_id, speech_rate
-        )
-
-        if dynamic_vapi_config:
-            background_sound = config.voice_config.background_noise
-        else:
-            background_sound = "off"
-
-        # Return a transient assistant configuration
-        api_url = os.environ.get("PAL_API_URL", "https://lat-api.palona.ai")
-        # Document the expected format using a comment
-        # Model field format: {sender_identifier: string, recipient_identifier: string, call_id?: string}
-
-        # Prepare assistant configuration
-        assistant_config = {
-            "firstMessage": greeting,
-            "transcriber": transcriber,
-            "model": {
-                "provider": "custom-llm",
-                "url": f"{api_url}/v1",
-                "model": json.dumps(caller_info),
-                "messages": [{"role": "system", "content": config.persona.description}],
-            },
-            "voice": voice,
-            "backgroundSound": background_sound,
-            "silenceTimeoutSeconds": 60,
-            "backgroundDenoisingEnabled": True,
-            "analysisPlan": get_analysis_plan(),
-        }
-
-        # Add background speech denoising configuration if available
-        if dynamic_vapi_config and config.voice_config.background_speech_denoising_plan:
-            assistant_config["backgroundSpeechDenoisingPlan"] = (
-                config.voice_config.background_speech_denoising_plan.model_dump(
-                    exclude_none=True
-                )
-            )
-
-        # Add start speaking plan configuration if available
-        if dynamic_vapi_config and config.voice_config.start_speaking_plan:
-            assistant_config["startSpeakingPlan"] = (
-                config.voice_config.start_speaking_plan.model_dump(
-                    exclude_none=True, by_alias=True
-                )
-            )
-
-        return {"assistant": assistant_config}
     except Exception as e:
         logger.error(f"Error in handle_assistant_request: {str(e)}")
         return {"error": str(e)}

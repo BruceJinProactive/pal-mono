@@ -11,8 +11,6 @@ VAPI_TIMESTAMP_HEADER = "X-VAPI-TIMESTAMP"
 # Default Voice ID (_utils.py, _squad.py, _workflow.py)
 SPORTSMAN_VOICE_ID = "ed81fd13-2016-4a49-8fe3-c0d2761695fc"
 
-# Default API settings (_squad.py, _workflow.py)
-DEFAULT_SILENCE_TIMEOUT = 60
 
 # Cartesia voice speed mapping (_utils.py)
 CARTESIA_SPEED_MAPPING = {
@@ -75,8 +73,8 @@ Assess the customer's overall satisfaction. Choose exactly one from this list:
 Write 1–2 sentences explaining why you chose the satisfaction rating.
 
 Output Rules:
-You are an evaluation assistant. You must ONLY output valid JSON. 
-You are NOT allowed to invent or use values outside of the enums below. 
+You are an evaluation assistant. You must ONLY output valid JSON.
+You are NOT allowed to invent or use values outside of the enums below.
 If the call does not match any category, you must choose "other".
 
 Valid CallPurpose values (list, multiple allowed, but "other" can only be used once and never combined with other categories):
