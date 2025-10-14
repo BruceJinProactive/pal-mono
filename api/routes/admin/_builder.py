@@ -5,6 +5,7 @@ from api.routes.admin._utils import get_agent_type
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
+from api.schemas.admin.checkpoint import Checkpoint
 from api.schemas.admin.conversation import Conversation, ConversationDetail, Message
 from api.schemas.admin.faq import FAQ
 from api.schemas.admin.feedback import Feedback
@@ -494,6 +495,26 @@ def build_stripe_customer(customer_info: CustomerInfo) -> StripeCustomer:
         email=customer_info.email,
         balance=customer_info.balance or 0,
         currency=customer_info.currency or "usd",
+    )
+
+
+def build_checkpoint(checkpoint: db.CheckPoint) -> Checkpoint:
+    """Build Checkpoint response from database CheckPoint."""
+    return Checkpoint(
+        id=str(checkpoint.id),
+        project_id=str(checkpoint.project_id),
+        name=checkpoint.name,
+        description=checkpoint.description,
+        image_url=checkpoint.image_url,
+        is_active=checkpoint.is_active,
+        group=checkpoint.group,
+        rules=checkpoint.rules,
+        created_at=checkpoint.created_at.isoformat(),
+        updated_at=(
+            checkpoint.updated_at.isoformat()
+            if checkpoint.updated_at
+            else checkpoint.created_at.isoformat()
+        ),
     )
 
 

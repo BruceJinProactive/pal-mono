@@ -2,6 +2,7 @@ from .account_repository import AccountRepository
 from .agent_repository import AgentRepository, AgentRepositoryAsync
 from .analytics_repository import AnalyticsRepository
 from .change_log_repository import ChangeLogRepository
+from .checkpoint_repository import CheckpointRepository
 from .conversation_repository import ConversationRepository, ConversationRepositoryAsync
 from .faq_repository import FAQRepository
 from .feedback_repository import FeedbackRepository
