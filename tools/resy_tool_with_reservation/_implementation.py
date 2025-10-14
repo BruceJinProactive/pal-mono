@@ -252,10 +252,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
                     "target": normalized_dt,
                 },
             )
-            return (
-                "The requested time is no longer available on Resy. "
-                "Please share the closest available times with the guest."
-            )
+            return "The requested time is no longer available on Resy. "
 
         slot_token = matching_slot.get("token")
         template_id = matching_slot.get("template_id")
@@ -271,10 +268,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
                     "service_type_id": service_type_id,
                 },
             )
-            return (
-                "I couldn't gather the required slot details from Resy. "
-                "Please try another time or use the booking link as a fallback."
-            )
+            return "I couldn't gather the required slot details from Resy. "
 
         try:
             api_key = get_resy_api_key(city=self.city, venue_name=self.venue_name)
@@ -282,7 +276,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             logger.error(
                 "[Resy Tool] Failed to retrieve API key for booking", exc_info=True
             )
-            return "Unable to retrieve Resy credentials at the moment. Please try again shortly."
+            return "Unable to retrieve Resy credentials at the moment. "
 
         try:
             operational_token = self._get_operational_token(api_key=api_key)
@@ -292,10 +286,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
                 extra={"status": exc.status, "reason": exc.reason},
             )
             self._invalidate_operational_token()
-            return (
-                "Resy authentication failed while preparing the booking. "
-                "Please try again in a moment."
-            )
+            return "Resy authentication failed while preparing the booking. "
         except Exception:  # noqa: BLE001
             logger.error(
                 "[Resy Tool] Unexpected error during authentication", exc_info=True
@@ -360,15 +351,12 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             )
             if exc.status in {401, 403}:
                 self._invalidate_operational_token()
-            return (
-                "Resy could not lock that time slot. It may have just been booked. "
-                "Please offer another available time."
-            )
+            return "Resy could not lock that time slot. It may have just been booked. "
         except Exception:  # noqa: BLE001
             logger.error(
                 "[Resy Tool] Unexpected error while creating lock", exc_info=True
             )
-            return "Unable to secure the time slot on Resy right now. Please try again."
+            return "Unable to secure the time slot on Resy right now."
 
         lock_token = lock_response.get("lock_token") or (
             (lock_response.get("lock") or {}).get("token")
