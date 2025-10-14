@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from jinja2.sandbox import SandboxedEnvironment
 from pydantic import ValidationError
 
 import db
@@ -20,18 +19,9 @@ from agent import (
     ToolConfig,
     ToolIdentifier,
     ToolMetadata,
-    TranscriberConfig,
-    VoiceDecoderConfig,
-)
-from agent.config import (
-    BackgroundSpeechDenoisingPlan,
-    MultilingualSquadConfig,
-    StartSpeakingPlan,
-    VoiceConfig,
 )
 from agent.knowledge import KnowledgeConfigSettings
 from agent.model import ModelProvider
-from api.routes.integrations.vapi._constants import DEFAULT_MULTILINGUAL_SQUAD_CONFIG
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
 from services.integration_service.schema import IntegrationDetail
@@ -94,36 +84,6 @@ class RawConfig:
                     session_id=str(self.conversation_id),
                 ),
                 additional_context=self._get_additional_context(),
-                voice_config=VoiceConfig(
-                    enabled=self.agent.raw_config.get(
-                        "vapi_voice_config_enabled", False
-                    ),
-                    greeting_message=self._render_greeting_message(),
-                    voice_id=self.agent.voice_id,
-                    speech_rate=self.agent.speech_rate,
-                    background_noise=self.agent.raw_config.get(
-                        "background_sound",
-                        "office" if self.agent.background_noise else "off",
-                    ),
-                    background_speech_denoising_plan=self._get_background_speech_denoising_plan(),
-                    language=self.agent.language,
-                    tool_calling_filler_words=self.agent.raw_config.get(
-                        "tool_calling_filler_words", {}
-                    ),
-                    chat_filler_words=self.agent.raw_config.get(
-                        "chat_filler_words", {}
-                    ),
-                    tool_calling_filler_words_percentage=self.agent.raw_config.get(
-                        "tool_calling_filler_words_percentage", 100
-                    ),
-                    chat_filler_words_percentage=self.agent.raw_config.get(
-                        "chat_filler_words_percentage", 100
-                    ),
-                    voice_decoder=self._get_voice_decoder_config(),
-                    transcriber=self._get_transcriber_config(),
-                    start_speaking_plan=self._get_start_speaking_plan(),
-                ),
-                multiling_squad_config=self._get_multilingual_squad_config(),
             )
         except ValueError as e:
             raise ValueError(f"Invalid RawConfig: {e}") from e
@@ -141,106 +101,16 @@ class RawConfig:
             return False
         return bool(value)
 
-    def _get_multilingual_squad_config(self) -> MultilingualSquadConfig | None:
-        """
-        Get the multilingual squad configuration.
-
-        This method handles three cases for the 'multilingual_squad_config' value:
-        1. A boolean `True`: Returns the default squad configuration.
-        2. A dictionary: Validates and returns the custom squad configuration.
-        3. `False`, `None`, or invalid: Returns `None`.
-        """
-        raw_config = self.agent.raw_config.get("multilingual_squad_config")
-
-        config_to_validate = None
-        if raw_config is True:
-            # Use the default configuration if the flag is True
-            config_to_validate = DEFAULT_MULTILINGUAL_SQUAD_CONFIG
-        elif isinstance(raw_config, dict):
-            # Use the provided dictionary for custom configuration
-            config_to_validate = raw_config
-
-        if config_to_validate is None:
-            # Handles cases where the config is None, False, or an invalid type
-            return None
-
-        try:
-            # Transform snake_case keys to match Pydantic field expectations
-            transformed_config = self._transform_multilingual_config(config_to_validate)
-            # Validate the transformed configuration
-            return MultilingualSquadConfig.model_validate(transformed_config)
-        except ValidationError as e:
-            logger.error(
-                "Invalid multilingual squad config",
-                extra={"agent_id": self.agent.id, "error": str(e)},
-            )
-            # Fallback to None if validation fails
-            return None
-
-    def _snake_to_camel(self, snake_str: str) -> str:
-        """Convert snake_case string to camelCase."""
-        components = snake_str.split("_")
-        return components[0] + "".join(word.capitalize() for word in components[1:])
-
-    def _transform_multilingual_config(self, config: dict) -> dict:
-        """
-        Transform raw API configuration snake_case keys to camelCase field names.
-
-        Automatically converts snake_case keys to camelCase, with special handling for 'assistant_name' -> 'name'.
-        """
-
-        def _transform_assistant_keys(assistant_config: dict) -> dict:
-            """Transform snake_case keys to camelCase field names."""
-            transformed = {}
-
-            for key, value in assistant_config.items():
-                # Special case: assistant_name maps to 'name' field in VAPIAssistant
-                if key == "assistant_name":
-                    transformed["name"] = value
-                # Convert other snake_case keys to camelCase
-                elif "_" in key:
-                    camel_key = self._snake_to_camel(key)
-                    transformed[camel_key] = value
-                # Keep keys that are already in the correct format
-                else:
-                    transformed[key] = value
-
-            return transformed
-
-        # Apply field mapping to all assistant configurations
-        transformed_config = {}
-
-        if "triage_assistant" in config:
-            transformed_config["triage_assistant"] = _transform_assistant_keys(
-                config["triage_assistant"]
-            )
-
-        if "language_assistants" in config:
-            transformed_config["language_assistants"] = {}
-            for language, assistant_config in config["language_assistants"].items():
-                transformed_config["language_assistants"][language] = (
-                    _transform_assistant_keys(assistant_config)
-                )
-
-        return transformed_config
-
     def _get_agent_persona(self, channel: Channel) -> AgentPersona:
-        # Extract the persona section of the raw config for voice_id and model_mode
-        raw_persona = self.agent.raw_config.get("persona", {})
-
         # Always use dynamic prompt behavior
         name = self.agent.name or ""
         role = self.agent.agent_type or ""
         system_prompt = self._build_agent_prompt(channel)
-        voice_id = raw_persona.get("voice_id") or None
-        model_mode = raw_persona.get("model_mode") or None
 
         return AgentPersona(
             name=name,
             role=role,
             description=system_prompt,
-            voice_id=voice_id,
-            model_mode=model_mode,
         )
 
     def _get_agent_knowledge(self) -> KnowledgeConfig:
@@ -608,21 +478,6 @@ class RawConfig:
 
         return additional_context
 
-    def _get_background_speech_denoising_plan(
-        self,
-    ) -> BackgroundSpeechDenoisingPlan | None:
-        """Get background speech denoising plan with smart denoising enabled by default."""
-        config = self.agent.raw_config.get("background_speech_denoising_plan")
-
-        # Use provided config or default to smart denoising enabled
-        config = config or {"smartDenoisingPlan": {"enabled": True}}
-
-        try:
-            return BackgroundSpeechDenoisingPlan.model_validate(config)
-        except ValidationError as e:
-            logger.warning(f"Invalid background speech denoising plan: {e}")
-            return None
-
     def _get_knowledge_provider(self, raw_knowledge) -> Optional[KnowledgeProvider]:
         raw_provider = raw_knowledge.get("provider")
 
@@ -661,70 +516,3 @@ class RawConfig:
                 raise ValueError(
                     "Invalid KnowledgeConfig settings for provider 'KnowledgeConfig'."
                 ) from e
-
-    def _render_greeting_message(self) -> str:
-        """Render the greeting message using Jinja2 sandboxed template with agent, project, and account context."""
-        if not self.agent.greeting_message:
-            return ""
-
-        try:
-            env = SandboxedEnvironment()
-            template = env.from_string(self.agent.greeting_message)
-            return template.render(
-                agent=self.agent, project=self.project, account=self.account
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to render greeting message template: {e}. Using original message.",
-                extra={
-                    "agent_id": self.agent.id,
-                    "error": str(e),
-                },
-            )
-            # Fallback to original message if template rendering fails
-            return self.agent.greeting_message
-
-    def _get_transcriber_config(self) -> Optional[TranscriberConfig]:
-        transcriber_raw = self.agent.raw_config.get("transcriber")
-        if not transcriber_raw:
-            return None
-
-        try:
-            return TranscriberConfig.model_validate(transcriber_raw)
-        except ValidationError as e:
-            logger.warning(
-                f"Invalid transcriber config in agent.raw_config: {e}",
-                extra={"agent_id": self.agent.id},
-            )
-            return None
-
-    def _get_voice_decoder_config(self) -> Optional[VoiceDecoderConfig]:
-        voice_decoder_raw = self.agent.raw_config.get("voice_decoder")
-        if not voice_decoder_raw:
-            return None
-
-        try:
-            return VoiceDecoderConfig.model_validate(voice_decoder_raw)
-        except ValidationError as e:
-            logger.warning(
-                f"Invalid voice_decoder config in agent.raw_config: {e}",
-                extra={"agent_id": self.agent.id},
-            )
-            return None
-
-    def _get_start_speaking_plan(self) -> Optional[StartSpeakingPlan]:
-        """
-        Get start speaking plan configuration from agent raw_config.
-        """
-        start_speaking_raw = self.agent.raw_config.get("start_speaking_plan")
-        if not start_speaking_raw:
-            return None
-
-        try:
-            return StartSpeakingPlan.model_validate(start_speaking_raw)
-        except ValidationError as e:
-            logger.warning(
-                f"Invalid start_speaking_plan config in agent.raw_config: {e}",
-                extra={"agent_id": self.agent.id},
-            )
-            return None

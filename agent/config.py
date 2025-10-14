@@ -9,7 +9,6 @@ from agent.knowledge import KnowledgeConfig
 from agent.memory import MemoryConfig
 from agent.model import ModelConfig
 from agent.tool import ToolConfig
-from db.tables.agents import Language, SpeechRate
 
 
 class TransferMode(StrEnum):
@@ -25,8 +24,6 @@ class AgentPersona(BaseModel):
     name: str
     role: str
     description: Optional[str] = None
-    voice_id: Optional[str] = None
-    model_mode: Optional[str] = None
 
 
 class AgentMetadata(BaseModel):
@@ -57,23 +54,6 @@ class BackgroundSpeechDenoisingPlan(BaseModel):
 
     smartDenoisingPlan: Optional[SmartDenoisingPlan] = None
     fourierDenoisingPlan: Optional[FourierDenoisingPlan] = None
-
-
-class VoiceConfig(BaseModel):
-    enabled: bool = False
-    greeting_message: str | None
-    voice_id: str | None
-    speech_rate: SpeechRate
-    background_noise: str
-    background_speech_denoising_plan: Optional[BackgroundSpeechDenoisingPlan] = None
-    language: Language
-    tool_calling_filler_words: dict[str, list[str]] = Field(default_factory=dict)
-    chat_filler_words: dict[str, list[str]] = Field(default_factory=dict)
-    tool_calling_filler_words_percentage: int = Field(default=100, ge=0, le=100)
-    chat_filler_words_percentage: int = Field(default=100, ge=0, le=100)
-    voice_decoder: Optional[VoiceDecoderConfig] = None
-    transcriber: Optional[TranscriberConfig] = None
-    start_speaking_plan: Optional[StartSpeakingPlan] = None
 
 
 class TranscriberConfig(BaseModel):
@@ -247,13 +227,6 @@ class LanguageAssistantMultilingConfig(VAPIAssistant):
     )
 
 
-class MultilingualSquadConfig(BaseModel):
-    """Complete multilingual squad configuration."""
-
-    triage_assistant: TriageAssistantConfig
-    language_assistants: dict[str, LanguageAssistantMultilingConfig]
-
-
 # ============================================================================
 # AGENT CONFIGURATION
 # ============================================================================
@@ -271,7 +244,6 @@ class AgentConfig(BaseModel):
     memory: MemoryConfig
     knowledge: KnowledgeConfig
     tool: ToolConfig
-    voice_config: VoiceConfig
     feature_config: FeatureConfig = Field(default_factory=FeatureConfig)
 
     metadata: AgentMetadata
@@ -279,6 +251,3 @@ class AgentConfig(BaseModel):
     stream: bool = False
     # Additional context added to the end of the system message.
     additional_context: Optional[str] = None
-    # Multilingual squad configuration for VAPI integration
-    # This is resolved in RawConfigService, so the final type is clean.
-    multiling_squad_config: Optional[MultilingualSquadConfig] = None
