@@ -509,12 +509,6 @@ def build_checkpoint(checkpoint: db.CheckPoint) -> Checkpoint:
         is_active=checkpoint.is_active,
         group=checkpoint.group,
         rules=checkpoint.rules,
-        created_at=checkpoint.created_at.isoformat(),
-        updated_at=(
-            checkpoint.updated_at.isoformat()
-            if checkpoint.updated_at
-            else checkpoint.created_at.isoformat()
-        ),
     )
 
 

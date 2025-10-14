@@ -40,3 +40,18 @@ def read_assets(request: ReadAssetRequest) -> list[AssetResponse]:
             fetched file.
     """
     return _implementation.read_assets(request)
+
+
+def delete_asset(file_name: str) -> bool:
+    """Delete an asset from S3 bucket.
+
+    Args:
+        file_name (str): The name/key of the file to delete from S3.
+
+    Returns:
+        bool: True if the file was deleted successfully, False if the file doesn't exist.
+
+    Raises:
+        RuntimeError: If the deletion operation fails.
+    """
+    return _implementation.delete_asset(file_name)

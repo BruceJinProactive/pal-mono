@@ -48,10 +48,37 @@ class CheckpointRepository:
             checkpoints = (
                 self.session.query(CheckPoint)
                 .filter(CheckPoint.project_id == project_id)
-                .order_by(CheckPoint.created_at.desc())
                 .all()
             )
             return checkpoints
         except SQLAlchemyError as e:
             logger.error(f"Error listing checkpoints: {e}")
+            raise
+
+    def get_checkpoint(self, checkpoint_id: UUID) -> CheckPoint | None:
+        """Get a checkpoint by ID."""
+        try:
+            checkpoint = (
+                self.session.query(CheckPoint)
+                .filter(CheckPoint.id == checkpoint_id)
+                .first()
+            )
+            return checkpoint
+        except SQLAlchemyError as e:
+            logger.error(f"Error getting checkpoint: {e}")
+            raise
+
+    def delete_checkpoint(self, checkpoint_id: UUID) -> bool:
+        """Delete a checkpoint by ID. Returns True if deleted, False if not found."""
+        try:
+            checkpoint = self.get_checkpoint(checkpoint_id)
+            if not checkpoint:
+                return False
+
+            self.session.delete(checkpoint)
+            self.session.commit()
+            return True
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error deleting checkpoint: {e}")
             raise

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checkpoint import Checkpoint, ListCheckpointsResponse
-from services import account_service, checkpoint_service, project_service
+from services import account_service, asset_service, checkpoint_service, project_service
 from services.asset_service import write_asset
 from services.asset_service._implementation import WriteAssetRequest
 from utils.log import logger
@@ -208,3 +208,66 @@ async def list_checkpoints(
         checkpoints=[_builder.build_checkpoint(cp) for cp in checkpoints],
         total=len(checkpoints),
     )
+
+
+async def delete_checkpoint(
+    checkpoint_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> None:
+    """
+    Delete a checkpoint by ID.
+
+    Args:
+        checkpoint_id: UUID of the checkpoint to delete
+        context: User context for authorization
+        session: Database session
+
+    Raises:
+        HTTPException: If checkpoint not found or authorization fails
+    """
+    # Get checkpoint first to validate it exists and get project_id
+    checkpoint = checkpoint_service.get_checkpoint(session, checkpoint_id)
+    if not checkpoint:
+        raise not_found_error(f"Checkpoint {checkpoint_id} does not exist.")
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise not_found_error(f"Project {checkpoint.project_id} does not exist.")
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise not_found_error(
+            f"Account for project {checkpoint.project_id} does not exist."
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Delete checkpoint image from S3 if it exists
+    if checkpoint.image_url:
+        # Try common image extensions
+        # Format: checkpoints/{project_id}/{checkpoint_id}{extension}
+        common_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp"]
+        for ext in common_extensions:
+            file_path = os.path.join(
+                "checkpoints",
+                str(checkpoint.project_id),
+                f"{checkpoint_id}{ext}",
+            )
+            try:
+                deleted_from_s3 = asset_service.delete_asset(file_path)
+                if deleted_from_s3:
+                    logger.info(f"Deleted checkpoint image from S3: {file_path}")
+                    break  # Stop after finding and deleting the file
+            except Exception as e:
+                # Log but don't fail the entire operation if S3 deletion fails
+                logger.warning(f"Failed to delete checkpoint image from S3: {e}")
+
+    # Delete checkpoint from database
+    deleted = checkpoint_service.delete_checkpoint(session, checkpoint_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete checkpoint {checkpoint_id}",
+        )

@@ -13,3 +13,13 @@ def create_checkpoint(session: Session, checkpoint: db.CheckPoint) -> db.CheckPo
 def list_checkpoints(session: Session, project_id: UUID) -> list[db.CheckPoint]:
     checkpoint_repository = db.CheckpointRepository(session)
     return checkpoint_repository.list_checkpoints(project_id)
+
+
+def get_checkpoint(session: Session, checkpoint_id: UUID) -> db.CheckPoint | None:
+    checkpoint_repository = db.CheckpointRepository(session)
+    return checkpoint_repository.get_checkpoint(checkpoint_id)
+
+
+def delete_checkpoint(session: Session, checkpoint_id: UUID) -> bool:
+    checkpoint_repository = db.CheckpointRepository(session)
+    return checkpoint_repository.delete_checkpoint(checkpoint_id)

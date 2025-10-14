@@ -25,8 +25,6 @@ class Checkpoint(BaseModel):
     is_active: bool
     group: str | None
     rules: list[str] | None
-    created_at: str
-    updated_at: str
 
 
 class ListCheckpointsResponse(BaseModel):

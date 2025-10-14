@@ -1069,6 +1069,22 @@ async def create_checkpoint(
     )
 
 
+@admin_router.delete(
+    "/checkpoints/{checkpoint_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_checkpoint(
+    checkpoint_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> None:
+    """
+    Delete a checkpoint by ID.
+
+    The checkpoint will be permanently deleted from the database.
+    """
+    return await _checkpoint.delete_checkpoint(checkpoint_id, context, session)
+
+
 """
 ---------- Projects Endpoints ----------
 ----------------------------------------

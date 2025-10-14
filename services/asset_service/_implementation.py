@@ -124,3 +124,51 @@ def read_assets(request: ReadAssetRequest) -> list[AssetResponse]:
                     continue  # Skip to the next object
 
     return found_urls
+
+
+## Delete ##
+def delete_asset(file_name: str) -> bool:
+    """Delete an asset from S3 by file name.
+
+    Args:
+        file_name (str): The name/key of the file to delete from S3.
+
+    Returns:
+        bool: True if the file was deleted successfully, False if the file doesn't exist.
+
+    Raises:
+        RuntimeError: If the deletion operation fails.
+    """
+    try:
+        if not file_name:
+            raise ValueError("File name must be provided.")
+
+        _utils.check_region_name()
+        s3_client = _utils.init_s3(AWS_REGION)
+
+        _utils.check_bucket_name()
+
+        # Check if the object exists before attempting to delete
+        try:
+            s3_client.head_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=file_name)
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            if error_code == "404":
+                logger.warning(
+                    f"Asset `{file_name}` does not exist in S3, skipping deletion."
+                )
+                return False
+            raise
+
+        # Delete the object
+        logger.info(f"Deleting `{file_name}` from bucket `{AWS_ASSET_BUCKET_NAME}`")
+        s3_client.delete_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=file_name)
+        logger.info(f"Asset file `{file_name}` deleted successfully.")
+        return True
+
+    except (ClientError, ParamValidationError) as e:
+        logger.error(f"S3 delete operation failed: {e}")
+        raise RuntimeError(f"S3 delete operation failed: {e}")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred deleting asset file: {e}")
+        raise RuntimeError(f"An unexpected error occurred deleting asset file: {e}")
