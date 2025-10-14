@@ -3,6 +3,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -31,8 +32,32 @@ from services import (
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
-from ._squad import get_squad_model
 from ._utils import validate_vapi_request
+
+
+def _get_squad_model(squad_data: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Get the squad model from the squad data.
+    """
+    # Get language assistant model name from the second member of squad_data.
+    # The first member is the triage assistant, and all subsequent members function as language assistants.
+    members = squad_data.get("members", [])
+    if len(members) < 2:
+        logger.error("Squad has fewer than two members; cannot extract language model")
+        return None
+
+    if not isinstance(members[1], dict):
+        logger.error("Squad member at index 1 is not a dict; cannot extract model")
+        return None
+
+    language_assistant = members[1].get("assistant")
+    if not isinstance(language_assistant, dict):
+        logger.error("Squad member assistant is not a dict; cannot extract model")
+        return None
+
+    model_block = language_assistant.get("model")
+
+    return model_block
 
 
 def _get_vapi_client() -> AsyncVapi:
@@ -628,10 +653,10 @@ async def handle_status_update(message_data, session: AsyncSession):
         model_block = None
         if squad_data:
             try:
-                model_block = get_squad_model(squad_data)
+                model_block = _get_squad_model(squad_data)
             except Exception as e:
                 logger.error(
-                    f"Failed to extract model from squad data;falling back to assistant: {str(e)}"
+                    f"Failed to extract model from squad data; falling back to assistant: {str(e)}"
                 )
         if not isinstance(model_block, dict):
             assistant_data = call_data.get("assistant", {})

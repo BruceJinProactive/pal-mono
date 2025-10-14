@@ -4,7 +4,9 @@ from fastapi import Request
 
 from utils.log import logger
 
-from ._constants import VAPI_SECRET_HEADER, VAPI_TIMESTAMP_HEADER
+# VAPI Headers for request validation
+VAPI_SECRET_HEADER = "X-VAPI-SIGNATURE"
+VAPI_TIMESTAMP_HEADER = "X-VAPI-TIMESTAMP"
 
 
 def validate_vapi_request(request: Request) -> bool:
