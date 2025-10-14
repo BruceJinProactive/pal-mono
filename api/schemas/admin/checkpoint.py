@@ -27,3 +27,10 @@ class Checkpoint(BaseModel):
     rules: list[str] | None
     created_at: str
     updated_at: str
+
+
+class ListCheckpointsResponse(BaseModel):
+    """List Checkpoints Response Model"""
+
+    checkpoints: list[Checkpoint]
+    total: int

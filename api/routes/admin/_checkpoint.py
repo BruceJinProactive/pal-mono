@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin._utils import UserContext
-from api.schemas.admin.checkpoint import Checkpoint, CreateCheckpointRequest
+from api.schemas.admin.checkpoint import Checkpoint, ListCheckpointsResponse
 from services import account_service, checkpoint_service, project_service
 from services.asset_service import write_asset
 from services.asset_service._implementation import WriteAssetRequest
@@ -94,7 +94,11 @@ async def _upload_checkpoint_image(
 
 async def create_checkpoint(
     project_id: uuid.UUID,
-    checkpoint_request: str | CreateCheckpointRequest,
+    name: str,
+    description: str | None,
+    is_active: bool,
+    group: str | None,
+    rules: str | None,
     image: UploadFile | None,
     context: UserContext,
     session: Session,
@@ -105,28 +109,19 @@ async def create_checkpoint(
 
     Args:
         project_id: UUID of the project
-        checkpoint_request: Either a JSON string or CreateCheckpointRequest object
+        name: Name of the checkpoint
+        description: Optional description
+        is_active: Whether the checkpoint is active
+        group: Optional group name
+        rules: Optional JSON array string of rules
         image: Optional image file to upload
+        context: User context for authorization
         session: Database session
 
     Returns:
         Checkpoint object with all details including image URL if uploaded
     """
-    from pydantic import ValidationError
-
-    # Parse JSON string if needed
-    if isinstance(checkpoint_request, str):
-        try:
-            checkpoint_create = CreateCheckpointRequest.model_validate_json(
-                checkpoint_request
-            )
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid checkpoint_request format: {str(e)}",
-            )
-    else:
-        checkpoint_create = checkpoint_request
+    import json
 
     # Validate & authorize checkpoint create request
     project = project_service.get_project(session, project_id)
@@ -139,22 +134,28 @@ async def create_checkpoint(
 
     authorize_user_account(context, account.name)
 
-    # Validate that the project_id in the request matches the path parameter
-    if checkpoint_create.project_id != project_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Project ID in request body does not match the path parameter.",
-        )
+    # Parse rules from JSON string if provided
+    parsed_rules = None
+    if rules:
+        try:
+            parsed_rules = json.loads(rules)
+            if not isinstance(parsed_rules, list):
+                raise ValueError("Rules must be a JSON array")
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid rules format: {str(e)}. Expected JSON array.",
+            )
 
     # Create checkpoint in database first (without image)
     checkpoint = db.CheckPoint(
-        project_id=checkpoint_create.project_id,
-        name=checkpoint_create.name,
-        description=checkpoint_create.description,
+        project_id=project_id,
+        name=name,
+        description=description,
         image_url=None,
-        is_active=checkpoint_create.is_active,
-        group=checkpoint_create.group,
-        rules=checkpoint_create.rules,
+        is_active=is_active,
+        group=group,
+        rules=parsed_rules,
     )
 
     persisted_checkpoint = checkpoint_service.create_checkpoint(session, checkpoint)
@@ -171,3 +172,39 @@ async def create_checkpoint(
         session.refresh(persisted_checkpoint)
 
     return _builder.build_checkpoint(persisted_checkpoint)
+
+
+async def list_checkpoints(
+    project_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> ListCheckpointsResponse:
+    """
+    List all checkpoints for a project.
+
+    Args:
+        project_id: UUID of the project
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        ListCheckpointsResponse with all checkpoints for the project
+    """
+    # Validate & authorize
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} does not exist.")
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise not_found_error(f"Account for project {project_id} does not exist.")
+
+    authorize_user_account(context, account.name)
+
+    # Get checkpoints
+    checkpoints = checkpoint_service.list_checkpoints(session, project_id)
+
+    return ListCheckpointsResponse(
+        checkpoints=[_builder.build_checkpoint(cp) for cp in checkpoints],
+        total=len(checkpoints),
+    )

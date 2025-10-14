@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -39,3 +41,17 @@ class CheckpointRepository:
             raise
 
         return db_checkpoint
+
+    def list_checkpoints(self, project_id: UUID) -> list[CheckPoint]:
+        """Get all checkpoints for a project."""
+        try:
+            checkpoints = (
+                self.session.query(CheckPoint)
+                .filter(CheckPoint.project_id == project_id)
+                .order_by(CheckPoint.created_at.desc())
+                .all()
+            )
+            return checkpoints
+        except SQLAlchemyError as e:
+            logger.error(f"Error listing checkpoints: {e}")
+            raise

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 import db
@@ -19,4 +21,18 @@ def create_checkpoint(session: Session, checkpoint: db.CheckPoint) -> db.CheckPo
     return _implementation.create_checkpoint(session, checkpoint)
 
 
-__all__ = ["create_checkpoint"]
+def list_checkpoints(session: Session, project_id: UUID) -> list[db.CheckPoint]:
+    """
+    List all checkpoints for a project.
+
+    Args:
+        session (Session): The database session to use for the query.
+        project_id (UUID): The UUID of the project.
+
+    Returns:
+        list[db.CheckPoint]: List of checkpoints for the project.
+    """
+    return _implementation.list_checkpoints(session, project_id)
+
+
+__all__ = ["create_checkpoint", "list_checkpoints"]

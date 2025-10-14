@@ -39,7 +39,7 @@ from api.schemas.admin.agent import (
 )
 from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
-from api.schemas.admin.checkpoint import Checkpoint, CreateCheckpointRequest
+from api.schemas.admin.checkpoint import Checkpoint, ListCheckpointsResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
     ConversationDetail,
@@ -1025,12 +1025,28 @@ async def delete_faq(
 """
 
 
-@admin_router.put(
+@admin_router.get("/projects/{project_id}/checkpoints")
+async def list_checkpoints(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListCheckpointsResponse:
+    """
+    List all checkpoints for a project.
+    """
+    return await _checkpoint.list_checkpoints(project_id, context, session)
+
+
+@admin_router.post(
     "/projects/{project_id}/checkpoints", status_code=status.HTTP_201_CREATED
 )
 async def create_checkpoint(
     project_id: uuid.UUID,
-    checkpoint_request: str = Form(...),
+    name: str = Form(...),
+    description: str | None = Form(None),
+    is_active: bool = Form(False),
+    group: str | None = Form(None),
+    rules: str | None = Form(None),
     image: UploadFile | None = File(None),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
@@ -1039,19 +1055,17 @@ async def create_checkpoint(
     Create a new checkpoint with an optional image upload.
 
     Request body (multipart/form-data):
-    - checkpoint_request (required): JSON string with the following fields:
-      - project_id (required): UUID - Must match the path parameter
-      - name (required): string
-      - description (optional): string
-      - is_active (optional, default: false): boolean
-      - group (optional): string
-      - rules (optional): array of strings
+    - name (required): string - Checkpoint name
+    - description (optional): string - Checkpoint description
+    - is_active (optional, default: false): boolean - Whether checkpoint is active
+    - group (optional): string - Checkpoint group
+    - rules (optional): JSON array string of rules (e.g., '["rule1", "rule2"]')
     - image (optional): Image file
 
     The image will be uploaded to S3 and the URL will be stored in the checkpoint.
     """
     return await _checkpoint.create_checkpoint(
-        project_id, checkpoint_request, image, context, session
+        project_id, name, description, is_active, group, rules, image, context, session
     )
 
 
