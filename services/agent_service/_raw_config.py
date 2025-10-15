@@ -405,7 +405,7 @@ class RawConfig:
         info_list = prompt_factory.build(
             channel,
             self.agent.agent_type,
-            TargetTier.t2,
+            TargetTier.t3,
             self.integration.provider if self.integration else None,
             self.agent.id,
         )

@@ -39,7 +39,7 @@ class PromptFactory:
         Args:
             channel: Communication channel (SMS, VOICE, etc.)
             agent_type: Type of agent (ordering, general, etc.)
-            plan_tier: Tier level (t1, t2, enterprise)
+            plan_tier: Tier level (t1, t2, t3, enterprise)
             pos_vendor: POS vendor integration (adora, toast, etc.)
             agent_id: Agent ID for querying database prompts (optional)
 
@@ -291,9 +291,9 @@ At the end of each message:
 
 prompt_factory.register(
     Prompt(
-        id="upselling-guideline-t2-enterprise",
+        id="upselling-guideline-t2-t3-enterprise",
         agent_types=[AgentType.ordering],
-        plan_tiers=[TargetTier.t2, TargetTier.enterprise],
+        plan_tiers=[TargetTier.t2, TargetTier.t3, TargetTier.enterprise],
         title="Upselling Guideline",
         instructions="""
 At the end of each message:
@@ -319,9 +319,9 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
-        id="additional-ordering-guideline-t2-enterprise",
+        id="additional-ordering-guideline-t3-enterprise",
         agent_types=[AgentType.ordering],
-        plan_tiers=[TargetTier.t2, TargetTier.enterprise],
+        plan_tiers=[TargetTier.t3, TargetTier.enterprise],
         title="Additional Ordering Guideline",
         instructions="""
 - If the user asks for help in placing an order, tell the user that they can tell you whatever they want to order. Confirm with the user if they want anything else to be added into the order. And once they're done, ask they whether they want "takeout" or "delivery" and collect their name and phone number.

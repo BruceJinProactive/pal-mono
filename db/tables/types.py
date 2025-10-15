@@ -23,6 +23,7 @@ class AgentType(str, enum.Enum):
 class TargetTier(str, enum.Enum):
     t1 = "t1"
     t2 = "t2"
+    t3 = "t3"
     enterprise = "enterprise"
 
 
