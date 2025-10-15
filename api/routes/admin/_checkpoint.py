@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin._utils import UserContext
-from api.schemas.admin.checkpoint import Checkpoint, ListCheckpointsResponse
+from api.schemas.admin.checkpoint import (
+    Checkpoint,
+    ListCheckpointResultsByCheckpointResponse,
+    ListCheckpointResultsBySubmissionResponse,
+    ListCheckpointsResponse,
+)
+from db.tables.types import CheckStatus
 from services import account_service, asset_service, checkpoint_service, project_service
 from services.asset_service import write_asset
 from services.asset_service._implementation import WriteAssetRequest
@@ -496,3 +502,100 @@ async def compare_checkpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start comparison: {str(e)}",
         )
+
+
+async def list_checkpoint_results_by_submission(
+    status_filter: CheckStatus | None,
+    context: UserContext,  # noqa: ARG001 - kept for API consistency
+    session: Session,
+) -> ListCheckpointResultsBySubmissionResponse:
+    """
+    List all checkpoint results grouped by submission_id.
+
+    Note: This endpoint returns all checkpoint results across all projects/accounts.
+    Authorization is enforced at the API route level via authenticate_user.
+    For account-specific filtering, use the checkpoint-specific endpoint.
+
+    Args:
+        status_filter: Optional filter by status (processing, active, failed)
+        context: User context for authorization (checked at route level)
+        session: Database session
+
+    Returns:
+        ListCheckpointResultsBySubmissionResponse with results grouped by submission_id
+    """
+    # Get all checkpoint results with optional status filter
+    checkpoint_results = checkpoint_service.list_checkpoint_results(
+        session=session,
+        checkpoint_id=None,
+        submission_id=None,
+        status=status_filter,
+    )
+
+    # Group results by submission_id
+    grouped_results: dict[str, list] = {}
+    for result in checkpoint_results:
+        submission_id_str = str(result.submission_id)
+        if submission_id_str not in grouped_results:
+            grouped_results[submission_id_str] = []
+        grouped_results[submission_id_str].append(
+            _builder.build_checkpoint_result(result)
+        )
+
+    return ListCheckpointResultsBySubmissionResponse(
+        results=grouped_results,
+        total_submissions=len(grouped_results),
+    )
+
+
+async def list_checkpoint_results_by_checkpoint(
+    checkpoint_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> ListCheckpointResultsByCheckpointResponse:
+    """
+    List all checkpoint results for a specific checkpoint.
+
+    Args:
+        checkpoint_id: UUID of the checkpoint
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        ListCheckpointResultsByCheckpointResponse with all results for the checkpoint
+
+    Raises:
+        HTTPException: If checkpoint not found or authorization fails
+    """
+    # Get checkpoint and validate it exists
+    checkpoint = checkpoint_service.get_checkpoint(session, checkpoint_id)
+    if not checkpoint:
+        raise not_found_error(f"Checkpoint {checkpoint_id} does not exist.")
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise not_found_error(f"Project {checkpoint.project_id} does not exist.")
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise not_found_error(
+            f"Account for project {checkpoint.project_id} does not exist."
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Get all checkpoint results for this checkpoint
+    checkpoint_results = checkpoint_service.list_checkpoint_results(
+        session=session,
+        checkpoint_id=checkpoint_id,
+        submission_id=None,
+        status=None,
+    )
+
+    return ListCheckpointResultsByCheckpointResponse(
+        results=[
+            _builder.build_checkpoint_result(result) for result in checkpoint_results
+        ],
+        total=len(checkpoint_results),
+    )

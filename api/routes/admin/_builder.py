@@ -5,7 +5,7 @@ from api.routes.admin._utils import get_agent_type
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
-from api.schemas.admin.checkpoint import Checkpoint
+from api.schemas.admin.checkpoint import Checkpoint, CheckpointResult
 from api.schemas.admin.conversation import Conversation, ConversationDetail, Message
 from api.schemas.admin.faq import FAQ
 from api.schemas.admin.feedback import Feedback
@@ -526,5 +526,22 @@ def build_faq(faq: db.FAQ) -> FAQ:
         created_at=faq.created_at.isoformat(),
         updated_at=(
             faq.updated_at.isoformat() if faq.updated_at else faq.created_at.isoformat()
+        ),
+    )
+
+
+def build_checkpoint_result(checkpoint_result: db.CheckpointResult) -> CheckpointResult:
+    """Build CheckpointResult response from database CheckpointResult."""
+    return CheckpointResult(
+        id=str(checkpoint_result.id),
+        checkpoint_id=str(checkpoint_result.checkpoint_id),
+        submission_id=str(checkpoint_result.submission_id),
+        result=checkpoint_result.result or {},
+        status=checkpoint_result.status.value,
+        created_at=checkpoint_result.created_at.isoformat(),
+        updated_at=(
+            checkpoint_result.updated_at.isoformat()
+            if checkpoint_result.updated_at
+            else None
         ),
     )

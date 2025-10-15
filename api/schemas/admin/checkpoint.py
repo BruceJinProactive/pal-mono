@@ -42,3 +42,29 @@ class ListCheckpointsResponse(BaseModel):
 
     checkpoints: list[Checkpoint]
     total: int
+
+
+class CheckpointResult(BaseModel):
+    """Checkpoint Result Model"""
+
+    id: str
+    checkpoint_id: str
+    submission_id: str
+    result: dict
+    status: str
+    created_at: str
+    updated_at: str | None
+
+
+class ListCheckpointResultsBySubmissionResponse(BaseModel):
+    """List Checkpoint Results Grouped by Submission ID Response Model"""
+
+    results: dict[str, list[CheckpointResult]]
+    total_submissions: int
+
+
+class ListCheckpointResultsByCheckpointResponse(BaseModel):
+    """List Checkpoint Results by Checkpoint ID Response Model"""
+
+    results: list[CheckpointResult]
+    total: int

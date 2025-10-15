@@ -39,7 +39,12 @@ from api.schemas.admin.agent import (
 )
 from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
-from api.schemas.admin.checkpoint import Checkpoint, ListCheckpointsResponse
+from api.schemas.admin.checkpoint import (
+    Checkpoint,
+    ListCheckpointResultsByCheckpointResponse,
+    ListCheckpointResultsBySubmissionResponse,
+    ListCheckpointsResponse,
+)
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
     ConversationDetail,
@@ -166,7 +171,7 @@ from api.schemas.admin.voice_config import (
 )
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
-from db.tables.types import Channel
+from db.tables.types import Channel, CheckStatus
 from services.admin_service.schema import CognitoUser
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 from services.google_maps_service import search_places_by_name
@@ -1155,6 +1160,82 @@ async def compare_checkpoint(
     """
     return await _checkpoint.compare_checkpoint(
         checkpoint_id, image, context, session, submission_id
+    )
+
+
+@admin_router.get("/checkpoints/results", status_code=status.HTTP_200_OK)
+async def list_checkpoint_results_by_submission(
+    status_param: CheckStatus | None = Query(
+        None,
+        description="Optional filter by status (processing, active, failed)",
+        alias="status",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListCheckpointResultsBySubmissionResponse:
+    """
+    List all checkpoint results grouped by submission_id.
+
+    This endpoint returns all checkpoint results across all projects,
+    grouped by their submission_id for easy tracking of multi-checkpoint submissions.
+
+    Query parameters:
+    - status (optional): Filter results by status (processing, active, failed)
+
+    Returns:
+    - results: Dictionary mapping submission_id to list of checkpoint results
+    - total_submissions: Total number of unique submissions
+
+    Example response:
+    {
+      "results": {
+        "submission-uuid-1": [result1, result2],
+        "submission-uuid-2": [result3]
+      },
+      "total_submissions": 2
+    }
+    """
+    return await _checkpoint.list_checkpoint_results_by_submission(
+        status_param, context, session
+    )
+
+
+@admin_router.get(
+    "/checkpoints/{checkpoint_id}/results", status_code=status.HTTP_200_OK
+)
+async def list_checkpoint_results_by_checkpoint(
+    checkpoint_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListCheckpointResultsByCheckpointResponse:
+    """
+    List all checkpoint results for a specific checkpoint.
+
+    This endpoint returns all comparison results for a given checkpoint,
+    useful for viewing the history of all submissions tested against this checkpoint.
+
+    Returns:
+    - results: List of all checkpoint results
+    - total: Total number of results
+
+    Example response:
+    {
+      "results": [
+        {
+          "id": "result-uuid",
+          "checkpoint_id": "checkpoint-uuid",
+          "submission_id": "submission-uuid",
+          "result": {"overall_result": "PASS", ...},
+          "status": "active",
+          "created_at": "2025-10-15T12:34:56Z",
+          "updated_at": "2025-10-15T12:35:10Z"
+        }
+      ],
+      "total": 1
+    }
+    """
+    return await _checkpoint.list_checkpoint_results_by_checkpoint(
+        checkpoint_id, context, session
     )
 
 
