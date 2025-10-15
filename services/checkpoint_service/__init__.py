@@ -49,6 +49,23 @@ def get_checkpoint(session: Session, checkpoint_id: UUID) -> db.CheckPoint | Non
     return _implementation.get_checkpoint(session, checkpoint_id)
 
 
+def update_checkpoint(
+    session: Session, checkpoint_id: UUID, updates: dict
+) -> db.CheckPoint | None:
+    """
+    Update a checkpoint by ID.
+
+    Args:
+        session (Session): The database session to use for the transaction.
+        checkpoint_id (UUID): The UUID of the checkpoint to update.
+        updates (dict): Dictionary of fields to update.
+
+    Returns:
+        db.CheckPoint | None: The updated checkpoint if found, None otherwise.
+    """
+    return _implementation.update_checkpoint(session, checkpoint_id, updates)
+
+
 def delete_checkpoint(session: Session, checkpoint_id: UUID) -> bool:
     """
     Delete a checkpoint by ID.
@@ -67,5 +84,6 @@ __all__ = [
     "create_checkpoint",
     "list_checkpoints",
     "get_checkpoint",
+    "update_checkpoint",
     "delete_checkpoint",
 ]

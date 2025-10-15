@@ -76,7 +76,9 @@ async def _upload_checkpoint_image(
         asset_response = write_asset(write_asset_req)
         logger.info(f"Checkpoint image uploaded successfully: {asset_response.url}")
 
-        return asset_response.url
+        # Return the S3 key (file_path) instead of the presigned URL
+        # The presigned URL will be generated when needed via map_uri_to_s3_url
+        return file_path
 
     except ValueError as ve:
         logger.error(f"Validation error uploading checkpoint image: {ve}")
@@ -208,6 +210,120 @@ async def list_checkpoints(
         checkpoints=[_builder.build_checkpoint(cp) for cp in checkpoints],
         total=len(checkpoints),
     )
+
+
+async def update_checkpoint(
+    checkpoint_id: uuid.UUID,
+    name: str | None,
+    description: str | None,
+    is_active: bool | None,
+    group: str | None,
+    rules: str | None,
+    image: UploadFile | None,
+    context: UserContext,
+    session: Session,
+) -> Checkpoint:
+    """
+    Update a checkpoint by ID. All fields are optional.
+    If a new image is provided, it will replace the old one.
+
+    Args:
+        checkpoint_id: UUID of the checkpoint to update
+        name: Optional new name
+        description: Optional new description
+        is_active: Optional new active status
+        group: Optional new group
+        rules: Optional new rules (JSON array string)
+        image: Optional new image file to replace existing one
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        Updated Checkpoint object
+
+    Raises:
+        HTTPException: If checkpoint not found or authorization fails
+    """
+    import json
+
+    # Get checkpoint first to validate it exists
+    checkpoint = checkpoint_service.get_checkpoint(session, checkpoint_id)
+    if not checkpoint:
+        raise not_found_error(f"Checkpoint {checkpoint_id} does not exist.")
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise not_found_error(f"Project {checkpoint.project_id} does not exist.")
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise not_found_error(
+            f"Account for project {checkpoint.project_id} does not exist."
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Parse rules from JSON string if provided
+    parsed_rules = None
+    if rules is not None:
+        try:
+            parsed_rules = json.loads(rules)
+            if not isinstance(parsed_rules, list):
+                raise ValueError("Rules must be a JSON array")
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid rules format: {str(e)}. Expected JSON array.",
+            )
+
+    # Build updates dictionary (only include provided fields)
+    updates = {}
+    if name is not None:
+        updates["name"] = name
+    if description is not None:
+        updates["description"] = description
+    if is_active is not None:
+        updates["is_active"] = is_active
+    if group is not None:
+        updates["group"] = group
+    if parsed_rules is not None:
+        updates["rules"] = parsed_rules
+
+    # Handle image update if provided
+    if image:
+        # Delete old image from S3 if it exists
+        if checkpoint.image_url:
+            try:
+                deleted_from_s3 = asset_service.delete_asset(checkpoint.image_url)
+                if deleted_from_s3:
+                    logger.info(
+                        f"Deleted old checkpoint image from S3: {checkpoint.image_url}"
+                    )
+            except Exception as e:
+                # Log but don't fail the operation if old image deletion fails
+                logger.warning(f"Failed to delete old checkpoint image from S3: {e}")
+
+        # Upload new image
+        new_image_url = await _upload_checkpoint_image(
+            image, checkpoint.project_id, checkpoint_id, account.id
+        )
+        updates["image_url"] = new_image_url
+
+    # Update checkpoint in database
+    if updates:
+        updated_checkpoint = checkpoint_service.update_checkpoint(
+            session, checkpoint_id, updates
+        )
+        if not updated_checkpoint:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update checkpoint {checkpoint_id}",
+            )
+        return _builder.build_checkpoint(updated_checkpoint)
+    else:
+        # No updates provided, return current checkpoint
+        return _builder.build_checkpoint(checkpoint)
 
 
 async def delete_checkpoint(

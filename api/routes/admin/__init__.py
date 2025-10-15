@@ -1069,6 +1069,45 @@ async def create_checkpoint(
     )
 
 
+@admin_router.patch("/checkpoints/{checkpoint_id}", status_code=status.HTTP_200_OK)
+async def update_checkpoint(
+    checkpoint_id: uuid.UUID,
+    name: str | None = Form(None),
+    description: str | None = Form(None),
+    is_active: bool | None = Form(None),
+    group: str | None = Form(None),
+    rules: str | None = Form(None),
+    image: UploadFile | None = File(None),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Checkpoint:
+    """
+    Update a checkpoint by ID. All fields are optional.
+    If a new image is provided, it will replace the old one.
+
+    Request body (multipart/form-data):
+    - name (optional): string - New checkpoint name
+    - description (optional): string - New checkpoint description
+    - is_active (optional): boolean - New active status
+    - group (optional): string - New checkpoint group
+    - rules (optional): JSON array string of rules (e.g., '["rule1", "rule2"]')
+    - image (optional): New image file to replace existing one
+
+    If an image is provided, the old image will be deleted from S3 and replaced with the new one.
+    """
+    return await _checkpoint.update_checkpoint(
+        checkpoint_id,
+        name,
+        description,
+        is_active,
+        group,
+        rules,
+        image,
+        context,
+        session,
+    )
+
+
 @admin_router.delete(
     "/checkpoints/{checkpoint_id}", status_code=status.HTTP_204_NO_CONTENT
 )

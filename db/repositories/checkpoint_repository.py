@@ -68,6 +68,28 @@ class CheckpointRepository:
             logger.error(f"Error getting checkpoint: {e}")
             raise
 
+    def update_checkpoint(
+        self, checkpoint_id: UUID, updates: dict
+    ) -> CheckPoint | None:
+        """Update a checkpoint by ID. Returns updated checkpoint or None if not found."""
+        try:
+            checkpoint = self.get_checkpoint(checkpoint_id)
+            if not checkpoint:
+                return None
+
+            # Update only provided fields
+            for key, value in updates.items():
+                if hasattr(checkpoint, key) and value is not None:
+                    setattr(checkpoint, key, value)
+
+            self.session.commit()
+            self.session.refresh(checkpoint)
+            return checkpoint
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating checkpoint: {e}")
+            raise
+
     def delete_checkpoint(self, checkpoint_id: UUID) -> bool:
         """Delete a checkpoint by ID. Returns True if deleted, False if not found."""
         try:

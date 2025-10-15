@@ -20,6 +20,13 @@ def get_checkpoint(session: Session, checkpoint_id: UUID) -> db.CheckPoint | Non
     return checkpoint_repository.get_checkpoint(checkpoint_id)
 
 
+def update_checkpoint(
+    session: Session, checkpoint_id: UUID, updates: dict
+) -> db.CheckPoint | None:
+    checkpoint_repository = db.CheckpointRepository(session)
+    return checkpoint_repository.update_checkpoint(checkpoint_id, updates)
+
+
 def delete_checkpoint(session: Session, checkpoint_id: UUID) -> bool:
     checkpoint_repository = db.CheckpointRepository(session)
     return checkpoint_repository.delete_checkpoint(checkpoint_id)
