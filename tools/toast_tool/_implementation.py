@@ -79,6 +79,8 @@ class ToastTool(Toolkit):
         default_coupon_id: str | None = None,
         token_api_endpoint: str | None = None,
         general_api_endpoint: str | None = None,
+        hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
+        enable_hosted_checkout: bool = False,
     ):
         super().__init__(name="toast_tool")
 
@@ -98,12 +100,14 @@ class ToastTool(Toolkit):
         self.general_api_endpoint = general_api_endpoint
         self._cached_store_info: str | None = None
         # Use sandbox iframe endpoint for hosted checkout
-        self.hosted_payment_iframe_endpoint = (
-            "https://payments.sandbox.eng.toasttab.com/hosted-checkout"
-        )
+        self.hosted_payment_iframe_endpoint = hosted_payment_iframe_endpoint
+        self.enable_hosted_checkout = enable_hosted_checkout
 
         # Register tools
-        self.register(self.checkout_order)
+        if self.enable_hosted_checkout:
+            self.register(self.checkout_order_with_payment_intent)
+        else:
+            self.register(self.checkout_order)
 
         # Do not register get_menu_inventory_tool and get_ordering_schedule_tool for now
         self.register(self.get_ordering_schedule_tool)
@@ -471,6 +475,7 @@ class ToastTool(Toolkit):
             return None
 
     # TODO: decide if we want to use order.externalId for payment intent's externalReferenceId
+    # TODO: Add tips
     @tool
     def checkout_order_with_payment_intent(self) -> str:
         """
@@ -562,7 +567,11 @@ class ToastTool(Toolkit):
             )
 
             # Return payment intent details
-            return payment_link
+            return_msg = (
+                confirmation_message
+                + f"\n\nThe following is the payment link, ask the user to use the link to checkout: [payment link]({payment_link})\n\nYou MUST INCLUDE THE COMPLETE URL in your response, formatted as a Markdown link. YOU MUST NOT OMIT ANY PART OF THE URL."
+            )
+            return return_msg
 
         except Exception as e:
             logger.error(f"[ToastTool.checkout_order_with_payment_intent] Error: {e}")
@@ -1181,8 +1190,11 @@ class ToastTool(Toolkit):
                 algorithm="RS256",
             )
 
+            # Remove any trailing dots from the token
+            token = token.rstrip(".")
+
             # Construct the iframe URL
-            iframe_url = f"{self.hosted_payment_iframe_endpoint}?token={token}"
+            iframe_url = f"{self.hosted_payment_iframe_endpoint}?t={token}"
 
             logger.debug(
                 f"[ToastTool._generate_iframe_payment_link] Generated iframe URL: {iframe_url}"
