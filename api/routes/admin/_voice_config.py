@@ -35,7 +35,9 @@ async def create_voice_config(
     authorize_user_account(context, project.account.name)
 
     voice_service = VoiceService()
-    return await voice_service.create_voice_config(create_request, async_session)
+    return await voice_service.create_voice_config(
+        create_request, async_session, context.email, project.account_id
+    )
 
 
 async def get_voice_config(
@@ -110,7 +112,11 @@ async def update_voice_config(
     authorize_user_account(context, project.account.name)
 
     return await voice_service.update_voice_config(
-        voice_config_id, update_request, async_session
+        voice_config_id,
+        update_request,
+        async_session,
+        context.email,
+        project.account_id,
     )
 
 
@@ -139,4 +145,6 @@ async def delete_voice_config(
     await async_session.refresh(project, ["account"])
     authorize_user_account(context, project.account.name)
 
-    return await voice_service.delete_voice_config(voice_config_id, async_session)
+    return await voice_service.delete_voice_config(
+        voice_config_id, async_session, context.email, project.account_id
+    )

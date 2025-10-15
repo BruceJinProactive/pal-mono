@@ -660,6 +660,16 @@ async def self_onboard_voice_config(
     voice_service = VoiceService()
 
     try:
+        # Get project to retrieve account_id for change logging
+        project = await project_service.get_project_by_id_async(
+            async_session, project_id
+        )
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        await async_session.refresh(project, ["account"])
+        account_id = project.account_id
+
         if language != "Multilingual":
             # Get localized messages for the selected language
             lang_config = _get_language_config(language, request.agent_greeting_message)
@@ -677,6 +687,8 @@ async def self_onboard_voice_config(
             voice_config = await voice_service.create_voice_config(
                 create_request=voice_config_request,
                 async_session=async_session,
+                author=context.email,
+                account_id=account_id,
             )
 
             logger.info(
@@ -703,6 +715,8 @@ async def self_onboard_voice_config(
                 voice_config = await voice_service.create_voice_config(
                     create_request=voice_config_request,
                     async_session=async_session,
+                    author=context.email,
+                    account_id=account_id,
                 )
                 logger.info(
                     f"[SelfOnboarding] Created voice config {voice_config.id} for project {project_id}"
