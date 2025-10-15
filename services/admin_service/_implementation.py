@@ -1455,6 +1455,35 @@ def delete_account_user(account_name: str, user_email: str) -> None:
             raise ValueError(f"Failed to delete Cognito user: {str(e)}")
 
 
+def get_user_name_by_email(email: str) -> str | None:
+    """
+    Retrieves the user's display name from AWS Cognito by email address.
+
+    Args:
+        email: The email address of the user
+
+    Returns:
+        The user's display name (from the 'name' attribute) or None if not found
+    """
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+    try:
+        response = cognito_client.list_users(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Filter=f'email="{email}"',
+        )
+        users = response.get("Users", [])
+        if not users:
+            logger.warning(f"No user found for email: {email}")
+            return None
+
+        user = users[0]
+        name = get_attr(user.get("Attributes", []), "name")
+        return name if name else None
+    except ClientError as e:
+        logger.error(f"Error retrieving user name for email {email}: {e}")
+        return None
+
+
 def update_conversation(
     session: Session,
     conversation_id: uuid.UUID,

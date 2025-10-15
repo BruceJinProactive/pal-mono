@@ -43,6 +43,7 @@ class Feedback(BaseModel):
     message_content: str
 
     author_identifier: str | None = None
+    author_name: str | None = None
     reaction: str | None = None
     tags: list[str] | None = None
     note: str | None = None

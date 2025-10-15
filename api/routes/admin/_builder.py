@@ -29,6 +29,7 @@ from api.schemas.admin.subscription import (
 from api.schemas.admin.voice_config import VoiceConfig
 from db.repositories.prompt_repository import PromptRepository
 from db.tables.accounts import OnboardingMethod
+from services import admin_service
 from services.admin_service.schema import CreatedProjectInfo
 from services.integration_service.schema import IntegrationDetail
 from services.subscription_service._stripe_customer import CustomerInfo
@@ -191,11 +192,18 @@ def build_feedback(
     if not message:
         # fallback to retrieving the message from the db
         message = feedback.message
+
+    # Get author name from Cognito if author_identifier (email) is present
+    author_name = None
+    if feedback.author_identifier:
+        author_name = admin_service.get_user_name_by_email(feedback.author_identifier)
+
     return Feedback(
         id=str(feedback.id),
         message_id=str(feedback.message_id),
         message_content=message.body.get("text", {}).get("body"),
         author_identifier=feedback.author_identifier,
+        author_name=author_name,
         reaction=feedback.reaction,
         tags=feedback.tags,
         note=feedback.note,

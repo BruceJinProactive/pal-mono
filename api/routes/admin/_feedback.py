@@ -126,8 +126,9 @@ async def create_feedback(
     account = message.conversation.user.account
     authorize_user_account(context, account.name)
 
-    # Process create
+    # Process create - store user's email in author_identifier
     feedback = _to_db_feedback(feedback_create)
+    feedback.author_identifier = context.email
     feedback.message_id = feedback_create.message_id
     persisted_feedback = feedback_service.create_feedback(session, feedback)
     return _builder.build_feedback(persisted_feedback)

@@ -603,6 +603,19 @@ def delete_account_user(account_name: str, user_email: str) -> None:
     return _implementation.delete_account_user(account_name, user_email)
 
 
+def get_user_name_by_email(email: str) -> str | None:
+    """
+    Retrieves the user's display name from AWS Cognito by email address.
+
+    Args:
+        email: The email address of the user
+
+    Returns:
+        The user's display name (from the 'name' attribute) or None if not found
+    """
+    return _implementation.get_user_name_by_email(email)
+
+
 def signin_google_user(google_credential: str):
     """
     Sign in a user using Google credentials.
@@ -816,6 +829,7 @@ __all__ = [
     "signin_google_user",
     "is_google_user",
     "delete_account_user",
+    "get_user_name_by_email",
     "update_conversation",
     "list_leads",
     "create_lead",
