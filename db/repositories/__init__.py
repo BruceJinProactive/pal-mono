@@ -1,3 +1,4 @@
+from . import checkpoint_repository
 from .account_repository import AccountRepository
 from .agent_repository import AgentRepository, AgentRepositoryAsync
 from .analytics_repository import AnalyticsRepository

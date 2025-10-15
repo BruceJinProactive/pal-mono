@@ -1,3 +1,5 @@
+import asyncio
+import base64
 import os
 import uuid
 
@@ -386,4 +388,111 @@ async def delete_checkpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete checkpoint {checkpoint_id}",
+        )
+
+
+async def compare_checkpoint(
+    checkpoint_id: uuid.UUID,
+    image: UploadFile,
+    context: UserContext,
+    session: Session,
+    submission_id: str | None = None,
+) -> dict:
+    """
+    Compare an uploaded image with a checkpoint's image.
+
+    This endpoint takes an uploaded image and compares it with the checkpoint's stored image
+    using OpenAI's Vision API to determine if they match according to the checkpoint's
+    description and rules.
+
+    Args:
+        checkpoint_id: UUID of the checkpoint to compare against
+        image: The uploaded image file to compare
+        context: User context for authorization
+        session: Database session
+        submission_id: Optional submission ID from frontend (UUID string)
+
+    Returns:
+        dict: Comparison result with match status and explanation
+    """
+    # Get checkpoint and validate it exists
+    checkpoint = checkpoint_service.get_checkpoint(session, checkpoint_id)
+    if not checkpoint:
+        raise not_found_error(f"Checkpoint {checkpoint_id} does not exist.")
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise not_found_error(f"Project {checkpoint.project_id} does not exist.")
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise not_found_error(
+            f"Account for project {checkpoint.project_id} does not exist."
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Check if checkpoint has an image
+    if not checkpoint.image_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Checkpoint {checkpoint_id} does not have an image to compare against.",
+        )
+
+    try:
+        # Read and encode the uploaded image
+        uploaded_image_content = await image.read()
+        uploaded_image_base64 = base64.b64encode(uploaded_image_content).decode("utf-8")
+
+        # Step 1: Parse or generate submission_id
+        if submission_id:
+            try:
+                submission_uuid = uuid.UUID(submission_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid submission_id format: {submission_id}. Must be a valid UUID.",
+                )
+        else:
+            # Auto-generate if not provided
+            submission_uuid = uuid.uuid4()
+
+        # Step 2: Create checkpoint_result with 'processing' status immediately
+        checkpoint_result = checkpoint_service.create_checkpoint_result_processing(
+            session=session,
+            checkpoint_id=checkpoint_id,
+            submission_id=submission_uuid,
+        )
+
+        # Step 3: Start background task to run OpenAI comparison
+        asyncio.create_task(
+            checkpoint_service.compare_and_update_checkpoint_background(
+                checkpoint_result_id=checkpoint_result.id,
+                checkpoint=checkpoint,
+                uploaded_image_base64=uploaded_image_base64,
+            )
+        )
+
+        # Step 4: Return 200 immediately with processing status
+        return {
+            "checkpoint_result_id": str(checkpoint_result.id),
+            "checkpoint_id": str(checkpoint_id),
+            "checkpoint_name": checkpoint.name,
+            "checkpoint_description": checkpoint.description,
+            "checkpoint_rules": checkpoint.rules,
+            "submission_id": str(submission_uuid),
+            "status": "processing",
+            "message": "Comparison started. Check result status using checkpoint_result_id.",
+            "created_at": checkpoint_result.created_at.isoformat(),
+        }
+
+    except HTTPException:
+        # Re-raise HTTP exceptions (validation errors)
+        raise
+    except Exception as e:
+        logger.error(f"Error starting checkpoint comparison: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start comparison: {str(e)}",
         )
