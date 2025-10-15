@@ -12,7 +12,13 @@ from api.schemas.admin.feedback import (
     ListFeedbacksResponse,
     UpdateFeedbackRequest,
 )
-from services import account_service, feedback_service, message_service, user_service
+from services import (
+    account_service,
+    admin_service,
+    feedback_service,
+    message_service,
+    user_service,
+)
 from utils.log import logger
 
 from . import UserContext, _builder
@@ -108,8 +114,13 @@ async def retrieve_feedback_by_id(
     account = conversation.user.account
     authorize_user_account(context, account.name)
 
+    if feedback.author_identifier:
+        author_name = admin_service.get_user_name_by_email(feedback.author_identifier)
+    else:
+        author_name = None
+
     return FeedbackDetail(
-        feedback=_builder.build_feedback(feedback),
+        feedback=_builder.build_feedback(feedback, author_name=author_name),
         conversation_id=conversation.id,
     )
 
