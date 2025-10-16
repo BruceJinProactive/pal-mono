@@ -3,9 +3,11 @@ from .adora_orders import AdoraOrder
 from .agents import Agent
 from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
+from .catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from .change_log import ChangeAction, ChangeField, ChangeLog
 from .checkpoint_results import CheckpointResult
 from .checkpoints import CheckPoint
+from .contacts import Contact
 from .conversations import Conversation, ConversationStatus
 from .faqs import FAQ
 from .feedback import Feedback
@@ -14,6 +16,7 @@ from .lead import Lead
 from .messages import Message
 from .orders import Order
 from .phonecalls import PhoneCall
+from .project_contacts import ProjectContact
 from .projects import Project
 from .prompts import Prompt, PromptDetails
 from .reservations import Reservation
