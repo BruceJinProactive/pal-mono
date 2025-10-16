@@ -51,7 +51,16 @@ class AccountStatus(str, enum.Enum):
     )
     active = "active"  # account ready and running in production
     disabled = "disabled"  # temporarily disabled account
-    deleted = "deleted"  # soft deleting account
+    suspended = (
+        "suspended"  # account suspended due to payment issues or policy violations
+    )
+    pending_closure = (
+        "pending_closure"  # account closure requested, awaiting final processing
+    )
+    closed = "closed"  # account closed and no longer accessible
+    deleted = (
+        "deleted"  # soft delete - account marked as deleted but retained in database
+    )
 
 
 class AccountSegment(str, enum.Enum):
