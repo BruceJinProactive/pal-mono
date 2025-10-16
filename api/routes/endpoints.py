@@ -9,6 +9,7 @@ class ApiEndpoints:
     PING: str = "/ping"
     ASSETS: str = "/assets"
     INTEGRATIONS: str = "/integrations"
+    OPERATION: str = "/operation"
 
 
 endpoints = ApiEndpoints()
