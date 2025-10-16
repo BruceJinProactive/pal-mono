@@ -568,6 +568,8 @@ class ToastTool(Toolkit):
                 order.externalId,
                 payment_intent_external_reference_id,
                 payment_intent_result.sessionSecret,
+                subtotal_cents=payment_intent_result.amount,
+                tips_cents=0,
             )
 
             # Return payment intent details
@@ -1119,6 +1121,8 @@ class ToastTool(Toolkit):
         order_external_id: str,
         payment_intent_external_reference_id: str,
         session_secret: str,
+        subtotal_cents: int,
+        tips_cents: int = 0,
         payment_api_endpoint: str = "https://ws-sandbox-api.eng.toasttab.com",
     ) -> str:
         """
@@ -1171,6 +1175,8 @@ class ToastTool(Toolkit):
                 "storeId": store_id,
                 "orderExternalId": order_external_id,
                 "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
+                "subtotal": subtotal_cents,
+                "tips": tips_cents,
                 "sessionSecret": session_secret,
                 "iframeBearerToken": iframe_bearer_token.access_token,
                 "iat": int(time.time()),
