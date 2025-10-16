@@ -3,19 +3,19 @@ from typing import List
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.tables import Contact
 from utils.log import logger
 
 
-class ContactRepository:
-    def __init__(self, session: Session):
+class ContactRepositoryAsync:
+    def __init__(self, session: AsyncSession):
         self.session = session
 
-    def create_contact(self, contact: Contact) -> Contact:
+    async def create_contact(self, contact: Contact) -> Contact:
         """
-        Create a new contact synchronously.
+        Create a new contact asynchronously.
         Args:
             contact (Contact): The contact object to create.
         Returns:
@@ -32,18 +32,18 @@ class ContactRepository:
 
         try:
             self.session.add(db_contact)
-            self.session.commit()
-            self.session.refresh(db_contact)
+            await self.session.commit()
+            await self.session.refresh(db_contact)
         except SQLAlchemyError as e:
-            self.session.rollback()
+            await self.session.rollback()
             logger.error(f"Error creating contact: {e}")
             raise
 
         return db_contact
 
-    def delete_contact(self, contact_id: uuid.UUID) -> Contact | None:
+    async def delete_contact(self, contact_id: uuid.UUID) -> Contact | None:
         """
-        Delete a contact by ID synchronously.
+        Delete a contact by ID asynchronously.
         Args:
             contact_id (uuid.UUID): The ID of the contact to delete.
         Returns:
@@ -51,7 +51,7 @@ class ContactRepository:
         """
         try:
             query = select(Contact).filter(Contact.id == contact_id)
-            result = self.session.execute(query)
+            result = await self.session.execute(query)
             db_contact = result.scalar_one_or_none()
 
             if db_contact is None:
@@ -62,23 +62,23 @@ class ContactRepository:
                 if not key.startswith("_"):
                     setattr(contact_snapshot, key, value)
 
-            self.session.delete(db_contact)
-            self.session.commit()
+            await self.session.delete(db_contact)
+            await self.session.commit()
             return contact_snapshot
         except SQLAlchemyError as e:
-            self.session.rollback()
+            await self.session.rollback()
             logger.error(f"Error deleting contact: {e}")
             raise
         except Exception as e:
-            self.session.rollback()
+            await self.session.rollback()
             logger.exception(
                 f"Unexpected error while deleting contact {contact_id}: {e}"
             )
             raise
 
-    def batch_list_contacts(self, contact_ids: List[uuid.UUID]) -> List[Contact]:
+    async def batch_list_contacts(self, contact_ids: List[uuid.UUID]) -> List[Contact]:
         """
-        List contacts by a batch of IDs synchronously.
+        List contacts by a batch of IDs asynchronously.
         Args:
             contact_ids (List[uuid.UUID]): List of contact IDs to retrieve.
         Returns:
@@ -86,9 +86,9 @@ class ContactRepository:
         """
         try:
             query = select(Contact).filter(Contact.id.in_(contact_ids))
-            result = self.session.execute(query)
+            result = await self.session.execute(query)
             return list(result.scalars().all())
         except SQLAlchemyError as e:
-            self.session.rollback()
+            await self.session.rollback()
             logger.error(f"Error retrieving contacts by IDs: {e}")
             raise
