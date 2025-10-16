@@ -30,8 +30,11 @@ async def create_faq(
         )
     authorize_user_account(context, account.name)
 
+    project_uuid = UUID(faq_create.project_id) if faq_create.project_id else None
+
     faq = db.FAQ(
         account_id=account.id,
+        project_id=project_uuid,
         question=faq_create.question,
         answer=faq_create.answer,
     )
@@ -43,6 +46,7 @@ async def get_faqs(
     account_name: str,
     context: UserContext,
     session: Session,
+    project_id: str | None = None,
 ) -> ListFAQsResponse:
     account = account_service.get_account(session, account_name)
     if not account:
@@ -52,7 +56,9 @@ async def get_faqs(
         )
     authorize_user_account(context, account.name)
 
-    faqs = faq_service.get_faqs_by_account_id(session, account.id)
+    project_uuid = UUID(project_id) if project_id else None
+
+    faqs = faq_service.get_faqs_by_account_id(session, account.id, project_uuid)
     return ListFAQsResponse(
         faqs=[_builder.build_faq(faq) for faq in faqs],
         total=len(faqs),

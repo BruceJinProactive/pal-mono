@@ -15,9 +15,11 @@ def get_faq_by_id(session: Session, faq_id: UUID) -> db.FAQ | None:
     return faq_repository.get_faq_by_id(faq_id)
 
 
-def get_faqs_by_account_id(session: Session, account_id: UUID) -> list[db.FAQ]:
+def get_faqs_by_account_id(
+    session: Session, account_id: UUID, project_id: UUID | None = None
+) -> list[db.FAQ]:
     faq_repository = db.FAQRepository(session)
-    return faq_repository.get_faqs_by_account_id(account_id)
+    return faq_repository.get_faqs_by_account_id(account_id, project_id)
 
 
 def update_faq(session: Session, faq_id: UUID, updates: dict) -> db.FAQ | None:

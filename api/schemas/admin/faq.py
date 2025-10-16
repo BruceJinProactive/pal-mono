@@ -8,6 +8,7 @@ class CreateFAQRequest(BaseModel):
 
     question: str
     answer: str
+    project_id: Optional[str] = None
 
 
 class UpdateFAQRequest(BaseModel):
@@ -15,6 +16,7 @@ class UpdateFAQRequest(BaseModel):
 
     question: Optional[str] = None
     answer: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class FAQ(BaseModel):
@@ -22,6 +24,7 @@ class FAQ(BaseModel):
 
     id: str
     account_id: str
+    project_id: Optional[str] = None
     question: str
     answer: str
     created_at: str

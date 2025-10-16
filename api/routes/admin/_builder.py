@@ -521,6 +521,7 @@ def build_faq(faq: db.FAQ) -> FAQ:
     return FAQ(
         id=str(faq.id),
         account_id=str(faq.account_id),
+        project_id=str(faq.project_id) if faq.project_id else None,
         question=faq.question,
         answer=faq.answer,
         created_at=faq.created_at.isoformat(),

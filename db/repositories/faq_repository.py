@@ -39,9 +39,14 @@ class FAQRepository:
             logger.error(f"Error retrieving FAQ: {e}")
             raise
 
-    def get_faqs_by_account_id(self, account_id: UUID) -> list[FAQ]:
+    def get_faqs_by_account_id(
+        self, account_id: UUID, project_id: UUID | None = None
+    ) -> list[FAQ]:
         try:
-            return self.session.query(FAQ).filter(FAQ.account_id == account_id).all()
+            query = self.session.query(FAQ).filter(FAQ.account_id == account_id)
+            if project_id is not None:
+                query = query.filter(FAQ.project_id == project_id)
+            return query.all()
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving FAQs by account ID: {e}")
             raise

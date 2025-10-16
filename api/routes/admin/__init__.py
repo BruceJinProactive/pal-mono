@@ -970,11 +970,12 @@ async def get_faqs(
     account_name: str,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
+    project_id: str | None = Query(None, description="Optional project ID"),
 ) -> ListFAQsResponse:
     """
-    Get all FAQs for an account.
+    Get all FAQs for an account, optionally filtered by project ID.
     """
-    return await _faq.get_faqs(account_name, context, session)
+    return await _faq.get_faqs(account_name, context, session, project_id)
 
 
 @admin_router.put("/accounts/{account_name}/faqs", status_code=status.HTTP_201_CREATED)
