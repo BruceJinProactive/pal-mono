@@ -1,5 +1,6 @@
 import os
 
+from ddtrace.llmobs.decorators import task
 from llama_index.core import (
     PromptTemplate,
     Settings,
@@ -18,6 +19,7 @@ from agent.knowledge.integrations.pinecone import PineconeIntegration
 from . import _config, _constants
 
 
+@task(name="Get Knowledge")
 def get_knowledge(config: _config.KnowledgeConfig) -> BaseQueryEngine:
     if config.provider == _config.KnowledgeProvider.LLAMAINDEX:
         # Ensure that settings follow LlamaIndexSettings schema

@@ -2,9 +2,12 @@ import os
 from typing import Any, AsyncIterator, Mapping
 
 from agno.models.azure.openai_chat import AzureOpenAI
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
 from openai import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
+from utils.dd import traced
 from utils.log import logger
 
 from ._config import ModelOptions
@@ -37,6 +40,7 @@ def _build_azure_client() -> AsyncAzureOpenAI:
     )
 
 
+@task(name="LLM Call Default")
 async def call_llm_default(
     model_option: ModelOptions, params: Mapping[str, Any]
 ) -> ChatCompletion:
@@ -57,6 +61,14 @@ async def call_llm_default(
 
     sanitized_params = {key: value for key, value in params.items() if key != "stream"}
     sanitized_params["model"] = deployment_name
+
+    LLMObs.annotate(
+        input_data=sanitized_params,
+        tags={
+            "model": deployment_name,
+            "streaming": False,
+        },
+    )
     try:
         response = await client.chat.completions.create(
             stream=False, **sanitized_params
@@ -69,6 +81,7 @@ async def call_llm_default(
         raise
 
 
+@task(name="LLM Call Stream")
 async def call_llm_stream(
     model_option: ModelOptions, params: Mapping[str, Any]
 ) -> AsyncIterator[ChatCompletionChunk]:
@@ -88,6 +101,12 @@ async def call_llm_stream(
     deployment_name = _get_deployment_name(model_option)
     sanitized_params = {key: value for key, value in params.items() if key != "stream"}
     sanitized_params["model"] = deployment_name
+    LLMObs.annotate(
+        tags={
+            "model": deployment_name,
+            "streaming": True,
+        }
+    )
     try:
         response = await client.chat.completions.create(stream=True, **sanitized_params)
         if not hasattr(response, "__aiter__"):
@@ -98,6 +117,7 @@ async def call_llm_stream(
         raise
 
 
+@traced("Build Agno Model")
 def build_agno_model(model_option: ModelOptions) -> AzureOpenAI:
     """
     Returns an Agno agent model that calls Azure OpenAI to make LLM requests.

@@ -1,11 +1,15 @@
 import uuid
 
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task
+
 from agent.input_output import Message
 from db import MessageRepositoryAsync
 from db.session import AsyncSessionLocal
 from utils.log import logger
 
 
+@task(name="Query History Messages")
 async def query_history_messages(
     conversation_id: uuid.UUID, limit: int = 20
 ) -> list[Message]:
@@ -33,4 +37,10 @@ async def query_history_messages(
                     sender_identifier=sender_identifier,
                 )
             )
+        LLMObs.annotate(
+            tags={
+                "conversation_id": conversation_id,
+                "history_messages": len(history_messages),
+            }
+        )
         return history_messages
