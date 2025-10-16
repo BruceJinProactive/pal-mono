@@ -46,6 +46,8 @@ class FAQRepository:
             query = self.session.query(FAQ).filter(FAQ.account_id == account_id)
             if project_id is not None:
                 query = query.filter(FAQ.project_id == project_id)
+            else:
+                query = query.filter(FAQ.project_id.is_(None))
             return query.all()
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving FAQs by account ID: {e}")
