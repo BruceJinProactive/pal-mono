@@ -633,7 +633,6 @@ def parse_service_periods(
 
 
 def get_toast_access_token_from_aws(
-    store_id: str,
     token_api_endpoint: Optional[str] = None,
     token_name: str = "TOAST_ACCESS_TOKEN",
     credential_name: str = "TOAST_CLIENT_CREDENTIALS",
@@ -665,6 +664,7 @@ def get_toast_access_token_from_aws(
         )
         return refresh_toast_access_token_from_aws(
             token_api_endpoint=token_api_endpoint,
+            token_name=token_name,
             credential_name=credential_name,
         )
 
@@ -675,6 +675,7 @@ def get_toast_access_token_from_aws(
         )
         return refresh_toast_access_token_from_aws(
             token_api_endpoint=token_api_endpoint,
+            token_name=token_name,
             credential_name=credential_name,
         )
     logger.debug(
@@ -685,6 +686,7 @@ def get_toast_access_token_from_aws(
 
 def refresh_toast_access_token_from_aws(
     token_api_endpoint: Optional[str] = None,
+    token_name: str = "TOAST_ACCESS_TOKEN",
     credential_name: str = "TOAST_CLIENT_CREDENTIALS",
 ) -> ToastAccessToken:
     """
@@ -756,7 +758,7 @@ def refresh_toast_access_token_from_aws(
     # Save the complete ToastAccessToken object to AWS secrets
     token_json = bearer_token.model_dump_json()
     try:
-        upsert_client_secret("TOAST_ACCESS_TOKEN", token_json)
+        upsert_client_secret(token_name, token_json)
     except Exception as e:
         logger.warning(
             f"[ToastTool.refresh_toast_access_token_from_aws] Token refreshed but failed to persist to Secrets Manager: {e}"

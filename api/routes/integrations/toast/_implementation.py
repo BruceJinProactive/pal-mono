@@ -131,7 +131,7 @@ def _fetch_dining_options(integration: Integration) -> str | None:
         return None
 
     try:
-        bearer_token = get_toast_access_token_from_aws(store_id=integration.business_id)
+        bearer_token = get_toast_access_token_from_aws()
         response = connect_toast_order_hub(
             http_method=HttpMethod.GET,
             bearer_token=bearer_token,
@@ -316,18 +316,14 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
                     "error": "Missing required fields: storeId, orderExternalId, paymentExternalReferenceId"
                 },
             )
-        toast_bearer_token = get_toast_access_token_from_aws(
-            store_id=store_id,
-            token_api_endpoint="ws-sandbox-api.eng.toasttab.com" if test_mode else None,
-        )
-        if not toast_bearer_token:
-            logger.error(
-                f"[ToastAPIIntegration.add_payment_to_order] Failed to obtain Toast access token for store {store_id}"
+        if test_mode:
+            toast_bearer_token = get_toast_access_token_from_aws(
+                token_api_endpoint="ws-sandbox-api.eng.toasttab.com",
+                token_name="TOAST_SANDBOX_ACCESS_TOKEN",
+                credential_name="TOAST_SANDBOX_CLIENT_CREDENTIALS",
             )
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"error": "Failed to obtain Toast access token"},
-            )
+        else:
+            toast_bearer_token = get_toast_access_token_from_aws()
 
         # 1. Fetch order details from Toast API using order_external_id
         logger.debug(

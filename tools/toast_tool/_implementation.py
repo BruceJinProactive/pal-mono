@@ -131,15 +131,12 @@ class ToastTool(Toolkit):
     @property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
-            return get_toast_access_token_from_aws(
-                self.store_id, self.token_api_endpoint
-            )
+            return get_toast_access_token_from_aws(self.token_api_endpoint)
 
     @property
     def _toast_hosted_payment_checkout_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_hosted_payment_checkout_bearer_token"):
             return get_toast_access_token_from_aws(
-                self.store_id,
                 self.token_api_endpoint,
                 token_name="TOAST_PAYMENT_CHECKOUT_ACCESS_TOKEN",
                 credential_name="TOAST_PAYMENT_CHECKOUT_CLIENT_CREDENTIALS",
@@ -149,7 +146,6 @@ class ToastTool(Toolkit):
     def _toast_hosted_payment_iframe_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_hosted_payment_iframe_bearer_token"):
             return get_toast_access_token_from_aws(
-                self.store_id,
                 self.token_api_endpoint,
                 token_name="TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
                 credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
@@ -1145,7 +1141,6 @@ class ToastTool(Toolkit):
             # This uses TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS
             try:
                 iframe_bearer_token = get_toast_access_token_from_aws(
-                    store_id=store_id,
                     token_api_endpoint=payment_api_endpoint,
                     token_name="TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
                     credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
