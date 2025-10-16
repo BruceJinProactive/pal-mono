@@ -79,6 +79,7 @@ class ToastTool(Toolkit):
         default_coupon_id: str | None = None,
         token_api_endpoint: str | None = None,
         general_api_endpoint: str | None = None,
+        sandbox: bool = False,
         hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
         enable_hosted_checkout: bool = False,
     ):
@@ -98,6 +99,7 @@ class ToastTool(Toolkit):
         self.default_coupon_id = default_coupon_id
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
+        self.sandbox = sandbox
         self._cached_store_info: str | None = None
         # Use sandbox iframe endpoint for hosted checkout
         self.hosted_payment_iframe_endpoint = hosted_payment_iframe_endpoint
@@ -131,6 +133,12 @@ class ToastTool(Toolkit):
     @property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
+            if self.sandbox:
+                return get_toast_access_token_from_aws(
+                    self.token_api_endpoint,
+                    token_name="TOAST_SANDBOX_ACCESS_TOKEN",
+                    credential_name="TOAST_SANDBOX_CLIENT_CREDENTIALS",
+                )
             return get_toast_access_token_from_aws(self.token_api_endpoint)
 
     @property
@@ -872,13 +880,6 @@ class ToastTool(Toolkit):
             )
             return "Sorry, do you want that for Takeout? We only support Takeout orders at the moment."
 
-        if not self._toast_bearer_token:
-            return (
-                "Failed to authenticate ordering tool. "
-                "Please reach out to our support team at help@palona.ai "
-                "for assistance."
-            )
-
         try:
             _ = validate_item_modifier_quantity(order.checks[0].selections)
         except Exception as e:
@@ -890,14 +891,12 @@ class ToastTool(Toolkit):
         # TODO: Validate the address if the order is for delivery
         # PLACEHOLDER: Validate the address if the order is for delivery
 
-        logger.debug(f"Extracted structured data: {order}")
-        logger.debug(f"Extracted structured data type: {type(order)}")
-        if not self._toast_bearer_token:
-            return (
-                "Failed to authenticate ordering tool. "
-                "Please reach out to our support team at help@palona.ai "
-                "for assistance."
-            )
+        logger.debug(
+            f"[ToastTool._finalize_order_details] Extracted structured data: {order}"
+        )
+        logger.debug(
+            f"[ToastTool._finalize_order_details] Extracted structured data type: {type(order)}"
+        )
 
         ### Validate checks ###
         if not order.checks:
