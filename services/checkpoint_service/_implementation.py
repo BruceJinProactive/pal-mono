@@ -123,8 +123,8 @@ def compare_checkpoint_images(
         rules_example = f"""
 **EXAMPLE - If there are {rules_count} rules, your "rules" array should look like:**
 [
-  {{"rule_number": 1, "rule_text": "...", "status": "PASS", "details": "...", "location": "...", "safety_impact": "N/A"}},
-  {{"rule_number": 2, "rule_text": "...", "status": "FAIL", "details": "...", "location": "...", "safety_impact": "..."}},
+  {{"rule_number": 1, "rule_text": "...", "status": "PASS", "details": "...", "location": "..."}},
+  {{"rule_number": 2, "rule_text": "...", "status": "FAIL", "details": "...", "location": "..."}},
   ... (continue for all {rules_count} rules)
 ]
 """
@@ -138,7 +138,7 @@ def compare_checkpoint_images(
 
 **TEST IMAGE (Second Image)**: This is the image being inspected.
 
-**IMPORTANT**: Focus ONLY on cleanliness and food safety issues.
+**IMPORTANT**: Focus ONLY on the rules provided below, please do NOT consider any other factors.
 
 {rules_section}**Your Task:**
 FIRST, verify that the TEST image is related to the checkpoint area/subject (e.g., if checkpoint is "Kitchen Sink", the test image should show a kitchen sink).
@@ -158,20 +158,17 @@ FIRST, verify that the TEST image is related to the checkpoint area/subject (e.g
       "status": "PASS" or "FAIL",
       "details": "Specific details about compliance or violation",
       "location": "Where in the image this applies",
-      "safety_impact": "How this affects food safety (if FAIL)"
     }}
   ],
 }}
 
 **CRITICAL INSTRUCTIONS**:
 - You MUST evaluate ALL {rules_count} rules listed above
-- The "rules" array MUST contain exactly {rules_count} entries (one for each rule)
-- Each rule entry must include: rule_number (1-{rules_count}), rule_text, status, details, location, safety_impact
 - For PASSING rules: Set status="PASS", provide confirmation in details
 - For FAILING rules: Set status="FAIL", provide specific violation in details
 - DO NOT skip any rules - all {rules_count} rules must be evaluated
 - Return ONLY valid JSON, no markdown formatting or extra text
-- Focus ONLY on cleanliness and food safety
+
 
 **VALIDATION CHECK**: Before returning, verify your "rules" array has exactly {rules_count} entries."""
 
@@ -243,6 +240,7 @@ def list_checkpoint_results(
     checkpoint_id: UUID | None = None,
     submission_id: UUID | None = None,
     status: CheckStatus | None = None,
+    project_id: UUID | None = None,
 ) -> list[db.CheckpointResult]:
     """
     List checkpoint results with optional filters.
@@ -252,12 +250,13 @@ def list_checkpoint_results(
         checkpoint_id: Optional filter by checkpoint ID
         submission_id: Optional filter by submission ID
         status: Optional filter by status
+        project_id: Optional filter by project ID (via checkpoint)
 
     Returns:
         list[db.CheckpointResult]: List of checkpoint results
     """
     return checkpoint_repository.list_checkpoint_results(
-        session, checkpoint_id, submission_id, status
+        session, checkpoint_id, submission_id, status, project_id
     )
 
 
