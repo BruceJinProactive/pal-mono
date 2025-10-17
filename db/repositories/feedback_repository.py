@@ -77,11 +77,16 @@ class FeedbackRepository:
             if db_feedback is None:
                 raise ValueError(f"Feedback {feedback_id} not found")
             for key, value in vars(updated_feedback).items():
-                if hasattr(Feedback, key) and key not in {
-                    "id",
-                    "created_at",
-                    "updated_at",
-                }:
+                if (
+                    hasattr(Feedback, key)
+                    and key
+                    not in {
+                        "id",
+                        "created_at",
+                        "updated_at",
+                    }
+                    and value is not None
+                ):
                     setattr(db_feedback, key, value)
             self.session.commit()
             self.session.refresh(db_feedback)
