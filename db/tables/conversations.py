@@ -77,6 +77,20 @@ class Conversation(Base):
     # Call ID for call transfer
     call_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
+    # Conversation purpose (ordering, reservation, waitlist, etc.)
+    purpose: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+
+    # Language of the conversation (english, french, spanish, chinese, etc.)
+    language: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+
+    # Conversation ended reason (customer_ended, assistant_forwarded, etc.)
+    ended_reason: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+
+    # Order/transaction ID if customer successfully converted (ordered and paid)
+    customer_converted: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
     # Relationships
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
