@@ -179,7 +179,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         notes: str = "",
     ) -> str:
         """
-        Book the requested reservation slot directly through Resy's public API.
+        Books and completes the requested reservation on Resy. Only use this function if the user explicitly tells you to make the reservation.
         Always call `check_availability` beforehand to ensure the slot is still open.
 
         Args:
