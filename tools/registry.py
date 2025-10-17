@@ -5,6 +5,7 @@ from agno.tools.toolkit import Toolkit
 # TODO: Absolute import required to resolve circular import. Fix this anti-pattern.
 from agent.tool._config import ToolIdentifier, ToolMetadata
 from tools.adora_tool import AdoraTool
+from tools.catering_tool import CateringTool
 from tools.menusifu_tool import MenuSifuTool
 from tools.minitable_tool import MiniTableTool
 from tools.olo_tool import OloTool
@@ -30,6 +31,7 @@ class ToolRegistry:
         self._tools: Dict[str, Type[Toolkit]] = {
             # Register available tools
             "adora_tool": AdoraTool,
+            "catering_tool": CateringTool,
             "toast_tool": ToastTool,
             "olo_tool": OloTool,
             "vapi_tool": VapiTool,
