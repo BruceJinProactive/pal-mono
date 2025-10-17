@@ -231,7 +231,6 @@ def list_checkpoint_results(
     checkpoint_id: UUID | None = None,
     submission_id: UUID | None = None,
     status: "db.tables.types.CheckStatus | None" = None,
-    project_id: UUID | None = None,
 ) -> list["db.CheckpointResult"]:
     """
     List checkpoint results with optional filters.
@@ -241,13 +240,12 @@ def list_checkpoint_results(
         checkpoint_id: Optional filter by checkpoint ID
         submission_id: Optional filter by submission ID
         status: Optional filter by status
-        project_id: Optional filter by project ID (via checkpoint)
 
     Returns:
         List of checkpoint results
     """
     return _implementation.list_checkpoint_results(
-        session, checkpoint_id, submission_id, status, project_id
+        session, checkpoint_id, submission_id, status
     )
 
 

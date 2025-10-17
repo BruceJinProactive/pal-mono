@@ -179,7 +179,6 @@ def list_checkpoint_results(
     checkpoint_id: UUID | None = None,
     submission_id: UUID | None = None,
     status: CheckStatus | None = None,
-    project_id: UUID | None = None,
 ) -> list[CheckpointResult]:
     """
     List checkpoint results with optional filters.
@@ -189,20 +188,12 @@ def list_checkpoint_results(
         checkpoint_id: Optional filter by checkpoint ID
         submission_id: Optional filter by submission ID
         status: Optional filter by status
-        project_id: Optional filter by project ID (via checkpoint)
 
     Returns:
         list[CheckpointResult]: List of checkpoint results
     """
     try:
         query = session.query(CheckpointResult)
-
-        # Join with CheckPoint table if we need to filter by project_id
-        if project_id:
-            query = query.join(
-                CheckPoint, CheckpointResult.checkpoint_id == CheckPoint.id
-            )
-            query = query.filter(CheckPoint.project_id == project_id)
 
         if checkpoint_id:
             query = query.filter(CheckpointResult.checkpoint_id == checkpoint_id)

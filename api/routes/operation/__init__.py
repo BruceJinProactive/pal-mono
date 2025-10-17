@@ -172,10 +172,6 @@ async def compare_checkpoint(
 
 @operation_router.get("/checkpoints/results", status_code=status.HTTP_200_OK)
 async def list_checkpoint_results_by_submission(
-    project_id: uuid.UUID = Query(
-        ...,
-        description="Required project ID to filter checkpoint results",
-    ),
     status_param: CheckStatus | None = Query(
         None,
         description="Optional filter by status (processing, active, failed)",
@@ -185,13 +181,12 @@ async def list_checkpoint_results_by_submission(
     session: Session = Depends(db.get_db),
 ) -> ListCheckpointResultsBySubmissionResponse:
     """
-    List all checkpoint results grouped by submission_id for a specific project.
+    List all checkpoint results grouped by submission_id.
 
-    This endpoint returns checkpoint results filtered by the required project_id,
+    This endpoint returns all checkpoint results across all projects,
     grouped by their submission_id for easy tracking of multi-checkpoint submissions.
 
     Query parameters:
-    - project_id (required): Project ID to filter checkpoint results
     - status (optional): Filter results by status (processing, active, failed)
 
     Returns:
@@ -208,7 +203,7 @@ async def list_checkpoint_results_by_submission(
     }
     """
     return await _checkpoint.list_checkpoint_results_by_submission(
-        status_param, project_id, context, session
+        status_param, context, session
     )
 
 
