@@ -121,6 +121,10 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             The exact requested time if available, otherwise up to 5 closest alternatives.
         """
 
+        party_size = (
+            2 if party_size == 1 else party_size
+        )  # 2 people minimum for checking
+
         try:
             with LLMObs.task(name="search_resy_availability"):
                 response = self._search_resy(day=date, party_size=party_size)
