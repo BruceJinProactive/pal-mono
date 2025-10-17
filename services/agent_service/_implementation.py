@@ -71,9 +71,12 @@ async def construct_agent_config(
     )
     project_integrations = list(result.scalars())
 
-    # Fetch FAQs for the account
+    # Fetch FAQs for the account and project (combined)
     faq_result = await db_session.execute(
-        select(db.FAQ).filter(db.FAQ.account_id == db_agent.account.id)
+        select(db.FAQ)
+        .filter(db.FAQ.account_id == db_agent.account.id)
+        .filter((db.FAQ.project_id.is_(None)) | (db.FAQ.project_id == project_id))
+        .order_by(db.FAQ.project_id.is_(None).desc())
     )
     faqs = list(faq_result.scalars())
 
