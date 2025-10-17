@@ -174,26 +174,37 @@ def create_reservation_lock(
 ) -> Dict[str, Any]:
     """Obtain a lock token for the requested slot prior to booking."""
 
-    payload = {
+    base_payload = {
         "date": date,
         "shift_date": date,
         "time": time,
         "service_type_id": service_type_id,
-        "availability_type": 2,
         "party_size": party_size,
         "overbook": False,
         "config_type": config_type,
         "template_id": template_id,
     }
 
-    response = _post_to_control(
+    for availability_type in (2, 3):
+        payload = {**base_payload, "availability_type": availability_type}
+        try:
+            return _post_to_control(
+                endpoint="/reservation/lock",
+                api_key=api_key,
+                auth_token=auth_token,
+                payload=payload,
+                timeout=timeout,
+            )
+        except ResyAPIError as exc:
+            if availability_type == 2 and exc.status == 400:
+                continue
+            raise
+
+    raise ResyAPIError(
         endpoint="/reservation/lock",
-        api_key=api_key,
-        auth_token=auth_token,
-        payload=payload,
-        timeout=timeout,
+        status=400,
+        reason="Invalid data received",
     )
-    return response
 
 
 def create_reservation(

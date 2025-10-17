@@ -183,7 +183,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         notes: str = "",
     ) -> str:
         """
-        Books and completes the requested reservation on Resy. Only use this function if the user explicitly tells you to make the reservation.
+        Books and completes the requested reservation on Resy. Do not make up the first name, last name and phone number, make sure to get that info from the user if you dont have it. Only use this function if the user explicitly tells you to make the reservation.
         Always call `check_availability` beforehand to ensure the slot is still open.
 
         Args:
