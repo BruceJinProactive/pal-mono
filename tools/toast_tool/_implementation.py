@@ -575,7 +575,7 @@ class ToastTool(Toolkit):
             # Return payment intent details
             return_msg = (
                 confirmation_message
-                + f"\n\nThe following is the payment link, ask the user to use the link to checkout: [payment link]({payment_link})\n\nYou MUST INCLUDE THE COMPLETE URL in your response, formatted as a Markdown link. YOU MUST NOT OMIT ANY PART OF THE URL."
+                + f"\n\nThe following is the payment link, ask the user to use the link to checkout: {payment_link}\n\nYou MUST INCLUDE THE COMPLETE URL in your response and format it as a Markdown link. For example, [payment link](COMPLETE_URL_HERE) YOU MUST NOT OMIT ANY PART OF THE URL."
             )
             return return_msg
 
