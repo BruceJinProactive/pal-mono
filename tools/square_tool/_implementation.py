@@ -19,8 +19,8 @@ from services.transaction_service import save_order
 from tools.square_tool._apis import create_payment_link
 from tools.square_tool._prompt_constants import (
     RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
-    SQUARE_EXTRACTOR_SYSTEM_PROMPT_V2,
-    SQUARE_EXTRACTOR_USER_PROMPT_V2,
+    SQUARE_EXTRACTOR_SYSTEM_PROMPT,
+    SQUARE_EXTRACTOR_USER_PROMPT,
 )
 from tools.square_tool._utils import (
     create_comprehensive_menu,
@@ -288,8 +288,8 @@ class SquareTool(Toolkit):
         )
 
         order = llm_call(
-            system_prompt=SQUARE_EXTRACTOR_SYSTEM_PROMPT_V2,
-            prompt=SQUARE_EXTRACTOR_USER_PROMPT_V2.format(
+            system_prompt=SQUARE_EXTRACTOR_SYSTEM_PROMPT,
+            prompt=SQUARE_EXTRACTOR_USER_PROMPT.format(
                 context=context, chat_history=chat_history
             ),
             response_format=ExtractedOrderWithModifiers,
