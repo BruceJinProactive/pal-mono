@@ -25,12 +25,12 @@ def create_catering_request(
     event_detail: Optional[str] = None,
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
+    idempotency_key: Optional[str] = None,
 ) -> CateringRequest:
     """
-    Create a new catering request.
+    Create or update a catering request with idempotency support.
 
     Args:
-        session: Database session
         project_id: ID of the project this request belongs to
         event_date: Date of the catering event
         contact_name: Name of the contact person
@@ -40,28 +40,101 @@ def create_catering_request(
         event_detail: Additional details about the event (optional)
         event_fulfillment: How the catering will be fulfilled (optional)
         party_size: Number of people expected (optional)
+        idempotency_key: Key to prevent duplicate requests (optional, will generate if not provided)
 
     Returns:
-        CateringRequest: The created catering request
+        CateringRequest: The created or updated catering request
     """
     session = SyncSessionLocal()
     try:
-        catering_request = CateringRequest(
-            project_id=project_id,
-            event_date=event_date,
-            event_time=event_time,
-            event_address=event_address,
-            event_detail=event_detail,
-            event_fulfillment=event_fulfillment,
-            contact_name=contact_name,
-            contact_phone_number=contact_phone_number,
-            party_size=party_size,
-            contact_id=None,
-            status=RequestStatus.PENDING,
+        catering_request_repo = CateringRequestRepository(session)
+
+        # Generate idempotency key if not provided
+        if idempotency_key is None:
+            idempotency_key = str(uuid.uuid4())
+
+        # Check if request already exists with this idempotency key
+        existing_request = (
+            catering_request_repo.get_catering_request_by_idempotency_key(
+                idempotency_key
+            )
         )
 
+        if existing_request:
+            # If request exists, check if there are any changes and update if needed
+            updates_needed = False
+            update_fields = {}
+
+            # Compare fields and track changes
+            field_mappings = {
+                "event_date": event_date,
+                "event_time": event_time,
+                "event_address": event_address,
+                "event_detail": event_detail,
+                "event_fulfillment": event_fulfillment,
+                "contact_name": contact_name,
+                "contact_phone_number": contact_phone_number,
+                "party_size": party_size,
+            }
+
+            for field, new_value in field_mappings.items():
+                if (
+                    new_value is not None
+                    and getattr(existing_request, field) != new_value
+                ):
+                    update_fields[field] = new_value
+                    updates_needed = True
+
+            if updates_needed:
+                # Create update object with only changed fields
+                updated_catering_request = CateringRequest()
+                for field, value in update_fields.items():
+                    setattr(updated_catering_request, field, value)
+
+                return catering_request_repo.update_catering_request(
+                    existing_request.id, updated_catering_request
+                )
+            else:
+                # No changes needed, return existing request
+                return existing_request
+        else:
+            # Create new request
+            catering_request = CateringRequest(
+                project_id=project_id,
+                event_date=event_date,
+                event_time=event_time,
+                event_address=event_address,
+                event_detail=event_detail,
+                event_fulfillment=event_fulfillment,
+                contact_name=contact_name,
+                contact_phone_number=contact_phone_number,
+                party_size=party_size,
+                contact_id=None,
+                status=RequestStatus.PENDING,
+                idempotency_key=idempotency_key,
+            )
+
+            return catering_request_repo.create_catering_request(catering_request)
+    finally:
+        session.close()
+
+
+def list_catering_requests_by_project_id(
+    project_id: uuid.UUID,
+) -> List[CateringRequest]:
+    """
+    List all catering requests for a specific project.
+
+    Args:
+        project_id: ID of the project to list catering requests for
+
+    Returns:
+        List[CateringRequest]: List of catering requests for the project
+    """
+    session = SyncSessionLocal()
+    try:
         catering_request_repo = CateringRequestRepository(session)
-        return catering_request_repo.create_catering_request(catering_request)
+        return catering_request_repo.list_catering_requests_by_project_id(project_id)
     finally:
         session.close()
 

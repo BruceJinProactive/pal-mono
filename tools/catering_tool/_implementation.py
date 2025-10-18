@@ -91,6 +91,9 @@ class CateringTool(Toolkit):
                 else:
                     return f"Error: Invalid event_fulfillment: {event_fulfillment}. Must be 'DELIVERY' or 'PICKUP'"
 
+            raw_session_id = getattr(self.tool_metadata, "session_id", None)
+            idempotency_key = str(raw_session_id) if raw_session_id else None
+
             catering_request = create_catering_request(
                 project_id=project_id,
                 event_date=parsed_event_date,
@@ -101,6 +104,7 @@ class CateringTool(Toolkit):
                 event_detail=event_detail,
                 event_fulfillment=parsed_event_fulfillment,
                 party_size=party_size,
+                idempotency_key=idempotency_key,
             )
 
             return f"✅ Catering request created successfully! Request ID: {catering_request.id}"
