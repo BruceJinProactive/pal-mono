@@ -106,8 +106,29 @@ def create_reservation(
     data = response.decoded_body
     logger.debug(f"[MiniTable] MiniTable API create reservation response: {data}")
 
+    # Check for booking failure and add user-friendly message
+    booking_failure = None
+    if "booking_failure" in data:
+        failure_data = data["booking_failure"]
+        cause = failure_data.get("cause", "UNKNOWN_ERROR")
+        logger.warning(f"[MiniTable] Booking failed with cause: {cause}")
+
+        # Map error codes to user-friendly messages
+        error_messages = {
+            "RESERVE_NOT_ENABLE": "Reservation is not enabled for this restaurant",
+            "SLOT_UNAVAILABLE": "The requested time slot is not available",
+            "SLOT_ALREADY_BOOKED_BY_USER": "You have already booked this time slot",
+            "DAILY_LIMIT_REACHED": "The daily reservation limit has been reached",
+        }
+
+        booking_failure = {
+            "cause": cause,
+            "message": error_messages.get(cause, f"Booking failed: {cause}"),
+        }
+
     return {
         "booking": data.get("booking", {}),
+        "booking_failure": booking_failure,
     }
 
 

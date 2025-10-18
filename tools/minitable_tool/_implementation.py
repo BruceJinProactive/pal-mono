@@ -180,6 +180,14 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 reservation_params=reservation_params,
             )
 
+            # Check for booking failure first
+            booking_failure = result.get("booking_failure")
+            if booking_failure:
+                cause = booking_failure.get("cause", "UNKNOWN_ERROR")
+                message = booking_failure.get("message", f"Booking failed: {cause}")
+                return f"Unable to create reservation: {message}"
+
+            # Handle successful booking
             booking = result.get("booking", {})
 
             if not booking:
