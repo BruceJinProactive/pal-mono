@@ -50,6 +50,11 @@ class CateringRequest(Base):
         SQLEnum(RequestStatus), nullable=False, server_default="PENDING"
     )
 
+    # Idempotency key for preventing duplicate requests
+    idempotency_key: Mapped[str] = mapped_column(
+        String, nullable=False, unique=True, server_default=func.gen_random_uuid()
+    )
+
     # Reference IDs (no foreign key constraints - handled at app level)
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
