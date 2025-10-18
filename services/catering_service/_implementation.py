@@ -3,7 +3,6 @@ from datetime import date, time
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
@@ -11,12 +10,12 @@ from db.repositories.catering_request_repository import (
 )
 from db.repositories.contact_repository import ContactRepositoryAsync
 from db.repositories.project_contact_repository import ProjectContactRepositoryAsync
+from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from db.tables.contacts import Contact
 
 
 def create_catering_request(
-    session: Session,
     project_id: uuid.UUID,
     event_date: date,
     contact_name: str,
@@ -45,22 +44,26 @@ def create_catering_request(
     Returns:
         CateringRequest: The created catering request
     """
-    catering_request = CateringRequest(
-        project_id=project_id,
-        event_date=event_date,
-        event_time=event_time,
-        event_address=event_address,
-        event_detail=event_detail,
-        event_fulfillment=event_fulfillment,
-        contact_name=contact_name,
-        contact_phone_number=contact_phone_number,
-        party_size=party_size,
-        contact_id=None,
-        status=RequestStatus.PENDING,
-    )
+    session = SyncSessionLocal()
+    try:
+        catering_request = CateringRequest(
+            project_id=project_id,
+            event_date=event_date,
+            event_time=event_time,
+            event_address=event_address,
+            event_detail=event_detail,
+            event_fulfillment=event_fulfillment,
+            contact_name=contact_name,
+            contact_phone_number=contact_phone_number,
+            party_size=party_size,
+            contact_id=None,
+            status=RequestStatus.PENDING,
+        )
 
-    catering_request_repo = CateringRequestRepository(session)
-    return catering_request_repo.create_catering_request(catering_request)
+        catering_request_repo = CateringRequestRepository(session)
+        return catering_request_repo.create_catering_request(catering_request)
+    finally:
+        session.close()
 
 
 async def create_contact(
