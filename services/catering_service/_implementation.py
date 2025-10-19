@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import date, time
 from typing import List, Optional
@@ -13,6 +14,7 @@ from db.repositories.project_contact_repository import ProjectContactRepositoryA
 from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from db.tables.contacts import Contact
+from services.catering_service._sqs import publish_catering_event
 
 
 def create_catering_request(
@@ -114,7 +116,19 @@ def create_catering_request(
                 idempotency_key=idempotency_key,
             )
 
-            return catering_request_repo.create_catering_request(catering_request)
+            created_request = catering_request_repo.create_catering_request(
+                catering_request
+            )
+
+            # Publish event for new catering request creation if SQS is configured
+            if os.getenv("CATERING_QUEUE_URL"):
+                publish_catering_event(
+                    catering_request_id=str(created_request.id),
+                    event_type="catering_request_created",
+                    idempotency_key=idempotency_key,
+                )
+
+            return created_request
     finally:
         session.close()
 
