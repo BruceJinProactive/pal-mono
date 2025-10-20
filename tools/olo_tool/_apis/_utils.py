@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import http.client
 import json
+import random
 import urllib.parse
 from email.utils import formatdate
 from typing import Type, TypeVar, Union
@@ -76,13 +77,20 @@ def connect_olo_order_hub(
     Raises:
         ValueError: If the HTTP method is invalid or the request fails
     """
+    # Build OLO-specific required headers
+    olo_headers = _get_olo_required_headers()
+
+    # Merge with any extra headers (extra_headers take precedence)
+    if extra_headers:
+        olo_headers.update(extra_headers)
+
     return connect_order_hub(
         provider=ApiProvider.OLO,
         http_method=http_method,
         bearer_token=bearer_token,
         api_function=api_function,
         query_params=query_params,
-        extra_headers=extra_headers,
+        extra_headers=olo_headers,
         payload=payload,
     )
 
@@ -136,6 +144,36 @@ def _hash_request_body(body: str) -> str:
     return base64.b64encode(hash_bytes).decode("utf-8")
 
 
+def _generate_random_ip_10_0_0_0() -> str:
+    """
+    Generate a random IP address in the 10.0.0.0/8 range.
+    This is used for the X-Forwarded-For header as required by OLO API.
+
+    Returns:
+        str: Random IP address like "10.123.45.67"
+    """
+    return (
+        f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
+    )
+
+
+def _get_olo_required_headers() -> dict[str, str]:
+    """
+    Get the required headers for OLO API requests as per their security requirements.
+
+    Returns:
+        dict[str, str]: Dictionary containing the three required headers:
+            - User-Agent: Identifies the application
+            - X-Forwarded-For: Client IP address (random 10.x.x.x for testing)
+            - X-Forwarded-UAH: User agent header identifier
+    """
+    return {
+        "User-Agent": "PalonaAI/1.0",
+        "X-Forwarded-For": _generate_random_ip_10_0_0_0(),
+        "X-Forwarded-UAH": "PalonaAIVoice",
+    }
+
+
 def connect_olo_order_hub_signed(
     http_method: HttpMethod,
     signed_token: OloSignedToken,
@@ -153,7 +191,7 @@ def connect_olo_order_hub_signed(
         signed_token: The Olo signed token with client credentials
         api_function: The API endpoint to call
         query_params: Optional query parameters
-        extra_headers: Optional additional headers
+        extra_headers: Optional additional headers. Note: Date, Content-Type, and Authorization headers will be ignored if provided in extra_headers.
         payload: Optional request payload
         base_url: The base URL for the Olo API
 
@@ -209,16 +247,26 @@ def connect_olo_order_hub_signed(
         time_stamp=time_stamp,
     )
 
-    # Build headers
-    headers = {
-        "Authorization": f"{signed_token.token_type} {signed_token.client_id}:{signed_message}",
-        "Date": time_stamp,
-        "Content-Type": content_type,
-    }
+    # Build headers starting with OLO required headers
+    headers = _get_olo_required_headers()
 
-    # Add any extra headers
+    # Add authentication and content headers
+    headers.update(
+        {
+            "Authorization": f"{signed_token.token_type} {signed_token.client_id}:{signed_message}",
+            "Date": time_stamp,
+            "Content-Type": content_type,
+        }
+    )
+
+    # Add extra headers, but exclude signature-critical headers to prevent overrides
     if extra_headers:
-        headers.update(extra_headers)
+        filtered_headers = {
+            k: v
+            for k, v in extra_headers.items()
+            if k not in ["Date", "Content-Type", "Authorization"]
+        }
+        headers.update(filtered_headers)
 
     try:
         conn = http.client.HTTPSConnection(base_url, timeout=30)
