@@ -155,6 +155,7 @@ from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
     CreateUserRequest,
     ListUsersResponse,
+    UpdateUserAccountNamesRequest,
     UserInfo,
 )
 from api.schemas.admin.voice_config import (
@@ -1480,6 +1481,24 @@ async def delete_account_user(
     Delete an admin user for a specific account by user email
     """
     await _users.delete_account_user(account_name, email, context)
+
+
+@admin_router.patch("/users/{user_email}/account_names")
+async def update_user_account_names(
+    user_email: str,
+    request: UpdateUserAccountNamesRequest,
+    context: UserContext = Depends(authenticate_user),
+):
+    """
+    Update the account_names attribute for a Cognito user.
+
+    This endpoint allows admins to update the list of accounts a user has access to.
+    The account names will be stored as a comma-separated string in the
+    custom:account_names Cognito attribute.
+
+    Only Admin users can call this endpoint.
+    """
+    await _users.update_user_account_names(user_email, request, context)
 
 
 """

@@ -603,6 +603,24 @@ def delete_account_user(account_name: str, user_email: str) -> None:
     return _implementation.delete_account_user(account_name, user_email)
 
 
+def update_user_account_names(user_email: str, account_names: list[str]) -> None:
+    """
+    Update the account_names attribute for a Cognito user.
+
+    This function updates the custom:account_names attribute in Cognito with
+    a comma-separated list of account names, allowing users to have access
+    to multiple accounts.
+
+    Args:
+        user_email: The email address of the user to update
+        account_names: List of account names to associate with the user
+
+    Raises:
+        ValueError: If user not found, account_names is empty, or update fails
+    """
+    return _implementation.update_user_account_names(user_email, account_names)
+
+
 def get_user_name_by_email(email: str) -> str | None:
     """
     Retrieves the user's display name from AWS Cognito by email address.
@@ -829,6 +847,7 @@ __all__ = [
     "signin_google_user",
     "is_google_user",
     "delete_account_user",
+    "update_user_account_names",
     "get_user_name_by_email",
     "update_conversation",
     "list_leads",

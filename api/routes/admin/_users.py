@@ -1,9 +1,10 @@
 from fastapi import HTTPException, status
 
-from api.routes.admin._utils import UserContext
+from api.routes.admin._utils import UserContext, UserRole
 from api.schemas.admin.user_management import (
     CreateUserRequest,
     ListUsersResponse,
+    UpdateUserAccountNamesRequest,
     UserInfo,
 )
 from services import admin_service
@@ -101,6 +102,62 @@ async def delete_account_user(
         if "not found" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e),
+            )
+
+
+async def update_user_account_names(
+    user_email: str,
+    request: UpdateUserAccountNamesRequest,
+    context: UserContext,
+) -> None:
+    """
+    Update the account_names attribute for a Cognito user.
+
+    This endpoint allows admins to update the list of accounts a user has access to.
+    Only Admin users can call this endpoint.
+
+    Args:
+        user_email: The email address of the user to update
+        request: The request containing the list of account names
+        context: The user context for authorization
+
+    Raises:
+        HTTPException: 403 if user is not an admin
+        HTTPException: 404 if user not found
+        HTTPException: 400 if account_names is empty
+        HTTPException: 500 for other errors
+    """
+    # Only Admin users can update account names
+    if context.role != UserRole.Admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin users can update account names",
+        )
+
+    if not request.account_names:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="account_names list cannot be empty",
+        )
+
+    try:
+        admin_service.update_user_account_names(user_email, request.account_names)
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+        elif "cannot be empty" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e),
             )
         else:

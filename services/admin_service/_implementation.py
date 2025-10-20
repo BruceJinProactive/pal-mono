@@ -1455,6 +1455,72 @@ def delete_account_user(account_name: str, user_email: str) -> None:
             raise ValueError(f"Failed to delete Cognito user: {str(e)}")
 
 
+def update_user_account_names(
+    user_email: str,
+    account_names: list[str],
+) -> None:
+    """
+    Update the account_names attribute for a Cognito user.
+
+    This function updates the custom:account_names attribute in Cognito with
+    a comma-separated list of account names. This allows users to have access
+    to multiple accounts.
+
+    Args:
+        user_email: The email address of the user to update
+        account_names: List of account names to associate with the user
+
+    Raises:
+        ValueError: If user not found or update fails
+    """
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+
+    if not account_names:
+        raise ValueError("account_names list cannot be empty")
+
+    # Join account names with comma
+    account_names_str = ",".join(account_names)
+
+    try:
+        # Verify the user exists
+        response = cognito_client.list_users(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Filter=f'email="{user_email}"',
+        )
+        users = response.get("Users", [])
+        if not users:
+            raise ValueError(f"User not found for email: {user_email}")
+
+        user = users[0]
+        username = user.get("Username")
+
+        # Update the custom:account_names attribute
+        cognito_client.admin_update_user_attributes(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Username=username,
+            UserAttributes=[
+                {
+                    "Name": "custom:account_names",
+                    "Value": account_names_str,
+                }
+            ],
+        )
+
+        logger.info(
+            f"Updated account_names for user {user_email} to: {account_names_str}"
+        )
+
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "UserNotFoundException":
+            logger.error(f"User {user_email} not found: {e}")
+            raise ValueError(f"User {user_email} not found") from e
+        else:
+            logger.error(f"Error updating user account_names: {e}")
+            raise ValueError(
+                f"Failed to update account_names for {user_email}: {str(e)}"
+            ) from e
+
+
 def get_user_name_by_email(email: str) -> str | None:
     """
     Retrieves the user's display name from AWS Cognito by email address.

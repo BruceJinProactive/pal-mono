@@ -22,3 +22,9 @@ class CreateUserRequest(BaseModel):
 
     email: str
     name: str
+
+
+class UpdateUserAccountNamesRequest(BaseModel):
+    """Request model for updating user's account names"""
+
+    account_names: List[str]
