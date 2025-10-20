@@ -1455,6 +1455,63 @@ def delete_account_user(account_name: str, user_email: str) -> None:
             raise ValueError(f"Failed to delete Cognito user: {str(e)}")
 
 
+def get_user_account_names(user_email: str) -> list[str]:
+    """
+    Get the account_names attribute for a Cognito user.
+
+    This function retrieves the custom:account_names attribute from Cognito
+    and returns it as a list of account names.
+
+    Args:
+        user_email: The email address of the user to retrieve account names for
+
+    Returns:
+        list[str]: List of account names associated with the user
+
+    Raises:
+        ValueError: If user not found
+    """
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+
+    try:
+        # Find the user by email
+        response = cognito_client.list_users(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Filter=f'email="{user_email}"',
+        )
+        users = response.get("Users", [])
+        if not users:
+            raise ValueError(f"User not found for email: {user_email}")
+
+        user = users[0]
+        attributes = user.get("Attributes", [])
+
+        # Get the custom:account_names attribute
+        account_names_str = get_attr(attributes, "custom:account_names")
+
+        if not account_names_str:
+            return []
+
+        account_names = [
+            name.strip() for name in account_names_str.split(",") if name.strip()
+        ]
+
+        logger.info(
+            f"Retrieved account_names for user (count: {len(account_names)} accounts)"
+        )
+        return account_names
+
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "UserNotFoundException":
+            logger.error(f"User not found: {e}")
+            raise ValueError(f"User not found for email: {user_email}") from e
+        else:
+            logger.error(f"Error retrieving user account_names: {e}")
+            raise ValueError(
+                f"Failed to retrieve account_names for user: {str(e)}"
+            ) from e
+
+
 def update_user_account_names(
     user_email: str,
     account_names: list[str],
@@ -1478,7 +1535,6 @@ def update_user_account_names(
     if not account_names:
         raise ValueError("account_names list cannot be empty")
 
-    # Join account names with comma
     account_names_str = ",".join(account_names)
 
     try:

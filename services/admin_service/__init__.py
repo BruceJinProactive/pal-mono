@@ -603,6 +603,25 @@ def delete_account_user(account_name: str, user_email: str) -> None:
     return _implementation.delete_account_user(account_name, user_email)
 
 
+def get_user_account_names(user_email: str) -> list[str]:
+    """
+    Get the account_names attribute for a Cognito user.
+
+    This function retrieves the custom:account_names attribute from Cognito
+    and returns it as a list of account names.
+
+    Args:
+        user_email: The email address of the user to retrieve account names for
+
+    Returns:
+        list[str]: List of account names associated with the user
+
+    Raises:
+        ValueError: If user not found
+    """
+    return _implementation.get_user_account_names(user_email)
+
+
 def update_user_account_names(user_email: str, account_names: list[str]) -> None:
     """
     Update the account_names attribute for a Cognito user.
@@ -847,6 +866,7 @@ __all__ = [
     "signin_google_user",
     "is_google_user",
     "delete_account_user",
+    "get_user_account_names",
     "update_user_account_names",
     "get_user_name_by_email",
     "update_conversation",

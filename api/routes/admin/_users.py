@@ -1,10 +1,12 @@
 from fastapi import HTTPException, status
+from starlette.concurrency import run_in_threadpool
 
 from api.routes.admin._utils import UserContext, UserRole
 from api.schemas.admin.user_management import (
     CreateUserRequest,
     ListUsersResponse,
     UpdateUserAccountNamesRequest,
+    UserAccountNamesResponse,
     UserInfo,
 )
 from services import admin_service
@@ -100,6 +102,58 @@ async def delete_account_user(
         admin_service.delete_account_user(account_name, user_email)
     except ValueError as e:
         if "not found" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e),
+            )
+
+
+async def get_user_account_names(
+    user_email: str,
+    context: UserContext,
+) -> UserAccountNamesResponse:
+    """
+    Get the account_names attribute for a Cognito user.
+
+    This endpoint allows admins and account managers to retrieve the list of accounts
+    a user has access to.
+
+    Args:
+        user_email: The email address of the user to retrieve account names for
+        context: The user context for authorization
+
+    Returns:
+        UserAccountNamesResponse: The user's email and list of account names
+
+    Raises:
+        HTTPException: 403 if user is not an admin or account manager
+        HTTPException: 404 if user not found
+        HTTPException: 500 for other errors
+    """
+    # Only Admin and AccountManager users can get account names
+    if context.role not in [UserRole.Admin, UserRole.AccountManager]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin and AccountManager users can retrieve account names",
+        )
+
+    try:
+        account_names = await run_in_threadpool(
+            admin_service.get_user_account_names, user_email
+        )
+
+        return UserAccountNamesResponse(
+            email=user_email,
+            account_names=account_names,
+        )
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=str(e),
