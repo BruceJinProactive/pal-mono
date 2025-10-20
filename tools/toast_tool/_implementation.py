@@ -82,6 +82,7 @@ class ToastTool(Toolkit):
         sandbox: bool = False,
         hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
         enable_hosted_checkout: bool = False,
+        backdoor_tool_prompt: dict | None = None,
     ):
         super().__init__(name="toast_tool")
 
@@ -104,6 +105,7 @@ class ToastTool(Toolkit):
         # Use sandbox iframe endpoint for hosted checkout
         self.hosted_payment_iframe_endpoint = hosted_payment_iframe_endpoint
         self.enable_hosted_checkout = enable_hosted_checkout
+        self.backdoor_tool_prompt = backdoor_tool_prompt or {}
 
         # Register tools
         if self.enable_hosted_checkout:
@@ -689,7 +691,9 @@ class ToastTool(Toolkit):
 
         # Decompose chat history into multiple sub-queries
         sub_queries = llm_call(
-            system_prompt=RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+            system_prompt=self.backdoor_tool_prompt.get(
+                "order_item_prompt", RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT
+            ),
             prompt=chat_history,
             response_format=SubQueries,
             openai=False,
@@ -818,9 +822,17 @@ class ToastTool(Toolkit):
         chat_history: str = self._get_chat_history()  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
 
+        # Get prompt overrides or defaults
+        system_prompt = self.backdoor_tool_prompt.get(
+            "system_prompt", EXTRACTOR_SYSTEM_PROMPT
+        )
+        user_prompt_template = self.backdoor_tool_prompt.get(
+            "user_prompt", EXTRACTOR_USER_PROMPT
+        )
+
         order = llm_call(
-            system_prompt=EXTRACTOR_SYSTEM_PROMPT,
-            prompt=EXTRACTOR_USER_PROMPT.format(
+            system_prompt=system_prompt,
+            prompt=user_prompt_template.format(
                 context=context, chat_history=chat_history
             ),
             response_format=OrderInput,

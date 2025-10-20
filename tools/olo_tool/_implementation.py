@@ -58,6 +58,7 @@ class OloTool(Toolkit):
         tool_metadata: ToolMetadata,
         client_credentials: str | None = None,
         use_signed_auth: bool = False,
+        backdoor_tool_prompt: dict | None = None,
     ):
         super().__init__(name="olo_tool")
 
@@ -68,6 +69,7 @@ class OloTool(Toolkit):
         self._cached_store_info: str | None = None
         self.client_credentials = client_credentials
         self.use_signed_auth = use_signed_auth
+        self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         # Register tools
         self.register(self.get_store_info_tool)
         self.register(self.check_online_ordering_status)
@@ -317,16 +319,26 @@ class OloTool(Toolkit):
         context = get_relevant_docs(
             self.query_engine,
             chat_history,
-            RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+            self.backdoor_tool_prompt.get(
+                "order_item_prompt", RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT
+            ),
             response_format=SubQueries,
         )
 
         # Add the billing schemes info to the context
         context += f"\n\nThe billing schemes info is: {billing_schemes_info}. Choose the billing scheme id that is most appropriate for the order.\n"
 
+        # Get prompt overrides or defaults
+        system_prompt = self.backdoor_tool_prompt.get(
+            "system_prompt", EXTRACTOR_SYSTEM_PROMPT
+        )
+        user_prompt_template = self.backdoor_tool_prompt.get(
+            "user_prompt", EXTRACTOR_USER_PROMPT
+        )
+
         return construct_order(
-            system_prompt=EXTRACTOR_SYSTEM_PROMPT,
-            user_prompt=EXTRACTOR_USER_PROMPT.format(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt_template.format(
                 context=context, chat_history=chat_history
             ),
             response_format=OloProductInput,

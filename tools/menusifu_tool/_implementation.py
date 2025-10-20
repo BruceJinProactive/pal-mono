@@ -72,6 +72,7 @@ class MenuSifuTool(Toolkit):
         base_url: str = "assistant.mealkeyway.com",
         merchant_id: Optional[str] = None,
         access_token: Optional[str] = None,
+        backdoor_tool_prompt: dict | None = None,
     ):
         """
         Initialize MenuSifu Tool.
@@ -82,6 +83,7 @@ class MenuSifuTool(Toolkit):
             index_name: Pinecone index name
             tool_metadata: Tool metadata containing session information
             base_url: MenuSifu API base URL
+            backdoor_tool_prompt: Optional custom prompts for order extraction
         """
         super().__init__(name="menusifu_tool")
 
@@ -91,6 +93,7 @@ class MenuSifuTool(Toolkit):
         self.base_url = base_url
         self.namespace = namespace
         self.index_name = index_name
+        self.backdoor_tool_prompt = backdoor_tool_prompt or {}
 
         # Initialize query messages tool for chat history access
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -241,16 +244,24 @@ class MenuSifuTool(Toolkit):
             context = get_relevant_docs(
                 self.query_engine,
                 chat_history,
-                RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+                self.backdoor_tool_prompt.get(
+                    "order_item_prompt", RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT
+                ),
                 SubQueries,
             )
 
             # Step 3: Use LLM to extract order information with menu context
+            system_prompt = self.backdoor_tool_prompt.get(
+                "system_prompt", MENUSIFU_EXTRACTOR_SYSTEM_PROMPT
+            )
+            user_prompt_template = self.backdoor_tool_prompt.get(
+                "user_prompt", MENUSIFU_EXTRACTOR_USER_PROMPT
+            )
+
             extracted_order = llm_call(
-                system_prompt=MENUSIFU_EXTRACTOR_SYSTEM_PROMPT,
-                prompt=MENUSIFU_EXTRACTOR_USER_PROMPT.format(
-                    context=context,
-                    chat_history=chat_history,
+                system_prompt=system_prompt,
+                prompt=user_prompt_template.format(
+                    context=context, chat_history=chat_history
                 ),
                 response_format=ExtractedMenuSifuOrder,
                 openai=True,

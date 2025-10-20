@@ -78,6 +78,7 @@ class SquareTool(Toolkit):
         tool_metadata: ToolMetadata,
         access_token: Optional[str] = None,
         use_production: bool = False,
+        backdoor_tool_prompt: dict | None = None,
     ):
         super().__init__(name="square_tool")
 
@@ -87,6 +88,7 @@ class SquareTool(Toolkit):
         self.fallback_access_token = access_token
         self.namespace = namespace
         self.index_name = index_name
+        self.backdoor_tool_prompt = backdoor_tool_prompt or {}
 
         # Initialize query messages tool
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
@@ -283,13 +285,23 @@ class SquareTool(Toolkit):
         context = get_relevant_docs(
             self.query_engine,
             chat_history,
-            RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+            self.backdoor_tool_prompt.get(
+                "order_item_prompt", RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT
+            ),
             SubQueries,
         )
 
+        # Get prompt overrides or defaults
+        system_prompt = self.backdoor_tool_prompt.get(
+            "system_prompt", SQUARE_EXTRACTOR_SYSTEM_PROMPT
+        )
+        user_prompt_template = self.backdoor_tool_prompt.get(
+            "user_prompt", SQUARE_EXTRACTOR_USER_PROMPT
+        )
+
         order = llm_call(
-            system_prompt=SQUARE_EXTRACTOR_SYSTEM_PROMPT,
-            prompt=SQUARE_EXTRACTOR_USER_PROMPT.format(
+            system_prompt=system_prompt,
+            prompt=user_prompt_template.format(
                 context=context, chat_history=chat_history
             ),
             response_format=ExtractedOrderWithModifiers,

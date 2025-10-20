@@ -48,6 +48,7 @@ class AdoraTool(Toolkit):
         default_coupon_id: int | None = None,
         token_api_endpoint: str | None = None,
         general_api_endpoint: str | None = None,
+        backdoor_tool_prompt: dict | None = None,
     ):
         super().__init__(name="adora_tool")
 
@@ -65,6 +66,7 @@ class AdoraTool(Toolkit):
         self.coupons_enabled = coupons_enabled
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
+        self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         if self.store_id in [ADORA_QA_STORE, ADORA_QA_STORE_2]:  # QA store
             self.qa_store = True
         else:
@@ -368,7 +370,9 @@ class AdoraTool(Toolkit):
         # Decompose chat history into multiple sub-queries
 
         sub_queries = _llm.llm_call(
-            system_prompt=_llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT,
+            system_prompt=self.backdoor_tool_prompt.get(
+                "order_item_prompt", _llm.RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT
+            ),
             prompt=chat_history,
             response_format=SubQueries,
             openai=False,
@@ -826,11 +830,17 @@ class AdoraTool(Toolkit):
 
             context = self._get_relevant_docs(chat_history)  # type: ignore
 
-            final_extractor_system_prompt = _llm.EXTRACTOR_SYSTEM_PROMPT
+            # Get prompt overrides or defaults
+            system_prompt = self.backdoor_tool_prompt.get(
+                "system_prompt", _llm.EXTRACTOR_SYSTEM_PROMPT
+            )
+            user_prompt_template = self.backdoor_tool_prompt.get(
+                "user_prompt", _llm.EXTRACTOR_USER_PROMPT
+            )
 
             order = _llm.llm_call(
-                system_prompt=final_extractor_system_prompt,
-                prompt=_llm.EXTRACTOR_USER_PROMPT.format(
+                system_prompt=system_prompt,
+                prompt=user_prompt_template.format(
                     context=context, chat_history=chat_history
                 ),
                 response_format=Order,
