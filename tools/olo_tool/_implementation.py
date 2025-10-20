@@ -342,6 +342,7 @@ class OloTool(Toolkit):
                 context=context, chat_history=chat_history
             ),
             response_format=OloProductInput,
+            openai=True,
         )
 
     @tool

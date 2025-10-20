@@ -174,6 +174,7 @@ def construct_order(
     user_prompt: str,
     response_format: type[T],
     error_prefix: str = "Failed to construct order",
+    openai: bool = False,
 ) -> Union[T, str]:
     """
     Constructs an order from LLM output using custom prompts and handles validation errors.
@@ -193,7 +194,7 @@ def construct_order(
             system_prompt=system_prompt,
             prompt=user_prompt,
             response_format=response_format,
-            openai=False,
+            openai=openai,
         )
 
         if response is None:
