@@ -506,30 +506,46 @@ async def compare_checkpoint(
 
 async def list_checkpoint_results_by_submission(
     status_filter: CheckStatus | None,
-    context: UserContext,  # noqa: ARG001 - kept for API consistency
+    project_id: uuid.UUID,
+    context: UserContext,
     session: Session,
 ) -> ListCheckpointResultsBySubmissionResponse:
     """
-    List all checkpoint results grouped by submission_id.
+    List all checkpoint results grouped by submission_id for a specific project.
 
-    Note: This endpoint returns all checkpoint results across all projects/accounts.
-    Authorization is enforced at the API route level via authenticate_user.
-    For account-specific filtering, use the checkpoint-specific endpoint.
+    This endpoint returns checkpoint results filtered by the required project_id,
+    with authorization enforced to ensure user has access to that project.
 
     Args:
         status_filter: Optional filter by status (processing, active, failed)
-        context: User context for authorization (checked at route level)
+        project_id: Required project ID to filter checkpoint results
+        context: User context for authorization
         session: Database session
 
     Returns:
         ListCheckpointResultsBySubmissionResponse with results grouped by submission_id
+
+    Raises:
+        HTTPException: If project not found or authorization fails
     """
-    # Get all checkpoint results with optional status filter
+    # Validate & authorize project access
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} does not exist.")
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise not_found_error(f"Account for project {project_id} does not exist.")
+
+    authorize_user_account(context, account.name)
+
+    # Get all checkpoint results with status and project filters
     checkpoint_results = checkpoint_service.list_checkpoint_results(
         session=session,
         checkpoint_id=None,
         submission_id=None,
         status=status_filter,
+        project_id=project_id,
     )
 
     # Group results by submission_id

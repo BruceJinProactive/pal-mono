@@ -243,6 +243,7 @@ def list_checkpoint_results(
     checkpoint_id: UUID | None = None,
     submission_id: UUID | None = None,
     status: CheckStatus | None = None,
+    project_id: UUID | None = None,
 ) -> list[db.CheckpointResult]:
     """
     List checkpoint results with optional filters.
@@ -252,12 +253,13 @@ def list_checkpoint_results(
         checkpoint_id: Optional filter by checkpoint ID
         submission_id: Optional filter by submission ID
         status: Optional filter by status
+        project_id: Optional filter by project ID (via checkpoint)
 
     Returns:
         list[db.CheckpointResult]: List of checkpoint results
     """
     return checkpoint_repository.list_checkpoint_results(
-        session, checkpoint_id, submission_id, status
+        session, checkpoint_id, submission_id, status, project_id
     )
 
 
