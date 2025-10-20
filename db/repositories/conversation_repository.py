@@ -19,6 +19,10 @@ class ConversationUpdate(BaseModel):
     is_escalated: Optional[bool] = None
     project_id: Optional[uuid.UUID] = None
     vapi_control_url: Optional[str] = None
+    purpose: Optional[str] = None
+    language: Optional[str] = None
+    ended_reason: Optional[str] = None
+    customer_converted: Optional[uuid.UUID] = None
 
 
 class ConversationRepositoryAsync:
@@ -108,6 +112,18 @@ class ConversationRepositoryAsync:
 
             if update_data.vapi_control_url is not None:
                 conversation.vapi_control_url = update_data.vapi_control_url
+
+            if update_data.purpose is not None:
+                conversation.purpose = update_data.purpose
+
+            if update_data.language is not None:
+                conversation.language = update_data.language
+
+            if update_data.ended_reason is not None:
+                conversation.ended_reason = update_data.ended_reason
+
+            if update_data.customer_converted is not None:
+                conversation.customer_converted = update_data.customer_converted
 
             if update_data.is_escalated is not None:
                 await self.session.execute(
@@ -369,6 +385,18 @@ class ConversationRepository:
 
             if update_data.vapi_control_url is not None:
                 conversation.vapi_control_url = update_data.vapi_control_url
+
+            if update_data.purpose is not None:
+                conversation.purpose = update_data.purpose
+
+            if update_data.language is not None:
+                conversation.language = update_data.language
+
+            if update_data.ended_reason is not None:
+                conversation.ended_reason = update_data.ended_reason
+
+            if update_data.customer_converted is not None:
+                conversation.customer_converted = update_data.customer_converted
 
             if update_data.is_escalated is not None:
                 self.session.query(Message).filter(

@@ -6,6 +6,8 @@ from typing import Any, List, Optional
 from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
+from db.repositories import ConversationRepository
+from db.repositories.conversation_repository import ConversationUpdate
 from db.repositories.order_repository import OrderRepository
 from db.session import SyncSessionLocal
 from db.tables.orders import Order
@@ -14,6 +16,48 @@ from utils.log import logger
 
 from ._utils import reconstruct_order_items
 from .schema import OrderData
+
+
+def _update_customer_converted(
+    session: Session, conversation_id: uuid.UUID, order_id: uuid.UUID
+) -> bool:
+    """
+    Update the customer_converted field in the conversation with the order ID.
+
+    Args:
+        session: Database session
+        conversation_id: The conversation ID to update
+        order_id: The order ID to set as customer_converted
+
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    try:
+        conversation_repo = ConversationRepository(session)
+        update_data = ConversationUpdate(customer_converted=order_id)
+
+        updated_conversation = conversation_repo.update_conversation(
+            conversation_id=conversation_id,
+            update_data=update_data,
+        )
+
+        if updated_conversation:
+            logger.info(
+                f"[OrderService] Updated customer_converted for conversation {conversation_id} with order {order_id}"
+            )
+            return True
+        else:
+            logger.warning(
+                f"[OrderService] Failed to update customer_converted: conversation {conversation_id} not found"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(
+            f"[OrderService] Error updating customer_converted for conversation {conversation_id}: {e}",
+            exc_info=True,
+        )
+        return False
 
 
 def create_order(
@@ -110,6 +154,14 @@ def save_order(
             f"for {vendor} with order_id {order_id}"
         )
 
+        # If order status is "paid", update customer_converted in conversation
+        if status and status.lower() == "paid":
+            _update_customer_converted(
+                session=db_session,
+                conversation_id=order.conversation_id,
+                order_id=order.id,
+            )
+
         return order.id
 
     except Exception as e:
@@ -174,6 +226,15 @@ def update_order_by_order_id(
             logger.debug(
                 f"[OrderService] Updated order {updated_order.id} for order_id {order_id}"
             )
+
+            # If new status is "paid", update customer_converted in conversation
+            if new_status and new_status.lower() == "paid":
+                _update_customer_converted(
+                    session=db_session,
+                    conversation_id=updated_order.conversation_id,
+                    order_id=updated_order.id,
+                )
+
             return True
         else:
             # Build descriptive error message

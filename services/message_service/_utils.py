@@ -424,6 +424,101 @@ async def _update_store_phone_number_from_url(
 # Phone Call Utilities
 
 
+def _extract_conversation_purpose(call_data: dict) -> str | None:
+    """
+    Extract and convert call purposes from VAPI data to comma-separated string.
+
+    Args:
+        call_data: Raw call data from VAPI end-of-call-report
+
+    Returns:
+        str | None: Comma-separated string of call purposes, or None if not found
+    """
+    analysis = call_data.get("analysis", {})
+    structured_data = analysis.get("structuredData", {})
+    call_purposes = structured_data.get("call_purpose", [])
+
+    if not call_purposes or not isinstance(call_purposes, list):
+        return None
+
+    validated_purposes = [
+        purpose for purpose in call_purposes if purpose in _CALL_PURPOSE_MAPPING
+    ]
+
+    return ",".join(validated_purposes) if validated_purposes else None
+
+
+def _extract_conversation_language(call_data: dict) -> str | None:
+    """
+    Extract language from VAPI data, returning raw string value.
+
+    Args:
+        call_data: Raw call data from VAPI end-of-call-report
+
+    Returns:
+        str | None: Language code string, or None if not found
+    """
+    analysis = call_data.get("analysis", {})
+    structured_data = analysis.get("structuredData", {})
+    language_spoken = structured_data.get("language_spoken")
+
+    if not language_spoken:
+        return None
+
+    lookup_value = language_spoken.lower()
+    if lookup_value in _LANGUAGE_MAPPING or language_spoken in _LANGUAGE_MAPPING:
+        return language_spoken
+
+    return None
+
+
+def _extract_conversation_ended_reason(call_data: dict) -> str | None:
+    """
+    Extract ended reason from VAPI data, returning raw string value.
+
+    Args:
+        call_data: Raw call data from VAPI end-of-call-report
+
+    Returns:
+        str | None: Ended reason string, or None if not found
+    """
+    ended_reason = call_data.get("endedReason")
+
+    if not ended_reason:
+        return None
+
+    if ended_reason in _ENDED_REASON_MAPPING:
+        return ended_reason
+
+    return None
+
+
+def transform_vapi_conversation_data(call_data: dict) -> dict:
+    """
+    Transform VAPI call data to conversation fields (purpose, language, ended_reason).
+    Returns raw string values instead of enums for conversations table.
+
+    Args:
+        call_data: Raw call data from VAPI end-of-call-report
+
+    Returns:
+        dict: Transformed data with purpose, language, ended_reason as strings
+    """
+    try:
+        return {
+            "purpose": _extract_conversation_purpose(call_data),
+            "language": _extract_conversation_language(call_data),
+            "ended_reason": _extract_conversation_ended_reason(call_data),
+        }
+    except Exception as e:
+        logger.error(f"Error transforming VAPI conversation data: {e}")
+        return {
+            "purpose": None,
+            "language": None,
+            "ended_reason": None,
+        }
+
+
 def transform_vapi_call_data(call_data: dict) -> dict:
     """
     Transform VAPI call data to our phone call schema format.

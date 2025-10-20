@@ -29,6 +29,7 @@ from services import (
     subscription_service,
     user_service,
 )
+from services.message_service._utils import transform_vapi_conversation_data
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
@@ -1031,6 +1032,20 @@ async def handle_session_closure(message_data, session: AsyncSession):
                     )
                 except Exception as e:
                     logger.error(f"[phone_call] Failed to save phone call data: {e}")
+
+                try:
+                    conversation_data = transform_vapi_conversation_data(message_data)
+                    await conversation_repo.update_conversation(
+                        conversation_id=first_conversation.id,
+                        update_data=ConversationUpdate(**conversation_data),
+                    )
+                    logger.info(
+                        f"[conversation] Updated conversation {first_conversation.id} with Vapi data: {conversation_data}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"[conversation] Failed to update conversation with Vapi data: {e}"
+                    )
 
             await session.commit()
 
