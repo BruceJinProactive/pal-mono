@@ -219,6 +219,10 @@ def build_conversation(
         created_at=conversation.created_at,
         last_message=build_message(last_message) if last_message else None,
         total_messages=message_count,
+        purpose=conversation.purpose,
+        language=conversation.language,
+        ended_reason=conversation.ended_reason,
+        customer_converted=conversation.customer_converted,
     )
 
 
@@ -234,6 +238,10 @@ def build_conversation_detail(conversation: db.Conversation) -> ConversationDeta
         call_id=conversation.call_id,
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
+        purpose=conversation.purpose,
+        language=conversation.language,
+        ended_reason=conversation.ended_reason,
+        customer_converted=conversation.customer_converted,
     )
 
 

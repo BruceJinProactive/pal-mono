@@ -32,6 +32,10 @@ class Conversation(BaseModel):
     last_message: Message | None
     total_messages: int
     created_at: datetime.datetime
+    purpose: str | None = None
+    language: str | None = None
+    ended_reason: str | None = None
+    customer_converted: uuid.UUID | None = None
 
 
 class ConversationPreview(BaseModel):
@@ -82,6 +86,10 @@ class ConversationDetail(BaseModel):
     call_id: str | None
     created_at: datetime.datetime
     updated_at: datetime.datetime | None
+    purpose: str | None = None
+    language: str | None = None
+    ended_reason: str | None = None
+    customer_converted: uuid.UUID | None = None
 
 
 class UpdateConversationRequest(BaseModel):
