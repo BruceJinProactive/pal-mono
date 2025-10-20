@@ -41,6 +41,10 @@ class Agent(Base):
         Enum(AgentType), nullable=False, server_default=AgentType.general
     )
     voice_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    cloned_voice_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    has_voice_clone: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     greeting_message: Mapped[str | None] = mapped_column(String, nullable=True)
     speech_rate: Mapped[SpeechRate] = mapped_column(
         Enum(SpeechRate), nullable=False, server_default=SpeechRate.normal
