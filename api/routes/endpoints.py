@@ -10,6 +10,7 @@ class ApiEndpoints:
     ASSETS: str = "/assets"
     INTEGRATIONS: str = "/integrations"
     OPERATION: str = "/operation"
+    CATERING: str = "/catering"
 
 
 endpoints = ApiEndpoints()
