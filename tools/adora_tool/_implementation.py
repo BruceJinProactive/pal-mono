@@ -4,6 +4,7 @@ import re
 import traceback
 from datetime import datetime
 from typing import List
+from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -830,6 +831,18 @@ class AdoraTool(Toolkit):
 
             context = self._get_relevant_docs(chat_history)  # type: ignore
 
+            # Get current date and time in the store's timezone
+            store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
+            current_dt_store = datetime.now(ZoneInfo(store_tz))
+
+            # Add current date/time to context for LLM to understand temporal references
+            current_time_info = (
+                f"\n\n<current_datetime>\n"
+                f"Current date and time: {current_dt_store.strftime('%A, %B %d, %Y at %I:%M %p')} ({store_tz})\n"
+                f"</current_datetime>"
+            )
+            context += current_time_info  # type: ignore
+
             # Get prompt overrides or defaults
             system_prompt = self.backdoor_tool_prompt.get(
                 "system_prompt", _llm.EXTRACTOR_SYSTEM_PROMPT
@@ -885,8 +898,8 @@ class AdoraTool(Toolkit):
             # If promise_date_time is set, validate its format and turn into UTC format
             if order.promise_date_time:
                 try:
-                    # Lazy import
-                    from zoneinfo import ZoneInfo
+                    # Save original for logging
+                    original_dt_str = order.promise_date_time
 
                     # Parse the datetime string
                     parsed_dt = datetime.strptime(
@@ -894,6 +907,9 @@ class AdoraTool(Toolkit):
                     )
 
                     # Use tool_metadata timezone or fallback to America/Los_Angeles
+                    logger.debug(
+                        f"[AdoraTool.checkout_order] Using timezone: {self.tool_metadata.timezone}"
+                    )
                     tz_str = self.tool_metadata.timezone or "America/Los_Angeles"
                     local_tz = ZoneInfo(tz_str)
 
@@ -905,7 +921,7 @@ class AdoraTool(Toolkit):
                     order.promise_date_time = utc_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
                     logger.debug(
-                        f"[AdoraTool.checkout_order] Converted promise_date_time from {tz_str} to UTC: {order.promise_date_time}"
+                        f"[AdoraTool.checkout_order] Converted promise_date_time {original_dt_str} from {tz_str} to UTC: {order.promise_date_time}"
                     )
                 except ValueError as e:
                     logger.error(
