@@ -3,7 +3,7 @@
 import json
 import os
 import re
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,31 @@ class VoiceConfigProtocol(Protocol):
     replacements: dict
     background_sound: str
     speech_rate: SpeechRate
+    raw_config: dict
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """
+    Deep merge two dictionaries, with override taking precedence.
+
+    Args:
+        base: Base dictionary
+        override: Dictionary with values to override base
+
+    Returns:
+        Merged dictionary with override values taking precedence
+    """
+    result = base.copy()
+
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            # Recursively merge nested dictionaries
+            result[key] = _deep_merge(result[key], value)
+        else:
+            # Override with new value
+            result[key] = value
+
+    return result
 
 
 class VAPIProvider:
@@ -294,6 +319,10 @@ class VAPIProvider:
             "analysisPlan": self._get_analysis_plan(),
         }
 
+        # Apply custom raw_config overrides if provided
+        if voice_config.raw_config:
+            assistant_config = _deep_merge(assistant_config, voice_config.raw_config)
+
         return assistant_config
 
     def _create_triage_assistant(
@@ -340,6 +369,12 @@ class VAPIProvider:
                 triage_config.language
             ),
         }
+
+        # Apply custom raw_config overrides if provided
+        if triage_config.raw_config:
+            triage_assistant_config = _deep_merge(
+                triage_assistant_config, triage_config.raw_config
+            )
 
         return triage_assistant_config
 
@@ -556,5 +591,9 @@ DO NOT attempt to help with their actual request - only identify language prefer
             "firstMessageMode": "assistant-speaks-first",
             "analysisPlan": self._get_analysis_plan(),
         }
+
+        # Apply custom raw_config overrides if English config exists and has raw_config
+        if english_config and english_config.raw_config:
+            assistant_config = _deep_merge(assistant_config, english_config.raw_config)
 
         return {"assistant": assistant_config}
