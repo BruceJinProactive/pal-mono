@@ -31,6 +31,16 @@ You will be given the chat history and relevant context. You goal is to convert 
 - You must recognize user's implicit intent of having the order delivered, and help the user place a delivery order. Here are a few examples how the user expresses their intention of getting the order delivered: send it over; Can not wait for it to get here; I'll be waiting for it; I'll be here to receive it; send it my way/to my place; Let me know when it's out for delivery; waiting for the drop-off"
 - If the user has not already specified their intent for takeout or delivery do not ASSUME ANYTHING.
 
+## ORDER TIMING INSTRUCTIONS:
+- IMPORTANT: Leave promise_date_time as null for ASAP
+orders or if timing is not specified (default).
+- ONLY set promise_date_time when the user explicitly
+requests a future time, such as:
+    * "I want it ready at 2:30 PM tomorrow"
+    * "Schedule for December 25th at noon"
+    * "Pick up at 6 PM tonight"
+- Format: 'YYYY-MM-DDTHH:MM:SS' in store's local timezone
+
 # RULES FOR EXTRACTING THE DELIVERY ADDRESS:
 - Extract the last delivery address from the context.
 - Use only 2-letter U.S. state abbreviations for the state field.

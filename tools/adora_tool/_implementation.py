@@ -882,6 +882,42 @@ class AdoraTool(Toolkit):
                 if not validate_order_success:
                     return validate_order_message
 
+            # If promise_date_time is set, validate its format and turn into UTC format
+            if order.promise_date_time:
+                try:
+                    # Lazy import
+                    from zoneinfo import ZoneInfo
+
+                    # Parse the datetime string
+                    parsed_dt = datetime.strptime(
+                        order.promise_date_time, "%Y-%m-%dT%H:%M:%S"
+                    )
+
+                    # Use tool_metadata timezone or fallback to America/Los_Angeles
+                    tz_str = self.tool_metadata.timezone or "America/Los_Angeles"
+                    local_tz = ZoneInfo(tz_str)
+
+                    # Localize to store timezone and convert to UTC
+                    local_dt = parsed_dt.replace(tzinfo=local_tz)
+                    utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
+
+                    # Update order with UTC time
+                    order.promise_date_time = utc_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+                    logger.debug(
+                        f"[AdoraTool.checkout_order] Converted promise_date_time from {tz_str} to UTC: {order.promise_date_time}"
+                    )
+                except ValueError as e:
+                    logger.error(
+                        f"[AdoraTool.checkout_order] Invalid promise_date_time format: {e}"
+                    )
+                    return "Invalid time format. Please provide time as: YYYY-MM-DDTHH:MM:SS (e.g., 2024-12-25T14:30:00)"
+                except Exception as e:
+                    logger.error(
+                        f"[AdoraTool.checkout_order] Error converting promise_date_time: {e}"
+                    )
+                    return f"Error processing promise time: {str(e)}"
+
             # Validate coupon codes mentioned by the user
             # NOTE: for now, include only the last single valid coupon code even if there are multiple coupon codes mentioned in the chat history, later we may want to include multiple coupon codes
             if order.coupon_codes and self.coupons_enabled:

@@ -309,6 +309,11 @@ class Order(BaseModel):
         description="Loyalty discounts, only valid if customer has a profile and is a loyalty member",
         default=None,
     )
+    promise_date_time: Optional[str] = Field(
+        description="ONLY for advance orders. Leave null for ASAP. Format:'YYYY-MM-DDTHH:MM:SS' in store's local timezone.",
+        default=None,
+        serialization_alias="promiseDateTime",
+    )
 
     @computed_field
     def items(self) -> List[Dict[str, List[OrderItem]]]:
