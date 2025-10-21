@@ -507,7 +507,11 @@ class AdoraTool(Toolkit):
 
     @task(name="_fulfill_order [via Adora API]")
     def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
-        payload = order.model_dump_json(by_alias=True)
+        # Exclude promise_date_time from payload if it's None (ASAP orders)
+        exclude_fields = set()
+        if order.promise_date_time is None:
+            exclude_fields.add("promise_date_time")
+        payload = order.model_dump_json(by_alias=True, exclude=exclude_fields)
         LLMObs.annotate(input_data=order, metadata={"payload": payload})
 
         # Guaranteed phone number since we validated it in the order
