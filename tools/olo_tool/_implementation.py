@@ -615,6 +615,10 @@ class OloTool(Toolkit):
         if order_input.billingschemeid:
             order_submission["billingSchemeId"] = order_input.billingschemeid
 
+        session_id = getattr(self.tool_metadata, "session_id", None)
+        if session_id is not None:
+            session_id = str(session_id)
+
         payload: dict[str, Any] = {
             "storeId": self.store_id,
             "basketId": basket_id,
@@ -642,7 +646,7 @@ class OloTool(Toolkit):
                 "emailAddress": order_input.emailaddress,
                 "contactNumber": order_input.contactnumber,
             },
-            "sessionId": getattr(self.tool_metadata, "session_id", None),
+            "sessionId": session_id,
             "expiresAt": int(time.time()) + self.payment_iframe_token_ttl_seconds,
         }
         logger.info(
