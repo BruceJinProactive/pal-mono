@@ -36,7 +36,7 @@ def handle_olo_response(
         error_msg = (
             f"API call failed with status {response.status}: {response.decoded_body}"
         )
-        logger.error(error_msg)
+        logger.error(f"[OLO] {error_msg}")
         raise ValueError(error_msg)
 
     if response_type:
@@ -46,7 +46,7 @@ def handle_olo_response(
             error_msg = (
                 f"Failed to validate response as {response_type.__name__}: {str(e)}"
             )
-            logger.error(error_msg, exc_info=True)
+            logger.error(f"[OLO] {error_msg}", exc_info=True)
             raise ValueError(error_msg)
 
     return response.decoded_body
@@ -202,7 +202,7 @@ def connect_olo_order_hub_signed(
         ValueError: If the HTTP method is invalid or the request fails
     """
     logger.debug(
-        f"[OloUtils.connect_olo_order_hub_signed] Calling OLO Signed API: {http_method} {api_function} | "
+        f"[OLO] OloUtils.connect_olo_order_hub_signed Calling OLO Signed API: {http_method} {api_function} | "
         f"Query Params: {query_params} | "
         f"Extra Headers: {extra_headers} | "
         f"Payload: {payload}"
@@ -292,13 +292,13 @@ def connect_olo_order_hub_signed(
         )
 
         logger.debug(
-            f"[OloUtils.connect_olo_order_hub_signed] OLO Signed Response: {hub_response}"
+            f"[OLO] OloUtils.connect_olo_order_hub_signed Response: {hub_response}"
         )
         return hub_response
 
     except Exception as e:
         raise Exception(
-            f"[OloUtils.connect_olo_order_hub_signed] Error while calling {method_str} {api_function} for OLO Signed: {str(e)}"
+            f"[OLO] OloUtils.connect_olo_order_hub_signed Error while calling {method_str} {api_function}: {str(e)}"
         ) from e
     finally:
         conn_var = locals().get("conn")

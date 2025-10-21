@@ -116,7 +116,7 @@ class OloTool(Toolkit):
                     )
                 credentials = self._get_olo_credentials(self.client_credentials)
                 logger.info(
-                    "[OloTool._olo_token] Using signed authentication",
+                    "[OLO] OloTool._olo_token Using signed authentication",
                     extra={"credential_secret": self.client_credentials},
                 )
                 return OloSignedToken(
@@ -129,7 +129,7 @@ class OloTool(Toolkit):
                 raise ValueError(
                     "OLO_MOOYAH_API_KEY is not configured; unable to authenticate Olo API calls"
                 )
-            logger.info("[OloTool._olo_token] Using API key authentication")
+            logger.info("[OLO] OloTool._olo_token Using API key authentication")
             return OloAccessToken(access_token=api_key, token_type="OloKey")
 
     def _get_olo_credentials(self, client_credentials: str) -> dict[str, str]:
@@ -264,7 +264,7 @@ class OloTool(Toolkit):
             return store_info
 
         except Exception as e:
-            logger.error(f"[OloTool.store_info] Error getting store info: {e}")
+            logger.error(f"[OLO] OloTool.store_info Error getting store info: {e}")
             return "Failed to get the store information, please try again."
 
     @tool
@@ -297,7 +297,7 @@ class OloTool(Toolkit):
 
         except Exception as e:
             logger.error(
-                f"[OloTool.check_online_ordering_status] Error checking online ordering status: {e}"
+                f"[OLO] OloTool.check_online_ordering_status Error checking online ordering status: {e}"
             )
             return "Failed to check the online ordering status, please try again."
 
@@ -345,7 +345,7 @@ class OloTool(Toolkit):
                 return f"The address is invalid. {validated_address.message}"
         except Exception as e:
             logger.error(
-                f"[OloTool.validate_address_tool] Error validating address: {e}"
+                f"[OLO] OloTool.validate_address_tool Error validating address: {e}"
             )
             return "Failed to validate the address, please try again."
 
@@ -399,20 +399,20 @@ class OloTool(Toolkit):
     def _checkout_order_pay_in_store(self) -> str:
         try:
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Starting checkout",
+                "[OLO] OloTool._checkout_order_pay_in_store Starting checkout",
                 extra={"store_id": self.store_id},
             )
             # Create a basket
             basket = create_basket(int(self.store_id), self._olo_token)
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Basket created",
+                "[OLO] OloTool._checkout_order_pay_in_store Basket created",
                 extra={"basket_id": getattr(basket, "id", None)},
             )
 
             # Get the billing schemes info
             billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Retrieved billing schemes",
+                "[OLO] OloTool._checkout_order_pay_in_store Retrieved billing schemes",
                 extra={"scheme_count": len(billing_schemes_info)},
             )
 
@@ -421,13 +421,13 @@ class OloTool(Toolkit):
             # If the order is a string, return it
             if isinstance(order_input, str):
                 logger.info(
-                    "[OloTool._checkout_order_pay_in_store] Order construction error",
+                    "[OLO] OloTool._checkout_order_pay_in_store Order construction error",
                     extra={"message": order_input},
                 )
                 return order_input  # Failed to construct order
 
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Order constructed",
+                "[OLO] OloTool._checkout_order_pay_in_store Order constructed",
                 extra={
                     "products": len(order_input.products),
                     "handoff_mode": order_input.handoffmode.value,
@@ -439,7 +439,7 @@ class OloTool(Toolkit):
                 basket.id, olo_product_input=order_input, olo_token=self._olo_token
             )
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Items added to basket",
+                "[OLO] OloTool._checkout_order_pay_in_store Items added to basket",
                 extra={"basket_id": basket.id},
             )
 
@@ -450,14 +450,14 @@ class OloTool(Toolkit):
                 olo_token=self._olo_token,
             )
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Handoff mode set",
+                "[OLO] OloTool._checkout_order_pay_in_store Handoff mode set",
                 extra={"handoff_mode": order_input.handoffmode.value},
             )
 
             # Validate the basket before submitting
             validate_basket(basket.id, olo_token=self._olo_token)
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Basket validated",
+                "[OLO] OloTool._checkout_order_pay_in_store Basket validated",
                 extra={"basket_id": basket.id},
             )
 
@@ -478,7 +478,7 @@ class OloTool(Toolkit):
                 olo_order_submission_body=order_submission,
             )
             logger.info(
-                "[OloTool._checkout_order_pay_in_store] Order submitted",
+                "[OLO] OloTool._checkout_order_pay_in_store Order submitted",
                 extra={
                     "order_id": getattr(order_response, "id", None),
                     "total": getattr(order_response, "total", None),
@@ -494,7 +494,7 @@ class OloTool(Toolkit):
 
         except Exception as e:
             logger.error(
-                f"[OloTool._checkout_order_pay_in_store] Error checking out order: {e}",
+                f"[OLO] OloTool._checkout_order_pay_in_store Error checking out order: {e}",
                 exc_info=True,
             )
             return "Failed to check out the order, please try again."
@@ -502,7 +502,7 @@ class OloTool(Toolkit):
     def _checkout_order_with_payment_iframe(self) -> str:
         try:
             logger.info(
-                "[OloTool._checkout_order_with_payment_iframe] Starting hosted checkout",
+                "[OLO] OloTool._checkout_order_with_payment_iframe Starting hosted checkout",
                 extra={
                     "store_id": self.store_id,
                     "session_id": getattr(self.tool_metadata, "session_id", None),
@@ -511,14 +511,14 @@ class OloTool(Toolkit):
             basket = create_basket(int(self.store_id), self._olo_token)
             billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
             logger.info(
-                "[OloTool._checkout_order_with_payment_iframe] Basket created",
+                "[OLO] OloTool._checkout_order_with_payment_iframe Basket created",
                 extra={"basket_id": getattr(basket, "id", None)},
             )
             order_input = self._construct_order(billing_schemes_info)
             if isinstance(order_input, str):
                 return order_input
             logger.info(
-                "[OloTool._checkout_order_with_payment_iframe] Order constructed",
+                "[OLO] OloTool._checkout_order_with_payment_iframe Order constructed",
                 extra={
                     "products": len(order_input.products),
                     "handoff_mode": order_input.handoffmode.value,
@@ -536,7 +536,7 @@ class OloTool(Toolkit):
             )
             basket_totals = validate_basket(basket.id, olo_token=self._olo_token)
             logger.info(
-                "[OloTool._checkout_order_with_payment_iframe] Basket validated",
+                "[OLO] OloTool._checkout_order_with_payment_iframe Basket validated",
                 extra={
                     "subtotal": basket_totals.subtotal,
                     "tax": basket_totals.tax,
@@ -549,7 +549,7 @@ class OloTool(Toolkit):
                 olo_token=self._olo_token,
             ).accesstoken
             logger.info(
-                "[OloTool._checkout_order_with_payment_iframe] CCSF token retrieved",
+                "[OLO] OloTool._checkout_order_with_payment_iframe CCSF token retrieved",
                 extra={
                     "basket_id": basket.id,
                     "token_preview": f"{ccsf_access_token[:6]}...{ccsf_access_token[-4:]}",
@@ -563,7 +563,7 @@ class OloTool(Toolkit):
                 ccsf_access_token=ccsf_access_token,
             )
             logger.info(
-                "[OloTool._checkout_order_with_payment_iframe] Payment payload built",
+                "[OLO] OloTool._checkout_order_with_payment_iframe Payment payload built",
                 extra={
                     "expires_at": payment_payload.get("expiresAt"),
                     "handoff_mode": payment_payload.get("handoffMode"),
@@ -574,7 +574,7 @@ class OloTool(Toolkit):
             confirmation_message = self._format_checkout_confirmation(basket_totals)
             sanitized_link = self._sanitize_payment_link(payment_link)
             logger.info(
-                "[OloTool._checkout_order_with_payment_iframe] Payment link generated",
+                "[OLO] OloTool._checkout_order_with_payment_iframe Payment link generated",
                 extra={"payment_link": sanitized_link},
             )
 
@@ -585,7 +585,7 @@ class OloTool(Toolkit):
 
         except Exception as e:
             logger.error(
-                f"[OloTool._checkout_order_with_payment_iframe] Error starting checkout: {e}",
+                f"[OLO] OloTool._checkout_order_with_payment_iframe Error starting checkout: {e}",
                 exc_info=True,
             )
             return "Failed to start the checkout process. Please try again."
@@ -646,7 +646,7 @@ class OloTool(Toolkit):
             "expiresAt": int(time.time()) + self.payment_iframe_token_ttl_seconds,
         }
         logger.info(
-            "[OloTool._build_hosted_payment_payload] Payload composed",
+            "[OLO] OloTool._build_hosted_payment_payload Payload composed",
             extra={
                 "store_id": payload["storeId"],
                 "basket_id": payload["basketId"],
@@ -662,7 +662,7 @@ class OloTool(Toolkit):
         )
         token = urllib.parse.quote(token_bytes.decode("utf-8"))
         logger.info(
-            "[OloTool._generate_payment_link] Token generated",
+            "[OLO] OloTool._generate_payment_link Token generated",
             extra={
                 "token_preview": f"{token[:12]}..." if token else "",
                 "hosted_endpoint": self.hosted_payment_iframe_endpoint,

@@ -34,7 +34,7 @@ def _get_payment_iframe_fernet() -> Fernet:
 
 async def get_checkout_session(token: str) -> JSONResponse:
     logger.debug(
-        "[OloIntegration.get_checkout_session] Received token",
+        "[OLO] OloIntegration.get_checkout_session Received token",
         extra={"token_preview": f"{token[:12]}..." if token else "missing"},
     )
     try:
@@ -43,7 +43,7 @@ async def get_checkout_session(token: str) -> JSONResponse:
         )
     except InvalidToken as exc:
         logger.warning(
-            "[OloIntegration.get_checkout_session] Invalid or expired token received",
+            "[OLO] OloIntegration.get_checkout_session Invalid or expired token received",
             exc_info=exc,
         )
         raise HTTPException(
@@ -55,7 +55,7 @@ async def get_checkout_session(token: str) -> JSONResponse:
         payload = json.loads(decrypted.decode("utf-8"))
     except json.JSONDecodeError as exc:
         logger.error(
-            "[OloIntegration.get_checkout_session] Failed to decode token payload",
+            "[OLO] OloIntegration.get_checkout_session Failed to decode token payload",
             exc_info=exc,
         )
         raise HTTPException(
@@ -64,7 +64,7 @@ async def get_checkout_session(token: str) -> JSONResponse:
         ) from exc
 
     logger.debug(
-        "[OloIntegration.get_checkout_session] Token decrypted",
+        "[OLO] OloIntegration.get_checkout_session Token decrypted",
         extra={
             "store_id": payload.get("storeId"),
             "basket_id": payload.get("basketId"),
@@ -80,7 +80,7 @@ async def get_checkout_session(token: str) -> JSONResponse:
 
 async def checkout_complete(payload: OloCheckoutCompleteRequest) -> JSONResponse:
     logger.debug(
-        "[OloIntegration.checkout_complete] Checkout completed",
+        "[OLO] OloIntegration.checkout_complete Checkout completed",
         extra={
             "basket_id": payload.basketId,
             "store_id": payload.storeId,
