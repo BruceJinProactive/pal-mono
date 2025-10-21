@@ -8,9 +8,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
 
 OLO_PAYMENT_TOKEN_TTL_SECONDS = 15 * 60
+HARD_CODED_PAYMENT_IFRAME_SECRET = "xK8dP2m_QrZ7vN4wL9cF3bJ6hT5yU1gS0aE8iO-pMxA="
 
 
 class OloCheckoutCompleteRequest(BaseModel):
@@ -24,14 +24,11 @@ class OloCheckoutCompleteRequest(BaseModel):
 
 @lru_cache(maxsize=1)
 def _get_payment_iframe_fernet() -> Fernet:
-    secret = get_client_secret_with_fallback("OLO_PAYMENT_IFRAME_SECRET")
-    if not secret or not secret.strip():
-        raise RuntimeError("OLO_PAYMENT_IFRAME_SECRET is not configured")
     try:
-        return Fernet(secret.strip().encode("utf-8"))
+        return Fernet(HARD_CODED_PAYMENT_IFRAME_SECRET.encode("utf-8"))
     except ValueError as exc:
         raise RuntimeError(
-            "OLO_PAYMENT_IFRAME_SECRET must be a URL-safe base64-encoded 32-byte key"
+            "HARD_CODED_PAYMENT_IFRAME_SECRET must be a URL-safe base64-encoded 32-byte key"
         ) from exc
 
 
