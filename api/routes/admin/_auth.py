@@ -298,14 +298,33 @@ def authenticate_user(request: Request) -> UserContext:
             detail=str("token is empty!"),
             headers={"Content-Type": "application/json"},
         )
+
+    # Combine both custom:account_name and custom:account_names
+    account_names = []
+
     account_name = token.get("custom:account_name", "")
+    if account_name:
+        account_names.extend(account_name.split(","))
+
+    account_names_str = token.get("custom:account_names", "")
+    if account_names_str:
+        account_names.extend(account_names_str.split(","))
+
+    seen = set()
+    unique_account_names = []
+    for name in account_names:
+        name = name.strip()
+        if name and name not in seen:
+            seen.add(name)
+            unique_account_names.append(name)
+
     user_role = get_user_role(token)
     return UserContext(
         username=token.get("cognito:username", ""),
         email=token.get("email", ""),
         groups=token.get("cognito:groups", []),
         display_name=token.get("name", ""),
-        account_names=account_name.split(",") if account_name else [],
+        account_names=unique_account_names,
         role=user_role,
     )
 
