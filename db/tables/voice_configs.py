@@ -53,6 +53,7 @@ class VoiceConfig(Base):
         server_default=text("'{}'::jsonb"),
         default=dict,
     )
+    cloned_voice_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(
