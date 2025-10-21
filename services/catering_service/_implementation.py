@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import date, time
 from typing import List, Optional
@@ -14,7 +13,8 @@ from db.repositories.project_contact_repository import ProjectContactRepositoryA
 from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from db.tables.contacts import Contact
-from services.catering_service._sqs import publish_catering_event
+from services.catering_service._eventbridge import publish_catering_event
+from utils.log import logger
 
 
 def create_catering_request(
@@ -120,12 +120,15 @@ def create_catering_request(
                 catering_request
             )
 
-            # Publish event for new catering request creation if SQS is configured
-            if os.getenv("CATERING_QUEUE_URL"):
-                publish_catering_event(
-                    catering_request_id=str(created_request.id),
-                    event_type="catering_request_created",
-                    idempotency_key=idempotency_key,
+            # Publish event for new catering request creation to EventBridge
+            event_published = publish_catering_event(
+                catering_request_id=str(created_request.id),
+                event_type="catering_request_created",
+                idempotency_key=idempotency_key,
+            )
+            if not event_published:
+                logger.warning(
+                    f"Failed to publish catering_request_created event for request {created_request.id}"
                 )
 
             return created_request
