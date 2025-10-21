@@ -36,7 +36,7 @@ def handle_olo_response(
         error_msg = (
             f"API call failed with status {response.status}: {response.decoded_body}"
         )
-        logger.error(error_msg, exc_info=True)
+        logger.error(error_msg)
         raise ValueError(error_msg)
 
     if response_type:
@@ -217,12 +217,14 @@ def connect_olo_order_hub_signed(
     request_body = ""
     if payload is not None:
         if isinstance(payload, dict):
-            request_body = json.dumps(payload)
+            # Preserve the same JSON canonical form used for hashing and body.
+            request_body = json.dumps(payload, separators=(",", ":"))
         else:
             request_body = str(payload)
 
-    # Content type
-    content_type = "application/json"
+    # Content type should be blank for verbs without a body (e.g., GET).
+    has_body = bool(request_body)
+    content_type = "application/json" if has_body else ""
 
     # Generate timestamp
     time_stamp = formatdate(timeval=None, localtime=False, usegmt=True)
@@ -255,9 +257,10 @@ def connect_olo_order_hub_signed(
         {
             "Authorization": f"{signed_token.token_type} {signed_token.client_id}:{signed_message}",
             "Date": time_stamp,
-            "Content-Type": content_type,
         }
     )
+    if has_body:
+        headers["Content-Type"] = content_type
 
     # Add extra headers, but exclude signature-critical headers to prevent overrides
     if extra_headers:

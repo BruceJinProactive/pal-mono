@@ -1,13 +1,17 @@
 import json
+import time
+import urllib.parse
 from functools import cached_property
+from typing import Any
 
 from agno.tools.toolkit import Toolkit
+from cryptography.fernet import Fernet
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
-from tools.olo_tool._apis import (  # TODO: Add request_ccsf_token
+from tools.olo_tool._apis import (
     add_items_to_basket,
     create_basket,
     get_billing_schemes_info,
@@ -37,6 +41,7 @@ from tools.olo_tool.classes import (
     OloProductInput,
     OloSignedToken,
     UserType,
+    ValidatedBasketTotals,
 )
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import (
@@ -58,7 +63,11 @@ class OloTool(Toolkit):
         tool_metadata: ToolMetadata,
         client_credentials: str | None = None,
         use_signed_auth: bool = False,
+        hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/olo",
+        enable_hosted_checkout: bool = False,
+        payment_iframe_token_ttl_seconds: int = 15 * 60,
         backdoor_tool_prompt: dict | None = None,
+        brand_access_id: str | None = None,
     ):
         super().__init__(name="olo_tool")
 
@@ -69,7 +78,11 @@ class OloTool(Toolkit):
         self._cached_store_info: str | None = None
         self.client_credentials = client_credentials
         self.use_signed_auth = use_signed_auth
+        self.hosted_payment_iframe_endpoint = hosted_payment_iframe_endpoint
+        self.enable_hosted_checkout = enable_hosted_checkout
+        self.payment_iframe_token_ttl_seconds = payment_iframe_token_ttl_seconds
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
+        self._configured_brand_access_id = brand_access_id
         # Register tools
         self.register(self.get_store_info_tool)
         self.register(self.check_online_ordering_status)
@@ -100,16 +113,22 @@ class OloTool(Toolkit):
                         "client_credentials is required when use_signed_auth=True"
                     )
                 credentials = self._get_olo_credentials(self.client_credentials)
+                logger.debug(
+                    "[OloTool._olo_token] Using signed authentication",
+                    extra={"credential_secret": self.client_credentials},
+                )
                 return OloSignedToken(
                     client_id=credentials["client_id"],
                     client_secret=credentials["client_secret"],
                 )
-            else:
-                api_key = get_client_secret_with_fallback("OLO_MOOYAH_API_KEY")
-                return OloAccessToken(
-                    access_token=api_key,
-                    token_type="OloKey",
+
+            api_key = get_client_secret_with_fallback("OLO_MOOYAH_API_KEY").strip()
+            if not api_key:
+                raise ValueError(
+                    "OLO_MOOYAH_API_KEY is not configured; unable to authenticate Olo API calls"
                 )
+            logger.debug("[OloTool._olo_token] Using API key authentication")
+            return OloAccessToken(access_token=api_key, token_type="OloKey")
 
     def _get_olo_credentials(self, client_credentials: str) -> dict[str, str]:
         """
@@ -186,6 +205,28 @@ class OloTool(Toolkit):
                 extra_headers=extra_headers,
                 payload=payload,
             )
+
+    @cached_property
+    def _brand_access_id(self) -> str:
+        if self._configured_brand_access_id:
+            return self._configured_brand_access_id
+
+        brand_access_id = get_client_secret_with_fallback("OLO_CCSF_BRAND_ACCESS_ID")
+        if not brand_access_id or not brand_access_id.strip():
+            raise ValueError("OLO_CCSF_BRAND_ACCESS_ID is not configured")
+        return brand_access_id.strip()
+
+    @cached_property
+    def _payment_iframe_fernet(self) -> Fernet:
+        secret = get_client_secret_with_fallback("OLO_PAYMENT_IFRAME_SECRET")
+        if not secret or not secret.strip():
+            raise ValueError("OLO_PAYMENT_IFRAME_SECRET is not configured")
+        try:
+            return Fernet(secret.strip().encode("utf-8"))
+        except ValueError as exc:
+            raise ValueError(
+                "OLO_PAYMENT_IFRAME_SECRET must be a URL-safe base64-encoded 32-byte key"
+            ) from exc
 
     @tool
     def get_store_info_tool(self) -> str:
@@ -348,34 +389,61 @@ class OloTool(Toolkit):
     @tool
     def checkout_order(self) -> str:
         """
-        Validates an order for checkout by extracting structured ordering data from chat
-        history. This function absolutely must be invoked when all the required information is collected and the user asks to checkout,
-        pay, place the order, etc.
+        Completes checkout once the guest has confirmed their order.
 
-        Args:
-            None
-
-        Returns:
-            str: Order checkout confirmation details
+        When hosted checkout is enabled this will return a secure payment link that
+        directs the guest to our Olo payment iframe. Otherwise the order is submitted
+        as a traditional pay-in-store transaction.
         """
-        # We need to first create a basket, then add items to the basket, then set the handoff mode to pickup. For credit card payment, we need to request a CCSF token, then submit the order; for pay in store, we need to submit the order.
-        # We focus on pay in store for now.
+        if self.enable_hosted_checkout:
+            return self._checkout_order_with_payment_iframe()
+        return self._checkout_order_pay_in_store()
+
+    def _checkout_order_pay_in_store(self) -> str:
         try:
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Starting checkout",
+                extra={"store_id": self.store_id},
+            )
             # Create a basket
             basket = create_basket(int(self.store_id), self._olo_token)
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Basket created",
+                extra={"basket_id": getattr(basket, "id", None)},
+            )
 
             # Get the billing schemes info
             billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Retrieved billing schemes",
+                extra={"scheme_count": len(billing_schemes_info)},
+            )
 
             # Construct the order
             order_input = self._construct_order(billing_schemes_info)
             # If the order is a string, return it
             if isinstance(order_input, str):
+                logger.debug(
+                    "[OloTool._checkout_order_pay_in_store] Order construction error",
+                    extra={"message": order_input},
+                )
                 return order_input  # Failed to construct order
+
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Order constructed",
+                extra={
+                    "products": len(order_input.products),
+                    "handoff_mode": order_input.handoffmode.value,
+                },
+            )
 
             # Add items to the basket
             add_items_to_basket(
                 basket.id, olo_product_input=order_input, olo_token=self._olo_token
+            )
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Items added to basket",
+                extra={"basket_id": basket.id},
             )
 
             # Set the handoff mode to pickup
@@ -384,34 +452,22 @@ class OloTool(Toolkit):
                 handoff_mode=order_input.handoffmode,
                 olo_token=self._olo_token,
             )
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Handoff mode set",
+                extra={"handoff_mode": order_input.handoffmode.value},
+            )
 
-            # Validate the basket
+            # Validate the basket before submitting
             validate_basket(basket.id, olo_token=self._olo_token)
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Basket validated",
+                extra={"basket_id": basket.id},
+            )
 
-            #######
-            # Pay with credit card
-            #######
-            # Request a CCSF token
-            # This is the test case for paying with credit card
-            credit_token = request_ccsf_token(
-                basket_id=basket.id,
-                olo_token=self._olo_token,
-            ).accesstoken
-
-            # # Create order submission body
             order_submission = OloOrderSubmissionBody(
-                billingmethod=BillingMethod.creditcardtoken,
+                billingmethod=BillingMethod.payinstore,
                 usertype=UserType.guest,
-                token=credit_token,
-                expiryyear=2025,
-                expirymonth=12,
-                cardtype="Visa",
-                cardlastfour="1234",
-                streetaddress="123 Main St",
-                city="Anytown",
-                state="CA",
-                zip="12345",
-                country="US",
+                billingschemeid=order_input.billingschemeid,
                 saveonfile="false",
                 firstname=order_input.firstname,
                 lastname=order_input.lastname,
@@ -419,28 +475,232 @@ class OloTool(Toolkit):
                 contactnumber=order_input.contactnumber,
             )
 
-            #######
-            # Pay in store
-            #######
-            # Submit the order
-            # order_submission = OloOrderSubmissionBody(
-            #     billingmethod=BillingMethod.payinstore,
-            #     usertype=UserType.guest,
-            #     billingschemeid=order_input.billingschemeid,
-            #     saveonfile="false",
-            #     firstname=order_input.firstname,
-            #     lastname=order_input.lastname,
-            #     emailaddress=order_input.emailaddress,
-            #     contactnumber=order_input.contactnumber,
-            # )
             order_response = submit_order(
                 basket_id=basket.id,
                 olo_token=self._olo_token,
                 olo_order_submission_body=order_submission,
             )
+            logger.debug(
+                "[OloTool._checkout_order_pay_in_store] Order submitted",
+                extra={
+                    "order_id": getattr(order_response, "id", None),
+                    "total": getattr(order_response, "total", None),
+                },
+            )
 
-            return f"Order submitted successfully. The order ID is {order_response.id}. Total cost: {order_response.total}. Order contents: {order_response.products}. Your OLO ID is {order_response.oloid}. When reaching out to Olo about an order, please provide this id."
+            return (
+                f"Order submitted successfully. The order ID is {order_response.id}. "
+                f"Total cost: {order_response.total}. "
+                f"Order contents: {order_response.products}. "
+                f"Your OLO ID is {order_response.oloid}. When reaching out to Olo about an order, please provide this id."
+            )
 
         except Exception as e:
-            logger.error(f"[OloTool.checkout_order] Error checking out order: {e}")
+            logger.error(
+                f"[OloTool._checkout_order_pay_in_store] Error checking out order: {e}",
+                exc_info=True,
+            )
             return "Failed to check out the order, please try again."
+
+    def _checkout_order_with_payment_iframe(self) -> str:
+        try:
+            logger.debug(
+                "[OloTool._checkout_order_with_payment_iframe] Starting hosted checkout",
+                extra={
+                    "store_id": self.store_id,
+                    "session_id": getattr(self.tool_metadata, "session_id", None),
+                },
+            )
+            basket = create_basket(int(self.store_id), self._olo_token)
+            billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
+            logger.debug(
+                "[OloTool._checkout_order_with_payment_iframe] Basket created",
+                extra={"basket_id": getattr(basket, "id", None)},
+            )
+            order_input = self._construct_order(billing_schemes_info)
+            if isinstance(order_input, str):
+                return order_input
+            logger.debug(
+                "[OloTool._checkout_order_with_payment_iframe] Order constructed",
+                extra={
+                    "products": len(order_input.products),
+                    "handoff_mode": order_input.handoffmode.value,
+                    "has_customer_email": bool(order_input.emailaddress),
+                },
+            )
+
+            add_items_to_basket(
+                basket.id, olo_product_input=order_input, olo_token=self._olo_token
+            )
+            set_basket_handoff_mode(
+                basket.id,
+                handoff_mode=order_input.handoffmode,
+                olo_token=self._olo_token,
+            )
+            basket_totals = validate_basket(basket.id, olo_token=self._olo_token)
+            logger.debug(
+                "[OloTool._checkout_order_with_payment_iframe] Basket validated",
+                extra={
+                    "subtotal": basket_totals.subtotal,
+                    "tax": basket_totals.tax,
+                    "total": basket_totals.total,
+                },
+            )
+
+            ccsf_access_token = request_ccsf_token(
+                basket_id=basket.id,
+                olo_token=self._olo_token,
+            ).accesstoken
+            logger.debug(
+                "[OloTool._checkout_order_with_payment_iframe] CCSF token retrieved",
+                extra={
+                    "basket_id": basket.id,
+                    "token_preview": f"{ccsf_access_token[:6]}...{ccsf_access_token[-4:]}",
+                },
+            )
+
+            payment_payload = self._build_hosted_payment_payload(
+                basket_id=basket.id,
+                order_input=order_input,
+                basket_totals=basket_totals,
+                ccsf_access_token=ccsf_access_token,
+            )
+            logger.debug(
+                "[OloTool._checkout_order_with_payment_iframe] Payment payload built",
+                extra={
+                    "expires_at": payment_payload.get("expiresAt"),
+                    "handoff_mode": payment_payload.get("handoffMode"),
+                },
+            )
+
+            payment_link = self._generate_payment_link(payment_payload)
+            confirmation_message = self._format_checkout_confirmation(basket_totals)
+            sanitized_link = self._sanitize_payment_link(payment_link)
+            logger.debug(
+                "[OloTool._checkout_order_with_payment_iframe] Payment link generated",
+                extra={"payment_link": sanitized_link},
+            )
+
+            return (
+                confirmation_message
+                + f"\n\nThe following is the payment link, ask the user to use the link to checkout: [payment link]({payment_link})\n\nYou MUST INCLUDE THE COMPLETE URL in your response, formatted as a Markdown link. YOU MUST NOT OMIT ANY PART OF THE URL."
+            )
+
+        except Exception as e:
+            logger.error(
+                f"[OloTool._checkout_order_with_payment_iframe] Error starting checkout: {e}",
+                exc_info=True,
+            )
+            return "Failed to start the checkout process. Please try again."
+
+    def _build_hosted_payment_payload(
+        self,
+        *,
+        basket_id: str,
+        order_input: OloProductInput,
+        basket_totals: ValidatedBasketTotals,
+        ccsf_access_token: str,
+    ) -> dict[str, Any]:
+        order_submission: dict[str, Any] = {
+            "userType": UserType.guest.value,
+            "firstName": order_input.firstname,
+            "lastName": order_input.lastname,
+            "emailAddress": order_input.emailaddress,
+            "contactNumber": order_input.contactnumber,
+            "billingAccounts": [
+                {
+                    "amount": round(float(basket_totals.total), 2),
+                    "billingMethod": BillingMethod.creditcard.value,
+                    "tipPortion": 0,
+                }
+            ],
+        }
+        if order_input.billingschemeid:
+            order_submission["billingSchemeId"] = order_input.billingschemeid
+
+        payload: dict[str, Any] = {
+            "storeId": self.store_id,
+            "basketId": basket_id,
+            "brandAccessId": self._brand_access_id,
+            "accessToken": ccsf_access_token,
+            "orderSubmission": order_submission,
+            "basketTotals": {
+                "subtotal": round(float(basket_totals.subtotal), 2),
+                "tax": round(float(basket_totals.tax), 2),
+                "total": round(float(basket_totals.total), 2),
+                "fees": round(float(basket_totals.totalfees), 2),
+                "customerHandoffCharge": round(
+                    float(basket_totals.customerhandoffcharge), 2
+                ),
+                "readyTime": basket_totals.readytime,
+            },
+            "orderItems": [
+                product.model_dump(exclude_none=True)
+                for product in order_input.products
+            ],
+            "handoffMode": order_input.handoffmode.value,
+            "customer": {
+                "firstName": order_input.firstname,
+                "lastName": order_input.lastname,
+                "emailAddress": order_input.emailaddress,
+                "contactNumber": order_input.contactnumber,
+            },
+            "sessionId": getattr(self.tool_metadata, "session_id", None),
+            "expiresAt": int(time.time()) + self.payment_iframe_token_ttl_seconds,
+        }
+        logger.debug(
+            "[OloTool._build_hosted_payment_payload] Payload composed",
+            extra={
+                "store_id": payload["storeId"],
+                "basket_id": payload["basketId"],
+                "order_items": len(payload["orderItems"]),
+                "expires_at": payload["expiresAt"],
+            },
+        )
+        return payload
+
+    def _generate_payment_link(self, payload: dict[str, Any]) -> str:
+        token_bytes = self._payment_iframe_fernet.encrypt(
+            json.dumps(payload).encode("utf-8")
+        )
+        token = urllib.parse.quote(token_bytes.decode("utf-8"))
+        logger.debug(
+            "[OloTool._generate_payment_link] Token generated",
+            extra={
+                "token_preview": f"{token[:12]}..." if token else "",
+                "hosted_endpoint": self.hosted_payment_iframe_endpoint,
+            },
+        )
+        return f"{self.hosted_payment_iframe_endpoint}?t={token}"
+
+    def _sanitize_payment_link(self, payment_link: str) -> str:
+        try:
+            parsed = urllib.parse.urlparse(payment_link)
+            query_params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            if "t" in query_params:
+                query_params["t"] = ["[REDACTED]"]
+            sanitized_query = urllib.parse.urlencode(query_params, doseq=True)
+            return urllib.parse.urlunparse(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    parsed.path,
+                    parsed.params,
+                    sanitized_query,
+                    parsed.fragment,
+                )
+            )
+        except Exception:
+            return self.hosted_payment_iframe_endpoint
+
+    @staticmethod
+    def _format_checkout_confirmation(basket_totals: ValidatedBasketTotals) -> str:
+        total = round(float(basket_totals.total), 2)
+        ready_time = basket_totals.readytime
+        ready_time_text = (
+            f" It will be ready around {ready_time}." if ready_time else ""
+        )
+        return (
+            f"I've prepared your order. The total is ${total:.2f}.{ready_time_text} "
+            "Please use the secure payment link below to complete checkout."
+        )
