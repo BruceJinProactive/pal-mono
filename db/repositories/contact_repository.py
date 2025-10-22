@@ -41,6 +41,24 @@ class ContactRepositoryAsync:
 
         return db_contact
 
+    async def get_contact_by_id(self, contact_id: uuid.UUID) -> Contact | None:
+        """
+        Get contact by ID asynchronously.
+
+        Args:
+            contact_id (uuid.UUID): The ID of the contact to retrieve.
+
+        Returns:
+            Contact | None: The contact if found, None otherwise.
+        """
+        try:
+            query = select(Contact).filter(Contact.id == contact_id)
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            logger.error(f"Error retrieving contact by ID {contact_id}: {e}")
+            raise
+
     async def delete_contact(self, contact_id: uuid.UUID) -> Contact | None:
         """
         Delete a contact by ID asynchronously.

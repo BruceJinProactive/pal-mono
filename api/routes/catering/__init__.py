@@ -24,12 +24,15 @@ catering_router = APIRouter(prefix=endpoints.CATERING, tags=["Catering"])
 
 
 @catering_router.post("/events", status_code=status.HTTP_200_OK)
-async def handle_catering_event(event: EventBridgeEvent):
+async def handle_catering_event(
+    event: EventBridgeEvent,
+    session: AsyncSession = Depends(db.get_db_async),
+):
     """
     Handle catering events from AWS EventBridge.
     This endpoint receives events with Default Behavior from EventBridge.
     """
-    return await _implementation.handle_catering_event(event)
+    return await _implementation.handle_catering_event(event, session)
 
 
 @catering_router.post(

@@ -18,6 +18,7 @@ from services.catering_service._implementation import (
     create_catering_request,
     create_contact,
     delete_contact,
+    handle_catering_request_created_event,
     list_catering_requests_by_project_id,
     list_contacts,
 )
@@ -27,7 +28,9 @@ from services.catering_service._implementation import (
 from utils.log import logger
 
 
-async def handle_catering_event(event: EventBridgeEvent) -> Dict[str, str]:
+async def handle_catering_event(
+    event: EventBridgeEvent, session: AsyncSession
+) -> Dict[str, str]:
     """
     Handle catering events from AWS EventBridge.
     Routes events based on detail-type to appropriate handlers.
@@ -35,37 +38,61 @@ async def handle_catering_event(event: EventBridgeEvent) -> Dict[str, str]:
     detail_type = event.detail_type
     detail = event.detail
 
-    logger.debug(f"Received catering event: {detail_type} from {event.source}")
+    logger.debug(
+        f"[catering] Received catering event: {detail_type} from {event.source}"
+    )
 
     if detail_type == "CateringRequestCreated":
-        return await handle_catering_request_created(detail)
+        return await handle_catering_request_created(detail, session)
     else:
-        logger.warning(f"Unknown event type received: {detail_type}")
+        logger.warning(f"[catering] Unknown event type received: {detail_type}")
         return {"status": "ignored", "message": f"Unknown event type: {detail_type}"}
 
 
-async def handle_catering_request_created(detail: Dict) -> Dict[str, str]:
+async def handle_catering_request_created(
+    detail: Dict, session: AsyncSession
+) -> Dict[str, str]:
     """
     Handle CateringRequestCreated events.
-    Process the catering request creation event and perform necessary business logic.
+    Process the catering request creation event and send notifications to catering managers.
     """
     catering_request_id = detail.get("catering_request_id")
     idempotency_key = detail.get("idempotency_key")
 
     if not catering_request_id:
-        logger.error("Missing catering_request_id in event detail")
+        logger.error("[catering] Missing catering_request_id in event detail")
         return {"status": "error", "message": "Missing catering_request_id"}
 
     if not idempotency_key:
-        logger.error("Missing idempotency_key in event detail")
+        logger.error("[catering] Missing idempotency_key in event detail")
         return {"status": "error", "message": "Missing idempotency_key"}
 
+    try:
+        success = await handle_catering_request_created_event(
+            catering_request_id, idempotency_key, session
+        )
+
+        if success:
+            logger.debug(
+                f"[catering] Successfully handled catering request created event for request {catering_request_id}"
+            )
+            status = "success"
+        else:
+            logger.warning(
+                f"[catering] Some actions failed for catering request created event {catering_request_id}"
+            )
+            status = "failed"
+
+    except Exception as e:
+        logger.error(f"[catering] Error handling catering request created event: {e}")
+        status = "failed"
+
     logger.debug(
-        f"Successfully processed catering request created event for request {catering_request_id}"
+        f"[catering] Processed catering request created event for request {catering_request_id}"
     )
 
     return {
-        "status": "processed",
+        "status": status,
         "catering_request_id": catering_request_id,
         "idempotency_key": idempotency_key,
     }

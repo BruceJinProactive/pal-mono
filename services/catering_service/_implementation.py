@@ -309,3 +309,222 @@ async def update_catering_request(
     return await catering_request_repo.update_catering_request(
         catering_request_id, updated_catering_request
     )
+
+
+async def _find_and_assign_catering_manager(
+    session: AsyncSession,
+    catering_request,
+    catering_request_id: str,
+) -> Contact | None:
+    """
+    Find a catering manager for the request and assign it if needed.
+
+    Args:
+        session: Database session
+        catering_request: The catering request object
+        catering_request_id: ID of the catering request (for logging)
+
+    Returns:
+        Contact | None: The catering manager contact if found, None otherwise
+    """
+    contact_repo = ContactRepositoryAsync(session)
+
+    # Try to get the direct contact first
+    if catering_request.contact_id:
+        catering_manager = await contact_repo.get_contact_by_id(
+            catering_request.contact_id
+        )
+        if catering_manager:
+            logger.debug(
+                f"[catering] Using existing contact {catering_manager.name} (ID: {catering_manager.id})"
+            )
+            return catering_manager
+
+    project_contact_repo = ProjectContactRepositoryAsync(session)
+
+    contact_ids = await project_contact_repo.list_contacts_by_project(
+        catering_request.project_id
+    )
+
+    if not contact_ids:
+        logger.warning(
+            f"[catering] No contacts found for project {catering_request.project_id}"
+        )
+        return None
+
+    contacts = await contact_repo.batch_list_contacts(contact_ids)
+
+    if not contacts:
+        logger.warning(
+            f"[catering] No valid contacts found for project {catering_request.project_id}"
+        )
+        return None
+
+    # Find the first catering manager
+    catering_manager = next(
+        (contact for contact in contacts if contact.role.lower() == "catering_manager"),
+        None,
+    )
+
+    if not catering_manager:
+        logger.warning(
+            f"[catering] No catering manager found for project {catering_request.project_id}"
+        )
+        return None
+
+    logger.debug(f"[catering] Found catering manager: {catering_manager.name}")
+
+    # If the catering request doesn't have a contact_id, assign this manager
+    if not catering_request.contact_id:
+        try:
+            catering_request.contact_id = catering_manager.id
+            catering_request_repo = CateringRequestRepositoryAsync(session)
+            await catering_request_repo.update_catering_request(
+                uuid.UUID(catering_request_id), catering_request
+            )
+            logger.debug(
+                f"[catering] Assigned catering manager {catering_manager.name} (ID: {catering_manager.id}) to catering request {catering_request_id}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[catering] Failed to assign catering manager to request {catering_request_id}: {e}"
+            )
+            # Don't fail the entire process if we can't update the assignment
+
+    return catering_manager
+
+
+async def handle_catering_request_created_event(
+    catering_request_id: str,
+    idempotency_key: str,
+    session: AsyncSession,
+) -> bool:
+    """
+    Handle all business logic when a catering request is created.
+    This includes notifications, integrations, analytics, etc.
+
+    Args:
+        catering_request_id: ID of the catering request
+        idempotency_key: Idempotency key for the catering request
+        session: Async database session
+
+    Returns:
+        bool: True if all actions completed successfully, False otherwise
+    """
+
+    try:
+        catering_request_repo = CateringRequestRepositoryAsync(session)
+
+        # Get the catering request details
+        catering_request = await catering_request_repo.get_catering_request_by_id(
+            uuid.UUID(catering_request_id)
+        )
+
+        if not catering_request:
+            logger.error(f"[catering] Catering request {catering_request_id} not found")
+            return False
+
+        # Validate idempotency key matches
+        if catering_request.idempotency_key != idempotency_key:
+            logger.error(
+                f"[catering] Idempotency key mismatch for catering request {catering_request_id}. "
+                f"Expected: {catering_request.idempotency_key}, Got: {idempotency_key}"
+            )
+            return False
+
+        catering_manager = await _find_and_assign_catering_manager(
+            session, catering_request, catering_request_id
+        )
+
+        if not catering_manager:
+            logger.error(
+                f"[catering] No catering manager found for project {catering_request.project_id}"
+            )
+            return False
+
+        # Format the notification message
+        message = format_catering_request_message(catering_request)
+
+        try:
+            notification_success = await send_sms_notification(
+                catering_manager.phone_number, message
+            )
+            if notification_success:
+                logger.debug(
+                    f"[catering] Successfully sent catering request notification to {catering_manager.name}"
+                )
+                return True
+            else:
+                logger.error(
+                    f"[catering] Failed to send SMS to manager {catering_manager.name} at ****{catering_manager.phone_number[-4:]}"
+                )
+                return False
+        except Exception as e:
+            logger.error(
+                f"[catering] Error sending SMS to manager {catering_manager.name}: {e}"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"[catering] Error in handle_catering_request_created_event: {e}")
+        return False
+
+
+def format_catering_request_message(catering_request) -> str:
+    """
+    Format catering request details into a text message.
+
+    Args:
+        catering_request: CateringRequest object
+
+    Returns:
+        str: Formatted message
+    """
+    message_parts = [
+        "New Catering Request",
+        f"Date: {catering_request.event_date.strftime('%B %d, %Y')}",
+        f"Contact: {catering_request.contact_name}",
+        f"Phone: {catering_request.contact_phone_number}",
+    ]
+
+    if catering_request.event_time:
+        message_parts.append(
+            f"Time: {catering_request.event_time.strftime('%I:%M %p')}"
+        )
+
+    if catering_request.party_size:
+        message_parts.append(f"Party Size: {catering_request.party_size}")
+
+    if catering_request.event_address:
+        message_parts.append(f"Address: {catering_request.event_address}")
+
+    if catering_request.event_detail:
+        message_parts.append(f"Details: {catering_request.event_detail}")
+
+    return "\n".join(message_parts)
+
+
+async def send_sms_notification(phone_number: str, message: str) -> bool:
+    """
+    Send SMS notification using configured SMS service.
+
+    Args:
+        phone_number: Phone number to send to
+        message: Message content
+
+    Returns:
+        bool: True if sent successfully, False otherwise
+    """
+    from utils.log import logger
+
+    # TODO: Implement actual SMS sending
+    # This is a placeholder that simulates SMS sending
+
+    try:
+        logger.debug(f"[catering] Simulating SMS send to {phone_number}: {message}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"[catering] Failed to send SMS to {phone_number}: {e}")
+        return False

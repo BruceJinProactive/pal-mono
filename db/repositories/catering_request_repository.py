@@ -49,6 +49,30 @@ class CateringRequestRepositoryAsync:
 
         return db_catering_request
 
+    async def get_catering_request_by_id(
+        self, catering_request_id: uuid.UUID
+    ) -> CateringRequest | None:
+        """
+        Get catering request by ID asynchronously.
+
+        Args:
+            catering_request_id (uuid.UUID): The ID of the catering request to retrieve.
+
+        Returns:
+            CateringRequest | None: The catering request if found, None otherwise.
+        """
+        try:
+            query = select(CateringRequest).filter(
+                CateringRequest.id == catering_request_id
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            logger.error(
+                f"Error retrieving catering request by ID {catering_request_id}: {e}"
+            )
+            raise
+
     async def list_catering_requests_by_project_id(
         self, project_id: uuid.UUID
     ) -> List[CateringRequest]:
