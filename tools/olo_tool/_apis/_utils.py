@@ -82,8 +82,20 @@ def connect_olo_order_hub(
 
     # Merge with any extra headers (extra_headers take precedence)
     if extra_headers:
-        olo_headers.update(extra_headers)
-
+        filtered_headers = {
+            k: v
+            for k, v in extra_headers.items()
+            if k
+            not in [
+                "Date",
+                "Content-Type",
+                "Authorization",
+                "User-Agent",
+                "X-Forwarded-For",
+                "X-Forwarded-UAH",
+            ]
+        }
+        olo_headers.update(filtered_headers)
     return connect_order_hub(
         provider=ApiProvider.OLO,
         http_method=http_method,
@@ -163,12 +175,13 @@ def _get_olo_required_headers() -> dict[str, str]:
 
     Returns:
         dict[str, str]: Dictionary containing the three required headers:
-            - User-Agent: Identifies the application
-            - X-Forwarded-For: Client IP address (random 10.x.x.x for testing)
-            - X-Forwarded-UAH: User agent header identifier
+            - User-Agent: Identifies the application with brand name
+            - X-Forwarded-For: Client IP address (random 10.x.x.x for testing) -
+                               FIRST address must be the client IP for fraud prevention
+            - X-Forwarded-UAH: User agent header identifier (generic value)
     """
     return {
-        "User-Agent": "PalonaAI/1.0",
+        "User-Agent": "PalonaAI/Mooyah/1.0",
         "X-Forwarded-For": _generate_random_ip_10_0_0_0(),
         "X-Forwarded-UAH": "PalonaAIVoice",
     }
@@ -267,7 +280,15 @@ def connect_olo_order_hub_signed(
         filtered_headers = {
             k: v
             for k, v in extra_headers.items()
-            if k not in ["Date", "Content-Type", "Authorization"]
+            if k
+            not in [
+                "Date",
+                "Content-Type",
+                "Authorization",
+                "User-Agent",
+                "X-Forwarded-For",
+                "X-Forwarded-UAH",
+            ]
         }
         headers.update(filtered_headers)
 

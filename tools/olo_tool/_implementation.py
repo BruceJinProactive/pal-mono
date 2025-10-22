@@ -394,26 +394,26 @@ class OloTool(Toolkit):
         """
         if self.enable_hosted_checkout:
             return self._checkout_order_with_payment_iframe()
-        return self._checkout_order_pay_in_store()
+        return self._checkout_order_wout_payment_iframe()
 
-    def _checkout_order_pay_in_store(self) -> str:
+    def _checkout_order_wout_payment_iframe(self) -> str:
         try:
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Starting checkout",
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Starting checkout",
                 extra={"store_id": self.store_id},
             )
             # Create a basket
             basket = create_basket(int(self.store_id), self._olo_token)
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Basket created",
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Basket created",
                 extra={"basket_id": getattr(basket, "id", None)},
             )
 
             # Get the billing schemes info
             billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Retrieved billing schemes",
-                extra={"scheme_count": len(billing_schemes_info)},
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Retrieved billing schemes",
+                extra={"scheme": billing_schemes_info},
             )
 
             # Construct the order
@@ -421,13 +421,13 @@ class OloTool(Toolkit):
             # If the order is a string, return it
             if isinstance(order_input, str):
                 logger.info(
-                    "[OLO] OloTool._checkout_order_pay_in_store Order construction error",
+                    "[OLO] OloTool._checkout_order_wout_payment_iframe Order construction error",
                     extra={"message": order_input},
                 )
                 return order_input  # Failed to construct order
 
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Order constructed",
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Order constructed",
                 extra={
                     "products": len(order_input.products),
                     "handoff_mode": order_input.handoffmode.value,
@@ -439,7 +439,7 @@ class OloTool(Toolkit):
                 basket.id, olo_product_input=order_input, olo_token=self._olo_token
             )
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Items added to basket",
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Items added to basket",
                 extra={"basket_id": basket.id},
             )
 
@@ -450,21 +450,41 @@ class OloTool(Toolkit):
                 olo_token=self._olo_token,
             )
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Handoff mode set",
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Handoff mode set",
                 extra={"handoff_mode": order_input.handoffmode.value},
             )
 
             # Validate the basket before submitting
             validate_basket(basket.id, olo_token=self._olo_token)
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Basket validated",
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Basket validated",
                 extra={"basket_id": basket.id},
             )
 
+            #######
+            # Pay with credit card
+            #######
+            # Request a CCSF token
+            # This is the test case for paying with credit card
+            credit_token = request_ccsf_token(
+                basket_id=basket.id,
+                olo_token=self._olo_token,
+            ).accesstoken
+
+            # Create order submission body
             order_submission = OloOrderSubmissionBody(
-                billingmethod=BillingMethod.payinstore,
+                billingmethod=BillingMethod.creditcardtoken,
                 usertype=UserType.guest,
-                billingschemeid=order_input.billingschemeid,
+                token=credit_token,
+                expiryyear=2025,
+                expirymonth=12,
+                cardtype="Visa",
+                cardlastfour="1234",
+                streetaddress="123 Main St",
+                city="Anytown",
+                state="CA",
+                zip="12345",
+                country="US",
                 saveonfile="false",
                 firstname=order_input.firstname,
                 lastname=order_input.lastname,
@@ -472,13 +492,28 @@ class OloTool(Toolkit):
                 contactnumber=order_input.contactnumber,
             )
 
+            ####### DO NOT REMOVE THIS COMMENTED OUT CODE #######
+            # Pay in store
+            #######
+            # Submit the order
+            # order_submission = OloOrderSubmissionBody(
+            #     billingmethod=BillingMethod.payinstore,
+            #     usertype=UserType.guest,
+            #     billingschemeid=order_input.billingschemeid,
+            #     saveonfile="false",
+            #     firstname=order_input.firstname,
+            #     lastname=order_input.lastname,
+            #     emailaddress=order_input.emailaddress,
+            #     contactnumber=order_input.contactnumber,
+            # )
+
             order_response = submit_order(
                 basket_id=basket.id,
                 olo_token=self._olo_token,
                 olo_order_submission_body=order_submission,
             )
             logger.info(
-                "[OLO] OloTool._checkout_order_pay_in_store Order submitted",
+                "[OLO] OloTool._checkout_order_wout_payment_iframe Order submitted",
                 extra={
                     "order_id": getattr(order_response, "id", None),
                     "total": getattr(order_response, "total", None),
@@ -494,8 +529,7 @@ class OloTool(Toolkit):
 
         except Exception as e:
             logger.error(
-                f"[OLO] OloTool._checkout_order_pay_in_store Error checking out order: {e}",
-                exc_info=True,
+                f"[OLO] OloTool._checkout_order_wout_payment_iframe Error checking out order: {e}"
             )
             return "Failed to check out the order, please try again."
 
@@ -585,8 +619,7 @@ class OloTool(Toolkit):
 
         except Exception as e:
             logger.error(
-                f"[OLO] OloTool._checkout_order_with_payment_iframe Error starting checkout: {e}",
-                exc_info=True,
+                f"[OLO] OloTool._checkout_order_with_payment_iframe Error starting checkout: {e}"
             )
             return "Failed to start the checkout process. Please try again."
 
