@@ -151,7 +151,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         slots = extract_resy_availability(response, party_size=party_size)
         if not slots:
-            logger.info(
+            logger.debug(
                 "[Resy Tool] No availability",
                 extra={"venue_id": self.venue_id, "party_size": party_size},
             )
@@ -165,7 +165,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         formatted = format_resy_availability(
             slots, party_size=party_size, requested_time=requested_dt
         )
-        logger.info("[Resy Tool] Formatted availability: %s", formatted)
+        logger.debug("[Resy Tool] Formatted availability: %s", formatted)
         return formatted
 
     @tool
@@ -184,7 +184,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
     ) -> str:
         """
         Books and completes the requested reservation on Resy. Do not make up the first name, last name and phone number, make sure to get that info from the user if you dont have it. Only use this function if the user explicitly tells you to make the reservation.
-        Always call `check_availability` beforehand to ensure the slot is still open.
+        Always call `check_availability` beforehand to ensure the slot is still open. Only use the function once, do not call it multiple times for the same reservation.
 
         Args:
             name: Optional guest name (ignored by this tool).
@@ -240,7 +240,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         slots = extract_resy_availability(availability_response, party_size=party_size)
         if not slots:
-            logger.info(
+            logger.debug(
                 "[Resy Tool] No availability before booking attempt",
                 extra={"venue_id": self.venue_id, "party_size": party_size},
             )
@@ -248,7 +248,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         matching_slot = self._find_slot_for_datetime(slots, target_dt)
         if not matching_slot:
-            logger.info(
+            logger.debug(
                 "[Resy Tool] Exact slot missing from availability results",
                 extra={
                     "venue_id": self.venue_id,
@@ -433,10 +433,10 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             f"Date & Time: {pretty_datetime}",
         ]
         summary_lines.append(
-            "Let the guest know that they will receive the official Resy confirmation shortly."
+            "Let the guest know that they will receive a confirmation text from Resy the day before their reservation."
         )
 
-        logger.info(
+        logger.debug(
             "[Resy Tool] Reservation created",
             extra={
                 "venue_id": self.venue_id,
