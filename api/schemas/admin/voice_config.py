@@ -19,6 +19,7 @@ class VoiceConfig(BaseModel):
     speech_rate: SpeechRate
     background_sound: str
     raw_config: dict
+    cloned_voice_id: Optional[str] = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -35,6 +36,7 @@ class CreateVoiceConfigRequest(BaseModel):
     speech_rate: Optional[SpeechRate] = SpeechRate.normal
     background_sound: Optional[str] = "office"
     raw_config: Optional[dict] = Field(default_factory=dict)
+    cloned: Optional[bool] = False
 
 
 class UpdateVoiceConfigRequest(BaseModel):
@@ -48,6 +50,7 @@ class UpdateVoiceConfigRequest(BaseModel):
     speech_rate: Optional[SpeechRate] = None
     background_sound: Optional[str] = None
     raw_config: Optional[dict] = None
+    cloned: Optional[bool] = None
 
 
 class ListVoiceConfigsResponse(BaseModel):

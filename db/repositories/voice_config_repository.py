@@ -25,6 +25,7 @@ class VoiceConfigRepositoryAsync:
         speech_rate: Optional[str] = None,
         background_sound: Optional[str] = None,
         raw_config: Optional[Dict] = None,
+        cloned_voice_id: Optional[str] = None,
     ) -> VoiceConfig:
         """
         Create a new voice config asynchronously.
@@ -39,6 +40,7 @@ class VoiceConfigRepositoryAsync:
             speech_rate (Optional[str]): The speech rate
             background_sound (Optional[str]): The background sound
             raw_config (Optional[Dict]): Raw configuration dictionary
+            cloned_voice_id (Optional[str]): The cloned voice ID
 
         Returns:
             VoiceConfig: The created voice config
@@ -53,6 +55,7 @@ class VoiceConfigRepositoryAsync:
             speech_rate=SpeechRate(speech_rate) if speech_rate else SpeechRate.normal,
             background_sound=background_sound,
             raw_config=raw_config or {},
+            cloned_voice_id=cloned_voice_id,
         )
         self.session.add(db_voice_config)
 
@@ -195,6 +198,7 @@ class VoiceConfigRepository:
         speech_rate: Optional[str] = None,
         background_sound: Optional[str] = None,
         raw_config: Optional[Dict] = None,
+        cloned_voice_id: Optional[str] = None,
     ) -> VoiceConfig:
         """
         Create a new voice config synchronously.
@@ -209,6 +213,7 @@ class VoiceConfigRepository:
             speech_rate (Optional[str]): The speech rate
             background_sound (Optional[str]): The background sound
             raw_config (Optional[Dict]): Raw configuration dictionary
+            cloned_voice_id (Optional[str]): The cloned voice ID
 
         Returns:
             VoiceConfig: The created voice config
@@ -223,6 +228,7 @@ class VoiceConfigRepository:
             speech_rate=SpeechRate(speech_rate) if speech_rate else SpeechRate.normal,
             background_sound=background_sound,
             raw_config=raw_config or {},
+            cloned_voice_id=cloned_voice_id,
         )
         self.session.add(db_voice_config)
 

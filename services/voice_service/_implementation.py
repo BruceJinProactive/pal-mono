@@ -53,6 +53,11 @@ class VoiceService:
     ) -> VoiceConfig:
         """Create a new voice config with business logic validation."""
 
+        # Determine cloned_voice_id based on the cloned flag
+        cloned_voice_id = None
+        if create_request.cloned:
+            cloned_voice_id = create_request.voice_id
+
         # Create voice config using repository
         voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
         try:
@@ -70,6 +75,7 @@ class VoiceService:
                 ),
                 background_sound=create_request.background_sound,
                 raw_config=create_request.raw_config or {},
+                cloned_voice_id=cloned_voice_id,
             )
 
             return build_voice_config(db_voice_config)
@@ -126,6 +132,14 @@ class VoiceService:
         update_kwargs = update_request.model_dump(exclude_unset=True)
         if "speech_rate" in update_kwargs and update_kwargs["speech_rate"] is not None:
             update_kwargs["speech_rate"] = update_kwargs["speech_rate"].value
+
+        # Handle cloned voice ID logic
+        if "cloned" in update_kwargs:
+            cloned = update_kwargs.pop("cloned")  # Remove cloned from kwargs
+            if cloned and "voice_id" in update_kwargs:
+                # If cloned is True and voice_id is being updated, set cloned_voice_id
+                update_kwargs["cloned_voice_id"] = update_kwargs["voice_id"]
+            # If cloned is False, we don't update cloned_voice_id (keep existing value)
 
         try:
             updated_voice_config = await voice_repo.update_voice_config(
