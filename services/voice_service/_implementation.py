@@ -136,9 +136,18 @@ class VoiceService:
         # Handle cloned voice ID logic
         if "cloned" in update_kwargs:
             cloned = update_kwargs.pop("cloned")  # Remove cloned from kwargs
-            if cloned and "voice_id" in update_kwargs:
-                # If cloned is True and voice_id is being updated, set cloned_voice_id
-                update_kwargs["cloned_voice_id"] = update_kwargs["voice_id"]
+            if cloned:
+                # If cloned is True, set cloned_voice_id to the voice_id
+                if "voice_id" in update_kwargs:
+                    # Use the new voice_id being set
+                    update_kwargs["cloned_voice_id"] = update_kwargs["voice_id"]
+                else:
+                    # Get the current voice_id from the database
+                    existing_config = await voice_repo.get_voice_config_by_id(
+                        voice_config_id
+                    )
+                    if existing_config:
+                        update_kwargs["cloned_voice_id"] = existing_config.voice_id
             # If cloned is False, we don't update cloned_voice_id (keep existing value)
 
         try:

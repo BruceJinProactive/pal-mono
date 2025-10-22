@@ -493,6 +493,7 @@ def build_voice_config(voice_config: db.VoiceConfig) -> VoiceConfig:
         speech_rate=voice_config.speech_rate,
         background_sound=voice_config.background_sound,
         raw_config=voice_config.raw_config,
+        cloned_voice_id=voice_config.cloned_voice_id,
         created_at=int(voice_config.created_at.timestamp()),
         updated_at=int(
             voice_config.updated_at.timestamp() if voice_config.updated_at else 0
