@@ -23,9 +23,11 @@ from tools.olo_tool._apis import (
     validate_address,
     validate_basket,
 )
+
+# Note: connect_olo_order_hub will be deprecated in favor of the signed requests version
+from tools.olo_tool._apis._utils import connect_olo_order_hub
 from tools.olo_tool._apis._utils import (
-    connect_olo_order_hub,
-    connect_olo_order_hub_signed,
+    connect_olo_order_hub_signed_requests as connect_olo_order_hub_signed,
 )
 from tools.olo_tool._prompt_constants import (
     EXTRACTOR_SYSTEM_PROMPT,
@@ -64,7 +66,7 @@ class OloTool(Toolkit):
         index_name: str,
         tool_metadata: ToolMetadata,
         client_credentials: str | None = None,
-        use_signed_auth: bool = False,
+        use_signed_auth: bool = True,
         hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/olo",
         enable_hosted_checkout: bool = False,
         payment_iframe_token_ttl_seconds: int = 15 * 60,

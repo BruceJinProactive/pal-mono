@@ -3,7 +3,7 @@ from typing import Optional
 
 from tools.olo_tool._apis._utils import (
     connect_olo_order_hub,
-    connect_olo_order_hub_signed,
+    connect_olo_order_hub_signed_requests,
     handle_olo_response,
 )
 from tools.olo_tool.classes import (
@@ -36,7 +36,7 @@ def _connect_olo_api_auto(
     Automatically choose the appropriate connection method based on token type.
     """
     if isinstance(olo_token, OloSignedToken):
-        return connect_olo_order_hub_signed(
+        return connect_olo_order_hub_signed_requests(
             http_method=http_method,
             signed_token=olo_token,
             api_function=api_function,

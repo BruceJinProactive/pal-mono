@@ -8,6 +8,8 @@ import urllib.parse
 from email.utils import formatdate
 from typing import Type, TypeVar, Union
 
+import requests
+
 from tools.olo_tool.classes import OloAccessToken, OloSignedToken
 from tools.utils.ordering._utils import connect_order_hub
 from tools.utils.ordering.classes import ApiProvider, GenericHubResponse, HttpMethod
@@ -187,40 +189,36 @@ def _get_olo_required_headers() -> dict[str, str]:
     }
 
 
-def connect_olo_order_hub_signed(
+def _prepare_signed_request(
     http_method: HttpMethod,
     signed_token: OloSignedToken,
     api_function: str,
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
-    base_url: str = "ordering.api.olosandbox.com",
-) -> GenericHubResponse:
+) -> tuple[str, str, str, dict[str, str]]:
     """
-    Make a request to the Olo Order Hub API using signed signature authentication.
+    Prepare common components for signed Olo API requests.
+
+    This helper function extracts the shared logic for signature generation,
+    header construction, and request body preparation used by both
+    http.client and requests implementations.
 
     Args:
         http_method: The HTTP method to use
         signed_token: The Olo signed token with client credentials
         api_function: The API endpoint to call
         query_params: Optional query parameters
-        extra_headers: Optional additional headers. Note: Date, Content-Type, and Authorization headers will be ignored if provided in extra_headers.
+        extra_headers: Optional additional headers
         payload: Optional request payload
-        base_url: The base URL for the Olo API
 
     Returns:
-        GenericHubResponse: The API response
-
-    Raises:
-        ValueError: If the HTTP method is invalid or the request fails
+        tuple containing:
+            - method_str: HTTP method as uppercase string
+            - path_and_query: Full path with query parameters
+            - request_body: Serialized request body
+            - headers: Complete headers dict with signature
     """
-    logger.debug(
-        f"[OLO] OloUtils.connect_olo_order_hub_signed Calling OLO Signed API: {http_method} {api_function} | "
-        f"Query Params: {query_params} | "
-        f"Extra Headers: {extra_headers} | "
-        f"Payload: {payload}"
-    )
-
     # Build the full path
     path_and_query = api_function
     if query_params:
@@ -292,6 +290,53 @@ def connect_olo_order_hub_signed(
         }
         headers.update(filtered_headers)
 
+    return method_str, path_and_query, request_body, headers
+
+
+def connect_olo_order_hub_signed_http_client(
+    http_method: HttpMethod,
+    signed_token: OloSignedToken,
+    api_function: str,
+    query_params: dict | None = None,
+    extra_headers: dict | None = None,
+    payload: dict | str | None = None,
+    base_url: str = "ordering.api.olosandbox.com",
+) -> GenericHubResponse:
+    """
+    Make a request to the Olo Order Hub API using signed signature authentication via http.client.
+
+    Args:
+        http_method: The HTTP method to use
+        signed_token: The Olo signed token with client credentials
+        api_function: The API endpoint to call
+        query_params: Optional query parameters
+        extra_headers: Optional additional headers. Note: Date, Content-Type, and Authorization headers will be ignored if provided in extra_headers.
+        payload: Optional request payload
+        base_url: The base URL for the Olo API
+
+    Returns:
+        GenericHubResponse: The API response
+
+    Raises:
+        ValueError: If the HTTP method is invalid or the request fails
+    """
+    logger.debug(
+        f"[OLO] OloUtils.connect_olo_order_hub_signed_http_client Calling OLO Signed API: {http_method} {api_function} | "
+        f"Query Params: {query_params} | "
+        f"Extra Headers: {extra_headers} | "
+        f"Payload: {payload}"
+    )
+
+    # Prepare signed request components
+    method_str, path_and_query, request_body, headers = _prepare_signed_request(
+        http_method=http_method,
+        signed_token=signed_token,
+        api_function=api_function,
+        query_params=query_params,
+        extra_headers=extra_headers,
+        payload=payload,
+    )
+
     try:
         conn = http.client.HTTPSConnection(base_url, timeout=30)
 
@@ -302,7 +347,7 @@ def connect_olo_order_hub_signed(
 
         # Check for success
         if response.status != 200:
-            raise Exception(
+            raise ValueError(
                 f"Error: {response.status} - {response.reason} - {response_data}"
             )
 
@@ -313,15 +358,98 @@ def connect_olo_order_hub_signed(
         )
 
         logger.debug(
-            f"[OLO] OloUtils.connect_olo_order_hub_signed Response: {hub_response}"
+            f"[OLO] OloUtils.connect_olo_order_hub_signed_http_client Response: {hub_response}"
         )
         return hub_response
 
     except Exception as e:
-        raise Exception(
-            f"[OLO] OloUtils.connect_olo_order_hub_signed Error while calling {method_str} {api_function}: {str(e)}"
+        raise ValueError(
+            f"[OLO] OloUtils.connect_olo_order_hub_signed_http_client Error while calling {method_str} {api_function}: {str(e)}"
         ) from e
     finally:
         conn_var = locals().get("conn")
         if conn_var:
             conn_var.close()
+
+
+def connect_olo_order_hub_signed_requests(
+    http_method: HttpMethod,
+    signed_token: OloSignedToken,
+    api_function: str,
+    query_params: dict | None = None,
+    extra_headers: dict | None = None,
+    payload: dict | str | None = None,
+    base_url: str = "ordering.api.olosandbox.com",
+) -> GenericHubResponse:
+    """
+    Make a request to the Olo Order Hub API using signed signature authentication via requests library.
+
+    This is an alternative implementation of connect_olo_order_hub_signed_http_client() using the requests library
+    instead of http.client for easier debugging and better connection management.
+
+    Args:
+        http_method: The HTTP method to use
+        signed_token: The Olo signed token with client credentials
+        api_function: The API endpoint to call
+        query_params: Optional query parameters
+        extra_headers: Optional additional headers. Note: Date, Content-Type, and Authorization headers will be ignored if provided in extra_headers.
+        payload: Optional request payload
+        base_url: The base URL for the Olo API
+
+    Returns:
+        GenericHubResponse: The API response
+
+    Raises:
+        ValueError: If the HTTP method is invalid or the request fails
+    """
+    logger.debug(
+        f"[OLO] OloUtils.connect_olo_order_hub_signed_requests Calling OLO Signed API: {http_method} {api_function} | "
+        f"Query Params: {query_params} | "
+        f"Extra Headers: {extra_headers} | "
+        f"Payload: {payload}"
+    )
+
+    # Prepare signed request components
+    method_str, path_and_query, request_body, headers = _prepare_signed_request(
+        http_method=http_method,
+        signed_token=signed_token,
+        api_function=api_function,
+        query_params=query_params,
+        extra_headers=extra_headers,
+        payload=payload,
+    )
+
+    try:
+        # Build full URL
+        url = f"https://{base_url}{path_and_query}"
+
+        # Make the request using requests library
+        response = requests.request(
+            method=method_str,
+            url=url,
+            headers=headers,
+            data=request_body if request_body else None,
+            timeout=30,
+        )
+
+        # Check for success
+        if response.status_code != 200:
+            raise ValueError(
+                f"Error: {response.status_code} - {response.reason} - {response.text}"
+            )
+
+        hub_response = GenericHubResponse(
+            status=response.status_code,
+            reason=response.reason,
+            decoded_body=response.text,
+        )
+
+        logger.debug(
+            f"[OLO] OloUtils.connect_olo_order_hub_signed_requests Response: {hub_response}"
+        )
+        return hub_response
+
+    except Exception as e:
+        raise ValueError(
+            f"[OLO] OloUtils.connect_olo_order_hub_signed_requests Error while calling {method_str} {api_function}: {str(e)}"
+        ) from e
