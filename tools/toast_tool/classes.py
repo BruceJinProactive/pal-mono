@@ -394,6 +394,10 @@ class PaymentIntentRequest(BaseModel):
     captureMethod: str = Field(
         default="MANUAL", description="Payment capture method (MANUAL or AUTOMATIC)"
     )
+    paymentMethodConfigurationId: str = Field(
+        description="Identifier for the payment method configuration to be used",
+        default="f67a0093-e150-4a37-9dff-51732c39f037",
+    )
 
 
 class PaymentIntentResponse(BaseModel):
