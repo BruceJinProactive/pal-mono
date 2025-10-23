@@ -5,6 +5,7 @@ import http.client
 import json
 import random
 import urllib.parse
+import uuid
 from email.utils import formatdate
 from typing import Type, TypeVar, Union
 
@@ -61,6 +62,7 @@ def connect_olo_order_hub(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
+    forwarded_ip: str | None = None,
 ) -> GenericHubResponse:
     """
     Make a request to the Olo Order Hub API using the generic connect function.
@@ -72,6 +74,7 @@ def connect_olo_order_hub(
         query_params: Optional query parameters
         extra_headers: Optional additional headers
         payload: Optional request payload
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         GenericHubResponse: The API response
@@ -80,7 +83,7 @@ def connect_olo_order_hub(
         ValueError: If the HTTP method is invalid or the request fails
     """
     # Build OLO-specific required headers
-    olo_headers = _get_olo_required_headers()
+    olo_headers = _get_olo_required_headers(forwarded_ip)
 
     # Merge with any extra headers (extra_headers take precedence)
     if extra_headers:
@@ -158,22 +161,41 @@ def _hash_request_body(body: str) -> str:
     return base64.b64encode(hash_bytes).decode("utf-8")
 
 
-def _generate_random_ip_10_0_0_0() -> str:
+def _generate_random_ip_10_0_0_0(seed: uuid.UUID | str | int | None = None) -> str:
     """
     Generate a random IP address in the 10.0.0.0/8 range.
     This is used for the X-Forwarded-For header as required by OLO API.
 
+    Args:
+        seed: Optional seed for deterministic IP generation. Can be UUID, string, or int.
+              When provided, the same seed will always generate the same IP.
+              When None, generates a truly random IP.
+
     Returns:
         str: Random IP address like "10.123.45.67"
     """
-    return (
-        f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
-    )
+    if seed is not None:
+        # Use a local Random instance to avoid affecting global random state
+        rng = random.Random()
+        # Convert seed to appropriate format for Random.seed()
+        if isinstance(seed, uuid.UUID):
+            rng.seed(str(seed))
+        elif isinstance(seed, int):
+            rng.seed(seed)
+        else:  # str
+            rng.seed(str(seed))
+        return f"10.{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(0, 255)}"
+    else:
+        return f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
 
 
-def _get_olo_required_headers() -> dict[str, str]:
+def _get_olo_required_headers(forwarded_ip: str | None = None) -> dict[str, str]:
     """
     Get the required headers for OLO API requests as per their security requirements.
+
+    Args:
+        forwarded_ip: Optional IP address to use for X-Forwarded-For header.
+                     If None, generates a random IP address.
 
     Returns:
         dict[str, str]: Dictionary containing the three required headers:
@@ -184,7 +206,9 @@ def _get_olo_required_headers() -> dict[str, str]:
     """
     return {
         "User-Agent": "PalonaAI/Mooyah/1.0",
-        "X-Forwarded-For": _generate_random_ip_10_0_0_0(),
+        "X-Forwarded-For": (
+            forwarded_ip if forwarded_ip else _generate_random_ip_10_0_0_0()
+        ),
         "X-Forwarded-UAH": "PalonaAIVoice",
     }
 
@@ -196,6 +220,7 @@ def _prepare_signed_request(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
+    forwarded_ip: str | None = None,
 ) -> tuple[str, str, str, dict[str, str]]:
     """
     Prepare common components for signed Olo API requests.
@@ -211,6 +236,7 @@ def _prepare_signed_request(
         query_params: Optional query parameters
         extra_headers: Optional additional headers
         payload: Optional request payload
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         tuple containing:
@@ -261,7 +287,7 @@ def _prepare_signed_request(
     )
 
     # Build headers starting with OLO required headers
-    headers = _get_olo_required_headers()
+    headers = _get_olo_required_headers(forwarded_ip)
 
     # Add authentication and content headers
     headers.update(
@@ -301,6 +327,7 @@ def connect_olo_order_hub_signed_http_client(
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
     base_url: str = "ordering.api.olosandbox.com",
+    forwarded_ip: str | None = None,
 ) -> GenericHubResponse:
     """
     Make a request to the Olo Order Hub API using signed signature authentication via http.client.
@@ -313,6 +340,7 @@ def connect_olo_order_hub_signed_http_client(
         extra_headers: Optional additional headers. Note: Date, Content-Type, and Authorization headers will be ignored if provided in extra_headers.
         payload: Optional request payload
         base_url: The base URL for the Olo API
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         GenericHubResponse: The API response
@@ -335,6 +363,7 @@ def connect_olo_order_hub_signed_http_client(
         query_params=query_params,
         extra_headers=extra_headers,
         payload=payload,
+        forwarded_ip=forwarded_ip,
     )
 
     try:
@@ -380,6 +409,7 @@ def connect_olo_order_hub_signed_requests(
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
     base_url: str = "ordering.api.olosandbox.com",
+    forwarded_ip: str | None = None,
 ) -> GenericHubResponse:
     """
     Make a request to the Olo Order Hub API using signed signature authentication via requests library.
@@ -395,6 +425,7 @@ def connect_olo_order_hub_signed_requests(
         extra_headers: Optional additional headers. Note: Date, Content-Type, and Authorization headers will be ignored if provided in extra_headers.
         payload: Optional request payload
         base_url: The base URL for the Olo API
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         GenericHubResponse: The API response
@@ -417,6 +448,7 @@ def connect_olo_order_hub_signed_requests(
         query_params=query_params,
         extra_headers=extra_headers,
         payload=payload,
+        forwarded_ip=forwarded_ip,
     )
 
     try:

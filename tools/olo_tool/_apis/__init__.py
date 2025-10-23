@@ -31,9 +31,13 @@ def _connect_olo_api_auto(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
+    forwarded_ip: str | None = None,
 ):
     """
     Automatically choose the appropriate connection method based on token type.
+
+    Args:
+        forwarded_ip: Optional IP address for X-Forwarded-For header
     """
     if isinstance(olo_token, OloSignedToken):
         return connect_olo_order_hub_signed_requests(
@@ -43,6 +47,7 @@ def _connect_olo_api_auto(
             query_params=query_params,
             extra_headers=extra_headers,
             payload=payload,
+            forwarded_ip=forwarded_ip,
         )
     else:
         return connect_olo_order_hub(
@@ -52,11 +57,14 @@ def _connect_olo_api_auto(
             query_params=query_params,
             extra_headers=extra_headers,
             payload=payload,
+            forwarded_ip=forwarded_ip,
         )
 
 
 def get_store_info(
-    restaurant_id: int, olo_token: OloAccessToken | OloSignedToken
+    restaurant_id: int,
+    olo_token: OloAccessToken | OloSignedToken,
+    forwarded_ip: str | None = None,
 ) -> OloStore:
     """
     Get the store info for a given restaurant ID
@@ -64,6 +72,7 @@ def get_store_info(
     Args:
         restaurant_id (int): The restaurant ID
         olo_token (OloAccessToken | OloSignedToken): The Olo access token or signed token
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         OloStore: A validated store object from the API response
@@ -75,6 +84,7 @@ def get_store_info(
             api_function=f"/v1.1/restaurants/{restaurant_id}",
             query_params=None,
             payload=None,
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, OloStore)
         if not isinstance(result, OloStore):
@@ -87,7 +97,9 @@ def get_store_info(
 
 
 def get_online_ordering_status(
-    restaurant_id: int, olo_token: OloAccessToken | OloSignedToken
+    restaurant_id: int,
+    olo_token: OloAccessToken | OloSignedToken,
+    forwarded_ip: str | None = None,
 ) -> int | str:
     """
     Get the online ordering status for ONE given restaurant ID
@@ -95,6 +107,7 @@ def get_online_ordering_status(
     Args:
         restaurant_id (int): The restaurant ID
         olo_token (OloAccessToken): The Olo access token
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         int | str: Current estimated ASAP order lead time in minutes. If leadtime is not found, return a string indicating the restaurant is closed or not accepting online orders.
@@ -109,6 +122,7 @@ def get_online_ordering_status(
             api_function="/v1.1/restaurants/capacity/leadtimes",
             query_params=None,
             payload=request_body,
+            forwarded_ip=forwarded_ip,
         )
 
         response_json = json.loads(handle_olo_response(response))
@@ -118,7 +132,9 @@ def get_online_ordering_status(
             return response_json["leadtimes"][0]["totalminutes"]
         else:
             # If no leadtime data is found, we need to check if the restaurant is open and accepting online orders
-            store_info = get_store_info(restaurant_id, olo_token)
+            store_info = get_store_info(
+                restaurant_id, olo_token, forwarded_ip=forwarded_ip
+            )
             if store_info.isavailable:
                 return "The restaurant is accepting online orders. The estimated ASAP order lead time is 0 minutes."
             elif store_info.iscurrentlyopen:
@@ -135,7 +151,10 @@ def get_online_ordering_status(
 
 
 def validate_address(
-    restaurant_id: int, address: Address, olo_token: OloAccessToken | OloSignedToken
+    restaurant_id: int,
+    address: Address,
+    olo_token: OloAccessToken | OloSignedToken,
+    forwarded_ip: str | None = None,
 ) -> DeliveryAddressValidationResponse:
     """
     Validates an address for a given restaurant ID.
@@ -144,6 +163,7 @@ def validate_address(
         restaurant_id (int): The restaurant ID
         address (Address): The address to validate
         olo_token (OloAccessToken | OloSignedToken): The Olo access token or signed token
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         DeliveryAddressValidationResponse: A validated address response object from the API response
@@ -164,6 +184,7 @@ def validate_address(
             api_function=f"/v1.1/restaurants/{restaurant_id}/checkdeliverycoverage",
             query_params=None,
             payload=request_body,
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, DeliveryAddressValidationResponse)
         if not isinstance(result, DeliveryAddressValidationResponse):
@@ -181,6 +202,7 @@ def create_basket(
     restaurant_id: int,
     olo_token: OloAccessToken | OloSignedToken,
     auth_token: Optional[str] = None,
+    forwarded_ip: str | None = None,
 ) -> OloBasket:
     """
     Creates a basket for a restaurant.
@@ -189,6 +211,7 @@ def create_basket(
         restaurant_id (int): The restaurant ID
         olo_token (OloAccessToken): The Olo access token
         auth_token (Optional[str], optional): The auth token. Defaults to None.
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         OloBasket: A validated basket object from the API response
@@ -204,6 +227,7 @@ def create_basket(
             api_function="/v1.1/baskets/create",
             query_params=None,
             payload=request_body,
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, OloBasket)
         if not isinstance(result, OloBasket):
@@ -219,6 +243,7 @@ def add_items_to_basket(
     basket_id: str,
     olo_token: OloAccessToken | OloSignedToken,
     olo_product_input: OloProductInput,
+    forwarded_ip: str | None = None,
 ) -> dict:
     """
     Adds items to a basket.
@@ -227,6 +252,7 @@ def add_items_to_basket(
         basket_id (str): The basket ID
         olo_token (OloAccessToken): The Olo access token
         olo_product_input (OloProductInput): The Olo product input
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         dict: A dictionary containing the new basket (OloBasket) and a list of errors
@@ -241,6 +267,7 @@ def add_items_to_basket(
             api_function=f"/v1.1/baskets/{basket_id}/products/batch",
             query_params=None,
             payload=request_body,
+            forwarded_ip=forwarded_ip,
         )
         response_json = json.loads(handle_olo_response(response))
         response_json["basket"] = OloBasket.model_validate(response_json["basket"])
@@ -260,6 +287,7 @@ def set_basket_handoff_mode(
     basket_id: str,
     olo_token: OloAccessToken | OloSignedToken,
     handoff_mode: OloBasketHandoffMode,
+    forwarded_ip: str | None = None,
 ) -> OloBasket:
     """
     Sets the handoff mode for a basket.
@@ -268,6 +296,7 @@ def set_basket_handoff_mode(
         basket_id (str): The basket ID
         olo_token (OloAccessToken): The Olo access token
         handoff_mode (OloBasketHandoffMode): The handoff mode
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         OloBasket: A validated basket object from the API response
@@ -282,6 +311,7 @@ def set_basket_handoff_mode(
             api_function=f"/v1.1/baskets/{basket_id}/deliverymode",
             query_params=None,
             payload=request_body,
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, OloBasket)
         if not isinstance(result, OloBasket):
@@ -294,7 +324,9 @@ def set_basket_handoff_mode(
 
 
 def validate_basket(
-    basket_id: str, olo_token: OloAccessToken | OloSignedToken
+    basket_id: str,
+    olo_token: OloAccessToken | OloSignedToken,
+    forwarded_ip: str | None = None,
 ) -> ValidatedBasketTotals:
     """
     Validates a basket.
@@ -302,6 +334,7 @@ def validate_basket(
     Args:
         basket_id (str): The basket ID
         olo_token (OloAccessToken): The Olo access token
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         ValidatedBasketTotals: A validated basket totals object from the API response
@@ -312,6 +345,7 @@ def validate_basket(
             http_method=HttpMethod.POST,
             olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/validate",
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, ValidatedBasketTotals)
         if not isinstance(result, ValidatedBasketTotals):
@@ -322,7 +356,9 @@ def validate_basket(
 
 
 def get_order_status(
-    order_id: str, olo_token: OloAccessToken
+    order_id: str,
+    olo_token: OloAccessToken,
+    forwarded_ip: str | None = None,
 ) -> OloOrderSubmissionResponse:
     """
     Get the status of an order.
@@ -330,6 +366,7 @@ def get_order_status(
     Args:
         order_id (str): The order ID
         olo_token (OloAccessToken): The Olo access token
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         OloOrderSubmissionResponse: A validated order response object from the API response
@@ -341,6 +378,7 @@ def get_order_status(
             api_function=f"/v1.1/orders/{order_id}",
             query_params=None,
             payload=None,
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, OloOrderSubmissionResponse)
         if not isinstance(result, OloOrderSubmissionResponse):
@@ -358,6 +396,7 @@ def request_ccsf_token(
     basket_id: str,
     olo_token: OloAccessToken | OloSignedToken,
     auth_token: Optional[str] = None,
+    forwarded_ip: str | None = None,
 ) -> OloCCSFToken:
     """
     Requests a CCSF token for a given basket ID.
@@ -366,6 +405,7 @@ def request_ccsf_token(
         basket_id (str): The basket ID
         olo_token (OloAccessToken): The Olo access token
         auth_token (Optional[str], optional): The auth token used to identify the user. Defaults to None.
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         OloCCSFToken: A validated CCSF token object from the API response
@@ -381,6 +421,7 @@ def request_ccsf_token(
             api_function=f"/v1.1/baskets/{basket_id}/checkout",
             query_params=None,
             payload=request_body,
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, OloCCSFToken)
         if not isinstance(result, OloCCSFToken):
@@ -396,6 +437,7 @@ def submit_order(
     basket_id: str,
     olo_token: OloAccessToken | OloSignedToken,
     olo_order_submission_body: OloOrderSubmissionBody,
+    forwarded_ip: str | None = None,
 ) -> OloOrderSubmissionResponse:
     """
     Submits an order for a given basket ID.
@@ -404,6 +446,7 @@ def submit_order(
         basket_id (str): The basket ID
         olo_token (OloAccessToken): The Olo access token
         olo_order_submission_body (OloOrderSubmissionBody): The order submission body
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         OloOrderSubmissionResponse: A validated order submission response object from the API response
@@ -415,6 +458,7 @@ def submit_order(
             api_function=f"/v1.1/baskets/{basket_id}/submit",
             query_params=None,
             payload=olo_order_submission_body.model_dump(exclude_none=True),
+            forwarded_ip=forwarded_ip,
         )
         result = handle_olo_response(response, OloOrderSubmissionResponse)
         if not isinstance(result, OloOrderSubmissionResponse):
@@ -429,7 +473,9 @@ def submit_order(
 
 
 def get_billing_schemes_info(
-    basket_id: str, olo_token: OloAccessToken | OloSignedToken
+    basket_id: str,
+    olo_token: OloAccessToken | OloSignedToken,
+    forwarded_ip: str | None = None,
 ) -> list[BillingScheme]:
     """
     Get the billing schemes info for a specified basket's restaurant.
@@ -437,6 +483,7 @@ def get_billing_schemes_info(
     Args:
         basket_id (str): The basket ID
         olo_token (OloAccessToken): The Olo access token
+        forwarded_ip: Optional IP address for X-Forwarded-For header
 
     Returns:
         list[BillingScheme]: A list of BillingScheme objects containing the `id` and the `type` of the billing scheme
@@ -446,6 +493,7 @@ def get_billing_schemes_info(
             http_method=HttpMethod.GET,
             olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/billingschemes",
+            forwarded_ip=forwarded_ip,
         )
         response_json = json.loads(handle_olo_response(response))
         return [

@@ -87,6 +87,10 @@ class OloTool(Toolkit):
         self.payment_iframe_token_ttl_seconds = payment_iframe_token_ttl_seconds
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         self._configured_brand_access_id = brand_access_id
+        # Set it as constant for now. If they want to make it dynamic later we can update it:
+        ## Generate session-specific forwarded IP using session_id as seed
+        ## This ensures the same session always gets the same IP, even if tool is reinitialized
+        self.forwarded_ip = "10.23.17.89"
         # Register tools
         self.register(self.get_store_info_tool)
         self.register(self.check_online_ordering_status)
@@ -199,6 +203,7 @@ class OloTool(Toolkit):
                 query_params=query_params,
                 extra_headers=extra_headers,
                 payload=payload,
+                forwarded_ip=self.forwarded_ip,
             )
         else:
             return connect_olo_order_hub(
@@ -208,6 +213,7 @@ class OloTool(Toolkit):
                 query_params=query_params,
                 extra_headers=extra_headers,
                 payload=payload,
+                forwarded_ip=self.forwarded_ip,
             )
 
     @cached_property
@@ -253,7 +259,7 @@ class OloTool(Toolkit):
 
             # Get store info from Olo
             store_dict = get_store_info(
-                int(self.store_id), self._olo_token
+                int(self.store_id), self._olo_token, forwarded_ip=self.forwarded_ip
             ).model_dump()
 
             # Remove isavailable and iscurrentlyopen from the store info since they should be most up to date and not stored in the cache
@@ -290,7 +296,9 @@ class OloTool(Toolkit):
                     "for assistance."
                 )
 
-            status = get_online_ordering_status(int(self.store_id), self._olo_token)
+            status = get_online_ordering_status(
+                int(self.store_id), self._olo_token, forwarded_ip=self.forwarded_ip
+            )
 
             if isinstance(status, int):
                 return f"The restaurant is accepting online orders. The estimated ASAP order lead time is {status} minutes."
@@ -338,7 +346,10 @@ class OloTool(Toolkit):
 
             # Validate address
             validated_address = validate_address(
-                int(self.store_id), address_obj, self._olo_token
+                int(self.store_id),
+                address_obj,
+                self._olo_token,
+                forwarded_ip=self.forwarded_ip,
             )
 
             if validated_address.candeliver:
@@ -405,14 +416,18 @@ class OloTool(Toolkit):
                 extra={"store_id": self.store_id},
             )
             # Create a basket
-            basket = create_basket(int(self.store_id), self._olo_token)
+            basket = create_basket(
+                int(self.store_id), self._olo_token, forwarded_ip=self.forwarded_ip
+            )
             logger.debug(
                 "[OLO] OloTool._checkout_order_wout_payment_iframe Basket created",
                 extra={"basket_id": getattr(basket, "id", None)},
             )
 
             # Get the billing schemes info
-            billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
+            billing_schemes_info = get_billing_schemes_info(
+                basket.id, self._olo_token, forwarded_ip=self.forwarded_ip
+            )
             logger.debug(
                 "[OLO] OloTool._checkout_order_wout_payment_iframe Retrieved billing schemes",
                 extra={"scheme": billing_schemes_info},
@@ -438,7 +453,10 @@ class OloTool(Toolkit):
 
             # Add items to the basket
             add_items_to_basket(
-                basket.id, olo_product_input=order_input, olo_token=self._olo_token
+                basket.id,
+                olo_product_input=order_input,
+                olo_token=self._olo_token,
+                forwarded_ip=self.forwarded_ip,
             )
             logger.debug(
                 "[OLO] OloTool._checkout_order_wout_payment_iframe Items added to basket",
@@ -450,6 +468,7 @@ class OloTool(Toolkit):
                 basket.id,
                 handoff_mode=order_input.handoffmode,
                 olo_token=self._olo_token,
+                forwarded_ip=self.forwarded_ip,
             )
             logger.debug(
                 "[OLO] OloTool._checkout_order_wout_payment_iframe Handoff mode set",
@@ -457,7 +476,9 @@ class OloTool(Toolkit):
             )
 
             # Validate the basket before submitting
-            validate_basket(basket.id, olo_token=self._olo_token)
+            validate_basket(
+                basket.id, olo_token=self._olo_token, forwarded_ip=self.forwarded_ip
+            )
             logger.debug(
                 "[OLO] OloTool._checkout_order_wout_payment_iframe Basket validated",
                 extra={"basket_id": basket.id},
@@ -471,6 +492,7 @@ class OloTool(Toolkit):
             credit_token = request_ccsf_token(
                 basket_id=basket.id,
                 olo_token=self._olo_token,
+                forwarded_ip=self.forwarded_ip,
             ).accesstoken
 
             # Create order submission body
@@ -513,6 +535,7 @@ class OloTool(Toolkit):
                 basket_id=basket.id,
                 olo_token=self._olo_token,
                 olo_order_submission_body=order_submission,
+                forwarded_ip=self.forwarded_ip,
             )
             logger.debug(
                 "[OLO] OloTool._checkout_order_wout_payment_iframe Order submitted",
@@ -544,8 +567,12 @@ class OloTool(Toolkit):
                     "session_id": getattr(self.tool_metadata, "session_id", None),
                 },
             )
-            basket = create_basket(int(self.store_id), self._olo_token)
-            billing_schemes_info = get_billing_schemes_info(basket.id, self._olo_token)
+            basket = create_basket(
+                int(self.store_id), self._olo_token, forwarded_ip=self.forwarded_ip
+            )
+            billing_schemes_info = get_billing_schemes_info(
+                basket.id, self._olo_token, forwarded_ip=self.forwarded_ip
+            )
             logger.debug(
                 "[OLO] OloTool._checkout_order_with_payment_iframe Basket created",
                 extra={"basket_id": getattr(basket, "id", None)},
@@ -563,14 +590,20 @@ class OloTool(Toolkit):
             )
 
             add_items_to_basket(
-                basket.id, olo_product_input=order_input, olo_token=self._olo_token
+                basket.id,
+                olo_product_input=order_input,
+                olo_token=self._olo_token,
+                forwarded_ip=self.forwarded_ip,
             )
             set_basket_handoff_mode(
                 basket.id,
                 handoff_mode=order_input.handoffmode,
                 olo_token=self._olo_token,
+                forwarded_ip=self.forwarded_ip,
             )
-            basket_totals = validate_basket(basket.id, olo_token=self._olo_token)
+            basket_totals = validate_basket(
+                basket.id, olo_token=self._olo_token, forwarded_ip=self.forwarded_ip
+            )
             logger.debug(
                 "[OLO] OloTool._checkout_order_with_payment_iframe Basket validated",
                 extra={
@@ -583,6 +616,7 @@ class OloTool(Toolkit):
             ccsf_access_token = request_ccsf_token(
                 basket_id=basket.id,
                 olo_token=self._olo_token,
+                forwarded_ip=self.forwarded_ip,
             ).accesstoken
             logger.debug(
                 "[OLO] OloTool._checkout_order_with_payment_iframe CCSF token retrieved",
