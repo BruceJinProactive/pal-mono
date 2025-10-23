@@ -4,6 +4,9 @@ from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas.chat.message import AuthorType, Broker, Extras
+from api.schemas.chat.message import Message as RelayMessage
+from api.schemas.chat.message import Metadata, TextObject, Type
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
     CateringRequestRepositoryAsync,
@@ -13,7 +16,9 @@ from db.repositories.project_contact_repository import ProjectContactRepositoryA
 from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from db.tables.contacts import Contact
+from db.tables.types import Channel
 from services.catering_service._eventbridge import publish_catering_event
+from services.relay_service import send_message
 from utils.log import logger
 
 
@@ -445,23 +450,17 @@ async def handle_catering_request_created_event(
         # Format the notification message
         message = format_catering_request_message(catering_request)
 
-        try:
-            notification_success = await send_sms_notification(
-                catering_manager.phone_number, message
+        notification_success = await send_sms_notification(
+            catering_manager.phone_number, message
+        )
+        if notification_success:
+            logger.debug(
+                f"[catering] Successfully sent catering request notification to {catering_manager.name}"
             )
-            if notification_success:
-                logger.debug(
-                    f"[catering] Successfully sent catering request notification to {catering_manager.name}"
-                )
-                return True
-            else:
-                logger.error(
-                    f"[catering] Failed to send SMS to manager {catering_manager.name} at ****{catering_manager.phone_number[-4:]}"
-                )
-                return False
-        except Exception as e:
+            return True
+        else:
             logger.error(
-                f"[catering] Error sending SMS to manager {catering_manager.name}: {e}"
+                f"[catering] Failed to send SMS to manager {catering_manager.name} at ****{catering_manager.phone_number[-4:]}"
             )
             return False
 
@@ -515,16 +514,27 @@ async def send_sms_notification(phone_number: str, message: str) -> bool:
     Returns:
         bool: True if sent successfully, False otherwise
     """
-    from utils.log import logger
+    # Create a Message object for the SMS
+    relay_message = RelayMessage(
+        author_type=AuthorType.SYSTEM,
+        sender_identifier="system",  # Using system as sender for catering notifications
+        recipient_identifier=phone_number,
+        channel=Channel.SMS,
+        broker=Broker.TWILIO,
+        type=Type.TEXT,
+        text=TextObject(body=message),
+        metadata=Metadata(testing=False),
+        extras=Extras(),
+    )
 
-    # TODO: Implement actual SMS sending
-    # This is a placeholder that simulates SMS sending
+    # Send the message through the relay service
+    response = send_message(relay_message)
 
-    try:
-        logger.debug(f"[catering] Simulating SMS send to {phone_number}: {message}")
-
+    if response.get("status") == "scheduled":
+        logger.debug(f"[catering] SMS sent successfully to ****{phone_number[-4:]}")
         return True
-
-    except Exception as e:
-        logger.error(f"[catering] Failed to send SMS to {phone_number}: {e}")
+    else:
+        logger.error(
+            f"[catering] Failed to send SMS to ****{phone_number[-4:]}: {response.get('error_message', 'Unknown error')}"
+        )
         return False
