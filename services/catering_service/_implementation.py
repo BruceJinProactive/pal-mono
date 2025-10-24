@@ -555,11 +555,9 @@ async def send_sms_notification(phone_number: str, message: str) -> bool:
         bool: True if sent successfully, False otherwise
     """
     try:
-        # Validate and format the phone number
         formatted_phone_number = _validate_and_format_phone_number(phone_number)
         logger.debug(f"[catering] Send message to {formatted_phone_number}")
 
-        # Create a Message object for the SMS
         PALONA_NUMBER = "+18338725662"
         relay_message = RelayMessage(
             author_type=AuthorType.SYSTEM,
