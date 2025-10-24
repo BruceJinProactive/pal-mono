@@ -135,4 +135,5 @@ class CheckStatus(str, enum.Enum):
     processing = "processing"
     active = "active"
     failed = "failed"
-    expired = "expired"
+    error = "error"
+    overdue = "overdue"

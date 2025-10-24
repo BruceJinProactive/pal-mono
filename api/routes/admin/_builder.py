@@ -540,8 +540,10 @@ def build_faq(faq: db.FAQ) -> FAQ:
     )
 
 
-def build_checkpoint_result(checkpoint_result: db.CheckpointResult) -> CheckpointResult:
-    """Build CheckpointResult response from database CheckpointResult."""
+def build_checkpoint_result(
+    checkpoint_result: db.CheckpointRun,
+) -> CheckpointResult:
+    """Build CheckpointRun response from database CheckpointRun."""
     return CheckpointResult(
         id=str(checkpoint_result.id),
         checkpoint_id=str(checkpoint_result.checkpoint_id),

@@ -5,7 +5,8 @@ from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
 from .catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from .change_log import ChangeAction, ChangeField, ChangeLog
-from .checkpoint_results import CheckpointResult
+from .checklists import Checklist
+from .checkpoint_runs import CheckpointRun
 from .checkpoints import CheckPoint
 from .contacts import Contact
 from .conversations import Conversation, ConversationStatus

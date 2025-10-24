@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from db.tables import CheckPoint, CheckpointResult
+from db.tables import CheckPoint, CheckpointRun
 from db.tables.types import CheckStatus
 from utils.log import logger
 
@@ -137,7 +137,7 @@ def create_checkpoint_result_processing(
     session: Session,
     checkpoint_id: UUID,
     submission_id: UUID,
-) -> CheckpointResult:
+) -> CheckpointRun:
     """
     Create a checkpoint result with 'processing' status immediately.
     This is called BEFORE OpenAI starts processing.
@@ -151,7 +151,7 @@ def create_checkpoint_result_processing(
         CheckpointResult: The created checkpoint result record with processing status
     """
     try:
-        checkpoint_result = CheckpointResult(
+        checkpoint_result = CheckpointRun(
             checkpoint_id=checkpoint_id,
             submission_id=submission_id,
             result={},  # Empty initially
@@ -180,7 +180,7 @@ def list_checkpoint_results(
     submission_id: UUID | None = None,
     status: CheckStatus | None = None,
     project_id: UUID | None = None,
-) -> list[CheckpointResult]:
+) -> list[CheckpointRun]:
     """
     List checkpoint results with optional filters.
 
@@ -192,29 +192,27 @@ def list_checkpoint_results(
         project_id: Optional filter by project ID (via checkpoint)
 
     Returns:
-        list[CheckpointResult]: List of checkpoint results
+        list[CheckpointRun]: List of checkpoint results
     """
     try:
-        query = session.query(CheckpointResult)
+        query = session.query(CheckpointRun)
 
         # Join with CheckPoint table if we need to filter by project_id
         if project_id:
-            query = query.join(
-                CheckPoint, CheckpointResult.checkpoint_id == CheckPoint.id
-            )
+            query = query.join(CheckPoint, CheckpointRun.checkpoint_id == CheckPoint.id)
             query = query.filter(CheckPoint.project_id == project_id)
 
         if checkpoint_id:
-            query = query.filter(CheckpointResult.checkpoint_id == checkpoint_id)
+            query = query.filter(CheckpointRun.checkpoint_id == checkpoint_id)
 
         if submission_id:
-            query = query.filter(CheckpointResult.submission_id == submission_id)
+            query = query.filter(CheckpointRun.submission_id == submission_id)
 
         if status:
-            query = query.filter(CheckpointResult.status == status)
+            query = query.filter(CheckpointRun.status == status)
 
         # Order by created_at descending (newest first)
-        query = query.order_by(CheckpointResult.created_at.desc())
+        query = query.order_by(CheckpointRun.created_at.desc())
 
         return query.all()
     except SQLAlchemyError as e:
@@ -225,7 +223,7 @@ def list_checkpoint_results(
 def get_checkpoint_result(
     session: Session,
     result_id: UUID,
-) -> CheckpointResult | None:
+) -> CheckpointRun | None:
     """
     Get a single checkpoint result by ID.
 
@@ -234,13 +232,11 @@ def get_checkpoint_result(
         result_id: UUID of the checkpoint result
 
     Returns:
-        CheckpointResult | None: The checkpoint result or None if not found
+        CheckpointRun | None: The checkpoint result or None if not found
     """
     try:
         return (
-            session.query(CheckpointResult)
-            .filter(CheckpointResult.id == result_id)
-            .first()
+            session.query(CheckpointRun).filter(CheckpointRun.id == result_id).first()
         )
     except SQLAlchemyError as e:
         logger.error(f"Error getting checkpoint result: {e}")
@@ -252,7 +248,7 @@ def update_checkpoint_result(
     result_id: UUID,
     result: dict,
     status: CheckStatus,
-) -> CheckpointResult:
+) -> CheckpointRun:
     """
     Update a checkpoint result with the final comparison result.
     This is called AFTER OpenAI finishes processing.
@@ -264,20 +260,18 @@ def update_checkpoint_result(
         status: Final status (active or failed)
 
     Returns:
-        CheckpointResult: The updated checkpoint result record
+        CheckpointRun: The updated checkpoint result record
 
     Raises:
         ValueError: If checkpoint result not found
     """
     try:
         checkpoint_result = (
-            session.query(CheckpointResult)
-            .filter(CheckpointResult.id == result_id)
-            .first()
+            session.query(CheckpointRun).filter(CheckpointRun.id == result_id).first()
         )
 
         if not checkpoint_result:
-            raise ValueError(f"CheckpointResult {result_id} not found")
+            raise ValueError(f"CheckpointRun {result_id} not found")
 
         checkpoint_result.result = result
         checkpoint_result.status = status
@@ -303,7 +297,7 @@ def save_checkpoint_result(
     submission_id: UUID,
     result: dict,
     status: CheckStatus = CheckStatus.active,
-) -> CheckpointResult:
+) -> CheckpointRun:
     """
     Save a checkpoint comparison result to the database.
     (Legacy function - prefer using create + update pattern)
@@ -319,7 +313,7 @@ def save_checkpoint_result(
         CheckpointResult: The created checkpoint result record
     """
     try:
-        checkpoint_result = CheckpointResult(
+        checkpoint_result = CheckpointRun(
             checkpoint_id=checkpoint_id,
             submission_id=submission_id,
             result=result,

@@ -132,7 +132,7 @@ def save_checkpoint_result(
     submission_id: UUID,
     result: dict,
     status: "db.tables.types.CheckStatus",
-) -> "db.CheckpointResult":
+) -> "db.CheckpointRun":
     """
     Save a checkpoint comparison result to the database.
 
@@ -156,7 +156,7 @@ async def compare_and_save_checkpoint_async(
     checkpoint: db.CheckPoint,
     submission_id: UUID,
     uploaded_image_base64: str,
-) -> "db.CheckpointResult":
+) -> "db.CheckpointRun":
     """
     Async function to compare checkpoint images and save the result.
 
@@ -208,7 +208,7 @@ def create_checkpoint_result_processing(
     session: Session,
     checkpoint_id: UUID,
     submission_id: UUID,
-) -> "db.CheckpointResult":
+) -> "db.CheckpointRun":
     """
     Create a checkpoint result with 'processing' status immediately.
     This is called BEFORE OpenAI starts processing.
@@ -232,7 +232,7 @@ def list_checkpoint_results(
     submission_id: UUID | None = None,
     status: "db.tables.types.CheckStatus | None" = None,
     project_id: UUID | None = None,
-) -> list["db.CheckpointResult"]:
+) -> list["db.CheckpointRun"]:
     """
     List checkpoint results with optional filters.
 
@@ -254,7 +254,7 @@ def list_checkpoint_results(
 def get_checkpoint_result(
     session: Session,
     result_id: UUID,
-) -> "db.CheckpointResult | None":
+) -> "db.CheckpointRun | None":
     """
     Get a single checkpoint result by ID.
 
@@ -273,7 +273,7 @@ def update_checkpoint_result(
     result_id: UUID,
     result: dict,
     status: "db.tables.types.CheckStatus",
-) -> "db.CheckpointResult":
+) -> "db.CheckpointRun":
     """
     Update a checkpoint result with the final comparison result.
     This is called AFTER OpenAI finishes processing.
