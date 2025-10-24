@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import date, time
 from typing import List, Optional
@@ -504,38 +505,91 @@ def format_catering_request_message(catering_request) -> str:
     return "\n".join(message_parts)
 
 
+def _validate_and_format_phone_number(phone_number: str) -> str:
+    """
+    Validate and format phone number to +1xxxxxxxxxx format.
+
+    Args:
+        phone_number: Raw phone number input
+
+    Returns:
+        str: Formatted phone number in +1xxxxxxxxxx format
+
+    Raises:
+        ValueError: If phone number is invalid or cannot be formatted
+    """
+    if not phone_number:
+        raise ValueError("Phone number cannot be empty")
+
+    # Remove all non-digit characters
+    digits_only = re.sub(r"\D", "", phone_number)
+
+    # Handle different input formats
+    if len(digits_only) == 10:
+        # Assume US number without country code: 1234567890 -> +11234567890
+        formatted = f"+1{digits_only}"
+    elif len(digits_only) == 11 and digits_only.startswith("1"):
+        # US number with country code: 11234567890 -> +11234567890
+        formatted = f"+{digits_only}"
+    else:
+        raise ValueError(f"Invalid phone number format: {phone_number}")
+
+    # Validate the final format
+    if not re.match(r"^\+1\d{10}$", formatted):
+        raise ValueError(
+            f"Phone number must be in +1xxxxxxxxxx format, got: {formatted}"
+        )
+
+    return formatted
+
+
 async def send_sms_notification(phone_number: str, message: str) -> bool:
     """
     Send SMS notification using configured SMS service.
 
     Args:
-        phone_number: Phone number to send to
+        phone_number: Phone number to send to (will be validated and formatted)
         message: Message content
 
     Returns:
         bool: True if sent successfully, False otherwise
     """
-    # Create a Message object for the SMS
-    relay_message = RelayMessage(
-        author_type=AuthorType.SYSTEM,
-        sender_identifier="system",  # Using system as sender for catering notifications
-        recipient_identifier=phone_number,
-        channel=Channel.SMS,
-        broker=Broker.TWILIO,
-        type=Type.TEXT,
-        text=TextObject(body=message),
-        metadata=Metadata(testing=False),
-        extras=Extras(),
-    )
+    try:
+        # Validate and format the phone number
+        formatted_phone_number = _validate_and_format_phone_number(phone_number)
+        logger.debug(f"[catering] Send message to {formatted_phone_number}")
 
-    # Send the message through the relay service
-    response = send_message(relay_message)
-
-    if response.get("status") == "scheduled":
-        logger.debug(f"[catering] SMS sent successfully to ****{phone_number[-4:]}")
-        return True
-    else:
-        logger.error(
-            f"[catering] Failed to send SMS to ****{phone_number[-4:]}: {response.get('error_message', 'Unknown error')}"
+        # Create a Message object for the SMS
+        PALONA_NUMBER = "+18338725662"
+        relay_message = RelayMessage(
+            author_type=AuthorType.SYSTEM,
+            sender_identifier=PALONA_NUMBER,
+            recipient_identifier=formatted_phone_number,
+            channel=Channel.SMS,
+            broker=Broker.TWILIO,
+            type=Type.TEXT,
+            text=TextObject(body=message),
+            metadata=Metadata(testing=False),
+            extras=Extras(),
         )
+
+        # Send the message through the relay service
+        response = send_message(relay_message)
+
+        if response.get("status") == "scheduled":
+            logger.debug(
+                f"[catering] SMS sent successfully to ****{formatted_phone_number[-4:]}"
+            )
+            return True
+        else:
+            logger.error(
+                f"[catering] Failed to send SMS to ****{formatted_phone_number[-4:]}: {response.get('error_message', 'Unknown error')}"
+            )
+            return False
+
+    except ValueError as e:
+        logger.error(f"[catering] Invalid phone number format: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"[catering] Failed to send SMS to {phone_number}: {e}")
         return False
