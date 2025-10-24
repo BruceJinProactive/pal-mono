@@ -399,11 +399,15 @@ class OloTool(Toolkit):
     @tool
     def checkout_order(self) -> str:
         """
-        Completes checkout once the guest has confirmed their order.
+        Completes and submits an order for checkout by extracting ordering data from chat
+        history. This function must be used when all the required information is collected and the user asks to checkout,
+        pay, place the order, etc.
 
-        When hosted checkout is enabled this will return a secure payment link that
-        directs the guest to our Olo payment iframe. Otherwise the order is submitted
-        as a traditional pay-in-store transaction.
+        Args:
+            None
+
+        Returns:
+            str: Order checkout confirmation details
         """
         if self.enable_hosted_checkout:
             return self._checkout_order_with_payment_iframe()
