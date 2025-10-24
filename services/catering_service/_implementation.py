@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas.catering.catering import Contact as ContactSchema
 from api.schemas.chat.message import AuthorType, Broker, Extras
 from api.schemas.chat.message import Message as RelayMessage
 from api.schemas.chat.message import Metadata, TextObject, Type
@@ -168,7 +169,7 @@ async def create_contact(
     phone_number: str,
     role: str,
     email: Optional[str] = None,
-) -> Contact:
+) -> ContactSchema:
     """
     Create a new contact and associate it with a project asynchronously.
 
@@ -181,7 +182,7 @@ async def create_contact(
         email: Contact's email address (optional)
 
     Returns:
-        Contact: The created contact
+        ContactSchema: The created contact as a Pydantic model
     """
     contact = Contact(
         name=name,
@@ -205,7 +206,7 @@ async def create_contact(
 async def list_contacts(
     session: AsyncSession,
     project_id: uuid.UUID,
-) -> List[Contact]:
+) -> List[ContactSchema]:
     """
     List all contacts for a specific project asynchronously.
 
@@ -214,7 +215,7 @@ async def list_contacts(
         project_id: ID of the project to list contacts for
 
     Returns:
-        List[Contact]: List of contacts associated with the project
+        List[ContactSchema]: List of contact Pydantic models associated with the project
     """
     # Get contact IDs for the project
     project_contact_repo = ProjectContactRepositoryAsync(session)
@@ -320,7 +321,7 @@ async def _find_and_assign_catering_manager(
     session: AsyncSession,
     catering_request,
     catering_request_id: str,
-) -> Contact | None:
+) -> ContactSchema | None:
     """
     Find a catering manager for the request and assign it if needed.
 
@@ -330,7 +331,7 @@ async def _find_and_assign_catering_manager(
         catering_request_id: ID of the catering request (for logging)
 
     Returns:
-        Contact | None: The catering manager contact if found, None otherwise
+        ContactSchema | None: The catering manager contact if found, None otherwise
     """
     contact_repo = ContactRepositoryAsync(session)
 

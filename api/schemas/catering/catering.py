@@ -114,7 +114,7 @@ class Contact(BaseModel):
     role: str
     email: Optional[str] = None
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

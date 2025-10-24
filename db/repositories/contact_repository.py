@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas.catering.catering import Contact as ContactSchema
 from db.tables import Contact
 from utils.log import logger
 
@@ -13,13 +14,28 @@ class ContactRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create_contact(self, contact: Contact) -> Contact:
+    def _to_schema(self, contact: Contact) -> ContactSchema:
+        """
+        Convert a Contact ORM object to a Pydantic model with all attributes loaded.
+        This ensures no lazy loading issues when the object is used outside the session.
+        """
+        return ContactSchema(
+            id=contact.id,
+            name=contact.name,
+            email=contact.email,
+            phone_number=contact.phone_number,
+            role=contact.role,
+            created_at=contact.created_at,
+            updated_at=contact.updated_at,
+        )
+
+    async def create_contact(self, contact: Contact) -> ContactSchema:
         """
         Create a new contact asynchronously.
         Args:
             contact (Contact): The contact object to create.
         Returns:
-            Contact: The created contact with generated ID and timestamps.
+            ContactSchema: The created contact as a Pydantic model.
         """
         db_contact = Contact()
         for key, value in vars(contact).items():
@@ -39,9 +55,10 @@ class ContactRepositoryAsync:
             logger.error(f"Error creating contact: {e}")
             raise
 
-        return db_contact
+        # Always return the created contact as Pydantic model
+        return self._to_schema(db_contact)
 
-    async def get_contact_by_id(self, contact_id: uuid.UUID) -> Contact | None:
+    async def get_contact_by_id(self, contact_id: uuid.UUID) -> ContactSchema | None:
         """
         Get contact by ID asynchronously.
 
@@ -49,12 +66,17 @@ class ContactRepositoryAsync:
             contact_id (uuid.UUID): The ID of the contact to retrieve.
 
         Returns:
-            Contact | None: The contact if found, None otherwise.
+            ContactSchema | None: The contact as Pydantic model if found, None otherwise.
         """
         try:
             query = select(Contact).filter(Contact.id == contact_id)
             result = await self.session.execute(query)
-            return result.scalar_one_or_none()
+            db_contact = result.scalar_one_or_none()
+
+            if db_contact:
+                return self._to_schema(db_contact)
+
+            return None
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving contact by ID {contact_id}: {e}")
             raise
@@ -94,18 +116,23 @@ class ContactRepositoryAsync:
             )
             raise
 
-    async def batch_list_contacts(self, contact_ids: List[uuid.UUID]) -> List[Contact]:
+    async def batch_list_contacts(
+        self, contact_ids: List[uuid.UUID]
+    ) -> List[ContactSchema]:
         """
         List contacts by a batch of IDs asynchronously.
         Args:
             contact_ids (List[uuid.UUID]): List of contact IDs to retrieve.
         Returns:
-            List[Contact]: List of contacts matching the provided IDs.
+            List[ContactSchema]: List of contact Pydantic models matching the provided IDs.
         """
         try:
             query = select(Contact).filter(Contact.id.in_(contact_ids))
             result = await self.session.execute(query)
-            return list(result.scalars().all())
+            contacts = list(result.scalars().all())
+
+            # Convert all contacts to Pydantic models to avoid session issues
+            return [self._to_schema(contact) for contact in contacts]
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error retrieving contacts by IDs: {e}")
