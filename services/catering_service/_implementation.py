@@ -1,3 +1,4 @@
+import os
 import re
 import uuid
 from datetime import date, time
@@ -556,12 +557,13 @@ async def send_sms_notification(phone_number: str, message: str) -> bool:
     """
     try:
         formatted_phone_number = _validate_and_format_phone_number(phone_number)
-        logger.debug(f"[catering] Send message to {formatted_phone_number}")
-
-        PALONA_NUMBER = "+18338725662"
+        sender_number = os.getenv("CATERING_SMS_SENDER_NUMBER", "+18338725662")
+        logger.debug(
+            f"[catering] Sending SMS from ****{sender_number[-4:]} to ****{formatted_phone_number[-4:]}"
+        )
         relay_message = RelayMessage(
             author_type=AuthorType.SYSTEM,
-            sender_identifier=PALONA_NUMBER,
+            sender_identifier=sender_number,
             recipient_identifier=formatted_phone_number,
             channel=Channel.SMS,
             broker=Broker.TWILIO,
