@@ -240,8 +240,20 @@ def _format_nested_system_prompt_modifiers(
     modifier_groups: Dict[str, Any],
     modifier_options: Dict[str, Any],
     visited_options: Optional[set] = None,
+    indent_level: int = 0,
 ) -> List[str]:
-    """Format nested modifier options for system prompt (clean, user-friendly) with cycle detection."""
+    """Format nested modifier options for system prompt (clean, user-friendly) with cycle detection.
+
+    Args:
+        option: The modifier option that may have nested modifiers
+        modifier_groups: Dictionary of all modifier groups
+        modifier_options: Dictionary of all modifier options
+        visited_options: Set of visited option GUIDs for cycle detection
+        indent_level: Current indentation level (for recursive nesting)
+
+    Returns:
+        List of formatted strings for nested modifiers, already indented with tabs
+    """
     if visited_options is None:
         visited_options = set()
 
@@ -254,9 +266,7 @@ def _format_nested_system_prompt_modifiers(
             option_name,
             option_guid,
         )
-        return [
-            f"  └─ [Note: Only one {option_name} allowed per order - it is okay to order]"
-        ]
+        return []
 
     visited_options.add(option_guid)
     nested_modifier_info = []
@@ -297,6 +307,8 @@ def _format_nested_system_prompt_modifiers(
 
         # Get nested options
         nested_options = []
+        further_nested_modifiers = []
+
         for nested_option_ref in nested_mod_group.get("modifierOptionReferences", []):
             nested_option = modifier_options.get(str(nested_option_ref))
             if nested_option:
@@ -304,7 +316,7 @@ def _format_nested_system_prompt_modifiers(
                 nested_option_price = nested_option.get("price")
                 if nested_option_price is not None:
                     nested_options.append(
-                        f"{nested_option_name} (+${nested_option_price})"
+                        f"{nested_option_name} (+${nested_option_price:.2f})"
                     )
                 else:
                     nested_options.append(nested_option_name)
@@ -315,17 +327,23 @@ def _format_nested_system_prompt_modifiers(
                     modifier_groups,
                     modifier_options,
                     visited_options.copy(),
+                    indent_level + 1,
                 )
-                nested_modifier_info.extend(further_nested)
+                further_nested_modifiers.extend(further_nested)
 
+        # Format this nested group with proper indentation
+        tabs = "\t" * indent_level
         if nested_options:
             nested_modifier_info.append(
-                f"  └─ {nested_group_name}{nested_constraint_text}: {', '.join(nested_options)}"
+                f"{tabs}{nested_group_name}{nested_constraint_text}: {', '.join(nested_options)}"
             )
         else:
             nested_modifier_info.append(
-                f"  └─ {nested_group_name}{nested_constraint_text}"
+                f"{tabs}{nested_group_name}{nested_constraint_text}"
             )
+
+        # Add any further nested modifiers
+        nested_modifier_info.extend(further_nested_modifiers)
 
     return nested_modifier_info
 
@@ -445,37 +463,58 @@ def _format_system_prompt_modifiers(
 
         constraint_text = " (" + ", ".join(constraint_parts) + ")"
 
-        # Get options
-        options = []
-        nested_modifiers = []
+        # Get options - separate those with nested modifiers from those without
+        options_without_nested = []
+        options_with_nested = []
+
         for option_ref in mod_group.get("modifierOptionReferences", []):
             option = modifier_options.get(str(option_ref))
             if option:
                 option_name = option["name"]
                 option_price = option.get("price")
-                # For sequence pricing, don't show individual prices since they vary
+
+                # Format option display string
                 if pricing_strategy in ["SEQUENCE_PRICE", "SIZE_SEQUENCE_PRICE"]:
-                    options.append(option_name)
+                    option_display = option_name
                 elif option_price is not None:
-                    options.append(f"{option_name} (+${option_price})")
+                    option_display = f"{option_name} (+${option_price:.2f})"
                 else:
-                    options.append(option_name)
+                    option_display = option_name
 
                 # Check for nested modifiers on this option
+                # Start at indent_level=1 since these are nested under the parent option
                 nested_modifier_info = _format_nested_system_prompt_modifiers(
-                    option, modifier_groups, modifier_options
+                    option, modifier_groups, modifier_options, None, 1
                 )
-                nested_modifiers.extend(nested_modifier_info)
 
-        if options:
+                if nested_modifier_info:
+                    # Store option with its nested modifiers
+                    options_with_nested.append(
+                        {"display": option_display, "nested": nested_modifier_info}
+                    )
+                else:
+                    options_without_nested.append(option_display)
+
+        # Format the modifier group line with only non-nested options
+        if options_without_nested:
             modifier_info.append(
-                f"{mod_group_name}{constraint_text}: {', '.join(options)}"
+                f"{mod_group_name}{constraint_text}: {', '.join(options_without_nested)}"
             )
-        else:
+        elif not options_with_nested:
+            # No options at all
             modifier_info.append(f"{mod_group_name}{constraint_text}")
+        else:
+            # Only has nested options - show the group header without inline options
+            modifier_info.append(f"{mod_group_name}{constraint_text}:")
 
-        # Add nested modifier information
-        modifier_info.extend(nested_modifiers)
+        # Add options with nested modifiers on separate lines
+        for opt_with_nested in options_with_nested:
+            # Show the parent option on its own line
+            modifier_info.append(f"\t{opt_with_nested['display']}")
+            # Then show its nested modifiers indented further
+            for nested_line in opt_with_nested["nested"]:
+                # nested_line already has proper indentation from _format_nested_system_prompt_modifiers
+                modifier_info.append(f"\t{nested_line}")
 
     return modifier_info
 
@@ -739,7 +778,28 @@ def _process_menu_item_system_prompt(
     item_line += f" - {price_info}"
 
     if modifier_info:
-        item_line += "\n  Customizations: " + "; ".join(modifier_info)
+        # Add all modifiers with proper formatting
+        # The first line of customizations (with no tabs) are joined with semicolons
+        # Lines with tabs are nested modifiers shown on separate lines
+        item_line += "\n  Customizations: "
+
+        first_line_parts = []
+        nested_lines = []
+
+        for mod in modifier_info:
+            if mod.startswith("\t"):
+                # This is a nested modifier - already has proper indentation from formatting
+                nested_lines.append(mod)
+            else:
+                # This is a top-level modifier
+                first_line_parts.append(mod)
+
+        # Join top-level modifiers with semicolons
+        item_line += "; ".join(first_line_parts)
+
+        # Add nested modifiers on separate lines (they already have proper indentation from _format_system_prompt_modifiers)
+        for nested_line in nested_lines:
+            item_line += "\n" + nested_line
 
     system_prompt_results.append(item_line)
 
