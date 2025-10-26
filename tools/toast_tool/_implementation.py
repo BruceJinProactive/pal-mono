@@ -83,6 +83,7 @@ class ToastTool(Toolkit):
         hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
         enable_hosted_checkout: bool = False,
         backdoor_tool_prompt: dict | None = None,
+        anthropic_client: bool = False,
     ):
         super().__init__(name="toast_tool")
 
@@ -106,6 +107,7 @@ class ToastTool(Toolkit):
         self.hosted_payment_iframe_endpoint = hosted_payment_iframe_endpoint
         self.enable_hosted_checkout = enable_hosted_checkout
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
+        self.anthropic_client = anthropic_client
 
         # Register tools
         if self.enable_hosted_checkout:
@@ -836,7 +838,7 @@ class ToastTool(Toolkit):
                 context=context, chat_history=chat_history
             ),
             response_format=OrderInput,
-            openai=True,
+            anthropic_client=self.anthropic_client,
         )
 
         # Check if the order is a string and convert it to an OrderInput object, catching any errors

@@ -12,6 +12,7 @@ dependencies = [
   "ShopifyAPI==12.7.0", # Official Shopify API client for e-commerce integrations
   "agno==1.7.6", # AI agent framework for building intelligent applications
   "alembic==1.13.2", # Database migration tool for SQLAlchemy
+  "anthropic==0.71.0", # Official Anthropic API client for Claude models
   "asyncpg==0.30.0", # High-performance async PostgreSQL driver
   "beautifulsoup4==4.12.3", # HTML/XML parsing and web scraping library
   "boto3==1.37.34", # Amazon Web Services SDK for Python
