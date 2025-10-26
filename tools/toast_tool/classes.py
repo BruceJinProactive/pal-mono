@@ -272,7 +272,7 @@ class OrderInput(BaseModel):
     deliveryInfo: Optional[ToastDeliveryInfo] = None
     curbsidePickupInfo: Optional[ToastCurbsidePickupInfo] = None
     externalId: Optional[str] = Field(
-        None,
+        default=None,
         description="An optional external identifier for the order, used to GET and check if the order exists.",
     )
 
