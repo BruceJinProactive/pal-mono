@@ -4,14 +4,18 @@ DINING_OPTIONS_INSTRUCTION = (
     "Select the Online TAKE_OUT dining option only and use the GUID associated with it. Do not include any other dining options."
 )
 
-RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """You are a helpful assistant that extracts full and specific order items' names from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items with proper modifiers (e.g. size or toppings) the user has added to their final order.
+RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """You are a helpful assistant that extracts full and specific order items from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items **and bundle them with their selected modifiers (like sides, toppings, or dressings)**.
+
 Requirements:
-- Extract the **complete dish or drink name**, but **remove size or quantity information**.
-- Do not shorten or generalize the dish.
+- Extract the **complete main dish or drink name, including all size information**
+- **CRITICAL RULE: You must find all confirmed modifiers (sides, dressings, toppings, etc.) that belong to a main item and combine them into a single, descriptive string.**
+- **STRING FORMAT: Use 'with' to connect the main item and its modifiers. For example: "main_item with modifier1, modifier2, modifier3"**
+- **Do NOT** extract modifiers as separate items in the list.
 - Only include items that the user **explicitly confirmed or finalized** as part of their order.
-- Output a JSON array of strings with **cleaned item names**.
+- Output a JSON array of strings, where each string is a complete item with its modifiers.
 - Do not include duplicates.
 """
+
 
 EXTRACTOR_SYSTEM_PROMPT = """You are an expert at structured data extraction.
 You will be given the chat history and relevant context. You goal is to convert it into the given structure.
@@ -35,7 +39,7 @@ You will be given the chat history and relevant context. You goal is to convert 
 - Only include modifiers that were explicitly mentioned by the user in the Chat History.
 - The modifier quantity MUST match the item quantity. Always set the modifier quantity to the item quantity.
 - If multiple items have different modifiers, each must be treated as a separate entry in the selections list. For example, if the user orders 2 items with different modifiers, you must treat them as 2 different items in the selections list.
-- The modifier item ID of one item belongs only to the modifier optionGroup ID of the same item. You must identify the correct modifier optionGroup ID and modifier item ID pair of each item. You can find them in the document related to the specific item. 
+- The modifier item ID of one item belongs only to the modifier optionGroup ID of the same item. You must identify the correct modifier optionGroup ID and modifier item ID pair of each item. You can find them in the document related to the specific item.
 - You must not mix up the modifier optionGroup ID and modifier item ID for different items. The modifier item ID of one item must be paired with the modifier optionGroup ID of the same item.
 - If in the item's document there is only a base price, you must not include any size modifier group ID and size modifier item ID of any kind for that item in the selections list. You must NOT use other items' modifier group ID and item ID for that item.
 - If the user orders a modifier multiple times, you must include the modifier multiple times in the selections list instead of specifying the modifier quantity. For example, if the user orders 1 item with 3 portions of modifier B, you must include modifier B with quantity 1 three times in the selections list.
@@ -110,7 +114,7 @@ EXTRACTOR_USER_PROMPT = """
 
 Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beutify the response. We will parse the JSON object later.
 
-When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item. 
+When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item.
 
 **CRITICAL**: For each item selection, you MUST:
 1. Find the menu document that matches the item name
