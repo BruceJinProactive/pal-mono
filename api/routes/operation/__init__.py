@@ -7,6 +7,11 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
+from api.schemas.admin.checklist import (
+    Checklist,
+    CreateChecklistRequest,
+    ListChecklistsResponse,
+)
 from api.schemas.admin.checkpoint import (
     Checkpoint,
     ListCheckpointResultsByCheckpointResponse,
@@ -15,7 +20,7 @@ from api.schemas.admin.checkpoint import (
 )
 from db.tables.types import CheckStatus
 
-from . import _checkpoint, _implementation
+from . import _checklist, _checkpoint, _implementation
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
 
@@ -29,6 +34,51 @@ async def health_check(
     Health check endpoint for operation router.
     """
     return await _implementation.health_check(context, session)
+
+
+"""
+---------- Checklist Endpoints ----------
+-----------------------------------------
+"""
+
+
+@operation_router.post(
+    "/projects/{project_id}/checklists", status_code=status.HTTP_201_CREATED
+)
+async def create_checklist(
+    project_id: uuid.UUID,
+    checklist: CreateChecklistRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Checklist:
+    """
+    Create a new checklist for a project.
+    """
+    return await _checklist.create_checklist(project_id, checklist, context, session)
+
+
+@operation_router.get("/checklists/{checklist_id}")
+async def get_checklist(
+    checklist_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Checklist:
+    """
+    Get a checklist by ID.
+    """
+    return await _checklist.get_checklist(checklist_id, context, session)
+
+
+@operation_router.get("/projects/{project_id}/checklists")
+async def list_project_checklists(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListChecklistsResponse:
+    """
+    Retrieve a list of checklists for the specified project.
+    """
+    return await _checklist.list_checklists_by_project(project_id, context, session)
 
 
 """
