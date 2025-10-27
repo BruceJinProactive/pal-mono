@@ -568,11 +568,25 @@ class ToastTool(Toolkit):
             # Generate iframe payment link
             payment_link = self._generate_iframe_payment_link(
                 order.checks[0].customer.email,
+                (
+                    order.checks[0].customer.firstName
+                    + " "
+                    + order.checks[0].customer.lastName
+                ).strip(),
+                order.checks[0].customer.phone,
                 self.store_id,
                 order.externalId,
                 payment_intent_external_reference_id,
                 payment_intent_result.sessionSecret,
-                subtotal_cents=payment_intent_result.amount,
+                subtotal_cents=(
+                    int(order.checks[0].amount * 100) if order.checks[0].amount else 0
+                ),
+                tax=(
+                    int(order.checks[0].taxAmount * 100)
+                    if order.checks[0].taxAmount
+                    else 0
+                ),
+                total_cents=payment_intent_result.amount,
                 tips_cents=0,
             )
 
@@ -1131,11 +1145,15 @@ class ToastTool(Toolkit):
     def _generate_iframe_payment_link(
         self,
         email: str,
+        name: str,
+        phone: str,
         store_id: str,
         order_external_id: str,
         payment_intent_external_reference_id: str,
         session_secret: str,
         subtotal_cents: int,
+        tax: int,
+        total_cents: int,
         tips_cents: int = 0,
         payment_api_endpoint: str = "https://ws-sandbox-api.eng.toasttab.com",
     ) -> str:
@@ -1186,10 +1204,14 @@ class ToastTool(Toolkit):
             # Create JWT payload with required claims
             payload = {
                 "email": email,
+                "name": name,
+                "phone": phone,
                 "storeId": store_id,
                 "orderExternalId": order_external_id,
                 "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
                 "subtotal": subtotal_cents,
+                "tax": tax,
+                "total": total_cents,
                 "tips": tips_cents,
                 "sessionSecret": session_secret,
                 "iframeBearerToken": iframe_bearer_token.access_token,
