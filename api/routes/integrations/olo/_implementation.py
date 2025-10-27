@@ -1,4 +1,3 @@
-import asyncio
 import json
 from functools import lru_cache
 from typing import Any
@@ -8,10 +7,7 @@ from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from tools.olo_tool._apis import get_order_status
-from tools.olo_tool.classes import OloAccessToken
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
 
 OLO_PAYMENT_TOKEN_TTL_SECONDS = 15 * 60
 HARD_CODED_PAYMENT_IFRAME_SECRET = "xK8dP2m_QrZ7vN4wL9cF3bJ6hT5yU1gS0aE8iO-pMxA="
@@ -89,55 +85,6 @@ async def checkout_complete(payload: OloCheckoutCompleteRequest) -> JSONResponse
             "session_id": payload.sessionId,
         },
     )
-
-    api_key: str | None = None
-    try:
-        api_key = get_client_secret_with_fallback("OLO_MOOYAH_API_KEY").strip()
-    except Exception as exc:  # pragma: no cover - secret retrieval should rarely fail
-        logger.warning(
-            "[OLO] OloIntegration.checkout_complete Failed to load Olo API key",
-            extra={"order_id": payload.orderId},
-            exc_info=exc,
-        )
-
-    if not api_key:
-        logger.warning(
-            "[OLO] OloIntegration.checkout_complete Skipping order status fetch; API key not configured",
-            extra={"order_id": payload.orderId},
-        )
-    else:
-        token = OloAccessToken(access_token=api_key, token_type="OloKey")
-        try:
-            order_status = await asyncio.to_thread(
-                get_order_status,
-                payload.orderId,
-                token,
-            )
-        except Exception as exc:  # pragma: no cover - network failures are uncommon
-            logger.warning(
-                "[OLO] OloIntegration.checkout_complete Failed to fetch order status",
-                extra={
-                    "order_id": payload.orderId,
-                    "store_id": payload.storeId,
-                },
-                exc_info=exc,
-            )
-        else:
-            logger.debug(
-                "[OLO] OloIntegration.checkout_complete Order status fetched",
-                extra={
-                    "order_id": payload.orderId,
-                    "order_status": order_status.status.value,
-                    "arrival_status": (
-                        order_status.arrivalstatus.value
-                        if order_status.arrivalstatus
-                        else None
-                    ),
-                    "order_ref": order_status.orderref,
-                    "total": order_status.total,
-                    "payload_order_ref": payload.order.get("orderRef"),
-                },
-            )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
