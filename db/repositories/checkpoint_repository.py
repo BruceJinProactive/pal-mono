@@ -21,6 +21,7 @@ def create_checkpoint(session: Session, checkpoint: CheckPoint) -> CheckPoint:
     # Explicitly copy allowed fields to avoid SQLAlchemy internals
     db_checkpoint = CheckPoint(
         project_id=checkpoint.project_id,
+        checklist_id=checkpoint.checklist_id,
         name=checkpoint.name,
         description=checkpoint.description,
         image_url=checkpoint.image_url,
@@ -91,9 +92,17 @@ def update_checkpoint(
             return None
 
         # Update only whitelisted fields
-        allowed = {"name", "description", "image_url", "is_active", "group", "rules"}
+        allowed = {
+            "name",
+            "description",
+            "image_url",
+            "is_active",
+            "group",
+            "rules",
+            "checklist_id",
+        }
         for key, value in updates.items():
-            if key in allowed and value is not None:
+            if key in allowed:
                 setattr(checkpoint, key, value)
 
         session.commit()
