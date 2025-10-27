@@ -121,10 +121,7 @@ class OloTool(Toolkit):
                         "client_credentials is required when use_signed_auth=True"
                     )
                 credentials = self._get_olo_credentials(self.client_credentials)
-                logger.debug(
-                    "[OLO] OloTool._olo_token Using signed authentication",
-                    extra={"credential_secret": self.client_credentials},
-                )
+                logger.debug("[OLO] OloTool._olo_token Using signed authentication")
                 return OloSignedToken(
                     client_id=credentials["client_id"],
                     client_secret=credentials["client_secret"],
@@ -434,7 +431,7 @@ class OloTool(Toolkit):
             )
             logger.debug(
                 "[OLO] OloTool._checkout_order_wout_payment_iframe Retrieved billing schemes",
-                extra={"scheme": billing_schemes_info},
+                extra={"scheme_count": len(billing_schemes_info)},
             )
 
             # Construct the order
@@ -624,10 +621,7 @@ class OloTool(Toolkit):
             ).accesstoken
             logger.debug(
                 "[OLO] OloTool._checkout_order_with_payment_iframe CCSF token retrieved",
-                extra={
-                    "basket_id": basket.id,
-                    "token_preview": f"{ccsf_access_token[:6]}...{ccsf_access_token[-4:]}",
-                },
+                extra={"basket_id": basket.id},
             )
 
             payment_payload = self._build_hosted_payment_payload(
@@ -740,10 +734,7 @@ class OloTool(Toolkit):
         token = urllib.parse.quote(token_bytes.decode("utf-8"))
         logger.debug(
             "[OLO] OloTool._generate_payment_link Token generated",
-            extra={
-                "token_preview": f"{token[:12]}..." if token else "",
-                "hosted_endpoint": self.hosted_payment_iframe_endpoint,
-            },
+            extra={"hosted_endpoint": self.hosted_payment_iframe_endpoint},
         )
         return f"{self.hosted_payment_iframe_endpoint}?t={token}"
 

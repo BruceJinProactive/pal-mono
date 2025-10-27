@@ -33,10 +33,7 @@ def _get_payment_iframe_fernet() -> Fernet:
 
 
 async def get_checkout_session(token: str) -> JSONResponse:
-    logger.debug(
-        "[OLO] OloIntegration.get_checkout_session Received token",
-        extra={"token_preview": f"{token[:12]}..." if token else "missing"},
-    )
+    logger.debug("[OLO] OloIntegration.get_checkout_session Received token")
     try:
         decrypted = _get_payment_iframe_fernet().decrypt(
             token.encode("utf-8"), ttl=OLO_PAYMENT_TOKEN_TTL_SECONDS
