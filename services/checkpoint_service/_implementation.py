@@ -23,6 +23,12 @@ def list_checkpoints(session: Session, project_id: UUID) -> list[db.CheckPoint]:
     return checkpoint_repository.list_checkpoints(session, project_id)
 
 
+def list_checkpoints_by_checklist(
+    session: Session, checklist_id: UUID
+) -> list[db.CheckPoint]:
+    return checkpoint_repository.list_checkpoints_by_checklist(session, checklist_id)
+
+
 def get_checkpoint(session: Session, checkpoint_id: UUID) -> db.CheckPoint | None:
     return checkpoint_repository.get_checkpoint(session, checkpoint_id)
 

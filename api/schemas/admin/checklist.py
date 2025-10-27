@@ -19,6 +19,16 @@ class CreateChecklistRequest(BaseModel):
     )
 
 
+class UpdateChecklistRequest(BaseModel):
+    """Request model for updating a checklist"""
+
+    name: str | None = Field(None, description="Name of the checklist", min_length=1)
+    description: str | None = Field(None, description="Description of the checklist")
+    ai_enabled: bool | None = Field(
+        None, description="Whether AI is enabled for this checklist"
+    )
+
+
 class Checklist(BaseModel):
     """Response model for a checklist"""
 

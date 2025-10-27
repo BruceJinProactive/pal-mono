@@ -516,6 +516,7 @@ def build_checkpoint(checkpoint: db.CheckPoint) -> Checkpoint:
     return Checkpoint(
         id=str(checkpoint.id),
         project_id=str(checkpoint.project_id),
+        checklist_id=str(checkpoint.checklist_id),
         name=checkpoint.name,
         description=checkpoint.description,
         image_url=map_uri_to_s3_url(checkpoint.image_url),

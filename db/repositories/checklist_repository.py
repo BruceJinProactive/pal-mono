@@ -56,7 +56,9 @@ def get_checklist_by_id(session: Session, checklist_id: uuid.UUID) -> Checklist 
 
 
 def list_checklists_by_project(
-    session: Session, project_id: uuid.UUID
+    session: Session,
+    project_id: uuid.UUID,
+    exclude: uuid.UUID | None = None,
 ) -> list[Checklist]:
     """
     List all checklists for a specific project.
@@ -64,11 +66,16 @@ def list_checklists_by_project(
     Args:
         session: Database session
         project_id: UUID of the project
+        exclude: Optional checklist ID to exclude from results
 
     Returns:
         List of Checklist objects
     """
     stmt = select(Checklist).where(Checklist.project_id == project_id)
+
+    if exclude is not None:
+        stmt = stmt.where(Checklist.id != exclude)
+
     return list(session.execute(stmt).scalars().all())
 
 
@@ -84,3 +91,59 @@ def list_all_checklists(session: Session) -> list[Checklist]:
     """
     stmt = select(Checklist)
     return list(session.execute(stmt).scalars().all())
+
+
+def update_checklist(
+    session: Session,
+    checklist_id: uuid.UUID,
+    name: str | None = None,
+    description: str | None = None,
+    ai_enabled: bool | None = None,
+) -> Checklist | None:
+    """
+    Update a checklist by its ID.
+
+    Args:
+        session: Database session
+        checklist_id: UUID of the checklist
+        name: Optional new name
+        description: Optional new description
+        ai_enabled: Optional new AI enabled status
+
+    Returns:
+        Updated Checklist object if found, None otherwise
+    """
+    checklist = get_checklist_by_id(session, checklist_id)
+    if not checklist:
+        return None
+
+    if name is not None:
+        checklist.name = name
+    if description is not None:
+        checklist.description = description
+    if ai_enabled is not None:
+        checklist.ai_enabled = ai_enabled
+
+    session.flush()
+    session.refresh(checklist)
+    return checklist
+
+
+def delete_checklist(session: Session, checklist_id: uuid.UUID) -> bool:
+    """
+    Delete a checklist by its ID.
+
+    Args:
+        session: Database session
+        checklist_id: UUID of the checklist
+
+    Returns:
+        True if deleted, False if not found
+    """
+    checklist = get_checklist_by_id(session, checklist_id)
+    if not checklist:
+        return False
+
+    session.delete(checklist)
+    session.flush()
+    return True

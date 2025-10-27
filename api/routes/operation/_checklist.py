@@ -14,6 +14,7 @@ from api.schemas.admin.checklist import (
     Checklist,
     CreateChecklistRequest,
     ListChecklistsResponse,
+    UpdateChecklistRequest,
 )
 from services import checklist_service
 
@@ -49,11 +50,39 @@ async def list_checklists_by_project(
     project_id: UUID,
     context: UserContext,
     session: Session,
+    exclude: UUID | None = None,
 ) -> ListChecklistsResponse:
     """
     List all checklists for a specific project.
     Delegates to checklist_service.
     """
     return await checklist_service.list_checklists_by_project(
-        project_id, context, session
+        project_id, context, session, exclude
     )
+
+
+async def update_checklist(
+    checklist_id: UUID,
+    update_request: UpdateChecklistRequest,
+    context: UserContext,
+    session: Session,
+) -> Checklist:
+    """
+    Update a checklist by ID.
+    Delegates to checklist_service.
+    """
+    return await checklist_service.update_checklist(
+        checklist_id, update_request, context, session
+    )
+
+
+async def delete_checklist(
+    checklist_id: UUID,
+    context: UserContext,
+    session: Session,
+) -> None:
+    """
+    Delete a checklist by ID.
+    Delegates to checklist_service.
+    """
+    await checklist_service.delete_checklist(checklist_id, context, session)

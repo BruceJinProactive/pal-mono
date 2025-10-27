@@ -53,6 +53,22 @@ def list_checkpoints(session: Session, project_id: UUID) -> list[CheckPoint]:
         raise
 
 
+def list_checkpoints_by_checklist(
+    session: Session, checklist_id: UUID
+) -> list[CheckPoint]:
+    """Get all checkpoints for a checklist."""
+    try:
+        checkpoints = (
+            session.query(CheckPoint)
+            .filter(CheckPoint.checklist_id == checklist_id)
+            .all()
+        )
+        return checkpoints
+    except SQLAlchemyError as e:
+        logger.error(f"Error listing checkpoints by checklist: {e}")
+        raise
+
+
 def get_checkpoint(session: Session, checkpoint_id: UUID) -> CheckPoint | None:
     """Get a checkpoint by ID."""
     try:
@@ -117,6 +133,9 @@ class CheckpointRepository:
 
     def list_checkpoints(self, project_id: UUID) -> list[CheckPoint]:
         return list_checkpoints(self.session, project_id)
+
+    def list_checkpoints_by_checklist(self, checklist_id: UUID) -> list[CheckPoint]:
+        return list_checkpoints_by_checklist(self.session, checklist_id)
 
     def get_checkpoint(self, checkpoint_id: UUID) -> CheckPoint | None:
         return get_checkpoint(self.session, checkpoint_id)

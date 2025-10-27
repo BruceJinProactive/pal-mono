@@ -35,6 +35,22 @@ def list_checkpoints(session: Session, project_id: UUID) -> list[db.CheckPoint]:
     return _implementation.list_checkpoints(session, project_id)
 
 
+def list_checkpoints_by_checklist(
+    session: Session, checklist_id: UUID
+) -> list[db.CheckPoint]:
+    """
+    List all checkpoints for a checklist.
+
+    Args:
+        session (Session): The database session to use for the query.
+        checklist_id (UUID): The UUID of the checklist.
+
+    Returns:
+        list[db.CheckPoint]: List of checkpoints for the checklist.
+    """
+    return _implementation.list_checkpoints_by_checklist(session, checklist_id)
+
+
 def get_checkpoint(session: Session, checkpoint_id: UUID) -> db.CheckPoint | None:
     """
     Get a checkpoint by ID.
@@ -293,6 +309,7 @@ def update_checkpoint_result(
 __all__ = [
     "create_checkpoint",
     "list_checkpoints",
+    "list_checkpoints_by_checklist",
     "get_checkpoint",
     "update_checkpoint",
     "delete_checkpoint",

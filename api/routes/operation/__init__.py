@@ -11,6 +11,7 @@ from api.schemas.admin.checklist import (
     Checklist,
     CreateChecklistRequest,
     ListChecklistsResponse,
+    UpdateChecklistRequest,
 )
 from api.schemas.admin.checkpoint import (
     Checkpoint,
@@ -72,13 +73,62 @@ async def get_checklist(
 @operation_router.get("/projects/{project_id}/checklists")
 async def list_project_checklists(
     project_id: uuid.UUID,
+    exclude: uuid.UUID | None = Query(
+        None, description="Optional checklist ID to exclude from results"
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListChecklistsResponse:
     """
     Retrieve a list of checklists for the specified project.
+    Optionally exclude a specific checklist by ID.
     """
-    return await _checklist.list_checklists_by_project(project_id, context, session)
+    return await _checklist.list_checklists_by_project(
+        project_id, context, session, exclude
+    )
+
+
+@operation_router.patch("/checklists/{checklist_id}")
+async def update_checklist(
+    checklist_id: uuid.UUID,
+    update_request: UpdateChecklistRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> Checklist:
+    """
+    Update a checklist by ID.
+    """
+    return await _checklist.update_checklist(
+        checklist_id, update_request, context, session
+    )
+
+
+@operation_router.delete(
+    "/checklists/{checklist_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_checklist(
+    checklist_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> None:
+    """
+    Delete a checklist by ID.
+    """
+    await _checklist.delete_checklist(checklist_id, context, session)
+
+
+@operation_router.get("/checklists/{checklist_id}/checkpoints")
+async def list_checklist_checkpoints(
+    checklist_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ListCheckpointsResponse:
+    """
+    Retrieve a list of checkpoints for the specified checklist.
+    """
+    return await _checkpoint.list_checkpoints_by_checklist(
+        checklist_id, context, session
+    )
 
 
 """
@@ -104,6 +154,7 @@ async def list_checkpoints(
 )
 async def create_checkpoint(
     project_id: uuid.UUID,
+    checklist_id: uuid.UUID = Form(...),
     name: str = Form(...),
     description: str | None = Form(None),
     is_active: bool = Form(False),
@@ -117,6 +168,7 @@ async def create_checkpoint(
     Create a new checkpoint with an optional image upload.
 
     Request body (multipart/form-data):
+    - checklist_id (required): UUID - Checklist ID this checkpoint belongs to
     - name (required): string - Checkpoint name
     - description (optional): string - Checkpoint description
     - is_active (optional, default: false): boolean - Whether checkpoint is active
@@ -127,7 +179,16 @@ async def create_checkpoint(
     The image will be uploaded to S3 and the URL will be stored in the checkpoint.
     """
     return await _checkpoint.create_checkpoint(
-        project_id, name, description, is_active, group, rules, image, context, session
+        project_id,
+        checklist_id,
+        name,
+        description,
+        is_active,
+        group,
+        rules,
+        image,
+        context,
+        session,
     )
 
 

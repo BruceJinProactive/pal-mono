@@ -7,6 +7,7 @@ class CreateCheckpointRequest(BaseModel):
     """Create Checkpoint Request Model"""
 
     project_id: UUID
+    checklist_id: UUID
     name: str
     description: str | None = None
     is_active: bool = Field(default=False)
@@ -29,6 +30,7 @@ class Checkpoint(BaseModel):
 
     id: str
     project_id: str
+    checklist_id: str
     name: str
     description: str | None
     image_url: str | None

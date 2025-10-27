@@ -16,6 +16,7 @@ from api.schemas.admin.checklist import (
     Checklist,
     CreateChecklistRequest,
     ListChecklistsResponse,
+    UpdateChecklistRequest,
 )
 from db.repositories import checklist_repository
 from services import account_service, project_service
@@ -149,6 +150,7 @@ async def list_checklists_by_project(
     project_id: UUID,
     context: UserContext,
     session: Session,
+    exclude: UUID | None = None,
 ) -> ListChecklistsResponse:
     """
     List all checklists for a project with authorization.
@@ -157,6 +159,7 @@ async def list_checklists_by_project(
         project_id: UUID of the project
         context: User authentication context
         session: Database session
+        exclude: Optional checklist ID to exclude from results
 
     Returns:
         ListChecklistsResponse with checklists and total count
@@ -165,9 +168,100 @@ async def list_checklists_by_project(
     _authorize_project_access(session, project_id, context)
 
     # Get checklists for the project
-    checklists_db = checklist_repository.list_checklists_by_project(session, project_id)
+    checklists_db = checklist_repository.list_checklists_by_project(
+        session, project_id, exclude
+    )
 
     return ListChecklistsResponse(
         checklists=[_build_checklist(c) for c in checklists_db],
         total=len(checklists_db),
     )
+
+
+async def update_checklist(
+    checklist_id: UUID,
+    update_request: UpdateChecklistRequest,
+    context: UserContext,
+    session: Session,
+) -> Checklist:
+    """
+    Update a checklist with authorization.
+
+    Args:
+        checklist_id: UUID of the checklist
+        update_request: Request containing update data
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        Updated Checklist object
+    """
+    # Get the existing checklist
+    checklist_db = checklist_repository.get_checklist_by_id(session, checklist_id)
+
+    if not checklist_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checklist {checklist_id} does not exist.",
+        )
+
+    # If checklist is associated with a project, verify user has access
+    if checklist_db.project_id:
+        _authorize_project_access(session, checklist_db.project_id, context)
+
+    # Update the checklist
+    updated_checklist = checklist_repository.update_checklist(
+        session=session,
+        checklist_id=checklist_id,
+        name=update_request.name,
+        description=update_request.description,
+        ai_enabled=update_request.ai_enabled,
+    )
+
+    if not updated_checklist:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Failed to update checklist {checklist_id}.",
+        )
+
+    session.commit()
+
+    return _build_checklist(updated_checklist)
+
+
+async def delete_checklist(
+    checklist_id: UUID,
+    context: UserContext,
+    session: Session,
+) -> None:
+    """
+    Delete a checklist with authorization.
+
+    Args:
+        checklist_id: UUID of the checklist
+        context: User authentication context
+        session: Database session
+    """
+    # Get the existing checklist
+    checklist_db = checklist_repository.get_checklist_by_id(session, checklist_id)
+
+    if not checklist_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checklist {checklist_id} does not exist.",
+        )
+
+    # If checklist is associated with a project, verify user has access
+    if checklist_db.project_id:
+        _authorize_project_access(session, checklist_db.project_id, context)
+
+    # Delete the checklist
+    deleted = checklist_repository.delete_checklist(session, checklist_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Failed to delete checklist {checklist_id}.",
+        )
+
+    session.commit()

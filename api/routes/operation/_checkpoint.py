@@ -102,6 +102,7 @@ async def _upload_checkpoint_image(
 
 async def create_checkpoint(
     project_id: uuid.UUID,
+    checklist_id: uuid.UUID,
     name: str,
     description: str | None,
     is_active: bool,
@@ -117,6 +118,7 @@ async def create_checkpoint(
 
     Args:
         project_id: UUID of the project
+        checklist_id: UUID of the checklist this checkpoint belongs to
         name: Name of the checkpoint
         description: Optional description
         is_active: Whether the checkpoint is active
@@ -158,6 +160,7 @@ async def create_checkpoint(
     # Create checkpoint in database first (without image)
     checkpoint = db.CheckPoint(
         project_id=project_id,
+        checklist_id=checklist_id,
         name=name,
         description=description,
         image_url=None,
@@ -211,6 +214,54 @@ async def list_checkpoints(
 
     # Get checkpoints
     checkpoints = checkpoint_service.list_checkpoints(session, project_id)
+
+    return ListCheckpointsResponse(
+        checkpoints=[_builder.build_checkpoint(cp) for cp in checkpoints],
+        total=len(checkpoints),
+    )
+
+
+async def list_checkpoints_by_checklist(
+    checklist_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> ListCheckpointsResponse:
+    """
+    List all checkpoints for a checklist.
+
+    Args:
+        checklist_id: UUID of the checklist
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        ListCheckpointsResponse with all checkpoints for the checklist
+    """
+    # Get the checklist first to verify it exists and get its project_id
+    from db.repositories import checklist_repository
+
+    checklist = checklist_repository.get_checklist_by_id(session, checklist_id)
+    if not checklist:
+        raise not_found_error(f"Checklist {checklist_id} does not exist.")
+
+    # Validate & authorize via project
+    if checklist.project_id:
+        project = project_service.get_project(session, checklist.project_id)
+        if not project:
+            raise not_found_error(f"Project {checklist.project_id} does not exist.")
+
+        account = account_service.get_account_by_id(session, project.account_id)
+        if not account:
+            raise not_found_error(
+                f"Account for project {checklist.project_id} does not exist."
+            )
+
+        authorize_user_account(context, account.name)
+
+    # Get checkpoints for this checklist
+    checkpoints = checkpoint_service.list_checkpoints_by_checklist(
+        session, checklist_id
+    )
 
     return ListCheckpointsResponse(
         checkpoints=[_builder.build_checkpoint(cp) for cp in checkpoints],
