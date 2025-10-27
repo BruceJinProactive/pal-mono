@@ -200,7 +200,7 @@ async def update_checkpoint(
     is_active: bool | None = Form(None),
     group: str | None = Form(None),
     rules: str | None = Form(None),
-    checklist_id: uuid.UUID | None = Form(None),
+    checklist_id: str | None = Form(None),
     image: UploadFile | None = File(None),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
@@ -215,7 +215,7 @@ async def update_checkpoint(
     - is_active (optional): boolean - New active status
     - group (optional): string - New checkpoint group
     - rules (optional): JSON array string of rules (e.g., '["rule1", "rule2"]')
-    - checklist_id (optional): UUID - New checklist ID (can be null to unassign)
+    - checklist_id (optional): UUID string or "null" - Send "null" string to unassign from checklist
     - image (optional): New image file to replace existing one
 
     If an image is provided, the old image will be deleted from S3 and replaced with the new one.

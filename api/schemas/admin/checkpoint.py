@@ -15,17 +15,6 @@ class CreateCheckpointRequest(BaseModel):
     rules: list[str] | None = Field(default=None)
 
 
-class UpdateCheckpointRequest(BaseModel):
-    """Update Checkpoint Request Model - all fields are optional"""
-
-    name: str | None = None
-    description: str | None = None
-    is_active: bool | None = None
-    group: str | None = None
-    rules: list[str] | None = None
-    checklist_id: UUID | None = None
-
-
 class Checkpoint(BaseModel):
     """Checkpoint Model"""
 
