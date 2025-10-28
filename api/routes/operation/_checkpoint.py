@@ -118,7 +118,7 @@ async def create_checkpoint(
 
     Args:
         project_id: UUID of the project
-        checklist_id: Optional checklist ID (UUID or None)
+        checklist_id: Optional UUID of the checklist this checkpoint belongs to
         name: Name of the checkpoint
         description: Optional description
         is_active: Whether the checkpoint is active
@@ -276,7 +276,7 @@ async def update_checkpoint(
     is_active: bool | None,
     group: str | None,
     rules: str | None,
-    checklist_id_str: str | None,
+    checklist_id: uuid.UUID | None,
     image: UploadFile | None,
     context: UserContext,
     session: Session,
@@ -292,7 +292,7 @@ async def update_checkpoint(
         is_active: Optional new active status
         group: Optional new group
         rules: Optional new rules (JSON array string)
-        checklist_id_str: Optional checklist ID as string ("null" to unassign, UUID string to assign)
+        checklist_id: Optional new checklist ID (can be None to unassign from checklist)
         image: Optional new image file to replace existing one
         context: User context for authorization
         session: Database session
@@ -304,25 +304,6 @@ async def update_checkpoint(
         HTTPException: If checkpoint not found or authorization fails
     """
     import json
-
-    # Parse checklist_id from string to UUID
-    # Only update if field was provided (not None or empty)
-    checklist_id: uuid.UUID | None = None
-    update_checklist_id = False
-
-    if checklist_id_str is not None and checklist_id_str != "":
-        update_checklist_id = True
-        # Handle: "null" -> None, UUID string -> UUID object
-        if checklist_id_str.lower() == "null":
-            checklist_id = None  # Explicitly unassign from checklist
-        else:
-            try:
-                checklist_id = uuid.UUID(checklist_id_str)
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid checklist_id format: {checklist_id_str}. Must be a valid UUID or 'null'.",
-                )
 
     # Get checkpoint first to validate it exists
     checkpoint = checkpoint_service.get_checkpoint(session, checkpoint_id)
@@ -367,9 +348,7 @@ async def update_checkpoint(
         updates["group"] = group
     if parsed_rules is not None:
         updates["rules"] = parsed_rules
-    # Only update checklist_id if it was explicitly provided in the request
-    # This allows setting it to None (unassign) or a new UUID (reassign)
-    if update_checklist_id:
+    if checklist_id is not None:
         updates["checklist_id"] = checklist_id
 
     # Handle image update if provided

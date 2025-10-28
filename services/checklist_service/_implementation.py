@@ -135,15 +135,13 @@ async def get_checklist(
             detail=f"Checklist {checklist_id} does not exist.",
         )
 
-    # SECURITY: Always require project association and verify user access
-    if not checklist_db.project_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Checklist {checklist_id} is not associated with a project.",
-        )
-
-    # Always authorize project access (no conditional checks)
-    _authorize_project_access(session, checklist_db.project_id, context)
+    # If checklist is associated with a project, verify user has access
+    if checklist_db.project_id:
+        project = project_service.get_project(session, checklist_db.project_id)
+        if project:
+            account = account_service.get_account_by_id(session, project.account_id)
+            if account:
+                authorize_user_account(context, account.name)
 
     return _build_checklist(checklist_db)
 
@@ -207,15 +205,9 @@ async def update_checklist(
             detail=f"Checklist {checklist_id} does not exist.",
         )
 
-    # SECURITY: Always require project association and verify user access
-    if not checklist_db.project_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Checklist {checklist_id} is not associated with a project.",
-        )
-
-    # Always authorize project access (no conditional checks)
-    _authorize_project_access(session, checklist_db.project_id, context)
+    # If checklist is associated with a project, verify user has access
+    if checklist_db.project_id:
+        _authorize_project_access(session, checklist_db.project_id, context)
 
     # Update the checklist
     updated_checklist = checklist_repository.update_checklist(
@@ -259,15 +251,9 @@ async def delete_checklist(
             detail=f"Checklist {checklist_id} does not exist.",
         )
 
-    # SECURITY: Always require project association and verify user access
-    if not checklist_db.project_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Checklist {checklist_id} is not associated with a project.",
-        )
-
-    # Always authorize project access (no conditional checks)
-    _authorize_project_access(session, checklist_db.project_id, context)
+    # If checklist is associated with a project, verify user has access
+    if checklist_db.project_id:
+        _authorize_project_access(session, checklist_db.project_id, context)
 
     # Delete the checklist
     deleted = checklist_repository.delete_checklist(session, checklist_id)
