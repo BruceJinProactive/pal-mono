@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from db.tables import Account, Conversation, ConversationStatus, Message, User
-from services import user_service
 from utils.log import logger
 
 
@@ -303,39 +302,33 @@ class ConversationRepository:
             tuple: (languages, purposes, ended_reasons)
         """
         try:
-            # Get all users for this account
-            account_users = user_service.get_users_by_account_id(
-                self.session, account_id
-            )
-            account_user_ids = [user.id for user in account_users]
-
-            # Get distinct languages
             languages = (
                 self.session.query(Conversation.language)
+                .join(User, Conversation.user_id == User.id)
                 .filter(
-                    Conversation.user_id.in_(account_user_ids),
+                    User.account_id == account_id,
                     Conversation.language.is_not(None),
                 )
                 .distinct()
                 .all()
             )
 
-            # Get distinct purposes
             purposes = (
                 self.session.query(Conversation.purpose)
+                .join(User, Conversation.user_id == User.id)
                 .filter(
-                    Conversation.user_id.in_(account_user_ids),
+                    User.account_id == account_id,
                     Conversation.purpose.is_not(None),
                 )
                 .distinct()
                 .all()
             )
 
-            # Get distinct ended_reasons
             ended_reasons = (
                 self.session.query(Conversation.ended_reason)
+                .join(User, Conversation.user_id == User.id)
                 .filter(
-                    Conversation.user_id.in_(account_user_ids),
+                    User.account_id == account_id,
                     Conversation.ended_reason.is_not(None),
                 )
                 .distinct()
