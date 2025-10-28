@@ -802,6 +802,7 @@ def _process_menu_item_system_prompt(
             item_line += "\n" + nested_line
 
     system_prompt_results.append(item_line)
+    system_prompt_results.append("#" * 50)
 
 
 def _process_menu_group(
