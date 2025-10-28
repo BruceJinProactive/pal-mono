@@ -29,6 +29,10 @@ async def list_account_conversations(
     page_size: int,
     escalated: bool,
     hide_testing_sessions: bool,
+    language: list[str] | None,
+    purpose: list[str] | None,
+    ended_reason: list[str] | None,
+    customer_converted: bool | None,
     context: UserContext,
     session: Session,
 ) -> ListUserSessionsResponse:
@@ -53,6 +57,10 @@ async def list_account_conversations(
         page_size=page_size,
         escalated=escalated,
         hide_testing_sessions=hide_testing_sessions,
+        language=language,
+        purpose=purpose,
+        ended_reason=ended_reason,
+        customer_converted=customer_converted,
         db_session=session,
     )
     total_pages = (total + page_size - 1) // page_size
@@ -66,10 +74,18 @@ async def list_account_conversations(
         for preview in user_session_previews
     ]
 
+    # Get distinct filter values for the account
+    languages, purposes, ended_reasons = admin_service.get_conversation_filter_values(
+        account.id, session
+    )
+
     return ListUserSessionsResponse(
         sessions=user_sessions,
         filters=UserSessionSearchFilters(
-            channels=[channel.value for channel in Channel]
+            channels=[channel.value for channel in Channel],
+            languages=languages,
+            purposes=purposes,
+            ended_reasons=ended_reasons,
         ),
         total_sessions=total,
         total_pages=total_pages,

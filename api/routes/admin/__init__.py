@@ -807,6 +807,19 @@ async def list_account_conversations(
     hide_testing_sessions: bool = Query(
         True, description="Set to false to include test sessions in the result"
     ),
+    language: list[str] | None = Query(
+        None, description="Optional list of languages to filter conversations by"
+    ),
+    purpose: list[str] | None = Query(
+        None, description="Optional list of call purposes to filter conversations by"
+    ),
+    ended_reason: list[str] | None = Query(
+        None, description="Optional list of call end reasons to filter conversations by"
+    ),
+    customer_converted: bool | None = Query(
+        None,
+        description="Filter by customer conversion status. True for converted, False for not converted, None for all",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListUserSessionsResponse:
@@ -824,6 +837,10 @@ async def list_account_conversations(
         page_size,
         escalated,
         hide_testing_sessions,
+        language,
+        purpose,
+        ended_reason,
+        customer_converted,
         context,
         session,
     )

@@ -59,6 +59,9 @@ class InboxResponse(BaseModel):
 
 class UserSessionSearchFilters(BaseModel):
     channels: list[str]
+    languages: list[str]
+    purposes: list[str]
+    ended_reasons: list[str]
 
 
 class ListUserSessionsResponse(BaseModel):

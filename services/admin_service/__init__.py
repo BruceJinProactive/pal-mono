@@ -27,6 +27,10 @@ def list_conversations_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
+    language: list[str] | None,
+    purpose: list[str] | None,
+    ended_reason: list[str] | None,
+    customer_converted: bool | None,
     project_id: uuid.UUID | None,
     start_date: datetime | None,
     end_date: datetime,
@@ -40,6 +44,10 @@ def list_conversations_in_account(
         account_id,
         keyword,
         channel,
+        language,
+        purpose,
+        ended_reason,
+        customer_converted,
         project_id,
         start_date,
         end_date,
@@ -49,6 +57,18 @@ def list_conversations_in_account(
         hide_testing_sessions,
         db_session,
     )
+
+
+def get_conversation_filter_values(
+    account_id: uuid.UUID, db_session: Session
+) -> tuple[list[str], list[str], list[str]]:
+    """
+    Get distinct filter values for conversations in an account.
+
+    Returns:
+        tuple: (languages, purposes, ended_reasons)
+    """
+    return _implementation.get_conversation_filter_values(account_id, db_session)
 
 
 def get_inbox_conversations(
@@ -839,6 +859,7 @@ async def scrape_brand_from_url(
 
 __all__ = [
     "list_conversations_in_account",
+    "get_conversation_filter_values",
     "get_inbox_conversations",
     "get_conversation_by_id",
     "get_conversation_messages",

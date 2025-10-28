@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from db.tables import Account, Conversation, ConversationStatus, Message, User
+from services import user_service
 from utils.log import logger
 
 
@@ -244,6 +245,10 @@ class ConversationRepository:
         end_date: datetime,
         project_id: uuid.UUID | None = None,
         hide_testing_sessions: bool = False,
+        language: list[str] | None = None,
+        purpose: list[str] | None = None,
+        ended_reason: list[str] | None = None,
+        customer_converted: bool | None = None,
     ) -> list[uuid.UUID]:
         try:
             query = self.session.query(Conversation.id).filter(
@@ -257,6 +262,17 @@ class ConversationRepository:
                 query = query.filter(Conversation.project_id == project_id)
             if hide_testing_sessions:
                 query = query.filter(Conversation.is_test.is_not(True))
+            if language is not None and len(language) > 0:
+                query = query.filter(Conversation.language.in_(language))
+            if purpose is not None and len(purpose) > 0:
+                query = query.filter(Conversation.purpose.in_(purpose))
+            if ended_reason is not None and len(ended_reason) > 0:
+                query = query.filter(Conversation.ended_reason.in_(ended_reason))
+            if customer_converted is not None:
+                if customer_converted:
+                    query = query.filter(Conversation.customer_converted.is_not(None))
+                else:
+                    query = query.filter(Conversation.customer_converted.is_(None))
 
             return [id for (id,) in query.all()]
         except SQLAlchemyError as e:
@@ -275,6 +291,66 @@ class ConversationRepository:
             self.session.rollback()
             logger.error(f"Error retrieving conversation by id: {e}")
             return None
+
+    def get_distinct_filter_values(
+        self, account_id: uuid.UUID
+    ) -> tuple[list[str], list[str], list[str]]:
+        """
+        Get distinct values for language, purpose, and ended_reason fields
+        for conversations belonging to an account.
+
+        Returns:
+            tuple: (languages, purposes, ended_reasons)
+        """
+        try:
+            # Get all users for this account
+            account_users = user_service.get_users_by_account_id(
+                self.session, account_id
+            )
+            account_user_ids = [user.id for user in account_users]
+
+            # Get distinct languages
+            languages = (
+                self.session.query(Conversation.language)
+                .filter(
+                    Conversation.user_id.in_(account_user_ids),
+                    Conversation.language.is_not(None),
+                )
+                .distinct()
+                .all()
+            )
+
+            # Get distinct purposes
+            purposes = (
+                self.session.query(Conversation.purpose)
+                .filter(
+                    Conversation.user_id.in_(account_user_ids),
+                    Conversation.purpose.is_not(None),
+                )
+                .distinct()
+                .all()
+            )
+
+            # Get distinct ended_reasons
+            ended_reasons = (
+                self.session.query(Conversation.ended_reason)
+                .filter(
+                    Conversation.user_id.in_(account_user_ids),
+                    Conversation.ended_reason.is_not(None),
+                )
+                .distinct()
+                .all()
+            )
+
+            return (
+                [lang[0] for lang in languages],
+                [purpose[0] for purpose in purposes],
+                [reason[0] for reason in ended_reasons],
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving distinct filter values: {e}")
+            return [], [], []
 
     def create_conversation(self, user_id: uuid.UUID):
         """

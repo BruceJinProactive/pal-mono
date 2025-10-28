@@ -91,6 +91,10 @@ def list_conversations_in_account(
     account_id: uuid.UUID,
     keyword: str,
     channel: str | None,
+    language: list[str] | None,
+    purpose: list[str] | None,
+    ended_reason: list[str] | None,
+    customer_converted: bool | None,
     project_id: uuid.UUID | None,
     start_date: datetime | None,
     end_date: datetime,
@@ -107,7 +111,15 @@ def list_conversations_in_account(
     account_users = user_service.get_users_by_account_id(db_session, account_id)
     account_users_ids = [user.id for user in account_users]
     all_session_ids = conversation_repository.get_conversation_ids_by_user_ids(
-        account_users_ids, start_date, end_date, project_id, hide_testing_sessions
+        account_users_ids,
+        start_date,
+        end_date,
+        project_id,
+        hide_testing_sessions,
+        language,
+        purpose,
+        ended_reason,
+        customer_converted,
     )
     # Only narrow down id list if necessary
     if keyword or channel or escalated:
@@ -137,6 +149,19 @@ def list_conversations_in_account(
         for session in sessions
     ]
     return total, user_session_previews
+
+
+def get_conversation_filter_values(
+    account_id: uuid.UUID, db_session: Session
+) -> tuple[list[str], list[str], list[str]]:
+    """
+    Get distinct filter values for conversations in an account.
+
+    Returns:
+        tuple: (languages, purposes, ended_reasons)
+    """
+    conversation_repository = db.ConversationRepository(db_session)
+    return conversation_repository.get_distinct_filter_values(account_id)
 
 
 def get_inbox_conversations(
