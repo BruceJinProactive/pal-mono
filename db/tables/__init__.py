@@ -1,5 +1,6 @@
 from .accounts import Account
 from .adora_orders import AdoraOrder
+from .affiliates import Affiliate
 from .agents import Agent
 from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
