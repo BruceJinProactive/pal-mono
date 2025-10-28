@@ -590,7 +590,7 @@ class OloTool(Toolkit):
                 },
             )
 
-            add_items_to_basket(
+            add_items_response = add_items_to_basket(
                 basket.id,
                 olo_product_input=order_input,
                 olo_token=self._olo_token,
@@ -624,11 +624,15 @@ class OloTool(Toolkit):
                 extra={"basket_id": basket.id},
             )
 
+            order_items = self._extract_order_items(
+                add_items_response.get("basket") if add_items_response else None
+            )
             payment_payload = self._build_hosted_payment_payload(
                 basket_id=basket.id,
                 order_input=order_input,
                 basket_totals=basket_totals,
                 ccsf_access_token=ccsf_access_token,
+                order_items=order_items,
             )
             logger.debug(
                 "[OLO] OloTool._checkout_order_with_payment_iframe Payment payload built",
@@ -664,6 +668,7 @@ class OloTool(Toolkit):
         order_input: OloProductInput,
         basket_totals: ValidatedBasketTotals,
         ccsf_access_token: str,
+        order_items: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         order_submission: dict[str, Any] = {
             "userType": UserType.guest.value,
@@ -702,10 +707,14 @@ class OloTool(Toolkit):
                 ),
                 "readyTime": basket_totals.readytime,
             },
-            "orderItems": [
-                product.model_dump(exclude_none=True)
-                for product in order_input.products
-            ],
+            "orderItems": (
+                order_items
+                if order_items is not None and len(order_items) > 0
+                else [
+                    product.model_dump(exclude_none=True)
+                    for product in order_input.products
+                ]
+            ),
             "handoffMode": order_input.handoffmode.value,
             "customer": {
                 "firstName": order_input.firstname,
@@ -769,3 +778,62 @@ class OloTool(Toolkit):
             f"I've prepared your order. The total is ${total:.2f}.{ready_time_text} "
             "Please use the secure payment link below to complete checkout."
         )
+
+    def _extract_order_items(self, basket: Any) -> list[dict[str, Any]]:
+        if basket is None:
+            return []
+
+        if hasattr(basket, "model_dump"):
+            basket_payload = basket.model_dump()
+        elif isinstance(basket, dict):
+            basket_payload = basket
+        else:
+            return []
+
+        products = basket_payload.get("products") or []
+        order_items: list[dict[str, Any]] = []
+
+        for product in products:
+            if not isinstance(product, dict):
+                continue
+
+            name = (
+                product.get("name")
+                or product.get("productname")
+                or product.get("shortname")
+                or product.get("shortdescription")
+            )
+            if not name:
+                fallback_id = product.get("chainproductid") or product.get("productid")
+                name = str(fallback_id) if fallback_id is not None else None
+
+            entry: dict[str, Any] = {
+                "name": name,
+                "quantity": product.get("quantity") or 1,
+                "specialinstructions": product.get("specialinstructions"),
+                "totalcost": product.get("totalcost"),
+            }
+
+            choice_entries: list[dict[str, Any]] = []
+            for choice in product.get("choices") or []:
+                if isinstance(choice, dict):
+                    choice_name = (
+                        choice.get("name")
+                        or choice.get("choicename")
+                        or choice.get("description")
+                    )
+                    if not choice_name:
+                        choice_id = choice.get("chainchoiceid") or choice.get("id")
+                        choice_name = str(choice_id) if choice_id is not None else None
+                    choice_entries.append(
+                        {
+                            "name": choice_name,
+                            "quantity": choice.get("quantity") or 1,
+                        }
+                    )
+            if choice_entries:
+                entry["choices"] = choice_entries
+
+            order_items.append(entry)
+
+        return order_items
