@@ -31,6 +31,11 @@ from api.schemas.admin.account import (
     TermsStatusResponse,
     UpdateAccountRequest,
 )
+from api.schemas.admin.affiliate import (
+    AffiliateResponse,
+    CreateAffiliateRequest,
+    UpdateAffiliateRequest,
+)
 from api.schemas.admin.agent import (
     Agent,
     AgentSummary,
@@ -178,6 +183,7 @@ from services.google_maps_service.schemas import (
 
 from . import (
     _account,
+    _affiliate,
     _agent,
     _analytics,
     _auth,
@@ -2639,3 +2645,81 @@ async def get_reports(
         end_date,
         group_by=group_by if group_by else None,
     )
+
+
+"""
+---------- Affiliate Endpoints ----------
+------------------------------------------
+"""
+
+
+@admin_router.put("/affiliates", status_code=status.HTTP_201_CREATED)
+async def create_affiliate(
+    request: CreateAffiliateRequest,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> AffiliateResponse:
+    """
+    Create a new affiliate in Rewardful and store locally.
+    """
+    return await _affiliate.create_affiliate(request, context, async_session)
+
+
+@admin_router.get("/affiliates/{affiliate_id}")
+async def get_affiliate(
+    affiliate_id: uuid.UUID,
+    expand: list[str] | None = Query(
+        None, description="Fields to expand (campaign, links, coupon)"
+    ),
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> AffiliateResponse:
+    """
+    Get affiliate by ID with data from Rewardful.
+    """
+    return await _affiliate.get_affiliate(affiliate_id, context, async_session, expand)
+
+
+@admin_router.get("/affiliates")
+async def list_affiliates(
+    limit: int = Query(100, gt=0, le=100, description="Results per page (max 100)"),
+    page: int = Query(1, gt=0, description="Page number"),
+    campaign_id: str | None = Query(None, description="Filter by campaign ID"),
+    expand: list[str] | None = Query(None, description="Fields to expand"),
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> dict:
+    """
+    List affiliates from Rewardful with pagination.
+    """
+    return await _affiliate.list_affiliates(
+        context, async_session, limit, page, campaign_id, expand
+    )
+
+
+@admin_router.patch("/affiliates/{affiliate_id}")
+async def update_affiliate(
+    affiliate_id: uuid.UUID,
+    request: UpdateAffiliateRequest,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> AffiliateResponse:
+    """
+    Update affiliate in Rewardful.
+    """
+    return await _affiliate.update_affiliate(
+        affiliate_id, request, context, async_session
+    )
+
+
+@admin_router.delete("/affiliates/{affiliate_id}")
+async def delete_affiliate(
+    affiliate_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> dict:
+    """
+    Disable affiliate in Rewardful (sets state to "disabled").
+    Note: Rewardful doesn't support actual deletion. The local record is kept for historical tracking.
+    """
+    return await _affiliate.delete_affiliate(affiliate_id, context, async_session)
