@@ -154,7 +154,7 @@ async def list_checkpoints(
 )
 async def create_checkpoint(
     project_id: uuid.UUID,
-    checklist_id: uuid.UUID = Form(...),
+    checklist_id: uuid.UUID | None = Form(None),
     name: str = Form(...),
     description: str | None = Form(None),
     is_active: bool = Form(False),
@@ -168,7 +168,7 @@ async def create_checkpoint(
     Create a new checkpoint with an optional image upload.
 
     Request body (multipart/form-data):
-    - checklist_id (required): UUID - Checklist ID this checkpoint belongs to
+    - checklist_id (optional): UUID - Checklist ID this checkpoint belongs to
     - name (required): string - Checkpoint name
     - description (optional): string - Checkpoint description
     - is_active (optional, default: false): boolean - Whether checkpoint is active
@@ -200,6 +200,8 @@ async def update_checkpoint(
     is_active: bool | None = Form(None),
     group: str | None = Form(None),
     rules: str | None = Form(None),
+    checklist_id: uuid.UUID | None = Form(None),
+    unassign_checklist: bool = Form(False),
     image: UploadFile | None = File(None),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
@@ -214,9 +216,12 @@ async def update_checkpoint(
     - is_active (optional): boolean - New active status
     - group (optional): string - New checkpoint group
     - rules (optional): JSON array string of rules (e.g., '["rule1", "rule2"]')
+    - checklist_id (optional): UUID - Assign checkpoint to a checklist
+    - unassign_checklist (optional): boolean - Set to true to remove checkpoint from checklist (sets checklist_id to null)
     - image (optional): New image file to replace existing one
 
     If an image is provided, the old image will be deleted from S3 and replaced with the new one.
+    Note: If unassign_checklist is true, it takes precedence over checklist_id.
     """
     return await _checkpoint.update_checkpoint(
         checkpoint_id,
@@ -225,6 +230,8 @@ async def update_checkpoint(
         is_active,
         group,
         rules,
+        checklist_id,
+        unassign_checklist,
         image,
         context,
         session,

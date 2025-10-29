@@ -102,7 +102,7 @@ async def _upload_checkpoint_image(
 
 async def create_checkpoint(
     project_id: uuid.UUID,
-    checklist_id: uuid.UUID,
+    checklist_id: uuid.UUID | None,
     name: str,
     description: str | None,
     is_active: bool,
@@ -118,7 +118,7 @@ async def create_checkpoint(
 
     Args:
         project_id: UUID of the project
-        checklist_id: UUID of the checklist this checkpoint belongs to
+        checklist_id: Optional UUID of the checklist this checkpoint belongs to
         name: Name of the checkpoint
         description: Optional description
         is_active: Whether the checkpoint is active
@@ -276,6 +276,8 @@ async def update_checkpoint(
     is_active: bool | None,
     group: str | None,
     rules: str | None,
+    checklist_id: uuid.UUID | None,
+    unassign_checklist: bool,
     image: UploadFile | None,
     context: UserContext,
     session: Session,
@@ -291,6 +293,8 @@ async def update_checkpoint(
         is_active: Optional new active status
         group: Optional new group
         rules: Optional new rules (JSON array string)
+        checklist_id: Optional checklist_id to assign
+        unassign_checklist: If True, sets checklist_id to None (takes precedence over checklist_id)
         image: Optional new image file to replace existing one
         context: User context for authorization
         session: Database session
@@ -346,6 +350,13 @@ async def update_checkpoint(
         updates["group"] = group
     if parsed_rules is not None:
         updates["rules"] = parsed_rules
+
+    # Handle checklist_id assignment/unassignment
+    # unassign_checklist takes precedence over checklist_id
+    if unassign_checklist:
+        updates["checklist_id"] = None
+    elif checklist_id is not None:
+        updates["checklist_id"] = checklist_id
 
     # Handle image update if provided
     if image:
