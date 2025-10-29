@@ -63,6 +63,7 @@ def connect_olo_order_hub(
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
     forwarded_ip: str | None = None,
+    general_api_endpoint: str | None = None,
 ) -> GenericHubResponse:
     """
     Make a request to the Olo Order Hub API using the generic connect function.
@@ -75,6 +76,7 @@ def connect_olo_order_hub(
         extra_headers: Optional additional headers
         payload: Optional request payload
         forwarded_ip: Optional IP address for X-Forwarded-For header
+        general_api_endpoint: Optional custom API endpoint
 
     Returns:
         GenericHubResponse: The API response
@@ -109,6 +111,7 @@ def connect_olo_order_hub(
         query_params=query_params,
         extra_headers=olo_headers,
         payload=payload,
+        general_api_endpoint=general_api_endpoint,
     )
 
 
@@ -326,7 +329,7 @@ def connect_olo_order_hub_signed_http_client(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
-    base_url: str = "ordering.api.olosandbox.com",
+    base_url: str | None = None,
     forwarded_ip: str | None = None,
 ) -> GenericHubResponse:
     """
@@ -355,11 +358,29 @@ def connect_olo_order_hub_signed_http_client(
         f"Payload: {payload}"
     )
 
+    # Default to production if no base_url provided
+    if base_url is None:
+        base_url = "ordering.api.olo.com"
+        path_prefix = ""
+    else:
+        original_base_url = base_url
+        parsed = urllib.parse.urlparse(
+            base_url if "://" in base_url else f"https://{base_url}"
+        )
+        if parsed.scheme and parsed.scheme != "https":
+            raise ValueError(
+                f"Only HTTPS endpoints are supported (got: {original_base_url})"
+            )
+        if not parsed.netloc:
+            raise ValueError(f"Invalid base_url '{original_base_url}'")
+        base_url = parsed.netloc
+        path_prefix = parsed.path.rstrip("/")
+
     # Prepare signed request components
     method_str, path_and_query, request_body, headers = _prepare_signed_request(
         http_method=http_method,
         signed_token=signed_token,
-        api_function=api_function,
+        api_function=f"{path_prefix}{api_function}" if path_prefix else api_function,
         query_params=query_params,
         extra_headers=extra_headers,
         payload=payload,
@@ -408,7 +429,7 @@ def connect_olo_order_hub_signed_requests(
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
-    base_url: str = "ordering.api.olosandbox.com",
+    base_url: str | None = None,
     forwarded_ip: str | None = None,
 ) -> GenericHubResponse:
     """
@@ -440,11 +461,29 @@ def connect_olo_order_hub_signed_requests(
         f"Payload: {payload}"
     )
 
+    # Default to production if no base_url provided
+    if base_url is None:
+        base_url = "ordering.api.olo.com"
+        path_prefix = ""
+    else:
+        original_base_url = base_url
+        parsed = urllib.parse.urlparse(
+            base_url if "://" in base_url else f"https://{base_url}"
+        )
+        if parsed.scheme and parsed.scheme != "https":
+            raise ValueError(
+                f"Only HTTPS endpoints are supported (got: {original_base_url})"
+            )
+        if not parsed.netloc:
+            raise ValueError(f"Invalid base_url '{original_base_url}'")
+        base_url = parsed.netloc
+        path_prefix = parsed.path.rstrip("/")
+
     # Prepare signed request components
     method_str, path_and_query, request_body, headers = _prepare_signed_request(
         http_method=http_method,
         signed_token=signed_token,
-        api_function=api_function,
+        api_function=f"{path_prefix}{api_function}" if path_prefix else api_function,
         query_params=query_params,
         extra_headers=extra_headers,
         payload=payload,

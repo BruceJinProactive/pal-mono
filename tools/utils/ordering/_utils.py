@@ -268,7 +268,7 @@ def _build_base_url(
 
     # Default endpoints for each provider
     if provider == ApiProvider.OLO:
-        base_url = "ordering.api.olosandbox.com"
+        base_url = "ordering.api.olo.com"
         path_prefix = ""
     elif provider == ApiProvider.ADORA:
         if qa_store:

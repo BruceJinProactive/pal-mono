@@ -32,12 +32,14 @@ def _connect_olo_api_auto(
     extra_headers: dict | None = None,
     payload: dict | str | None = None,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ):
     """
     Automatically choose the appropriate connection method based on token type.
 
     Args:
         forwarded_ip: Optional IP address for X-Forwarded-For header
+        base_url: Optional custom API endpoint
     """
     if isinstance(olo_token, OloSignedToken):
         return connect_olo_order_hub_signed_requests(
@@ -48,6 +50,7 @@ def _connect_olo_api_auto(
             extra_headers=extra_headers,
             payload=payload,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
     else:
         return connect_olo_order_hub(
@@ -58,6 +61,7 @@ def _connect_olo_api_auto(
             extra_headers=extra_headers,
             payload=payload,
             forwarded_ip=forwarded_ip,
+            general_api_endpoint=base_url,
         )
 
 
@@ -65,6 +69,7 @@ def get_store_info(
     restaurant_id: int,
     olo_token: OloAccessToken | OloSignedToken,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> OloStore:
     """
     Get the store info for a given restaurant ID
@@ -85,6 +90,7 @@ def get_store_info(
             query_params=None,
             payload=None,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         result = handle_olo_response(response, OloStore)
         if not isinstance(result, OloStore):
@@ -100,6 +106,7 @@ def get_online_ordering_status(
     restaurant_id: int,
     olo_token: OloAccessToken | OloSignedToken,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> int | str:
     """
     Get the online ordering status for ONE given restaurant ID
@@ -123,6 +130,7 @@ def get_online_ordering_status(
             query_params=None,
             payload=request_body,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
 
         response_json = json.loads(handle_olo_response(response))
@@ -133,7 +141,7 @@ def get_online_ordering_status(
         else:
             # If no leadtime data is found, we need to check if the restaurant is open and accepting online orders
             store_info = get_store_info(
-                restaurant_id, olo_token, forwarded_ip=forwarded_ip
+                restaurant_id, olo_token, forwarded_ip=forwarded_ip, base_url=base_url
             )
             if store_info.isavailable:
                 return "The restaurant is accepting online orders. The estimated ASAP order lead time is 0 minutes."
@@ -155,6 +163,7 @@ def validate_address(
     address: Address,
     olo_token: OloAccessToken | OloSignedToken,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> DeliveryAddressValidationResponse:
     """
     Validates an address for a given restaurant ID.
@@ -185,6 +194,7 @@ def validate_address(
             query_params=None,
             payload=request_body,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         result = handle_olo_response(response, DeliveryAddressValidationResponse)
         if not isinstance(result, DeliveryAddressValidationResponse):
@@ -203,6 +213,7 @@ def create_basket(
     olo_token: OloAccessToken | OloSignedToken,
     auth_token: Optional[str] = None,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> OloBasket:
     """
     Creates a basket for a restaurant.
@@ -228,6 +239,7 @@ def create_basket(
             query_params=None,
             payload=request_body,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         result = handle_olo_response(response, OloBasket)
         if not isinstance(result, OloBasket):
@@ -244,6 +256,7 @@ def add_items_to_basket(
     olo_token: OloAccessToken | OloSignedToken,
     olo_product_input: OloProductInput,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> dict:
     """
     Adds items to a basket.
@@ -268,6 +281,7 @@ def add_items_to_basket(
             query_params=None,
             payload=request_body,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         response_json = json.loads(handle_olo_response(response))
         response_json["basket"] = OloBasket.model_validate(response_json["basket"])
@@ -288,6 +302,7 @@ def set_basket_handoff_mode(
     olo_token: OloAccessToken | OloSignedToken,
     handoff_mode: OloBasketHandoffMode,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> OloBasket:
     """
     Sets the handoff mode for a basket.
@@ -312,6 +327,7 @@ def set_basket_handoff_mode(
             query_params=None,
             payload=request_body,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         result = handle_olo_response(response, OloBasket)
         if not isinstance(result, OloBasket):
@@ -327,6 +343,7 @@ def validate_basket(
     basket_id: str,
     olo_token: OloAccessToken | OloSignedToken,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> ValidatedBasketTotals:
     """
     Validates a basket.
@@ -346,6 +363,7 @@ def validate_basket(
             olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/validate",
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         result = handle_olo_response(response, ValidatedBasketTotals)
         if not isinstance(result, ValidatedBasketTotals):
@@ -397,6 +415,7 @@ def request_ccsf_token(
     olo_token: OloAccessToken | OloSignedToken,
     auth_token: Optional[str] = None,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> OloCCSFToken:
     """
     Requests a CCSF token for a given basket ID.
@@ -422,6 +441,7 @@ def request_ccsf_token(
             query_params=None,
             payload=request_body,
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         result = handle_olo_response(response, OloCCSFToken)
         if not isinstance(result, OloCCSFToken):
@@ -438,6 +458,7 @@ def submit_order(
     olo_token: OloAccessToken | OloSignedToken,
     olo_order_submission_body: OloOrderSubmissionBody,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> OloOrderSubmissionResponse:
     """
     Submits an order for a given basket ID.
@@ -459,6 +480,7 @@ def submit_order(
             query_params=None,
             payload=olo_order_submission_body.model_dump(exclude_none=True),
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         result = handle_olo_response(response, OloOrderSubmissionResponse)
         if not isinstance(result, OloOrderSubmissionResponse):
@@ -476,6 +498,7 @@ def get_billing_schemes_info(
     basket_id: str,
     olo_token: OloAccessToken | OloSignedToken,
     forwarded_ip: str | None = None,
+    base_url: str | None = None,
 ) -> list[BillingScheme]:
     """
     Get the billing schemes info for a specified basket's restaurant.
@@ -494,6 +517,7 @@ def get_billing_schemes_info(
             olo_token=olo_token,
             api_function=f"/v1.1/baskets/{basket_id}/billingschemes",
             forwarded_ip=forwarded_ip,
+            base_url=base_url,
         )
         response_json = json.loads(handle_olo_response(response))
         return [
