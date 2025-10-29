@@ -158,7 +158,7 @@ class OloBasket(BaseModel):
     subtotal: float
     suggestedtipamount: float
     suggestedtippercentage: int
-    suggestedtips: SuggestedTips
+    suggestedtips: Optional[SuggestedTips] = None
     taxes: list[Tax]
     taxexemption: Optional[dict] = None
     timemode: str
