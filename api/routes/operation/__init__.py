@@ -9,6 +9,7 @@ from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.checklist import (
     Checklist,
+    ChecklistCheckpointStatusResponse,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
@@ -128,6 +129,48 @@ async def list_checklist_checkpoints(
     """
     return await _checkpoint.list_checkpoints_by_checklist(
         checklist_id, context, session
+    )
+
+
+@operation_router.get("/checklists/{checklist_id}/runs")
+async def get_checklist_checkpoint_status(
+    checklist_id: uuid.UUID,
+    start_time: str = Query(
+        ...,
+        description="ISO 8601 timestamp for range start in user's timezone (e.g., '2025-09-17T00:00:00-07:00')",
+    ),
+    end_time: str = Query(
+        ...,
+        description="ISO 8601 timestamp for range end in user's timezone (e.g., '2025-09-17T23:59:59-07:00')",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ChecklistCheckpointStatusResponse:
+    """
+    Get checkpoint status for a checklist within a specific time range.
+
+    Returns the status of all active checkpoints that existed before the end of the time range,
+    with their last run information within the specified time window or "missing" status.
+
+    This endpoint provides a historically accurate view - only shows checkpoints
+    that were created on or before the end_time and were active at that time.
+
+    Query Parameters:
+    - start_time (required): ISO 8601 timestamp with timezone (e.g., '2025-09-17T00:00:00-07:00')
+    - end_time (required): ISO 8601 timestamp with timezone (e.g., '2025-09-17T23:59:59.999999-07:00')
+
+    Response includes:
+    - checklist_id: The checklist UUID
+    - start_time: The start of the time range queried
+    - end_time: The end of the time range queried
+    - checkpoints: List of checkpoint statuses with:
+      - checkpoint_id: The checkpoint UUID
+      - last_run: Run details (status, result, timestamps) or {status: "missing"}
+    - summary: Statistics (total, with_runs, missing_runs)
+    ```
+    """
+    return await _checklist.get_checklist_checkpoint_status(
+        checklist_id, start_time, end_time, context, session
     )
 
 

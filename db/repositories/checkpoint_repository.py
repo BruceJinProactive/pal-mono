@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -67,6 +68,43 @@ def list_checkpoints_by_checklist(
         return checkpoints
     except SQLAlchemyError as e:
         logger.error(f"Error listing checkpoints by checklist: {e}")
+        raise
+
+
+def list_active_checkpoints_by_checklist_before_date(
+    session: Session,
+    checklist_id: UUID,
+    end_date: datetime,
+) -> list[CheckPoint]:
+    """
+    Get all active checkpoints for a checklist that existed on or before a specific date.
+
+    This is used for historically accurate views - only returns checkpoints that:
+    1. Belong to the specified checklist
+    2. Are active (is_active=true)
+    3. Were created on or before the specified date
+
+    Args:
+        session: Database session
+        checklist_id: UUID of the checklist
+        end_date: Only return checkpoints created on or before this date
+
+    Returns:
+        list[CheckPoint]: List of active checkpoints that existed on that date
+    """
+    try:
+        checkpoints = (
+            session.query(CheckPoint)
+            .filter(
+                CheckPoint.checklist_id == checklist_id,
+                CheckPoint.is_active.is_(True),
+                CheckPoint.created_at <= end_date,
+            )
+            .all()
+        )
+        return checkpoints
+    except SQLAlchemyError as e:
+        logger.error(f"Error listing active checkpoints by checklist before date: {e}")
         raise
 
 
@@ -213,6 +251,8 @@ def list_checkpoint_results(
     submission_id: UUID | None = None,
     status: CheckStatus | None = None,
     project_id: UUID | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> list[CheckpointRun]:
     """
     List checkpoint results with optional filters.
@@ -223,6 +263,8 @@ def list_checkpoint_results(
         submission_id: Optional filter by submission ID
         status: Optional filter by status
         project_id: Optional filter by project ID (via checkpoint)
+        start_date: Optional filter by created_at >= start_date (datetime object)
+        end_date: Optional filter by created_at <= end_date (datetime object)
 
     Returns:
         list[CheckpointRun]: List of checkpoint results
@@ -243,6 +285,12 @@ def list_checkpoint_results(
 
         if status:
             query = query.filter(CheckpointRun.status == status)
+
+        if start_date:
+            query = query.filter(CheckpointRun.created_at >= start_date)
+
+        if end_date:
+            query = query.filter(CheckpointRun.created_at <= end_date)
 
         # Order by created_at descending (newest first)
         query = query.order_by(CheckpointRun.created_at.desc())

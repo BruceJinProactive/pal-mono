@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
     Checklist,
+    ChecklistCheckpointStatusResponse,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
@@ -25,6 +26,7 @@ __all__ = [
     "list_checklists_by_project",
     "update_checklist",
     "delete_checklist",
+    "get_checklist_checkpoint_status_by_timestamp_range",
 ]
 
 
@@ -130,3 +132,38 @@ async def delete_checklist(
         session: Database session
     """
     await _implementation.delete_checklist(checklist_id, context, session)
+
+
+async def get_checklist_checkpoint_status_by_timestamp_range(
+    checklist_id: UUID,
+    start_time: str,
+    end_time: str,
+    context: UserContext,
+    session: Session,
+) -> ChecklistCheckpointStatusResponse:
+    """
+    Get the status of all active checkpoints in a checklist within a specific time range.
+
+    This provides a historically accurate view - only shows checkpoints that:
+    1. Were active (is_active=true) at the end of the time range
+    2. Were created on or before the end_time
+
+    Handles timezone-aware timestamps from clients in different timezones.
+
+    Args:
+        checklist_id: UUID of the checklist
+        start_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T00:00:00-07:00")
+        end_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T23:59:59.999999-07:00")
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        ChecklistCheckpointStatusResponse with checkpoints and their last run status
+
+    Raises:
+        HTTPException: If checklist not found or authorization fails
+        TimestampValidationError: If timestamp format is invalid or missing timezone
+    """
+    return await _implementation.get_checklist_checkpoint_status_by_timestamp_range(
+        checklist_id, start_time, end_time, context, session
+    )

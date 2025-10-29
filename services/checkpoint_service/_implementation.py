@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+from datetime import datetime
 from uuid import UUID
 
 import boto3
@@ -267,6 +268,39 @@ def list_checkpoint_results(
     return checkpoint_repository.list_checkpoint_results(
         session, checkpoint_id, submission_id, status, project_id
     )
+
+
+def get_latest_checkpoint_result_by_date_range(
+    session: Session,
+    checkpoint_id: UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> db.CheckpointRun | None:
+    """
+    Get the latest checkpoint result for a specific checkpoint, filtered by date range.
+    Returns only the most recent result (by created_at) within the date range.
+
+    Args:
+        session: Database session
+        checkpoint_id: UUID of the checkpoint
+        start_date: Optional start date filter (datetime object)
+        end_date: Optional end date filter (datetime object)
+
+    Returns:
+        db.CheckpointRun | None: The latest checkpoint result or None if not found
+    """
+    # Get checkpoint results filtered by date range
+    checkpoint_results = checkpoint_repository.list_checkpoint_results(
+        session=session,
+        checkpoint_id=checkpoint_id,
+        submission_id=None,
+        status=None,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    # Return only the latest result (first one since results are ordered by created_at DESC)
+    return checkpoint_results[0] if checkpoint_results else None
 
 
 def get_checkpoint_result(

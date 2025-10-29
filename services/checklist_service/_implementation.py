@@ -14,12 +14,16 @@ from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
     Checklist,
+    ChecklistCheckpointStatusResponse,
+    ChecklistCheckpointStatusSummary,
+    CheckpointLastRunSummary,
+    CheckpointStatusItem,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
 )
-from db.repositories import checklist_repository
-from services import account_service, project_service
+from db.repositories import checklist_repository, checkpoint_repository
+from services import account_service, checkpoint_service, project_service
 
 
 def _build_checklist(checklist_db) -> Checklist:
@@ -265,3 +269,131 @@ async def delete_checklist(
         )
 
     session.commit()
+
+
+async def get_checklist_checkpoint_status_by_timestamp_range(
+    checklist_id: UUID,
+    start_time: str,
+    end_time: str,
+    context: UserContext,
+    session: Session,
+) -> ChecklistCheckpointStatusResponse:
+    """
+    Get the status of all active checkpoints in a checklist within a specific time range.
+
+    This provides a historically accurate view - only shows checkpoints that:
+    1. Were active (is_active=true) at the end of the time range
+    2. Were created on or before the end_time
+
+    Handles timezone-aware timestamps from clients in different timezones.
+
+    Args:
+        checklist_id: UUID of the checklist
+        start_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T00:00:00-07:00")
+        end_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T23:59:59.999999-07:00")
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        ChecklistCheckpointStatusResponse with checkpoints and their last run status
+
+    Raises:
+        HTTPException: If checklist not found or authorization fails
+        TimestampValidationError: If timestamp format is invalid or missing timezone
+    """
+    from services.checkpoint_service._utils import (
+        TimestampValidationError,
+        parse_and_validate_timestamp,
+    )
+
+    # Parse and validate timestamps
+    start_dt = parse_and_validate_timestamp(start_time)
+    end_dt = parse_and_validate_timestamp(end_time)
+
+    # Validate that start is before end
+    if start_dt >= end_dt:
+        raise TimestampValidationError(
+            f"start_time ({start_time}) must be before end_time ({end_time})"
+        )
+
+    # Get checklist and validate exists
+    checklist_db = checklist_repository.get_checklist_by_id(session, checklist_id)
+
+    if not checklist_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checklist {checklist_id} does not exist.",
+        )
+
+    # If checklist is associated with a project, authorize user access
+    if checklist_db.project_id:
+        _authorize_project_access(session, checklist_db.project_id, context)
+
+    # Get all active checkpoints for this checklist that existed on or before the end timestamp
+    checkpoints = (
+        checkpoint_repository.list_active_checkpoints_by_checklist_before_date(
+            session=session,
+            checklist_id=checklist_id,
+            end_date=end_dt,
+        )
+    )
+
+    # Build checkpoint status items
+    checkpoint_status_items = []
+    checkpoints_with_runs = 0
+    checkpoints_missing_runs = 0
+
+    for checkpoint in checkpoints:
+        # Get the latest checkpoint run within the time range
+        last_run = checkpoint_service.get_latest_checkpoint_result_by_date_range(
+            session=session,
+            checkpoint_id=checkpoint.id,
+            start_date=start_dt,
+            end_date=end_dt,
+        )
+
+        if last_run:
+            # Checkpoint has a run within the time range
+            checkpoints_with_runs += 1
+            last_run_summary = CheckpointLastRunSummary(
+                status=last_run.status.value,
+                result=last_run.result,
+                created_at=(
+                    last_run.created_at.isoformat() if last_run.created_at else None
+                ),
+                updated_at=(
+                    last_run.updated_at.isoformat() if last_run.updated_at else None
+                ),
+            )
+        else:
+            # Checkpoint has no run within the time range
+            checkpoints_missing_runs += 1
+            last_run_summary = CheckpointLastRunSummary(
+                status="missing",
+                result=None,
+                created_at=None,
+                updated_at=None,
+            )
+
+        checkpoint_status_items.append(
+            CheckpointStatusItem(
+                checkpoint_id=str(checkpoint.id),
+                last_run=last_run_summary,
+            )
+        )
+
+    # Build summary stats
+    summary = ChecklistCheckpointStatusSummary(
+        total_checkpoints=len(checkpoints),
+        with_runs=checkpoints_with_runs,
+        missing_runs=checkpoints_missing_runs,
+    )
+
+    # Build and return response
+    return ChecklistCheckpointStatusResponse(
+        checklist_id=str(checklist_id),
+        start_time=start_time,
+        end_time=end_time,
+        checkpoints=checkpoint_status_items,
+        summary=summary,
+    )

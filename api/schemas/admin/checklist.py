@@ -51,3 +51,60 @@ class ListChecklistsResponse(BaseModel):
 
     checklists: list[Checklist] = Field(..., description="List of checklists")
     total: int = Field(..., description="Total number of checklists")
+
+
+class CheckpointLastRunSummary(BaseModel):
+    """Summary of the last checkpoint run (compact version with only essential fields)"""
+
+    status: str = Field(
+        ...,
+        description="Status of the run: 'active', 'failed', 'processing', 'error', or 'missing'",
+    )
+    result: dict | None = Field(
+        None,
+        description="Result object with overall_result and summary (null if missing)",
+    )
+    created_at: str | None = Field(
+        None, description="ISO 8601 timestamp when run was created (null if missing)"
+    )
+    updated_at: str | None = Field(
+        None, description="ISO 8601 timestamp when run was updated (null if missing)"
+    )
+
+
+class CheckpointStatusItem(BaseModel):
+    """Checkpoint with its last run status"""
+
+    checkpoint_id: str = Field(..., description="Unique identifier for the checkpoint")
+    last_run: CheckpointLastRunSummary = Field(
+        ..., description="Last run details or missing status"
+    )
+
+
+class ChecklistCheckpointStatusSummary(BaseModel):
+    """Summary statistics for checkpoint status"""
+
+    total_checkpoints: int = Field(
+        ..., description="Total number of active checkpoints that existed on this date"
+    )
+    with_runs: int = Field(..., description="Number of checkpoints with runs")
+    missing_runs: int = Field(..., description="Number of checkpoints without runs")
+
+
+class ChecklistCheckpointStatusResponse(BaseModel):
+    """Response model for checklist checkpoint status"""
+
+    checklist_id: str = Field(..., description="Unique identifier for the checklist")
+    start_time: str = Field(
+        ...,
+        description="Start of time range queried (ISO 8601 timestamp with timezone)",
+    )
+    end_time: str = Field(
+        ..., description="End of time range queried (ISO 8601 timestamp with timezone)"
+    )
+    checkpoints: list[CheckpointStatusItem] = Field(
+        ..., description="List of checkpoints with their last run status"
+    )
+    summary: ChecklistCheckpointStatusSummary = Field(
+        ..., description="Summary statistics"
+    )

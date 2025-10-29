@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -267,6 +268,30 @@ def list_checkpoint_results(
     )
 
 
+def get_latest_checkpoint_result_by_date_range(
+    session: Session,
+    checkpoint_id: UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> "db.CheckpointRun | None":
+    """
+    Get the latest checkpoint result for a specific checkpoint, filtered by date range.
+    Returns only the most recent result (by created_at) within the date range.
+
+    Args:
+        session: Database session
+        checkpoint_id: UUID of the checkpoint
+        start_date: Optional start date filter (datetime object)
+        end_date: Optional end date filter (datetime object)
+
+    Returns:
+        The latest checkpoint result or None if not found
+    """
+    return _implementation.get_latest_checkpoint_result_by_date_range(
+        session, checkpoint_id, start_date, end_date
+    )
+
+
 def get_checkpoint_result(
     session: Session,
     result_id: UUID,
@@ -320,6 +345,7 @@ __all__ = [
     "compare_and_update_checkpoint_background",
     "create_checkpoint_result_processing",
     "list_checkpoint_results",
+    "get_latest_checkpoint_result_by_date_range",
     "get_checkpoint_result",
     "update_checkpoint_result",
 ]
