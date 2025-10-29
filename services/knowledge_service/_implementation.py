@@ -493,6 +493,33 @@ def update_agent_kb(
 
             return result
 
+        elif pos_provider == IntegrationProvider.olo:
+            from services.knowledge_service.olo import OloMenuProcessor
+
+            processor = OloMenuProcessor(debug=debug)
+            result = processor.process_and_index_menu_from_api(
+                store_id=store_id,
+                client_id=client_id,
+                client_secret=client_secret,
+                pinecone_index_name=pinecone_index_name,
+                pinecone_namespace=pinecone_namespace,
+                general_api_endpoint=general_api_endpoint,
+            )
+
+            logger.info(
+                "Successfully updated knowledge base for OLO agent",
+                extra={
+                    "store_id": store_id,
+                    "processed_items": result.get("processed_items", 0),
+                    "final_namespace": result.get("pinecone_namespace"),
+                },
+            )
+
+            if debug:
+                result["debug"] = debug_info
+
+            return result
+
         else:
             raise ValueError(f"Unsupported POS provider: {pos_provider}")
 

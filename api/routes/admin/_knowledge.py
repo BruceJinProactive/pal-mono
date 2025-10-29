@@ -242,6 +242,24 @@ async def update_agent_kb(
                     f"{provider.value.capitalize()}: general_api_endpoint missing in raw_config"
                 )
 
+        elif provider == IntegrationProvider.olo:
+            # OLO: require client_id, client_secret and general_api_endpoint only
+            # OLO uses signed requests (HMAC), not OAuth tokens, so no token_api_endpoint needed
+            client_id_value = (pos_integration.client_id or "").strip()
+            client_secret_value = (pos_integration.client_secret or "").strip()
+            if not client_id_value:
+                raise ValueError("OLO: client_id missing")
+            if not client_secret_value:
+                raise ValueError("OLO: client_secret missing")
+
+            api_endpoints = cfg.get("api_endpoints", {}) or {}
+            token_api_endpoint = ""  # OLO doesn't use token endpoint
+            general_api_endpoint = (
+                api_endpoints.get("general_api_endpoint") or ""
+            ).strip()
+            if not general_api_endpoint:
+                raise ValueError("OLO: general_api_endpoint missing in raw_config")
+
         else:
             raise ValueError(f"Unsupported provider for KB update: {provider}")
 
