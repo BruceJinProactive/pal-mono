@@ -5,6 +5,7 @@ This service contains business logic for checklist operations.
 It handles authorization, validation, and orchestrates database operations.
 """
 
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
     Checklist,
-    ChecklistCheckpointStatusResponse,
+    ChecklistHistoryResponse,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
@@ -26,7 +27,7 @@ __all__ = [
     "list_checklists_by_project",
     "update_checklist",
     "delete_checklist",
-    "get_checklist_checkpoint_status_by_timestamp_range",
+    "get_checklist_history",
 ]
 
 
@@ -134,36 +135,30 @@ async def delete_checklist(
     await _implementation.delete_checklist(checklist_id, context, session)
 
 
-async def get_checklist_checkpoint_status_by_timestamp_range(
+async def get_checklist_history(
     checklist_id: UUID,
-    start_time: str,
-    end_time: str,
+    start_date: datetime,
+    end_date: datetime,
     context: UserContext,
     session: Session,
-) -> ChecklistCheckpointStatusResponse:
+) -> ChecklistHistoryResponse:
     """
-    Get the status of all active checkpoints in a checklist within a specific time range.
+    Get check history for a checklist within a date range.
 
-    This provides a historically accurate view - only shows checkpoints that:
-    1. Were active (is_active=true) at the end of the time range
-    2. Were created on or before the end_time
-
-    Handles timezone-aware timestamps from clients in different timezones.
+    Returns the last run for each CURRENTLY ACTIVE checkpoint in the checklist
+    within the specified date range. Checkpoints that are no longer in the
+    checklist are excluded.
 
     Args:
         checklist_id: UUID of the checklist
-        start_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T00:00:00-07:00")
-        end_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T23:59:59.999999-07:00")
+        start_date: Start of date range (datetime with timezone)
+        end_date: End of date range (datetime with timezone)
         context: User authentication context
         session: Database session
 
     Returns:
-        ChecklistCheckpointStatusResponse with checkpoints and their last run status
-
-    Raises:
-        HTTPException: If checklist not found or authorization fails
-        TimestampValidationError: If timestamp format is invalid or missing timezone
+        ChecklistHistoryResponse with checkpoint history and summary
     """
-    return await _implementation.get_checklist_checkpoint_status_by_timestamp_range(
-        checklist_id, start_time, end_time, context, session
+    return await _implementation.get_checklist_history(
+        checklist_id, start_date, end_date, context, session
     )

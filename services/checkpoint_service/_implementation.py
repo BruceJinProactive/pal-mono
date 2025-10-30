@@ -545,3 +545,106 @@ async def compare_and_update_checkpoint_background(
                 f"Failed to save error result for checkpoint_result {checkpoint_result_id}: {db_error}",
                 exc_info=True,
             )
+
+
+def record_checkpoint_run(
+    session: Session,
+    checkpoint_id: UUID,
+    status_value: str,
+    image_url: str | None = None,
+) -> db.CheckpointRun:
+    """
+    Record a checkpoint run with a simple status and optional image.
+
+    Creates a new checkpoint run record with the given status.
+    Status can be "done" or "missing".
+
+    Args:
+        session: Database session
+        checkpoint_id: UUID of the checkpoint
+        status_value: "done" or "missing"
+        image_url: Optional S3 file path for the uploaded image
+
+    Returns:
+        db.CheckpointRun: The created run record
+
+    Raises:
+        ValueError: If checkpoint not found or status invalid
+    """
+    # Verify checkpoint exists
+    checkpoint = checkpoint_repository.get_checkpoint(session, checkpoint_id)
+    if not checkpoint:
+        raise ValueError(f"Checkpoint {checkpoint_id} not found")
+
+    # Validate status
+    if status_value not in ["done", "missing"]:
+        raise ValueError(f"Invalid status: {status_value}. Must be 'done' or 'missing'")
+
+    # Map status to CheckStatus enum
+    if status_value == "done":
+        check_status = CheckStatus.active
+        result_data = {"status": "done", "recorded_at": datetime.utcnow().isoformat()}
+    else:  # missing
+        check_status = CheckStatus.failed
+        result_data = {
+            "status": "missing",
+            "recorded_at": datetime.utcnow().isoformat(),
+        }
+
+    # Add image URL to result if provided
+    if image_url:
+        result_data["image_url"] = image_url
+
+    # Create run with a generated submission_id
+    import uuid
+
+    submission_id = uuid.uuid4()
+
+    run = checkpoint_repository.save_checkpoint_result(
+        session=session,
+        checkpoint_id=checkpoint_id,
+        submission_id=submission_id,
+        result=result_data,
+        status=check_status,
+    )
+
+    return run
+
+
+def update_checkpoint_run_image(
+    session: Session,
+    run_id: UUID,
+    image_url: str,
+) -> db.CheckpointRun:
+    """
+    Update an existing checkpoint run with an image URL.
+
+    Args:
+        session: Database session
+        run_id: UUID of the checkpoint run to update
+        image_url: S3 file path for the image
+
+    Returns:
+        db.CheckpointRun: The updated run record
+
+    Raises:
+        ValueError: If run not found
+    """
+    # Get the existing run
+    run = checkpoint_repository.get_checkpoint_result(session, run_id)
+    if not run:
+        raise ValueError(f"Checkpoint run {run_id} not found")
+
+    # Update the result with image URL
+    result_data = run.result or {}
+    result_data["image_url"] = image_url
+
+    # Update the run
+    updated_run = checkpoint_repository.update_checkpoint_result(
+        session=session,
+        result_id=run_id,
+        result=result_data,
+        status=run.status,
+    )
+
+    return updated_run

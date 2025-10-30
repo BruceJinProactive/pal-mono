@@ -10,11 +10,13 @@ import db
 from api.routes.admin import _builder
 from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import UserContext, not_found_error
+from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.checkpoint import (
     Checkpoint,
     ListCheckpointResultsByCheckpointResponse,
     ListCheckpointResultsBySubmissionResponse,
     ListCheckpointsResponse,
+    RecordCheckpointRunResponse,
 )
 from db.tables.types import CheckStatus
 from services import account_service, asset_service, checkpoint_service, project_service
@@ -97,6 +99,82 @@ async def _upload_checkpoint_image(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload checkpoint image: {str(e)}",
+        )
+
+
+async def _upload_checkpoint_run_image(
+    image: UploadFile,
+    project_id: uuid.UUID,
+    checkpoint_id: uuid.UUID,
+    run_id: uuid.UUID,
+    account_id: uuid.UUID,
+) -> str:
+    """
+    Upload checkpoint run image to S3 and return the URL.
+
+    Args:
+        image: The uploaded image file
+        project_id: Project UUID
+        checkpoint_id: Checkpoint UUID
+        run_id: Checkpoint run UUID
+        account_id: Account UUID
+
+    Returns:
+        str: S3 file path (key)
+
+    Raises:
+        HTTPException: If image upload fails
+    """
+    try:
+        logger.info(f"Uploading checkpoint run image: {image.filename}")
+
+        if not image.filename:
+            raise ValueError("Image filename is required.")
+
+        # Read image content
+        content = await image.read()
+
+        # Get file extension
+        file_extension = os.path.splitext(image.filename)[1] or ".jpg"
+
+        # Create S3 path
+        # Format: checkpoint_runs/{project_id}/{checkpoint_id}/{run_id}{extension}
+        file_path = os.path.join(
+            "checkpoint_runs",
+            str(project_id),
+            str(checkpoint_id),
+            f"{run_id}{file_extension}",
+        )
+
+        # Upload to S3 with metadata
+        write_asset_req = WriteAssetRequest(
+            name=file_path,
+            content=content,
+            metadata={
+                "project_id": str(project_id),
+                "checkpoint_id": str(checkpoint_id),
+                "run_id": str(run_id),
+                "account_id": str(account_id),
+            },
+        )
+
+        asset_response = write_asset(write_asset_req)
+        logger.info(f"Checkpoint run image uploaded successfully: {asset_response.url}")
+
+        # Return the S3 key (file_path)
+        return file_path
+
+    except ValueError as ve:
+        logger.error(f"Validation error uploading checkpoint run image: {ve}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        )
+    except Exception as e:
+        logger.error(f"Error uploading checkpoint run image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload checkpoint run image: {str(e)}",
         )
 
 
@@ -675,3 +753,103 @@ async def list_checkpoint_results_by_checkpoint(
         ],
         total=len(checkpoint_results),
     )
+
+
+async def record_checkpoint_run(
+    checkpoint_id: uuid.UUID,
+    status_param: str,
+    image: UploadFile | None,
+    context: UserContext,
+    session: Session,
+) -> RecordCheckpointRunResponse:
+    """
+    Record a checkpoint run with a simple status and optional image.
+
+    Creates a new run record for the checkpoint with status "done" or "missing".
+
+    Args:
+        checkpoint_id: UUID of the checkpoint
+        status_param: "done" or "missing"
+        image: Optional image file
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        RecordCheckpointRunResponse with run details
+
+    Raises:
+        HTTPException: If checkpoint not found, unauthorized, or invalid status
+    """
+    # Validate status
+    if status_param not in ["done", "missing"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status: {status_param}. Must be 'done' or 'missing'",
+        )
+
+    # Get checkpoint
+    checkpoint = checkpoint_service.get_checkpoint(session, checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint {checkpoint_id} not found",
+        )
+
+    # Get project and authorize
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {checkpoint.project_id} not found",
+        )
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {project.account_id} not found",
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Record the run first to get the run_id (creates exactly ONE run)
+    try:
+        run = checkpoint_service.record_checkpoint_run(
+            session=session,
+            checkpoint_id=checkpoint_id,
+            status_value=status_param,
+            image_url=None,  # No image URL yet
+        )
+
+        image_url = None
+        # Upload image if provided and update the existing run
+        if image:
+            image_url = await _upload_checkpoint_run_image(
+                image=image,
+                project_id=checkpoint.project_id,
+                checkpoint_id=checkpoint_id,
+                run_id=run.id,  # Use the run_id from the created run
+                account_id=project.account_id,
+            )
+
+            # Update the EXISTING run with image URL (does NOT create a new run)
+            run = checkpoint_service.update_checkpoint_run_image(
+                session=session,
+                run_id=run.id,
+                image_url=image_url,
+            )
+
+        # Convert S3 file path to presigned URL if image was uploaded
+        presigned_url = map_uri_to_s3_url(image_url) if image_url else None
+
+        return RecordCheckpointRunResponse(
+            run_id=str(run.id),
+            checkpoint_id=str(run.checkpoint_id),
+            status=status_param,
+            image_url=presigned_url,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )

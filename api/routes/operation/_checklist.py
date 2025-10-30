@@ -5,15 +5,15 @@ This module delegates to the checklist_service for all business logic.
 It only handles request/response formatting and passes through to the service layer.
 """
 
+from datetime import datetime
 from uuid import UUID
 
-from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
     Checklist,
-    ChecklistCheckpointStatusResponse,
+    ChecklistHistoryResponse,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
@@ -90,42 +90,17 @@ async def delete_checklist(
     await checklist_service.delete_checklist(checklist_id, context, session)
 
 
-async def get_checklist_checkpoint_status(
+async def get_checklist_history(
     checklist_id: UUID,
-    start_time: str,
-    end_time: str,
+    start_date: datetime,
+    end_date: datetime,
     context: UserContext,
     session: Session,
-) -> ChecklistCheckpointStatusResponse:
+) -> ChecklistHistoryResponse:
     """
-    Get checkpoint status for a checklist within a specific time range.
-
-    Returns the status of all active checkpoints that existed before the end of the time range,
-    including their last run information within the time window or "missing" status if no run was found.
-
-    Args:
-        checklist_id: UUID of the checklist
-        start_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T00:00:00-07:00")
-        end_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T23:59:59.999999-07:00")
-        context: User authentication context
-        session: Database session
-
-    Returns:
-        ChecklistCheckpointStatusResponse with checkpoint statuses
-
-    Raises:
-        HTTPException: If timestamp format invalid, checklist not found, or authorization fails
+    Get check history for a checklist within a date range.
+    Delegates to checklist_service.
     """
-    from services.checkpoint_service._utils import TimestampValidationError
-
-    try:
-        return (
-            await checklist_service.get_checklist_checkpoint_status_by_timestamp_range(
-                checklist_id, start_time, end_time, context, session
-            )
-        )
-    except TimestampValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
+    return await checklist_service.get_checklist_history(
+        checklist_id, start_date, end_date, context, session
+    )

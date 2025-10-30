@@ -5,6 +5,7 @@ Business logic for checklist operations including authorization,
 validation, and database operations.
 """
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -14,16 +15,12 @@ from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
     Checklist,
-    ChecklistCheckpointStatusResponse,
-    ChecklistCheckpointStatusSummary,
-    CheckpointLastRunSummary,
-    CheckpointStatusItem,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
 )
-from db.repositories import checklist_repository, checkpoint_repository
-from services import account_service, checkpoint_service, project_service
+from db.repositories import checklist_repository
+from services import account_service, project_service
 
 
 def _build_checklist(checklist_db) -> Checklist:
@@ -271,52 +268,40 @@ async def delete_checklist(
     session.commit()
 
 
-async def get_checklist_checkpoint_status_by_timestamp_range(
+async def get_checklist_history(
     checklist_id: UUID,
-    start_time: str,
-    end_time: str,
+    start_date: datetime,
+    end_date: datetime,
     context: UserContext,
     session: Session,
-) -> ChecklistCheckpointStatusResponse:
+):
     """
-    Get the status of all active checkpoints in a checklist within a specific time range.
+    Get check history for a checklist within a date range.
 
-    This provides a historically accurate view - only shows checkpoints that:
-    1. Were active (is_active=true) at the end of the time range
-    2. Were created on or before the end_time
-
-    Handles timezone-aware timestamps from clients in different timezones.
+    Returns the last run for each CURRENTLY ACTIVE checkpoint in the checklist
+    within the specified date range. Checkpoints that are no longer in the
+    checklist are excluded.
 
     Args:
         checklist_id: UUID of the checklist
-        start_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T00:00:00-07:00")
-        end_time: ISO 8601 timestamp with timezone (e.g., "2025-09-17T23:59:59.999999-07:00")
+        start_date: Start of date range (datetime with timezone)
+        end_date: End of date range (datetime with timezone)
         context: User authentication context
         session: Database session
 
     Returns:
-        ChecklistCheckpointStatusResponse with checkpoints and their last run status
-
-    Raises:
-        HTTPException: If checklist not found or authorization fails
-        TimestampValidationError: If timestamp format is invalid or missing timezone
+        ChecklistHistoryResponse with checkpoint history and summary
     """
-    from services.checkpoint_service._utils import (
-        TimestampValidationError,
-        parse_and_validate_timestamp,
+    from api.routes.utils import map_uri_to_s3_url
+    from api.schemas.admin.checklist import (
+        ChecklistHistoryResponse,
+        ChecklistHistorySummary,
+        CheckpointHistoryItem,
+        CheckpointRunDetail,
     )
+    from services import checkpoint_service
 
-    # Parse and validate timestamps
-    start_dt = parse_and_validate_timestamp(start_time)
-    end_dt = parse_and_validate_timestamp(end_time)
-
-    # Validate that start is before end
-    if start_dt >= end_dt:
-        raise TimestampValidationError(
-            f"start_time ({start_time}) must be before end_time ({end_time})"
-        )
-
-    # Get checklist and validate exists
+    # Get the checklist and authorize
     checklist_db = checklist_repository.get_checklist_by_id(session, checklist_id)
 
     if not checklist_db:
@@ -325,75 +310,73 @@ async def get_checklist_checkpoint_status_by_timestamp_range(
             detail=f"Checklist {checklist_id} does not exist.",
         )
 
-    # If checklist is associated with a project, authorize user access
+    # Authorize via checklist → project → account
     if checklist_db.project_id:
         _authorize_project_access(session, checklist_db.project_id, context)
 
-    # Get all active checkpoints for this checklist that existed on or before the end timestamp
-    checkpoints = (
-        checkpoint_repository.list_active_checkpoints_by_checklist_before_date(
-            session=session,
-            checklist_id=checklist_id,
-            end_date=end_dt,
-        )
+    # Get CURRENT checkpoints in the checklist (what's in the checklist NOW)
+    current_checkpoints = checkpoint_service.list_checkpoints_by_checklist(
+        session, checklist_id
     )
 
-    # Build checkpoint status items
-    checkpoint_status_items = []
-    checkpoints_with_runs = 0
-    checkpoints_missing_runs = 0
+    # Build response for each current checkpoint
+    checkpoint_items = []
+    with_runs = 0
+    missing_runs = 0
 
-    for checkpoint in checkpoints:
-        # Get the latest checkpoint run within the time range
-        last_run = checkpoint_service.get_latest_checkpoint_result_by_date_range(
+    for checkpoint in current_checkpoints:
+        # Get the latest run for this checkpoint in the date range
+        latest_run = checkpoint_service.get_latest_checkpoint_result_by_date_range(
             session=session,
             checkpoint_id=checkpoint.id,
-            start_date=start_dt,
-            end_date=end_dt,
+            start_date=start_date,
+            end_date=end_date,
         )
 
-        if last_run:
-            # Checkpoint has a run within the time range
-            checkpoints_with_runs += 1
-            last_run_summary = CheckpointLastRunSummary(
-                status=last_run.status.value,
-                result=last_run.result,
-                created_at=(
-                    last_run.created_at.isoformat() if last_run.created_at else None
+        # Build the run detail if exists
+        last_run_detail = None
+        if latest_run:
+            with_runs += 1
+            # Extract image URL from result JSON if available
+            image_url = (
+                latest_run.result.get("image_url") if latest_run.result else None
+            )
+            # Convert S3 path to presigned URL if exists
+            presigned_url = map_uri_to_s3_url(image_url) if image_url else None
+
+            last_run_detail = CheckpointRunDetail(
+                run_id=str(latest_run.id),
+                status=(
+                    latest_run.result.get("status", "unknown")
+                    if latest_run.result
+                    else "unknown"
                 ),
-                updated_at=(
-                    last_run.updated_at.isoformat() if last_run.updated_at else None
-                ),
+                result=latest_run.result or {},
+                created_at=latest_run.created_at.isoformat(),
+                image_url=presigned_url,
             )
         else:
-            # Checkpoint has no run within the time range
-            checkpoints_missing_runs += 1
-            last_run_summary = CheckpointLastRunSummary(
-                status="missing",
-                result=None,
-                created_at=None,
-                updated_at=None,
-            )
+            missing_runs += 1
 
-        checkpoint_status_items.append(
-            CheckpointStatusItem(
+        checkpoint_items.append(
+            CheckpointHistoryItem(
                 checkpoint_id=str(checkpoint.id),
-                last_run=last_run_summary,
+                checkpoint_name=checkpoint.name,
+                last_run=last_run_detail,
             )
         )
 
-    # Build summary stats
-    summary = ChecklistCheckpointStatusSummary(
-        total_checkpoints=len(checkpoints),
-        with_runs=checkpoints_with_runs,
-        missing_runs=checkpoints_missing_runs,
+    # Build summary
+    summary = ChecklistHistorySummary(
+        total_checkpoints=len(current_checkpoints),
+        with_runs=with_runs,
+        missing_runs=missing_runs,
     )
 
-    # Build and return response
-    return ChecklistCheckpointStatusResponse(
+    return ChecklistHistoryResponse(
         checklist_id=str(checklist_id),
-        start_time=start_time,
-        end_time=end_time,
-        checkpoints=checkpoint_status_items,
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        checkpoints=checkpoint_items,
         summary=summary,
     )

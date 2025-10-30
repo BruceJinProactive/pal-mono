@@ -53,58 +53,41 @@ class ListChecklistsResponse(BaseModel):
     total: int = Field(..., description="Total number of checklists")
 
 
-class CheckpointLastRunSummary(BaseModel):
-    """Summary of the last checkpoint run (compact version with only essential fields)"""
+class CheckpointRunDetail(BaseModel):
+    """Detail of the last checkpoint run"""
 
-    status: str = Field(
-        ...,
-        description="Status of the run: 'active', 'failed', 'processing', 'error', or 'missing'",
-    )
-    result: dict | None = Field(
-        None,
-        description="Result object with overall_result and summary (null if missing)",
-    )
-    created_at: str | None = Field(
-        None, description="ISO 8601 timestamp when run was created (null if missing)"
-    )
-    updated_at: str | None = Field(
-        None, description="ISO 8601 timestamp when run was updated (null if missing)"
-    )
+    run_id: str = Field(..., description="Run ID")
+    status: str = Field(..., description="Status: done or missing")
+    result: dict = Field(..., description="Result data")
+    created_at: str = Field(..., description="Run timestamp (ISO 8601)")
+    image_url: str | None = Field(None, description="Presigned S3 URL if available")
 
 
-class CheckpointStatusItem(BaseModel):
-    """Checkpoint with its last run status"""
+class CheckpointHistoryItem(BaseModel):
+    """Single checkpoint with its last run in the date range"""
 
-    checkpoint_id: str = Field(..., description="Unique identifier for the checkpoint")
-    last_run: CheckpointLastRunSummary = Field(
-        ..., description="Last run details or missing status"
+    checkpoint_id: str = Field(..., description="Checkpoint ID")
+    checkpoint_name: str = Field(..., description="Checkpoint name")
+    last_run: CheckpointRunDetail | None = Field(
+        None, description="Last run details, null if no run in date range"
     )
 
 
-class ChecklistCheckpointStatusSummary(BaseModel):
-    """Summary statistics for checkpoint status"""
+class ChecklistHistorySummary(BaseModel):
+    """Summary statistics for the checklist history"""
 
-    total_checkpoints: int = Field(
-        ..., description="Total number of active checkpoints that existed on this date"
-    )
-    with_runs: int = Field(..., description="Number of checkpoints with runs")
-    missing_runs: int = Field(..., description="Number of checkpoints without runs")
+    total_checkpoints: int = Field(..., description="Total current checkpoints")
+    with_runs: int = Field(..., description="Checkpoints with runs in date range")
+    missing_runs: int = Field(..., description="Checkpoints without runs in date range")
 
 
-class ChecklistCheckpointStatusResponse(BaseModel):
-    """Response model for checklist checkpoint status"""
+class ChecklistHistoryResponse(BaseModel):
+    """Response for checklist check history"""
 
-    checklist_id: str = Field(..., description="Unique identifier for the checklist")
-    start_time: str = Field(
-        ...,
-        description="Start of time range queried (ISO 8601 timestamp with timezone)",
+    checklist_id: str = Field(..., description="Checklist ID")
+    start_date: str = Field(..., description="Start date (ISO 8601)")
+    end_date: str = Field(..., description="End date (ISO 8601)")
+    checkpoints: list[CheckpointHistoryItem] = Field(
+        ..., description="Checkpoint history"
     )
-    end_time: str = Field(
-        ..., description="End of time range queried (ISO 8601 timestamp with timezone)"
-    )
-    checkpoints: list[CheckpointStatusItem] = Field(
-        ..., description="List of checkpoints with their last run status"
-    )
-    summary: ChecklistCheckpointStatusSummary = Field(
-        ..., description="Summary statistics"
-    )
+    summary: ChecklistHistorySummary = Field(..., description="Summary statistics")

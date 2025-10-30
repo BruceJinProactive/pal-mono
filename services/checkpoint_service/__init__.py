@@ -331,6 +331,57 @@ def update_checkpoint_result(
     return _implementation.update_checkpoint_result(session, result_id, result, status)
 
 
+def record_checkpoint_run(
+    session: Session,
+    checkpoint_id: UUID,
+    status_value: str,
+    image_url: str | None = None,
+) -> db.CheckpointRun:
+    """
+    Record a checkpoint run with a simple status and optional image.
+
+    Creates a new checkpoint run record with the given status.
+    Status can be "done" or "missing".
+
+    Args:
+        session: Database session
+        checkpoint_id: UUID of the checkpoint
+        status_value: "done" or "missing"
+        image_url: Optional S3 file path for the uploaded image
+
+    Returns:
+        db.CheckpointRun: The created run record
+
+    Raises:
+        ValueError: If checkpoint not found or status invalid
+    """
+    return _implementation.record_checkpoint_run(
+        session, checkpoint_id, status_value, image_url
+    )
+
+
+def update_checkpoint_run_image(
+    session: Session,
+    run_id: UUID,
+    image_url: str,
+) -> db.CheckpointRun:
+    """
+    Update an existing checkpoint run with an image URL.
+
+    Args:
+        session: Database session
+        run_id: UUID of the checkpoint run to update
+        image_url: S3 file path for the image
+
+    Returns:
+        db.CheckpointRun: The updated run record
+
+    Raises:
+        ValueError: If run not found
+    """
+    return _implementation.update_checkpoint_run_image(session, run_id, image_url)
+
+
 __all__ = [
     "create_checkpoint",
     "list_checkpoints",
@@ -348,4 +399,6 @@ __all__ = [
     "get_latest_checkpoint_result_by_date_range",
     "get_checkpoint_result",
     "update_checkpoint_result",
+    "record_checkpoint_run",
+    "update_checkpoint_run_image",
 ]

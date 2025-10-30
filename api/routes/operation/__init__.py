@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
@@ -10,7 +11,7 @@ from api.routes.endpoints import endpoints
 from api.schemas.admin.camera import GetCamerasResponse
 from api.schemas.admin.checklist import (
     Checklist,
-    ChecklistCheckpointStatusResponse,
+    ChecklistHistoryResponse,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
@@ -20,6 +21,7 @@ from api.schemas.admin.checkpoint import (
     ListCheckpointResultsByCheckpointResponse,
     ListCheckpointResultsBySubmissionResponse,
     ListCheckpointsResponse,
+    RecordCheckpointRunResponse,
 )
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import CheckStatus
@@ -159,45 +161,54 @@ async def list_checklist_checkpoints(
     )
 
 
-@operation_router.get("/checklists/{checklist_id}/runs")
-async def get_checklist_checkpoint_status(
+@operation_router.get("/checklists/{checklist_id}/history")
+async def get_checklist_history(
     checklist_id: uuid.UUID,
-    start_time: str = Query(
+    start_date: datetime = Query(
         ...,
-        description="ISO 8601 timestamp for range start in user's timezone (e.g., '2025-09-17T00:00:00-07:00')",
+        description="Start date in ISO 8601 format with timezone (e.g., 2025-01-01T00:00:00Z)",
     ),
-    end_time: str = Query(
+    end_date: datetime = Query(
         ...,
-        description="ISO 8601 timestamp for range end in user's timezone (e.g., '2025-09-17T23:59:59-07:00')",
+        description="End date in ISO 8601 format with timezone (e.g., 2025-01-31T23:59:59Z)",
     ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> ChecklistCheckpointStatusResponse:
+) -> ChecklistHistoryResponse:
     """
-    Get checkpoint status for a checklist within a specific time range.
+    Get check history for a checklist within a date range.
 
-    Returns the status of all active checkpoints that existed before the end of the time range,
-    with their last run information within the specified time window or "missing" status.
+    Returns the last run for each CURRENTLY ACTIVE checkpoint in the checklist
+    within the specified date range. Checkpoints that are no longer in the
+    checklist are excluded from the response.
 
-    This endpoint provides a historically accurate view - only shows checkpoints
-    that were created on or before the end_time and were active at that time.
+    Query parameters:
+    - checklist_id (path): UUID of the checklist
+    - start_date (required): ISO 8601 timestamp with timezone
+    - end_date (required): ISO 8601 timestamp with timezone
 
-    Query Parameters:
-    - start_time (required): ISO 8601 timestamp with timezone (e.g., '2025-09-17T00:00:00-07:00')
-    - end_time (required): ISO 8601 timestamp with timezone (e.g., '2025-09-17T23:59:59.999999-07:00')
+    Returns:
+    - checklist_id: The checklist ID
+    - start_date: Query start date
+    - end_date: Query end date
+    - checkpoints: Array of checkpoint history items (current checkpoints only)
+      - checkpoint_id: Checkpoint UUID
+      - checkpoint_name: Checkpoint name
+      - last_run: Last run details or null if no run in date range
+        - run_id: Run UUID
+        - status: "done" or "missing"
+        - result: Result JSON
+        - created_at: Run timestamp
+        - image_url: Presigned S3 URL if image exists
+    - summary: Summary statistics
+      - total_checkpoints: Total current checkpoints
+      - with_runs: Count with runs in date range
+      - missing_runs: Count without runs in date range
 
-    Response includes:
-    - checklist_id: The checklist UUID
-    - start_time: The start of the time range queried
-    - end_time: The end of the time range queried
-    - checkpoints: List of checkpoint statuses with:
-      - checkpoint_id: The checkpoint UUID
-      - last_run: Run details (status, result, timestamps) or {status: "missing"}
-    - summary: Statistics (total, with_runs, missing_runs)
-    ```
+    Authorization: Via checklist → project → account
     """
-    return await _checklist.get_checklist_checkpoint_status(
-        checklist_id, start_time, end_time, context, session
+    return await _checklist.get_checklist_history(
+        checklist_id, start_date, end_date, context, session
     )
 
 
@@ -355,6 +366,39 @@ async def compare_checkpoint(
     """
     return await _checkpoint.compare_checkpoint(
         checkpoint_id, image, context, session, submission_id
+    )
+
+
+@operation_router.post("/checkpoints/runs", status_code=status.HTTP_201_CREATED)
+async def record_checkpoint_run(
+    checkpoint_id: uuid.UUID = Form(...),
+    status: str = Form(..., pattern="^(done|missing)$"),
+    image: UploadFile | None = File(None),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> RecordCheckpointRunResponse:
+    """
+    Record a checkpoint run with a simple status and optional image.
+
+    Creates a new run record for a checkpoint with status "done" or "missing".
+    Optionally upload an image that will be stored in S3.
+
+    Request body (multipart/form-data):
+    - checkpoint_id (required): UUID - The checkpoint ID
+    - status (required): string - Either "done" or "missing"
+    - image (optional): Image file (jpg/png)
+
+    Response:
+    - run_id: UUID of the created run
+    - checkpoint_id: The checkpoint ID
+    - status: The status that was recorded
+    - image_url: S3 file path of uploaded image (null if no image)
+
+    The uploaded image will be stored at:
+    checkpoint_runs/{project_id}/{checkpoint_id}/{run_id}.{jpg|png}
+    """
+    return await _checkpoint.record_checkpoint_run(
+        checkpoint_id, status, image, context, session
     )
 
 

@@ -72,3 +72,14 @@ class ListCheckpointResultsByCheckpointResponse(BaseModel):
 
     results: list[CheckpointResult]
     total: int
+
+
+class RecordCheckpointRunResponse(BaseModel):
+    """Response after recording a checkpoint run"""
+
+    run_id: str = Field(..., description="The created run ID")
+    checkpoint_id: str = Field(..., description="Checkpoint ID")
+    status: str = Field(..., description="Status recorded")
+    image_url: str | None = Field(
+        None, description="Presigned S3 URL of uploaded image (null if no image)"
+    )
