@@ -7,6 +7,7 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
+from api.schemas.admin.camera import GetCamerasResponse
 from api.schemas.admin.checklist import (
     Checklist,
     ChecklistCheckpointStatusResponse,
@@ -20,6 +21,7 @@ from api.schemas.admin.checkpoint import (
     ListCheckpointResultsBySubmissionResponse,
     ListCheckpointsResponse,
 )
+from api.schemas.error.error import ErrorResponse
 from db.tables.types import CheckStatus
 
 from . import _checklist, _checkpoint, _implementation
@@ -36,6 +38,31 @@ async def health_check(
     Health check endpoint for operation router.
     """
     return await _implementation.health_check(context, session)
+
+
+@operation_router.get(
+    "/projects/{project_id}/cameras",
+    response_model=GetCamerasResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
+async def get_cameras_under_project(
+    project_id: str,
+    account_id: str,
+    context: UserContext = Depends(authenticate_user),
+) -> GetCamerasResponse:
+    """
+    Get all cameras under a specific project.
+
+    Query Parameters:
+    - account_id: The account ID
+    - project_id: The project ID (from path)
+
+    Returns:
+    - cameras: List of camera names/IDs under the project
+    """
+    return await _implementation.get_cameras_under_project_handler(
+        account_id, project_id
+    )
 
 
 """
