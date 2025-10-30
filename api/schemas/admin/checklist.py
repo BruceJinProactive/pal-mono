@@ -91,3 +91,11 @@ class ChecklistHistoryResponse(BaseModel):
         ..., description="Checkpoint history"
     )
     summary: ChecklistHistorySummary = Field(..., description="Summary statistics")
+
+
+class BatchChecklistHistoryResponse(BaseModel):
+    """Response for batch checklist check history"""
+
+    results: list[ChecklistHistoryResponse] = Field(
+        ..., description="List of checklist history responses"
+    )

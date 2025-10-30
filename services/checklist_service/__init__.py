@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
+    BatchChecklistHistoryResponse,
     Checklist,
     ChecklistHistoryResponse,
     CreateChecklistRequest,
@@ -28,6 +29,7 @@ __all__ = [
     "update_checklist",
     "delete_checklist",
     "get_checklist_history",
+    "get_batch_checklist_history",
 ]
 
 
@@ -161,4 +163,33 @@ async def get_checklist_history(
     """
     return await _implementation.get_checklist_history(
         checklist_id, start_date, end_date, context, session
+    )
+
+
+async def get_batch_checklist_history(
+    checklist_ids: list[UUID],
+    start_date: datetime,
+    end_date: datetime,
+    context: UserContext,
+    session: Session,
+) -> BatchChecklistHistoryResponse:
+    """
+    Get check history for multiple checklists within a date range.
+
+    Returns the last run for each CURRENTLY ACTIVE checkpoint in each checklist
+    within the specified date range. Checkpoints that are no longer in the
+    checklist are excluded.
+
+    Args:
+        checklist_ids: List of checklist UUIDs
+        start_date: Start of date range (datetime with timezone)
+        end_date: End of date range (datetime with timezone)
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        BatchChecklistHistoryResponse with list of checklist history responses
+    """
+    return await _implementation.get_batch_checklist_history(
+        checklist_ids, start_date, end_date, context, session
     )

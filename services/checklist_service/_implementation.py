@@ -380,3 +380,35 @@ async def get_checklist_history(
         checkpoints=checkpoint_items,
         summary=summary,
     )
+
+
+async def get_batch_checklist_history(
+    checklist_ids: list[UUID],
+    start_date: datetime,
+    end_date: datetime,
+    context: UserContext,
+    session: Session,
+):
+    """
+    Get check history for multiple checklists within a date range.
+
+    Args:
+        checklist_ids: List of checklist UUIDs
+        start_date: Start of date range (datetime with timezone)
+        end_date: End of date range (datetime with timezone)
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        BatchChecklistHistoryResponse with list of checklist history responses
+    """
+    from api.schemas.admin.checklist import BatchChecklistHistoryResponse
+
+    results = []
+    for checklist_id in checklist_ids:
+        result = await get_checklist_history(
+            checklist_id, start_date, end_date, context, session
+        )
+        results.append(result)
+
+    return BatchChecklistHistoryResponse(results=results)

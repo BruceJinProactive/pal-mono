@@ -10,6 +10,7 @@ from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.camera import GetCamerasResponse
 from api.schemas.admin.checklist import (
+    BatchChecklistHistoryResponse,
     Checklist,
     ChecklistHistoryResponse,
     CreateChecklistRequest,
@@ -161,9 +162,12 @@ async def list_checklist_checkpoints(
     )
 
 
-@operation_router.get("/checklists/{checklist_id}/history")
+@operation_router.get("/checklists/history")
 async def get_checklist_history(
-    checklist_id: uuid.UUID,
+    checklist_ids: list[uuid.UUID] = Query(
+        ...,
+        description="List of checklist IDs to retrieve history for",
+    ),
     start_date: datetime = Query(
         ...,
         description="Start date in ISO 8601 format with timezone (e.g., 2025-01-01T00:00:00Z)",
@@ -174,41 +178,42 @@ async def get_checklist_history(
     ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> ChecklistHistoryResponse:
+) -> BatchChecklistHistoryResponse:
     """
-    Get check history for a checklist within a date range.
+    Get check history for multiple checklists within a date range.
 
-    Returns the last run for each CURRENTLY ACTIVE checkpoint in the checklist
+    Returns the last run for each CURRENTLY ACTIVE checkpoint in each checklist
     within the specified date range. Checkpoints that are no longer in the
     checklist are excluded from the response.
 
     Query parameters:
-    - checklist_id (path): UUID of the checklist
+    - checklist_ids (required): List of checklist UUIDs
     - start_date (required): ISO 8601 timestamp with timezone
     - end_date (required): ISO 8601 timestamp with timezone
 
     Returns:
-    - checklist_id: The checklist ID
-    - start_date: Query start date
-    - end_date: Query end date
-    - checkpoints: Array of checkpoint history items (current checkpoints only)
-      - checkpoint_id: Checkpoint UUID
-      - checkpoint_name: Checkpoint name
-      - last_run: Last run details or null if no run in date range
-        - run_id: Run UUID
-        - status: "done" or "missing"
-        - result: Result JSON
-        - created_at: Run timestamp
-        - image_url: Presigned S3 URL if image exists
-    - summary: Summary statistics
-      - total_checkpoints: Total current checkpoints
-      - with_runs: Count with runs in date range
-      - missing_runs: Count without runs in date range
+    - results: Array of checklist history responses
+      - checklist_id: The checklist ID
+      - start_date: Query start date
+      - end_date: Query end date
+      - checkpoints: Array of checkpoint history items (current checkpoints only)
+        - checkpoint_id: Checkpoint UUID
+        - checkpoint_name: Checkpoint name
+        - last_run: Last run details or null if no run in date range
+          - run_id: Run UUID
+          - status: "done" or "missing"
+          - result: Result JSON
+          - created_at: Run timestamp
+          - image_url: Presigned S3 URL if image exists
+      - summary: Summary statistics
+        - total_checkpoints: Total current checkpoints
+        - with_runs: Count with runs in date range
+        - missing_runs: Count without runs in date range
 
     Authorization: Via checklist → project → account
     """
-    return await _checklist.get_checklist_history(
-        checklist_id, start_date, end_date, context, session
+    return await _checklist.get_batch_checklist_history(
+        checklist_ids, start_date, end_date, context, session
     )
 
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
+    BatchChecklistHistoryResponse,
     Checklist,
     ChecklistHistoryResponse,
     CreateChecklistRequest,
@@ -103,4 +104,20 @@ async def get_checklist_history(
     """
     return await checklist_service.get_checklist_history(
         checklist_id, start_date, end_date, context, session
+    )
+
+
+async def get_batch_checklist_history(
+    checklist_ids: list[UUID],
+    start_date: datetime,
+    end_date: datetime,
+    context: UserContext,
+    session: Session,
+) -> BatchChecklistHistoryResponse:
+    """
+    Get check history for multiple checklists within a date range.
+    Delegates to checklist_service.
+    """
+    return await checklist_service.get_batch_checklist_history(
+        checklist_ids, start_date, end_date, context, session
     )
