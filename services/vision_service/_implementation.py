@@ -76,7 +76,7 @@ def get_cameras_under_project(request: GetCamerasRequest) -> GetCamerasResponse:
         raise ValueError("Project ID must be provided.")
 
     # Construct the S3 prefix path
-    prefix = f"security/{request.account_id}/{request.project_id}"
+    prefix = f"security/cameras/{request.account_id}/{request.project_id}"
 
     logger.info(
         f"Getting cameras for account {request.account_id}, project {request.project_id}"

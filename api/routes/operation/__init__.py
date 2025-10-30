@@ -43,21 +43,21 @@ async def health_check(
 
 
 @operation_router.get(
-    "/projects/{project_id}/cameras",
+    "/accounts/{account_id}/projects/{project_id}/cameras",
     response_model=GetCamerasResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
 async def get_cameras_under_project(
-    project_id: str,
     account_id: str,
+    project_id: str,
     context: UserContext = Depends(authenticate_user),
 ) -> GetCamerasResponse:
     """
-    Get all cameras under a specific project.
+    Get all cameras under a specific project within an account.
 
-    Query Parameters:
+    Path Parameters:
     - account_id: The account ID
-    - project_id: The project ID (from path)
+    - project_id: The project ID
 
     Returns:
     - cameras: List of camera names/IDs under the project
