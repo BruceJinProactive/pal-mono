@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import Dict, List
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -93,6 +93,31 @@ class AffiliateRepositoryAsync:
             return list(result.scalars().all())
         except SQLAlchemyError as e:
             logger.error(f"Error listing affiliates: {e}")
+            raise
+
+    async def get_affiliates_by_rewardful_ids(
+        self, rewardful_ids: List[str]
+    ) -> Dict[str, Affiliate]:
+        """
+        Get multiple affiliates by Rewardful IDs in a single query.
+        Batch fetching to avoid N+1 query problem.
+
+        Args:
+            rewardful_ids: List of Rewardful affiliate IDs
+
+        Returns:
+            Dict[str, Affiliate]: Map of rewardful_id -> Affiliate
+        """
+        try:
+            if not rewardful_ids:
+                return {}
+
+            query = select(Affiliate).filter(Affiliate.rewardful_id.in_(rewardful_ids))
+            result = await self.session.execute(query)
+            affiliates = result.scalars().all()
+            return {aff.rewardful_id: aff for aff in affiliates}
+        except SQLAlchemyError as e:
+            logger.error(f"Error retrieving affiliates by Rewardful IDs: {e}")
             raise
 
     async def delete_affiliate(self, affiliate_id: uuid.UUID) -> bool:

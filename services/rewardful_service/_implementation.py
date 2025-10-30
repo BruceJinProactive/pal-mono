@@ -141,7 +141,8 @@ class RewardfulService:
         expand: List[str] | None = None,
     ) -> Dict[str, Any]:
         """
-        List affiliates from Rewardful.
+        List affiliates from Rewardful and enrich with local database info.
+        Creates local records for affiliates that don't exist yet.
 
         Args:
             session: Database session
@@ -151,11 +152,64 @@ class RewardfulService:
             expand: Fields to expand
 
         Returns:
-            Dict: Paginated affiliate list from Rewardful
+            Dict: Paginated affiliate list from Rewardful enriched with local DB data
         """
-        return await self.client.list_affiliates(
+        # Get affiliates from Rewardful
+        rewardful_response = await self.client.list_affiliates(
             limit=limit, page=page, campaign_id=campaign_id, expand=expand
         )
+
+        # Enrich with local database info
+        if "data" in rewardful_response and isinstance(
+            rewardful_response["data"], list
+        ):
+            repo = AffiliateRepositoryAsync(session)
+
+            rewardful_ids = [
+                aff.get("id") for aff in rewardful_response["data"] if aff.get("id")
+            ]
+
+            local_affiliates_map = await repo.get_affiliates_by_rewardful_ids(
+                rewardful_ids
+            )
+
+            enriched_data = []
+
+            for rewardful_affiliate in rewardful_response["data"]:
+                rewardful_id = rewardful_affiliate.get("id")
+
+                if rewardful_id:
+                    local_affiliate = local_affiliates_map.get(rewardful_id)
+
+                    # Enrich with local DB info if it exists
+                    if local_affiliate:
+                        enriched_affiliate = {
+                            **rewardful_affiliate,
+                            "local_db": {
+                                "id": str(local_affiliate.id),
+                                "created_at": (
+                                    local_affiliate.created_at.isoformat()
+                                    if local_affiliate.created_at
+                                    else None
+                                ),
+                                "updated_at": (
+                                    local_affiliate.updated_at.isoformat()
+                                    if local_affiliate.updated_at
+                                    else None
+                                ),
+                            },
+                        }
+                        enriched_data.append(enriched_affiliate)
+                    else:
+                        # No local record, just include Rewardful data
+                        enriched_data.append(rewardful_affiliate)
+                else:
+                    # No rewardful_id, just include the data as-is
+                    enriched_data.append(rewardful_affiliate)
+
+            rewardful_response["data"] = enriched_data
+
+        return rewardful_response
 
     async def update_affiliate(
         self,
