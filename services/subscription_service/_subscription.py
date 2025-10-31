@@ -632,6 +632,9 @@ def update_account_subscription_status(
             )
         )
 
+    if updated_subscription is None:
+        raise ValueError(f"Failed to update subscription {external_id}")
+
     return updated_subscription
 
 
@@ -1033,6 +1036,9 @@ def remove_project_subscription(
     """
     Remove a project subscription (soft delete).
 
+    This operation is idempotent - if the project subscription does not exist,
+    it will return gracefully without raising an error.
+
     Args:
         session: Database session
         project_id: Project ID to be removed
@@ -1048,9 +1054,11 @@ def remove_project_subscription(
         project_id, subscription_id
     )
     if not project_subscription:
-        raise ValueError(
-            f"Project subscription does not exist for project {project_id} and subscription {subscription_id}"
+        # Return gracefully if already removed (idempotent operation)
+        logger.info(
+            f"Project subscription already removed or does not exist for project {project_id} and subscription {subscription_id}"
         )
+        return
 
     # Get subscription details for Stripe update
     subscription = get_account_subscription_by_external_id(session, subscription_id)

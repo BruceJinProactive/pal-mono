@@ -197,11 +197,13 @@ def update_project(
         updated_project = project_repository.update_project(
             project_id, expected_version, **asdict(params)
         )
+        if updated_project is None:
+            raise ValueError(f"Failed to update project {project_id}")
         ctx.new_record = updated_project
         return updated_project
 
 
-def get_project(session: Session, project_id: uuid.UUID):
+def get_project(session: Session, project_id: uuid.UUID) -> db.Project | None:
     project_repository = db.ProjectRepository(session)
     return project_repository.get_project(project_id)
 
@@ -639,7 +641,7 @@ def batch_delete_projects(
                     )
                     if curr_sub:
                         subscription_service.remove_project_subscription(
-                            session, project, curr_sub.external_id
+                            session, project.id, curr_sub.external_id
                         )
                 except Exception:
                     logger.error(

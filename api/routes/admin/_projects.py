@@ -370,7 +370,7 @@ async def delete_project(
         )
         if curr_sub:
             subscription_service.remove_project_subscription(
-                session, project, curr_sub.external_id
+                session, project.id, curr_sub.external_id
             )
 
         # Delete all voice configs for this project

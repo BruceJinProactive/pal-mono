@@ -33,7 +33,7 @@ class ChannelInfo:
 @dataclass
 class UserSessionPreview:
     conversation: db.Conversation
-    last_message: db.Message
+    last_message: db.Message | None
     message_count: int
 
 

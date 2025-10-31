@@ -115,6 +115,8 @@ def update_integration(
                     integration_id=integration_id,
                     secret_key=secret_key,
                 )
+                if integration is None:
+                    raise ValueError(f"Failed to update integration {integration_id}")
         session.commit()
         return build_integration_detail(integration)
     except Exception as e:

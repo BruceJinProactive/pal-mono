@@ -1,6 +1,9 @@
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
+
 
 # By default, all tables are created in the public schema, when it is specified
 # explicitly and passed to alembic, it will limit the search path to only look

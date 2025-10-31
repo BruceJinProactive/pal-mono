@@ -179,6 +179,8 @@ def update_agent(
         new_agent = agent_repository.update_agent(
             agent_id, expected_version, **agent_params
         )
+        if new_agent is None:
+            raise ValueError(f"Failed to update agent {agent_id}")
         ctx.new_record = new_agent
         return new_agent
 

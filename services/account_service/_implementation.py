@@ -134,6 +134,8 @@ def update_account(
         updated_account = account_repository.update_account(
             account_name, expected_version, **asdict(params)
         )
+        if updated_account is None:
+            raise ValueError(f"Failed to update account {account_name}")
         ctx.new_record = updated_account
 
     return updated_account

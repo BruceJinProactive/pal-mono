@@ -210,7 +210,7 @@ def build_feedback(
 def build_conversation(
     conversation: db.Conversation,
     message_count: int,
-    last_message: db.Message,
+    last_message: db.Message | None,
 ) -> Conversation:
     return Conversation(
         id=conversation.id,
