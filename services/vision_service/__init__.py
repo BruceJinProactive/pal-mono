@@ -1,7 +1,7 @@
 from ._implementation import (
     create_checkpoint,
-    get_camera_images,
+    get_camera_image,
     get_cameras_under_project,
 )
 
-__all__ = ["create_checkpoint", "get_camera_images", "get_cameras_under_project"]
+__all__ = ["create_checkpoint", "get_camera_image", "get_cameras_under_project"]

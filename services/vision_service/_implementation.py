@@ -1,11 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 
 from sqlalchemy.orm import Session
 
 import db
 from api.schemas.admin.camera import (
-    GetCameraImagesRequest,
-    GetCameraImagesResponse,
     GetCamerasRequest,
     GetCamerasResponse,
     ImageMetadata,
@@ -110,98 +108,73 @@ def get_cameras_under_project(request: GetCamerasRequest) -> GetCamerasResponse:
 
 
 @_utils.handle_s3_errors
-def get_camera_images(request: GetCameraImagesRequest) -> GetCameraImagesResponse:
-    """Get all images from a camera within the last X seconds.
+def get_camera_image(
+    account_id: str, project_id: str, camera_name: str
+) -> ImageMetadata:
+    """Get the single camera image named {camera_name}.png.
 
     Args:
-        request: GetCameraImagesRequest containing account_id, project_id, camera_name, and seconds
+        account_id: Account ID
+        project_id: Project ID
+        camera_name: Camera name (the image will be {camera_name}.png)
 
     Returns:
-        GetCameraImagesResponse containing list of images with metadata and total count
-    """
-    if not request.account_id:
-        raise ValueError("Account ID must be provided.")
-    if not request.project_id:
-        raise ValueError("Project ID must be provided.")
-    if not request.camera_name:
-        raise ValueError("Camera name must be provided.")
-    if request.seconds <= 0:
-        raise ValueError("Seconds must be greater than 0.")
+        ImageMetadata containing the image information
 
-    # Construct the S3 prefix path
-    prefix = f"security/cameras/{request.account_id}/{request.project_id}/{request.camera_name}/"
+    Raises:
+        ValueError: If required parameters are missing
+        FileNotFoundError: If the image doesn't exist
+    """
+    if not account_id:
+        raise ValueError("Account ID must be provided.")
+    if not project_id:
+        raise ValueError("Project ID must be provided.")
+    if not camera_name:
+        raise ValueError("Camera name must be provided.")
+
+    # Construct the S3 key path for the specific image
+    key = f"security/cameras/{account_id}/{project_id}/{camera_name}/{camera_name}.png"
+
+    logger.info(
+        f"Getting image for account {account_id}, project {project_id}, "
+        f"camera {camera_name} at key {key}"
+    )
 
     _utils.check_region_name()
     s3_client = _utils.init_s3(AWS_REGION)
     _utils.check_bucket_name()
 
-    # Calculate the cutoff time
-    cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=request.seconds)
+    try:
+        # Get object metadata using head_object (doesn't download the file)
+        response = s3_client.head_object(Bucket=AWS_ASSET_BUCKET_NAME, Key=key)
 
-    # Images are named: {camera_name}_{YYYYMMDD}_{HHMMSS}.ext
-    # We can use StartAfter to skip objects older than the cutoff time
-    # Format the cutoff time to match the naming convention
-    cutoff_timestamp = cutoff_time.strftime("%Y%m%d_%H%M%S")
-    start_after_key = f"{prefix}{request.camera_name}_{cutoff_timestamp}"
+        # Get last_modified from S3 metadata
+        last_modified = response["LastModified"]
 
-    logger.info(f"Using StartAfter key: {start_after_key}")
+        # Ensure last_modified is timezone-aware
+        if last_modified.tzinfo is None:
+            last_modified = last_modified.replace(tzinfo=timezone.utc)
 
-    # List objects starting from the cutoff timestamp
-    images = []
-    continuation_token = None
+        # Generate presigned URL for the image
+        url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": AWS_ASSET_BUCKET_NAME, "Key": key},
+            ExpiresIn=3600,  # URL valid for 1 hour
+        )
 
-    while True:
-        # Prepare list_objects_v2 parameters
-        list_params = {
-            "Bucket": AWS_ASSET_BUCKET_NAME,
-            "Prefix": prefix,
-            "StartAfter": start_after_key,
-        }
-        if continuation_token:
-            list_params["ContinuationToken"] = continuation_token
+        image_metadata = ImageMetadata(
+            file_name=f"{camera_name}.png",
+            url=url,
+            last_modified=last_modified.isoformat(),
+            size=response["ContentLength"],
+        )
 
-        response = s3_client.list_objects_v2(**list_params)
+        logger.info(f"Found image: {camera_name}.png")
+        return image_metadata
 
-        # Process the objects (all should be within time range due to StartAfter)
-        for obj in response.get("Contents", []):
-            # Extract filename from the key
-            file_name = obj["Key"].split("/")[-1]
-
-            # Skip if it's a "folder" (ends with /)
-            if not file_name:
-                continue
-
-            # Get last_modified from S3 metadata
-            last_modified = obj["LastModified"]
-
-            # Ensure last_modified is timezone-aware
-            if last_modified.tzinfo is None:
-                last_modified = last_modified.replace(tzinfo=timezone.utc)
-
-            # Generate presigned URL for the image
-            url = s3_client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": AWS_ASSET_BUCKET_NAME, "Key": obj["Key"]},
-                ExpiresIn=3600,  # URL valid for 1 hour
-            )
-
-            image_metadata = ImageMetadata(
-                file_name=file_name,
-                url=url,
-                last_modified=last_modified.isoformat(),
-                size=obj["Size"],
-            )
-            images.append(image_metadata)
-
-        # Check if there are more results
-        if response.get("IsTruncated"):
-            continuation_token = response.get("NextContinuationToken")
-        else:
-            break
-
-    # Sort images by last_modified (newest first)
-    images.sort(key=lambda x: x.last_modified, reverse=True)
-
-    logger.info(f"Found {len(images)} images within the last {request.seconds} seconds")
-
-    return GetCameraImagesResponse(images=images, total_count=len(images))
+    except s3_client.exceptions.NoSuchKey:
+        logger.error(f"Image not found: {key}")
+        raise FileNotFoundError(f"Image {camera_name}.png not found")
+    except Exception as e:
+        logger.error(f"Error retrieving image: {str(e)}")
+        raise

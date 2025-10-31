@@ -3,13 +3,12 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.camera import (
-    GetCameraImagesRequest,
-    GetCameraImagesResponse,
     GetCamerasRequest,
     GetCamerasResponse,
+    ImageMetadata,
 )
 from api.schemas.error.error import ErrorResponse
-from services.vision_service import get_camera_images, get_cameras_under_project
+from services.vision_service import get_camera_image, get_cameras_under_project
 from utils.log import logger
 
 
@@ -61,13 +60,13 @@ async def get_cameras_under_project_handler(
         )
 
 
-async def get_camera_images_handler(
-    account_id: str, project_id: str, camera_name: str, seconds: int
-) -> GetCameraImagesResponse:
+async def get_camera_image_handler(
+    account_id: str, project_id: str, camera_name: str
+) -> ImageMetadata:
     try:
         logger.info(
-            f"Getting images for account `{account_id}`, project `{project_id}`, "
-            f"camera `{camera_name}` within last {seconds} seconds"
+            f"Getting image for account `{account_id}`, project `{project_id}`, "
+            f"camera `{camera_name}`"
         )
 
         if not account_id:
@@ -76,16 +75,8 @@ async def get_camera_images_handler(
             raise ValueError("Project ID is required.")
         if not camera_name:
             raise ValueError("Camera name is required.")
-        if seconds <= 0:
-            raise ValueError("Seconds must be greater than 0.")
 
-        request = GetCameraImagesRequest(
-            account_id=account_id,
-            project_id=project_id,
-            camera_name=camera_name,
-            seconds=seconds,
-        )
-        return get_camera_images(request)
+        return get_camera_image(account_id, project_id, camera_name)
 
     except ValueError as ve:
         # Log and handle validation errors
@@ -96,9 +87,18 @@ async def get_camera_images_handler(
                 error_code="VALIDATION_ERROR", error_message=str(ve)
             ).model_dump(),
         )
+    except FileNotFoundError as fnf:
+        # Log and handle file not found
+        logger.error(f"Image not found: {fnf}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse(
+                error_code="IMAGE_NOT_FOUND", error_message=str(fnf)
+            ).model_dump(),
+        )
     except Exception as e:
         # Log the error
-        logger.error(f"Error getting camera images: {str(e)}")
+        logger.error(f"Error getting camera image: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
