@@ -653,6 +653,7 @@ async def list_checkpoint_results_by_submission(
 
     This endpoint returns checkpoint results filtered by the required project_id,
     with authorization enforced to ensure user has access to that project.
+    Results now include review information (review, reviewer, is_reviewed).
 
     Args:
         status_filter: Optional filter by status (processing, active, failed)
@@ -661,7 +662,8 @@ async def list_checkpoint_results_by_submission(
         session: Database session
 
     Returns:
-        ListCheckpointResultsBySubmissionResponse with results grouped by submission_id
+        ListCheckpointResultsBySubmissionResponse with results grouped by submission_id,
+        each result includes review fields (review, reviewer, is_reviewed)
 
     Raises:
         HTTPException: If project not found or authorization fails
@@ -848,6 +850,88 @@ async def record_checkpoint_run(
             status=status_param,
             image_url=presigned_url,
         )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+
+async def update_checkpoint_run_review_fields(
+    run_id: uuid.UUID,
+    review: str | None,
+    reviewer: str | None,
+    is_reviewed: bool | None,
+    context: UserContext,
+    session: Session,
+) -> dict:
+    """
+    Update review fields (review, reviewer, is_reviewed) for a checkpoint run.
+
+    Args:
+        run_id: UUID of the checkpoint run to update
+        review: Optional review comments/notes
+        reviewer: Optional reviewer name or email
+        is_reviewed: Optional reviewed status flag
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        dict: Success message with updated run details
+
+    Raises:
+        HTTPException: If run not found or authorization fails
+    """
+    # Get the checkpoint run to validate it exists and get its checkpoint
+    run = checkpoint_service.get_checkpoint_result(session, run_id)
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint run {run_id} not found",
+        )
+
+    # Get checkpoint to validate authorization
+    checkpoint = checkpoint_service.get_checkpoint(session, run.checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint {run.checkpoint_id} not found",
+        )
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {checkpoint.project_id} not found",
+        )
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {project.account_id} not found",
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Update the review fields
+    try:
+        updated_run = checkpoint_service.update_checkpoint_run_review(
+            session=session,
+            run_id=run_id,
+            review=review,
+            reviewer=reviewer,
+            is_reviewed=is_reviewed,
+        )
+
+        return {
+            "message": "Review fields updated successfully",
+            "run_id": str(updated_run.id),
+            "review": updated_run.review,
+            "reviewer": updated_run.reviewer,
+            "is_reviewed": updated_run.is_reviewed,
+        }
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

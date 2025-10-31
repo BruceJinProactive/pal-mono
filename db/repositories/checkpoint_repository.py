@@ -415,3 +415,57 @@ def save_checkpoint_result(
         session.rollback()
         logger.error(f"Error saving checkpoint result: {e}")
         raise
+
+
+def update_checkpoint_run_review(
+    session: Session,
+    run_id: UUID,
+    review: str | None = None,
+    reviewer: str | None = None,
+    is_reviewed: bool | None = None,
+) -> CheckpointRun:
+    """
+    Update review fields of a checkpoint run.
+
+    Args:
+        session: Database session
+        run_id: UUID of the checkpoint run to update
+        review: Optional review comments/notes
+        reviewer: Optional reviewer name or email
+        is_reviewed: Optional reviewed status flag
+
+    Returns:
+        CheckpointRun: The updated checkpoint run record
+
+    Raises:
+        ValueError: If checkpoint run not found
+    """
+    try:
+        checkpoint_run = (
+            session.query(CheckpointRun).filter(CheckpointRun.id == run_id).first()
+        )
+
+        if not checkpoint_run:
+            raise ValueError(f"CheckpointRun {run_id} not found")
+
+        # Update only provided fields
+        if review is not None:
+            checkpoint_run.review = review
+        if reviewer is not None:
+            checkpoint_run.reviewer = reviewer
+        if is_reviewed is not None:
+            checkpoint_run.is_reviewed = is_reviewed
+
+        session.commit()
+        session.refresh(checkpoint_run)
+
+        logger.info(
+            f"Updated checkpoint run {run_id} review fields: "
+            f"is_reviewed={checkpoint_run.is_reviewed}, reviewer={checkpoint_run.reviewer}"
+        )
+
+        return checkpoint_run
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Error updating checkpoint run review: {e}")
+        raise

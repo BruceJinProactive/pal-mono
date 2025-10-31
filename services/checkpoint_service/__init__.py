@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 import db
 
-from . import _implementation
+from . import _implementation, _implementation_review
 
 
 def create_checkpoint(session: Session, checkpoint: db.CheckPoint) -> db.CheckPoint:
@@ -382,6 +382,34 @@ def update_checkpoint_run_image(
     return _implementation.update_checkpoint_run_image(session, run_id, image_url)
 
 
+def update_checkpoint_run_review(
+    session: Session,
+    run_id: UUID,
+    review: str | None = None,
+    reviewer: str | None = None,
+    is_reviewed: bool | None = None,
+) -> db.CheckpointRun:
+    """
+    Update review fields of a checkpoint run.
+
+    Args:
+        session: Database session
+        run_id: UUID of the checkpoint run to update
+        review: Optional review comments/notes
+        reviewer: Optional reviewer name or email
+        is_reviewed: Optional reviewed status flag
+
+    Returns:
+        db.CheckpointRun: The updated checkpoint run record
+
+    Raises:
+        ValueError: If run not found
+    """
+    return _implementation_review.update_checkpoint_run_review(
+        session, run_id, review, reviewer, is_reviewed
+    )
+
+
 __all__ = [
     "create_checkpoint",
     "list_checkpoints",
@@ -401,4 +429,5 @@ __all__ = [
     "update_checkpoint_result",
     "record_checkpoint_run",
     "update_checkpoint_run_image",
+    "update_checkpoint_run_review",
 ]

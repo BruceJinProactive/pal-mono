@@ -23,6 +23,7 @@ from api.schemas.admin.checkpoint import (
     ListCheckpointResultsBySubmissionResponse,
     ListCheckpointsResponse,
     RecordCheckpointRunResponse,
+    UpdateCheckpointRunReviewRequest,
 )
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import CheckStatus
@@ -426,22 +427,35 @@ async def list_checkpoint_results_by_submission(
 
     This endpoint returns checkpoint results filtered by the required project_id,
     grouped by their submission_id for easy tracking of multi-checkpoint submissions.
+    Each result now includes review information (review, reviewer, is_reviewed).
 
     Query parameters:
     - project_id (required): Project ID to filter checkpoint results
     - status (optional): Filter results by status (processing, active, failed)
 
     Returns:
-    - results: Dictionary mapping submission_id to list of checkpoint results
+    - results: Dictionary mapping submission_id to list of checkpoint results (with review fields)
     - total_submissions: Total number of unique submissions
 
     Example response:
     {
       "results": {
-        "submission-uuid-1": [result1, result2],
-        "submission-uuid-2": [result3]
+        "submission-uuid-1": [
+          {
+            "id": "run-uuid",
+            "checkpoint_id": "checkpoint-uuid",
+            "submission_id": "submission-uuid-1",
+            "result": {...},
+            "status": "active",
+            "review": "Approved",
+            "reviewer": "admin@example.com",
+            "is_reviewed": true,
+            "created_at": "2025-10-30T...",
+            "updated_at": "2025-10-30T..."
+          }
+        ]
       },
-      "total_submissions": 2
+      "total_submissions": 1
     }
     """
     return await _checkpoint.list_checkpoint_results_by_submission(
@@ -485,4 +499,41 @@ async def list_checkpoint_results_by_checkpoint(
     """
     return await _checkpoint.list_checkpoint_results_by_checkpoint(
         checkpoint_id, context, session
+    )
+
+
+@operation_router.patch(
+    "/checkpoints/runs/{run_id}/review", status_code=status.HTTP_200_OK
+)
+async def update_checkpoint_run_review(
+    run_id: uuid.UUID,
+    request: "UpdateCheckpointRunReviewRequest",
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Update review fields (review, reviewer, is_reviewed) for a checkpoint run.
+
+    This endpoint allows updating the review status and comments for a specific checkpoint run
+    identified by its run_id. All fields are optional - only provide the fields you want to update.
+
+    Path Parameters:
+    - run_id (required): UUID of the checkpoint run to update
+
+    Request Body:
+    - review (optional): Review comments/notes
+    - reviewer (optional): Name or email of the reviewer
+    - is_reviewed (optional): Whether the run has been reviewed (true/false)
+
+    Returns:
+    - message: Success message
+    - run_id: ID of the updated run
+    - review: Updated review comment
+    - reviewer: Updated reviewer
+    - is_reviewed: Updated review status
+
+    ```
+    """
+    return await _checkpoint.update_checkpoint_run_review_fields(
+        run_id, request.review, request.reviewer, request.is_reviewed, context, session
     )

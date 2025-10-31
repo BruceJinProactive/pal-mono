@@ -56,6 +56,9 @@ class CheckpointResult(BaseModel):
     submission_id: str
     result: dict
     status: str
+    review: str | None = None
+    reviewer: str | None = None
+    is_reviewed: bool = False
     created_at: str
     updated_at: str | None
 
@@ -82,4 +85,14 @@ class RecordCheckpointRunResponse(BaseModel):
     status: str = Field(..., description="Status recorded")
     image_url: str | None = Field(
         None, description="Presigned S3 URL of uploaded image (null if no image)"
+    )
+
+
+class UpdateCheckpointRunReviewRequest(BaseModel):
+    """Request model for updating review fields of a checkpoint run"""
+
+    review: str | None = Field(None, description="Review comments/notes")
+    reviewer: str | None = Field(None, description="Name or email of reviewer")
+    is_reviewed: bool | None = Field(
+        None, description="Whether the run has been reviewed"
     )

@@ -551,6 +551,9 @@ def build_checkpoint_result(
         submission_id=str(checkpoint_result.submission_id),
         result=checkpoint_result.result or {},
         status=checkpoint_result.status.value,
+        review=checkpoint_result.review,
+        reviewer=checkpoint_result.reviewer,
+        is_reviewed=checkpoint_result.is_reviewed,
         created_at=checkpoint_result.created_at.isoformat(),
         updated_at=(
             checkpoint_result.updated_at.isoformat()
