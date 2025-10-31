@@ -772,6 +772,7 @@ def create_stripe_checkout_url(
     external_id: uuid.UUID,
     customer_email: str | None,
     redirect_url_prefix: str,
+    referral_code: str | None = None,
 ) -> str | None:
     """
     Create a Stripe checkout URL for a subscription.
@@ -783,6 +784,7 @@ def create_stripe_checkout_url(
         project_ids: List of project UUIDs to associate with the subscription
         customer_email: Optional email for the customer
         redirect_url_prefix: URL prefix for success/cancel redirects
+        referral_code: Optional Rewardful referral token from ?via= parameter
 
     Returns:
         Checkout URL string or None if subscription not found
@@ -935,6 +937,7 @@ def create_stripe_checkout_url(
         redirect_url_prefix=redirect_url_prefix,
         start_date=subscription.start_date,
         existing_customer_id=existing_stripe_customer_id,
+        referral_code=referral_code,
     )
 
     if not checkout_session or not checkout_session.url:

@@ -140,6 +140,7 @@ class CreateSubscriptionRequest(BaseModel):
     payment_method: PaymentMethod
     schedule: SubscriptionSchedule | None
     project_ids: Optional[list[uuid.UUID]] = None
+    referral_code: str | None = None
 
     def to_subscription_params(self) -> SubscriptionParams:
         return SubscriptionParams(
@@ -257,6 +258,7 @@ class UpdateAccountSubscriptionStatusResponse(BaseModel):
 class CreateCheckoutSessionRequest(BaseModel):
     customer_email: EmailStr | None = None
     redirect_url_prefix: AnyHttpUrl
+    referral_code: str | None = None
 
 
 class ProjectSubscription(BaseModel):

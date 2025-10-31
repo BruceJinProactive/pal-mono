@@ -26,6 +26,7 @@ def create_checkout_session(
     redirect_url_prefix: str,
     start_date: datetime | None = None,
     existing_customer_id: str | None = None,
+    referral_code: str | None = None,
 ) -> Session:
     """
     Creates a new checkout session that allows user to subscribe to our product and
@@ -39,6 +40,7 @@ def create_checkout_session(
         start_date: Optional datetime when billing starts and trial ends.
                    If None, subscription begins immediately with no trial.
         existing_customer_id: Optional existing Stripe customer ID to reuse
+        referral_code: Optional Rewardful referral token from ?via= parameter
 
     Returns:
         Stripe checkout session object
@@ -57,12 +59,16 @@ def create_checkout_session(
     redirect_url_prefix = redirect_url_prefix.rstrip("/")
 
     # Build subscription_data
-    subscription_data_params: Dict[str, Any] = {
-        "metadata": {
-            SUBSCRIPTION_EXTERNAL_ID: str(subscription_external_id),
-            REDIRECT_URL: f"{redirect_url_prefix}/success",
-        }
+    subscription_metadata = {
+        SUBSCRIPTION_EXTERNAL_ID: str(subscription_external_id),
+        REDIRECT_URL: f"{redirect_url_prefix}/success",
     }
+
+    # Add Rewardful referral code if present
+    if referral_code:
+        subscription_metadata["rewardful_referral"] = referral_code
+
+    subscription_data_params: Dict[str, Any] = {"metadata": subscription_metadata}
 
     if start_date and start_date > datetime.now(UTC):
         # If start_date is in the future, then there is a trial.
@@ -83,6 +89,11 @@ def create_checkout_session(
         )
 
     try:
+        # Build checkout session metadata
+        checkout_metadata = {}
+        if referral_code:
+            checkout_metadata["rewardful_referral"] = referral_code
+
         session_params = {
             "mode": "subscription",
             "line_items": line_items,
@@ -92,13 +103,40 @@ def create_checkout_session(
             "cancel_url": f"{redirect_url_prefix}?action=payment_cancelled",
         }
 
+        # Add metadata to checkout session if we have any
+        if checkout_metadata:
+            session_params["metadata"] = checkout_metadata
+
         if existing_customer_id:
             session_params["customer"] = existing_customer_id
-            session_params["customer_update"] = {
-                "name": "auto",
-            }
+            session_params["customer_update"] = {"name": "auto"}
+
+            # Update existing customer with referral code metadata
+            if referral_code:
+                try:
+                    existing_customer = stripe.Customer.retrieve(existing_customer_id)
+                    updated_metadata = (
+                        dict(existing_customer.metadata)
+                        if existing_customer.metadata
+                        else {}
+                    )
+                    updated_metadata["rewardful_referral"] = referral_code
+
+                    stripe.Customer.modify(
+                        existing_customer_id, metadata=updated_metadata
+                    )
+                    logger.info(
+                        f"Updated Stripe customer {existing_customer_id} with referral code: {referral_code}"
+                    )
+                except stripe.StripeError as e:
+                    logger.warning(
+                        f"Failed to update customer metadata with referral code: {e}",
+                        extra={"customer_id": existing_customer_id},
+                    )
         elif customer_email:
             session_params["customer_email"] = customer_email
+            # For new customers, Stripe will auto-create the customer
+            # The subscription metadata will be inherited by the customer
         logger.info(f"Stripe checkout parameter: {session_params}")
         return stripe.checkout.Session.create(**session_params)
     except stripe.InvalidRequestError as e:

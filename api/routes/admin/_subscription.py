@@ -413,6 +413,7 @@ def create_checkout_session(
                 str(request.customer_email) if request.customer_email else None
             ),
             redirect_url_prefix=str(request.redirect_url_prefix),
+            referral_code=request.referral_code,
         )
     except RuntimeError as err:
         logger.exception(str(err))
