@@ -171,6 +171,10 @@ class Modifier(BaseModel):
         default=SelectionType.NONE,
     )
 
+    class Config:
+        # Allow extra fields from API response (e.g., receiptLinePrice, preDiscountPrice, price)
+        extra = "allow"
+
 
 class OrderItemFulfillmentStatus(str, Enum):
     NEW = "NEW"
@@ -196,6 +200,10 @@ class ItemSelection(BaseModel):
     fulfillmentStatus: SkipJsonSchema[Optional[OrderItemFulfillmentStatus]] = Field(
         None, description="The fulfillment status of the item selection"
     )
+
+    class Config:
+        # Allow extra fields from API response (e.g., displayName, receiptLinePrice, preDiscountPrice)
+        extra = "allow"
 
 
 # Payment type must either be "CREDIT" or "OTHER"

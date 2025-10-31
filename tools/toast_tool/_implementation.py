@@ -4,7 +4,7 @@ import textwrap
 import time
 import traceback
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 import jwt
 import polyline
@@ -111,7 +111,7 @@ class ToastTool(Toolkit):
 
         # Register tools
         if self.enable_hosted_checkout:
-            self.register(self.checkout_order_with_payment_intent)
+            self.register(self.checkout_order_with_payment_iframe)
         else:
             self.register(self.checkout_order)
 
@@ -485,7 +485,7 @@ class ToastTool(Toolkit):
     # TODO: decide if we want to use order.externalId for payment intent's externalReferenceId
     # TODO: Add tips
     @tool
-    def checkout_order_with_payment_intent(self) -> str:
+    def checkout_order_with_payment_iframe(self) -> str:
         """
         Creates a payment intent for an order with hosted checkout iframe support.
 
@@ -514,7 +514,7 @@ class ToastTool(Toolkit):
         try:
             # Check if store is open
             logger.debug(
-                "[ToastTool.checkout_order_with_payment_intent] Checking store status"
+                "[ToastTool.checkout_order_with_payment_iframe] Checking store status"
             )
             if not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
@@ -561,44 +561,69 @@ class ToastTool(Toolkit):
             )
             if not toast_hosted_payment_iframe_bearer_token:
                 logger.error(
-                    "[ToastTool.checkout_order_with_payment_intent] No hosted checkout payment bearer token available"
+                    "[ToastTool.checkout_order_with_payment_iframe] No hosted checkout payment bearer token available"
                 )
                 return "Failed to authenticate payment tool. Please contact the store to complete your order."
 
-            # Generate iframe payment link
-            payment_link = self._generate_iframe_payment_link(
-                order.checks[0].customer.email,
-                (
-                    order.checks[0].customer.firstName
-                    + " "
-                    + order.checks[0].customer.lastName
-                ).strip(),
-                order.checks[0].customer.phone,
-                self.store_id,
-                order.externalId,
-                payment_intent_external_reference_id,
-                payment_intent_result.sessionSecret,
-                subtotal_cents=(
-                    int(order.checks[0].amount * 100) if order.checks[0].amount else 0
-                ),
-                tax=(
-                    int(order.checks[0].taxAmount * 100)
-                    if order.checks[0].taxAmount
-                    else 0
-                ),
-                total_cents=payment_intent_result.amount,
-                tips_cents=0,
+            # Extract order items from the submitted order
+            order_items = self._extract_order_items(order)
+            logger.debug(
+                f"[ToastTool.checkout_order_with_payment_iframe] Extracted {len(order_items)} order items"
             )
 
-            # Return payment intent details
+            # Create a concise order summary from extracted items
+            order_summary_lines = []
+            for item in order_items:
+                item_line = f"- {item['name']} (x{item['quantity']})"
+                if item.get("modifiers"):
+                    # If modifiers is a list of strings
+                    if isinstance(item["modifiers"], list) and item["modifiers"]:
+                        if isinstance(item["modifiers"][0], str):
+                            mods = ", ".join(item["modifiers"])
+                        else:
+                            # If modifiers is a list of dicts
+                            mods = ", ".join(
+                                [
+                                    m.get("name", "")
+                                    for m in item["modifiers"]
+                                    if m.get("name")
+                                ]
+                            )
+                        if mods:
+                            item_line += f" [{mods}]"
+                order_summary_lines.append(item_line)
+
+            order_summary = "\n".join(order_summary_lines)
+
+            # Create concise confirmation message using extracted order items
+            concise_confirmation = (
+                f"Order #{order.guid} submitted successfully! "
+                f"Your total is ${order.checks[0].totalAmount}.\n\n"
+                f"Order summary:\n{order_summary}\n\n"
+                f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
+            )
+
+            # Build hosted payment payload
+            payment_payload = self._build_hosted_payment_payload(
+                order=order,
+                payment_intent_external_reference_id=payment_intent_external_reference_id,
+                session_secret=payment_intent_result.sessionSecret,
+                payment_intent_amount=payment_intent_result.amount,
+                order_items=order_items,
+            )
+
+            # Generate iframe payment link
+            payment_link = self._generate_iframe_payment_link(payment_payload)
+
+            # Return payment intent details with concise confirmation
             return_msg = (
-                confirmation_message
+                concise_confirmation
                 + f"\n\nThe following is the payment link, ask the user to use the link to checkout: {payment_link}\n\nYou MUST INCLUDE THE COMPLETE URL in your response and format it as a Markdown link. For example, [payment link](COMPLETE_URL_HERE) YOU MUST NOT OMIT ANY PART OF THE URL."
             )
             return return_msg
 
         except Exception as e:
-            logger.error(f"[ToastTool.checkout_order_with_payment_intent] Error: {e}")
+            logger.error(f"[ToastTool.checkout_order_with_payment_iframe] Error: {e}")
             logger.error(traceback.format_exc())
             return "Failed to create payment intent. Please try again."
 
@@ -1142,29 +1167,73 @@ class ToastTool(Toolkit):
             )
             return "Failed to create payment intent. Please try again."
 
-    def _generate_iframe_payment_link(
+    def _build_hosted_payment_payload(
         self,
-        email: str,
-        name: str,
-        phone: str,
-        store_id: str,
-        order_external_id: str,
+        *,
+        order: Order,
         payment_intent_external_reference_id: str,
         session_secret: str,
-        subtotal_cents: int,
-        tax: int,
-        total_cents: int,
-        tips_cents: int = 0,
+        payment_intent_amount: int,
+        order_items: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Builds the payload for the hosted payment iframe.
+
+        Args:
+            order: The submitted Toast Order object
+            payment_intent_external_reference_id: External reference ID for the payment intent
+            session_secret: Session secret from the payment intent
+            payment_intent_amount: Total amount for the payment intent in cents
+            order_items: Extracted order items for cart display
+
+        Returns:
+            Dictionary containing all payment payload data
+        """
+        customer = order.checks[0].customer
+        full_name = (customer.firstName + " " + customer.lastName).strip()
+
+        payload: dict[str, Any] = {
+            "email": customer.email,
+            "name": full_name,
+            "phone": customer.phone,
+            "storeId": self.store_id,
+            "orderExternalId": order.externalId,
+            "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
+            "subtotal": (
+                int(order.checks[0].amount * 100) if order.checks[0].amount else 0
+            ),
+            "tax": (
+                int(order.checks[0].taxAmount * 100) if order.checks[0].taxAmount else 0
+            ),
+            "total": payment_intent_amount,
+            "tips": 0,
+            "sessionSecret": session_secret,
+            "orderItems": order_items or [],
+        }
+
+        logger.debug(
+            "[ToastTool._build_hosted_payment_payload] Payload composed",
+            extra={
+                "store_id": payload["storeId"],
+                "order_external_id": payload["orderExternalId"],
+                "order_items": len(payload["orderItems"]),
+            },
+        )
+
+        return payload
+
+    def _generate_iframe_payment_link(
+        self,
+        payload: dict[str, Any],
         payment_api_endpoint: str = "https://ws-sandbox-api.eng.toasttab.com",
     ) -> str:
         """
-        Generates a hosted payment iframe link for the given order and payment intent.
+        Generates a hosted payment iframe link for the given payment payload.
 
         Args:
-            store_id (str): The store ID.
-            order_external_id (str): The external ID of the order.
-            payment_intent_external_reference_id (str): The external reference ID of the payment intent.
-            session_secret (str): The session secret from the payment intent.
+            payload: Payment payload dictionary containing order and payment details
+            payment_api_endpoint: Toast API endpoint for getting bearer token
+
         Returns:
             str: The URL for the hosted payment iframe.
         """
@@ -1201,27 +1270,30 @@ class ToastTool(Toolkit):
                 public_exponent=65537, key_size=2048, backend=default_backend()
             )
 
-            # Create JWT payload with required claims
-            payload = {
-                "email": email,
-                "name": name,
-                "phone": phone,
-                "storeId": store_id,
-                "orderExternalId": order_external_id,
-                "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
-                "subtotal": subtotal_cents,
-                "tax": tax,
-                "total": total_cents,
-                "tips": tips_cents,
-                "sessionSecret": session_secret,
+            # Create JWT payload with required claims from the payment payload
+            jwt_payload = {
+                "email": payload["email"],
+                "name": payload["name"],
+                "phone": payload["phone"],
+                "storeId": payload["storeId"],
+                "orderExternalId": payload["orderExternalId"],
+                "paymentIntentExternalReferenceId": payload[
+                    "paymentIntentExternalReferenceId"
+                ],
+                "subtotal": payload["subtotal"],
+                "tax": payload["tax"],
+                "total": payload["total"],
+                "tips": payload["tips"],
+                "sessionSecret": payload["sessionSecret"],
                 "iframeBearerToken": iframe_bearer_token.access_token,
+                "orderItems": payload.get("orderItems", []),
                 "iat": int(time.time()),
                 "exp": int(time.time()) + 15 * 60,  # Token valid for 15 minutes
             }
 
             # Sign JWT with RS256 algorithm
             token = jwt.encode(
-                payload,
+                jwt_payload,
                 private_key,
                 algorithm="RS256",
             )
@@ -1243,3 +1315,130 @@ class ToastTool(Toolkit):
                 f"[ToastTool._generate_iframe_payment_link] Error generating iframe payment link: {e}"
             )
             return "Failed to generate payment link. Please try again."
+
+    def _extract_order_items(self, order: Order) -> list[dict[str, Any]]:
+        """
+        Extracts order items from a Toast Order object into a simplified cart format.
+
+        Args:
+            order: Toast Order object returned from submit_order
+
+        Returns:
+            List of dictionaries containing simplified cart items with modifiers
+        """
+        if not order or not order.checks:
+            return []
+
+        order_items: list[dict[str, Any]] = []
+
+        # Convert Order to dict to access extra fields that aren't in the Pydantic model
+        order_dict = order.model_dump()
+
+        # Debug: Log the first selection to see what fields are available
+        if order_dict.get("checks") and order_dict["checks"][0].get("selections"):
+            first_selection = order_dict["checks"][0]["selections"][0]
+            logger.debug(
+                f"[ToastTool._extract_order_items] First selection keys: {list(first_selection.keys())}"
+            )
+            logger.debug(
+                f"[ToastTool._extract_order_items] First selection displayName: {first_selection.get('displayName')}"
+            )
+            logger.debug(
+                f"[ToastTool._extract_order_items] First selection item guid: {first_selection.get('item', {}).get('guid')}"
+            )
+
+        # Toast orders have checks, and each check has selections (items)
+        for check_dict in order_dict.get("checks", []):
+            selections = check_dict.get("selections", [])
+            if not selections:
+                continue
+
+            for selection in selections:
+                # Extract item name from displayName or fallback to item guid
+                name = selection.get("displayName")
+                if not name:
+                    # Fallback to item guid if displayName is not available
+                    item = selection.get("item", {})
+                    item_guid = item.get("guid") if item else None
+                    name = str(item_guid) if item_guid else "Unknown Item"
+
+                # Get pricing information with fallbacks
+                receipt_price = selection.get("receiptLinePrice")
+                pre_discount_price = selection.get("preDiscountPrice")
+                totalcost = (
+                    receipt_price if receipt_price is not None else pre_discount_price
+                )
+
+                # Create the base item entry
+                entry: dict[str, Any] = {
+                    "name": name,
+                    "quantity": selection.get("quantity", 1),
+                    "totalcost": totalcost,
+                }
+
+                # Add special instructions if available
+                special_instructions = selection.get("specialinstructions")
+                if special_instructions:
+                    entry["specialinstructions"] = special_instructions
+
+                # Extract modifiers recursively
+                modifiers = selection.get("modifiers", [])
+                if modifiers:
+                    modifier_entries = self._extract_modifiers_recursive_from_dict(
+                        modifiers
+                    )
+                    if modifier_entries:
+                        entry["modifiers"] = modifier_entries
+
+                order_items.append(entry)
+
+        return order_items
+
+    def _extract_modifiers_recursive_from_dict(
+        self, modifiers: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """
+        Recursively extracts modifiers from a list of modifier dictionaries.
+
+        Args:
+            modifiers: List of modifier dictionaries from Order response
+
+        Returns:
+            List of dictionaries containing simplified modifier information
+        """
+        modifier_entries: list[dict[str, Any]] = []
+
+        for modifier in modifiers:
+            # Extract modifier name from displayName or fallback to item guid
+            modifier_name = modifier.get("displayName")
+            if not modifier_name:
+                # Fallback to item guid if displayName is not available
+                item = modifier.get("item", {})
+                item_guid = item.get("guid") if item else None
+                modifier_name = str(item_guid) if item_guid else "Unknown Modifier"
+
+            modifier_entry: dict[str, Any] = {
+                "name": modifier_name,
+                "quantity": modifier.get("quantity", 1),
+            }
+
+            # Add price information if available
+            receipt_price = modifier.get("receiptLinePrice")
+            pre_discount_price = modifier.get("preDiscountPrice")
+            if receipt_price is not None:
+                modifier_entry["totalcost"] = receipt_price
+            elif pre_discount_price is not None:
+                modifier_entry["totalcost"] = pre_discount_price
+
+            # Recursively handle nested modifiers
+            nested_modifiers = modifier.get("modifiers", [])
+            if nested_modifiers:
+                nested_modifier_entries = self._extract_modifiers_recursive_from_dict(
+                    nested_modifiers
+                )
+                if nested_modifier_entries:
+                    modifier_entry["modifiers"] = nested_modifier_entries
+
+            modifier_entries.append(modifier_entry)
+
+        return modifier_entries
