@@ -8,7 +8,7 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
-from api.schemas.admin.camera import GetCamerasResponse
+from api.schemas.admin.camera import GetCameraImagesResponse, GetCamerasResponse
 from api.schemas.admin.checklist import (
     BatchChecklistHistoryResponse,
     Checklist,
@@ -66,6 +66,40 @@ async def get_cameras_under_project(
     """
     return await _implementation.get_cameras_under_project_handler(
         account_id, project_id
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_name}/images",
+    response_model=GetCameraImagesResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
+async def get_camera_images(
+    account_id: str,
+    project_id: str,
+    camera_name: str,
+    seconds: int = Query(
+        ..., description="Time range in seconds to retrieve images from", gt=0
+    ),
+    context: UserContext = Depends(authenticate_user),
+) -> GetCameraImagesResponse:
+    """
+    Get all images from a camera within the last X seconds.
+
+    Path Parameters:
+    - account_id: The account ID
+    - project_id: The project ID
+    - camera_name: The camera name/ID
+
+    Query Parameters:
+    - seconds: Time range in seconds to retrieve images from (must be > 0)
+
+    Returns:
+    - images: List of images with metadata (filename, URL, last_modified, size)
+    - total_count: Total number of images found
+    """
+    return await _implementation.get_camera_images_handler(
+        account_id, project_id, camera_name, seconds
     )
 
 
