@@ -168,6 +168,8 @@ async def get_checklist_history(
         - total_checkpoints: Total current checkpoints
         - with_runs: Count with runs in date range
         - missing_runs: Count without runs in date range
+        - reviewed_runs: Count of reviewed runs in date range
+        - unreviewed_runs: Count of unreviewed runs in date range
 
     Authorization: Via checklist → project → account
     """

@@ -323,6 +323,8 @@ async def get_checklist_history(
     checkpoint_items = []
     with_runs = 0
     missing_runs = 0
+    reviewed_runs = 0
+    unreviewed_runs = 0
 
     for checkpoint in current_checkpoints:
         # Get the latest run for this checkpoint in the date range
@@ -337,6 +339,13 @@ async def get_checklist_history(
         last_run_detail = None
         if latest_run:
             with_runs += 1
+
+            # Count review status
+            if latest_run.is_reviewed:
+                reviewed_runs += 1
+            else:
+                unreviewed_runs += 1
+
             # Extract image URL from result JSON if available
             image_url = (
                 latest_run.result.get("image_url") if latest_run.result else None
@@ -371,6 +380,8 @@ async def get_checklist_history(
         total_checkpoints=len(current_checkpoints),
         with_runs=with_runs,
         missing_runs=missing_runs,
+        reviewed_runs=reviewed_runs,
+        unreviewed_runs=unreviewed_runs,
     )
 
     return ChecklistHistoryResponse(

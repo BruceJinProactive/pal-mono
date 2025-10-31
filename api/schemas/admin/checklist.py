@@ -79,6 +79,10 @@ class ChecklistHistorySummary(BaseModel):
     total_checkpoints: int = Field(..., description="Total current checkpoints")
     with_runs: int = Field(..., description="Checkpoints with runs in date range")
     missing_runs: int = Field(..., description="Checkpoints without runs in date range")
+    reviewed_runs: int = Field(..., description="Count of reviewed runs in date range")
+    unreviewed_runs: int = Field(
+        ..., description="Count of unreviewed runs in date range"
+    )
 
 
 class ChecklistHistoryResponse(BaseModel):
