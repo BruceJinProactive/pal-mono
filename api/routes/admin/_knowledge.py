@@ -16,7 +16,7 @@ from db.tables.types import IntegrationProvider
 from services import admin_service, agent_service, knowledge_service, project_service
 from utils.log import logger
 
-from . import UserContext, _auth, _integration
+from . import UserContext, _auth
 from ._utils import not_found_error
 
 
@@ -184,21 +184,39 @@ async def update_agent_kb(
         if not project:
             raise not_found_error("Project not found")
 
-        # Get the POS integration directly
-        pos_integration = _integration.get_integration_by_project_and_type(
-            account_name,
-            project_id,
-            IntegrationType.pos,
-            context,
-            session,
+        # Get all project integrations for this project
+        project_integration_repository = db.ProjectIntegrationRepository(session)
+        project_integrations = (
+            project_integration_repository.get_project_integrations_by_project_id(
+                project_id
+            )
         )
 
-        print(f"pos_integration: {pos_integration}")
+        # Find the POS project integration
+        pos_project_integration = None
+        pos_integration = None
+        for pi in project_integrations:
+            # Get the integration to check its type
+            integration_repository = db.IntegrationRepository(session)
+            integration = integration_repository.get_integration_by_id(
+                project.account_id, pi.integration_id
+            )
+            if integration and integration.integration_type == IntegrationType.pos:
+                pos_project_integration = pi
+                pos_integration = integration
+                break
 
-        # Get the store identifier from the POS integration
-        store_id = pos_integration.business_id
+        if not pos_project_integration:
+            raise ValueError("POS project integration not found")
+
+        # Get the integration details
+        if not pos_integration:
+            raise ValueError("POS integration not found")
+
+        # Get the store identifier from the ProjectIntegration
+        store_id = pos_project_integration.store_identifier
         if not store_id:
-            raise ValueError("Store identifier not found in the POS integration")
+            raise ValueError("Store identifier not found in the project integration")
 
         # Provider-aware validation and parameter selection
         provider = pos_integration.provider
