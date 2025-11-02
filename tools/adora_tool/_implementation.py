@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import threading
 import traceback
 from datetime import datetime
 from typing import List
@@ -382,29 +383,51 @@ class AdoraTool(Toolkit):
         if not isinstance(sub_queries, SubQueries):
             return "Failed to identify the items the user ordered in the conversation."
 
-        logger.debug(f"Sub-queries identified: {sub_queries.queries}")
+        logger.debug(
+            f"Sub-queries identified: {sub_queries.queries} on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+        )
 
         async def run_all_queries():
+            loop = asyncio.get_running_loop()
+            logger.debug(
+                f"Creating {len(sub_queries.queries)} query tasks on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}) with event loop: {id(loop)} ({type(loop).__name__})"
+            )
             tasks = [
-                asyncio.create_task(self.query_engine.aquery(query))
-                for query in sub_queries.queries
+                asyncio.create_task(
+                    self.query_engine.aquery(query), name=f"query_{i}_{query[:20]}"
+                )
+                for i, query in enumerate(sub_queries.queries)
             ]
             try:
                 return await asyncio.gather(*tasks)
-            except Exception:
+            except Exception as e:
+                logger.error(
+                    f"Exception in run_all_queries: {e}, cancelling {len(tasks)} tasks"
+                )
                 # Cancel remaining tasks
-                for task in tasks:
+                for i, task in enumerate(tasks):
                     if not task.done():
+                        logger.debug(f"Cancelling task {i}: {task.get_name()}")
                         task.cancel()
+                    else:
+                        logger.debug(f"Task {i} already done: {task.get_name()}")
                 # Wait for all tasks to complete cancellation (optional)
-                await asyncio.gather(*tasks, return_exceptions=True)
+                cancelled_results = await asyncio.gather(*tasks, return_exceptions=True)
+                logger.debug(
+                    f"Cancellation results: {[type(r).__name__ for r in cancelled_results]}"
+                )
                 raise
 
         # Use asyncio.run for a simple async execution without need for manual event loop management
         try:
             results = asyncio.run(run_all_queries())
+            logger.debug(
+                f"Completed asyncio.run successfully on thread: {threading.current_thread().name}"
+            )
         except Exception as e:
-            logger.error(f"Error executing queries: {e}")
+            logger.error(
+                f"Error executing queries: {e} on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+            )
             results = []
 
         context = ""
