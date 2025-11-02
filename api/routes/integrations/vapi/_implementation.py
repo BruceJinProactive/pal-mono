@@ -33,8 +33,6 @@ from services.message_service._utils import transform_vapi_conversation_data
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
-from ._utils import validate_vapi_request
-
 
 def _get_squad_model(squad_data: dict[str, Any]) -> dict[str, Any] | None:
     """
@@ -414,12 +412,6 @@ async def api_vapi_server(request: Request, session: AsyncSession) -> JSONRespon
                 # drop / hash phone numbers & transcripts
             },
         )
-        # Validate that the request is coming from VAPI
-        if not validate_vapi_request(request):
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"error": "Unauthorized request"},
-            )
 
         # Extract information from VAPI request structure
         message_data = body.get("message", {})
