@@ -29,7 +29,7 @@ main() {
 
   print_heading "Upgrading dependencies for workspace: ${REPO_ROOT}"
   print_heading "Installing pip & pip-tools"
-  python -m pip install --upgrade pip pip-tools
+  python -m pip install 'pip>=24.0,<24.1' 'pip-tools>=7.5.0' # to work with current version of the script
 
   cd "${REPO_ROOT}" || exit
   if [[ UPGRADE_ALL -eq 1 ]];

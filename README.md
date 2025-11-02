@@ -16,7 +16,16 @@ This is our main monolith service. It is a Python service that serves 2 artifact
 
 Follow the next steps to run the pal-mono service on your local computer.
 
-1. Make sure Python v3.11, Pip3, and Docker are installed on your Mac.
+1. Make sure Python v3.11, Node.js, Pip3, and Docker are installed on your Mac.
+```bash
+brew install python@3.11
+brew install node
+brew install --cask docker
+```
+Optionally install brew if not installed.
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 2. Check out the repo and navigate to the root folder.
 3. Create a Python virtual environment.
 
@@ -25,21 +34,20 @@ python3 -m venv ~/.venvs/aienv
 source ~/.venvs/aienv/bin/activate
 ```
 
-4. [One-time] Install dependencies.
+4. [One-time] Install dependencies and Agno workspace setup.
 
 ```bash
-pip3 install docker
-pip3 install agno
-pip3 install agno.docker
-pip3 install black==24.8.0
-pip3 install isort==5.13.2
-pip3 install pyright==1.1.382
-pip3 install ruff==0.6.2
+./scripts/install.sh
+
+# create agno workspace
 ag init
 ag ws setup
 ```
 
 5. Create a new file named `workspace/secrets/dev_app_secrets.yml` to add environment variables. Please refer to this [doc](https://docs.google.com/document/d/1-P-R0bRgnrss0oVUE6O1vX8Tu3HaMLSGG52T04bkz1s) to get these secrets.
+```bash
+mkdir -p workspace/secrets && touch workspace/secrets/dev_app_secrets.yml
+```
 
 6. Build and run both API and web app locally.
 
