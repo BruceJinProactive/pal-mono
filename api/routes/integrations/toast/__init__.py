@@ -3,7 +3,11 @@ from fastapi.responses import JSONResponse
 
 from api.schemas.error.error import ErrorResponse
 
-from ._implementation import add_payment_to_order, api_toast_webhook
+from ._implementation import (
+    add_payment_to_order,
+    api_toast_webhook,
+    get_checkout_session,
+)
 
 toast_router = APIRouter(prefix="/toast", tags=["Integrations"])
 
@@ -45,3 +49,24 @@ async def add_payment_to_order_api(request: Request) -> JSONResponse:
     Endpoint to handle adding payment to order requests.
     """
     return await add_payment_to_order(request)
+
+
+@toast_router.get(
+    "/checkout/session",
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {"description": "Toast checkout session payload", "model": dict},
+        400: {"description": "Invalid or expired token"},
+    },
+)
+async def checkout_session_api(t: str) -> JSONResponse:
+    """
+    Retrieve decrypted checkout session details for the Toast payment iframe.
+
+    Args:
+        t: URL-encoded Fernet encrypted token
+
+    Returns:
+        JSONResponse with decrypted payload including orderItems
+    """
+    return await get_checkout_session(t)

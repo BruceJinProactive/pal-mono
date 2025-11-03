@@ -1,6 +1,9 @@
 import json
+from datetime import datetime, timezone
+from functools import lru_cache
 
-from fastapi import Request, status
+from cryptography.fernet import Fernet, InvalidToken
+from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -27,6 +30,82 @@ from ._utils import (
     update_stock_item_status,
 )
 from .schema import ToastWebhookRequest, ToastWebhookResponse
+
+# Constants for payment iframe token encryption
+HARD_CODED_PAYMENT_IFRAME_SECRET = "xK8dP2m_QrZ7vN4wL9cF3bJ6hT5yU1gS0aE8iO-pMxA="
+
+
+@lru_cache(maxsize=1)
+def _get_payment_iframe_fernet() -> Fernet:
+    """Get cached Fernet instance for decrypting payment tokens."""
+    try:
+        return Fernet(HARD_CODED_PAYMENT_IFRAME_SECRET.encode("utf-8"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid encryption configuration",
+        ) from exc
+
+
+async def get_checkout_session(token: str) -> JSONResponse:
+    """
+    Decrypt and return the payment session payload.
+
+    This endpoint decrypts the Fernet-encrypted token passed in the URL
+    and returns the full payment payload including orderItems.
+
+    Args:
+        token: URL-encoded Fernet encrypted token
+
+    Returns:
+        JSONResponse with decrypted payload
+    """
+    logger.info("[Toast] get_checkout_session: Received token request")
+
+    try:
+        # Decrypt without TTL validation (Fernet will still check signature)
+        decrypted = _get_payment_iframe_fernet().decrypt(token.encode("utf-8"))
+    except InvalidToken as exc:
+        logger.warning("[Toast] get_checkout_session: Invalid token", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token"
+        ) from exc
+
+    try:
+        payload = json.loads(decrypted.decode("utf-8"))
+    except json.JSONDecodeError as exc:
+        logger.error(
+            "[Toast] get_checkout_session: Failed to decode payload", exc_info=exc
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed token payload"
+        ) from exc
+
+    # Validate expiration from payload
+    expires_at = payload.get("expiresAt")
+    if not expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token missing expiration",
+        )
+
+    # Check if token has expired using the expiresAt timestamp from payload
+    if datetime.fromtimestamp(expires_at, tz=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token expired",
+        )
+
+    logger.info(
+        "[Toast] get_checkout_session: Token validated successfully",
+        extra={
+            "store_id": payload.get("storeId"),
+            "order_external_id": payload.get("orderExternalId"),
+            "order_items_count": len(payload.get("orderItems", [])),
+        },
+    )
+
+    return JSONResponse(status_code=status.HTTP_200_OK, content=payload)
 
 
 def _are_dining_options_same(
