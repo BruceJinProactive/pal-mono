@@ -1172,7 +1172,7 @@ class ToastTool(Toolkit):
             )
 
             logger.debug(
-                f"[ToastTool._create_payment_intent_for_order] Created payment intent: {payment_intent_response.id}"
+                f"[ToastTool._create_payment_intent_for_order] Created payment intent: ID: {payment_intent_response.id}. Payment intent external Reference ID: {payment_intent_response.externalReferenceId}."
             )
 
             return payment_intent_response
