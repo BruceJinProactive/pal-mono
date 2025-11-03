@@ -186,6 +186,7 @@ async def create_checkpoint(
     is_active: bool,
     group: str | None,
     rules: str | None,
+    requires_image: bool,
     image: UploadFile | None,
     context: UserContext,
     session: Session,
@@ -245,6 +246,7 @@ async def create_checkpoint(
         is_active=is_active,
         group=group,
         rules=parsed_rules,
+        requires_image=requires_image,
     )
 
     persisted_checkpoint = checkpoint_service.create_checkpoint(session, checkpoint)
@@ -354,6 +356,7 @@ async def update_checkpoint(
     is_active: bool | None,
     group: str | None,
     rules: str | None,
+    requires_image: bool | None,
     checklist_id: uuid.UUID | None,
     unassign_checklist: bool,
     image: UploadFile | None,
@@ -428,6 +431,8 @@ async def update_checkpoint(
         updates["group"] = group
     if parsed_rules is not None:
         updates["rules"] = parsed_rules
+    if requires_image is not None:
+        updates["requires_image"] = requires_image
 
     # Handle checklist_id assignment/unassignment
     # unassign_checklist takes precedence over checklist_id

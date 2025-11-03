@@ -13,6 +13,7 @@ class CreateCheckpointRequest(BaseModel):
     is_active: bool = Field(default=False)
     group: str | None = None
     rules: list[str] | None = Field(default=None)
+    requires_image: bool = Field(default=False)
 
 
 class UpdateCheckpointRequest(BaseModel):
@@ -25,6 +26,7 @@ class UpdateCheckpointRequest(BaseModel):
     rules: list[str] | None = None
     checklist_id: UUID | None = None
     unassign_checklist: bool = False
+    requires_image: bool | None = None
 
 
 class Checkpoint(BaseModel):
@@ -39,6 +41,7 @@ class Checkpoint(BaseModel):
     is_active: bool
     group: str | None
     rules: list[str] | None
+    requires_image: bool
 
 
 class ListCheckpointsResponse(BaseModel):

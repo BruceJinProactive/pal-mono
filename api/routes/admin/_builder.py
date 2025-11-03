@@ -523,6 +523,7 @@ def build_checkpoint(checkpoint: db.CheckPoint) -> Checkpoint:
         is_active=checkpoint.is_active,
         group=checkpoint.group,
         rules=checkpoint.rules,
+        requires_image=checkpoint.requires_image,
     )
 
 
