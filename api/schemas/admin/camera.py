@@ -35,31 +35,3 @@ class GetCameraImagesResponse(BaseModel):
         default=[], description="List of images within the specified time range"
     )
     total_count: int = Field(default=0, description="Total number of images found")
-
-
-class UploadBaseImageResponse(BaseModel):
-    message: str = Field(..., description="Success message")
-    conversation_id: str = Field(
-        ..., description="Unique conversation ID for this camera"
-    )
-    base_image_url: str = Field(..., description="S3 URL of the uploaded base image")
-    gpt_response: str = Field(..., description="GPT's acknowledgment of the base image")
-
-
-class AnalyzeImageRequest(BaseModel):
-    prompt: str = Field(
-        ...,
-        description="Custom analysis prompt to send with the image",
-        min_length=1,
-    )
-
-
-class AnalyzeImageResponse(BaseModel):
-    conversation_id: str = Field(..., description="Conversation ID used for analysis")
-    analysis: str = Field(..., description="GPT's analysis response")
-    image_analyzed: str = Field(
-        ..., description="Filename of the image that was analyzed"
-    )
-    timestamp: str = Field(
-        ..., description="ISO 8601 timestamp of when the analysis was performed"
-    )

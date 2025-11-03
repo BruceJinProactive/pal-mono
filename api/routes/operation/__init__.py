@@ -8,13 +8,7 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
-from api.schemas.admin.camera import (
-    AnalyzeImageRequest,
-    AnalyzeImageResponse,
-    GetCamerasResponse,
-    ImageMetadata,
-    UploadBaseImageResponse,
-)
+from api.schemas.admin.camera import GetCamerasResponse, ImageMetadata
 from api.schemas.admin.checklist import (
     BatchChecklistHistoryResponse,
     Checklist,
@@ -103,92 +97,6 @@ async def get_camera_image(
     """
     return await _implementation.get_camera_image_handler(
         account_id, project_id, camera_name
-    )
-
-
-@operation_router.post(
-    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_name}/base-image",
-    response_model=UploadBaseImageResponse,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        400: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
-)
-async def upload_base_image(
-    account_id: str,
-    project_id: str,
-    camera_name: str,
-    image: UploadFile = File(...),
-    prompt: str = Form(...),
-    context: UserContext = Depends(authenticate_user),
-) -> UploadBaseImageResponse:
-    """
-    Upload a base reference image and initialize GPT conversation.
-
-    This endpoint allows the frontend to upload a base reference image that will be used
-    for future comparisons. The image and the initialization prompt are sent to GPT,
-    and the conversation state is stored for later analysis calls.
-
-    Path Parameters:
-    - account_id: The account ID
-    - project_id: The project ID
-    - camera_name: The camera name/ID
-
-    Request Body (multipart/form-data):
-    - image (required): The base reference image file
-    - prompt (required): The initialization prompt to send with the base image
-
-    Returns:
-    - message: Success message
-    - conversation_id: Unique conversation ID for this camera
-    - base_image_url: S3 URL of the uploaded base image
-    - gpt_response: GPT's acknowledgment of the base image
-    """
-    return await _implementation.upload_base_image_handler(
-        account_id, project_id, camera_name, image, prompt, context
-    )
-
-
-@operation_router.post(
-    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_name}/analyze",
-    response_model=AnalyzeImageResponse,
-    responses={
-        400: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
-)
-async def analyze_camera_image(
-    account_id: str,
-    project_id: str,
-    camera_name: str,
-    request: AnalyzeImageRequest,
-    context: UserContext = Depends(authenticate_user),
-) -> AnalyzeImageResponse:
-    """
-    Analyze the current camera image against the base reference image.
-
-    This endpoint retrieves the latest camera image (camera_name.png) and analyzes it
-    using GPT, comparing it against the previously uploaded base reference image.
-    The analysis is added to the existing conversation thread.
-
-    Path Parameters:
-    - account_id: The account ID
-    - project_id: The project ID
-    - camera_name: The camera name/ID
-
-    Request Body (JSON):
-    - prompt: Custom analysis prompt to send with the current image
-
-    Returns:
-    - conversation_id: Conversation ID used for analysis
-    - analysis: GPT's analysis response
-    - image_analyzed: Filename of the image that was analyzed
-    - timestamp: ISO 8601 timestamp of when the analysis was performed
-    """
-    return await _implementation.analyze_camera_image_handler(
-        account_id, project_id, camera_name, request.prompt, context
     )
 
 
