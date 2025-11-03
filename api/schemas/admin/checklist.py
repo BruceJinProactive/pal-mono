@@ -61,6 +61,9 @@ class CheckpointRunDetail(BaseModel):
     result: dict = Field(..., description="Result data")
     created_at: str = Field(..., description="Run timestamp (ISO 8601)")
     image_url: str | None = Field(None, description="Presigned S3 URL if available")
+    review: str | None = Field(None, description="Review comments/notes")
+    reviewer: str | None = Field(None, description="Name or email of reviewer")
+    is_reviewed: bool = Field(False, description="Whether the run has been reviewed")
 
 
 class CheckpointHistoryItem(BaseModel):

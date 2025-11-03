@@ -363,6 +363,9 @@ async def get_checklist_history(
                 result=latest_run.result or {},
                 created_at=latest_run.created_at.isoformat(),
                 image_url=presigned_url,
+                review=latest_run.review,
+                reviewer=latest_run.reviewer,
+                is_reviewed=latest_run.is_reviewed,
             )
         else:
             missing_runs += 1
