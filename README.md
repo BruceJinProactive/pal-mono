@@ -16,11 +16,10 @@ This is our main monolith service. It is a Python service that serves 2 artifact
 
 Follow the next steps to run the pal-mono service on your local computer.
 
-1. Make sure Python v3.11, Node.js, uv, and Docker are installed on your Mac.
+1. Make sure Python v3.11, Node.js, Pip3, and Docker are installed on your Mac.
 ```bash
 brew install python@3.11
 brew install node
-brew install uv
 brew install --cask docker
 ```
 Optionally install brew if not installed.
@@ -28,11 +27,16 @@ Optionally install brew if not installed.
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 2. Check out the repo and navigate to the root folder.
-
-3. [One-time] Install dependencies and Agno workspace setup.
+3. Create a Python virtual environment.
 
 ```bash
-# Install dependencies (uv creates virtual environment automatically at .venv)
+python3 -m venv ~/.venvs/aienv
+source ~/.venvs/aienv/bin/activate
+```
+
+4. [One-time] Install dependencies and Agno workspace setup.
+
+```bash
 ./scripts/install.sh
 
 # create agno workspace
@@ -40,12 +44,12 @@ ag init
 ag ws setup
 ```
 
-4. Create a new file named `workspace/secrets/dev_app_secrets.yml` to add environment variables. Please refer to this [doc](https://docs.google.com/document/d/1-P-R0bRgnrss0oVUE6O1vX8Tu3HaMLSGG52T04bkz1s) to get these secrets.
+5. Create a new file named `workspace/secrets/dev_app_secrets.yml` to add environment variables. Please refer to this [doc](https://docs.google.com/document/d/1-P-R0bRgnrss0oVUE6O1vX8Tu3HaMLSGG52T04bkz1s) to get these secrets.
 ```bash
 mkdir -p workspace/secrets && touch workspace/secrets/dev_app_secrets.yml
 ```
 
-5. Build and run both API and web app locally.
+6. Build and run both API and web app locally.
 
 ```bash
 ag ws up -y # appending -y allows you to skip the confirmation step
@@ -53,13 +57,13 @@ ag ws up -y # appending -y allows you to skip the confirmation step
 ag ws up -f (Force rebuild from scratch)
 ```
 
-6. Run this command to migrate local db to the latest schema.
+7. Run this command to migrate local db to the latest schema.
 
 ```bash
 docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
 ```
 
-7. Getting Started with pal-manage-app
+8. Getting Started with pal-manage-app
 
    - Clone the repo `pal-manage-app` and build it.
    - Create .env.local and fill in all required environment variables as instructed,
@@ -70,28 +74,28 @@ docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
      ```
    - Run Manage app locally and navigate to http://localhost:3000/.
 
-8. Log into the Management Application
+9. Log into the Management Application
 
-   - In the top right corner of the page, click on Onboard.
+   - In the top right corner of the page, click on Onboard. 
    - Enter the account name and account display name: "palona".
 
-9. Create a New Agent
+10. Create a New Agent
 
    - Enter the agent name: "palona agent".
    - Select the desired Agent Type and Language.
    - Select any desired Agent Personality Tags.
 
-10. Create a New Project
+11. Create a New Project
 
     - Enter the project name: "palona-default".
     - Click on Create Account
     - Setup process is now complete
 
-11. Under the 'Chat' page, you should be able to talk to the agent of the "palona" account.
+12. Under the 'Chat' page, you should be able to talk to the agent of the "palona" account.
 
 ### Local Environment
 
-`ag ws up` will automatically spin up new Docker containers that install dependencies from `uv.lock` that enable `pal-mono` to function. The dependencies are specified in `pyproject.toml` and the lock file is updated with `./scripts/upgrade.sh`.
+`ag ws up` will automatically spin up new Docker containers that install dependencies in `requirements.txt` that enable `pal-mono` to function. The dependencies are specified in `pyproject.toml` and updates to `requirements.txt` are made with `./scripts/upgrade.sh`.
 
 Since Agno installs these dependencies in the Docker container environment, our local environment (e.g. VS Code) will not recognize the missing imports. To set up the local environment:
 

@@ -5,11 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pal-mono"
 version = "0.1.0"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11"
 readme = "README.md"
 authors = [{name = "Proactive AI Lab", email = "rnd@proactiveailab.com"}]
 dependencies = [
-  "ShopifyAPI==12.7.0", # Official Shopify API client for e-commerce integrations
   "agno==1.7.6", # AI agent framework for building intelligent applications
   "alembic==1.13.2", # Database migration tool for SQLAlchemy
   "anthropic==0.71.0", # Official Anthropic API client for Claude models
@@ -21,7 +20,7 @@ dependencies = [
   "ddtrace==3.11.0", # Datadog APM and distributed tracing library
   "docusign-esign==3.26.0", # DocuSign eSignature API client for embedded signing workflows
   "email-validator==2.2.0", # Robust email address validation with DNS checking
-  "fastapi==0.116.1", # Modern async web framework with automatic API docs
+  "fastapi==0.120.2", # Modern async web framework with automatic API docs
   "firecrawl-py>=1.5.0", # Web scraping and crawling with LLM extraction
   "geopy==2.4.1", # Geocoding library for location services and mapping
   "google-genai==1.25.0", # Google Gemini AI SDK for generative models
@@ -49,9 +48,11 @@ dependencies = [
   "python-multipart==0.0.19", # HTTP multipart form data parser
   "requests==2.32.4", # Simple HTTP library for human beings
   "shapely==2.1.0", # Geometric operations and spatial analysis library
+  "shopifyapi==12.7.0", # Official Shopify API client for e-commerce integrations
   "slack-bolt==1.20.1", # Slack Bolt framework for building Slack apps
   "slack-sdk==3.33.5", # Official Slack SDK for Python
   "sqlalchemy==2.0.32", # Python SQL toolkit and Object Relational Mapping
+  "starlette==0.49.1", # Lightweight ASGI framework for building async web services
   "stripe>=12,<13", # Official Stripe API client for payment processing
   "twilio==9.3.2", # Twilio API client for SMS, voice, and messaging
   "urlextract==1.9.0", # URL extraction from text using regular expressions
@@ -80,7 +81,7 @@ line_length = 88
 skip_glob = ["build/**"]
 
 [tool.pyright]
-exclude = ["**/__pycache__", ".git", ".venv*", "aienv*", "build", "db/migrations/versions/", "workspace/"]
+exclude = ["**/__pycache__", ".git", ".venv*", "aienv*", "build", "workspace/"]
 typeCheckingMode = "standard"
 
 [tool.ruff]

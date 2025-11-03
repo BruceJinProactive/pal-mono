@@ -23,23 +23,12 @@ ag ws up -f
 ### Local Environment Setup
 
 ```bash
-# Install dependencies using uv (creates virtual environment automatically)
+# Create Python virtual environment
+python3 -m venv ~/.venvs/aienv
+source ~/.venvs/aienv/bin/activate
+
+# Install dependencies for local development
 ./scripts/install.sh
-
-# Or directly with uv:
-uv sync --all-extras
-```
-
-### Dependency Management
-
-```bash
-# Update lock file after adding new dependencies to pyproject.toml
-./scripts/upgrade.sh
-# or: uv lock
-
-# Upgrade all dependencies to latest compatible versions
-./scripts/upgrade.sh all
-# or: uv lock --upgrade
 ```
 
 ### Validation

@@ -21,14 +21,13 @@ jobs:
 
       - name: Set up Python
         uses: actions/setup-python@v5
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
         with:
-          enable-cache: true
+          cache: "pip"
 
-      - name: Install dependencies with uv
-        run: uv sync --all-extras
+      - name: Install alembic
+        run: |
+          python -m pip install --upgrade pip
+          pip install alembic
 
       - name: Set up Git
         run: |
@@ -48,9 +47,9 @@ jobs:
 
       - name: Check migration chain has a single HEAD
         run: |
-          HEAD_COUNT=$(.venv/bin/alembic -c db/alembic.ini heads | wc -l)
+          HEAD_COUNT=$(alembic -c db/alembic.ini heads | wc -l)
           if [ "$HEAD_COUNT" -ne 1 ]; then
             echo "Alembic has $HEAD_COUNT heads. Migration history is diverged."
-            .venv/bin/alembic -c db/alembic.ini heads
+            alembic -c db/alembic.ini heads
             exit 1
           fi
