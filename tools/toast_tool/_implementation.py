@@ -634,7 +634,7 @@ class ToastTool(Toolkit):
             # Return payment intent details with concise confirmation
             return_msg = (
                 concise_confirmation
-                + f"\n\nThe following is the payment link, ask the user to use the link to checkout: {payment_link}\n\nYou MUST INCLUDE THE COMPLETE URL in your response and format it as a Markdown link. For example, [payment link](COMPLETE_URL_HERE) YOU MUST NOT OMIT ANY PART OF THE URL. Tell the customer the link will expire in {self.payment_iframe_token_ttl_seconds // 60} minutes."
+                + f"\n\nThe following is the payment link, ask the user to use the link to checkout, tell the customer the link will expire in {self.payment_iframe_token_ttl_seconds // 60} minutes.: {payment_link}\n\nYou MUST INCLUDE THE COMPLETE URL in your response and format it as a Markdown link. For example, [payment link](COMPLETE_URL_HERE) YOU MUST NOT OMIT ANY PART OF THE URL. "
             )
             return return_msg
 

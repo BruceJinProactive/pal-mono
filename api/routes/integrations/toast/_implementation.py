@@ -365,7 +365,7 @@ def check_and_refresh_dining_options(session):
     )
 
 
-async def add_payment_to_order(request: Request) -> JSONResponse:
+async def checkout_complete(request: Request) -> JSONResponse:
     """
     Process incoming checkout requests from Toast Iframe.
     Authentication and validation are handled by AWS API Gateway.
@@ -385,7 +385,7 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
         test_mode = body.get("testMode", False)
 
         logger.debug(
-            f"[ToastAPIIntegration.add_payment_to_order] Processing checkout request for store {store_id}, order {order_external_id}, payment {payment_external_reference_id}, testMode {test_mode}"
+            f"[ToastAPIIntegration.checkout_complete] Processing checkout request for store {store_id}, order {order_external_id}, payment {payment_external_reference_id}, testMode {test_mode}"
         )
 
         if not (store_id and order_external_id and payment_external_reference_id):
@@ -406,7 +406,7 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
 
         # 1. Fetch order details from Toast API using order_external_id
         logger.debug(
-            f"[ToastAPIIntegration.add_payment_to_order] getting order with external_id: {order_external_id}"
+            f"[ToastAPIIntegration.checkout_complete] getting order with external_id: {order_external_id}"
         )
         try:
             order = get_existing_order(
@@ -419,7 +419,7 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
             )
         except Exception as e:
             logger.error(
-                f"[ToastAPIIntegration.add_payment_to_order] error getting order: {e}"
+                f"[ToastAPIIntegration.checkout_complete] error getting order: {e}"
             )
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -427,7 +427,7 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
             )
         if not order:
             logger.error(
-                f"[ToastAPIIntegration.add_payment_to_order] order {order_external_id} not found"
+                f"[ToastAPIIntegration.checkout_complete] order {order_external_id} not found"
             )
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -436,12 +436,12 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
                 },
             )
         logger.debug(
-            f"[add_payment_to_order] Retrieved order {order.guid} with {len(order.checks)} check(s)"
+            f"[checkout_complete] Retrieved order {order.guid} with {len(order.checks)} check(s)"
         )
 
         if not order.checks or len(order.checks) == 0:
             logger.error(
-                f"[ToastAPIIntegration.add_payment_to_order] order {order_external_id} has no checks"
+                f"[ToastAPIIntegration.checkout_complete] order {order_external_id} has no checks"
             )
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -451,7 +451,7 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
             )
         if not hasattr(order.checks[0], "guid") or not getattr(order.checks[0], "guid"):
             logger.error(
-                f"[ToastAPIIntegration.add_payment_to_order] order {order_external_id} check has no guid"
+                f"[ToastAPIIntegration.checkout_complete] order {order_external_id} check has no guid"
             )
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -462,22 +462,22 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
 
         # 2. Get the first check's payment list
         first_check = order.checks[0]
-        logger.debug(f"[ToastAPIIntegration.add_payment_to_order] first check guid: {first_check.guid}")  # type: ignore
+        logger.debug(f"[ToastAPIIntegration.checkout_complete] first check guid: {first_check.guid}")  # type: ignore
         logger.debug(
-            f"[ToastAPIIntegration.add_payment_to_order] first check has payments attr: {hasattr(first_check, 'payments')}"
+            f"[ToastAPIIntegration.checkout_complete] first check has payments attr: {hasattr(first_check, 'payments')}"
         )
         if hasattr(first_check, "payments"):
             logger.debug(
-                f"[ToastAPIIntegration.add_payment_to_order] first check payments: {first_check.payments}"
+                f"[ToastAPIIntegration.checkout_complete] first check payments: {first_check.payments}"
             )
             logger.debug(
-                f"[ToastAPIIntegration.add_payment_to_order] first check payments length: {len(first_check.payments) if first_check.payments else 0}"
+                f"[ToastAPIIntegration.checkout_complete] first check payments length: {len(first_check.payments) if first_check.payments else 0}"
             )
 
         # 3. Construct a new payment object with required fields
         # Use the proper ToastPayment class to ensure correct format
-        logger.debug(f"[ToastAPIIntegration.add_payment_to_order] first check amount: {first_check.amount}")  # type: ignore
-        logger.debug(f"[ToastAPIIntegration.add_payment_to_order] first check totalAmount: {first_check.totalAmount}")  # type: ignore
+        logger.debug(f"[ToastAPIIntegration.checkout_complete] first check amount: {first_check.amount}")  # type: ignore
+        logger.debug(f"[ToastAPIIntegration.checkout_complete] first check totalAmount: {first_check.totalAmount}")  # type: ignore
 
         # Create payment using ToastPayment class
         payment = ToastPayment(
@@ -488,11 +488,11 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
             externalId="PALONA:" + payment_external_reference_id,
         )
         logger.debug(
-            f"[ToastAPIIntegration.add_payment_to_order] constructed payment object: {payment.model_dump(exclude_none=True)}"
+            f"[ToastAPIIntegration.checkout_complete] constructed payment object: {payment.model_dump(exclude_none=True)}"
         )
 
         logger.debug(
-            f"[ToastAPIIntegration.add_payment_to_order] posting payment to order {order.guid}, check {first_check.guid}"  # type: ignore
+            f"[ToastAPIIntegration.checkout_complete] posting payment to order {order.guid}, check {first_check.guid}"  # type: ignore
         )
 
         # 4. Post payment to the check using the proper function
@@ -507,7 +507,7 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
             ),
         )
         logger.debug(
-            f"[ToastAPIIntegration.add_payment_to_order] Successfully posted payment with externalId {payment_external_reference_id} to order {order.guid}"  # type: ignore
+            f"[ToastAPIIntegration.checkout_complete] Successfully posted payment with externalId {payment_external_reference_id} to order {order.guid}"  # type: ignore
         )
 
         # 4. Return success response to Toast Iframe UI
@@ -526,7 +526,7 @@ async def add_payment_to_order(request: Request) -> JSONResponse:
         )
     except Exception as e:
         logger.error(
-            f"[ToastAPIIntegration.add_payment_to_order] Unexpected error: {str(e)}",
+            f"[ToastAPIIntegration.checkout_complete] Unexpected error: {str(e)}",
             exc_info=True,
         )
 
