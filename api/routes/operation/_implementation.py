@@ -1,14 +1,21 @@
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.camera import (
+    AnalyzeImageResponse,
     GetCamerasRequest,
     GetCamerasResponse,
     ImageMetadata,
+    UploadBaseImageResponse,
 )
 from api.schemas.error.error import ErrorResponse
-from services.vision_service import get_camera_image, get_cameras_under_project
+from services.vision_service import (
+    analyze_camera_image,
+    get_camera_image,
+    get_cameras_under_project,
+    upload_base_image,
+)
 from utils.log import logger
 
 
@@ -99,6 +106,103 @@ async def get_camera_image_handler(
     except Exception as e:
         # Log the error
         logger.error(f"Error getting camera image: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error_code="INTERNAL_SERVER_ERROR",
+                error_message="An unexpected error occurred while processing the request",
+            ).model_dump(),
+        )
+
+
+async def upload_base_image_handler(
+    account_id: str,
+    project_id: str,
+    camera_name: str,
+    image: UploadFile,
+    prompt: str,
+    context: UserContext,
+) -> UploadBaseImageResponse:
+    try:
+        logger.info(
+            f"Uploading base image for account `{account_id}`, project `{project_id}`, "
+            f"camera `{camera_name}`"
+        )
+
+        if not account_id:
+            raise ValueError("Account ID is required.")
+        if not project_id:
+            raise ValueError("Project ID is required.")
+        if not camera_name:
+            raise ValueError("Camera name is required.")
+        if not prompt:
+            raise ValueError("Prompt is required.")
+
+        return await upload_base_image(
+            account_id, project_id, camera_name, image, prompt
+        )
+
+    except ValueError as ve:
+        logger.error(f"Error validating request: {ve}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="VALIDATION_ERROR", error_message=str(ve)
+            ).model_dump(),
+        )
+    except Exception as e:
+        logger.error(f"Error uploading base image: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error_code="INTERNAL_SERVER_ERROR",
+                error_message="An unexpected error occurred while processing the request",
+            ).model_dump(),
+        )
+
+
+async def analyze_camera_image_handler(
+    account_id: str,
+    project_id: str,
+    camera_name: str,
+    prompt: str,
+    context: UserContext,
+) -> AnalyzeImageResponse:
+    try:
+        logger.info(
+            f"Analyzing image for account `{account_id}`, project `{project_id}`, "
+            f"camera `{camera_name}`"
+        )
+
+        if not account_id:
+            raise ValueError("Account ID is required.")
+        if not project_id:
+            raise ValueError("Project ID is required.")
+        if not camera_name:
+            raise ValueError("Camera name is required.")
+        if not prompt:
+            raise ValueError("Prompt is required.")
+
+        return await analyze_camera_image(account_id, project_id, camera_name, prompt)
+
+    except ValueError as ve:
+        logger.error(f"Error validating request: {ve}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="VALIDATION_ERROR", error_message=str(ve)
+            ).model_dump(),
+        )
+    except FileNotFoundError as fnf:
+        logger.error(f"Conversation or image not found: {fnf}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse(
+                error_code="NOT_FOUND", error_message=str(fnf)
+            ).model_dump(),
+        )
+    except Exception as e:
+        logger.error(f"Error analyzing camera image: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse(
