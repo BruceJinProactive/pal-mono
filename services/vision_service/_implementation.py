@@ -264,6 +264,8 @@ def _upload_image_to_s3(
     # Generate S3 key
     key = f"security/cameras/{account_id}/{project_id}/{camera_name}/{camera_name}_{suffix}.{extension}"
 
+    logger.info(f"Uploading to bucket: {AWS_ASSET_BUCKET_NAME}, key: {key}")
+
     # Upload to S3
     s3_client.put_object(
         Bucket=AWS_ASSET_BUCKET_NAME,
@@ -308,13 +310,36 @@ def _call_openai_vision(messages: list[dict]) -> str:
         api_version=api_version,
     )
 
-    logger.info(f"Calling Azure OpenAI vision API with {len(messages)} messages")
+    # Ensure the last user message contains "json" for Azure OpenAI requirement
+    # when using response_format=json_object
+    modified_messages = messages.copy()
+    for i in range(len(modified_messages) - 1, -1, -1):
+        if modified_messages[i]["role"] == "user":
+            content = modified_messages[i]["content"]
+            # Check if content is a list (multimodal) or string
+            if isinstance(content, list):
+                # Find the text content and append JSON instruction
+                for item in content:
+                    if item["type"] == "text":
+                        if "json" not in item["text"].lower():
+                            item["text"] += " Respond in JSON format."
+                        break
+            elif isinstance(content, str):
+                if "json" not in content.lower():
+                    modified_messages[i]["content"] = (
+                        content + " Respond in JSON format."
+                    )
+            break
+
+    logger.info(
+        f"Calling Azure OpenAI vision API with {len(modified_messages)} messages"
+    )
 
     # Make the API call with JSON response format
     # Type ignore for messages as OpenAI SDK accepts dict format
     response = client.chat.completions.create(
         model=deployment_name,
-        messages=messages,  # type: ignore
+        messages=modified_messages,  # type: ignore
         max_tokens=1000,
         response_format={"type": "json_object"},
     )
