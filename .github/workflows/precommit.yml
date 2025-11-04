@@ -27,20 +27,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
 
-      # Create a virtual environment and activate it
-      - name: Set up virtual environment
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
-      - name: Install dependencies in virtual environment
-        run: |
-          .venv/bin/python -m pip install --upgrade pip setuptools wheel
-          .venv/bin/python -m pip install uv==0.6.10
-          .venv/bin/uv pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382 toml-sort==0.24.2
-          .venv/bin/uv pip install --no-cache -r requirements.txt
+      - name: Install dependencies with uv
+        run: uv sync --all-extras
 
       - name: Add .venv/bin to PATH
         run: |
@@ -61,7 +55,15 @@ jobs:
           SLACK_WEBHOOK_URL_BUILD: ${{ secrets.SLACK_WEBHOOK_URL_BUILD }}
 
   pre-coverage:
-    # TODO: Re-enable when basic tests are added
+    # TODO: Re-enable tests for automated dependency updates
+    # Current status: Tests disabled - blocking automation
+    # Required actions:
+    #   1. Fix existing test failures (run: pytest --cov=. locally)
+    #   2. Add test_imports.py for dependency smoke tests (30 min)
+    #   3. Add API endpoint tests for critical paths (4-8 hours)
+    #   4. Achieve 40-50% coverage on core services
+    # Once complete: Change if: ${{ false }} to if: ${{ true }}
+    # Then: Enable Renovate/Dependabot for automated dependency PRs
     if: ${{ false }}  # This will prevent the job from running
     runs-on: ubuntu-latest
 
@@ -82,19 +84,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
 
-      # Create a virtual environment and activate it
-      - name: Set up virtual environment
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: false  # Disable cache since main branch may not have uv.lock yet
 
-      - name: Install dependencies in virtual environment
-        run: |
-          .venv/bin/python -m pip install --upgrade pip setuptools wheel
-          .venv/bin/pip install uv
-          .venv/bin/uv pip install -r requirements.txt
+      - name: Install dependencies with uv
+        run: uv sync --all-extras
 
       - name: Run main pytest report
         id: get_main_coverage
@@ -104,6 +101,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
   test:
+    # TODO: Re-enable tests (see pre-coverage job for details)
     if: ${{ false }}  # This will prevent the job from running
     runs-on: ubuntu-latest
 
@@ -121,20 +119,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
 
-      # Create a virtual environment and activate it
-      - name: Set up virtual environment
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
 
-      - name: Install dependencies in virtual environment
-        run: |
-          .venv/bin/python -m pip install --upgrade pip setuptools wheel
-          .venv/bin/python -m pip install uv
-          .venv/bin/uv pip install black==24.8.0 isort==5.13.2 ruff==0.6.2 pyright==1.1.382 toml-sort==0.24.2
-          .venv/bin/uv pip install --no-cache -r requirements.txt
+      - name: Install dependencies with uv
+        run: uv sync --all-extras
 
       - name: Run new pytest report
         id: get_new_coverage
