@@ -27,6 +27,7 @@ class UpdateCheckpointRequest(BaseModel):
     checklist_id: UUID | None = None
     unassign_checklist: bool = False
     requires_image: bool | None = None
+    remove_image: bool = False
 
 
 class Checkpoint(BaseModel):

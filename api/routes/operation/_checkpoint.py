@@ -359,6 +359,7 @@ async def update_checkpoint(
     requires_image: bool | None,
     checklist_id: uuid.UUID | None,
     unassign_checklist: bool,
+    remove_image: bool,
     image: UploadFile | None,
     context: UserContext,
     session: Session,
@@ -374,8 +375,10 @@ async def update_checkpoint(
         is_active: Optional new active status
         group: Optional new group
         rules: Optional new rules (JSON array string)
+        requires_image: Optional new requires_image setting
         checklist_id: Optional checklist_id to assign
         unassign_checklist: If True, sets checklist_id to None (takes precedence over checklist_id)
+        remove_image: If True, removes the image and sets image_url to None (takes precedence over image)
         image: Optional new image file to replace existing one
         context: User context for authorization
         session: Database session
@@ -441,8 +444,24 @@ async def update_checkpoint(
     elif checklist_id is not None:
         updates["checklist_id"] = checklist_id
 
-    # Handle image update if provided
-    if image:
+    # Handle image removal or update
+    # remove_image takes precedence over image upload
+    if remove_image:
+        # Delete image from S3 if it exists
+        if checkpoint.image_url:
+            try:
+                deleted_from_s3 = asset_service.delete_asset(checkpoint.image_url)
+                if deleted_from_s3:
+                    logger.info(
+                        f"Deleted checkpoint image from S3: {checkpoint.image_url}"
+                    )
+            except Exception as e:
+                # Log but don't fail the operation if S3 deletion fails
+                logger.warning(f"Failed to delete checkpoint image from S3: {e}")
+
+        # Set image_url to None
+        updates["image_url"] = None
+    elif image:
         # Delete old image from S3 if it exists
         if checkpoint.image_url:
             try:
