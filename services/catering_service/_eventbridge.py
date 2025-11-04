@@ -49,7 +49,7 @@ def publish_catering_event(
                     "Source": "pal.catering",
                     "DetailType": detail_type,
                     "Detail": json.dumps(detail),
-                    "EventBusName": "default",
+                    "EventBusName": "pal-mono-main-event-bus",
                 }
             ]
         )
