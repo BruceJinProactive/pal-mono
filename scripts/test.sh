@@ -13,7 +13,7 @@ source "${CURR_DIR}/_utils.sh"
 
 main() {
   print_heading "Running pytest..."
-  docker exec -it pal-mono-api pytest
+  docker exec pal-mono-api pytest
 }
 
 main "$@"

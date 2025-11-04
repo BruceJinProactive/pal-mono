@@ -1,9 +1,5 @@
-from os import getenv
-from typing import Optional
-
+from pydantic import Field
 from pydantic_settings import BaseSettings
-
-from utils.log import logger
 
 
 class DbSettings(BaseSettings):
@@ -13,11 +9,11 @@ class DbSettings(BaseSettings):
     """
 
     # Database configuration
-    db_host: Optional[str] = None
-    db_port: Optional[int] = None
-    db_user: Optional[str] = None
-    db_pass: Optional[str] = None
-    db_database: Optional[str] = None
+    db_host: str = Field(...)
+    db_port: int = Field(...)
+    db_user: str = Field(...)
+    db_pass: str = Field(...)
+    db_database: str = Field(...)
     db_driver: str = "postgresql+psycopg"
     # Create/Upgrade database on startup using alembic
     migrate_db: bool = False
@@ -31,14 +27,6 @@ class DbSettings(BaseSettings):
             self.db_port,
             self.db_database,
         )
-        # Use local database if RUNTIME_ENV is not set
-        if "None" in db_url and getenv("RUNTIME_ENV") is None:
-            from workspace.dev_resources import dev_db
-
-            logger.debug("Using local connection")
-            local_db_url = dev_db.get_db_connection_local()
-            if local_db_url:
-                db_url = local_db_url
 
         # Validate database connection
         if "None" in db_url or db_url is None:
@@ -78,15 +66,6 @@ class DbSettings(BaseSettings):
             self.db_database,
         )
 
-        # Use local database if RUNTIME_ENV is not set
-        if "None" in db_url and getenv("RUNTIME_ENV") is None:
-            from workspace.dev_resources import dev_db
-
-            logger.debug("Using local connection")
-            local_db_url = dev_db.get_db_connection_local()
-            if local_db_url:
-                db_url = local_db_url
-
         # Validate database connection
         if "None" in db_url or db_url is None:
             raise ValueError("Could not build database connection")
@@ -94,4 +73,4 @@ class DbSettings(BaseSettings):
 
 
 # Create DbSettings object
-db_settings = DbSettings()
+db_settings = DbSettings()  # pyright: ignore[reportCallIssue]

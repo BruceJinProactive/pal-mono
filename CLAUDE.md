@@ -13,11 +13,17 @@ The pal-mono service is a Python monolith that serves 2 artifacts:
 ### Running Services
 
 ```bash
-# Build and run both API and web app locally
-ag ws up
+# Build and run both API and database locally
+docker-compose up -d --build
 
 # Force rebuild from scratch
-ag ws up -f
+docker-compose up -d --build --force-recreate
+
+# Stop services
+docker-compose down
+
+# View logs
+docker-compose logs -f api
 ```
 
 ### Local Environment Setup
@@ -65,7 +71,7 @@ pyright .
 
 ```bash
 # Start the containers first
-ag ws up
+docker-compose up -d --build
 
 # Run tests
 ./scripts/test.sh

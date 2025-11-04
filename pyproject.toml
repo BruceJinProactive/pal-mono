@@ -61,7 +61,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "agno.docker==0.0.1",
   "black==24.8.0",
   "isort==5.13.2",
   "pip-tools>=7.5.0",

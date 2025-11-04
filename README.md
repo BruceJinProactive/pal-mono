@@ -29,31 +29,41 @@ Optionally install brew if not installed.
 ```
 2. Check out the repo and navigate to the root folder.
 
-3. [One-time] Install dependencies and Agno workspace setup.
+3. [One-time] Install dependencies.
 
 ```bash
 # Install dependencies (uv creates virtual environment automatically at .venv)
 ./scripts/install.sh
-
-# create agno workspace
-ag init
-ag ws setup
 ```
 
-4. Create a new file named `workspace/secrets/dev_app_secrets.yml` to add environment variables. Please refer to this [doc](https://docs.google.com/document/d/1-P-R0bRgnrss0oVUE6O1vX8Tu3HaMLSGG52T04bkz1s) to get these secrets.
-```bash
-mkdir -p workspace/secrets && touch workspace/secrets/dev_app_secrets.yml
-```
-
-5. Build and run both API and web app locally.
+4. Create a `local.env` file for environment variables. Please refer to this [doc](https://docs.google.com/document/d/1-P-R0bRgnrss0oVUE6O1vX8Tu3HaMLSGG52T04bkz1s) to get the actual secret values.
 
 ```bash
-ag ws up -y # appending -y allows you to skip the confirmation step
+# Copy the example file
+cp local.env.example local.env
 
-ag ws up -f (Force rebuild from scratch)
+# Edit local.env and fill in your actual API keys and credentials
+# The file is gitignored and should never be committed
 ```
 
-6. Run this command to migrate local db to the latest schema.
+Note: Basic DB configuration is already set in docker-compose.yml. The `local.env` file is mainly for third-party API keys (AWS, OpenAI, Stripe, etc.).
+
+5. Build and run both API and database locally.
+
+```bash
+docker-compose up -d --build
+
+# Force rebuild from scratch
+docker-compose up -d --build --force-recreate
+
+# Stop services
+docker-compose down
+
+# View logs
+docker-compose logs -f api
+```
+
+6. (Optional) Manually migrate local db to the latest schema if needed. Note: This is done automatically on container startup by default (MIGRATE_DB=true).
 
 ```bash
 docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
@@ -91,9 +101,9 @@ docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
 
 ### Local Environment
 
-`ag ws up` will automatically spin up new Docker containers that install dependencies from `uv.lock` that enable `pal-mono` to function. The dependencies are specified in `pyproject.toml` and the lock file is updated with `./scripts/upgrade.sh`.
+`docker-compose up` will automatically spin up Docker containers that install dependencies from `uv.lock` that enable `pal-mono` to function. The dependencies are specified in `pyproject.toml` and the lock file is updated with `./scripts/upgrade.sh`.
 
-Since Agno installs these dependencies in the Docker container environment, our local environment (e.g. VS Code) will not recognize the missing imports. To set up the local environment:
+Since these dependencies are installed in the Docker container environment, our local environment (e.g. VS Code) will not recognize the missing imports. To set up the local environment for IDE support:
 
 ```bash
 ./scripts/install.sh
@@ -173,8 +183,8 @@ Testing is done with [pytest](https://docs.pytest.org/en/7.1.x/contents.html), w
 
 To run, first start the containers.
 
-```
-ag ws up
+```bash
+docker-compose up -d --build
 ```
 
 Then run the test script.
