@@ -1017,19 +1017,6 @@ class AdoraTool(Toolkit):
                 logger.debug("Customer phone number is missing.")
                 return "We'll need your phone number."
 
-            # Set user's last name
-            # If the account name is "pizzamyheart", append "(via Jimmy)" to the last name; otherwise, append VIA_AGENT_SUFFIX
-            via_text = (
-                "(via Jimmy)"
-                if self.tool_metadata.account_name == "pizzamyheart"
-                else VIA_AGENT_SUFFIX
-            )
-            last_name_parts = []
-            if order.customer.last_name:
-                last_name_parts.append(order.customer.last_name)
-            last_name_parts.append(via_text)
-            order.customer.last_name = " ".join(last_name_parts)
-
             # Set email to default if empty or if it is not valid
             email = order.customer.email
             if not email or not _utils.is_valid_email(email):
@@ -1038,8 +1025,10 @@ class AdoraTool(Toolkit):
                 else:
                     order.customer.email = "orderingagent@palona.ai"
 
-            # If order comment is None, set it to an empty string
-            order.order_comment = "" if not order.order_comment else order.order_comment
+            # Add via agent suffix to order comment
+            order.order_comment = (
+                (order.order_comment or "") + f" {VIA_AGENT_SUFFIX}"
+            ).strip()
 
             # Add loyalty discounts to the order
             if self.loyalty_enabled:
