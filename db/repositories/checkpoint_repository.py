@@ -29,6 +29,11 @@ def create_checkpoint(session: Session, checkpoint: CheckPoint) -> CheckPoint:
         is_active=(checkpoint.is_active if checkpoint.is_active is not None else False),
         group=checkpoint.group,
         rules=checkpoint.rules,
+        requires_image=(
+            checkpoint.requires_image
+            if checkpoint.requires_image is not None
+            else False
+        ),
     )
 
     try:
@@ -138,6 +143,7 @@ def update_checkpoint(
             "group",
             "rules",
             "checklist_id",
+            "requires_image",
         }
         # Fields that can be explicitly set to None
         nullable_fields = {"description", "image_url", "group", "rules", "checklist_id"}
