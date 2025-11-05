@@ -410,6 +410,39 @@ def update_checkpoint_run_review(
     )
 
 
+def compare_camera_images_with_checkpoint(
+    session: Session,
+    project_id: UUID,
+    camera_name: str,
+    start_time: datetime,
+    end_time: datetime,
+    max_images: int = 100,
+) -> dict:
+    """
+    Find checkpoint by camera name, retrieve S3 images, and compare them against the checkpoint.
+
+    Creates checkpoint runs with 'processing' status immediately and starts background comparison.
+    All runs in a batch share the same submission_id.
+
+    Args:
+        session: Database session
+        project_id: Project UUID
+        camera_name: Camera name (must match checkpoint name)
+        start_time: Start of time range
+        end_time: End of time range
+        max_images: Maximum number of images to process (default: 100, no upper limit)
+
+    Returns:
+        dict with checkpoint_run_ids, submission_id, checkpoint_id, images_to_compare, status
+
+    Raises:
+        ValueError: If checkpoint not found or invalid parameters
+    """
+    return _implementation.compare_camera_images_with_checkpoint(
+        session, project_id, camera_name, start_time, end_time, max_images
+    )
+
+
 __all__ = [
     "create_checkpoint",
     "list_checkpoints",
@@ -430,4 +463,5 @@ __all__ = [
     "record_checkpoint_run",
     "update_checkpoint_run_image",
     "update_checkpoint_run_review",
+    "compare_camera_images_with_checkpoint",
 ]

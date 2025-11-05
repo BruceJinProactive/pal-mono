@@ -179,6 +179,25 @@ def delete_checkpoint(session: Session, checkpoint_id: UUID) -> bool:
         raise
 
 
+def get_checkpoint_by_camera_name(
+    session: Session, project_id: UUID, camera_name: str
+) -> CheckPoint | None:
+    """Get a checkpoint by camera name within a project."""
+    try:
+        checkpoint = (
+            session.query(CheckPoint)
+            .filter(
+                CheckPoint.project_id == project_id,
+                CheckPoint.name == camera_name,
+            )
+            .first()
+        )
+        return checkpoint
+    except SQLAlchemyError as e:
+        logger.error(f"Error getting checkpoint by camera name: {e}")
+        raise
+
+
 # Legacy class-based repository (kept for backwards compatibility)
 
 
