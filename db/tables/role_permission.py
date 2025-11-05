@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
 from .base import Base
 
 if TYPE_CHECKING:
-    from .permission import Permission
+    pass
 
 
 class RolePermission(Base):
@@ -38,11 +38,6 @@ class RolePermission(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
-    )
-
-    # Relationships
-    permission: Mapped["Permission"] = relationship(
-        "Permission", back_populates="role_mappings"
     )
 
     # Constraints

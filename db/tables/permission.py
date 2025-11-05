@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String, Text
 
 from .base import Base
 
 if TYPE_CHECKING:
-    from .role_permission import RolePermission
+    pass
 
 
 class Permission(Base):
@@ -37,11 +37,6 @@ class Permission(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
-    )
-
-    # Relationships
-    role_mappings: Mapped[List["RolePermission"]] = relationship(
-        "RolePermission", back_populates="permission", cascade="all, delete-orphan"
     )
 
     # Constraints
