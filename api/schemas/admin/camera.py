@@ -35,3 +35,9 @@ class GetCameraImagesResponse(BaseModel):
         default=[], description="List of images within the specified time range"
     )
     total_count: int = Field(default=0, description="Total number of images found")
+
+
+class GetCameraImageUrlsResponse(BaseModel):
+    urls: list[str] = Field(
+        default=[], description="List of presigned S3 URLs (valid for 1 hour)"
+    )

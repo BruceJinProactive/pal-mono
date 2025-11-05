@@ -8,11 +8,14 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
-from api.schemas.admin.camera import GetCamerasResponse, ImageMetadata
+from api.schemas.admin.camera import (
+    GetCameraImageUrlsResponse,
+    GetCamerasResponse,
+    ImageMetadata,
+)
 from api.schemas.admin.checklist import (
     BatchChecklistHistoryResponse,
     Checklist,
-    ChecklistHistoryResponse,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
@@ -97,6 +100,65 @@ async def get_camera_image(
     """
     return await _implementation.get_camera_image_handler(
         account_id, project_id, camera_name
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/cameras/{camera_name}/images",
+    response_model=GetCameraImageUrlsResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_camera_images_by_time_interval(
+    project_id: str,
+    camera_name: str,
+    start_time: datetime = Query(
+        ...,
+        description="Start time in ISO 8601 format (e.g., 2025-11-03T14:00:00Z)",
+    ),
+    end_time: datetime = Query(
+        ...,
+        description="End time in ISO 8601 format (e.g., 2025-11-03T18:00:00Z)",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> GetCameraImageUrlsResponse:
+    """
+    Get camera images within a time range (< 24 hours recommended).
+
+    This endpoint retrieves presigned S3 URLs for camera images captured within
+    the specified time range. Uses optimized S3 prefix filtering for fast queries.
+
+    Path Parameters:
+    - project_id: The project UUID
+    - camera_name: The camera identifier
+
+    Query Parameters:
+    - start_time (required): Start of time range in ISO 8601 format (UTC recommended)
+    - end_time (required): End of time range in ISO 8601 format (UTC recommended)
+
+    Returns:
+    - urls: List of presigned S3 URLs (valid for 1 hour)
+
+    Notes:
+    - Time range must be less than 24 hours
+    - Image filenames must be in format: YYYYMMDD_HHMMSS.{png|jpeg|jpg}
+    - Results are sorted chronologically (oldest first)
+    - Account ID is automatically determined from project ID
+
+    Example:
+    GET /projects/123e4567-e89b-12d3-a456-426614174000/cameras/front_entrance/images?start_time=2025-11-04T22:00:00Z&end_time=2025-11-05T02:00:00Z
+    """
+    return await _implementation.get_camera_images_by_time_interval_handler(
+        context=context,
+        session=session,
+        project_id=project_id,
+        camera_name=camera_name,
+        start_time=start_time,
+        end_time=end_time,
     )
 
 
