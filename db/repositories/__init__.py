@@ -1,5 +1,6 @@
 from . import checkpoint_repository
 from .account_repository import AccountRepository
+from .account_user_repository import AccountUserRepository
 from .agent_repository import AgentRepository, AgentRepositoryAsync
 from .analytics_repository import AnalyticsRepository
 from .change_log_repository import ChangeLogRepository
@@ -11,13 +12,17 @@ from .integration_repository import IntegrationAsyncRepository, IntegrationRepos
 from .lead_repository import LeadFilter, LeadRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync
 from .order_repository import OrderRepository
+from .permission_repository import PermissionRepository
 from .phone_call_repository import PhoneCallRepository, PhoneCallRepositoryAsync
 from .project_integration_repository import ProjectIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
 from .prompt_repository import PromptRepository
+from .resource_role_assignment_repository import ResourceRoleAssignmentRepository
+from .role_permission_repository import RolePermissionRepository
 from .subscription_repository import (
     AccountSubscriptionRepository,
     ProjectSubscriptionRepository,
     SubscriptionPlanRepository,
 )
+from .user_invitation_repository import UserInvitationRepository
 from .user_repository import UserRepository, UserRepositoryAsync

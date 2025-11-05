@@ -26,8 +26,8 @@ class ResourceRoleAssignment(Base):
     - Agent-level: resource_type='agent', resource_id=agent_id
     - Any future resource types
 
-    Design principle: No inheritance or overrides - simple lookup:
-    "What role does this user have on THIS specific resource?"
+    Design principle: Users can have MULTIPLE roles on the same resource.
+    Example: User can be both 'owner' AND 'billing_admin' on an account.
 
     Roles are arbitrary strings allowing flexible role definitions.
     Examples: 'owner', 'manager', 'viewer', 'billing_admin', 'content_editor', etc.
@@ -69,6 +69,7 @@ class ResourceRoleAssignment(Base):
             "user_id",
             "resource_type",
             "resource_id",
+            "role",
             name="uq_user_resource_role",
         ),
     )

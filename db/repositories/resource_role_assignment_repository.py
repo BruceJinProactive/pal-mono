@@ -1,0 +1,418 @@
+import uuid
+from typing import Optional
+
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from db.tables import ResourceRoleAssignment
+from utils.log import logger
+
+
+class ResourceRoleAssignmentRepository:
+    """Repository for managing role assignments on resources.
+
+    Unified repository for ALL role assignments on ANY resource:
+    - Account-level: resource_type='account', resource_id=account_id
+    - Project-level: resource_type='project', resource_id=project_id
+    - Agent-level: resource_type='agent', resource_id=agent_id
+    - Any future resource types
+
+    Design principle: Users can have MULTIPLE roles on the same resource.
+    Example: User can be both 'owner' AND 'billing_admin' on an account.
+    """
+
+    def __init__(self, session: Session, auto_commit: bool = True):
+        self.session = session
+        self.auto_commit = auto_commit
+
+    def get_roles_for_resource(
+        self, user_id: uuid.UUID, resource_type: str, resource_id: uuid.UUID
+    ) -> list[str]:
+        """Get all roles a user has on a specific resource.
+
+        This is the CORE permission check query - returns all roles the user
+        has on a specific resource instance.
+
+        Args:
+            user_id: UUID of the user
+            resource_type: Resource type (e.g., 'account', 'project', 'agent')
+            resource_id: UUID of the specific resource
+
+        Returns:
+            List of role strings (e.g., ['owner', 'billing_admin']) or empty list
+        """
+        try:
+            assignments = (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.user_id == user_id,
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                )
+                .all()
+            )
+            return [assignment.role for assignment in assignments]
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving roles for resource: {e}")
+            return []
+
+    def has_role(
+        self,
+        user_id: uuid.UUID,
+        resource_type: str,
+        resource_id: uuid.UUID,
+        role: str,
+    ) -> bool:
+        """Check if user has a specific role on a resource.
+
+        Convenience method for permission checks.
+
+        Args:
+            user_id: UUID of the user
+            resource_type: Resource type
+            resource_id: UUID of the resource
+            role: Role to check for
+
+        Returns:
+            True if user has the role, False otherwise
+        """
+        roles = self.get_roles_for_resource(user_id, resource_type, resource_id)
+        return role in roles
+
+    def get_assignments_for_user(
+        self, user_id: uuid.UUID, resource_type: Optional[str] = None
+    ) -> list[ResourceRoleAssignment]:
+        """Get all role assignments for a user.
+
+        Args:
+            user_id: UUID of the user
+            resource_type: Optional resource type filter
+
+        Returns:
+            List of ResourceRoleAssignment objects, ordered by created_at desc
+        """
+        try:
+            query = self.session.query(ResourceRoleAssignment).filter(
+                ResourceRoleAssignment.user_id == user_id
+            )
+
+            if resource_type:
+                query = query.filter(
+                    ResourceRoleAssignment.resource_type == resource_type
+                )
+
+            return query.order_by(ResourceRoleAssignment.created_at.desc()).all()
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving assignments for user: {e}")
+            return []
+
+    def get_assignments_for_resource(
+        self, resource_type: str, resource_id: uuid.UUID
+    ) -> list[ResourceRoleAssignment]:
+        """Get all role assignments for a specific resource.
+
+        Used for listing team members who have access to a resource.
+
+        Args:
+            resource_type: Resource type (e.g., 'account', 'project')
+            resource_id: UUID of the resource
+
+        Returns:
+            List of ResourceRoleAssignment objects, ordered by role alphabetically, then created_at
+        """
+        try:
+            return (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                )
+                .order_by(
+                    ResourceRoleAssignment.role, ResourceRoleAssignment.created_at
+                )
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving assignments for resource: {e}")
+            return []
+
+    def add_role(
+        self,
+        user_id: uuid.UUID,
+        resource_type: str,
+        resource_id: uuid.UUID,
+        role: str,
+        assigned_by: Optional[uuid.UUID] = None,
+        reason: Optional[str] = None,
+    ) -> ResourceRoleAssignment:
+        """Add a role to a user on a resource.
+
+        Idempotent operation - if the role assignment already exists, returns the existing one.
+
+        Args:
+            user_id: UUID of the user
+            resource_type: Resource type (e.g., 'account', 'project')
+            resource_id: UUID of the resource
+            role: Role string (e.g., 'owner', 'manager', 'viewer', 'billing_admin')
+            assigned_by: Optional UUID of user who made this assignment
+            reason: Optional reason for assignment
+
+        Returns:
+            The created or existing ResourceRoleAssignment object
+
+        Raises:
+            SQLAlchemyError: If there's a database error during operation
+        """
+        try:
+            # Check if this exact role assignment already exists
+            existing = (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.user_id == user_id,
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                    ResourceRoleAssignment.role == role,
+                )
+                .first()
+            )
+
+            if existing:
+                logger.info(
+                    f"Role assignment already exists: user {user_id} has role {role} on {resource_type}:{resource_id}"
+                )
+                return existing
+
+            # Create new assignment
+            db_assignment = ResourceRoleAssignment(
+                id=uuid.uuid4(),
+                user_id=user_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                role=role,
+                assigned_by=assigned_by,
+                reason=reason,
+            )
+            self.session.add(db_assignment)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(db_assignment)
+            logger.info(
+                f"Added role: user {user_id} as {role} on {resource_type}:{resource_id}"
+            )
+            return db_assignment
+        except IntegrityError:
+            # Concurrent insert - fetch the existing assignment
+            self.session.rollback()
+            existing = (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.user_id == user_id,
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                    ResourceRoleAssignment.role == role,
+                )
+                .first()
+            )
+            if existing:
+                logger.info(
+                    f"Role assignment created concurrently: user {user_id} has role {role} on {resource_type}:{resource_id}"
+                )
+                return existing
+            # If still not found, re-raise original error
+            raise
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error adding role: {e}")
+            raise
+
+    def remove_role(
+        self, user_id: uuid.UUID, resource_type: str, resource_id: uuid.UUID, role: str
+    ) -> bool:
+        """Remove a specific role from a user on a resource.
+
+        Args:
+            user_id: UUID of the user
+            resource_type: Resource type
+            resource_id: UUID of the resource
+            role: Specific role to remove
+
+        Returns:
+            True if deleted, False if not found
+        """
+        try:
+            assignment = (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.user_id == user_id,
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                    ResourceRoleAssignment.role == role,
+                )
+                .first()
+            )
+
+            if not assignment:
+                logger.warning(
+                    f"Role assignment not found: user {user_id} with role {role} on {resource_type}:{resource_id}"
+                )
+                return False
+
+            self.session.delete(assignment)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            logger.info(
+                f"Removed role: user {user_id} role {role} on {resource_type}:{resource_id}"
+            )
+            return True
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error removing role: {e}")
+            return False
+
+    def remove_all_roles_for_user_on_resource(
+        self, user_id: uuid.UUID, resource_type: str, resource_id: uuid.UUID
+    ) -> int:
+        """Remove all role assignments for a user on a specific resource.
+
+        Used when removing a user's access to a specific resource.
+
+        Args:
+            user_id: UUID of the user
+            resource_type: Resource type
+            resource_id: UUID of the resource
+
+        Returns:
+            Count of deleted assignments
+        """
+        try:
+            count = (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.user_id == user_id,
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                )
+                .delete()
+            )
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            logger.info(
+                f"Removed {count} role assignments for user {user_id} on {resource_type}:{resource_id}"
+            )
+            return count
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error removing all roles for user on resource: {e}")
+            return 0
+
+    def remove_all_assignments_for_user(self, user_id: uuid.UUID) -> int:
+        """Remove all role assignments for a user (across all resources).
+
+        Used when removing a user from the system.
+
+        Args:
+            user_id: UUID of the user
+
+        Returns:
+            Count of deleted assignments
+        """
+        try:
+            count = (
+                self.session.query(ResourceRoleAssignment)
+                .filter(ResourceRoleAssignment.user_id == user_id)
+                .delete()
+            )
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            logger.info(f"Removed {count} role assignments for user {user_id}")
+            return count
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error removing all assignments for user: {e}")
+            return 0
+
+    def remove_all_assignments_for_resource(
+        self, resource_type: str, resource_id: uuid.UUID
+    ) -> int:
+        """Remove all role assignments for a resource.
+
+        Used when deleting a resource.
+
+        Args:
+            resource_type: Resource type
+            resource_id: UUID of the resource
+
+        Returns:
+            Count of deleted assignments
+        """
+        try:
+            count = (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                )
+                .delete()
+            )
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            logger.info(
+                f"Removed {count} role assignments for {resource_type}:{resource_id}"
+            )
+            return count
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error removing all assignments for resource: {e}")
+            return 0
+
+    def count_owners_for_resource(
+        self, resource_type: str, resource_id: uuid.UUID
+    ) -> int:
+        """Count users with owner role on a resource.
+
+        Safety check to prevent removing the last owner.
+
+        Args:
+            resource_type: Resource type
+            resource_id: UUID of the resource
+
+        Returns:
+            Count of owner assignments
+        """
+        try:
+            return (
+                self.session.query(ResourceRoleAssignment)
+                .filter(
+                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_id == resource_id,
+                    ResourceRoleAssignment.role == "owner",
+                )
+                .count()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error counting owners for resource: {e}")
+            return 0
