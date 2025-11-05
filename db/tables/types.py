@@ -137,3 +137,23 @@ class CheckStatus(str, enum.Enum):
     failed = "failed"
     error = "error"
     overdue = "overdue"
+
+
+# RBAC Enums
+
+
+class AccountUserStatus(str, enum.Enum):
+    """Status of user membership in an account."""
+
+    pending = "pending"
+    active = "active"
+    deactivated = "deactivated"
+
+
+class InvitationStatus(str, enum.Enum):
+    """Status of user invitation."""
+
+    pending = "pending"
+    accepted = "accepted"
+    expired = "expired"
+    revoked = "revoked"

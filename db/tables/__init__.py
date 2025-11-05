@@ -1,3 +1,4 @@
+from .account_user import AccountUser
 from .accounts import Account
 from .adora_orders import AdoraOrder
 from .affiliates import Affiliate
@@ -17,13 +18,17 @@ from .integration import Integration, ProjectIntegration
 from .lead import Lead
 from .messages import Message
 from .orders import Order
+from .permission import Permission
 from .phonecalls import PhoneCall
 from .project_contacts import ProjectContact
 from .projects import Project
 from .prompts import Prompt, PromptDetails
 from .reservations import Reservation
+from .resource_role_assignment import ResourceRoleAssignment
+from .role_permission import RolePermission
 from .subscriptions import AccountSubscription, ProjectSubscription, SubscriptionPlan
 from .types import (
+    AccountUserStatus,
     AgentType,
     AuthType,
     CallEndedReason,
@@ -33,11 +38,13 @@ from .types import (
     CheckStatus,
     IntegrationProvider,
     IntegrationType,
+    InvitationStatus,
     Language,
     PaymentMethod,
     SubscriptionStatus,
     TargetTier,
     UserSatisfaction,
 )
+from .user_invitation import UserInvitation
 from .users import User
 from .voice_configs import VoiceConfig
