@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, Enum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
 
@@ -14,8 +14,7 @@ from .base import Base
 from .types import InvitationStatus
 
 if TYPE_CHECKING:
-    from .accounts import Account
-    from .users import User
+    pass
 
 
 class UserInvitation(Base):
@@ -68,10 +67,6 @@ class UserInvitation(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
-
-    # Relationships (optional - adjust based on existing models)
-    account: Mapped["Account"] = relationship("Account", foreign_keys=[account_id])
-    invited_by_user: Mapped["User"] = relationship("User", foreign_keys=[invited_by])
 
     # Constraints
     __table_args__ = (

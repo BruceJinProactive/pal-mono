@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime
@@ -15,8 +15,7 @@ from .base import Base
 from .types import AccountUserStatus
 
 if TYPE_CHECKING:
-    from .accounts import Account
-    from .users import User
+    pass
 
 
 class AccountUser(Base):
@@ -60,13 +59,6 @@ class AccountUser(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
-    )
-
-    # Relationships
-    account: Mapped["Account"] = relationship("Account", foreign_keys=[account_id])
-    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
-    added_by_user: Mapped[Optional["User"]] = relationship(
-        "User", foreign_keys=[added_by]
     )
 
     # Constraints

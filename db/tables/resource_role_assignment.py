@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String, Text
@@ -14,7 +14,7 @@ from sqlalchemy.types import DateTime, String, Text
 from .base import Base
 
 if TYPE_CHECKING:
-    from .users import User
+    pass
 
 
 class ResourceRoleAssignment(Base):
@@ -62,10 +62,6 @@ class ResourceRoleAssignment(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
     )
-
-    # Relationships
-    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
-    assigned_by_user: Mapped["User"] = relationship("User", foreign_keys=[assigned_by])
 
     # Constraints
     __table_args__ = (
