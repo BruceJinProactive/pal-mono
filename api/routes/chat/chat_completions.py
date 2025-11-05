@@ -155,6 +155,43 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
     }
 
 
+def is_invalid_url(url_string: str) -> bool:
+    """
+    Check if a URL string is invalid based on common false positive patterns, e.g. moment.It
+    Returns True if the URL should be rejected.
+    """
+    # Common valid URL extensions/TLDs
+    valid_extensions = {
+        "com",
+        "org",
+        "net",
+        "us",
+        "edu",
+        "info",
+        "biz",
+        "app",
+        "dev",
+        "tech",
+        "store",
+        "online",
+        "media",
+        "ai",
+    }
+
+    # Check if it's exactly two words with a dot
+    parts = url_string.split(".")
+    if len(parts) == 2:
+        first_word, second_word = parts
+
+        # Both parts should be alphabetic for this check
+        if first_word.isalpha() and second_word.isalpha():
+            # If second word is not a valid extension, it's invalid
+            if second_word.lower() not in valid_extensions:
+                return True
+
+    return False
+
+
 async def _send_urls_via_sms(
     collected_content: List[str],
     sender_identifier: str,
@@ -178,7 +215,10 @@ async def _send_urls_via_sms(
 
     # Use URLExtract to find URLs
     extractor = URLExtract()
-    urls = extractor.find_urls(full_content)
+    potential_urls: List[str] = extractor.find_urls(full_content)  # type: ignore
+
+    # Filter out invalid URLs (false positives)
+    urls = [url for url in potential_urls if not is_invalid_url(url)]
 
     if urls:
         logger.debug(f"Found URLs in response: {urls}")
@@ -203,26 +243,19 @@ CRITICAL INSTRUCTION: You MUST use the exact text [INSERT_URL_HERE] as the place
 
 Instructions:
 - If the content is about a pending-payment order:
-  - **IMPORTANT: Only include a detailed "Order Summary" if ALL necessary order details (items, subtotal, sales tax, discount, order total) are explicitly available in the provided Content.**
-    - If ALL necessary order details ARE available:
-        - Start with a sentence stating the order status (e.g., "Your order is pending")
-        - Include the title: "Order Summary:"
+    - Start with a sentence stating the order status (e.g., "Your order is pending")
+    - Include a section titled "Order Summary:" **if any order details are present** (items, subtotal, sales tax, discount, order total)
         - List each ordered item on a new line, prefixed with a dash (-) and using the exact item name
-        - Include a breakdown: Subtotal, Sales Tax, Discount, and Order Total, each on its own line
-        - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay here: [INSERT_URL_HERE]")
-    - **If ANY necessary order detail (item names, subtotal, taxes, discount, or order total) is MISSING or incomplete in the Content:**
-        - Start with a sentence stating the order status (e.g., "Your order is pending")
-        - Provide a **general** call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay for your order here: [INSERT_URL_HERE]")
-        - **DO NOT include a detailed "Order Summary:" section or list individual items/prices if details are missing.**
+        - Include any of the following breakdown lines if they are explicitly present in the content: Subtotal, Sales Tax, Discount, Order Total
+    - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay here: [INSERT_URL_HERE]")
+    - **Do not fabricate missing details**; only include what is explicitly in the content
 - If the content is not about a pending-payment order:
-  - Provide a clear, short summary of the main point
-  - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Order here: [INSERT_URL_HERE]")
-- Do not write the actual URL
+    - Provide a clear, short summary of the main point
+    - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Order here: [INSERT_URL_HERE]")
+
 - Use line breaks for clarity
-
-REMEMBER: Use the EXACT placeholder [INSERT_URL_HERE] - no variations!
+- REMEMBER: Use the EXACT placeholder [INSERT_URL_HERE] - no variations!
 """
-
             chat_complete_params = {
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,  # Lower temperature for more consistent placeholder usage

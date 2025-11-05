@@ -916,7 +916,7 @@ class AdoraTool(Toolkit):
             if order.order_type == AdoraOrderType.DELIVERY:
                 if not order.delivery_address:
                     logger.debug(
-                        "AdoraTool.checkout_order] Delivery order constructed has no address"
+                        "[AdoraTool.checkout_order] Delivery order constructed has no address"
                     )
                     return "Could you provide your address?"
                 validate_order_success, validate_order_message = self._validate_address(
