@@ -12,7 +12,6 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.routes.admin._auth import authorize_user_account
-from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
     Checklist,
     CreateChecklistRequest,
@@ -21,6 +20,7 @@ from api.schemas.admin.checklist import (
 )
 from db.repositories import checklist_repository
 from services import account_service, project_service
+from services.auth_types import UserContext
 
 
 def _build_checklist(checklist_db) -> Checklist:

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from api.routes.admin._auth import authorize_admin
-from api.routes.admin._utils import UserContext, not_found_error
+from api.routes.admin._utils import not_found_error
 from api.schemas.admin.phone_number import (
     EnhancedReleaseProjectNumberRequest,
     EnhancedReleaseProjectNumberResponse,
@@ -18,6 +18,7 @@ from api.schemas.admin.phone_number import (
     ReserveProjectNumberRequest,
 )
 from services import project_service
+from services.auth_types import UserContext
 from services.number_service import NumberService
 from services.project_service import ProjectParams
 from utils.log import logger

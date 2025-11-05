@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from api.routes.admin._auth import authenticate_user
-from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.catering.catering import (
     CateringRequest,
@@ -17,6 +16,7 @@ from api.schemas.catering.catering import (
     EventBridgeEvent,
     UpdateCateringRequestRequest,
 )
+from services.auth_types import UserContext
 
 from . import _implementation
 

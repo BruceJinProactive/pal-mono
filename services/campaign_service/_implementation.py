@@ -4,7 +4,6 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from api.routes.admin import UserContext
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
@@ -25,6 +24,7 @@ from db.tables.campaigns import (
 )
 from db.tables.types import Channel
 from services import relay_service
+from services.auth_types import UserContext
 from services.campaign_service.schema import (
     DEFAULT_CAMPAIGN_STAT,
     CampaignDetails,

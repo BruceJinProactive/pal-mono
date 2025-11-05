@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin import _builder
 from api.routes.admin._auth import authorize_admin
-from api.routes.admin._utils import UserContext, not_found_error
+from api.routes.admin._utils import not_found_error
 from api.schemas.admin.lead import (
     CreateLeadRequest,
     Lead,
@@ -16,6 +16,7 @@ from api.schemas.admin.lead import (
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from services import admin_service
 from services.admin_service import LeadFilters, LeadParams
+from services.auth_types import UserContext
 
 
 async def create_lead(

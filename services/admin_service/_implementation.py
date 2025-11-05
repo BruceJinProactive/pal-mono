@@ -15,7 +15,6 @@ from sqlalchemy import Table
 from sqlalchemy.orm import Session, declarative_base
 
 import db
-from api.routes.admin import UserContext
 from api.schemas.admin.conversation import ConversationPreview
 from db.repositories import LeadFilter as RepoLeadFilter
 from db.repositories.conversation_repository import ConversationUpdate
@@ -40,6 +39,7 @@ from services.admin_service.schema import (
     UserSessionPreview,
 )
 from services.agent_service import AgentParams
+from services.auth_types import UserContext
 from services.knowledge_service import KnowledgeFile
 from services.message_service import (
     get_conversations_by_users,

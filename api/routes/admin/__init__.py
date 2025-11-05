@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import AgentConfig
-from api.routes.admin._utils import SortOrder, UserContext
+from api.routes.admin._utils import SortOrder
 from api.routes.endpoints import endpoints
 from api.routes.integrations.square import _implementation
 from api.schemas.admin.account import (
@@ -188,6 +188,7 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel, CheckStatus
 from services.admin_service.schema import CognitoUser
+from services.auth_types import UserContext
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 from services.google_maps_service import search_places_by_name
 from services.google_maps_service.schemas import (

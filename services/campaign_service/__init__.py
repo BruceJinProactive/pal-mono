@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from api.routes.admin import UserContext
+from services.auth_types import UserContext
 
 from . import _implementation
 from .schema import CampaignDetails, CampaignSummary, CreateCampaignRequest

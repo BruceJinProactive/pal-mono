@@ -4,10 +4,10 @@ from dataclasses import asdict
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import UserContext
 from db.repositories.prompt_repository import PromptRepository
 from db.tables.change_log import ChangeResourceType
 from services import account_service, agent_service, project_service
+from services.auth_types import UserContext
 from services.history_service import change_log_context
 from services.prompt_service.schema import PromptDetailsParams, PromptParams
 

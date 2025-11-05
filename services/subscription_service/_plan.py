@@ -5,9 +5,9 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import UserContext
 from db.repositories.subscription_repository import SubscriptionPlanRepository
 from db.tables.change_log import ChangeResourceType
+from services.auth_types import UserContext
 from services.history_service import change_log_context
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger

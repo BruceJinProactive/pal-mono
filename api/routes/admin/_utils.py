@@ -2,30 +2,14 @@ import base64
 import hashlib
 import hmac
 import json
-from dataclasses import dataclass
 from enum import Enum
-from typing import List
 
 from fastapi import HTTPException, Request, status
 
 import db
 from db.tables.agents import AgentType
+from services.auth_types import UserContext, UserRole
 from utils import secret
-
-
-class UserRole(str, Enum):
-    AccountManager = "AccountManager"
-    Admin = "Admin"
-
-
-@dataclass
-class UserContext:
-    username: str
-    email: str
-    groups: List[str]
-    display_name: str
-    account_names: List[str]
-    role: UserRole
 
 
 class SortOrder(str, Enum):

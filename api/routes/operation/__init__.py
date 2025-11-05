@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin._auth import authenticate_user
-from api.routes.admin._utils import UserContext
 from api.routes.endpoints import endpoints
 from api.schemas.admin.camera import (
     CompareCameraCheckpointResponse,
@@ -31,6 +30,7 @@ from api.schemas.admin.checkpoint import (
 )
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import CheckStatus
+from services.auth_types import UserContext
 
 from . import _checklist, _checkpoint, _implementation
 

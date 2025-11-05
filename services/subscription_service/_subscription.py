@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import UserContext
 from db import ConversationRepositoryAsync
 from db.db_utils import duplicate_row
 from db.repositories.subscription_repository import (
@@ -22,6 +21,7 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
 from services import account_service, project_service
 from services.account_service import AccountParams
+from services.auth_types import UserContext
 from services.history_service import change_log_context
 from services.subscription_service import (
     _stripe_customer,

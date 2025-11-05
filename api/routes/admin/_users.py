@@ -1,7 +1,6 @@
 from fastapi import HTTPException, status
 from starlette.concurrency import run_in_threadpool
 
-from api.routes.admin._utils import UserContext, UserRole
 from api.schemas.admin.user_management import (
     CreateUserRequest,
     ListUsersResponse,
@@ -10,6 +9,7 @@ from api.schemas.admin.user_management import (
     UserInfo,
 )
 from services import admin_service
+from services.auth_types import UserContext, UserRole
 
 from . import _auth
 

@@ -7,7 +7,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from api.routes.admin._auth import authorize_admin
-from api.routes.admin._utils import UserContext
+from services.auth_types import UserContext
 from services.google_maps_service.schemas import (
     GoogleMapsSearchRequest,
     GoogleMapsSearchResponse,

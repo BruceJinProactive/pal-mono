@@ -3,7 +3,6 @@ from typing import Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.admin._utils import UserContext
 from api.schemas.catering.catering import (
     CateringRequest,
     CateringRequestListResponse,
@@ -14,6 +13,7 @@ from api.schemas.catering.catering import (
     EventBridgeEvent,
     UpdateCateringRequestRequest,
 )
+from services.auth_types import UserContext
 from services.catering_service._implementation import (
     create_catering_request,
     create_contact,

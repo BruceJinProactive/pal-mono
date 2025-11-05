@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import UserContext
 from api.schemas.chat.message import Message
 from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.change_log import ChangeResourceType
+from services.auth_types import UserContext
 from services.history_service import change_log_context
 from services.number_service import NumberService
 from utils.log import logger

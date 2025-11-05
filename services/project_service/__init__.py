@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import UserContext
 from api.schemas.chat.message import Message
+from services.auth_types import UserContext
 
 from . import _implementation
 from .schema import ProjectParams

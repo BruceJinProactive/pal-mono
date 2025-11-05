@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import AgentConfig
-from api.routes.admin import UserContext
 from db.tables.change_log import ChangeResourceType
 from db.tables.types import Channel, IntegrationType
 from services import account_service, integration_service
+from services.auth_types import UserContext
 from services.history_service import change_log_context
 from utils.log import logger
 

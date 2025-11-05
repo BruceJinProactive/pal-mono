@@ -4,10 +4,11 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from api.routes.admin import _auth, _builder
-from api.routes.admin._utils import UserContext, not_found_error
+from api.routes.admin._utils import not_found_error
 from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
 from db.tables.change_log import ChangeResourceType
 from services import account_service, history_service
+from services.auth_types import UserContext
 from utils.log import logger
 
 

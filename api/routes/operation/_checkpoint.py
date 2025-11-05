@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin import _builder
 from api.routes.admin._auth import authorize_user_account
-from api.routes.admin._utils import UserContext, not_found_error
+from api.routes.admin._utils import not_found_error
 from api.routes.utils import map_uri_to_s3_url
 from api.schemas.admin.checkpoint import (
     Checkpoint,
@@ -22,6 +22,7 @@ from db.tables.types import CheckStatus
 from services import account_service, asset_service, checkpoint_service, project_service
 from services.asset_service import write_asset
 from services.asset_service._implementation import WriteAssetRequest
+from services.auth_types import UserContext
 from utils.log import logger
 
 

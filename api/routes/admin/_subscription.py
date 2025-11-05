@@ -12,7 +12,7 @@ from api.routes.admin._builder import (
     build_subscription,
     build_subscription_plan,
 )
-from api.routes.admin._utils import UserContext, not_found_error
+from api.routes.admin._utils import not_found_error
 from api.schemas.admin.subscription import (
     CreateCheckoutSessionRequest,
     CreateProjectSubscriptionRequest,
@@ -40,6 +40,7 @@ from api.schemas.admin.subscription import (
 )
 from services import account_service, project_service, subscription_service
 from services.account_service import AccountParams
+from services.auth_types import UserContext
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger
 

@@ -1,7 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from api.routes.admin._utils import UserContext
 from api.schemas.admin.email import (
     GetTemplateInfoRequest,
     ListTemplatesRequest,
@@ -9,6 +8,7 @@ from api.schemas.admin.email import (
     SendEmailRequest,
 )
 from services import email_service
+from services.auth_types import UserContext
 from utils.log import logger
 
 

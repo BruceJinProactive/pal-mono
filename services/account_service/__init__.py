@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import UserContext
+from services.auth_types import UserContext
 
 from . import _implementation
 from .schema import AccountParams

@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import AgentConfig
-from api.routes.admin import UserContext
 from db.tables.types import Channel
+from services.auth_types import UserContext
 from utils.dd import traced
 
 from . import _implementation

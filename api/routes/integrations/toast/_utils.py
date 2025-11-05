@@ -14,13 +14,13 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from api.routes.admin._utils import UserContext, UserRole
 from db.repositories.agent_repository import AgentRepository
 from db.session import SyncSessionLocal
 from db.tables.integration import Integration, ProjectIntegration
 from db.tables.projects import Project
 from db.tables.types import IntegrationProvider
 from services.admin_service._utils import _get_agent_knowledge_settings
+from services.auth_types import UserContext, UserRole
 from utils.log import logger
 
 from .schema import (

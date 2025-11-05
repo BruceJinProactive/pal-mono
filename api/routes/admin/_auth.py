@@ -7,9 +7,9 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin._utils import UserContext, UserRole
 from api.schemas.admin.user import User
 from services.account_service import get_account
+from services.auth_types import UserContext, UserRole
 from utils.log import logger
 
 """

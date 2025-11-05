@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin._auth import authorize_admin
 from api.routes.admin._builder import build_prompt, build_prompt_details
-from api.routes.admin._utils import UserContext
 from api.schemas.admin.prompt import (
     CreatePromptRequest,
     Prompt,
@@ -21,6 +20,7 @@ from services import (
     prompt_service,
     subscription_service,
 )
+from services.auth_types import UserContext
 from services.prompt_service.prompts import prompt_factory
 from services.prompt_service.schema import PromptParams
 

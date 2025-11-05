@@ -10,7 +10,6 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from api.routes.admin._utils import UserContext
 from api.schemas.admin.checklist import (
     BatchChecklistHistoryResponse,
     Checklist,
@@ -20,6 +19,7 @@ from api.schemas.admin.checklist import (
     UpdateChecklistRequest,
 )
 from services import checklist_service
+from services.auth_types import UserContext
 
 
 async def create_checklist(

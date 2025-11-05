@@ -5,9 +5,9 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin import UserContext
 from services import agent_service, project_service
 from services.agent_service import AgentParams
+from services.auth_types import UserContext
 from services.project_service import ProjectParams
 
 DEFAULT_PROJECT_INDEX = "projects"
