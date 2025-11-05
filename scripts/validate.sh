@@ -31,37 +31,37 @@ main() {
   print_heading "Validating workspace..."
 
   if [[ "$CHECK_MODE" == "true" ]]; then
-    print_heading "Running: black ${REPO_ROOT} --check --diff"
-    black "${REPO_ROOT}" --check --diff
+    print_heading "Running: uv run black ${REPO_ROOT} --check --diff"
+    uv run black "${REPO_ROOT}" --check --diff
 
-    print_heading "Running: ruff check ${REPO_ROOT} --diff"
-    ruff check "${REPO_ROOT}" --diff
+    print_heading "Running: uv run ruff check ${REPO_ROOT} --diff"
+    uv run ruff check "${REPO_ROOT}" --diff
 
-    print_heading "Running: isort ${REPO_ROOT} --check-only"
-    isort "${REPO_ROOT}" --check-only
+    print_heading "Running: uv run isort ${REPO_ROOT} --check-only"
+    uv run isort "${REPO_ROOT}" --check-only
 
-    print_heading "Running: pyright ${REPO_ROOT}"
+    print_heading "Running: uv run pyright ${REPO_ROOT}"
     export PYRIGHT_PYTHON_FORCE_VERSION=latest # ignore latest pyright version warning
-    pyright "${REPO_ROOT}"
+    uv run pyright "${REPO_ROOT}"
 
-    print_heading "Running: toml-sort ${REPO_ROOT}/pyproject.toml --sort-inline-arrays --check"
-    toml-sort "${REPO_ROOT}/pyproject.toml" --sort-inline-arrays --check
+    print_heading "Running: uv run toml-sort ${REPO_ROOT}/pyproject.toml --sort-inline-arrays --check"
+    uv run toml-sort "${REPO_ROOT}/pyproject.toml" --sort-inline-arrays --check
   else
-    print_heading "Running: black ${REPO_ROOT}"
-    black "${REPO_ROOT}"
+    print_heading "Running: uv run black ${REPO_ROOT}"
+    uv run black "${REPO_ROOT}"
 
-    print_heading "Running: ruff check ${REPO_ROOT}"
-    ruff check "${REPO_ROOT}" --fix
+    print_heading "Running: uv run ruff check ${REPO_ROOT} --fix"
+    uv run ruff check "${REPO_ROOT}" --fix
 
-    print_heading "Running: isort ${REPO_ROOT}"
-    isort "${REPO_ROOT}"
+    print_heading "Running: uv run isort ${REPO_ROOT}"
+    uv run isort "${REPO_ROOT}"
 
-    print_heading "Running: pyright ${REPO_ROOT}"
+    print_heading "Running: uv run pyright ${REPO_ROOT}"
     export PYRIGHT_PYTHON_FORCE_VERSION=latest # ignore latest pyright version warning
-    pyright "${REPO_ROOT}"
+    uv run pyright "${REPO_ROOT}"
 
-    print_heading "Running: toml-sort ${REPO_ROOT}/pyproject.toml --sort-inline-arrays --in-place"
-    toml-sort "${REPO_ROOT}/pyproject.toml" --sort-inline-arrays --in-place
+    print_heading "Running: uv run toml-sort ${REPO_ROOT}/pyproject.toml --sort-inline-arrays --in-place"
+    uv run toml-sort "${REPO_ROOT}/pyproject.toml" --sort-inline-arrays --in-place
   fi
 }
 
