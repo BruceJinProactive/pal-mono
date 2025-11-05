@@ -37,3 +37,13 @@ class SubQueries(BaseModel):
             "'burger', 'salad']"
         ),
     )
+
+
+class OrderConstructionModel(str, Enum):
+    """
+    Enum for order construction LLM client selection.
+    """
+
+    LLAMA = "llama"  # Default - Llama 3.3 70B via Groq
+    OPENAI = "openai"  # OpenAI GPT-OSS 120B via Groq
+    CLAUDE = "claude"  # Anthropic Claude Sonnet 4.5

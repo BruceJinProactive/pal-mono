@@ -9,6 +9,7 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm
 from pydantic import BaseModel
 
+from tools.utils.ordering.classes import OrderConstructionModel
 from utils.log import logger
 
 T = TypeVar("T", bound=BaseModel)
@@ -21,7 +22,7 @@ def llm_call(
     response_format: type[T],
     name: str = "tool",
     openai: bool = False,
-    anthropic_client: bool = False,
+    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> T | None: ...
 
 
@@ -32,7 +33,7 @@ def llm_call(
     response_format: None = None,
     name: str = "tool",
     openai: bool = False,
-    anthropic_client: bool = False,
+    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> str | None: ...
 
 
@@ -129,7 +130,7 @@ def llm_call(
     response_format: type[T] | None = None,
     name: str = "tool",
     openai: bool = False,
-    anthropic_client: bool = False,
+    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> T | str | None:
     """
     Makes a call to a language model and returns either a structured or raw response.
@@ -150,7 +151,7 @@ def llm_call(
         May propagate exceptions from the underlying agent implementation.
     """
     # Use Anthropic client directly with Claude Sonnet 4.5
-    if anthropic_client:
+    if order_construction_model_name == OrderConstructionModel.CLAUDE:
         return _call_anthropic_client(system_prompt, prompt, response_format, name)
 
     # Existing Groq/Agent implementation

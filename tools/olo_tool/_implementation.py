@@ -51,7 +51,7 @@ from tools.utils.ordering._utils import (
     get_chat_history,
     get_relevant_docs,
 )
-from tools.utils.ordering.classes import HttpMethod, SubQueries
+from tools.utils.ordering.classes import HttpMethod, OrderConstructionModel, SubQueries
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -73,6 +73,7 @@ class OloTool(Toolkit):
         backdoor_tool_prompt: dict | None = None,
         brand_access_id: str | None = None,
         general_api_endpoint: str = "ordering.api.olo.com",
+        order_construction_model_name: OrderConstructionModel = OrderConstructionModel.OPENAI,
     ):
         super().__init__(name="olo_tool")
 
@@ -89,6 +90,7 @@ class OloTool(Toolkit):
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         self._configured_brand_access_id = brand_access_id
         self._general_api_endpoint = general_api_endpoint
+        self.order_construction_model_name = order_construction_model_name
         # Set it as constant for now. If they want to make it dynamic later we can update it:
         ## Generate session-specific forwarded IP using session_id as seed
         ## This ensures the same session always gets the same IP, even if tool is reinitialized
@@ -402,6 +404,7 @@ class OloTool(Toolkit):
             ),
             response_format=OloProductInput,
             openai=True,
+            order_construction_model_name=self.order_construction_model_name,
         )
 
     @tool

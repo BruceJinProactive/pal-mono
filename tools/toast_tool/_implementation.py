@@ -61,6 +61,7 @@ from tools.utils.ordering._utils import (
     is_valid_email,
     is_valid_phone_number,
 )
+from tools.utils.ordering.classes import OrderConstructionModel
 from utils.log import logger
 
 # Agent identification suffix for customer names
@@ -87,7 +88,7 @@ class ToastTool(Toolkit):
         enable_hosted_checkout: bool = False,
         payment_iframe_token_ttl_seconds: int = 15 * 60,
         backdoor_tool_prompt: dict | None = None,
-        anthropic_client: bool = False,
+        order_construction_model_name: OrderConstructionModel = OrderConstructionModel.OPENAI,
     ):
         super().__init__(name="toast_tool")
 
@@ -112,7 +113,7 @@ class ToastTool(Toolkit):
         self.enable_hosted_checkout = enable_hosted_checkout
         self.payment_iframe_token_ttl_seconds = payment_iframe_token_ttl_seconds
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
-        self.anthropic_client = anthropic_client
+        self.order_construction_model_name = order_construction_model_name
 
         # Register tools
         if self.enable_hosted_checkout:
@@ -355,7 +356,6 @@ class ToastTool(Toolkit):
         Returns:
             bool: True if store is open for ordering, False otherwise
         """
-        return True
         try:
             if not self._toast_bearer_token:
                 logger.error(
@@ -893,7 +893,8 @@ class ToastTool(Toolkit):
                 context=context, chat_history=chat_history
             ),
             response_format=OrderInput,
-            anthropic_client=self.anthropic_client,
+            openai=True,
+            order_construction_model_name=self.order_construction_model_name,
         )
 
         # Check if the order is a string and convert it to an OrderInput object, catching any errors

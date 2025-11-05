@@ -29,6 +29,7 @@ from tools.adora_tool.classes import (
     Order,
     SubQueries,
 )
+from tools.utils.ordering.classes import OrderConstructionModel
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -51,6 +52,7 @@ class AdoraTool(Toolkit):
         token_api_endpoint: str | None = None,
         general_api_endpoint: str | None = None,
         backdoor_tool_prompt: dict | None = None,
+        order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
     ):
         super().__init__(name="adora_tool")
 
@@ -69,6 +71,7 @@ class AdoraTool(Toolkit):
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
+        self.order_construction_model_name = order_construction_model_name
         if self.store_id in [ADORA_QA_STORE, ADORA_QA_STORE_2]:  # QA store
             self.qa_store = True
         else:
@@ -885,6 +888,7 @@ class AdoraTool(Toolkit):
                 ),
                 response_format=Order,
                 openai=False,
+                order_construction_model_name=self.order_construction_model_name,
             )
 
             if not isinstance(order, Order):
@@ -1345,4 +1349,5 @@ class AdoraTool(Toolkit):
             logger.error(
                 f"[AdoraTool.get_available_coupons] Error retrieving available coupons: {e}"
             )
+            return "There was an error retrieving available coupons. Please try again."
             return "There was an error retrieving available coupons. Please try again."

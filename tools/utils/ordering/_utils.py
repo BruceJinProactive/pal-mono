@@ -1,11 +1,14 @@
 import asyncio
 import http.client
 import json
+import os
 import re
 import textwrap
 import urllib.parse
 from typing import Any, Dict, Optional, TypeVar, Union
 
+from anthropic import Anthropic
+from anthropic.types import TextBlock, ToolUseBlock
 from ddtrace.llmobs import LLMObs
 from pydantic import BaseModel, ValidationError
 
@@ -21,6 +24,7 @@ from tools.utils.ordering.classes import (
     ApiProvider,
     GenericHubResponse,
     HttpMethod,
+    OrderConstructionModel,
     SubQueries,
 )
 from utils.log import logger
@@ -169,12 +173,105 @@ def is_valid_date(date: str) -> bool:
     return bool(re.match(VALID_DATE_PATTERN, date))
 
 
+def _call_anthropic_client(
+    system_prompt: str,
+    prompt: str,
+    response_format: type[T] | None,
+) -> T | str:
+    """Helper function to call Anthropic's Claude Sonnet 4.5 directly."""
+    api_key = os.getenv("CLAUDE_API_KEY")
+    if not api_key:
+        logger.error("CLAUDE_API_KEY environment variable is not set")
+        return "There was an error processing your request."
+
+    client = Anthropic(api_key=api_key)
+    model_name = "claude-sonnet-4-5"
+
+    try:
+        if response_format:
+            # For structured outputs, use Anthropic's tool calling
+            # Convert Pydantic model to tool schema
+            schema = response_format.model_json_schema()
+            tool_name = "response_tool"
+
+            tools = [
+                {
+                    "name": tool_name,
+                    "description": "Use this tool to provide the structured response",
+                    "input_schema": schema,
+                }
+            ]
+
+            message = client.messages.create(
+                model=model_name,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+                tools=tools,  # type: ignore
+                tool_choice={"type": "tool", "name": tool_name},
+            )
+
+            # Extract the ToolUseBlock from the response
+            tool_use_block = None
+            for block in message.content:
+                if isinstance(block, ToolUseBlock):
+                    tool_use_block = block
+                    break
+
+            if not tool_use_block:
+                raise ValueError("No tool use block found in response")
+
+            # Instantiate the Pydantic model from the tool input
+            response = response_format(**tool_use_block.input)  # type: ignore
+        else:
+            # Regular text completion
+            message = client.messages.create(
+                model=model_name,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            # Extract text from TextBlock in the content list
+            response = ""
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    response = block.text
+                    break
+
+            if not response:
+                raise ValueError("No text block found in response")
+
+    except ValidationError as e:
+        logger.warning(e)
+        warning_message = ""
+        for error in e.errors():
+            logger.warning(f"Missing or invalid order data in the response: {error}")
+            warning_message += f"Missing or invalid order data in the response: {error['loc'][-1]}: {error['msg']}, input: {error.get('input', 'N/A')}\n"
+        return (
+            warning_message
+            + "\nPlease provide the missing information or correct the invalid details."
+        )
+
+    except Exception as e:
+        logger.error(f"Error calling Anthropic {model_name}: {str(e)}")
+        return f"Error constructing order: {e}"
+
+    LLMObs.annotate(
+        input_data=prompt,
+        output_data=str(response),
+        metadata={"system_prompt": system_prompt, "model": model_name},
+    )
+
+    return response
+
+
 def construct_order(
     system_prompt: str,
     user_prompt: str,
     response_format: type[T],
     error_prefix: str = "Failed to construct order",
     openai: bool = False,
+    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> Union[T, str]:
     """
     Constructs an order from LLM output using custom prompts and handles validation errors.
@@ -189,6 +286,8 @@ def construct_order(
         Either a validated instance of response_format or an error message string
     """
     try:
+        if order_construction_model_name == OrderConstructionModel.CLAUDE:
+            return _call_anthropic_client(system_prompt, user_prompt, response_format)
 
         response = llm_call(
             system_prompt=system_prompt,

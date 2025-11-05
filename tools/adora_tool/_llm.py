@@ -6,6 +6,9 @@ from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm
 from pydantic import BaseModel
 
+from tools.utils.ordering._utils import _call_anthropic_client
+from tools.utils.ordering.classes import OrderConstructionModel
+
 RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """You are a helpful assistant that extracts full and specific order items' names from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items the user has added to their final order.
 Requirements:
 - Extract the **complete dish or drink name**, but **remove size or quantity information**.
@@ -89,6 +92,7 @@ def llm_call(
     response_format: type[T],
     name: str = "tool",
     openai: bool = False,
+    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> T | None: ...
 
 
@@ -99,6 +103,7 @@ def llm_call(
     response_format: None = None,
     name: str = "tool",
     openai: bool = False,
+    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> str | None: ...
 
 
@@ -109,7 +114,16 @@ def llm_call(
     response_format: type[T] | None = None,
     name: str = "tool",
     openai: bool = False,
+    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> T | str | None:
+
+    if order_construction_model_name == OrderConstructionModel.CLAUDE:
+        return _call_anthropic_client(
+            system_prompt,
+            prompt,
+            response_format,
+        )
+
     model_name = "openai/gpt-oss-120b" if openai else "llama-3.3-70b-versatile"
     client = Groq(id=model_name)
 
