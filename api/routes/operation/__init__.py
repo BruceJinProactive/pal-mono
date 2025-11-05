@@ -8,7 +8,6 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.endpoints import endpoints
 from api.schemas.admin.camera import (
-    CompareCameraCheckpointResponse,
     GetCameraImageUrlsResponse,
     GetCamerasResponse,
     ImageMetadata,
@@ -160,81 +159,6 @@ async def get_camera_images_by_time_interval(
         camera_name=camera_name,
         start_time=start_time,
         end_time=end_time,
-    )
-
-
-@operation_router.post(
-    "/projects/{project_id}/cameras/{camera_name}/compare-checkpoint",
-    response_model=CompareCameraCheckpointResponse,
-    responses={
-        400: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-    },
-)
-async def compare_camera_checkpoint(
-    project_id: str,
-    camera_name: str,
-    start_time: str = Query(
-        ...,
-        description="Start time in ISO 8601 format (e.g., 2025-11-05T10:00:00Z)",
-    ),
-    end_time: str = Query(
-        ...,
-        description="End time in ISO 8601 format (e.g., 2025-11-05T12:00:00Z)",
-    ),
-    max_images: int = Query(
-        default=100,
-        ge=1,
-        le=1000,
-        description="Maximum number of images to process (default: 100, max: 1000)",
-    ),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> CompareCameraCheckpointResponse:
-    """
-    Compare camera images against checkpoint with matching name.
-
-    Finds a checkpoint with the same name as the camera, retrieves images from S3
-    within the specified time range, and compares each image against the checkpoint's
-    reference image and rules using AI.
-
-    **Process:**
-    1. Finds checkpoint by camera name in the project
-    2. Retrieves camera images from S3 within time range
-    3. Creates checkpoint runs with status="processing" immediately
-    4. Returns response with run IDs
-    5. Processes comparisons in background (using checkpoint's image and rules)
-    6. Updates runs with results asynchronously
-
-    **Query Results:**
-    - All runs share the same submission_id (use to query batch results)
-    - Individual runs can be queried by checkpoint_run_id
-    - Results are stored in checkpoint_runs table with comparison details
-
-    **Requirements:**
-    - Checkpoint must exist with name matching camera_name
-    - Checkpoint must have reference image and rules configured
-    - Time range should be < 24 hours for optimal performance
-
-    **Example:**
-    ```
-    POST /projects/123e4567-e89b-12d3-a456-426614174000/cameras/front_door/compare-checkpoint
-        ?start_time=2025-11-05T10:00:00Z
-        &end_time=2025-11-05T12:00:00Z
-        &max_images=50
-    ```
-
-    Returns immediately with checkpoint_run_ids and submission_id to track progress.
-    """
-    return await _checkpoint.compare_camera_checkpoint_handler(
-        context=context,
-        session=session,
-        project_id=project_id,
-        camera_name=camera_name,
-        start_time=start_time,
-        end_time=end_time,
-        max_images=max_images,
     )
 
 

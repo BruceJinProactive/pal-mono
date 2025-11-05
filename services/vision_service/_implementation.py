@@ -187,7 +187,6 @@ def _fetch_image_urls_with_prefix(
     prefix: str,
     start_filename: str,
     end_filename: str,
-    limit: int | None = None,
 ) -> list[str]:
     """Helper function to fetch image URLs with a specific S3 prefix.
 
@@ -196,7 +195,6 @@ def _fetch_image_urls_with_prefix(
         prefix: S3 prefix (e.g., "security/cameras/acc/proj/cam/20251104_")
         start_filename: Start filename (e.g., "20251104_220000")
         end_filename: End filename (e.g., "20251104_235959")
-        limit: Optional limit on number of URLs to return
 
     Returns:
         List of presigned URLs
@@ -204,7 +202,7 @@ def _fetch_image_urls_with_prefix(
     urls = []
     paginator = s3_client.get_paginator("list_objects_v2")
 
-    logger.debug(f"Fetching images with prefix: {prefix}, limit: {limit}")
+    logger.debug(f"Fetching images with prefix: {prefix}")
 
     for page in paginator.paginate(Bucket=AWS_ASSET_BUCKET_NAME, Prefix=prefix):
         contents = page.get("Contents", [])
@@ -246,11 +244,6 @@ def _fetch_image_urls_with_prefix(
                 )
                 urls.append(url)
 
-                # Check limit
-                if limit and len(urls) >= limit:
-                    logger.debug(f"Reached limit of {limit} images")
-                    return urls
-
     return urls
 
 
@@ -261,7 +254,6 @@ def get_images_by_time_interval(
     camera_name: str,
     start_time: datetime,
     end_time: datetime,
-    limit: int | None = None,
 ) -> GetCameraImageUrlsResponse:
     """Get camera image URLs within a time interval (optimized for < 24 hour ranges).
 
@@ -273,7 +265,6 @@ def get_images_by_time_interval(
         camera_name: Camera identifier
         start_time: Start of time range (timezone-aware datetime)
         end_time: End of time range (timezone-aware datetime)
-        limit: Optional maximum number of URLs to return
 
     Returns:
         GetCameraImageUrlsResponse with urls
@@ -357,7 +348,6 @@ def get_images_by_time_interval(
             prefix=date_prefix,
             start_filename=start_filename,
             end_filename=end_filename,
-            limit=limit,
         )
 
     else:
@@ -371,34 +361,24 @@ def get_images_by_time_interval(
             prefix=prefix_start_date,
             start_filename=start_filename,
             end_filename=f"{start_date}_235959",  # End of start day
-            limit=limit,
         )
 
-        # If we have a limit and already reached it from day 1, don't query day 2
-        if limit and len(urls_day1) >= limit:
-            urls = urls_day1
-            logger.info(
-                f"Found {len(urls_day1)} images on {start_date}, stopped at limit"
-            )
-        else:
-            # Query 2: Get images from end_date <= end_time
-            remaining_limit = limit - len(urls_day1) if limit else None
-            prefix_end_date = f"{base_prefix}{end_date}_"
-            urls_day2 = _fetch_image_urls_with_prefix(
-                s3_client=s3_client,
-                prefix=prefix_end_date,
-                start_filename=f"{end_date}_000000",  # Start of end day
-                end_filename=end_filename,
-                limit=remaining_limit,
-            )
+        # Query 2: Get images from end_date <= end_time
+        prefix_end_date = f"{base_prefix}{end_date}_"
+        urls_day2 = _fetch_image_urls_with_prefix(
+            s3_client=s3_client,
+            prefix=prefix_end_date,
+            start_filename=f"{end_date}_000000",  # Start of end day
+            end_filename=end_filename,
+        )
 
-            # Combine results
-            urls = urls_day1 + urls_day2
+        # Combine results
+        urls = urls_day1 + urls_day2
 
-            logger.info(
-                f"Found {len(urls_day1)} images on {start_date}, "
-                f"{len(urls_day2)} images on {end_date}"
-            )
+        logger.info(
+            f"Found {len(urls_day1)} images on {start_date}, "
+            f"{len(urls_day2)} images on {end_date}"
+        )
 
     logger.info(f"Total: {len(urls)} image URLs found")
 

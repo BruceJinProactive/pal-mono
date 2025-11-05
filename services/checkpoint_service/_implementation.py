@@ -15,8 +15,6 @@ from db.tables.types import CheckStatus
 from services.asset_service._constants import AWS_ASSET_BUCKET_NAME, AWS_REGION
 from utils.log import logger
 
-from . import _constants
-
 
 def create_checkpoint(session: Session, checkpoint: db.CheckPoint) -> db.CheckPoint:
     return checkpoint_repository.create_checkpoint(session, checkpoint)
@@ -111,53 +109,83 @@ def compare_checkpoint_images(
 
     checkpoint_image_base64 = base64.b64encode(checkpoint_image_content).decode("utf-8")
 
-    # Build the comparison prompt - check if this is a camera checkpoint
+    # Build the comparison prompt - FOCUS ON CLEANLINESS AND SAFETY ONLY
+    # The prompt explicitly requires OpenAI to evaluate EVERY rule and return
+    # each rule's status (PASS/FAIL) in the response JSON.
     checkpoint_rules = checkpoint.rules if checkpoint.rules else []
+
     rules_count = len(checkpoint_rules)
+    rules_section = ""
+    rules_example = ""
 
-    # Use camera monitoring prompt only if group is "camera"
-    checkpoint_group = (checkpoint.group or "").lower()
-    is_camera_checkpoint = checkpoint_group == "camera"
-
-    if is_camera_checkpoint:
-        # Camera monitoring: minimal prompt, user provides full instructions in rules
-        rules_section = "\n".join(checkpoint_rules) if checkpoint_rules else ""
-        prompt = _constants.CAMERA_MONITORING_SYSTEM_MESSAGE.format(
-            checkpoint_name=checkpoint.name,
-            checkpoint_description=checkpoint.description or "N/A",
-            rules_section=rules_section,
+    if checkpoint_rules:
+        rules_text = "\n".join(
+            f"{i+1}. {rule}" for i, rule in enumerate(checkpoint_rules)
         )
-        logger.info(f"Using camera monitoring prompt for checkpoint {checkpoint.name}")
-    else:
-        # Manual checkpoint: structured prompt with PASS/FAIL format
-        rules_section = ""
-        rules_example = ""
+        rules_section = f"""**Inspection Rules ({rules_count} total - Cleanliness & Safety Only):**
+{rules_text}
 
-        if checkpoint_rules:
-            rules_text = "\n".join(
-                f"{i+1}. {rule}" for i, rule in enumerate(checkpoint_rules)
-            )
-            rules_section = _constants.RULES_SECTION_TEMPLATE.format(
-                rules_count=rules_count,
-                rules_text=rules_text,
-            )
-            rules_example = _constants.RULES_EXAMPLE_TEMPLATE.format(
-                rules_count=rules_count
-            )
+"""
+        # Add example showing the expected format to ensure ALL rules are processed
+        rules_example = f"""
+**EXAMPLE - If there are {rules_count} rules, your "rules" array should look like:**
+[
+  {{"rule_number": 1, "rule_text": "...", "status": "PASS", "details": "...", "location": "...", "safety_impact": "N/A"}},
+  {{"rule_number": 2, "rule_text": "...", "status": "FAIL", "details": "...", "location": "...", "safety_impact": "..."}},
+  ... (continue for all {rules_count} rules)
+]
+"""
 
-        prompt = _constants.CHECKPOINT_COMPARISON_SYSTEM_MESSAGE.format(
-            checkpoint_name=checkpoint.name,
-            checkpoint_description=checkpoint.description or "N/A",
-            rules_section=rules_section,
-            rules_example=rules_example,
-            rules_count=rules_count,
-        )
-        logger.info(f"Using manual inspection prompt for checkpoint {checkpoint.name}")
+    prompt = f"""You are a restaurant safety and cleanliness inspection AI comparing two images.
+
+**CHECKPOINT**: {checkpoint.name}
+**DESCRIPTION**: {checkpoint.description or "N/A"}
+
+**REFERENCE IMAGE (First Image)**: This is the CLEAN/SAFE standard that inspections should match.
+
+**TEST IMAGE (Second Image)**: This is the image being inspected.
+
+**IMPORTANT**: Focus ONLY on cleanliness and food safety issues.
+
+{rules_section}**Your Task:**
+FIRST, verify that the TEST image is related to the checkpoint area/subject (e.g., if checkpoint is "Kitchen Sink", the test image should show a kitchen sink).
+- If the TEST image is UNRELATED or shows a completely different area/subject, immediately return FAIL with error.
+- If the TEST image is related, proceed to compare it against the REFERENCE image for cleanliness and safety standards.
+{rules_example}
+**Return your analysis as a valid JSON object with this structure:**
+
+{{
+  "overall_result": "PASS" or "FAIL",
+  "summary": "Brief explanation of why it passed or failed",
+  "error": "Set this if TEST image is unrelated to checkpoint (e.g., 'Image shows [X] but checkpoint expects [Y]'), otherwise omit or set to null",
+  "rules": [
+    {{
+      "rule_number": 1,
+      "rule_text": "Copy the exact rule text from above",
+      "status": "PASS" or "FAIL",
+      "details": "Specific details about compliance or violation",
+      "location": "Where in the image this applies",
+      "safety_impact": "How this affects food safety (if FAIL)"
+    }}
+  ],
+}}
+
+**CRITICAL INSTRUCTIONS**:
+- You MUST evaluate ALL {rules_count} rules listed above
+- The "rules" array MUST contain exactly {rules_count} entries (one for each rule)
+- Each rule entry must include: rule_number (1-{rules_count}), rule_text, status, details, location, safety_impact
+- For PASSING rules: Set status="PASS", provide confirmation in details
+- For FAILING rules: Set status="FAIL", provide specific violation in details
+- DO NOT skip any rules - all {rules_count} rules must be evaluated
+- Return ONLY valid JSON, no markdown formatting or extra text
+- Focus ONLY on cleanliness and food safety
+
+**VALIDATION CHECK**: Before returning, verify your "rules" array has exactly {rules_count} entries."""
 
     # Call OpenAI Vision API with JSON response format
     client = openai.OpenAI()
     response = client.chat.completions.create(
-        model=_constants.OPENAI_MODEL,
+        model="gpt-4o",
         messages=[
             {
                 "role": "user",
@@ -167,21 +195,21 @@ def compare_checkpoint_images(
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/jpeg;base64,{checkpoint_image_base64}",
-                            "detail": _constants.OPENAI_IMAGE_DETAIL,
+                            "detail": "high",
                         },
                     },
                     {
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/jpeg;base64,{uploaded_image_base64}",
-                            "detail": _constants.OPENAI_IMAGE_DETAIL,
+                            "detail": "high",
                         },
                     },
                 ],
             }
         ],
-        response_format=_constants.OPENAI_RESPONSE_FORMAT,  # type: ignore[arg-type]
-        max_tokens=_constants.OPENAI_MAX_TOKENS,
+        response_format={"type": "json_object"},
+        max_tokens=2000,
     )
 
     comparison_result_json = json.loads(response.choices[0].message.content or "{}")
@@ -620,348 +648,3 @@ def update_checkpoint_run_image(
     )
 
     return updated_run
-
-
-def compare_camera_images_with_checkpoint(
-    session: Session,
-    project_id: UUID,
-    camera_name: str,
-    start_time: datetime,
-    end_time: datetime,
-    max_images: int = 100,
-) -> dict:
-    """
-    Find checkpoint by camera name, retrieve S3 images, create processing runs, and start background comparison.
-
-    Args:
-        session: Database session
-        project_id: Project UUID
-        camera_name: Camera name (must match checkpoint name)
-        start_time: Start of time range
-        end_time: End of time range
-        max_images: Maximum number of images to process (default: 100, no upper limit)
-
-    Returns:
-        dict with checkpoint_run_ids, submission_id, checkpoint_id, images_to_compare, status
-
-    Raises:
-        ValueError: If checkpoint not found or invalid parameters
-    """
-    from uuid import uuid4
-
-    from services import vision_service
-
-    # Validate max_images (minimum only, no maximum limit)
-    if max_images < 1:
-        raise ValueError("max_images must be at least 1")
-
-    # Find checkpoint by camera name
-    checkpoint = checkpoint_repository.get_checkpoint_by_camera_name(
-        session, project_id, camera_name
-    )
-    if not checkpoint:
-        raise ValueError(
-            f"No checkpoint found with name '{camera_name}' in project {project_id}"
-        )
-
-    logger.info(
-        f"Found checkpoint {checkpoint.id} for camera {camera_name}, "
-        f"fetching images from {start_time} to {end_time}"
-    )
-
-    # Get S3 image URLs
-    image_response = vision_service.get_images_by_time_interval(
-        session=session,
-        project_id=str(project_id),
-        camera_name=camera_name,
-        start_time=start_time,
-        end_time=end_time,
-        limit=max_images,
-    )
-
-    image_urls = image_response.urls
-
-    if not image_urls:
-        logger.warning(f"No images found for camera {camera_name} in time range")
-        return {
-            "checkpoint_run_ids": [],
-            "submission_id": None,
-            "checkpoint_id": str(checkpoint.id),
-            "images_to_compare": 0,
-            "status": "completed",
-        }
-
-    # Generate single submission_id for the batch
-    submission_id = uuid4()
-
-    logger.info(
-        f"Creating {len(image_urls)} checkpoint runs with submission_id {submission_id}"
-    )
-
-    # Bulk create checkpoint runs with status="processing"
-    run_dicts = [
-        {
-            "id": uuid4(),
-            "checkpoint_id": checkpoint.id,
-            "submission_id": submission_id,
-            "status": CheckStatus.processing.value,
-            "result": {},
-        }
-        for _ in image_urls
-    ]
-
-    # Use bulk insert for performance
-    session.bulk_insert_mappings(db.CheckpointRun, run_dicts)  # type: ignore[arg-type]
-    session.commit()
-
-    # Extract run IDs
-    run_ids = [run_dict["id"] for run_dict in run_dicts]
-
-    logger.info(f"Created {len(run_ids)} checkpoint runs, starting background task")
-
-    # Start background task to process comparisons
-    asyncio.create_task(
-        _compare_and_update_camera_runs_background(
-            checkpoint=checkpoint,
-            image_urls=image_urls,
-            run_ids=run_ids,
-        )
-    )
-
-    return {
-        "checkpoint_run_ids": [str(run_id) for run_id in run_ids],
-        "submission_id": str(submission_id),
-        "checkpoint_id": str(checkpoint.id),
-        "images_to_compare": len(image_urls),
-        "status": "processing",
-    }
-
-
-def _download_image_from_url(url: str) -> str:
-    """
-    Download image from S3 presigned URL and convert to base64.
-
-    Args:
-        url: S3 presigned URL (valid for 1 hour)
-
-    Returns:
-        Base64-encoded image string suitable for OpenAI Vision API
-
-    Raises:
-        requests.HTTPError: If download fails (e.g., 403 Forbidden, 404 Not Found)
-        requests.Timeout: If download exceeds timeout (10s connect, 30s read)
-    """
-    import requests
-
-    try:
-        # Connection timeout: 10s, Read timeout: 30s
-        response = requests.get(url, timeout=(10, 30))
-        response.raise_for_status()
-        return base64.b64encode(response.content).decode("utf-8")
-    except Exception as e:
-        logger.error(f"Failed to download image from {url[:100]}: {e}")
-        raise
-
-
-def _update_checkpoint_result_sync(
-    result_id: UUID,
-    result: dict,
-    status: CheckStatus,
-) -> None:
-    """
-    Update checkpoint result with proper session management.
-
-    Creates a new database session, updates the result, and commits.
-    Rolls back on error and always closes session.
-
-    Args:
-        result_id: UUID of the checkpoint run to update
-        result: OpenAI comparison result or error details
-        status: New status (active for success, failed for error)
-
-    Raises:
-        Exception: Re-raises any database errors after rollback
-    """
-    from db.session import SyncSessionLocal
-
-    session = SyncSessionLocal()
-    try:
-        update_checkpoint_result(
-            session=session,
-            result_id=result_id,
-            result=result,
-            status=status,
-        )
-    except Exception as e:
-        logger.error(f"Failed to update checkpoint result {result_id}: {e}")
-        session.rollback()
-        raise  # Re-raise to let caller handle database errors
-    finally:
-        session.close()
-
-
-async def _process_single_camera_image(
-    checkpoint: db.CheckPoint,
-    url: str,
-    run_id: UUID,
-    image_idx: int,
-    total_images: int,
-) -> None:
-    """
-    Process a single camera image: download, compare with OpenAI, and save result.
-
-    This function handles the complete lifecycle for one image:
-    1. Download from S3 and convert to base64
-    2. Send to OpenAI Vision API for comparison
-    3. Update database with result (success or error)
-
-    Errors are caught and saved to the database as failed runs, so one
-    image failure doesn't affect other images in the batch.
-
-    Args:
-        checkpoint: The checkpoint containing reference image and rules
-        url: S3 presigned URL for the camera image to analyze
-        run_id: UUID of the checkpoint run to update
-        image_idx: Image number (1-based, for logging)
-        total_images: Total number of images being processed
-
-    Returns:
-        None (updates database directly)
-    """
-    _URL_LOG_LENGTH = 50  # Truncate URLs in logs for readability
-
-    try:
-        logger.info(
-            f"Processing image {image_idx}/{total_images}: {url[:_URL_LOG_LENGTH]}..."
-        )
-
-        # Download image from presigned S3 URL and convert to base64 for OpenAI Vision API
-        uploaded_image_base64 = await asyncio.get_event_loop().run_in_executor(
-            None, _download_image_from_url, url
-        )
-
-        # Send both checkpoint reference image and camera image to OpenAI for comparison
-        comparison_result = await compare_checkpoint_images_async(
-            checkpoint=checkpoint,
-            uploaded_image_base64=uploaded_image_base64,
-        )
-
-        # Mark run as 'active' (completed successfully) and store OpenAI analysis result
-        _update_checkpoint_result_sync(
-            result_id=run_id,
-            result=comparison_result,
-            status=CheckStatus.active,
-        )
-
-        logger.info(
-            f"Completed image {image_idx}/{total_images}, "
-            f"result: {comparison_result.get('overall_result', 'N/A')}"
-        )
-
-    except Exception as e:
-        logger.error(
-            f"Failed to process image {image_idx}/{total_images} "
-            f"({url[:_URL_LOG_LENGTH]}): {e}",
-            exc_info=True,
-        )
-
-        # Save error details to database so user can see what went wrong for this specific image
-        # Other images in the batch will continue processing normally
-        error_result = {
-            "overall_result": "ERROR",
-            "error": str(e),
-            "summary": f"Failed to process image: {str(e)}",
-        }
-
-        try:
-            _update_checkpoint_result_sync(
-                result_id=run_id,
-                result=error_result,
-                status=CheckStatus.failed,
-            )
-        except Exception as db_error:
-            # If we can't even save the error to the database, log it
-            # The run will stay in 'processing' status, indicating something went wrong
-            logger.error(
-                f"Failed to save error result for run {run_id}: {db_error}",
-                exc_info=True,
-            )
-
-
-async def _compare_and_update_camera_runs_background(
-    checkpoint: db.CheckPoint,
-    image_urls: list[str],
-    run_ids: list[UUID],
-) -> None:
-    """
-    Background task: Compare multiple camera images against checkpoint and update runs.
-
-    Processes images in batches of MAX_CONCURRENT_OPENAI_REQUESTS for parallel processing.
-    Each batch sends N concurrent requests to OpenAI, waits for all to complete, then
-    moves to the next batch. This balances speed (10x faster than sequential) with
-    safety (stays within OpenAI rate limits).
-
-    Args:
-        checkpoint: The checkpoint to compare against (contains reference image and rules)
-        image_urls: List of S3 presigned URLs for camera images (valid for 1 hour)
-        run_ids: List of checkpoint run IDs to update (must match length of image_urls)
-
-    Returns:
-        None (updates database directly via _process_single_camera_image)
-
-    Raises:
-        ValueError: If image_urls and run_ids lengths don't match or inputs are empty
-    """
-    # Validate inputs to catch caller errors early
-    if len(image_urls) != len(run_ids):
-        raise ValueError(
-            f"Mismatch: {len(image_urls)} image URLs but {len(run_ids)} run IDs"
-        )
-
-    if not image_urls:
-        logger.warning("No images to process, exiting background task")
-        return
-
-    logger.info(
-        f"Background task started: comparing {len(image_urls)} images "
-        f"against checkpoint {checkpoint.id} "
-        f"(batch size: {_constants.MAX_CONCURRENT_OPENAI_REQUESTS})"
-    )
-
-    total_images = len(image_urls)
-    batch_size = _constants.MAX_CONCURRENT_OPENAI_REQUESTS
-
-    # Process images in batches of N to balance speed vs OpenAI rate limits
-    # Each batch runs N concurrent OpenAI API calls, then waits for all to complete
-    for batch_start in range(0, total_images, batch_size):
-        batch_end = min(batch_start + batch_size, total_images)
-        batch_num = (batch_start // batch_size) + 1
-        total_batches = (total_images + batch_size - 1) // batch_size
-
-        logger.info(
-            f"Processing batch {batch_num}/{total_batches} "
-            f"(images {batch_start + 1}-{batch_end})"
-        )
-
-        # Create async tasks for this batch (will run concurrently)
-        batch_tasks = [
-            _process_single_camera_image(
-                checkpoint=checkpoint,
-                url=image_urls[idx],
-                run_id=run_ids[idx],
-                image_idx=idx + 1,
-                total_images=total_images,
-            )
-            for idx in range(batch_start, batch_end)
-        ]
-
-        # Run all tasks in this batch concurrently
-        # return_exceptions=True ensures one failure doesn't stop the batch
-        await asyncio.gather(*batch_tasks, return_exceptions=True)
-
-        logger.info(f"Completed batch {batch_num}/{total_batches}")
-
-    logger.info(
-        f"Background task completed: processed {len(image_urls)} images "
-        f"for checkpoint {checkpoint.id}"
-    )
