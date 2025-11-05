@@ -156,6 +156,20 @@ from api.schemas.admin.subscription import (
     UpdateStripeCustomerRequest,
     UpdateSubscriptionPlanRequest,
 )
+from api.schemas.admin.team import (
+    AcceptInvitationRequest,
+    AcceptInvitationResponse,
+    InvitationDetailsResponse,
+    InvitationResponse,
+    InviteTeamMemberRequest,
+    ResendInvitationResponse,
+    SwitchAccountRequest,
+    SwitchAccountResponse,
+    TeamMembersListResponse,
+    UpdateTeamMemberRequest,
+    UpdateTeamMemberResponse,
+    UserAccountsListResponse,
+)
 from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
     CreateUserRequest,
@@ -201,6 +215,7 @@ from . import (
     _projects,
     _prompt,
     _subscription,
+    _team,
     _users,
     _voice_config,
 )
@@ -1540,6 +1555,157 @@ async def update_user_account_names(
     Only Admin users can call this endpoint.
     """
     await _users.update_user_account_names(user_email, request, context)
+
+
+"""
+---------- Team Management Endpoints ----------
+-----------------------------------------------
+"""
+
+
+@admin_router.post("/accounts/{account_name}/team/invite")
+async def invite_team_member(
+    account_name: str,
+    request: InviteTeamMemberRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> InvitationResponse:
+    """
+    Invite a new team member to the account with specified role.
+
+    Creates a pending invitation and returns invitation token.
+    Owner permission required.
+    """
+    return await _team.invite_team_member(account_name, request, context)
+
+
+@admin_router.get("/accounts/{account_name}/team")
+async def list_team_members(
+    account_name: str,
+    role: str | None = Query(None, description="Filter by role"),
+    status: str | None = Query(
+        None, description="Filter by status (active, deactivated)"
+    ),
+    search: str | None = Query(None, description="Search by email or name"),
+    context: UserContext = Depends(authenticate_user),
+) -> TeamMembersListResponse:
+    """
+    List all team members for an account.
+
+    Supports filtering by role, status, and search.
+    Any authenticated user with account access can view team members.
+    """
+    return await _team.list_team_members(account_name, context, role, status, search)
+
+
+@admin_router.patch("/accounts/{account_name}/team/{user_email}")
+async def update_team_member_role(
+    account_name: str,
+    user_email: str,
+    request: UpdateTeamMemberRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> UpdateTeamMemberResponse:
+    """
+    Update a team member's role.
+
+    Cannot demote the last owner. Owner permission required.
+    """
+    return await _team.update_team_member_role(
+        account_name, user_email, request, context
+    )
+
+
+@admin_router.delete(
+    "/accounts/{account_name}/team/{user_email}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def remove_team_member(
+    account_name: str,
+    user_email: str,
+    context: UserContext = Depends(authenticate_user),
+):
+    """
+    Remove a team member from the account.
+
+    Cannot remove the last owner. Owner permission required.
+    """
+    await _team.remove_team_member(account_name, user_email, context)
+
+
+"""
+---------- Invitation Endpoints ----------
+------------------------------------------
+"""
+
+
+@admin_router.get("/invitations/{token}")
+async def get_invitation_details(
+    token: str,
+) -> InvitationDetailsResponse:
+    """
+    Get invitation details by token (public endpoint, no auth required).
+
+    Returns account name, invited by, role, and expiration info.
+    """
+    return await _team.get_invitation_details(token)
+
+
+@admin_router.post("/invitations/accept")
+async def accept_invitation(
+    request: AcceptInvitationRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> AcceptInvitationResponse:
+    """
+    Accept an invitation and join the account.
+
+    Creates account membership and role assignment.
+    User must be authenticated.
+    """
+    return await _team.accept_invitation(request, context)
+
+
+@admin_router.post("/accounts/{account_name}/team/invitations/{invitation_id}/resend")
+async def resend_invitation(
+    account_name: str,
+    invitation_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+) -> ResendInvitationResponse:
+    """
+    Resend invitation email for a pending invitation.
+
+    Only pending invitations can be resent. Owner permission required.
+    """
+    return await _team.resend_invitation(account_name, invitation_id, context)
+
+
+"""
+---------- Multi-Account Support Endpoints ----------
+-----------------------------------------------------
+"""
+
+
+@admin_router.get("/users/me/accounts")
+async def list_user_accounts(
+    context: UserContext = Depends(authenticate_user),
+) -> UserAccountsListResponse:
+    """
+    List all accounts the current user has access to.
+
+    Used for account switcher UI. Returns account details with roles.
+    """
+    return await _team.list_user_accounts(context)
+
+
+@admin_router.post("/users/me/switch-account")
+async def switch_account(
+    request: SwitchAccountRequest,
+    context: UserContext = Depends(authenticate_user),
+) -> SwitchAccountResponse:
+    """
+    Switch active account context.
+
+    Backend is stateless, this is for frontend state management.
+    Verifies user has access to the account.
+    """
+    return await _team.switch_account(request, context)
 
 
 """
