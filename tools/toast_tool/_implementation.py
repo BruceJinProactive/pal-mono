@@ -62,6 +62,7 @@ from tools.utils.ordering._utils import (
     is_valid_phone_number,
 )
 from tools.utils.ordering.classes import OrderConstructionModel
+from tools.utils.url_shortener import shorten_url
 from utils.log import logger
 
 # Agent identification suffix for customer names
@@ -1289,7 +1290,8 @@ class ToastTool(Toolkit):
                 },
             )
 
-            return iframe_url
+            shortened_url = shorten_url(iframe_url)
+            return shortened_url
 
         except Exception as e:
             logger.error(

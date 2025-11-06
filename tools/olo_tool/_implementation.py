@@ -52,6 +52,7 @@ from tools.utils.ordering._utils import (
     get_relevant_docs,
 )
 from tools.utils.ordering.classes import HttpMethod, OrderConstructionModel, SubQueries
+from tools.utils.url_shortener import shorten_url
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -683,10 +684,9 @@ class OloTool(Toolkit):
 
             payment_link = self._generate_payment_link(payment_payload)
             confirmation_message = self._format_checkout_confirmation(basket_totals)
-            sanitized_link = self._sanitize_payment_link(payment_link)
             logger.debug(
                 "[OLO] OloTool._checkout_order_with_payment_iframe Payment link generated",
-                extra={"payment_link": sanitized_link},
+                extra={"payment_link": payment_link},
             )
 
             return (
@@ -784,27 +784,9 @@ class OloTool(Toolkit):
             "[OLO] OloTool._generate_payment_link Token generated",
             extra={"hosted_endpoint": self.hosted_payment_iframe_endpoint},
         )
-        return f"{self.hosted_payment_iframe_endpoint}?t={token}"
-
-    def _sanitize_payment_link(self, payment_link: str) -> str:
-        try:
-            parsed = urllib.parse.urlparse(payment_link)
-            query_params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-            if "t" in query_params:
-                query_params["t"] = ["[REDACTED]"]
-            sanitized_query = urllib.parse.urlencode(query_params, doseq=True)
-            return urllib.parse.urlunparse(
-                (
-                    parsed.scheme,
-                    parsed.netloc,
-                    parsed.path,
-                    parsed.params,
-                    sanitized_query,
-                    parsed.fragment,
-                )
-            )
-        except Exception:
-            return self.hosted_payment_iframe_endpoint
+        payment_url = f"{self.hosted_payment_iframe_endpoint}?t={token}"
+        shortened_url = shorten_url(payment_url)
+        return shortened_url
 
     @staticmethod
     def _format_checkout_confirmation(basket_totals: ValidatedBasketTotals) -> str:
