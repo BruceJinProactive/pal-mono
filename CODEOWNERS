@@ -1,10 +1,19 @@
+# CODEOWNERS
+#
+# Principle: High Cohesion, Low Coupling
+#
+# Components evolve independently. Only important cross-module changes require human review.
+
 # Root and first level structural changes
 /* kelvin@proactiveailab.com jun.hyung.lee@proactiveailab.com
 /*/* kelvin@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
 # DB schema
-/db/tables/** kelvin@proactiveailab.com shuo.wang@proactiveailab.com
-/db/migrations/** kelvin@proactiveailab.com shuo.wang@proactiveailab.com
+/db/tables/** kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com
+/db/migrations/** kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com
 
 # Agent interfaces
-/agent/* kelvin@proactiveailab.com shuo.wang@proactiveailab.com
+/agent/* kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com
+
+# CLAUDE.md files
+**/CLAUDE.md kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com
