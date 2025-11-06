@@ -1,8 +1,8 @@
 """
 Checklist Service Implementation
 
-Business logic for checklist operations including authorization,
-validation, and database operations.
+Business logic for checklist operations including validation
+and database operations. Authorization is handled in the API layer.
 """
 
 from datetime import datetime
@@ -11,7 +11,6 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.routes.admin._auth import authorize_user_account
 from api.schemas.admin.checklist import (
     Checklist,
     CreateChecklistRequest,
@@ -19,7 +18,6 @@ from api.schemas.admin.checklist import (
     UpdateChecklistRequest,
 )
 from db.repositories import checklist_repository
-from services import account_service, project_service
 from services.auth_types import UserContext
 
 
@@ -44,39 +42,6 @@ def _build_checklist(checklist_db) -> Checklist:
     )
 
 
-def _authorize_project_access(
-    session: Session,
-    project_id: UUID,
-    context: UserContext,
-):
-    """
-    Validate project exists and authorize user access.
-
-    Args:
-        session: Database session
-        project_id: Project UUID
-        context: User context
-
-    Raises:
-        HTTPException: If project not found or authorization fails
-    """
-    project = project_service.get_project(session, project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} does not exist.",
-        )
-
-    account = account_service.get_account_by_id(session, project.account_id)
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Account for project {project_id} does not exist.",
-        )
-
-    authorize_user_account(context, account.name)
-
-
 async def create_checklist(
     project_id: UUID,
     checklist_request: CreateChecklistRequest,
@@ -84,7 +49,8 @@ async def create_checklist(
     session: Session,
 ) -> Checklist:
     """
-    Create a new checklist with authorization and validation.
+    Create a new checklist with validation.
+    Authorization is handled in the API layer.
 
     Args:
         project_id: UUID of the project
@@ -95,9 +61,6 @@ async def create_checklist(
     Returns:
         Created Checklist object
     """
-    # Authorize project access
-    _authorize_project_access(session, project_id, context)
-
     # Create the checklist with the project_id from the URL
     checklist_db = checklist_repository.create_checklist(
         session=session,
@@ -118,7 +81,8 @@ async def get_checklist(
     session: Session,
 ) -> Checklist:
     """
-    Get a checklist by ID with authorization.
+    Get a checklist by ID.
+    Authorization is handled in the API layer.
 
     Args:
         checklist_id: UUID of the checklist
@@ -136,14 +100,6 @@ async def get_checklist(
             detail=f"Checklist {checklist_id} does not exist.",
         )
 
-    # If checklist is associated with a project, verify user has access
-    if checklist_db.project_id:
-        project = project_service.get_project(session, checklist_db.project_id)
-        if project:
-            account = account_service.get_account_by_id(session, project.account_id)
-            if account:
-                authorize_user_account(context, account.name)
-
     return _build_checklist(checklist_db)
 
 
@@ -154,7 +110,8 @@ async def list_checklists_by_project(
     exclude: UUID | None = None,
 ) -> ListChecklistsResponse:
     """
-    List all checklists for a project with authorization.
+    List all checklists for a project.
+    Authorization is handled in the API layer.
 
     Args:
         project_id: UUID of the project
@@ -165,9 +122,6 @@ async def list_checklists_by_project(
     Returns:
         ListChecklistsResponse with checklists and total count
     """
-    # Authorize project access
-    _authorize_project_access(session, project_id, context)
-
     # Get checklists for the project
     checklists_db = checklist_repository.list_checklists_by_project(
         session, project_id, exclude
@@ -186,7 +140,8 @@ async def update_checklist(
     session: Session,
 ) -> Checklist:
     """
-    Update a checklist with authorization.
+    Update a checklist.
+    Authorization is handled in the API layer.
 
     Args:
         checklist_id: UUID of the checklist
@@ -205,10 +160,6 @@ async def update_checklist(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Checklist {checklist_id} does not exist.",
         )
-
-    # If checklist is associated with a project, verify user has access
-    if checklist_db.project_id:
-        _authorize_project_access(session, checklist_db.project_id, context)
 
     # Update the checklist
     updated_checklist = checklist_repository.update_checklist(
@@ -236,7 +187,8 @@ async def delete_checklist(
     session: Session,
 ) -> None:
     """
-    Delete a checklist with authorization.
+    Delete a checklist.
+    Authorization is handled in the API layer.
 
     Args:
         checklist_id: UUID of the checklist
@@ -251,10 +203,6 @@ async def delete_checklist(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Checklist {checklist_id} does not exist.",
         )
-
-    # If checklist is associated with a project, verify user has access
-    if checklist_db.project_id:
-        _authorize_project_access(session, checklist_db.project_id, context)
 
     # Delete the checklist
     deleted = checklist_repository.delete_checklist(session, checklist_id)
@@ -282,6 +230,8 @@ async def get_checklist_history(
     within the specified date range. Checkpoints that are no longer in the
     checklist are excluded.
 
+    Authorization is handled in the API layer.
+
     Args:
         checklist_id: UUID of the checklist
         start_date: Start of date range (datetime with timezone)
@@ -301,7 +251,7 @@ async def get_checklist_history(
     )
     from services import checkpoint_service
 
-    # Get the checklist and authorize
+    # Get the checklist
     checklist_db = checklist_repository.get_checklist_by_id(session, checklist_id)
 
     if not checklist_db:
@@ -309,10 +259,6 @@ async def get_checklist_history(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Checklist {checklist_id} does not exist.",
         )
-
-    # Authorize via checklist → project → account
-    if checklist_db.project_id:
-        _authorize_project_access(session, checklist_db.project_id, context)
 
     # Get CURRENT checkpoints in the checklist (what's in the checklist NOW)
     current_checkpoints = checkpoint_service.list_checkpoints_by_checklist(
