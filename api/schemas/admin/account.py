@@ -10,7 +10,7 @@ from db.tables.accounts import (
     BusinessIndustry,
     OnboardingMethod,
 )
-from db.tables.types import TargetTier
+from db.tables.types import SubscriptionStatus, TargetTier
 from services.account_service import AccountParams
 
 
@@ -65,6 +65,7 @@ class AccountSummary(BaseModel):
     created_at: int | None = None  # Unix timestamp in seconds
     onboarding_method: OnboardingMethod | None = None
     updated_at: int | None = None  # Unix timestamp in seconds
+    subscription_status: SubscriptionStatus | None = None
 
 
 class ListAccountsResponse(BaseModel):

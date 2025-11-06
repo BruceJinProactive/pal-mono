@@ -139,6 +139,7 @@ def delete_account(
 def filter_accounts_by_name(
     session: Session,
     keyword: Optional[str] = None,
+    load_subscription: bool = False,
 ) -> List[db.Account]:
     """
     Filter accounts by a flexible name match using a keyword.
@@ -146,11 +147,12 @@ def filter_accounts_by_name(
     Args:
         session (Session): The database session.
         keyword (Optional[str], optional): The keyword to search for in account names.
+        load_subscription (bool, optional): If True, eagerly loads current subscription to avoid N+1 queries.
 
     Returns:
         List[db.Account]: Accounts matching the keyword filter.
     """
-    return _implementation.filter_accounts_by_name(session, keyword)
+    return _implementation.filter_accounts_by_name(session, keyword, load_subscription)
 
 
 __all__ = [

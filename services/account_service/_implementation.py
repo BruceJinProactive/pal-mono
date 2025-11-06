@@ -46,12 +46,18 @@ def mget_accounts(session: Session, account_names: List[str]) -> List[db.Account
 def filter_accounts_by_name(
     session: Session,
     keyword: Optional[str] = None,
+    load_subscription: bool = False,
 ) -> List[db.Account]:
     """
     Filter accounts by a flexible name match using a keyword.
+
+    Args:
+        session: Database session
+        keyword: Optional keyword to filter by name/display_name
+        load_subscription: If True, eagerly loads current subscription to avoid N+1 queries
     """
     account_repository = db.AccountRepository(session)
-    accounts = account_repository.filter_accounts_by_name(keyword)
+    accounts = account_repository.filter_accounts_by_name(keyword, load_subscription)
     return accounts
 
 

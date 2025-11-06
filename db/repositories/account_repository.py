@@ -4,9 +4,9 @@ from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from db.tables import Account
+from db.tables import Account, AccountSubscription
 from db.tables.accounts import AccountStatus
 from utils.log import logger
 
@@ -87,7 +87,9 @@ class AccountRepository:
             logger.error(f"Error retrieving account: {e}")
             return []
 
-    def filter_accounts_by_name(self, keyword: Optional[str] = None) -> List[Account]:
+    def filter_accounts_by_name(
+        self, keyword: Optional[str] = None, load_subscription: bool = False
+    ) -> List[Account]:
         """
         Filter accounts by a flexible name or display_name match, using a case-insensitive partial match.
         If no keyword is provided, returns all accounts.
@@ -101,6 +103,16 @@ class AccountRepository:
                 query = query.filter(
                     (Account.name.ilike(f"%{keyword}%"))
                     | (Account.display_name.ilike(f"%{keyword}%"))
+                )
+
+            if load_subscription:
+                query = query.outerjoin(
+                    AccountSubscription,
+                    Account.current_subscription_id == AccountSubscription.id,
+                ).options(
+                    joinedload(Account.subscriptions).joinedload(
+                        AccountSubscription.subscription_plan
+                    )
                 )
 
             return query.all()

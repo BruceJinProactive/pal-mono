@@ -40,7 +40,9 @@ def list_accounts(
     session: Session,
     keyword: str | None = None,
 ) -> ListAccountsResponse:
-    accounts = account_service.filter_accounts_by_name(session, keyword=keyword)
+    accounts = account_service.filter_accounts_by_name(
+        session, keyword=keyword, load_subscription=True
+    )
 
     response = ListAccountsResponse(
         accounts=[build_account_summary(account) for account in accounts]

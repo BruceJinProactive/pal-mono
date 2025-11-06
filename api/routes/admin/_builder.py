@@ -74,6 +74,28 @@ def build_account(account: db.Account) -> Account:
 
 def build_account_summary(account: db.Account) -> AccountSummary:
     """Build a simplified account summary for list responses"""
+    current_subscription = None
+    if account.current_subscription_id:
+        current_subscription = next(
+            (
+                sub
+                for sub in account.subscriptions
+                if sub.id == account.current_subscription_id
+            ),
+            None,
+        )
+
+    if not current_subscription and account.subscriptions:
+        from db.tables.types import SubscriptionStatus
+
+        valid_subscriptions = [
+            sub
+            for sub in account.subscriptions
+            if sub.status in [SubscriptionStatus.active, SubscriptionStatus.pending]
+        ]
+        if valid_subscriptions:
+            current_subscription = max(valid_subscriptions, key=lambda s: s.start_date)
+
     return AccountSummary(
         id=account.id,
         name=account.name,
@@ -92,6 +114,9 @@ def build_account_summary(account: db.Account) -> AccountSummary:
         onboarding_method=account.onboarding_method,
         created_at=int(account.created_at.timestamp()),
         updated_at=int(account.updated_at.timestamp()) if account.updated_at else None,
+        subscription_status=(
+            current_subscription.status if current_subscription else None
+        ),
     )
 
 
