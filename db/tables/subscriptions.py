@@ -99,7 +99,9 @@ class AccountSubscription(Base):
     start_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     stripe_subscription_id: Mapped[Optional[str]] = mapped_column(
         String, nullable=True, index=True
     )

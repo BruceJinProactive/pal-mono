@@ -162,10 +162,13 @@ def _validate_contract_overrides(override):
 
 
 def _extract_subscription_parameters(params: SubscriptionParams, plan):
-    """Extract subscription parameters from override or plan defaults."""
+    """Extract subscription parameters from override or plan defaults.
+
+    If no end_date is specified, defaults to None (ongoing subscription until cancelled).
+    """
     now = datetime.now(UTC)
     default_start = now + timedelta(days=plan.free_trial_days or 0)
-    default_end = default_start.replace(year=default_start.year + 7)
+    default_end = None
     return {
         "trial_start_date": _get_param_value(params.schedule, "trial_start_date", now),
         "start_date": _get_param_value(params.schedule, "start_date", default_start),
@@ -194,7 +197,7 @@ def create_account_subscription(
     - Trial start_date: now
     - Monthly start_date: end_date of last free trial (if exists), otherwise now
     - Trial end_date: start_date + free_trial_days from plan
-    - Monthly end_date: start_date + 7 years (arbitrary and subject to change)
+    - Monthly end_date: None by default (ongoing subscription until cancelled)
     """
     subscription_plan_repository = SubscriptionPlanRepository(session)
     account_subscription_repository = AccountSubscriptionRepository(
@@ -254,7 +257,9 @@ def create_account_subscription(
                 else None
             ),
             "start_date": subscription.start_date.isoformat(),
-            "end_date": subscription.end_date.isoformat(),
+            "end_date": (
+                subscription.end_date.isoformat() if subscription.end_date else None
+            ),
         },
     )
 
@@ -547,8 +552,12 @@ def update_account_subscription(
         "subscription_plan_id",
     }
 
+    nullable_fields = {"end_date", "trial_start_date", "stripe_subscription_id"}
+
     for k, v in update_data.items():
-        if v is not None and k in allowed_fields:
+        if k in allowed_fields:
+            if v is None and k not in nullable_fields:
+                continue
             setattr(new_subscription, k, v)
     new_subscription.version = (new_subscription.version or 0) + 1
 

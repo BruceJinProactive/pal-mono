@@ -273,7 +273,6 @@ def update_account_subscription(
     force_update: bool = False,
 ) -> Subscription:
     """Update an account subscription by external_id, creating a new version."""
-    """Update an account subscription by external_id, creating a new version."""
     authorize_user_account(context, account_name)
     if force_update:
         # Only admins can perform force updates

@@ -155,35 +155,72 @@ class AccountSubscriptionRepository:
         self,
         account_id: uuid.UUID,
         start_date: datetime,
-        end_date: datetime,
+        end_date: datetime | None,
     ) -> bool:
-        """Check if there's an overlapping active subscription of the same type."""
+        """Check if there's an overlapping active subscription.
+
+        Args:
+            account_id: The account ID
+            start_date: Start date of the new subscription
+            end_date: End date of the new subscription (None means ongoing)
+
+        Returns:
+            True if there's an overlap, False otherwise
+
+        Overlap logic:
+            - If existing subscription has no end_date (ongoing), it overlaps with any new subscription starting before infinity
+            - If new subscription has no end_date (ongoing), it overlaps with any existing subscription not yet ended
+            - Otherwise, normal date range overlap checking applies
+        """
         try:
+            overlap_conditions = []
+
+            if end_date is not None:
+                overlap_conditions.append(
+                    and_(
+                        AccountSubscription.end_date.is_(None),
+                        AccountSubscription.start_date <= end_date,
+                    )
+                )
+            else:
+                overlap_conditions.append(AccountSubscription.end_date.is_(None))
+
+            if end_date is None:
+                overlap_conditions.append(
+                    or_(
+                        AccountSubscription.end_date.is_(None),
+                        AccountSubscription.end_date >= start_date,
+                    )
+                )
+
+            if end_date is not None:
+                overlap_conditions.extend(
+                    [
+                        and_(
+                            AccountSubscription.start_date <= start_date,
+                            AccountSubscription.end_date >= start_date,
+                        ),
+                        and_(
+                            AccountSubscription.start_date <= end_date,
+                            AccountSubscription.end_date >= end_date,
+                        ),
+                        and_(
+                            start_date <= AccountSubscription.start_date,
+                            end_date >= AccountSubscription.end_date,
+                        ),
+                    ]
+                )
+
             overlapping = (
                 self.session.query(AccountSubscription)
                 .filter(
                     and_(
-                        AccountSubscription.status == SubscriptionStatus.active,
-                        AccountSubscription.status == SubscriptionStatus.pending,
                         AccountSubscription.account_id == account_id,
                         or_(
                             AccountSubscription.status == SubscriptionStatus.pending,
                             AccountSubscription.status == SubscriptionStatus.active,
                         ),
-                        or_(
-                            and_(
-                                AccountSubscription.start_date <= start_date,
-                                AccountSubscription.end_date >= start_date,
-                            ),
-                            and_(
-                                AccountSubscription.start_date <= end_date,
-                                AccountSubscription.end_date >= end_date,
-                            ),
-                            and_(
-                                start_date <= AccountSubscription.start_date,
-                                end_date >= AccountSubscription.end_date,
-                            ),
-                        ),
+                        or_(*overlap_conditions),
                     )
                 )
                 .first()
@@ -217,7 +254,12 @@ class AccountSubscriptionRepository:
         self,
         account_id: uuid.UUID,
     ) -> List[AccountSubscription]:
-        """Get all active subscriptions for an account."""
+        """Get all active subscriptions for an account.
+
+        Returns subscriptions that are either:
+        - Ongoing (end_date is None)
+        - Or haven't ended yet (end_date > now)
+        """
         now = datetime.now(UTC)
         try:
             query = (
@@ -230,7 +272,10 @@ class AccountSubscriptionRepository:
                             AccountSubscription.status == SubscriptionStatus.active,
                             AccountSubscription.status == SubscriptionStatus.pending,
                         ),
-                        AccountSubscription.end_date > now,
+                        or_(
+                            AccountSubscription.end_date.is_(None),
+                            AccountSubscription.end_date > now,
+                        ),
                     )
                 )
                 .order_by(AccountSubscription.start_date)
@@ -305,7 +350,10 @@ class AccountSubscriptionRepository:
     def get_active_account_subscription(
         self, account_id: uuid.UUID
     ) -> Optional[AccountSubscription]:
-        """Get the active account subscription for an account."""
+        """Get the active account subscription for an account.
+
+        Returns the most recent subscription that is either ongoing or hasn't ended yet.
+        """
         now = datetime.now(UTC)
         try:
             return (
@@ -318,7 +366,10 @@ class AccountSubscriptionRepository:
                             AccountSubscription.status == SubscriptionStatus.active,
                             AccountSubscription.status == SubscriptionStatus.pending,
                         ),
-                        AccountSubscription.end_date > now,
+                        or_(
+                            AccountSubscription.end_date.is_(None),
+                            AccountSubscription.end_date > now,
+                        ),
                     )
                 )
                 .order_by(AccountSubscription.start_date.desc())

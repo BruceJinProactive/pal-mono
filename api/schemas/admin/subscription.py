@@ -127,7 +127,7 @@ class Subscription(BaseModel):
     payment_method: PaymentMethod
     trial_start_date: Optional[datetime] = None
     start_date: datetime
-    end_date: datetime
+    end_date: Optional[datetime] = None
     in_trial: bool
     stripe_subscription_id: Optional[str] = None
     status: SubscriptionStatus
@@ -202,8 +202,11 @@ class UpdateAccountSubscriptionRequest(BaseModel):
             return v
 
         if "trial_start_date" in info.data:
-            if v < info.data["trial_start_date"]:
+            trial_start_date = info.data["trial_start_date"]
+            if trial_start_date is not None and v < trial_start_date:
                 raise ValueError("Start date must be after trial start date")
+
+        return v
 
     @field_validator("end_date")
     def validate_end_date(cls, v, info):
