@@ -102,3 +102,28 @@ def init_s3(region_name: str) -> botocore.client.BaseClient:
         raise RuntimeError(f"Issue with boto3: {e}")
     except Exception as e:
         raise RuntimeError(f"An unexpected error occurred: {e}")
+
+
+def map_uri_to_s3_url(uri: str | None) -> str:
+    """
+    Maps a URI to an S3 URL by retrieving the asset through the asset service.
+
+    Args:
+        uri (str | None): The URI to map to an S3 URL.
+
+    Returns:
+        str: The S3 URL of the asset, or an empty string if the URI is None
+             or no asset is found.
+    """
+    if uri:
+        try:
+            from api.schemas.asset.asset import ReadAssetRequest
+
+            from . import _implementation
+
+            s3_files = _implementation.read_assets(request=ReadAssetRequest(name=uri))
+            if s3_files:
+                return s3_files[0].url
+        except Exception as e:
+            logger.error(f"Error reading assets for URI {uri}: {e}")
+    return ""

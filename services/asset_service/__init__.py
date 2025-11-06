@@ -1,6 +1,7 @@
 from api.schemas.asset.asset import AssetResponse, ReadAssetRequest, WriteAssetRequest
 
 from . import _implementation
+from ._utils import map_uri_to_s3_url
 
 
 def write_asset(asset: WriteAssetRequest) -> AssetResponse:

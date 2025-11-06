@@ -5,7 +5,6 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.admin._builder import build_voice_config
 from api.schemas.admin.voice_config import (
     CreateVoiceConfigRequest,
     ListVoiceConfigsResponse,
@@ -13,6 +12,7 @@ from api.schemas.admin.voice_config import (
     VoiceConfig,
 )
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
+from services.voice_service._builder import build_voice_config
 from services.voice_service.providers.vapi._implementation import VAPIProvider
 
 

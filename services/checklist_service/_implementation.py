@@ -242,7 +242,6 @@ async def get_checklist_history(
     Returns:
         ChecklistHistoryResponse with checkpoint history and summary
     """
-    from api.routes.utils import map_uri_to_s3_url
     from api.schemas.admin.checklist import (
         ChecklistHistoryResponse,
         ChecklistHistorySummary,
@@ -250,6 +249,7 @@ async def get_checklist_history(
         CheckpointRunDetail,
     )
     from services import checkpoint_service
+    from services.asset_service import map_uri_to_s3_url
 
     # Get the checklist
     checklist_db = checklist_repository.get_checklist_by_id(session, checklist_id)

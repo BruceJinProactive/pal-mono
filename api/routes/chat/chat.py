@@ -10,12 +10,12 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.endpoints import endpoints
-from api.routes.utils import map_uri_to_s3_url
 from api.schemas.chat.chat import ChatInfo, ChatRequest, ChatResponse
 from api.schemas.error.error import ErrorResponse
 from db.session import AsyncSessionLocal
 from db.tables.types import Channel
 from services import project_service
+from services.asset_service import map_uri_to_s3_url
 from services.message_service import (
     get_chat_response_async,
     get_chat_response_stream,

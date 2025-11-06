@@ -6,8 +6,6 @@ from typing import List, Optional
 import httpx
 from fastapi import HTTPException, status
 
-from api.routes.admin._auth import authorize_admin
-from services.auth_types import UserContext
 from services.google_maps_service.schemas import (
     GoogleMapsSearchRequest,
     GoogleMapsSearchResponse,
@@ -277,7 +275,6 @@ async def _convert_to_place_result(
 
 
 async def search_places_by_name(
-    context: UserContext,
     request: GoogleMapsSearchRequest,
 ) -> GoogleMapsSearchResponse:
     """
@@ -292,7 +289,6 @@ async def search_places_by_name(
     Raises:
         HTTPException: If the search fails
     """
-    authorize_admin(context)
     try:
         search_data = await _search_places_text(
             query=request.query,

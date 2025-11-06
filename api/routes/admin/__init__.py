@@ -220,7 +220,7 @@ from . import (
     _users,
     _voice_config,
 )
-from ._auth import authenticate_user
+from ._auth import authenticate_user, authorize_admin
 
 """
 ######################################################
@@ -2632,7 +2632,8 @@ async def search_places(
     """
     Search for places by name using Google Maps Places API.
     """
-    return await search_places_by_name(context, request)
+    authorize_admin(context)
+    return await search_places_by_name(request)
 
 
 """
