@@ -61,17 +61,31 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-  "black==24.8.0",
-  "isort==5.13.2",
-  "pip-tools>=7.5.0",
-  "pyright==1.1.382",
-  "ruff==0.6.2",
-  "toml-sort==0.24.2"
+  "black~=24.8.0",
+  "import-linter~=2.2",
+  "isort~=5.13.2",
+  "pyright~=1.1.382",
+  "ruff~=0.6.2",
+  "toml-sort~=0.24.2"
 ]
 
 [tool.black]
 line-length = 88
 extend-exclude = "(?x)(^|/)build/"
+
+[tool.importlinter]
+root_packages = ["agent", "api", "db", "services", "tools", "utils"]
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: api -> services -> db"
+type = "layers"
+layers = ["api", "services", "db"] # isort: skip
+
+[[tool.importlinter.contracts]]
+name = "Utils must be isolated - no internal dependencies"
+type = "forbidden"
+source_modules = ["utils"]
+forbidden_modules = ["agent", "api", "db", "services", "tools"]
 
 [tool.isort]
 profile = "black"
@@ -92,3 +106,7 @@ exclude = [".git", ".venv*", "aienv*", "build"]
 "*.ipynb" = ["E402"]
 
 [tool.setuptools.packages.find]
+
+[tool.tomlsort]
+# Disable inline array sorting for importlinter contracts to preserve layer order
+overrides."*.layers".inline_arrays = false
