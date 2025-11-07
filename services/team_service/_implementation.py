@@ -23,6 +23,7 @@ from db.repositories import (
     ResourceRoleAssignmentRepository,
     UserInvitationRepository,
 )
+from db.repositories.resource_role_assignment_repository import ResourceType
 from db.tables.types import AccountUserStatus, InvitationStatus
 from services.auth_types import UserContext
 from services.team_service.helpers import (
@@ -169,7 +170,9 @@ def list_team_members(
 
     for au in account_users:
         # Get roles for this user on this account
-        user_roles = role_repo.get_roles_for_resource(au.user_id, "account", account.id)
+        user_roles = role_repo.get_roles_for_resource(
+            au.user_id, ResourceType.ACCOUNT, account.id
+        )
 
         # Get primary account role (first owner, else manager, else viewer)
         account_role = None
@@ -253,23 +256,27 @@ def update_member_role(
     # 3. Get current role
     role_repo = ResourceRoleAssignmentRepository(session)
     current_roles = role_repo.get_roles_for_resource(
-        target_user_id, "account", account.id
+        target_user_id, ResourceType.ACCOUNT, account.id
     )
     current_role = current_roles[0] if current_roles else None
 
     # 4. Check last owner protection
     if current_role == "owner" and params.account_role != "owner":
-        owner_count = role_repo.count_owners_for_resource("account", account.id)
+        owner_count = role_repo.count_owners_for_resource(
+            ResourceType.ACCOUNT, account.id
+        )
         if owner_count <= 1:
             raise ValueError("Cannot remove the last owner from the account")
 
     # 5. Remove old role and add new role
     if current_role:
-        role_repo.remove_role(target_user_id, "account", account.id, current_role)
+        role_repo.remove_role(
+            target_user_id, ResourceType.ACCOUNT, account.id, current_role
+        )
 
     role_repo.add_role(
         user_id=target_user_id,
-        resource_type="account",
+        resource_type=ResourceType.ACCOUNT,
         resource_id=account.id,
         role=params.account_role,
         assigned_by=UUID(context.username),
@@ -331,11 +338,13 @@ def remove_team_member(
     # 3. Check last owner protection
     role_repo = ResourceRoleAssignmentRepository(session)
     current_roles = role_repo.get_roles_for_resource(
-        target_user_id, "account", account.id
+        target_user_id, ResourceType.ACCOUNT, account.id
     )
 
     if "owner" in current_roles:
-        owner_count = role_repo.count_owners_for_resource("account", account.id)
+        owner_count = role_repo.count_owners_for_resource(
+            ResourceType.ACCOUNT, account.id
+        )
         if owner_count <= 1:
             raise ValueError("Cannot remove the last owner from the account")
 
@@ -346,7 +355,7 @@ def remove_team_member(
 
     # 5. Remove all role assignments
     role_repo.remove_all_roles_for_user_on_resource(
-        target_user_id, "account", account.id
+        target_user_id, ResourceType.ACCOUNT, account.id
     )
 
     # 6. Send notification email (TODO)
@@ -473,7 +482,7 @@ def accept_invitation(
     try:
         role_repo.add_role(
             user_id=user_id,
-            resource_type="account",
+            resource_type=ResourceType.ACCOUNT,
             resource_id=account.id,
             role=invitation.account_role,
             assigned_by=invitation.invited_by,
@@ -577,7 +586,9 @@ def list_user_accounts(
             continue
 
         # Get user's role on this account
-        user_roles = role_repo.get_roles_for_resource(user_id, "account", account.id)
+        user_roles = role_repo.get_roles_for_resource(
+            user_id, ResourceType.ACCOUNT, account.id
+        )
 
         # Get primary role
         primary_role = None
@@ -625,7 +636,9 @@ def validate_account_access(
     # Get user's role on this account
     role_repo = ResourceRoleAssignmentRepository(session)
     user_id = UUID(context.username)
-    user_roles = role_repo.get_roles_for_resource(user_id, "account", account.id)
+    user_roles = role_repo.get_roles_for_resource(
+        user_id, ResourceType.ACCOUNT, account.id
+    )
 
     # Get primary role
     primary_role = None

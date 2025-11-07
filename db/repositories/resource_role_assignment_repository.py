@@ -1,4 +1,5 @@
 import uuid
+from enum import Enum
 from typing import Optional
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -6,6 +7,62 @@ from sqlalchemy.orm import Session
 
 from db.tables import ResourceRoleAssignment
 from utils.log import logger
+
+
+class ResourceType(str, Enum):
+    """Resource types for RBAC system.
+
+    Values are singular forms used in the database.
+    API layer uses plural forms which can be converted via from_plural().
+    """
+
+    ACCOUNT = "account"
+    PROJECT = "project"
+    AGENT = "agent"
+    CHECKLIST = "checklist"
+    PLAN = "plan"
+    DATA = "data"
+
+    @classmethod
+    def from_plural(cls, plural: str) -> "ResourceType":
+        """Convert plural form (from API) to ResourceType enum.
+
+        Args:
+            plural: Plural form (e.g., 'accounts', 'projects')
+
+        Returns:
+            ResourceType enum
+
+        Raises:
+            ValueError: If plural form is not recognized
+        """
+        mapping = {
+            "accounts": cls.ACCOUNT,
+            "projects": cls.PROJECT,
+            "agents": cls.AGENT,
+            "checklists": cls.CHECKLIST,
+            "plans": cls.PLAN,
+            "data": cls.DATA,
+        }
+        if plural not in mapping:
+            raise ValueError(f"Unknown resource type: {plural}")
+        return mapping[plural]
+
+    def to_plural(self) -> str:
+        """Convert to plural form (for API).
+
+        Returns:
+            Plural form string (e.g., 'accounts', 'projects')
+        """
+        mapping = {
+            self.ACCOUNT: "accounts",
+            self.PROJECT: "projects",
+            self.AGENT: "agents",
+            self.CHECKLIST: "checklists",
+            self.PLAN: "plans",
+            self.DATA: "data",
+        }
+        return mapping[self]
 
 
 class ResourceRoleAssignmentRepository:
@@ -25,8 +82,20 @@ class ResourceRoleAssignmentRepository:
         self.session = session
         self.auto_commit = auto_commit
 
+    @staticmethod
+    def _normalize_resource_type(resource_type: ResourceType) -> str:
+        """Normalize resource_type to string value.
+
+        Args:
+            resource_type: ResourceType enum
+
+        Returns:
+            String value of the resource type
+        """
+        return resource_type.value
+
     def get_roles_for_resource(
-        self, user_id: uuid.UUID, resource_type: str, resource_id: uuid.UUID
+        self, user_id: uuid.UUID, resource_type: ResourceType, resource_id: uuid.UUID
     ) -> list[str]:
         """Get all roles a user has on a specific resource.
 
@@ -35,18 +104,19 @@ class ResourceRoleAssignmentRepository:
 
         Args:
             user_id: UUID of the user
-            resource_type: Resource type (e.g., 'account', 'project', 'agent')
+            resource_type: ResourceType enum (e.g., ResourceType.ACCOUNT)
             resource_id: UUID of the specific resource
 
         Returns:
             List of role strings (e.g., ['owner', 'billing_admin']) or empty list
         """
+        resource_type_str = self._normalize_resource_type(resource_type)
         try:
             assignments = (
                 self.session.query(ResourceRoleAssignment)
                 .filter(
                     ResourceRoleAssignment.user_id == user_id,
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                 )
                 .all()
@@ -60,7 +130,7 @@ class ResourceRoleAssignmentRepository:
     def has_role(
         self,
         user_id: uuid.UUID,
-        resource_type: str,
+        resource_type: ResourceType,
         resource_id: uuid.UUID,
         role: str,
     ) -> bool:
@@ -81,13 +151,13 @@ class ResourceRoleAssignmentRepository:
         return role in roles
 
     def get_assignments_for_user(
-        self, user_id: uuid.UUID, resource_type: Optional[str] = None
+        self, user_id: uuid.UUID, resource_type: Optional[ResourceType] = None
     ) -> list[ResourceRoleAssignment]:
         """Get all role assignments for a user.
 
         Args:
             user_id: UUID of the user
-            resource_type: Optional resource type filter
+            resource_type: Optional ResourceType enum filter
 
         Returns:
             List of ResourceRoleAssignment objects, ordered by created_at desc
@@ -98,8 +168,9 @@ class ResourceRoleAssignmentRepository:
             )
 
             if resource_type:
+                resource_type_str = self._normalize_resource_type(resource_type)
                 query = query.filter(
-                    ResourceRoleAssignment.resource_type == resource_type
+                    ResourceRoleAssignment.resource_type == resource_type_str
                 )
 
             return query.order_by(ResourceRoleAssignment.created_at.desc()).all()
@@ -109,24 +180,25 @@ class ResourceRoleAssignmentRepository:
             return []
 
     def get_assignments_for_resource(
-        self, resource_type: str, resource_id: uuid.UUID
+        self, resource_type: ResourceType, resource_id: uuid.UUID
     ) -> list[ResourceRoleAssignment]:
         """Get all role assignments for a specific resource.
 
         Used for listing team members who have access to a resource.
 
         Args:
-            resource_type: Resource type (e.g., 'account', 'project')
+            resource_type: ResourceType enum (e.g., ResourceType.ACCOUNT)
             resource_id: UUID of the resource
 
         Returns:
             List of ResourceRoleAssignment objects, ordered by role alphabetically, then created_at
         """
+        resource_type_str = self._normalize_resource_type(resource_type)
         try:
             return (
                 self.session.query(ResourceRoleAssignment)
                 .filter(
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                 )
                 .order_by(
@@ -142,7 +214,7 @@ class ResourceRoleAssignmentRepository:
     def add_role(
         self,
         user_id: uuid.UUID,
-        resource_type: str,
+        resource_type: ResourceType,
         resource_id: uuid.UUID,
         role: str,
         assigned_by: Optional[uuid.UUID] = None,
@@ -154,7 +226,7 @@ class ResourceRoleAssignmentRepository:
 
         Args:
             user_id: UUID of the user
-            resource_type: Resource type (e.g., 'account', 'project')
+            resource_type: ResourceType enum (e.g., ResourceType.ACCOUNT)
             resource_id: UUID of the resource
             role: Role string (e.g., 'owner', 'manager', 'viewer', 'billing_admin')
             assigned_by: Optional UUID of user who made this assignment
@@ -166,13 +238,14 @@ class ResourceRoleAssignmentRepository:
         Raises:
             SQLAlchemyError: If there's a database error during operation
         """
+        resource_type_str = self._normalize_resource_type(resource_type)
         try:
             # Check if this exact role assignment already exists
             existing = (
                 self.session.query(ResourceRoleAssignment)
                 .filter(
                     ResourceRoleAssignment.user_id == user_id,
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                     ResourceRoleAssignment.role == role,
                 )
@@ -181,7 +254,7 @@ class ResourceRoleAssignmentRepository:
 
             if existing:
                 logger.info(
-                    f"Role assignment already exists: user {user_id} has role {role} on {resource_type}:{resource_id}"
+                    f"Role assignment already exists: user {user_id} has role {role} on {resource_type_str}:{resource_id}"
                 )
                 return existing
 
@@ -189,7 +262,7 @@ class ResourceRoleAssignmentRepository:
             db_assignment = ResourceRoleAssignment(
                 id=uuid.uuid4(),
                 user_id=user_id,
-                resource_type=resource_type,
+                resource_type=resource_type_str,
                 resource_id=resource_id,
                 role=role,
                 assigned_by=assigned_by,
@@ -204,7 +277,7 @@ class ResourceRoleAssignmentRepository:
 
             self.session.refresh(db_assignment)
             logger.info(
-                f"Added role: user {user_id} as {role} on {resource_type}:{resource_id}"
+                f"Added role: user {user_id} as {role} on {resource_type_str}:{resource_id}"
             )
             return db_assignment
         except IntegrityError:
@@ -214,7 +287,7 @@ class ResourceRoleAssignmentRepository:
                 self.session.query(ResourceRoleAssignment)
                 .filter(
                     ResourceRoleAssignment.user_id == user_id,
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                     ResourceRoleAssignment.role == role,
                 )
@@ -222,7 +295,7 @@ class ResourceRoleAssignmentRepository:
             )
             if existing:
                 logger.info(
-                    f"Role assignment created concurrently: user {user_id} has role {role} on {resource_type}:{resource_id}"
+                    f"Role assignment created concurrently: user {user_id} has role {role} on {resource_type_str}:{resource_id}"
                 )
                 return existing
             # If still not found, re-raise original error
@@ -233,25 +306,30 @@ class ResourceRoleAssignmentRepository:
             raise
 
     def remove_role(
-        self, user_id: uuid.UUID, resource_type: str, resource_id: uuid.UUID, role: str
+        self,
+        user_id: uuid.UUID,
+        resource_type: ResourceType,
+        resource_id: uuid.UUID,
+        role: str,
     ) -> bool:
         """Remove a specific role from a user on a resource.
 
         Args:
             user_id: UUID of the user
-            resource_type: Resource type
+            resource_type: ResourceType enum
             resource_id: UUID of the resource
             role: Specific role to remove
 
         Returns:
             True if deleted, False if not found
         """
+        resource_type_str = self._normalize_resource_type(resource_type)
         try:
             assignment = (
                 self.session.query(ResourceRoleAssignment)
                 .filter(
                     ResourceRoleAssignment.user_id == user_id,
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                     ResourceRoleAssignment.role == role,
                 )
@@ -260,7 +338,7 @@ class ResourceRoleAssignmentRepository:
 
             if not assignment:
                 logger.warning(
-                    f"Role assignment not found: user {user_id} with role {role} on {resource_type}:{resource_id}"
+                    f"Role assignment not found: user {user_id} with role {role} on {resource_type_str}:{resource_id}"
                 )
                 return False
 
@@ -272,7 +350,7 @@ class ResourceRoleAssignmentRepository:
                 self.session.flush()
 
             logger.info(
-                f"Removed role: user {user_id} role {role} on {resource_type}:{resource_id}"
+                f"Removed role: user {user_id} role {role} on {resource_type_str}:{resource_id}"
             )
             return True
         except SQLAlchemyError as e:
@@ -281,7 +359,7 @@ class ResourceRoleAssignmentRepository:
             return False
 
     def remove_all_roles_for_user_on_resource(
-        self, user_id: uuid.UUID, resource_type: str, resource_id: uuid.UUID
+        self, user_id: uuid.UUID, resource_type: ResourceType, resource_id: uuid.UUID
     ) -> int:
         """Remove all role assignments for a user on a specific resource.
 
@@ -289,18 +367,19 @@ class ResourceRoleAssignmentRepository:
 
         Args:
             user_id: UUID of the user
-            resource_type: Resource type
+            resource_type: ResourceType enum
             resource_id: UUID of the resource
 
         Returns:
             Count of deleted assignments
         """
+        resource_type_str = self._normalize_resource_type(resource_type)
         try:
             count = (
                 self.session.query(ResourceRoleAssignment)
                 .filter(
                     ResourceRoleAssignment.user_id == user_id,
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                 )
                 .delete()
@@ -312,7 +391,7 @@ class ResourceRoleAssignmentRepository:
                 self.session.flush()
 
             logger.info(
-                f"Removed {count} role assignments for user {user_id} on {resource_type}:{resource_id}"
+                f"Removed {count} role assignments for user {user_id} on {resource_type_str}:{resource_id}"
             )
             return count
         except SQLAlchemyError as e:
@@ -351,24 +430,25 @@ class ResourceRoleAssignmentRepository:
             return 0
 
     def remove_all_assignments_for_resource(
-        self, resource_type: str, resource_id: uuid.UUID
+        self, resource_type: ResourceType, resource_id: uuid.UUID
     ) -> int:
         """Remove all role assignments for a resource.
 
         Used when deleting a resource.
 
         Args:
-            resource_type: Resource type
+            resource_type: ResourceType enum
             resource_id: UUID of the resource
 
         Returns:
             Count of deleted assignments
         """
+        resource_type_str = self._normalize_resource_type(resource_type)
         try:
             count = (
                 self.session.query(ResourceRoleAssignment)
                 .filter(
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                 )
                 .delete()
@@ -380,7 +460,7 @@ class ResourceRoleAssignmentRepository:
                 self.session.flush()
 
             logger.info(
-                f"Removed {count} role assignments for {resource_type}:{resource_id}"
+                f"Removed {count} role assignments for {resource_type_str}:{resource_id}"
             )
             return count
         except SQLAlchemyError as e:
@@ -389,24 +469,25 @@ class ResourceRoleAssignmentRepository:
             return 0
 
     def count_owners_for_resource(
-        self, resource_type: str, resource_id: uuid.UUID
+        self, resource_type: ResourceType, resource_id: uuid.UUID
     ) -> int:
         """Count users with owner role on a resource.
 
         Safety check to prevent removing the last owner.
 
         Args:
-            resource_type: Resource type
+            resource_type: ResourceType enum
             resource_id: UUID of the resource
 
         Returns:
             Count of owner assignments
         """
+        resource_type_str = self._normalize_resource_type(resource_type)
         try:
             return (
                 self.session.query(ResourceRoleAssignment)
                 .filter(
-                    ResourceRoleAssignment.resource_type == resource_type,
+                    ResourceRoleAssignment.resource_type == resource_type_str,
                     ResourceRoleAssignment.resource_id == resource_id,
                     ResourceRoleAssignment.role == "owner",
                 )

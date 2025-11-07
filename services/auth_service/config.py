@@ -6,7 +6,7 @@ In v1, permissions are statically defined here. In v2, these will
 migrate to database tables for dynamic management.
 """
 
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 
 # =============================================================================
 # ROLE PERMISSIONS
@@ -41,6 +41,20 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
 }
 
 # =============================================================================
+# RESOURCE HIERARCHY
+# =============================================================================
+# Defines parent-child relationships for hierarchical permission checking
+
+RESOURCE_HIERARCHY: Dict[str, Optional[str]] = {
+    "checklists": "projects",  # Checklist belongs to project
+    "projects": "accounts",  # Project belongs to account
+    "agents": "accounts",  # Agent belongs to account
+    "accounts": None,  # Account is top-level (no parent)
+    "plans": None,  # Plans are top-level for now
+    "data": None,  # Data resources are top-level for now
+}
+
+# =============================================================================
 # PERMISSION REGISTRY
 # =============================================================================
 # Metadata for all permissions (useful for documentation, future UI)
@@ -50,69 +64,69 @@ PERMISSION_REGISTRY: Dict[str, Dict[str, str]] = {
     "account.read": {
         "display_name": "View Account",
         "description": "View account settings and information",
-        "resource_type": "account",
+        "resource_type": "accounts",
     },
     "account.write": {
         "display_name": "Modify Account",
         "description": "Modify account settings",
-        "resource_type": "account",
+        "resource_type": "accounts",
     },
     "account.billing.read": {
         "display_name": "View Billing",
         "description": "View billing information",
-        "resource_type": "account",
+        "resource_type": "accounts",
     },
     "account.billing.write": {
         "display_name": "Modify Billing",
         "description": "Modify billing settings",
-        "resource_type": "account",
+        "resource_type": "accounts",
     },
     "account.team_manage": {
         "display_name": "Manage Team",
         "description": "Invite and remove team members",
-        "resource_type": "account",
+        "resource_type": "accounts",
     },
     # Project permissions
     "project.create": {
         "display_name": "Create Projects",
         "description": "Create new projects",
-        "resource_type": "project",
+        "resource_type": "projects",
     },
     "project.read": {
         "display_name": "View Projects",
         "description": "View project configurations",
-        "resource_type": "project",
+        "resource_type": "projects",
     },
     "project.write": {
         "display_name": "Modify Projects",
         "description": "Modify project settings",
-        "resource_type": "project",
+        "resource_type": "projects",
     },
     "project.delete": {
         "display_name": "Delete Projects",
         "description": "Delete projects",
-        "resource_type": "project",
+        "resource_type": "projects",
     },
     # Agent permissions
     "agent.create": {
         "display_name": "Create Agents",
         "description": "Create new agents",
-        "resource_type": "agent",
+        "resource_type": "agents",
     },
     "agent.read": {
         "display_name": "View Agents",
         "description": "View agent configurations",
-        "resource_type": "agent",
+        "resource_type": "agents",
     },
     "agent.write": {
         "display_name": "Modify Agents",
         "description": "Modify agent settings",
-        "resource_type": "agent",
+        "resource_type": "agents",
     },
     "agent.delete": {
         "display_name": "Delete Agents",
         "description": "Delete agents",
-        "resource_type": "agent",
+        "resource_type": "agents",
     },
     # Plan permissions
     "plan.approve": {
