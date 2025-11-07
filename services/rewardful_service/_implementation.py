@@ -1,6 +1,9 @@
+import random
+import string
 import uuid
 from typing import Any, Dict, List
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories.affiliate_repository import AffiliateRepositoryAsync
@@ -38,6 +41,7 @@ class RewardfulService:
     ) -> tuple[Affiliate, Dict[str, Any]]:
         """
         Create affiliate in Rewardful and store locally.
+        If token conflicts, automatically retries with a unique suffix.
 
         Args:
             session: Database session
@@ -53,26 +57,84 @@ class RewardfulService:
         Returns:
             tuple[Affiliate, Dict]: Local affiliate record and Rewardful response
         """
-        # Create affiliate in Rewardful
-        rewardful_data = await self.client.create_affiliate(
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            campaign_id=campaign_id,
-            token=token,
-            stripe_customer_id=stripe_customer_id,
-            paypal_email=paypal_email,
-            wise_email=wise_email,
-        )
+        max_retries = 5
+        current_token = token
 
-        # Store in local database
-        repo = AffiliateRepositoryAsync(session)
-        affiliate = await repo.create_affiliate(rewardful_id=rewardful_data["id"])
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                # Create affiliate in Rewardful
+                rewardful_data = await self.client.create_affiliate(
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    campaign_id=campaign_id,
+                    token=current_token,
+                    stripe_customer_id=stripe_customer_id,
+                    paypal_email=paypal_email,
+                    wise_email=wise_email,
+                )
 
-        logger.info(
-            f"Created affiliate {affiliate.id} with Rewardful ID {rewardful_data['id']}"
-        )
-        return affiliate, rewardful_data
+                # Store in local database
+                repo = AffiliateRepositoryAsync(session)
+                affiliate = await repo.create_affiliate(
+                    rewardful_id=rewardful_data["id"]
+                )
+
+                logger.info(
+                    f"Created affiliate {affiliate.id} with Rewardful ID {rewardful_data['id']}"
+                )
+                return affiliate, rewardful_data
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                if e.response.status_code == 422 and current_token:
+                    # Check if error is specifically a token conflict
+                    is_token_conflict = False
+                    try:
+                        error_body = e.response.json()
+                        error_details = " ".join(error_body.get("details", []))
+                        if "token" in error_details.lower():
+                            is_token_conflict = True
+                            logger.debug(f"Detected token conflict: {error_details}")
+                    except (ValueError, KeyError, AttributeError):
+                        # Can't parse error body, assume not a token conflict
+                        logger.warning(
+                            f"Could not parse 422 error response: {e.response.text}"
+                        )
+
+                    if is_token_conflict:
+                        # Token conflict - generate a unique token and retry
+                        suffix = "".join(
+                            random.choices(string.ascii_lowercase + string.digits, k=4)
+                        )
+                        current_token = f"{token}-{suffix}"
+
+                        logger.warning(
+                            f"Token conflict on attempt {attempt + 1}, retrying with token: {current_token}"
+                        )
+
+                        if attempt < max_retries - 1:
+                            # Continue to next attempt
+                            continue
+                        else:
+                            # Last attempt failed
+                            logger.error(
+                                f"Failed to create affiliate after {max_retries} attempts"
+                            )
+                            raise
+                    else:
+                        # Different 422 error (not token conflict), re-raise immediately
+                        raise
+                else:
+                    # Different error, re-raise immediately
+                    raise
+
+        # If we somehow exit the loop without returning or raising, raise the last error
+        if last_error:
+            raise last_error
+        else:
+            raise RuntimeError("Failed to create affiliate: unexpected error")
 
     async def get_affiliate(
         self,
