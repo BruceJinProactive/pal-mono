@@ -238,12 +238,19 @@ class Price(BaseModel):
     totalAmount: SkipJsonSchema[Optional[float]] = None  # response only
 
 
+class PaymentStatus(str, Enum):
+    OPEN = "OPEN"
+    PAID = "PAID"
+    CLOSED = "CLOSED"
+
+
 class Check(Price):
     customer: Customer
     selections: List[ItemSelection] = Field(
         description="List of item selections in the check. This must NOT be a dictionary."
     )
     payments: Optional[List[Payment]] = None
+    paymentStatus: SkipJsonSchema[Optional[PaymentStatus]] = None  # response only
 
     class Config:
         # Allow extra fields in case API response includes additional data

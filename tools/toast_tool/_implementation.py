@@ -49,6 +49,7 @@ from tools.toast_tool.classes import (
     OrderInput,
     PaymentIntentRequest,
     PaymentIntentResponse,
+    PaymentStatus,
     Price,
     SelectionType,
     SubQueries,
@@ -82,8 +83,9 @@ class ToastTool(Toolkit):
         loyalty_enabled: bool = False,
         coupons_enabled: bool = False,
         default_coupon_id: str | None = None,
-        token_api_endpoint: str | None = None,
-        general_api_endpoint: str | None = None,
+        token_api_endpoint: str | None = "ws-api.toasttab.com",
+        general_api_endpoint: str | None = "ws-api.toasttab.com",
+        # todo: refactor self.sandbox logic.
         sandbox: bool = False,
         hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
         enable_hosted_checkout: bool = False,
@@ -487,7 +489,11 @@ class ToastTool(Toolkit):
             return get_existing_order(
                 bearer_token=self._toast_bearer_token,
                 store_id=self.store_id,
-                order_guid=f"TPC-PALONA:{self.tool_metadata.session_id}",
+                order_guid=(
+                    f"TPC-PALONA:{self.tool_metadata.session_id}"
+                    if "sandbox" not in str(self.general_api_endpoint)
+                    else f"PALONA:{self.tool_metadata.session_id}"
+                ),
                 general_api_endpoint=self.general_api_endpoint,
             )
 
@@ -537,8 +543,19 @@ class ToastTool(Toolkit):
             #     return "The store is currently closed for online ordering. Please try again later."
 
             # Check for existing order
-            if self._get_existing_order_tool() is not None:
-                return "Your order has been successfully placed."
+            existing_order = self._get_existing_order_tool()
+            if existing_order is not None:
+                # Try creating payment intent for existing order if it is not paid yet
+                if existing_order.checks[0].paymentStatus in [
+                    PaymentStatus.PAID,
+                    PaymentStatus.CLOSED,
+                ]:
+                    return f"Inform the customer their order has been successfully placed and is already paid. Order ID: {existing_order.guid}"
+                # Create payment intent for existing order and return payment link
+                logger.debug(
+                    f"[ToastTool.checkout_order_with_payment_iframe] Found existing unpaid order {existing_order.guid}, creating payment intent"
+                )
+                return self._begin_hosted_checkout_flow(existing_order)
 
             # Construct order
             order = self._construct_order()
@@ -559,85 +576,8 @@ class ToastTool(Toolkit):
                 # If result is a string, it indicates an error message
                 return result
 
-            # Create payment intent
-            payment_intent_external_reference_id = str(uuid.uuid4())
-            payment_intent_result = self._create_payment_intent_for_order(
-                order, external_reference_id=payment_intent_external_reference_id
-            )
-            # If payment intent result is a string, it indicates an error message
-            if isinstance(payment_intent_result, str):
-                return payment_intent_result
-
-            # Check if order.externalId is set after successful order submission. This absolutely must not be empty because we need it later to update the order's check.
-            if order.externalId is None:
-                raise ValueError("Order externalId is None after submission")
-
-            # Sanity check for iframe bearer token
-            toast_hosted_payment_iframe_bearer_token = (
-                self._toast_hosted_payment_iframe_bearer_token
-            )
-            if not toast_hosted_payment_iframe_bearer_token:
-                logger.error(
-                    "[ToastTool.checkout_order_with_payment_iframe] No hosted checkout payment bearer token available"
-                )
-                return "Failed to authenticate payment tool. Please contact the store to complete your order."
-
-            # Extract order items from the submitted order
-            order_items = self._extract_order_items(order)
-            logger.debug(
-                f"[ToastTool.checkout_order_with_payment_iframe] Extracted {len(order_items)} order items"
-            )
-
-            # Create a concise order summary from extracted items
-            order_summary_lines = []
-            for item in order_items:
-                item_line = f"- {item['name']} (x{item['quantity']})"
-                if item.get("modifiers"):
-                    # If modifiers is a list of strings
-                    if isinstance(item["modifiers"], list) and item["modifiers"]:
-                        if isinstance(item["modifiers"][0], str):
-                            mods = ", ".join(item["modifiers"])
-                        else:
-                            # If modifiers is a list of dicts
-                            mods = ", ".join(
-                                [
-                                    m.get("name", "")
-                                    for m in item["modifiers"]
-                                    if m.get("name")
-                                ]
-                            )
-                        if mods:
-                            item_line += f" [{mods}]"
-                order_summary_lines.append(item_line)
-
-            order_summary = "\n".join(order_summary_lines)
-
-            # Create concise confirmation message using extracted order items
-            concise_confirmation = (
-                f"Order #{order.guid} submitted successfully! "
-                f"Your total is ${order.checks[0].totalAmount}.\n\n"
-                f"Order summary:\n{order_summary}\n\n"
-                f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
-            )
-
-            # Build hosted payment payload
-            payment_payload = self._build_hosted_payment_payload(
-                order=order,
-                payment_intent_external_reference_id=payment_intent_external_reference_id,
-                session_secret=payment_intent_result.sessionSecret,
-                payment_intent_amount=payment_intent_result.amount,
-                order_items=order_items,
-            )
-
-            # Generate iframe payment link
-            payment_link = self._generate_iframe_payment_link(payment_payload)
-
-            # Return payment intent details with concise confirmation
-            return_msg = (
-                concise_confirmation
-                + f"\n\nThe following is the payment link, ask the user to use the link to checkout, tell the customer the link will expire in {self.payment_iframe_token_ttl_seconds // 60} minutes.: {payment_link}\n\nYou MUST INCLUDE THE COMPLETE URL in your response and format it as a Markdown link. For example, [payment link](COMPLETE_URL_HERE) YOU MUST NOT OMIT ANY PART OF THE URL. "
-            )
-            return return_msg
+            # Begin hosted checkout flow for the newly submitted order
+            return self._begin_hosted_checkout_flow(order)
 
         except Exception as e:
             logger.error(f"[ToastTool.checkout_order_with_payment_iframe] Error: {e}")
@@ -684,9 +624,14 @@ class ToastTool(Toolkit):
 
             # Check if an order with the current conversationId (externalId) already exists.
             # If yes, skip placing a new order and return a message that the order is already successfully placed
-            if_order_exists = self._get_existing_order_tool() is not None
-            if if_order_exists:
-                return "Your order has been successfully placed."
+            existing_order = self._get_existing_order_tool()
+            if existing_order is not None:
+                if existing_order.checks[0].paymentStatus in [
+                    PaymentStatus.PAID,
+                    PaymentStatus.CLOSED,
+                ]:
+                    return f"Your order has been successfully placed and is already paid. Order ID: {existing_order.guid}"
+                return f"Your order has been created but payment is still pending. Order ID: {existing_order.guid}. Please complete payment to finalize your order."
 
             order = self._construct_order()
 
@@ -1184,6 +1129,98 @@ class ToastTool(Toolkit):
                 f"[ToastTool._create_payment_intent_for_order] Error creating payment intent: {e}"
             )
             return "Failed to create payment intent. Please try again."
+
+    def _begin_hosted_checkout_flow(self, order: Order) -> str:
+        """
+        Begins the hosted checkout flow for an order (new or existing).
+        Creates payment intent, extracts order items, builds payment payload,
+        and generates the payment link.
+
+        Args:
+            order: The Toast Order object (can be newly submitted or existing)
+
+        Returns:
+            str: Formatted message with payment link for the customer
+        """
+        # Create payment intent
+        payment_intent_external_reference_id = str(uuid.uuid4())
+        payment_intent_result = self._create_payment_intent_for_order(
+            order, external_reference_id=payment_intent_external_reference_id
+        )
+        # If payment intent result is a string, it indicates an error message
+        if isinstance(payment_intent_result, str):
+            return payment_intent_result
+
+        # Check if order.externalId is set after successful order submission. This absolutely must not be empty because we need it later to update the order's check.
+        if order.externalId is None:
+            raise ValueError("Order externalId is None after submission")
+
+        # Sanity check for iframe bearer token
+        toast_hosted_payment_iframe_bearer_token = (
+            self._toast_hosted_payment_iframe_bearer_token
+        )
+        if not toast_hosted_payment_iframe_bearer_token:
+            logger.error(
+                "[ToastTool._begin_hosted_checkout_flow] No hosted checkout payment bearer token available"
+            )
+            return "Failed to authenticate payment tool. Please contact the store to complete your order."
+
+        # Extract order items from the submitted order
+        order_items = self._extract_order_items(order)
+        logger.debug(
+            f"[ToastTool._begin_hosted_checkout_flow] Extracted {len(order_items)} order items"
+        )
+
+        # Create a concise order summary from extracted items
+        order_summary_lines = []
+        for item in order_items:
+            item_line = f"- {item['name']} (x{item['quantity']})"
+            if item.get("modifiers"):
+                # If modifiers is a list of strings
+                if isinstance(item["modifiers"], list) and item["modifiers"]:
+                    if isinstance(item["modifiers"][0], str):
+                        mods = ", ".join(item["modifiers"])
+                    else:
+                        # If modifiers is a list of dicts
+                        mods = ", ".join(
+                            [
+                                m.get("name", "")
+                                for m in item["modifiers"]
+                                if m.get("name")
+                            ]
+                        )
+                    if mods:
+                        item_line += f" [{mods}]"
+            order_summary_lines.append(item_line)
+
+        order_summary = "\n".join(order_summary_lines)
+
+        # Create concise confirmation message using extracted order items
+        concise_confirmation = (
+            f"Order #{order.guid} submitted successfully! "
+            f"Your total is ${order.checks[0].totalAmount}.\n\n"
+            f"Order summary:\n{order_summary}\n\n"
+            f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
+        )
+
+        # Build hosted payment payload
+        payment_payload = self._build_hosted_payment_payload(
+            order=order,
+            payment_intent_external_reference_id=payment_intent_external_reference_id,
+            session_secret=payment_intent_result.sessionSecret,
+            payment_intent_amount=payment_intent_result.amount,
+            order_items=order_items,
+        )
+
+        # Generate iframe payment link
+        payment_link = self._generate_iframe_payment_link(payment_payload)
+
+        # Return payment intent details with concise confirmation
+        return_msg = (
+            concise_confirmation
+            + f"\n\nThe following is the payment link, ask the user to use the link to checkout, tell the customer the link will expire in {self.payment_iframe_token_ttl_seconds // 60} minutes.: {payment_link}\n\nYou MUST INCLUDE THE COMPLETE URL in your response and format it as a Markdown link. For example, [payment link](COMPLETE_URL_HERE) YOU MUST NOT OMIT ANY PART OF THE URL. "
+        )
+        return return_msg
 
     def _build_hosted_payment_payload(
         self,
