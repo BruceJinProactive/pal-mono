@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -30,6 +31,8 @@ from services import (
     user_service,
 )
 from services.message_service._utils import transform_vapi_conversation_data
+from services.subscription_service import _stripe_product
+from services.subscription_service.stripe_usage_billing import send_meter_event
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 
@@ -535,6 +538,52 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             raise ValueError("Failed to create request message")
 
         await session.refresh(project, attribute_names=["account"])
+
+        try:
+            stripe_customer_id = project.account.stripe_customer_id
+
+            if not stripe_customer_id:
+                logger.warning(
+                    f"No Stripe customer ID found for project {project.id} - skipping call usage tracking",
+                    extra={
+                        "project_id": str(project.id),
+                        "call_id": call_id,
+                        "customer_number": customer_number,
+                    },
+                )
+            else:
+                event_name = _stripe_product.get_call_meter_event_name(project.id)
+                success = await asyncio.to_thread(
+                    send_meter_event,
+                    event_name=event_name,
+                    stripe_customer_id=stripe_customer_id,
+                    value=1,
+                )
+
+                if not success:
+                    logger.error(
+                        f"Failed to track call usage for call {call_id}",
+                        extra={
+                            "call_id": call_id,
+                            "project_id": str(project.id),
+                            "stripe_customer_id": stripe_customer_id,
+                        },
+                    )
+                else:
+                    logger.info(
+                        f"Successfully tracked call usage for call {call_id}",
+                        extra={
+                            "call_id": call_id,
+                            "project_id": str(project.id),
+                            "stripe_customer_id": stripe_customer_id,
+                        },
+                    )
+        except Exception as e:
+            logger.error(
+                f"Error tracking call usage for call {call_id}: {e}",
+                extra={"call_id": call_id, "project_id": str(project.id)},
+                exc_info=True,
+            )
 
         account_display_name = project.account.display_name
         # Fallback to account name if display name is not set

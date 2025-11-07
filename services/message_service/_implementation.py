@@ -22,9 +22,7 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from db.tables.types import Channel
-from services import agent_service, project_service, subscription_service, user_service
-from services.subscription_service import _stripe_product
-from services.subscription_service.stripe_usage_billing import send_meter_event
+from services import agent_service, project_service, user_service
 from utils.dd import send_dd_histogram_metrics, trace_async_block
 from utils.log import logger
 from utils.request_context import RequestContext
@@ -562,53 +560,6 @@ def create_conversation(
     if not conversation:
         logger.error(f"Failed to create conversation for user {user_id}")
         return None
-
-    if project_id and channel == Channel.VOICE:
-        try:
-            stripe_customer_id = (
-                subscription_service.get_stripe_customer_id_for_project(
-                    session, project_id
-                )
-            )
-            if not stripe_customer_id:
-                logger.warning(
-                    f"No Stripe customer ID found for project {project_id} - skipping call usage tracking",
-                    extra={
-                        "project_id": str(project_id),
-                        "user_id": str(user_id),
-                        "conversation_id": str(conversation.id),
-                    },
-                )
-            else:
-                event_name = _stripe_product.get_call_meter_event_name(project_id)
-                success = send_meter_event(
-                    event_name=event_name,
-                    stripe_customer_id=stripe_customer_id,
-                    value=1,
-                )
-
-                if not success:
-                    logger.error(
-                        f"Failed to track call usage for conversation {conversation.id}",
-                        extra={
-                            "conversation_id": str(conversation.id),
-                            "project_id": str(project_id),
-                            "user_id": str(user_id),
-                            "stripe_customer_id": stripe_customer_id,
-                            "event_name": event_name,
-                        },
-                    )
-        except Exception as e:
-            logger.error(
-                f"Error tracking call usage for conversation {conversation.id}: {e}",
-                extra={
-                    "conversation_id": str(conversation.id),
-                    "project_id": str(project_id),
-                    "user_id": str(user_id),
-                    "event_name": _stripe_product.get_call_meter_event_name(project_id),
-                },
-                exc_info=True,
-            )
 
     return conversation
 
