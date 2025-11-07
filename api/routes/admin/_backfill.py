@@ -123,20 +123,34 @@ def backfill_role_assignments(
                 # Extract user info
                 email = get_attr(attributes, "email")
                 account_names_str = get_attr(attributes, "custom:account_names")
+                account_name_str = get_attr(attributes, "custom:account_name")
 
-                if not account_names_str:
+                # Parse comma-separated account names from both attributes
+                account_names = []
+
+                # Add from plural attribute
+                if account_names_str:
+                    account_names.extend(
+                        [
+                            name.strip()
+                            for name in account_names_str.split(",")
+                            if name.strip()
+                        ]
+                    )
+
+                # Add from singular attribute
+                if account_name_str and account_name_str.strip():
+                    account_names.append(account_name_str.strip())
+
+                # Deduplicate while preserving order
+                account_names = list(dict.fromkeys(account_names))
+
+                if not account_names:
                     logger.info(
-                        "User has no custom:account_names attribute, skipping",
+                        "User has no custom:account_names or custom:account_name attribute, skipping",
                         extra={"email": email, "username": username},
                     )
                     continue
-
-                # Parse comma-separated account names
-                account_names = [
-                    name.strip()
-                    for name in account_names_str.split(",")
-                    if name.strip()
-                ]
 
                 # Initialize user result
                 user_result = BackfillUserResult(
