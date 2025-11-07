@@ -61,7 +61,6 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         city: str,
         venue_name: str,
         token: str,
-        services_auth_token: str | None = None,
         tool_metadata: ToolMetadata | None = None,
     ):
         super().__init__(name="resy_tool_with_reservation")
@@ -92,8 +91,8 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         self.base_auth_token = token
         self._cached_operational_token: Optional[str] = None
         self._operational_token_expiry: Optional[datetime] = None
+        self._analytics_token: Optional[str] = None
         self.tool_metadata = tool_metadata
-        self.services_auth_token = (services_auth_token or "").strip() or None
 
         self.register(self.check_availability)
         self.register(self.make_reservation)
@@ -477,9 +476,6 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         except ValueError:
             return "Please provide the reservation date in YYYY-MM-DD format."
 
-        if not self.services_auth_token:
-            return "This tool is missing the required Resy services auth token to search reservations."
-
         try:
             api_key = get_resy_api_key(city=self.city, venue_name=self.venue_name)
         except Exception:  # noqa: BLE001
@@ -500,10 +496,34 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         day_of_year = target_date.timetuple().tm_yday
 
+        analytics_token = self._analytics_token
+        if not analytics_token:
+            # force refresh to fetch analytics token
+            try:
+                operational_token = self._get_operational_token(
+                    api_key=api_key, force_refresh=True
+                )
+                analytics_token = self._analytics_token
+            except Exception:  # noqa: BLE001
+                logger.error(
+                    "[Resy Tool] Failed to refresh tokens for analytics access",
+                    exc_info=True,
+                )
+                return (
+                    "I couldn't refresh the credentials needed to look up reservations."
+                )
+
+        if not analytics_token:
+            logger.error(
+                "[Resy Tool] Missing analytics token after venue authorization",
+                extra={"venue_id": self.venue_id},
+            )
+            return "I couldn't locate the credentials needed to search the reservation list."
+
         try:
             report = fetch_reservations_report(
                 api_key=api_key,
-                services_auth_token=self.services_auth_token,
+                services_auth_token=analytics_token,
                 year=target_date.year,
                 day_of_year=day_of_year,
             )
@@ -675,12 +695,16 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         except ValueError:
             return None
 
-    def _get_operational_token(self, *, api_key: str) -> str:
+    def _get_operational_token(
+        self, *, api_key: str, force_refresh: bool = False
+    ) -> str:
         now = datetime.now(timezone.utc)
         if (
-            self._cached_operational_token
+            not force_refresh
+            and self._cached_operational_token
             and self._operational_token_expiry
             and self._operational_token_expiry - now > timedelta(minutes=1)
+            and self._analytics_token
         ):
             return self._cached_operational_token
 
@@ -700,6 +724,16 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         if not operational_token:
             raise RuntimeError("Resy venue authentication did not return a token")
 
+        os_tokens = venue_response.get("os_tokens") or {}
+        analytics_token = os_tokens.get("analytics")
+        if analytics_token:
+            self._analytics_token = analytics_token
+        else:
+            logger.warning(
+                "[Resy Tool] Venue auth response missing analytics token",
+                extra={"venue_id": self.venue_id},
+            )
+
         expiry = self._extract_token_expiry(operational_token)
         if not expiry:
             expiry = now + timedelta(minutes=5)
@@ -710,6 +744,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
     def _invalidate_operational_token(self) -> None:
         self._cached_operational_token = None
         self._operational_token_expiry = None
+        self._analytics_token = None
 
     @staticmethod
     def _extract_token_expiry(token: str) -> Optional[datetime]:
