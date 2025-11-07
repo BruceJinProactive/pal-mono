@@ -41,3 +41,21 @@ class GetCameraImageUrlsResponse(BaseModel):
     urls: list[str] = Field(
         default=[], description="List of presigned S3 URLs (valid for 1 hour)"
     )
+
+
+class CompareCameraCheckpointResponse(BaseModel):
+    checkpoint_run_ids: list[str] = Field(
+        default=[],
+        description="List of checkpoint run IDs created for comparison",
+    )
+    submission_id: str | None = Field(
+        None, description="Batch submission ID for all runs"
+    )
+    checkpoint_id: str = Field(..., description="ID of the checkpoint used")
+    images_to_compare: int = Field(
+        default=0, description="Number of images being compared"
+    )
+    status: str = Field(
+        default="processing",
+        description="Status of the comparison batch (processing, completed)",
+    )

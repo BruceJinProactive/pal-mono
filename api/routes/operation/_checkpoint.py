@@ -961,3 +961,180 @@ async def update_checkpoint_run_review_fields(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+def _validate_checkpoint(checkpoint: db.CheckPoint) -> None:
+    """
+    Validate checkpoint has required fields.
+
+    Args:
+        checkpoint: CheckPoint object
+
+    Raises:
+        HTTPException: 400 if validation fails
+    """
+    from api.schemas.error.error import ErrorResponse
+
+    if not checkpoint.project_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="INVALID_CHECKPOINT",
+                error_message="Checkpoint must be associated with a project",
+            ).model_dump(),
+        )
+
+    if not checkpoint.name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="INVALID_CHECKPOINT",
+                error_message="Checkpoint must have a name",
+            ).model_dump(),
+        )
+
+
+def _validate_time_range(start_time, end_time) -> None:
+    """
+    Validate time range is valid.
+
+    Args:
+        start_time: Start datetime
+        end_time: End datetime
+
+    Raises:
+        HTTPException: 400 if validation fails
+    """
+    from api.schemas.error.error import ErrorResponse
+
+    if start_time >= end_time:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="INVALID_TIME_RANGE",
+                error_message="start_time must be before end_time",
+            ).model_dump(),
+        )
+
+
+async def compare_camera_checkpoint_handler(
+    context: UserContext,
+    session: Session,
+    checkpoint_id: str,
+    start_time: str,
+    end_time: str,
+):
+    """
+    Compare camera images against a specific checkpoint.
+
+    Args:
+        context: User context for authorization
+        session: Database session
+        checkpoint_id: Checkpoint UUID
+        start_time: Start time (ISO 8601)
+        end_time: End time (ISO 8601)
+
+    Returns:
+        CompareCameraCheckpointResponse
+
+    Raises:
+        HTTPException: If validation fails or checkpoint not found
+    """
+    from datetime import datetime
+
+    from api.schemas.admin.camera import CompareCameraCheckpointResponse
+    from api.schemas.error.error import ErrorResponse
+    from db.repositories import checkpoint_repository
+
+    try:
+        # Validate checkpoint_id format
+        try:
+            checkpoint_uuid = uuid.UUID(checkpoint_id)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse(
+                    error_code="INVALID_CHECKPOINT_ID",
+                    error_message=f"Invalid checkpoint_id format: {checkpoint_id}",
+                ).model_dump(),
+            ) from e
+
+        # Verify checkpoint exists
+        checkpoint = checkpoint_repository.get_checkpoint(session, checkpoint_uuid)
+        if not checkpoint:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error_code="CHECKPOINT_NOT_FOUND",
+                    error_message=f"Checkpoint {checkpoint_id} not found",
+                ).model_dump(),
+            )
+
+        # Validate checkpoint has required fields
+        _validate_checkpoint(checkpoint)
+
+        # Get project_id from checkpoint for authorization and vision service
+        project_id = checkpoint.project_id
+
+        # Verify project exists and authorize user access
+        project = project_service.get_project(session, project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=ErrorResponse(
+                    error_code="PROJECT_NOT_FOUND",
+                    error_message=f"Project {project_id} not found",
+                ).model_dump(),
+            )
+
+        # Authorize user access to the project's account
+        session.refresh(project, ["account"])
+        authorize_user_account(context, project.account.name)
+
+        # Parse datetime strings
+        try:
+            start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse(
+                    error_code="INVALID_DATETIME",
+                    error_message=f"Invalid datetime format: {str(e)}",
+                ).model_dump(),
+            ) from e
+
+        # Validate time range
+        _validate_time_range(start_dt, end_dt)
+
+        logger.info(
+            f"User {context.email} comparing camera {checkpoint.name} images "
+            f"against checkpoint {checkpoint_id}"
+        )
+
+        # Call checkpoint service to create runs and start background task
+        result = checkpoint_service.compare_camera_images_with_checkpoint(
+            session=session,
+            checkpoint=checkpoint,
+            start_time=start_dt,
+            end_time=end_dt,
+        )
+
+        return CompareCameraCheckpointResponse(**result)
+
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse(
+                error_code="VALIDATION_ERROR",
+                error_message=str(ve),
+            ).model_dump(),
+        ) from ve
+    except RuntimeError as re:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse(
+                error_code="PROCESSING_ERROR",
+                error_message=str(re),
+            ).model_dump(),
+        ) from re

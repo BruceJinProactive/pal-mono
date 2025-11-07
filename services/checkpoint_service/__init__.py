@@ -410,6 +410,35 @@ def update_checkpoint_run_review(
     )
 
 
+def compare_camera_images_with_checkpoint(
+    session: Session,
+    checkpoint: db.CheckPoint,
+    start_time: datetime,
+    end_time: datetime,
+) -> dict:
+    """
+    Retrieve S3 images for a checkpoint and compare them against the checkpoint reference.
+
+    Creates checkpoint runs with 'processing' status immediately and starts background comparison.
+    All runs in a batch share the same submission_id.
+
+    Args:
+        session: Database session
+        checkpoint: CheckPoint object (already fetched by handler)
+        start_time: Start of time range
+        end_time: End of time range
+
+    Returns:
+        dict with checkpoint_run_ids, submission_id, checkpoint_id, images_to_compare, status
+
+    Raises:
+        ValueError: If invalid parameters
+    """
+    return _implementation.compare_camera_images_with_checkpoint(
+        session, checkpoint, start_time, end_time
+    )
+
+
 __all__ = [
     "create_checkpoint",
     "list_checkpoints",
@@ -430,4 +459,5 @@ __all__ = [
     "record_checkpoint_run",
     "update_checkpoint_run_image",
     "update_checkpoint_run_review",
+    "compare_camera_images_with_checkpoint",
 ]

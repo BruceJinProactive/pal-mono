@@ -202,8 +202,6 @@ def _fetch_image_urls_with_prefix(
     urls = []
     paginator = s3_client.get_paginator("list_objects_v2")
 
-    logger.debug(f"Fetching images with prefix: {prefix}")
-
     for page in paginator.paginate(Bucket=AWS_ASSET_BUCKET_NAME, Prefix=prefix):
         contents = page.get("Contents", [])
 
@@ -254,6 +252,7 @@ def get_images_by_time_interval(
     camera_name: str,
     start_time: datetime,
     end_time: datetime,
+    limit: int | None = None,
 ) -> GetCameraImageUrlsResponse:
     """Get camera image URLs within a time interval (optimized for < 24 hour ranges).
 
@@ -265,6 +264,7 @@ def get_images_by_time_interval(
         camera_name: Camera identifier
         start_time: Start of time range (timezone-aware datetime)
         end_time: End of time range (timezone-aware datetime)
+        limit: Optional maximum number of URLs to return
 
     Returns:
         GetCameraImageUrlsResponse with urls
@@ -363,22 +363,29 @@ def get_images_by_time_interval(
             end_filename=f"{start_date}_235959",  # End of start day
         )
 
-        # Query 2: Get images from end_date <= end_time
-        prefix_end_date = f"{base_prefix}{end_date}_"
-        urls_day2 = _fetch_image_urls_with_prefix(
-            s3_client=s3_client,
-            prefix=prefix_end_date,
-            start_filename=f"{end_date}_000000",  # Start of end day
-            end_filename=end_filename,
-        )
+        # If we have a limit and already reached it from day 1, don't query day 2
+        if limit and len(urls_day1) >= limit:
+            urls = urls_day1
+            logger.info(
+                f"Found {len(urls_day1)} images on {start_date}, stopped at limit"
+            )
+        else:
+            # Query 2: Get images from end_date <= end_time
+            prefix_end_date = f"{base_prefix}{end_date}_"
+            urls_day2 = _fetch_image_urls_with_prefix(
+                s3_client=s3_client,
+                prefix=prefix_end_date,
+                start_filename=f"{end_date}_000000",  # Start of end day
+                end_filename=end_filename,
+            )
 
-        # Combine results
-        urls = urls_day1 + urls_day2
+            # Combine results
+            urls = urls_day1 + urls_day2
 
-        logger.info(
-            f"Found {len(urls_day1)} images on {start_date}, "
-            f"{len(urls_day2)} images on {end_date}"
-        )
+            logger.info(
+                f"Found {len(urls_day1)} images on {start_date}, "
+                f"{len(urls_day2)} images on {end_date}"
+            )
 
     logger.info(f"Total: {len(urls)} image URLs found")
 
