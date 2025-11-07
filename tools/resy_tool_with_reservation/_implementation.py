@@ -442,6 +442,9 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         summary_lines.append(
             "Let the guest know that they will receive a confirmation text from Resy the day before their reservation."
         )
+        summary_lines.append(
+            "Also, please send the user a confirmation text right now that includes their reservation details."
+        )
 
         logger.debug(
             "[Resy Tool] Reservation created",
@@ -457,7 +460,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
     @tool
     @params_validate()
     def delete_reservation(self, date: str) -> str:  # type: ignore[misc]
-        """Cancel the first reservation on a given date that matches the caller's phone. If a user asks to change/modify a reservation, please make a new reservation and then cancel the old one with this tool.
+        """Cancel the first reservation on a given date that matches the caller's phone. If a user asks to change/modify a reservation, please make a new reservation and then cancel the old one with this tool. Make sure to ask for the specific date of the reservation they want to cancel if they didn't provide it.
         Args:
             date: Desired reservation date in YYYY-MM-DD format."""
 
@@ -549,7 +552,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
                 break
 
         if not matching_row:
-            return "I didn't find any reservations for that date under the caller's phone number."
+            return "I didn't find any reservations for that date under the caller's phone number. Please check that its correct date for the reservation to be cancelled."
 
         reservation_id_raw = matching_row.get("Reservation_id")
         reservation_id = str(reservation_id_raw).strip() if reservation_id_raw else ""
