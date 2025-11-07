@@ -25,7 +25,7 @@ class MessageRepositoryAsync:
         project_id: uuid.UUID,
         message_body: dict,
         call_id: str | None = None,
-    ) -> tuple[Message, bool]:
+    ):
         logger.debug(
             f"[db.message_repository.create_message] Creating message with call_id: {call_id}"
         )
@@ -50,7 +50,6 @@ class MessageRepositoryAsync:
         # Step 4: Initialize conversation_id and determine if we need a new conversation
         current_time = datetime.datetime.now(datetime.timezone.utc)
         conversation_id = None
-        created_new_conversation = False
 
         if (
             latest_conversation
@@ -128,7 +127,6 @@ class MessageRepositoryAsync:
             self.session.add(new_conversation)
             await self.session.flush()
             conversation_id = new_conversation.id
-            created_new_conversation = True
             logger.debug(
                 f"[db.message_repository.create_message] Successfully created conversation {conversation_id} with call id {call_id}"
             )
@@ -140,7 +138,7 @@ class MessageRepositoryAsync:
         # Refresh to get the new message ID
         await self.session.refresh(message)
 
-        return message, created_new_conversation
+        return message
 
     async def get_messages_by_conversation(
         self, conversation_id: uuid.UUID, limit: int = 20
