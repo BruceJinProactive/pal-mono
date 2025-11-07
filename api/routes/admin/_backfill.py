@@ -13,8 +13,13 @@ from api.schemas.admin.backfill import (
     BackfillRoleAssignmentsResponse,
     BackfillUserResult,
 )
-from db.repositories import AccountRepository, ResourceRoleAssignmentRepository
+from db.repositories import (
+    AccountRepository,
+    AccountUserRepository,
+    ResourceRoleAssignmentRepository,
+)
 from db.repositories.resource_role_assignment_repository import ResourceType
+from db.tables.types import AccountUserStatus
 from utils.log import logger
 
 AWS_REGION = os.environ["AWS_REGION"]
@@ -32,11 +37,12 @@ def backfill_role_assignments(
     session: Session,
 ) -> BackfillRoleAssignmentsResponse:
     """
-    Backfill role assignments from Cognito custom:account_names to ResourceRoleAssignment table.
+    Backfill role assignments and account memberships from Cognito custom:account_names.
 
     This endpoint reads all users from Cognito, extracts their custom:account_names attribute,
-    and creates corresponding ResourceRoleAssignment records with owner role. Does NOT create
-    AccountUser records - those should be managed separately.
+    and creates:
+    1. AccountUser records (membership tracking)
+    2. ResourceRoleAssignment records with owner role (permissions)
 
     Args:
         request: The backfill request with dry_run and email_filter options
@@ -55,6 +61,7 @@ def backfill_role_assignments(
 
     # Initialize repositories (auto_commit=False for transactional consistency)
     account_repo = AccountRepository(session)
+    account_user_repo = AccountUserRepository(session, auto_commit=False)
     role_repo = ResourceRoleAssignmentRepository(session, auto_commit=False)
 
     # Initialize Cognito client
@@ -191,9 +198,27 @@ def backfill_role_assignments(
                             total_errors += 1
                             continue
 
-                        # Create ResourceRoleAssignment
+                        # Create AccountUser and ResourceRoleAssignment
                         if not request.dry_run:
                             try:
+                                # First, create AccountUser membership
+                                account_user_repo.create(
+                                    account_id=account.id,
+                                    user_id=user_id,
+                                    added_by=None,  # Migration/backfill
+                                    status=AccountUserStatus.active,
+                                )
+                                user_result.memberships_created += 1
+                                total_memberships_created += 1
+                                logger.info(
+                                    f"Created account membership for user {email} in account {account_name}",
+                                    extra={
+                                        "user_id": str(user_id),
+                                        "account_id": str(account.id),
+                                    },
+                                )
+
+                                # Then, create ResourceRoleAssignment
                                 role_repo.add_role(
                                     user_id=user_id,
                                     resource_type=ResourceType.ACCOUNT,
@@ -202,7 +227,8 @@ def backfill_role_assignments(
                                     assigned_by=None,
                                     reason="Cognito custom:account_names backfill migration",
                                 )
-                                session.commit()
+                                user_result.roles_created += 1
+                                total_roles_created += 1
                                 logger.info(
                                     f"Created role assignment for user {email} in account {account_name}",
                                     extra={
@@ -211,10 +237,13 @@ def backfill_role_assignments(
                                         "role": "owner",
                                     },
                                 )
+
+                                # Commit both operations together
+                                session.commit()
                             except Exception as e:
                                 session.rollback()
                                 error_msg = (
-                                    f"Failed to create role assignment: {str(e)}"
+                                    f"Failed to create membership/role: {str(e)}"
                                 )
                                 logger.error(
                                     error_msg,
@@ -226,9 +255,12 @@ def backfill_role_assignments(
                                 user_result.errors.append(error_msg)
                                 total_errors += 1
                                 continue
-
-                        user_result.roles_created += 1
-                        total_roles_created += 1
+                        else:
+                            # In dry run mode, just increment counters
+                            user_result.memberships_created += 1
+                            user_result.roles_created += 1
+                            total_memberships_created += 1
+                            total_roles_created += 1
 
                     except Exception as e:
                         error_msg = f"Error processing account {account_name}: {str(e)}"
