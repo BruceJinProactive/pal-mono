@@ -1,6 +1,7 @@
 """URL shortening utility using TinyURL service."""
 
 import os
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -39,6 +40,18 @@ def shorten_url(long_url: str) -> str:
     domain = os.getenv("TINYURL_DOMAIN_NAME")
     if domain:
         payload["domain"] = domain
+
+    # Add expires_at if EXPIRES_IN_MINS is set
+    expires_mins_str = os.getenv("EXPIRES_IN_MINS")
+    if expires_mins_str:
+        try:
+            expires_mins = int(expires_mins_str)
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_mins)
+            payload["expires_at"] = expires_at.strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            logger.debug(
+                "[ShortenUrl] Invalid EXPIRES_IN_MINS value, skipping expiration"
+            )
 
     logger.debug(f"[ShortenUrl] Attempting to shorten URL: {long_url}")
 
