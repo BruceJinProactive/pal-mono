@@ -639,6 +639,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             "sender_identifier": customer_number,
             "recipient_identifier": phone_number,
             "call_id": call_id,  # Adding call_id for future reference
+            "timezone": project.timezone,
         }
 
         # ================= Step 3: Construct assistant(s) =================
@@ -655,7 +656,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
             voice_response = (
                 await voice_service.VoiceService().create_vapi_assistant_response(
-                    caller_info=caller_info, project_id=project.id, session=session
+                    caller_info=caller_info,
+                    project_id=project.id,
+                    session=session,
                 )
             )
             logger.debug(f"Using new voice_configs system for call {call_id}")

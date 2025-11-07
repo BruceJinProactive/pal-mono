@@ -3,9 +3,11 @@
 import json
 import os
 import re
+from datetime import datetime
 from typing import Any, Protocol, cast
 from uuid import UUID
 
+import pytz
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
@@ -239,7 +241,9 @@ class VAPIProvider:
         }
 
     def _create_assistant_config(
-        self, voice_configs: list[VoiceConfigProtocol], caller_info: dict
+        self,
+        voice_configs: list[VoiceConfigProtocol],
+        caller_info: dict,
     ) -> dict:
         """Create assistant configuration based on number of voice configs."""
         # Separate triage and non-triage configs
@@ -255,7 +259,9 @@ class VAPIProvider:
 
         if len(non_triage_configs) == 1:
             assistant_config = self._create_single_assistant_config(
-                non_triage_configs[0], caller_info, only_assistant=True
+                non_triage_configs[0],
+                caller_info,
+                only_assistant=True,
             )
             return {"assistant": assistant_config}
         else:
@@ -269,7 +275,10 @@ class VAPIProvider:
             )
 
     def _create_single_assistant_config(
-        self, voice_config: VoiceConfigProtocol, caller_info: dict, only_assistant: bool
+        self,
+        voice_config: VoiceConfigProtocol,
+        caller_info: dict,
+        only_assistant: bool,
     ) -> dict:
         """Create single assistant configuration."""
         # Check if language is 'triage' which is not allowed for single assistant
@@ -284,7 +293,30 @@ class VAPIProvider:
 
         # Use first_message from voice_config or create default greeting
         if voice_config.first_message:
-            greeting = voice_config.first_message
+            # Get caller timezone or default to 'America/Los_Angeles'
+            caller_timezone = caller_info.get("timezone", "America/Los_Angeles")
+
+            # Check if the first_message contains the {{greet}} placeholder
+            if "{{greet}}" in voice_config.first_message:
+                try:
+                    # Replace {{greet}} placeholder with time-based greeting
+                    timebased_greeting = self._create_timebased_greeting(
+                        caller_timezone.strip(), voice_config.language
+                    )
+                    greeting = voice_config.first_message.replace(
+                        "{{greet}}", timebased_greeting
+                    )
+                except ValueError as ex:
+                    call_id = caller_info.get("call_id", "unknown")
+                    logger.warning(
+                        f"[VAPIProvider] Skipping time-based greeting for call {call_id}: {ex}"
+                    )
+                    # Remove placeholder and use message without time-based greeting
+                    greeting = voice_config.first_message.replace(
+                        "{{greet}}", ""
+                    ).strip()
+            else:
+                greeting = voice_config.first_message
         else:
             greeting = "Hi, this is a voice ai assistant. How can I help you today?"
 
@@ -597,3 +629,51 @@ DO NOT attempt to help with their actual request - only identify language prefer
             assistant_config = _deep_merge(assistant_config, english_config.raw_config)
 
         return {"assistant": assistant_config}
+
+    def _create_timebased_greeting(self, timezone: str, language: str) -> str:
+        """Create a timebased greeting based on the timezone."""
+        TIMEZONE_GREETINGS = {
+            "english": {
+                "morning": "Good morning!",
+                "afternoon": "Good afternoon!",
+                "evening": "Good evening!",
+            },
+            "spanish": {
+                "morning": "Buenos días!",
+                "afternoon": "Buenas tardes!",
+                "evening": "Buenas noches!",
+            },
+            "chinese": {
+                "morning": "早上好！",
+                "afternoon": "下午好！",
+                "evening": "晚上好！",
+            },
+        }
+
+        # Normalize language to lower case
+        language = language.lower()
+
+        if language not in TIMEZONE_GREETINGS:
+            raise ValueError(
+                f"[VAPIProvider._create_timebased_greeting] Language {language} not supported"
+            )
+        try:
+            # Retrieve the current time in the timezone
+            tz = pytz.timezone(timezone)
+            current_time = datetime.now(tz)
+            current_hour = current_time.hour
+        except pytz.exceptions.UnknownTimeZoneError:
+            logger.error(
+                f"[VAPIProvider._create_timebased_greeting] Invalid timezone: {timezone}"
+            )
+            raise ValueError(
+                f"[VAPIProvider._create_timebased_greeting] Invalid timezone: {timezone}"
+            )
+
+        # Return the appropriate greeting based on the current hour
+        if current_hour < 12:
+            return TIMEZONE_GREETINGS[language]["morning"] + " "
+        elif current_hour < 18:
+            return TIMEZONE_GREETINGS[language]["afternoon"] + " "
+        else:
+            return TIMEZONE_GREETINGS[language]["evening"] + " "
