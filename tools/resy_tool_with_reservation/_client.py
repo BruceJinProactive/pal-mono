@@ -7,7 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from tools.resy_tool_with_reservation._apikey import get_resy_api_key
 from utils.log import logger
@@ -16,6 +16,7 @@ RESY_FIND_API_URL = "https://api.resy.com/4/find"
 AUTH_REFRESH_URL = "https://auth.resy.com/1/auth/refresh"
 AUTH_VENUE_URL = "https://auth.resy.com/1/auth/venue"
 RESY_CONTROL_BASE_URL = "https://control.resy.com/3"
+RESY_ANALYTICS_REPORT_URL = "https://api.resy.com/3/analytics/report/core/Reservations"
 USER_AGENT = "pal-mono/1.0"
 CONTROL_ORIGIN = "https://os.resy.com"
 STAFF_ID = "1214756"
@@ -258,6 +259,90 @@ def create_reservation(
     return response
 
 
+def fetch_reservations_report(
+    *,
+    api_key: str,
+    services_auth_token: str,
+    year: int,
+    day_of_year: int,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    """Fetch the analytics reservations report for a specific day."""
+
+    if not services_auth_token:
+        raise ValueError("Resy services auth token is required for reservation lookup")
+
+    payload = {
+        "struct_binds": json.dumps({"year": str(year), "dayofyear": str(day_of_year)})
+    }
+    data = urllib.parse.urlencode(payload).encode("utf-8")
+
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Authorization": f'ResyAPI api_key="{api_key}"',
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": USER_AGENT,
+        "X-Origin": CONTROL_ORIGIN,
+        "Origin": CONTROL_ORIGIN,
+        "Referer": f"{CONTROL_ORIGIN}/",
+        "X-Resy-Services-Auth": services_auth_token,
+    }
+
+    return _request_json(
+        RESY_ANALYTICS_REPORT_URL,
+        headers=headers,
+        data=data,
+        timeout=timeout,
+        method="POST",
+    )
+
+
+def extract_reservation_rows(report: object) -> List[Dict[str, Any]]:
+    """Flatten the analytics report into row dictionaries."""
+
+    if not report:
+        return []
+
+    dataset: Dict[str, Any]
+    if isinstance(report, list):
+        dataset = cast(Dict[str, Any], report[0]) if report else {}
+    elif isinstance(report, dict):
+        dataset = report
+    else:
+        return []
+
+    data_section = dataset.get("data") if isinstance(dataset, dict) else None
+    if not data_section:
+        return []
+
+    headers = data_section.get("headers") or []
+    header_names: List[str] = []
+    for header in headers:
+        if isinstance(header, dict):
+            name = header.get("name")
+            header_names.append(name if isinstance(name, str) else "")
+        else:
+            header_names.append("")
+
+    rows: List[Dict[str, Any]] = []
+    for row in data_section.get("rows", []):
+        cols = row.get("cols") if isinstance(row, dict) else None
+        if not cols:
+            continue
+
+        flattened: Dict[str, Any] = {}
+        for header_name, col in zip(header_names, cols):
+            if not header_name:
+                continue
+            value = col.get("value") if isinstance(col, dict) else None
+            flattened[header_name] = value
+
+        if flattened:
+            rows.append(flattened)
+
+    return rows
+
+
 def _post_to_control(
     *,
     endpoint: str,
@@ -265,13 +350,14 @@ def _post_to_control(
     auth_token: str,
     payload: Dict[str, Any],
     timeout: int,
+    method: str = "POST",
 ) -> Dict[str, Any]:
     url = f"{RESY_CONTROL_BASE_URL}{endpoint}"
     headers = _build_control_headers(api_key=api_key, auth_token=auth_token)
     data, content_type = _encode_multipart_form_data(payload)
     headers["Content-Type"] = content_type
 
-    request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -292,6 +378,54 @@ def _post_to_control(
         raise RuntimeError(f"Unable to reach Resy endpoint {endpoint}: {exc}") from exc
 
     return json.loads(body or "{}")
+
+
+def get_reservation_refund_token(
+    *,
+    api_key: str,
+    auth_token: str,
+    reservation_id: str,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    """Retrieve the refund token required before cancelling a reservation."""
+
+    payload = {"cancellation": "false"}
+
+    return _post_to_control(
+        endpoint=f"/reservation/{reservation_id}/refund_token",
+        api_key=api_key,
+        auth_token=auth_token,
+        payload=payload,
+        timeout=timeout,
+    )
+
+
+def cancel_reservation(
+    *,
+    api_key: str,
+    auth_token: str,
+    reservation_id: str,
+    refund_token: str,
+    email_confirmation: bool = False,
+    email_contact_confirmation: bool = False,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    """Cancel the reservation using the refund token provided by Resy."""
+
+    payload = {
+        "email_confirmation": email_confirmation,
+        "email_contact_confirmation": email_contact_confirmation,
+        "refund_token": refund_token,
+    }
+
+    return _post_to_control(
+        endpoint=f"/reservation/{reservation_id}",
+        api_key=api_key,
+        auth_token=auth_token,
+        payload=payload,
+        timeout=timeout,
+        method="DELETE",
+    )
 
 
 def _build_control_headers(*, api_key: str, auth_token: str) -> Dict[str, str]:

@@ -17,10 +17,14 @@ from tools.resy_tool_with_reservation._apikey import get_resy_api_key
 from tools.resy_tool_with_reservation._client import (
     ResyAPIError,
     authorize_venue,
+    cancel_reservation,
     create_guest,
     create_reservation,
     create_reservation_lock,
+    extract_reservation_rows,
+    fetch_reservations_report,
     find_resy_availability,
+    get_reservation_refund_token,
     refresh_universal_token,
     search_guest_by_phone,
 )
@@ -49,6 +53,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         "last_name",
         "phone_number",
     ]
+    REQUIRED_DELETE_RESERVATION_FIELDS = ["date"]
 
     def __init__(
         self,
@@ -56,6 +61,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         city: str,
         venue_name: str,
         token: str,
+        services_auth_token: str | None = None,
         tool_metadata: ToolMetadata | None = None,
     ):
         super().__init__(name="resy_tool_with_reservation")
@@ -87,9 +93,11 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         self._cached_operational_token: Optional[str] = None
         self._operational_token_expiry: Optional[datetime] = None
         self.tool_metadata = tool_metadata
+        self.services_auth_token = (services_auth_token or "").strip() or None
 
         self.register(self.check_availability)
         self.register(self.make_reservation)
+        self.register(self.delete_reservation)
 
     @cached_property
     def booking_base_url(self) -> str:
@@ -446,6 +454,168 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         )
 
         return "\n".join(line for line in summary_lines if line)
+
+    @tool
+    @params_validate()
+    def delete_reservation(self, date: str) -> str:  # type: ignore[misc]
+        """Cancel the first reservation on a given date that matches the caller's phone. If a user asks to change/modify a reservation, please make a new reservation and then cancel the old one with this tool.
+        Args:
+            date: Desired reservation date in YYYY-MM-DD format."""
+
+        customer_phone = (
+            self.tool_metadata.customer_phone if self.tool_metadata else None
+        )
+        if not customer_phone:
+            return "I don't have the caller's phone number, so I can't identify the reservation to cancel."
+
+        normalized_customer = _normalize_phone(customer_phone)
+        if not normalized_customer:
+            return "The caller's phone number appears to be invalid."
+
+        try:
+            target_date = datetime.fromisoformat(date).date()
+        except ValueError:
+            return "Please provide the reservation date in YYYY-MM-DD format."
+
+        if not self.services_auth_token:
+            return "This tool is missing the required Resy services auth token to search reservations."
+
+        try:
+            api_key = get_resy_api_key(city=self.city, venue_name=self.venue_name)
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Failed to discover API key for cancellation",
+                exc_info=True,
+            )
+            return "I couldn't load the Resy API key needed to manage reservations."
+
+        try:
+            operational_token = self._get_operational_token(api_key=api_key)
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Failed to acquire operational token",
+                exc_info=True,
+            )
+            return "I couldn't authenticate with Resy to manage reservations."
+
+        day_of_year = target_date.timetuple().tm_yday
+
+        try:
+            report = fetch_reservations_report(
+                api_key=api_key,
+                services_auth_token=self.services_auth_token,
+                year=target_date.year,
+                day_of_year=day_of_year,
+            )
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Failed to fetch reservations report",
+                extra={"date": date},
+                exc_info=True,
+            )
+            return "I wasn't able to retrieve the reservation list from Resy."
+
+        rows = extract_reservation_rows(report)
+        customer_last_digits = normalized_customer[-10:]
+        matching_row: Optional[Dict[str, Any]] = None
+        for row in rows:
+            row_phone = _normalize_phone(row.get("phone"))
+            if not row_phone:
+                continue
+            if row_phone == normalized_customer or row_phone.endswith(
+                customer_last_digits
+            ):
+                matching_row = row
+                break
+
+        if not matching_row:
+            return "I didn't find any reservations for that date under the caller's phone number."
+
+        reservation_id_raw = matching_row.get("Reservation_id")
+        reservation_id = str(reservation_id_raw).strip() if reservation_id_raw else ""
+        if not reservation_id:
+            logger.warning(
+                "[Resy Tool] Matching reservation row missing Reservation_id",
+                extra={"row": matching_row},
+            )
+            return "I found a reservation that matches the caller, but it is missing an identifier."
+
+        try:
+            refund_response = get_reservation_refund_token(
+                api_key=api_key,
+                auth_token=operational_token,
+                reservation_id=reservation_id,
+            )
+        except ResyAPIError as exc:
+            logger.error(
+                "[Resy Tool] Resy API error while fetching refund token",
+                extra={"status": exc.status, "reason": exc.reason},
+            )
+            if exc.status in {401, 403}:
+                self._invalidate_operational_token()
+            return "Resy did not authorize the cancellation request."
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Unexpected error while fetching refund token",
+                exc_info=True,
+            )
+            return "I ran into an issue while preparing to cancel the reservation."
+
+        refund_token = (refund_response or {}).get("token")
+        if not refund_token:
+            logger.error(
+                "[Resy Tool] Refund token missing in response",
+                extra={"reservation_id": reservation_id, "response": refund_response},
+            )
+            return "Resy didn't return the token required to cancel the reservation."
+
+        try:
+            cancel_response = cancel_reservation(
+                api_key=api_key,
+                auth_token=operational_token,
+                reservation_id=reservation_id,
+                refund_token=refund_token,
+            )
+        except ResyAPIError as exc:
+            logger.error(
+                "[Resy Tool] Resy API error while cancelling reservation",
+                extra={"status": exc.status, "reason": exc.reason},
+            )
+            if exc.status in {401, 403}:
+                self._invalidate_operational_token()
+            return "Resy did not accept the cancellation request."
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Unexpected error while cancelling reservation",
+                exc_info=True,
+            )
+            return "I hit an unexpected error while cancelling the reservation."
+
+        guest_name = matching_row.get("Guest") or "the guest"
+        time_value = matching_row.get("Time") or "unknown time"
+
+        logger.info(
+            "[Resy Tool] Reservation cancelled",
+            extra={
+                "reservation_id": reservation_id,
+                "guest_name": guest_name,
+                "date": date,
+                "time": time_value,
+            },
+        )
+
+        status = (
+            cancel_response.get("status") if isinstance(cancel_response, dict) else None
+        )
+        confirmation = (
+            f"Cancelled the reservation for {guest_name} on {date} at {time_value}."
+        )
+        if isinstance(status, dict):
+            status_hint = status.get("status_id") or status.get("id")
+            if status_hint:
+                confirmation += f" (Resy status code: {status_hint})."
+
+        return confirmation
 
     def _find_slot_for_datetime(
         self, slots: list[Dict[str, Any]], target: datetime
