@@ -27,7 +27,8 @@ You will be given the chat history and relevant context. You goal is to convert 
 4. Make sure that the modifiers for every order are identified, if they were mentioned in the chat history. Modifiers are additional details about the order, such as "extra cheese" or "no onions". They are not the already included ingredients of an item.
 5. Map the items, names, modifiers, etc., that you identified from the english language to the structured data format that is required by the Adora API using the provided context.
 6. Make sure that the order type is correctly identified as "TakeOut" or "Delivery". If not specified it should be empty.
-7. Extract discount coupon codes if available.
+7. Extract discount coupon codes if available (these are string values).
+8. Extract coupon IDs if the customer explicitly mentioned them (e.g., "apply coupon 123", "use coupon ID 456"). Coupon IDs are integers, not codes.
 
 ## ORDER TYPE INSTRUCTIONS:
 - You must recognize user's implicit intent of takeout the order herself, and help the user place a takeout order. Here are a few examples how the user expresses their intention of taking out the order: "see you soon in the restaurant", "I will visit the restaurant", "see you at your place", "be there/around/ at the restaurant soon", "I will swing/pass/come/stop by"

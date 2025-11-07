@@ -965,6 +965,15 @@ class AdoraTool(Toolkit):
                     )
                     return f"Error processing promise time: {str(e)}"
 
+            # Initialize coupon_ids list if it doesn't exist
+            if not order.coupon_ids:
+                order.coupon_ids = []
+
+            # Log extracted coupon IDs from conversation
+            logger.debug(
+                f"[AdoraTool.checkout_order] Extracted coupon IDs from conversation: {order.coupon_ids}"
+            )
+
             # Validate coupon codes mentioned by the user
             # NOTE: for now, include only the last single valid coupon code even if there are multiple coupon codes mentioned in the chat history, later we may want to include multiple coupon codes
             if order.coupon_codes and self.coupons_enabled:
@@ -983,20 +992,29 @@ class AdoraTool(Toolkit):
                         general_api_endpoint=self.general_api_endpoint,
                     )
                     if result and result.get("isValid", False) and "couponId" in result:
-                        if order.coupon_ids:
-                            order.coupon_ids.append(result["couponId"])
-                        else:
-                            order.coupon_ids = [result["couponId"]]
+                        order.coupon_ids.append(result["couponId"])
+                        logger.debug(
+                            f"[AdoraTool.checkout_order] Added coupon ID {result['couponId']} from validated code: {code}"
+                        )
                     else:
                         logger.debug(
-                            f"Invalid coupon code: {code} with result: {result}"
+                            f"[AdoraTool.checkout_order] Invalid coupon code: {code} with result: {result}"
                         )
 
-            if self.default_coupon_id:
-                if order.coupon_ids:
-                    order.coupon_ids.append(self.default_coupon_id)
-                else:
-                    order.coupon_ids = [self.default_coupon_id]
+            # Add default coupon ID if configured
+            if self.default_coupon_id is not None:
+                order.coupon_ids.append(self.default_coupon_id)
+                logger.debug(
+                    f"[AdoraTool.checkout_order] Added default coupon ID: {self.default_coupon_id}"
+                )
+
+            # Log final list of coupon IDs to be applied
+            if order.coupon_ids:
+                logger.debug(
+                    f"[AdoraTool.checkout_order] Final coupon IDs to be applied: {order.coupon_ids}"
+                )
+            else:
+                logger.debug("[AdoraTool.checkout_order] No coupon IDs to apply")
 
             # Use _get_adora_bearer_token to ensure LLMObs tracking
             bearer_token = self._get_adora_bearer_token()

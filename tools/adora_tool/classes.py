@@ -297,7 +297,9 @@ class Order(BaseModel):
     delivery_address: Optional[DeliveryAddress] = Field(
         description="Delivery address", serialization_alias="deliveryAddress"
     )
-    coupon_ids: Optional[List[int]] = Field(description="Discount coupon ids.")
+    coupon_ids: Optional[List[int]] = Field(
+        description="Discount coupon IDs to apply to the order. When the customer explicitly mentions coupon IDs (e.g., 'apply coupon 123', 'use coupon ID 456'), extract them here. These are integer values, not codes. Note: Additional IDs from validated coupon codes and default coupons will be added during checkout processing."
+    )
     coupon_codes: Optional[List[str]] = Field(
         description="Discount coupon codes. Include all valid coupon codes in the chat history in the order they were mentioned. Coupon codes are always a string, do not mistake them for coupon ids."
     )
