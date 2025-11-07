@@ -439,6 +439,34 @@ def compare_camera_images_with_checkpoint(
     )
 
 
+def delete_checkpoint_run(session: Session, run_id: UUID) -> bool:
+    """
+    Delete a checkpoint run by run ID.
+
+    Args:
+        session: Database session
+        run_id: UUID of the checkpoint run to delete
+
+    Returns:
+        bool: True if deleted, False if not found
+    """
+    return _implementation.delete_checkpoint_run(session, run_id)
+
+
+def delete_checkpoint_runs_by_submission(session: Session, submission_id: UUID) -> int:
+    """
+    Delete all checkpoint runs for a given submission ID.
+
+    Args:
+        session: Database session
+        submission_id: UUID of the submission
+
+    Returns:
+        int: Number of checkpoint runs deleted
+    """
+    return _implementation.delete_checkpoint_runs_by_submission(session, submission_id)
+
+
 __all__ = [
     "create_checkpoint",
     "list_checkpoints",
@@ -460,4 +488,6 @@ __all__ = [
     "update_checkpoint_run_image",
     "update_checkpoint_run_review",
     "compare_camera_images_with_checkpoint",
+    "delete_checkpoint_run",
+    "delete_checkpoint_runs_by_submission",
 ]

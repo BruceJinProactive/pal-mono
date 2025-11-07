@@ -686,16 +686,34 @@ def compare_camera_images_with_checkpoint(
     )
 
     # Bulk create checkpoint runs with status="processing"
-    run_dicts = [
-        {
-            "id": uuid4(),
-            "checkpoint_id": checkpoint.id,
-            "submission_id": submission_id,
-            "status": CheckStatus.processing.value,
-            "result": {},
-        }
-        for _ in image_urls
-    ]
+    run_dicts = []
+    for url in image_urls:
+        # Extract timestamp from URL filename (format: YYYYMMDD_HHMMSS.png)
+        timestamp_iso = ""
+        s3_key = ""
+        try:
+            filename = url.split("/")[-1].split("?")[0]
+            timestamp_str = filename.rsplit(".", 1)[0]
+            image_timestamp = datetime.strptime(timestamp_str, "%Y%m%d_%H%M%S")
+            timestamp_iso = image_timestamp.isoformat()
+
+            # Extract S3 key from presigned URLg
+            s3_key = url.split(".amazonaws.com/")[1].split("?")[0]
+        except (ValueError, IndexError):
+            pass
+
+        run_dicts.append(
+            {
+                "id": uuid4(),
+                "checkpoint_id": checkpoint.id,
+                "submission_id": submission_id,
+                "status": CheckStatus.processing.value,
+                "result": {
+                    "image_url": s3_key,
+                    "timestamp": timestamp_iso,
+                },
+            }
+        )
 
     # Use bulk insert for performance
     session.bulk_insert_mappings(db.CheckpointRun, run_dicts)  # type: ignore[arg-type]
@@ -956,4 +974,34 @@ async def _compare_and_update_camera_runs_background(
     logger.info(
         f"Background task completed: processed {len(image_urls)} images "
         f"for checkpoint {checkpoint.id}"
+    )
+
+
+def delete_checkpoint_run(session: Session, run_id: UUID) -> bool:
+    """
+    Delete a checkpoint run by run ID.
+
+    Args:
+        session: Database session
+        run_id: UUID of the checkpoint run to delete
+
+    Returns:
+        bool: True if deleted, False if not found
+    """
+    return checkpoint_repository.delete_checkpoint_run(session, run_id)
+
+
+def delete_checkpoint_runs_by_submission(session: Session, submission_id: UUID) -> int:
+    """
+    Delete all checkpoint runs for a given submission ID.
+
+    Args:
+        session: Database session
+        submission_id: UUID of the submission
+
+    Returns:
+        int: Number of checkpoint runs deleted
+    """
+    return checkpoint_repository.delete_checkpoint_runs_by_submission(
+        session, submission_id
     )

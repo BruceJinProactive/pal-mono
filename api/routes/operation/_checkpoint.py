@@ -1017,6 +1017,140 @@ def _validate_time_range(start_time, end_time) -> None:
         )
 
 
+async def delete_checkpoint_run(
+    run_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> None:
+    """
+    Delete a checkpoint run by run ID.
+
+    Args:
+        run_id: UUID of the checkpoint run to delete
+        context: User context for authorization
+        session: Database session
+
+    Raises:
+        HTTPException: If run not found or authorization fails
+    """
+    # Get the checkpoint run to validate it exists
+    run = checkpoint_service.get_checkpoint_result(session, run_id)
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint run {run_id} not found",
+        )
+
+    # Get checkpoint to validate authorization
+    checkpoint = checkpoint_service.get_checkpoint(session, run.checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint {run.checkpoint_id} not found",
+        )
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {checkpoint.project_id} not found",
+        )
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {project.account_id} not found",
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Delete the run
+    deleted = checkpoint_service.delete_checkpoint_run(session, run_id)
+    if not deleted:
+        # Benign race condition: the run was already deleted concurrently
+        # This can happen if multiple delete requests occur simultaneously
+        logger.info(
+            f"Checkpoint run {run_id} not found during deletion - "
+            f"likely already deleted by concurrent request"
+        )
+        # Return success (idempotent delete behavior)
+        return
+
+
+async def delete_checkpoint_runs_by_submission(
+    submission_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> dict:
+    """
+    Delete all checkpoint runs for a given submission ID.
+
+    Args:
+        submission_id: UUID of the submission
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        dict: Success message with number of runs deleted
+
+    Raises:
+        HTTPException: If no runs found or authorization fails
+    """
+    # Get all runs with this submission_id to validate and authorize
+    runs = checkpoint_service.list_checkpoint_results(
+        session=session,
+        checkpoint_id=None,
+        submission_id=submission_id,
+        status=None,
+        project_id=None,
+    )
+
+    if not runs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No checkpoint runs found for submission {submission_id}",
+        )
+
+    # Get the first run to authorize (all runs in a submission should have same checkpoint/project)
+    first_run = runs[0]
+    checkpoint = checkpoint_service.get_checkpoint(session, first_run.checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint {first_run.checkpoint_id} not found",
+        )
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {checkpoint.project_id} not found",
+        )
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {project.account_id} not found",
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Delete all runs with this submission_id
+    deleted_count = checkpoint_service.delete_checkpoint_runs_by_submission(
+        session, submission_id
+    )
+
+    return {
+        "message": f"Successfully deleted {deleted_count} checkpoint run(s)",
+        "submission_id": str(submission_id),
+        "deleted_count": deleted_count,
+    }
+
+
 async def compare_camera_checkpoint_handler(
     context: UserContext,
     session: Session,

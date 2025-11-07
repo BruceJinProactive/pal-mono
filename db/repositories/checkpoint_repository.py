@@ -513,3 +513,77 @@ def update_checkpoint_run_review(
         session.rollback()
         logger.error(f"Error updating checkpoint run review: {e}")
         raise
+
+
+def delete_checkpoint_run(
+    session: Session,
+    run_id: UUID,
+) -> bool:
+    """
+    Delete a checkpoint run by run ID.
+
+    Args:
+        session: Database session
+        run_id: UUID of the checkpoint run to delete
+
+    Returns:
+        bool: True if deleted, False if not found
+    """
+    try:
+        checkpoint_run = (
+            session.query(CheckpointRun).filter(CheckpointRun.id == run_id).first()
+        )
+
+        if not checkpoint_run:
+            return False
+
+        session.delete(checkpoint_run)
+        session.commit()
+
+        logger.info(f"Deleted checkpoint run {run_id}")
+        return True
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Error deleting checkpoint run: {e}")
+        raise
+
+
+def delete_checkpoint_runs_by_submission(
+    session: Session,
+    submission_id: UUID,
+) -> int:
+    """
+    Delete all checkpoint runs for a given submission ID.
+
+    Args:
+        session: Database session
+        submission_id: UUID of the submission
+
+    Returns:
+        int: Number of checkpoint runs deleted
+    """
+    try:
+        # Get all runs with this submission_id
+        runs = (
+            session.query(CheckpointRun)
+            .filter(CheckpointRun.submission_id == submission_id)
+            .all()
+        )
+
+        if not runs:
+            return 0
+
+        count = len(runs)
+
+        # Delete all runs
+        for run in runs:
+            session.delete(run)
+
+        session.commit()
+
+        logger.info(f"Deleted {count} checkpoint runs for submission {submission_id}")
+        return count
+    except SQLAlchemyError as e:
+        session.rollback()
+        logger.error(f"Error deleting checkpoint runs by submission: {e}")
+        raise

@@ -707,3 +707,65 @@ async def update_checkpoint_run_review(
     return await _checkpoint.update_checkpoint_run_review_fields(
         run_id, request.review, request.reviewer, request.is_reviewed, context, session
     )
+
+
+@operation_router.delete(
+    "/checkpoints/runs/{run_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_checkpoint_run(
+    run_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> None:
+    """
+    Delete a checkpoint run by run ID.
+
+    Deletes a single checkpoint run identified by its run_id.
+
+    Path Parameters:
+    - run_id (required): UUID of the checkpoint run to delete
+
+    Returns:
+    - 204 No Content on success
+
+    Authorization: Via checkpoint → project → account
+    """
+    return await _checkpoint.delete_checkpoint_run(run_id, context, session)
+
+
+@operation_router.delete(
+    "/checkpoints/submissions/{submission_id}/runs",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_checkpoint_runs_by_submission(
+    submission_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Delete all checkpoint runs for a given submission ID.
+
+    Deletes all checkpoint runs that belong to the specified submission.
+    This is useful for bulk deletion when you want to remove all runs
+    from a batch comparison.
+
+    Path Parameters:
+    - submission_id (required): UUID of the submission
+
+    Returns:
+    - message: Success message
+    - submission_id: The submission ID
+    - deleted_count: Number of runs deleted
+
+    Example response:
+    {
+      "message": "Successfully deleted 15 checkpoint run(s)",
+      "submission_id": "123e4567-e89b-12d3-a456-426614174000",
+      "deleted_count": 15
+    }
+
+    Authorization: Via checkpoint → project → account
+    """
+    return await _checkpoint.delete_checkpoint_runs_by_submission(
+        submission_id, context, session
+    )
