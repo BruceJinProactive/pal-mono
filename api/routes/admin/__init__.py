@@ -43,6 +43,10 @@ from api.schemas.admin.agent import (
     UpdateAgentRequest,
 )
 from api.schemas.admin.analytics import GetAllReportsResponse
+from api.schemas.admin.backfill import (
+    BackfillRoleAssignmentsRequest,
+    BackfillRoleAssignmentsResponse,
+)
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
@@ -202,6 +206,7 @@ from . import (
     _agent,
     _analytics,
     _auth,
+    _backfill,
     _campaign,
     _conversation,
     _email,
@@ -1556,6 +1561,32 @@ async def update_user_account_names(
     Only Admin users can call this endpoint.
     """
     await _users.update_user_account_names(user_email, request, context)
+
+
+@admin_router.post("/backfill-role-assignments")
+def backfill_role_assignments(
+    request: BackfillRoleAssignmentsRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> BackfillRoleAssignmentsResponse:
+    """
+    Backfill role assignments from Cognito custom:account_names to ResourceRoleAssignment table.
+
+    This endpoint reads all users from Cognito (or a specific user if email_filter is provided),
+    extracts their custom:account_names attribute, and creates corresponding ResourceRoleAssignment
+    records with owner role.
+
+    Only Admin users can call this endpoint.
+
+    Features:
+    - dry_run=True by default (safe preview mode)
+    - email_filter parameter for testing on specific user
+    - Creates ResourceRoleAssignment records only (does not create AccountUser records)
+    - Idempotent (safe to run multiple times)
+    - Skips accounts not found in database (logs warnings)
+    - Returns detailed results for each user processed
+    """
+    return _backfill.backfill_role_assignments(request, context, session)
 
 
 """
