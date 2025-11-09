@@ -1,3 +1,5 @@
+import asyncio
+
 from . import _eventbridge
 from .schema import (
     BaseEvent,
@@ -11,7 +13,7 @@ from .schema import (
 EVENT_SOURCE = "pal-mono"
 
 
-def publish_event(event: BaseEvent) -> bool:
+async def publish_event(event: BaseEvent) -> bool:
     """
     Publish an event to AWS EventBridge.
 
@@ -44,7 +46,7 @@ def publish_event(event: BaseEvent) -> bool:
         ...     idempotency_key='unique-key',
         ...     created_at=datetime.utcnow()
         ... )
-        >>> publish_event(event)
+        >>> await publish_event(event)
         True
     """
     # Get the DetailType from the event class
@@ -53,10 +55,12 @@ def publish_event(event: BaseEvent) -> bool:
     # Convert event to detail dictionary (includes detail_type)
     detail = event.to_detail()
 
-    return _eventbridge.publish_event(
-        source=EVENT_SOURCE,
-        detail_type=detail_type,
-        detail=detail,
+    # Run blocking boto3 call in thread to avoid blocking event loop
+    return await asyncio.to_thread(
+        _eventbridge.publish_event,
+        EVENT_SOURCE,
+        detail_type,
+        detail,
     )
 
 
