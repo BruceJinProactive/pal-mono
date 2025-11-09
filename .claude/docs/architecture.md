@@ -117,7 +117,7 @@ The core AI agent implementation providing conversational capabilities.
 └─────────────────────────────────────────────────────────────┘
            │
            ├──► Framework (framework/agno.py)
-           │    - AgnoAgent wrapper
+           │    - Agent wrapper with streaming support
            │    - Streaming with filler words
            │    - Datadog LLM observability
            │
@@ -302,8 +302,7 @@ Shared utilities and helpers:
 
 | Category | Service | Version | Purpose |
 |----------|---------|---------|---------|
-| **AI/ML** | Agno | v1.7.6 | Core agent framework |
-| | OpenAI | v1.95.1 | GPT models (GPT-4, GPT-4o) |
+| **AI/ML** | OpenAI | v1.95.1 | GPT models (GPT-4, GPT-4o) |
 | | Anthropic | v0.71.0 | Claude models |
 | | Google GenAI | v1.25.0 | Gemini models |
 | | Groq | v0.15.0 | Fast LLM inference |
@@ -356,14 +355,13 @@ Four environments with progressive promotion:
 
 1. **Environment Variables** - Runtime configuration
 2. **AWS Secrets Manager** (production) - Sensitive credentials
-3. **Local Secrets File** (development) - `workspace/secrets/dev_app_secrets.yml`
+3. **Local Environment File** (development) - `local.env` (see docker-compose.yml)
 
 ### Configuration Classes
 
 Pydantic Settings for type-safe configuration:
 - `ApiSettings` - API server configuration
 - `DbSettings` - Database connection parameters
-- `WorkspaceSettings` - Agno workspace configuration
 - Agent configuration classes - Comprehensive agent settings
 
 ## Async Processing Patterns
@@ -394,7 +392,7 @@ Pydantic Settings for type-safe configuration:
 ┌─────────────────────────────────────┐
 │  Host Machine                        │
 │  - Source code                       │
-│  - ag CLI (Agno)                     │
+│  - Docker Compose                    │
 └─────────────────────────────────────┘
          │
          ├──► Docker Container: API
@@ -504,7 +502,7 @@ Pydantic Settings for type-safe configuration:
 | API Schemas | `/api/schemas/` | Pydantic request/response models |
 | API Settings | `/api/settings.py` | API configuration |
 | **Agent Components** | | |
-| Agent Framework | `/agent/framework/agno.py` | AgnoAgent wrapper |
+| Agent Framework | `/agent/framework/agno.py` | Agent framework wrapper |
 | Model Layer | `/agent/model/` | LLM provider abstraction |
 | Memory System | `/agent/memory/` | mem0ai integration |
 | Knowledge/RAG | `/agent/knowledge/` | LlamaIndex + Pinecone |
@@ -532,12 +530,11 @@ Pydantic Settings for type-safe configuration:
 | **Configuration** | | |
 | Dependencies | `/pyproject.toml` | Dev tool configuration |
 | Requirements | `/requirements.txt` | Production dependencies |
-| Workspace Config | `/workspace/settings.py` | Agno workspace settings |
-| Dev Secrets | `/workspace/secrets/dev_app_secrets.yml` | Local secrets |
+| Environment File | `/local.env` | Local environment variables |
+| Docker Compose | `/docker-compose.yml` | Local development setup |
 | **Scripts** | | |
 | Install Script | `/scripts/install.sh` | Dependency installation |
 | Validation Script | `/scripts/validate.sh` | Code quality checks |
-| Test Script | `/scripts/test.sh` | Test execution |
 | **CI/CD** | | |
 | Pre-commit | `/.github/workflows/precommit.yml` | Pre-commit validation |
 | DB Migration Check | `/.github/workflows/check-db-migration.yml` | Migration validation |

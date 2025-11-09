@@ -97,7 +97,7 @@ docker-compose up -d --build
 ```
 pal-mono/
 ├── agent/              # AI agent system (core conversational logic)
-│   ├── framework/      # AgnoAgent wrapper with streaming support
+│   ├── framework/      # Agent framework with streaming support
 │   ├── model/          # Multi-provider LLM abstraction (OpenAI, Anthropic, etc.)
 │   ├── memory/         # Personalized memory with mem0ai
 │   ├── knowledge/      # RAG system with LlamaIndex + Pinecone
@@ -129,7 +129,6 @@ pal-mono/
 │
 ├── utils/              # Shared utilities
 ├── scripts/            # Development and deployment scripts
-├── workspace/          # Agno workspace configuration
 └── .github/workflows/  # CI/CD pipelines
 ```
 
@@ -199,7 +198,7 @@ docker exec -it pal-mono-db psql -U app -d app
 2. **Format Code**: Run `black .` and `isort .`
 3. **Lint**: Run `ruff check . --fix`
 4. **Type Check**: Run `pyright .`
-5. **Test**: Run `./scripts/test.sh` (requires `ag ws up` to be running)
+5. **Test**: Run `docker exec -it pal-mono-api pytest`
 6. **Validate All**: Run `./scripts/validate.sh`
 
 ### Adding New Features
@@ -226,7 +225,7 @@ docker exec -it pal-mono-db psql -U app -d app
 
 The system uses environment-based configuration:
 - **RUNTIME_ENV**: `dev` (local), `lat`, `stg`, `prd`
-- **Local secrets**: `workspace/secrets/dev_app_secrets.yml`
+- **Local secrets**: Use `local.env` file (see docker-compose.yml)
 - **Production secrets**: AWS Secrets Manager
 
 ## Common Tasks
@@ -245,7 +244,7 @@ docker logs -f pal-mono-db
 
 ```bash
 # Restart all services
-ag ws restart
+docker-compose restart
 
 # Restart API only
 docker restart pal-mono-api
