@@ -186,10 +186,12 @@ def compare_checkpoint_images(
 
     comparison_result_json = json.loads(response.choices[0].message.content or "{}")
 
+    # Remove confidence_score if present
+    comparison_result_json.pop("confidence_score", None)
+
     logger.info(
         f"Checkpoint comparison completed for checkpoint {checkpoint.id}. "
-        f"Result: {comparison_result_json.get('overall_result', 'UNKNOWN')}, "
-        f"Confidence: {comparison_result_json.get('confidence_score', 0)}%"
+        f"Result: {comparison_result_json.get('overall_result', 'UNKNOWN')}"
     )
 
     return comparison_result_json
@@ -391,7 +393,6 @@ async def compare_and_save_checkpoint_async(
         error_result = {
             "overall_result": "FAIL",
             "error": str(e),
-            "confidence_score": 0,
         }
 
         checkpoint_result = save_checkpoint_result(
@@ -499,7 +500,6 @@ async def compare_and_update_checkpoint_background(
         error_result = {
             "overall_result": "FAIL",
             "error": str(e),
-            "confidence_score": 0,
         }
 
         try:

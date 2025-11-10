@@ -627,32 +627,39 @@ async def compare_checkpoint(
             submission_uuid = uuid.uuid4()
 
         # Step 2: Create checkpoint_result with 'processing' status immediately
-        checkpoint_result = checkpoint_service.create_checkpoint_result_processing(
+        checkpoint_run = checkpoint_service.create_checkpoint_result_processing(
             session=session,
             checkpoint_id=checkpoint_id,
             submission_id=submission_uuid,
         )
+        # Step 3: Upload image to S3
+        image_url = await _upload_checkpoint_run_image(
+            image=image,
+            project_id=checkpoint.project_id,
+            checkpoint_id=checkpoint_id,
+            run_id=checkpoint_run.id,
+            account_id=project.account_id,
+        )
+        # Step 4: Update the checkpoint run with the image URL
+        checkpoint_service.update_checkpoint_run_image(
+            session=session,
+            run_id=checkpoint_run.id,
+            image_url=image_url,
+        )
 
-        # Step 3: Start background task to run OpenAI comparison
+        # Step 5: Start background task to run OpenAI comparison
         asyncio.create_task(
             checkpoint_service.compare_and_update_checkpoint_background(
-                checkpoint_result_id=checkpoint_result.id,
+                checkpoint_result_id=checkpoint_run.id,
                 checkpoint=checkpoint,
                 uploaded_image_base64=uploaded_image_base64,
             )
         )
 
-        # Step 4: Return 200 immediately with processing status
         return {
-            "checkpoint_result_id": str(checkpoint_result.id),
-            "checkpoint_id": str(checkpoint_id),
-            "checkpoint_name": checkpoint.name,
-            "checkpoint_description": checkpoint.description,
-            "checkpoint_rules": checkpoint.rules,
+            "checkpoint_result_id": str(checkpoint_run.id),
             "submission_id": str(submission_uuid),
             "status": "processing",
-            "message": "Comparison started. Check result status using checkpoint_result_id.",
-            "created_at": checkpoint_result.created_at.isoformat(),
         }
 
     except HTTPException:

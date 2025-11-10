@@ -269,7 +269,7 @@ def create_checkpoint_result_processing(
         checkpoint_result = CheckpointRun(
             checkpoint_id=checkpoint_id,
             submission_id=submission_id,
-            result={},  # Empty initially
+            result={"status": "done"},
             status=CheckStatus.processing,
         )
 
