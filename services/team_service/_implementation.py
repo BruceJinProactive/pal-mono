@@ -10,6 +10,7 @@ All functions return database models, not API schemas.
 Routes are responsible for converting to API responses.
 """
 
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -25,6 +26,7 @@ from db.repositories import (
 )
 from db.repositories.resource_role_assignment_repository import ResourceType
 from db.tables.types import AccountUserStatus, InvitationStatus
+from services import email_service
 from services.auth_types import UserContext
 from services.team_service.helpers import (
     get_mock_display_name_for_user,
@@ -39,6 +41,9 @@ from services.team_service.schema import (
     UpdateMemberRoleParams,
 )
 from utils.log import logger
+
+# Postmark template ID for team invitation emails
+TEAM_INVITATION_TEMPLATE_ID = 40701112
 
 # ============================================================================
 # TEAM MANAGEMENT - SYNC
@@ -103,17 +108,38 @@ def create_invitation(
     except Exception as e:
         raise ValueError(f"Failed to create invitation: {str(e)}")
 
-    # 5. Send invitation email (TODO)
-    # try:
-    #     send_invitation_email(
-    #         to_email=params.email,
-    #         invitation_token=invitation_token,
-    #         inviter_name=context.display_name,
-    #         account_name=account.display_name,
-    #         role=params.account_role,
-    #     )
-    # except Exception as e:
-    #     logger.error(f"Failed to send invitation email: {e}")
+    # 5. Send invitation email
+    try:
+        # Get inviter name for personalization
+        inviter_name = context.display_name or "A team member"
+        account_display_name = account.display_name or account.name
+
+        email_service.send_email_with_template(
+            to_email=params.email,
+            template_id=TEAM_INVITATION_TEMPLATE_ID,
+            template_model={
+                "inviter_name": inviter_name,
+                "account_name": account_display_name,
+                "role": params.account_role,
+                "invitation_url": (
+                    (
+                        "https://console.palona.ai"
+                        if os.getenv("RUNTIME_ENV", "prd") == "prd"
+                        else f"https://{os.getenv('RUNTIME_ENV', 'lat')}-console.palona.ai"
+                    )
+                    + f"/accept-invitation?token={invitation_token}"
+                ),
+                "product_name": "Palona AI",
+                "sender_name": "Support Team",
+            },
+        )
+        logger.info(
+            f"Invitation email sent to {params.email} for account {account.name}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to send invitation email to {params.email}: {e}")
+        # Don't fail the invitation creation if email fails
+        # The invitation is still valid and can be resent
 
     return invitation
 
