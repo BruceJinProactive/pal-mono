@@ -10,11 +10,12 @@ readme = "README.md"
 authors = [{name = "Proactive AI Lab", email = "rnd@proactiveailab.com"}]
 dependencies = [
   "agno==1.7.6", # AI agent framework for building intelligent applications
+  "aioboto3==15.5.0", # Async AWS SDK for Python with asyncio support
   "alembic==1.13.2", # Database migration tool for SQLAlchemy
   "anthropic==0.71.0", # Official Anthropic API client for Claude models
   "asyncpg==0.30.0", # High-performance async PostgreSQL driver
   "beautifulsoup4==4.12.3", # HTML/XML parsing and web scraping library
-  "boto3==1.37.34", # Amazon Web Services SDK for Python
+  "boto3==1.40.61", # Amazon Web Services SDK for Python
   "cryptography==44.0.2", # Modern cryptographic recipes and primitives
   "datadog==0.52.0", # Datadog API client for metrics and monitoring
   "ddtrace==3.11.0", # Datadog APM and distributed tracing library
