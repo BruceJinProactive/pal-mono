@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, UniqueConstraint
+from sqlalchemy import Enum, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -42,6 +42,14 @@ class AccountUser(Base):
         UUID(as_uuid=True),
         nullable=False,
     )
+    name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    email: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
     added_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
@@ -67,4 +75,4 @@ class AccountUser(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<AccountUser(user_id={self.user_id}, account_id={self.account_id}, status={self.status.value})>"
+        return f"<AccountUser(user_id={self.user_id}, name={self.name}, email={self.email}, account_id={self.account_id}, status={self.status.value})>"
