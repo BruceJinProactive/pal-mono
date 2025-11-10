@@ -7,6 +7,7 @@ import enum
 # migration file if this gets created in the database as a type.
 class Channel(str, enum.Enum):
     API = "api"
+    EMAIL = "email"
     INSTAGRAM = "instagram"
     INTERNAL_APP = "internal_app"
     SMS = "sms"

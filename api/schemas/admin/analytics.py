@@ -7,7 +7,15 @@ from pydantic import BaseModel
 from db.tables.types import CallLanguage, CallPurpose
 
 # Valid channel names used across the analytics system
-VALID_CHANNELS = ["api", "instagram", "internal_app", "sms", "voice", "whatsapp"]
+VALID_CHANNELS = [
+    "api",
+    "email",
+    "instagram",
+    "internal_app",
+    "sms",
+    "voice",
+    "whatsapp",
+]
 
 
 class AnalyticsResponse(BaseModel):
@@ -182,6 +190,7 @@ class ChannelData(BaseModel):
     """Active Users data for a specific channel"""
 
     api: int
+    email: int
     instagram: int
     internal_app: int
     sms: int
