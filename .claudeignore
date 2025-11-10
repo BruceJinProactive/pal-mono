@@ -1,0 +1,7 @@
+# Ignore everything by default
+*
+
+# Allow only architecture.md for self-discovery
+!.claude/
+!.claude/docs/
+!.claude/docs/architecture.md
