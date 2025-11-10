@@ -1,3 +1,6 @@
+# INSTRUCTIONS
+- Enforce a strict dependency flow: API → Service → Database, with no shared packages.
+
 # CLAUDE.md
 
 This file contains information for Claude to help with the pal-mono repository.
