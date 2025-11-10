@@ -548,21 +548,18 @@ def build_faq(faq: db.FAQ) -> FAQ:
 def build_checkpoint_result(
     checkpoint_result: db.CheckpointRun,
 ) -> CheckpointResult:
-    """Build CheckpointRun response from database CheckpointRun."""
-    # Extract image URL from result JSON if available
-    image_url = (
-        checkpoint_result.result.get("image_url") if checkpoint_result.result else None
-    )
-    # Convert S3 path to presigned URL if exists
-    presigned_url = map_uri_to_s3_url(image_url) if image_url else None
+    """Build CheckpointRun response from database CheckpointRun.
 
+    Note: Does NOT generate presigned URLs for performance reasons.
+    Use the single run endpoint GET /checkpoints/runs/{run_id} to get presigned URLs.
+    """
     return CheckpointResult(
         id=str(checkpoint_result.id),
         checkpoint_id=str(checkpoint_result.checkpoint_id),
         submission_id=str(checkpoint_result.submission_id),
         result=checkpoint_result.result or {},
         status=checkpoint_result.status.value,
-        image_url=presigned_url,
+        image_url=None,
         review=checkpoint_result.review,
         reviewer=checkpoint_result.reviewer,
         is_reviewed=checkpoint_result.is_reviewed,

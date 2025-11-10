@@ -22,6 +22,7 @@ from api.schemas.admin.checklist import (
 )
 from api.schemas.admin.checkpoint import (
     Checkpoint,
+    CheckpointResult,
     ListCheckpointResultsByCheckpointResponse,
     ListCheckpointResultsBySubmissionResponse,
     ListCheckpointsResponse,
@@ -638,17 +639,32 @@ async def list_checkpoint_results_by_submission(
 )
 async def list_checkpoint_results_by_checkpoint(
     checkpoint_id: uuid.UUID,
+    start_date: datetime | None = Query(
+        None,
+        description="Optional start date in ISO 8601 format with timezone (e.g., 2025-01-01T00:00:00Z)",
+    ),
+    end_date: datetime | None = Query(
+        None,
+        description="Optional end date in ISO 8601 format with timezone (e.g., 2025-01-31T23:59:59Z)",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> ListCheckpointResultsByCheckpointResponse:
     """
-    List all checkpoint results for a specific checkpoint.
+    List all checkpoint results for a specific checkpoint with optional date filtering.
 
     This endpoint returns all comparison results for a given checkpoint,
     useful for viewing the history of all submissions tested against this checkpoint.
 
+    Path Parameters:
+    - checkpoint_id: UUID of the checkpoint
+
+    Query Parameters:
+    - start_date (optional): Filter results created on or after this date (ISO 8601 format)
+    - end_date (optional): Filter results created on or before this date (ISO 8601 format)
+
     Returns:
-    - results: List of all checkpoint results
+    - results: List of checkpoint results (filtered by date if parameters provided)
     - total: Total number of results
 
     Example response:
@@ -660,6 +676,7 @@ async def list_checkpoint_results_by_checkpoint(
           "submission_id": "submission-uuid",
           "result": {"overall_result": "PASS", ...},
           "status": "active",
+          "image_url": "https://s3.amazonaws.com/...",
           "created_at": "2025-10-15T12:34:56Z",
           "updated_at": "2025-10-15T12:35:10Z"
         }
@@ -668,8 +685,46 @@ async def list_checkpoint_results_by_checkpoint(
     }
     """
     return await _checkpoint.list_checkpoint_results_by_checkpoint(
-        checkpoint_id, context, session
+        checkpoint_id, start_date, end_date, context, session
     )
+
+
+@operation_router.get("/checkpoints/runs/{run_id}", status_code=status.HTTP_200_OK)
+async def get_checkpoint_run(
+    run_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> CheckpointResult:
+    """
+    Get a single checkpoint run by its ID.
+
+    This endpoint returns detailed information about a specific checkpoint run,
+    including presigned image URLs if the run contains images.
+
+    Path Parameters:
+    - run_id: UUID of the checkpoint run
+
+    Returns:
+    - CheckpointResult with all run details and presigned image URL
+
+    Example response:
+    {
+      "id": "run-uuid",
+      "checkpoint_id": "checkpoint-uuid",
+      "submission_id": "submission-uuid",
+      "result": {"overall_result": "PASS", ...},
+      "status": "active",
+      "image_url": "https://s3.amazonaws.com/...",
+      "review": "Approved",
+      "reviewer": "manager@example.com",
+      "is_reviewed": true,
+      "created_at": "2025-10-15T12:34:56Z",
+      "updated_at": "2025-10-15T12:35:10Z"
+    }
+
+    Authorization: Via checkpoint → project → account
+    """
+    return await _checkpoint.get_checkpoint_run(run_id, context, session)
 
 
 @operation_router.patch(

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 import uuid
+from datetime import datetime
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import not_found_error
 from api.schemas.admin.checkpoint import (
     Checkpoint,
+    CheckpointResult,
     ListCheckpointResultsByCheckpointResponse,
     ListCheckpointResultsBySubmissionResponse,
     ListCheckpointsResponse,
@@ -737,19 +739,23 @@ async def list_checkpoint_results_by_submission(
 
 async def list_checkpoint_results_by_checkpoint(
     checkpoint_id: uuid.UUID,
+    start_date: datetime | None,
+    end_date: datetime | None,
     context: UserContext,
     session: Session,
 ) -> ListCheckpointResultsByCheckpointResponse:
     """
-    List all checkpoint results for a specific checkpoint.
+    List all checkpoint results for a specific checkpoint with optional date filtering.
 
     Args:
         checkpoint_id: UUID of the checkpoint
+        start_date: Optional filter by created_at >= start_date
+        end_date: Optional filter by created_at <= end_date
         context: User context for authorization
         session: Database session
 
     Returns:
-        ListCheckpointResultsByCheckpointResponse with all results for the checkpoint
+        ListCheckpointResultsByCheckpointResponse with results for the checkpoint
 
     Raises:
         HTTPException: If checkpoint not found or authorization fails
@@ -772,12 +778,15 @@ async def list_checkpoint_results_by_checkpoint(
 
     authorize_user_account(context, account.name)
 
-    # Get all checkpoint results for this checkpoint
+    # Get checkpoint results for this checkpoint with optional date filtering
     checkpoint_results = checkpoint_service.list_checkpoint_results(
         session=session,
         checkpoint_id=checkpoint_id,
         submission_id=None,
         status=None,
+        project_id=None,
+        start_date=start_date,
+        end_date=end_date,
     )
 
     return ListCheckpointResultsByCheckpointResponse(
@@ -785,6 +794,79 @@ async def list_checkpoint_results_by_checkpoint(
             _builder.build_checkpoint_result(result) for result in checkpoint_results
         ],
         total=len(checkpoint_results),
+    )
+
+
+async def get_checkpoint_run(
+    run_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> CheckpointResult:
+    """
+    Get a single checkpoint run by ID with presigned image URL.
+
+    Args:
+        run_id: UUID of the checkpoint run
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        CheckpointResult with presigned image URL
+
+    Raises:
+        HTTPException: If run not found or authorization fails
+    """
+    # Get the checkpoint run
+    run = checkpoint_service.get_checkpoint_result(session, run_id)
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint run {run_id} not found",
+        )
+
+    # Get checkpoint to validate authorization
+    checkpoint = checkpoint_service.get_checkpoint(session, run.checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint {run.checkpoint_id} not found",
+        )
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {checkpoint.project_id} not found",
+        )
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {project.account_id} not found",
+        )
+
+    authorize_user_account(context, account.name)
+
+    # Build checkpoint result with presigned URL
+    # Extract image URL from result JSON if available
+    image_url = run.result.get("image_url") if run.result else None
+    # Convert S3 path to presigned URL if exists
+    presigned_url = map_uri_to_s3_url(image_url) if image_url else None
+
+    return CheckpointResult(
+        id=str(run.id),
+        checkpoint_id=str(run.checkpoint_id),
+        submission_id=str(run.submission_id),
+        result=run.result or {},
+        status=run.status.value,
+        image_url=presigned_url,
+        review=run.review,
+        reviewer=run.reviewer,
+        is_reviewed=run.is_reviewed,
+        created_at=run.created_at.isoformat(),
+        updated_at=run.updated_at.isoformat() if run.updated_at else None,
     )
 
 
