@@ -12,7 +12,7 @@ from ._util import decrypt_account_name
 
 def get_square_webhook_credentials() -> tuple[str, str]:
     """
-    Get Square webhook signature key and webhook URL from secrets manager (mocking Shopify pattern).
+    Get Square webhook signature key and webhook URL from secrets manager.
 
     Returns:
         tuple[str, str]: A tuple containing (signature_key, webhook_url)
@@ -114,7 +114,7 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
             )
             return False
 
-        # Get Square webhook signature key and URL from secrets manager (like Shopify)
+        # Get Square webhook signature key and URL from secrets manager
         try:
             signature_key, webhook_url = get_square_webhook_credentials()
             logger.info(

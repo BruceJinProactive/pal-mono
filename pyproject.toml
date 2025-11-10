@@ -9,7 +9,6 @@ requires-python = ">=3.11,<3.14"
 readme = "README.md"
 authors = [{name = "Proactive AI Lab", email = "rnd@proactiveailab.com"}]
 dependencies = [
-  "ShopifyAPI==12.7.0", # Official Shopify API client for e-commerce integrations
   "agno==1.7.6", # AI agent framework for building intelligent applications
   "alembic==1.13.2", # Database migration tool for SQLAlchemy
   "anthropic==0.71.0", # Official Anthropic API client for Claude models

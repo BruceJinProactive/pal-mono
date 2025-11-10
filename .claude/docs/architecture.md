@@ -319,7 +319,6 @@ Shared utilities and helpers:
 | | VAPI | v1.6.0 | Voice AI platform |
 | | Slack SDK | v3.33.5 | Internal notifications |
 | **Business** | Stripe | v12 | Payment and subscriptions |
-| | Shopify API | v12.7.0 | E-commerce integration |
 | | Toast | - | POS system |
 | | Square | - | POS system |
 | | Adora | - | POS system |
