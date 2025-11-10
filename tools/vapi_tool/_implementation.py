@@ -131,17 +131,24 @@ class VapiTool(Toolkit):
                 logger.error(f"[VapiTool.call_transfer] {error_msg}")
                 return error_msg
 
-            call_id = conversation.call_id
-            logger.debug(
-                f"[VapiTool.call_transfer] Call id for conversation {conversation_id}: {call_id}"
-            )
+            # Get control URL from Vapi API if not stored in conversation
+            control_url = conversation.vapi_control_url
+            if not control_url:
+                logger.debug(
+                    f"[VapiTool.call_transfer] No control URL stored for conversation {conversation_id}. Fetching from Vapi API."
+                )
+                call_id = conversation.call_id
+                logger.debug(
+                    f"[VapiTool.call_transfer] Call id for conversation {conversation_id}: {call_id}"
+                )
 
-            if not call_id:
-                error_msg = "No call ID available for this conversation. Call transfer is not possible."
-                logger.error(f"[VapiTool.call_transfer] {error_msg}")
-                return error_msg
+                if not call_id:
+                    error_msg = "No call ID available for this conversation. Call transfer is not possible."
+                    logger.error(f"[VapiTool.call_transfer] {error_msg}")
+                    return error_msg
 
-            control_url = _get_control_url_from_vapi(call_id)
+                control_url = _get_control_url_from_vapi(call_id)
+
             logger.debug(
                 f"[VapiTool.call_transfer] Retrieved control URL for conversation {conversation_id}: {control_url}"
             )
