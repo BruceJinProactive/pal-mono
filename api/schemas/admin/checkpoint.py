@@ -60,6 +60,9 @@ class CheckpointResult(BaseModel):
     submission_id: str
     result: dict
     status: str
+    image_url: str | None = Field(
+        None, description="Presigned S3 URL of the image (extracted from result)"
+    )
     review: str | None = None
     reviewer: str | None = None
     is_reviewed: bool = False
