@@ -445,7 +445,7 @@ def remove_team_member(
 def get_invitation_details(
     session: Session,
     token: str,
-) -> tuple[db.UserInvitation, str] | None:
+) -> tuple[db.UserInvitation, str, str] | None:
     """
     Get invitation details by token (public endpoint, no auth).
 
@@ -453,14 +453,15 @@ def get_invitation_details(
     1. Get invitation by token
     2. Check if expired and mark if so
     3. Get account name
-    4. Return invitation and account name
+    4. Get inviter's email/name
+    5. Return invitation, account name, and inviter info
 
     Args:
         session: Database session
         token: Invitation token
 
     Returns:
-        Tuple of (invitation, account_name) or None if not found
+        Tuple of (invitation, account_name, inviter_email) or None if not found
     """
     # 1. Get invitation by token
     invitation_repo = UserInvitationRepository(session)
@@ -479,7 +480,20 @@ def get_invitation_details(
     account = account_repo.get_account_by_id(invitation.account_id)
     account_name = account.name if account else "Unknown Account"
 
-    return invitation, account_name
+    # 4. Get inviter's email/name from account_users
+    inviter_email = "Unknown User"
+    account_user_repo = AccountUserRepository(session)
+    inviter_account_user = account_user_repo.get_by_user_and_account(
+        invitation.invited_by, invitation.account_id
+    )
+    if inviter_account_user:
+        # Use name if available, otherwise use email, otherwise use "Unknown User"
+        if inviter_account_user.name:
+            inviter_email = inviter_account_user.name
+        elif inviter_account_user.email:
+            inviter_email = inviter_account_user.email
+
+    return invitation, account_name, inviter_email
 
 
 def accept_invitation(
@@ -547,6 +561,8 @@ def accept_invitation(
         account_user_repo.create(
             account_id=account.id,
             user_id=user_id,
+            email=context.email,
+            name=context.display_name,
             added_by=invitation.invited_by,
             status=AccountUserStatus.active,
         )

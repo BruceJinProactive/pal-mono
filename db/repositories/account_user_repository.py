@@ -129,6 +129,8 @@ class AccountUserRepository:
         self,
         account_id: uuid.UUID,
         user_id: uuid.UUID,
+        email: str,
+        name: str,
         added_by: Optional[uuid.UUID] = None,
         status: AccountUserStatus = AccountUserStatus.active,
     ) -> AccountUser:
@@ -139,6 +141,8 @@ class AccountUserRepository:
         Args:
             account_id: UUID of the account
             user_id: UUID of the user
+            email: Email address for the user (required)
+            name: Display name for the user (required)
             added_by: Optional UUID of user who added this member (None for self-onboarding)
             status: Membership status (default: active)
 
@@ -164,6 +168,8 @@ class AccountUserRepository:
                 user_id=user_id,
                 added_by=added_by,
                 status=status,
+                email=email,
+                name=name,
             )
             self.session.add(db_account_user)
 
@@ -221,6 +227,57 @@ class AccountUserRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error updating membership status: {e}")
+            raise
+
+    def update_user_info(
+        self,
+        user_id: uuid.UUID,
+        account_id: uuid.UUID,
+        email: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> Optional[AccountUser]:
+        """Update user's email and name in account membership.
+
+        Args:
+            user_id: UUID of the user
+            account_id: UUID of the account
+            email: Optional email to update (if None, keeps existing)
+            name: Optional name to update (if None, keeps existing)
+
+        Returns:
+            Updated AccountUser object or None if not found
+
+        Raises:
+            SQLAlchemyError: If there's a database error during update
+        """
+        try:
+            db_account_user = self.get_by_user_and_account(user_id, account_id)
+            if not db_account_user:
+                logger.warning(
+                    f"Account membership not found: user {user_id} in account {account_id}"
+                )
+                return None
+
+            # Update fields if provided
+            if email is not None:
+                db_account_user.email = email
+            if name is not None:
+                db_account_user.name = name
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(db_account_user)
+            logger.info(
+                f"Updated user info: user {user_id} in account {account_id} "
+                f"(email={email}, name={name})"
+            )
+            return db_account_user
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating user info: {e}")
             raise
 
     def delete(self, user_id: uuid.UUID, account_id: uuid.UUID) -> bool:

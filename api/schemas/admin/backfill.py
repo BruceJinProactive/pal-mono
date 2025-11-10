@@ -26,6 +26,9 @@ class BackfillUserResult(BaseModel):
     memberships_created: int = Field(
         description="Number of AccountUser records created"
     )
+    memberships_updated: int = Field(
+        default=0, description="Number of AccountUser records updated with email/name"
+    )
     skipped_accounts: list[str] = Field(
         default_factory=list,
         description="Account names that were not found in database",
@@ -45,6 +48,10 @@ class BackfillRoleAssignmentsResponse(BaseModel):
     total_roles_created: int = Field(description="Total role assignments created")
     total_memberships_created: int = Field(
         description="Total AccountUser records created"
+    )
+    total_memberships_updated: int = Field(
+        default=0,
+        description="Total AccountUser records updated with email/name from Cognito",
     )
     total_accounts_skipped: int = Field(
         description="Total accounts not found in database"

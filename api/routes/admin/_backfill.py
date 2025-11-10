@@ -71,6 +71,7 @@ def backfill_role_assignments(
     total_users_processed = 0
     total_roles_created = 0
     total_memberships_created = 0
+    total_memberships_updated = 0
     total_accounts_skipped = 0
     total_errors = 0
     user_results: list[BackfillUserResult] = []
@@ -129,6 +130,7 @@ def backfill_role_assignments(
 
                 # Extract user info
                 email = get_attr(attributes, "email")
+                name = get_attr(attributes, "name")
                 account_names_str = get_attr(attributes, "custom:account_names")
                 account_name_str = get_attr(attributes, "custom:account_name")
 
@@ -166,6 +168,7 @@ def backfill_role_assignments(
                     account_names=account_names,
                     roles_created=0,
                     memberships_created=0,
+                    memberships_updated=0,
                     skipped_accounts=[],
                     errors=[],
                 )
@@ -198,27 +201,58 @@ def backfill_role_assignments(
                             total_errors += 1
                             continue
 
-                        # Create AccountUser and ResourceRoleAssignment
+                        # Check if AccountUser already exists
+                        existing_account_user = (
+                            account_user_repo.get_by_user_and_account(
+                                user_id=user_id, account_id=account.id
+                            )
+                        )
+
+                        # Create or update AccountUser and ResourceRoleAssignment
                         if not request.dry_run:
                             try:
-                                # First, create AccountUser membership
-                                account_user_repo.create(
-                                    account_id=account.id,
-                                    user_id=user_id,
-                                    added_by=None,  # Migration/backfill
-                                    status=AccountUserStatus.active,
-                                )
-                                user_result.memberships_created += 1
-                                total_memberships_created += 1
-                                logger.info(
-                                    f"Created account membership for user {email} in account {account_name}",
-                                    extra={
-                                        "user_id": str(user_id),
-                                        "account_id": str(account.id),
-                                    },
-                                )
+                                if existing_account_user:
+                                    # Update existing AccountUser with email/name from Cognito
+                                    account_user_repo.update_user_info(
+                                        user_id=user_id,
+                                        account_id=account.id,
+                                        email=email,
+                                        name=name,
+                                    )
+                                    user_result.memberships_updated += 1
+                                    total_memberships_updated += 1
+                                    logger.info(
+                                        f"Updated account membership for user {email} in account {account_name}",
+                                        extra={
+                                            "user_id": str(user_id),
+                                            "account_id": str(account.id),
+                                            "email": email,
+                                            "name": name,
+                                        },
+                                    )
+                                else:
+                                    # Create new AccountUser membership with email and name
+                                    account_user_repo.create(
+                                        account_id=account.id,
+                                        user_id=user_id,
+                                        email=email,
+                                        name=name,
+                                        added_by=None,  # Migration/backfill
+                                        status=AccountUserStatus.active,
+                                    )
+                                    user_result.memberships_created += 1
+                                    total_memberships_created += 1
+                                    logger.info(
+                                        f"Created account membership for user {email} in account {account_name}",
+                                        extra={
+                                            "user_id": str(user_id),
+                                            "account_id": str(account.id),
+                                            "email": email,
+                                            "name": name,
+                                        },
+                                    )
 
-                                # Then, create ResourceRoleAssignment
+                                # Create ResourceRoleAssignment (will skip if already exists)
                                 role_repo.add_role(
                                     user_id=user_id,
                                     resource_type=ResourceType.ACCOUNT,
@@ -238,12 +272,12 @@ def backfill_role_assignments(
                                     },
                                 )
 
-                                # Commit both operations together
+                                # Commit all operations together
                                 session.commit()
                             except Exception as e:
                                 session.rollback()
                                 error_msg = (
-                                    f"Failed to create membership/role: {str(e)}"
+                                    f"Failed to create/update membership/role: {str(e)}"
                                 )
                                 logger.error(
                                     error_msg,
@@ -256,10 +290,14 @@ def backfill_role_assignments(
                                 total_errors += 1
                                 continue
                         else:
-                            # In dry run mode, just increment counters
-                            user_result.memberships_created += 1
+                            # In dry run mode, check if exists and increment appropriate counter
+                            if existing_account_user:
+                                user_result.memberships_updated += 1
+                                total_memberships_updated += 1
+                            else:
+                                user_result.memberships_created += 1
+                                total_memberships_created += 1
                             user_result.roles_created += 1
-                            total_memberships_created += 1
                             total_roles_created += 1
 
                     except Exception as e:
@@ -283,6 +321,7 @@ def backfill_role_assignments(
             f"processed {total_users_processed} users, "
             f"created {total_roles_created} roles, "
             f"created {total_memberships_created} memberships, "
+            f"updated {total_memberships_updated} memberships, "
             f"skipped {total_accounts_skipped} accounts, "
             f"{total_errors} errors",
         )
@@ -292,6 +331,7 @@ def backfill_role_assignments(
             total_users_processed=total_users_processed,
             total_roles_created=total_roles_created,
             total_memberships_created=total_memberships_created,
+            total_memberships_updated=total_memberships_updated,
             total_accounts_skipped=total_accounts_skipped,
             total_errors=total_errors,
             user_results=user_results,

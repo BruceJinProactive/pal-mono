@@ -287,14 +287,14 @@ async def get_invitation_details(
             headers={"Content-Type": "application/json"},
         )
 
-    invitation, account_name = result
+    invitation, account_name, inviter_email = result
 
     # 2. Convert DB model to API response
     api_status = InvitationStatus[invitation.status.name.upper()]
 
     return InvitationDetailsResponse(
         account_name=account_name,
-        invited_by=invitation.email,  # TODO: Get inviter email from users table
+        invited_by=inviter_email,
         role=UserRole(invitation.account_role),
         expires_at=invitation.expires_at,
         status=api_status,
