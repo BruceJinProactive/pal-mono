@@ -15,6 +15,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+import boto3
+from botocore.exceptions import ClientError
 from sqlalchemy.orm import Session
 
 import db
@@ -27,6 +29,7 @@ from db.repositories import (
 from db.repositories.resource_role_assignment_repository import ResourceType
 from db.tables.types import AccountUserStatus, InvitationStatus
 from services import email_service
+from services.admin_service._utils import generate_password
 from services.auth_types import UserContext
 from services.team_service.helpers import (
     get_mock_display_name_for_user,
@@ -95,7 +98,43 @@ def create_invitation(
     invitation_token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
 
-    # 4. Create invitation record
+    # 4. Create Cognito user with temporary password
+    user_name = params.email.split("@")[0].replace(".", " ").title()
+    password = generate_password()
+
+    # Get AWS configuration
+    aws_region = os.environ.get("AWS_REGION", "us-east-1")
+    user_pool_id = os.environ.get("AWS_ADMIN_CONSOLE_USER_POOL_ID")
+
+    cognito_user_created = False
+    if user_pool_id:
+        try:
+            cognito_client = boto3.client("cognito-idp", region_name=aws_region)
+            cognito_client.admin_create_user(
+                UserPoolId=user_pool_id,
+                Username=params.email,
+                TemporaryPassword=password,
+                MessageAction="SUPPRESS",
+                UserAttributes=[
+                    {"Name": "email", "Value": params.email},
+                    {"Name": "email_verified", "Value": "true"},
+                    {"Name": "name", "Value": user_name},
+                    {"Name": "custom:account_name", "Value": account.name},
+                ],
+            )
+            cognito_user_created = True
+            logger.info(f"Created Cognito user for invitation: {params.email}")
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "UsernameExistsException":
+                # User already exists in Cognito, that's okay
+                cognito_user_created = False
+                logger.info(f"Cognito user already exists: {params.email}")
+            else:
+                logger.error(f"Failed to create Cognito user for invitation: {e}")
+                # Continue with invitation creation even if Cognito user creation fails
+
+    # 5. Create invitation record
     try:
         invitation = invitation_repo.create(
             account_id=account.id,
@@ -108,31 +147,41 @@ def create_invitation(
     except Exception as e:
         raise ValueError(f"Failed to create invitation: {str(e)}")
 
-    # 5. Send invitation email
+    # 6. Send invitation email
     try:
         # Get inviter name for personalization
         inviter_name = context.display_name or "A team member"
         account_display_name = account.display_name or account.name
 
+        template_model = {
+            "name": user_name,
+            "inviter_name": inviter_name,
+            "account_name": account_display_name,
+            "role": params.account_role,
+            "product_name": "Palona AI",
+            "sender_name": "Support Team",
+        }
+
+        # Construct base URL based on environment
+        base_url = (
+            "https://console.palona.ai"
+            if os.getenv("RUNTIME_ENV", "prd") == "prd"
+            else f"https://{os.getenv('RUNTIME_ENV', 'lat')}-console.palona.ai"
+        )
+        template_model["invitation_url"] = (
+            f"{base_url}/accept-invitation?token={invitation_token}"
+        )
+
+        # Include password if Cognito user was created
+        if cognito_user_created:
+            template_model["password"] = password
+            template_model["email"] = params.email
+            template_model["login_url"] = f"{base_url}/signin?email={params.email}"
+
         email_service.send_email_with_template(
             to_email=params.email,
             template_id=TEAM_INVITATION_TEMPLATE_ID,
-            template_model={
-                "name": params.email.split("@")[0].replace(".", " ").title(),
-                "inviter_name": inviter_name,
-                "account_name": account_display_name,
-                "role": params.account_role,
-                "invitation_url": (
-                    (
-                        "https://console.palona.ai"
-                        if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                        else f"https://{os.getenv('RUNTIME_ENV', 'lat')}-console.palona.ai"
-                    )
-                    + f"/accept-invitation?token={invitation_token}"
-                ),
-                "product_name": "Palona AI",
-                "sender_name": "Support Team",
-            },
+            template_model=template_model,
         )
         logger.info(
             f"Invitation email sent to {params.email} for account {account.name}"
