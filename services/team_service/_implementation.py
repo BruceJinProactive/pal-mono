@@ -43,7 +43,7 @@ from services.team_service.schema import (
 from utils.log import logger
 
 # Postmark template ID for team invitation emails
-TEAM_INVITATION_TEMPLATE_ID = 40701112
+TEAM_INVITATION_TEMPLATE_ID = 42139611
 
 # ============================================================================
 # TEAM MANAGEMENT - SYNC
@@ -118,6 +118,7 @@ def create_invitation(
             to_email=params.email,
             template_id=TEAM_INVITATION_TEMPLATE_ID,
             template_model={
+                "name": params.email.split("@")[0].replace(".", " ").title(),
                 "inviter_name": inviter_name,
                 "account_name": account_display_name,
                 "role": params.account_role,
