@@ -61,6 +61,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         city: str,
         venue_name: str,
         token: str,
+        default_struct_tags: Optional[Sequence[Dict[str, Any]]] = None,
         tool_metadata: ToolMetadata | None = None,
     ):
         super().__init__(name="resy_tool_with_reservation")
@@ -93,6 +94,9 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         self._operational_token_expiry: Optional[datetime] = None
         self._analytics_token: Optional[str] = None
         self.tool_metadata = tool_metadata
+        self.default_struct_tags = (
+            list(default_struct_tags) if default_struct_tags else None
+        )
 
         self.register(self.check_availability)
         self.register(self.make_reservation)
@@ -398,6 +402,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
                     first_name=first_name,
                     last_name=last_name,
                     phone_number=phone_number,
+                    struct_tags=self.default_struct_tags,
                 )
         except ResyAPIError as exc:
             logger.error(

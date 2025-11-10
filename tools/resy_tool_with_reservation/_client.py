@@ -7,7 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Sequence, cast
 
 from tools.resy_tool_with_reservation._apikey import get_resy_api_key
 from utils.log import logger
@@ -227,6 +227,7 @@ def create_reservation(
     first_name: str | None = None,
     last_name: str | None = None,
     phone_number: str | None = None,
+    struct_tags: Optional[Sequence[Dict[str, Any]]] = None,
     timeout: int = 30,
 ) -> Dict[str, Any]:
     """Submit a reservation request using the provided lock and guest identifiers."""
@@ -237,7 +238,7 @@ def create_reservation(
         "token": lock_token,
         "user_id": guest_user_id,
         "staff_id": STAFF_ID,
-        "struct_tags": [],
+        "struct_tags": list(struct_tags or []),
         "email_confirmation": email_confirmation,
         "email_contact_confirmation": email_contact_confirmation,
     }
