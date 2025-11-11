@@ -561,48 +561,55 @@ class AdoraTool(Toolkit):
 
         logger.debug(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
 
-        if not validated_order or not validated_order.key:
-            return "Failed to validate order. Please try again."
+        if type(validated_order) is str:
+            return f"Failed to validate order due to {validated_order}"
+        elif (
+            type(validated_order) is AdoraOrderCalculationResult and validated_order.key
+        ):
+            # Attempt to save order to database
+            try:
+                self._save_order_to_db(order, validated_order)
+            except Exception as e:
+                logger.error(
+                    "[AdoraTool._fulfill_order] Failed to save order to database, continuing with order fulfillment despite DB save failure",
+                    exc_info=e,
+                )
 
-        # Attempt to save order to database
-        try:
-            self._save_order_to_db(order, validated_order)
-        except Exception as e:
-            logger.error(
-                "[AdoraTool._fulfill_order] Failed to save order to database, continuing with order fulfillment despite DB save failure",
-                exc_info=e,
+            text_payment_url = validated_order.paymentUrl
+
+            output = (
+                f"Your order is pending!\n"
+                "Please head to the payment url to finalize your order!\n"
+                f"{text_payment_url}\n\n"
+                "Order Summary:\n"
+                f"{order.order_items}\n\n"
+                f"Subtotal: {validated_order.subTotal}\n"
+                f"Sales Tax: {validated_order.taxAmount}\n"
             )
 
-        text_payment_url = validated_order.paymentUrl
+            if (
+                order.order_type == AdoraOrderType.DELIVERY
+                and validated_order.deliveryCharge
+            ):
+                output += f"Delivery Fee: {validated_order.deliveryCharge}\n"
 
-        output = (
-            f"Your order is pending!\n"
-            "Please head to the payment url to finalize your order!\n"
-            f"{text_payment_url}\n\n"
-            "Order Summary:\n"
-            f"{order.order_items}\n\n"
-            f"Subtotal: {validated_order.subTotal}\n"
-            f"Sales Tax: {validated_order.taxAmount}\n"
-        )
+            if validated_order.discount and validated_order.discount > 0.0:
+                output += f"Discount: {validated_order.discount}\n"
 
-        if (
-            order.order_type == AdoraOrderType.DELIVERY
-            and validated_order.deliveryCharge
-        ):
-            output += f"Delivery Fee: {validated_order.deliveryCharge}\n"
+            output += f"Order Total: {validated_order.total}\n"
 
-        if validated_order.discount and validated_order.discount > 0.0:
-            output += f"Discount: {validated_order.discount}\n"
+            output += (
+                "\n\nYou MUST include the EXACT payment url in your response:\n"
+                f"{text_payment_url}"
+            )
 
-        output += f"Order Total: {validated_order.total}\n"
-
-        output += (
-            "\n\nYou MUST include the EXACT payment url in your response:\n"
-            f"{text_payment_url}"
-        )
-
-        LLMObs.annotate(output_data=output)
-        return output
+            LLMObs.annotate(output_data=output)
+            return output
+        else:
+            logger.error(
+                f"_apis.validate_order returns unsupported type: {type(validated_order)}"
+            )
+            return "Failed to validate order due to unexpected response."
 
     @task(name="_add_loyalty_discounts")
     def _add_loyalty_discounts(

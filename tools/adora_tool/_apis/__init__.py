@@ -321,7 +321,7 @@ def validate_order(
     payload: str,
     qa_store: bool,
     general_api_endpoint: str | None,
-) -> AdoraOrderCalculationResult | None:
+) -> AdoraOrderCalculationResult | str | None:
     logger.debug(f"[AdoraTool._apis.validate_order] Payload: {payload}")
 
     response = _utils.connect_adora_order_hub(
@@ -341,7 +341,7 @@ def validate_order(
         logger.error(
             f"[AdoraTool._apis.validate_order] Order validation failed with status {response.status}: {response.decoded_body}"
         )
-        return None
+        return response.decoded_body
 
 
 def save_validated_order(
