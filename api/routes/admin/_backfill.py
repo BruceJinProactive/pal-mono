@@ -234,7 +234,7 @@ def backfill_role_assignments(
                                             "user_id": str(user_id),
                                             "account_id": str(account.id),
                                             "email": email_to_set,
-                                            "name": name_to_set,
+                                            "user_name": name_to_set,
                                         },
                                     )
                                 else:
@@ -255,7 +255,7 @@ def backfill_role_assignments(
                                             "user_id": str(user_id),
                                             "account_id": str(account.id),
                                             "email": email,
-                                            "name": name,
+                                            "user_name": name,
                                         },
                                     )
 
