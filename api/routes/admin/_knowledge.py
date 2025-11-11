@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -15,6 +16,7 @@ from api.schemas.admin.knowledge import (
 from db.tables.types import IntegrationProvider
 from services import admin_service, agent_service, knowledge_service, project_service
 from utils.log import logger
+from utils.secret import get_client_secret
 
 from . import UserContext, _auth
 from ._utils import not_found_error
@@ -237,13 +239,34 @@ async def update_agent_kb(
 
         elif provider in (IntegrationProvider.adora, IntegrationProvider.toast):
             # Adora/Toast: require client_id, client_secret and API endpoints
-            client_id_value = (pos_integration.client_id or "").strip()
-            client_secret_value = (pos_integration.client_secret or "").strip()
+            # Get credentials from secret manager using secret_key
+            secret_key = pos_integration.secret_key
+            if not secret_key:
+                raise ValueError(
+                    f"{provider.value.capitalize()}: secret_key missing in POS integration"
+                )
+
+            try:
+                secrets_json = get_client_secret(secret_key)
+                credentials = json.loads(secrets_json)
+                client_id_value = (credentials.get("client_id") or "").strip()
+                client_secret_value = (credentials.get("client_secret") or "").strip()
+            except KeyError:
+                raise ValueError(
+                    f"{provider.value.capitalize()}: secret_key '{secret_key}' not found in secret manager"
+                )
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"{provider.value.capitalize()}: invalid JSON format in secret manager for key '{secret_key}': {e}"
+                )
+
             if not client_id_value:
-                raise ValueError(f"{provider.value.capitalize()}: client_id missing")
+                raise ValueError(
+                    f"{provider.value.capitalize()}: client_id missing in secret manager"
+                )
             if not client_secret_value:
                 raise ValueError(
-                    f"{provider.value.capitalize()}: client_secret missing"
+                    f"{provider.value.capitalize()}: client_secret missing in secret manager"
                 )
 
             api_endpoints = cfg.get("api_endpoints", {}) or {}
