@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 import db
 from db import ConversationRepositoryAsync
-from db.db_utils import duplicate_row
 from db.repositories.subscription_repository import (
     AccountSubscriptionRepository,
     AsyncAccountSubscriptionRepository,
@@ -540,7 +539,15 @@ def update_account_subscription(
                 f"Cannot update subscription with status {current_subscription.status.value}. Use force_update=true to override."
             )
 
-    new_subscription = duplicate_row(current_subscription)
+    # Duplicate the current subscription row, excluding id and timestamps
+    cls = type(current_subscription)
+    exclude_fields = ["id", "created_at", "updated_at"]
+    data = {
+        column.name: getattr(current_subscription, column.name)
+        for column in cls.__table__.columns
+        if column.name not in exclude_fields
+    }
+    new_subscription = cls(**data)
 
     allowed_fields = {
         "payment_method",
