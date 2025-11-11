@@ -91,6 +91,7 @@ class InvitationDetailsResponse(BaseModel):
     """Public invitation details (no auth required)."""
 
     account_name: str
+    account_display_name: str | None = None
     invited_by: str  # name or email of inviter
     role: UserRole
     expires_at: datetime

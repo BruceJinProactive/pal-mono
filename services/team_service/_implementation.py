@@ -445,23 +445,23 @@ def remove_team_member(
 def get_invitation_details(
     session: Session,
     token: str,
-) -> tuple[db.UserInvitation, str, str] | None:
+) -> tuple[db.UserInvitation, str, str | None, str] | None:
     """
     Get invitation details by token (public endpoint, no auth).
 
     Steps:
     1. Get invitation by token
     2. Check if expired and mark if so
-    3. Get account name
+    3. Get account name and display name
     4. Get inviter's email/name
-    5. Return invitation, account name, and inviter info
+    5. Return invitation, account name, account display name, and inviter info
 
     Args:
         session: Database session
         token: Invitation token
 
     Returns:
-        Tuple of (invitation, account_name, inviter_email) or None if not found
+        Tuple of (invitation, account_name, account_display_name, inviter_email) or None if not found
     """
     # 1. Get invitation by token
     invitation_repo = UserInvitationRepository(session)
@@ -479,6 +479,7 @@ def get_invitation_details(
     account_repo = AccountRepository(session)
     account = account_repo.get_account_by_id(invitation.account_id)
     account_name = account.name if account else "Unknown Account"
+    account_display_name = account.display_name if account else None
 
     # 4. Get inviter's email/name from account_users
     inviter_email = "Unknown User"
@@ -493,7 +494,7 @@ def get_invitation_details(
         elif inviter_account_user.email:
             inviter_email = inviter_account_user.email
 
-    return invitation, account_name, inviter_email
+    return invitation, account_name, account_display_name, inviter_email
 
 
 def accept_invitation(

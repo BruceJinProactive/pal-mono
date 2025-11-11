@@ -181,7 +181,7 @@ def remove_team_member(
 def get_invitation_details(
     session: Session,
     token: str,
-) -> tuple[db.UserInvitation, str, str] | None:
+) -> tuple[db.UserInvitation, str, str | None, str] | None:
     """
     Get invitation details by token (public endpoint, no auth required).
 
@@ -193,13 +193,13 @@ def get_invitation_details(
         token: Invitation token from the invitation URL.
 
     Returns:
-        Tuple of (invitation, account_name, inviter_email) or None if not found.
+        Tuple of (invitation, account_name, account_display_name, inviter_email) or None if not found.
         The inviter_email contains the name or email of the person who sent the invitation.
 
     Example:
         >>> result = get_invitation_details(session, "abc123...")
         >>> if result:
-        ...     invitation, account_name, inviter_email = result
+        ...     invitation, account_name, account_display_name, inviter_email = result
     """
     return _implementation.get_invitation_details(session, token)
 
