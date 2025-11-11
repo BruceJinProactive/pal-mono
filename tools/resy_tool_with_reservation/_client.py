@@ -86,11 +86,22 @@ def find_resy_availability(
 
 
 def refresh_universal_token(
-    *, api_key: str, universal_token: str, timeout: int = 30
+    *, api_key: str, refresh_token: str, timeout: int = 30
 ) -> Dict[str, Any]:
-    """Refresh the universal auth token used for subsequent venue authentication."""
+    """Refresh the universal auth token using the long-lived refresh token."""
 
-    headers = _build_auth_headers(api_key=api_key, token=universal_token)
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Authorization": f'ResyAPI api_key="{api_key}"',
+        "User-Agent": USER_AGENT,
+        "X-Origin": CONTROL_ORIGIN,
+        "Origin": CONTROL_ORIGIN,
+        "Referer": f"{CONTROL_ORIGIN}/",
+        "Cookie": f"x-resy-rest-refresh={refresh_token}",
+    }
+    # Some endpoints also honor the header directly; include it for good measure.
+    headers["X-Resy-Rest-Refresh"] = refresh_token
+
     response = _request_json(
         AUTH_REFRESH_URL, headers=headers, data=b"", timeout=timeout
     )
