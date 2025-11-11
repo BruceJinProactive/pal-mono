@@ -25,6 +25,7 @@ from tools.resy_tool_with_reservation._client import (
     fetch_reservations_report,
     find_resy_availability,
     get_reservation_refund_token,
+    login_resy_account,
     refresh_universal_token,
     search_guest_by_phone,
 )
@@ -60,7 +61,8 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         venue_id: int | str,
         city: str,
         venue_name: str,
-        refresh_token: str,
+        username: str,
+        password: str,
         default_struct_tags: Optional[Sequence[Dict[str, Any]]] = None,
         tool_metadata: ToolMetadata | None = None,
     ):
@@ -82,18 +84,19 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         if not venue_name:
             raise ValueError("Resy venue name is required")
 
-        refresh_token = (refresh_token or "").strip()
-        if not refresh_token:
-            raise ValueError("Resy refresh token is required")
+        username = (username or "").strip()
+        password = (password or "").strip()
+        if not username or not password:
+            raise ValueError("Resy username and password are required")
 
         self.venue_id = parsed_venue_id
         self.city = city
         self.venue_name = venue_name
-        self.refresh_token = refresh_token
+        self.username = username
+        self.password = password
+        self.base_auth_token: Optional[str] = None
         self._cached_operational_token: Optional[str] = None
         self._operational_token_expiry: Optional[datetime] = None
-        self._cached_universal_token: Optional[str] = None
-        self._universal_token_expiry: Optional[datetime] = None
         self._analytics_token: Optional[str] = None
         self.tool_metadata = tool_metadata
         self.default_struct_tags = (
@@ -700,30 +703,6 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         except ValueError:
             return None
 
-    def _get_universal_token(self, *, api_key: str, force_refresh: bool = False) -> str:
-        now = datetime.now(timezone.utc)
-        if (
-            not force_refresh
-            and self._cached_universal_token
-            and self._universal_token_expiry
-            and self._universal_token_expiry - now > timedelta(minutes=1)
-        ):
-            return self._cached_universal_token
-
-        refresh_response = refresh_universal_token(
-            api_key=api_key, refresh_token=self.refresh_token
-        )
-        universal_token = refresh_response.get("token")
-        if not universal_token:
-            raise RuntimeError("Resy auth refresh did not return a token")
-
-        expiry = self._extract_token_expiry(universal_token)
-        if not expiry:
-            expiry = now + timedelta(minutes=5)
-        self._cached_universal_token = universal_token
-        self._universal_token_expiry = expiry
-        return universal_token
-
     def _get_operational_token(
         self, *, api_key: str, force_refresh: bool = False
     ) -> str:
@@ -737,12 +716,32 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         ):
             return self._cached_operational_token
 
-        universal_token = self._get_universal_token(
+        base_token = self._ensure_base_token(
             api_key=api_key, force_refresh=force_refresh
         )
 
+        try:
+            refresh_response = refresh_universal_token(
+                api_key=api_key, universal_token=base_token
+            )
+        except ResyAPIError as exc:
+            if exc.status in {401, 403}:
+                base_token = self._ensure_base_token(
+                    api_key=api_key, force_refresh=True
+                )
+                refresh_response = refresh_universal_token(
+                    api_key=api_key, universal_token=base_token
+                )
+            else:
+                raise
+        refresh_token = refresh_response.get("token")
+        if not refresh_token:
+            raise RuntimeError("Resy auth refresh did not return a token")
+
+        self.base_auth_token = refresh_token
+
         venue_response = authorize_venue(
-            api_key=api_key, universal_token=universal_token, venue_id=self.venue_id
+            api_key=api_key, universal_token=refresh_token, venue_id=self.venue_id
         )
         operational_token = venue_response.get("token")
         if not operational_token:
@@ -768,9 +767,25 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
     def _invalidate_operational_token(self) -> None:
         self._cached_operational_token = None
         self._operational_token_expiry = None
-        self._cached_universal_token = None
-        self._universal_token_expiry = None
         self._analytics_token = None
+        self.base_auth_token = None
+
+    def _ensure_base_token(self, *, api_key: str, force_refresh: bool = False) -> str:
+        if self.base_auth_token and not force_refresh:
+            return self.base_auth_token
+
+        auth_response = login_resy_account(
+            api_key=api_key,
+            email=self.username,
+            password=self.password,
+            legacy=True,
+        )
+        token = auth_response.get("token")
+        if not token:
+            raise RuntimeError("Resy authentication did not return a token")
+
+        self.base_auth_token = token
+        return token
 
     @staticmethod
     def _extract_token_expiry(token: str) -> Optional[datetime]:

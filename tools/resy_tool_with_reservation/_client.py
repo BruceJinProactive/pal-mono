@@ -15,6 +15,7 @@ from utils.log import logger
 RESY_FIND_API_URL = "https://api.resy.com/4/find"
 AUTH_REFRESH_URL = "https://auth.resy.com/1/auth/refresh"
 AUTH_VENUE_URL = "https://auth.resy.com/1/auth/venue"
+AUTH_LOGIN_URL = "https://auth.resy.com/1/auth"
 RESY_CONTROL_BASE_URL = "https://control.resy.com/3"
 RESY_ANALYTICS_REPORT_URL = "https://api.resy.com/3/analytics/report/core/Reservations"
 USER_AGENT = "pal-mono/1.0"
@@ -86,22 +87,11 @@ def find_resy_availability(
 
 
 def refresh_universal_token(
-    *, api_key: str, refresh_token: str, timeout: int = 30
+    *, api_key: str, universal_token: str, timeout: int = 30
 ) -> Dict[str, Any]:
-    """Refresh the universal auth token using the long-lived refresh token."""
+    """Refresh the universal auth token used for subsequent venue authentication."""
 
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Authorization": f'ResyAPI api_key="{api_key}"',
-        "User-Agent": USER_AGENT,
-        "X-Origin": CONTROL_ORIGIN,
-        "Origin": CONTROL_ORIGIN,
-        "Referer": f"{CONTROL_ORIGIN}/",
-        "Cookie": f"x-resy-rest-refresh={refresh_token}",
-    }
-    # Some endpoints also honor the header directly; include it for good measure.
-    headers["X-Resy-Rest-Refresh"] = refresh_token
-
+    headers = _build_auth_headers(api_key=api_key, token=universal_token)
     response = _request_json(
         AUTH_REFRESH_URL, headers=headers, data=b"", timeout=timeout
     )
@@ -553,3 +543,26 @@ def _mask_string(text: str) -> str:
     if len(cleaned) <= 16:
         return cleaned
     return f"{cleaned[:8]}…{cleaned[-4:]}"
+
+
+def login_resy_account(
+    *,
+    api_key: str,
+    email: str,
+    password: str,
+    legacy: bool = True,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    payload = json.dumps(
+        {"email": email, "password": password, "legacy": legacy}
+    ).encode("utf-8")
+    headers = {
+        "Accept": "application/json, text/plain, */*",
+        "Authorization": f'ResyAPI api_key="{api_key}"',
+        "Content-Type": "application/json",
+        "User-Agent": USER_AGENT,
+        "X-Origin": CONTROL_ORIGIN,
+        "Origin": CONTROL_ORIGIN,
+        "Referer": f"{CONTROL_ORIGIN}/",
+    }
+    return _request_json(AUTH_LOGIN_URL, headers=headers, data=payload, timeout=timeout)
