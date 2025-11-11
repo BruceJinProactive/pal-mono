@@ -1,7 +1,12 @@
+import email
 import json
+import os
 import re
+from email import policy
 from typing import Any, List
 from urllib.parse import parse_qs, urlparse
+
+import boto3
 
 from agent.input_output import Input, Output
 from api.schemas.chat.message import (
@@ -170,7 +175,7 @@ async def get_agent_input_from_message(
 ) -> Input:
     """
     Converts a Message object into an Input object for the Agent.
-    Optionally fetches and includes conversation history.
+    Handles email body extraction from S3 for email messages.
 
     Args:
         message (Message): The Message object to be converted.
@@ -181,6 +186,13 @@ async def get_agent_input_from_message(
         Input: The Input object created from the Message, with history if available.
     """
     content = message.text.body if message.text else ""
+
+    # Handle email body extraction from S3
+    if message.channel == Channel.EMAIL and message.channel_info.get("messageId"):
+        message_id = message.channel_info["messageId"]
+        logger.info(f"Extracting email body for message ID: {message_id}")
+        content = await _extract_email_body_from_s3(message_id)
+
     input_obj = Input(
         content=content,
         context=message.context,
@@ -191,6 +203,76 @@ async def get_agent_input_from_message(
     )
 
     return input_obj
+
+
+async def _extract_email_body_from_s3(message_id: str) -> str:
+    """
+    Extract email body content from S3 based on message ID.
+
+    Args:
+        message_id (str): S3 message identifier or S3 URI
+
+    Returns:
+        str: Extracted email body content
+    """
+    try:
+        # Get S3 bucket from environment variable or use default
+        bucket_name = os.environ.get("SES_S3_BUCKET", "lat-pal-mono-bucket")
+
+        # Create S3 client
+        s3_client = boto3.client("s3")
+
+        # Email is stored in emails folder with message ID as filename
+        s3_key = f"emails/{message_id}"
+
+        logger.debug(
+            f"Extracting email body from S3: bucket={bucket_name}, key={s3_key}"
+        )
+
+        # Retrieve email from S3
+        response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+        raw_email = response["Body"].read()
+
+        # Parse email
+        email_message = email.message_from_bytes(raw_email, policy=policy.default)
+
+        # Extract text content
+        email_body = ""
+        if email_message.is_multipart():
+            for part in email_message.walk():
+                if part.get_content_type() == "text/plain":
+                    email_body = part.get_content()
+                    break
+                elif part.get_content_type() == "text/html" and not email_body:
+                    # Fallback to HTML if no plain text found
+                    email_body = part.get_content()
+        else:
+            email_body = email_message.get_content()
+
+        extracted_body = email_body.strip() if email_body else ""
+
+        # Create preview of body content for logging
+        if extracted_body:
+            if len(extracted_body) > 100:
+                body_preview = f"{extracted_body[:50]}...{extracted_body[-50:]}"
+            else:
+                body_preview = extracted_body
+        else:
+            body_preview = "(empty)"
+
+        logger.debug(
+            f"Successfully extracted email body from S3 for message_id {message_id}. "
+            f"Body length: {len(extracted_body)} characters. "
+            f"Preview: {body_preview}"
+        )
+        return extracted_body
+
+    except Exception as e:
+        logger.error(
+            f"Failed to extract email body from S3 for message_id {message_id}: {str(e)}"
+        )
+        # Return original message_id as fallback
+        return message_id
 
 
 async def process_output_for_url_updates(content: str, store_phone_number: str) -> None:

@@ -28,6 +28,7 @@ class Broker(str, Enum):
     META = "meta"
     SENDBLUE = "sendblue"
     TWILIO = "twilio"
+    SES = "ses"
 
 
 class Type(str, Enum):
@@ -97,32 +98,6 @@ class Message(BaseModel):
             "metadata": self.metadata.dict() if self.metadata is not None else None,
             "extras": self.extras.dict() if self.extras is not None else None,
         }
-
-    def get_content(self) -> str:
-        if self.channel in [Channel.SMS, Channel.VOICE]:
-            phone_number = f"My phone number is: {self.sender_identifier}"
-            self.context = (
-                f"{self.context}|{phone_number}" if self.context else phone_number
-            )
-
-        if self.text:
-            content = (
-                f"<message_channel>{self.channel.value}</message_channel>\n\n"
-                + f"<user_context>{self.context}</user_context>\n\n"
-                + f"<user_message>{self.text.body}</user_message>"
-            )
-        elif self.media:
-            content = (
-                f"<message_channel>{self.channel.value}</message_channel>\n\n"
-                + f"<user_context>{self.context}</user_context>\n\n"
-                + f"<media_url>{self.media.url}</media_url>\n\n"
-                + f"<media_caption>{self.media.caption}</media_caption>\n\n"
-                + f"<media_type>{self.media.media_type}</media_type>"
-            )
-        else:
-            raise ValueError("Message object not set")
-
-        return content
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Message":
