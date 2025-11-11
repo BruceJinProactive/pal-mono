@@ -743,6 +743,7 @@ def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> Cogni
             user_email=request.email,
             user_name=request.user_name,
             password=request.password,
+            session=session,
         )
         logger.info(f"[SelfOnboarding] Created Cognito user for {request.email}")
     except ValueError as e:
@@ -776,6 +777,7 @@ def signup_google_user(request: SelfOnboardingRequest, session: Session) -> Cogn
         user = admin_service.signup_google_user(
             google_credential=request.google_credential,
             account_name=request.account_name,
+            session=session,
         )
     except ValueError as e:
         session.rollback()

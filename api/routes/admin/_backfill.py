@@ -213,21 +213,28 @@ def backfill_role_assignments(
                             try:
                                 if existing_account_user:
                                     # Update existing AccountUser with email/name from Cognito
+                                    # Avoid overwriting stored values with empty strings
+                                    email_to_set = (
+                                        email if email else existing_account_user.email
+                                    )
+                                    name_to_set = (
+                                        name if name else existing_account_user.name
+                                    )
                                     account_user_repo.update_user_info(
                                         user_id=user_id,
                                         account_id=account.id,
-                                        email=email,
-                                        name=name,
+                                        email=email_to_set,
+                                        name=name_to_set,
                                     )
                                     user_result.memberships_updated += 1
                                     total_memberships_updated += 1
                                     logger.info(
-                                        f"Updated account membership for user {email} in account {account_name}",
+                                        f"Updated account membership for user {email_to_set} in account {account_name}",
                                         extra={
                                             "user_id": str(user_id),
                                             "account_id": str(account.id),
-                                            "email": email,
-                                            "name": name,
+                                            "email": email_to_set,
+                                            "name": name_to_set,
                                         },
                                     )
                                 else:

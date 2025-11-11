@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from api.schemas.admin.user_management import (
@@ -48,6 +49,7 @@ async def create_account_user(
     account_name: str,
     user: CreateUserRequest,
     context: UserContext,
+    session: Session,
 ) -> UserInfo:
     """
     Create a new admin user for a specific account.
@@ -56,6 +58,7 @@ async def create_account_user(
         account_name: The name of the account to create the user for
         user: The user information to create
         context: The user context for authorization
+        session: Database session
 
     Returns:
         UserInfo: The created user information
@@ -64,7 +67,7 @@ async def create_account_user(
 
     try:
         user_data = admin_service.create_account_user(
-            account_name, user.email, user.name
+            account_name, user.email, user.name, session
         )
         return UserInfo(
             email=user_data.email,

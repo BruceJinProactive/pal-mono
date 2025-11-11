@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session, declarative_base
 import db
 from api.schemas.admin.conversation import ConversationPreview
 from db.repositories import LeadFilter as RepoLeadFilter
+from db.repositories.account_repository import AccountRepository
+from db.repositories.account_user_repository import AccountUserRepository
 from db.repositories.conversation_repository import ConversationUpdate
+from db.tables.account_user import AccountUserStatus
 from services import (
     account_service,
     agent_service,
@@ -870,7 +873,7 @@ def onboard_new_account(
 
         # create cognito user accounts
         for user in users or []:
-            create_account_user(account_name, user.email, user.name)
+            create_account_user(account_name, user.email, user.name, session)
 
         # commit all changes at once.
         session.commit()
@@ -1055,6 +1058,7 @@ def create_account_user(
     account_name: str,
     user_email: str,
     user_name: str,
+    session: Session,
 ) -> CognitoUser:
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
     password = generate_password()
@@ -1072,6 +1076,48 @@ def create_account_user(
             ],
         )
         logger.info(f"Created user account for {user_email} using AdminCreateUser")
+
+        # Create account_user record in database
+        try:
+            # Get account_id from account_name
+            account_repo = AccountRepository(session)
+            account = account_repo.get_account(account_name)
+            if not account:
+                logger.error(f"Account {account_name} not found for user {user_email}")
+                raise ValueError(f"Account {account_name} not found")
+
+            # Get user_sub from Cognito
+            user_response = cognito_client.admin_get_user(
+                UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID, Username=user_email
+            )
+            user_sub = None
+            for attr in user_response["UserAttributes"]:
+                if attr["Name"] == "sub":
+                    user_sub = attr["Value"]
+                    break
+
+            if not user_sub:
+                logger.error(f"User sub not found for {user_email}")
+                raise ValueError(f"User sub not found for {user_email}")
+
+            # Create account_user record
+            account_user_repo = AccountUserRepository(session)
+            account_user_repo.create(
+                account_id=account.id,
+                user_id=uuid.UUID(user_sub),
+                email=user_email,
+                name=user_name,
+                added_by=None,  # Admin-created user
+                status=AccountUserStatus.active,
+            )
+            logger.info(
+                f"Created account_user record for {user_email} in account {account_name}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to create account_user record for {user_email}: {e}")
+            # Don't fail the entire operation if account_user creation fails
+            # The user still exists in Cognito
+
         try:
             email_service.send_email_with_template(
                 to_email=user_email,
@@ -1116,6 +1162,7 @@ def signup_account_user(
     user_email: str,
     user_name: str,
     password: str,
+    session: Session,
 ) -> CognitoUser:
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
     try:
@@ -1164,6 +1211,34 @@ def signup_account_user(
         access_token = auth_response["AuthenticationResult"]["AccessToken"]
         refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
         expires_in = auth_response["AuthenticationResult"]["ExpiresIn"]
+
+        # Create account_user record in database
+        try:
+            # Get account_id from account_name
+            account_repo = AccountRepository(session)
+            account = account_repo.get_account(account_name)
+            if not account:
+                logger.error(f"Account {account_name} not found for user {user_email}")
+                raise ValueError(f"Account {account_name} not found")
+
+            # Create account_user record
+            account_user_repo = AccountUserRepository(session)
+            account_user_repo.create(
+                account_id=account.id,
+                user_id=uuid.UUID(user_sub),
+                email=user_email,
+                name=user_name,
+                added_by=None,  # Self-signup user
+                status=AccountUserStatus.active,
+            )
+            logger.info(
+                f"Created account_user record for {user_email} in account {account_name}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to create account_user record for {user_email}: {e}")
+            # Don't fail the entire operation if account_user creation fails
+            # The user still exists in Cognito
+
         # ADD EMAIL SENDING HERE
 
         # TODO: Add email verification here
@@ -1192,6 +1267,7 @@ def signup_self_onboarding_user(
     user_email: str,
     user_name: str,
     password: str,
+    session: Session,
     is_google_user: bool = False,
 ) -> CognitoUser:
     """
@@ -1292,6 +1368,33 @@ def signup_self_onboarding_user(
     refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
     expires_in = auth_response["AuthenticationResult"]["ExpiresIn"]
 
+    # Create account_user record in database
+    try:
+        # Get account_id from account_name
+        account_repo = AccountRepository(session)
+        account = account_repo.get_account(account_name)
+        if not account:
+            logger.error(f"Account {account_name} not found for user {user_email}")
+            raise ValueError(f"Account {account_name} not found")
+
+        # Create account_user record
+        account_user_repo = AccountUserRepository(session)
+        account_user_repo.create(
+            account_id=account.id,
+            user_id=uuid.UUID(user_sub),
+            email=user_email,
+            name=user_name,
+            added_by=None,  # Self-onboarding user
+            status=AccountUserStatus.active,
+        )
+        logger.info(
+            f"Created account_user record for {user_email} in account {account_name}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to create account_user record for {user_email}: {e}")
+        # Don't fail the entire operation if account_user creation fails
+        # The user still exists in Cognito
+
     return CognitoUser(
         email=user_email,
         name=user_name,
@@ -1351,7 +1454,7 @@ def verify_and_decode_google_credential(google_credential: str) -> dict:
 
 
 def signup_google_onboarding_user(
-    account_name: str, google_credential: str
+    account_name: str, google_credential: str, session: Session
 ) -> CognitoUser:
     try:
         user_info = verify_and_decode_google_credential(google_credential)
@@ -1366,6 +1469,7 @@ def signup_google_onboarding_user(
             user_email=email,
             user_name=name,
             password=password,
+            session=session,
             is_google_user=True,
         )
     except ValueError as e:

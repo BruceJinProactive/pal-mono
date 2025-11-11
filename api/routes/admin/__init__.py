@@ -1508,12 +1508,13 @@ async def create_account_user(
     account_name: str,
     user: CreateUserRequest,
     context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
 ) -> UserInfo:
     """
     Create a new admin user for a specific account.
     Uses AdminCreateUser flow to create the user in Cognito.
     """
-    return await _users.create_account_user(account_name, user, context)
+    return await _users.create_account_user(account_name, user, context, session)
 
 
 @admin_router.delete("/accounts/{account_name}/users")

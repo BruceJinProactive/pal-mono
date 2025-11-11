@@ -545,6 +545,7 @@ def create_account_user(
     account_name: str,
     user_email: str,
     user_name: str,
+    session: Session,
 ) -> CognitoUser:
     """
     Create Cognito user accounts for the provided list of users using AdminCreateUser.
@@ -553,6 +554,7 @@ def create_account_user(
         account_name (str): The account name to associate the users with
         user_email (str): User's email used for login
         user_name (str): User's first name
+        session (Session): Database session
 
     Returns:
         CognitoUser: Created user details
@@ -560,7 +562,9 @@ def create_account_user(
     Raises:
         ValueError: If there's an error creating a user account
     """
-    return _implementation.create_account_user(account_name, user_email, user_name)
+    return _implementation.create_account_user(
+        account_name, user_email, user_name, session
+    )
 
 
 def signup_account_user(
@@ -568,6 +572,7 @@ def signup_account_user(
     user_email: str,
     user_name: str,
     password: str,
+    session: Session,
 ) -> CognitoUser:
     """
     Create Cognito user accounts for the provided list of users using AdminCreateUser.
@@ -577,6 +582,7 @@ def signup_account_user(
         user_email (str): User's email used for login
         user_name (str): User's first name
         password (str): User's password
+        session (Session): Database session
 
     Returns:
         CognitoUser: Created user details
@@ -585,7 +591,7 @@ def signup_account_user(
         ValueError: If there's an error creating a user account
     """
     return _implementation.signup_account_user(
-        account_name, user_email, user_name, password
+        account_name, user_email, user_name, password, session
     )
 
 
@@ -594,18 +600,20 @@ def signup_self_onboarding_user(
     user_email: str,
     user_name: str,
     password: str,
+    session: Session,
 ) -> CognitoUser:
     return _implementation.signup_self_onboarding_user(
-        account_name, user_email, user_name, password
+        account_name, user_email, user_name, password, session
     )
 
 
 def signup_google_user(
     account_name: str,
     google_credential: str,
+    session: Session,
 ) -> CognitoUser:
     return _implementation.signup_google_onboarding_user(
-        account_name, google_credential
+        account_name, google_credential, session
     )
 
 
