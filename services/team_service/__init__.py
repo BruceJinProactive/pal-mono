@@ -183,9 +183,7 @@ def get_invitation_details(
     token: str,
 ) -> tuple[db.UserInvitation, str, str | None, str] | None:
     """
-    Get invitation details by token.
-
-    Note: Endpoint requires authentication. Email validation happens at the route handler level.
+    Get invitation details by token (public endpoint, no auth required).
 
     Retrieves invitation information and checks expiration status.
     Automatically marks expired invitations.

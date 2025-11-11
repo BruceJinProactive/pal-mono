@@ -269,16 +269,14 @@ async def remove_team_member(
 
 async def get_invitation_details(
     token: str,
-    context: UserContext,
     session: Session,
 ) -> InvitationDetailsResponse:
     """
-    Get invitation details by token (requires authentication).
+    Get invitation details by token (public endpoint, no auth).
 
     Route handler that:
     1. Calls team service to get invitation details
-    2. Validates that logged-in user's email matches invitation email
-    3. Converts DB model to API response
+    2. Converts DB model to API response
     """
     # 1. Call service to get invitation details
     result = team_service.get_invitation_details(session=session, token=token)
@@ -291,15 +289,7 @@ async def get_invitation_details(
 
     invitation, account_name, account_display_name, inviter_email = result
 
-    # 2. Validate email matches
-    if invitation.email.lower() != context.email.lower():
-        raise HTTPException(
-            status_code=http_status.HTTP_403_FORBIDDEN,
-            detail="This invitation is not for your email address",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # 3. Convert DB model to API response
+    # 2. Convert DB model to API response
     api_status = InvitationStatus[invitation.status.name.upper()]
 
     return InvitationDetailsResponse(
