@@ -88,7 +88,7 @@ class UpdateTeamMemberResponse(BaseModel):
 
 # Invitation Flow Schemas
 class InvitationDetailsResponse(BaseModel):
-    """Public invitation details (no auth required)."""
+    """Invitation details response (requires authentication and email validation)."""
 
     account_name: str
     account_display_name: str | None = None

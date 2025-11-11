@@ -1677,14 +1677,16 @@ async def remove_team_member(
 @admin_router.get("/invitations/{token}")
 async def get_invitation_details(
     token: str,
+    context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
 ) -> InvitationDetailsResponse:
     """
-    Get invitation details by token (public endpoint, no auth required).
+    Get invitation details by token (requires authentication).
 
+    Validates that the logged-in user's email matches the invitation email.
     Returns account name, invited by, role, and expiration info.
     """
-    return await _team.get_invitation_details(token, session)
+    return await _team.get_invitation_details(token, context, session)
 
 
 @admin_router.post("/invitations/accept")

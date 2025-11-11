@@ -447,7 +447,9 @@ def get_invitation_details(
     token: str,
 ) -> tuple[db.UserInvitation, str, str | None, str] | None:
     """
-    Get invitation details by token (public endpoint, no auth).
+    Get invitation details by token.
+
+    Note: Endpoint requires authentication. Email validation happens at the route handler level.
 
     Steps:
     1. Get invitation by token
