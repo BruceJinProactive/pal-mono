@@ -31,11 +31,6 @@ from db.tables.types import AccountUserStatus, InvitationStatus
 from services import email_service
 from services.admin_service._utils import generate_password
 from services.auth_types import UserContext
-from services.team_service.helpers import (
-    get_mock_display_name_for_user,
-    get_mock_email_for_user,
-    user_id_matches_email,
-)
 from services.team_service.schema import (
     AcceptInvitationParams,
     InvitationParams,
@@ -261,9 +256,9 @@ def list_team_members(
         if filters.role and (not account_role or account_role != filters.role):
             continue
 
-        # Get email and name (mock for now - TODO: get from account_users.email)
-        member_email = get_mock_email_for_user(au.user_id)
-        member_name = get_mock_display_name_for_user(au.user_id)
+        # Get email and name from account_users table
+        member_email = au.email or "unknown@example.com"
+        member_name = au.name or f"User {str(au.user_id)[:8]}"
 
         # Apply search filter
         if filters.search and filters.search.lower() not in member_email.lower():
@@ -289,11 +284,11 @@ def update_member_role(
 
     Steps:
     1. Get account
-    2. Find user by email (mock: only works for current user)
+    2. Find user by email
     3. Get current role
-    4. Check last owner protection
-    5. Remove old role and add new role
-    6. Invalidate cache
+    4. Check idempotency (skip if role unchanged)
+    5. Check last owner protection
+    6. Remove old role and add new role (with transaction safety)
     7. Return user_id and timestamp
 
     Args:
@@ -307,7 +302,7 @@ def update_member_role(
         Tuple of (user_id, updated_at timestamp)
 
     Raises:
-        ValueError: If account/user not found or last owner protection triggered
+        ValueError: If account/user not found, last owner protection triggered, or role update fails
     """
     # 1. Get account
     account_repo = AccountRepository(session)
@@ -315,14 +310,13 @@ def update_member_role(
     if not account:
         raise ValueError(f"Account '{account_name}' not found")
 
-    # 2. Find user by email (mock: only current user for now)
-    # TODO: Once email is in account_users, query by email
+    # 2. Find user by email
     account_user_repo = AccountUserRepository(session)
     account_users = account_user_repo.get_users_for_account(account.id)
 
     target_user_id = None
     for au in account_users:
-        if user_id_matches_email(au.user_id, user_email, context.email):
+        if au.email and au.email.lower() == user_email.lower():
             target_user_id = au.user_id
             break
 
@@ -336,7 +330,15 @@ def update_member_role(
     )
     current_role = current_roles[0] if current_roles else None
 
-    # 4. Check last owner protection
+    # 4. Check idempotency - skip if role unchanged
+    if current_role == params.account_role:
+        logger.info(
+            f"User {user_email} already has role {params.account_role} on account {account_name}, skipping update"
+        )
+        updated_at = datetime.now(timezone.utc)
+        return target_user_id, updated_at
+
+    # 5. Check last owner protection
     if current_role == "owner" and params.account_role != "owner":
         owner_count = role_repo.count_owners_for_resource(
             ResourceType.ACCOUNT, account.id
@@ -344,22 +346,46 @@ def update_member_role(
         if owner_count <= 1:
             raise ValueError("Cannot remove the last owner from the account")
 
-    # 5. Remove old role and add new role
-    if current_role:
-        role_repo.remove_role(
-            target_user_id, ResourceType.ACCOUNT, account.id, current_role
+    # 6. Remove old role and add new role with transaction safety
+    try:
+        if current_role:
+            role_repo.remove_role(
+                target_user_id, ResourceType.ACCOUNT, account.id, current_role
+            )
+
+        role_repo.add_role(
+            user_id=target_user_id,
+            resource_type=ResourceType.ACCOUNT,
+            resource_id=account.id,
+            role=params.account_role,
+            assigned_by=UUID(context.username),
+            reason="Role updated via API",
         )
 
-    role_repo.add_role(
-        user_id=target_user_id,
-        resource_type=ResourceType.ACCOUNT,
-        resource_id=account.id,
-        role=params.account_role,
-        assigned_by=UUID(context.username),
-        reason="Role updated via API",
-    )
+        # Flush to detect any constraint violations before committing
+        session.flush()
 
-    # 6. Send notification email (TODO)
+        logger.info(
+            f"Updated role for user {user_email} from {current_role} to {params.account_role} on account {account_name}",
+            extra={
+                "user_id": str(target_user_id),
+                "account_id": str(account.id),
+                "old_role": current_role,
+                "new_role": params.account_role,
+                "updated_by": context.username,
+            },
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to update role for user {user_email}: {e}",
+            extra={
+                "user_email": user_email,
+                "account_name": account_name,
+                "error": str(e),
+            },
+        )
+        session.rollback()
+        raise ValueError(f"Failed to update role: {str(e)}")
 
     # 7. Return user_id and timestamp
     updated_at = datetime.now(timezone.utc)
@@ -377,11 +403,10 @@ def remove_team_member(
 
     Steps:
     1. Get account
-    2. Find user by email (mock: only works for current user)
+    2. Find user by email
     3. Check last owner protection
     4. Deactivate AccountUser record
     5. Remove all role assignments
-    6. Invalidate cache
 
     Args:
         session: Database session
@@ -398,13 +423,13 @@ def remove_team_member(
     if not account:
         raise ValueError(f"Account '{account_name}' not found")
 
-    # 2. Find user by email (mock: only current user for now)
+    # 2. Find user by email
     account_user_repo = AccountUserRepository(session)
     account_users = account_user_repo.get_users_for_account(account.id)
 
     target_user_id = None
     for au in account_users:
-        if user_id_matches_email(au.user_id, user_email, context.email):
+        if au.email and au.email.lower() == user_email.lower():
             target_user_id = au.user_id
             break
 
