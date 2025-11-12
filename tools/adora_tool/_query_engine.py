@@ -12,9 +12,9 @@ from pinecone import Pinecone
 
 
 # TODO: This code is bad >:( Refactor once it works. (ToT)
-def create_query_engine(namespace) -> BaseQueryEngine:
+def create_query_engine(namespace, index_name="agents") -> BaseQueryEngine:
     pc = Pinecone(os.getenv("PINECONE_API_KEY"))
-    pinecone_index = pc.Index("agents")
+    pinecone_index = pc.Index(index_name)
 
     vector_store = PineconeVectorStore(
         pinecone_index=pinecone_index, namespace=namespace

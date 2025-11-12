@@ -46,6 +46,7 @@ class AdoraTool(Toolkit):
         store_id: str,
         namespace: str,
         tool_metadata: ToolMetadata,
+        index_name: str = "agents",
         loyalty_enabled: bool = False,
         coupons_enabled: bool = False,
         default_coupon_id: int | None = None,
@@ -63,6 +64,7 @@ class AdoraTool(Toolkit):
         # Configs
         self.store_id = store_id
         self.namespace = namespace
+        self.index_name = index_name
         self.tool_metadata = tool_metadata
         self.discounts = []  # { coupon_id, coupon_code }
         self.default_coupon_id = default_coupon_id
@@ -100,7 +102,9 @@ class AdoraTool(Toolkit):
         self.register(self.get_menu_item_info)
 
         # Create query engine and query messages tool
-        self.query_engine = _query_engine.create_query_engine(self.namespace)
+        self.query_engine = _query_engine.create_query_engine(
+            self.namespace, self.index_name
+        )
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
 
     def _prefetch_adora_bearer_token(self) -> AdoraAccessToken | None:
