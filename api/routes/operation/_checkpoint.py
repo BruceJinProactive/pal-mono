@@ -615,6 +615,9 @@ async def compare_checkpoint(
         uploaded_image_content = await image.read()
         uploaded_image_base64 = base64.b64encode(uploaded_image_content).decode("utf-8")
 
+        # Reset file pointer to beginning so it can be read again for S3 upload
+        await image.seek(0)
+
         # Step 1: Parse or generate submission_id
         if submission_id:
             try:
