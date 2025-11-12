@@ -54,7 +54,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         "last_name",
         "phone_number",
     ]
-    REQUIRED_DELETE_RESERVATION_FIELDS = ["date"]
+    REQUIRED_DELETE_RESERVATION_FIELDS = ["date", "time"]
 
     def __init__(
         self,
@@ -466,10 +466,16 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
     @tool
     @params_validate()
-    def delete_reservation(self, date: str) -> str:  # type: ignore[misc]
-        """Cancel the first reservation on a given date that matches the caller's phone. Make sure to ask for the specific date of the reservation they want to cancel if they didn't provide it. This tool doesnt support editing reservations, only cancelling.
+    def delete_reservation(self, date: str, time: str) -> str:  # type: ignore[misc]
+        """Cancel the reservation on a given date/time that matches the caller's phone. This tool doesnt support editing reservations, only cancelling.
+
         Args:
-            date: Desired reservation date in YYYY-MM-DD format."""
+            date: Desired reservation date in YYYY-MM-DD format.
+            time: Desired reservation time in HH:MM format (24-hour).
+
+        Returns:
+            str: A cancellation confirmation if a matching reservation is found, or guidance about alternate reservations the user has on that date if we couldn't find one at that time.
+        """
 
         customer_phone = (
             self.tool_metadata.customer_phone if self.tool_metadata else None
@@ -485,6 +491,10 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             target_date = datetime.fromisoformat(date).date()
         except ValueError:
             return "Please provide the reservation date in YYYY-MM-DD format."
+
+        target_time_norm = _normalize_time_input(time)
+        if not target_time_norm:
+            return "Please provide the reservation time in HH:MM format."
 
         try:
             api_key = get_resy_api_key(city=self.city, venue_name=self.venue_name)
@@ -547,7 +557,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         rows = extract_reservation_rows(report)
         customer_last_digits = normalized_customer[-10:]
-        matching_row: Optional[Dict[str, Any]] = None
+        phone_rows: list[Dict[str, Any]] = []
         for row in rows:
             row_phone = _normalize_phone(row.get("phone"))
             if not row_phone:
@@ -555,10 +565,28 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             if row_phone == normalized_customer or row_phone.endswith(
                 customer_last_digits
             ):
+                phone_rows.append(row)
+
+        if not phone_rows:
+            return "I didn't find any reservations for that date under the caller's phone number. Please verify that it's the correct date for the reservation to be cancelled."
+
+        matching_row: Optional[Dict[str, Any]] = None
+        alternate_row: Optional[Dict[str, Any]] = None
+        for row in phone_rows:
+            row_time_norm = _normalize_time_value(row.get("Time"))
+            if row_time_norm == target_time_norm:
                 matching_row = row
                 break
+            if not alternate_row:
+                alternate_row = row
 
         if not matching_row:
+            if alternate_row:
+                alt_time = alternate_row.get("Time") or "unknown time"
+                return (
+                    "I didn't find a reservation at that time for this phone number, but I do see one "
+                    f"on {date} at {alt_time}. Ask the guest if they'd like me to cancel that reservation instead."
+                )
             return "I didn't find any reservations for that date under the caller's phone number. Please verify that it's the correct date for the reservation to be cancelled."
 
         reservation_id_raw = matching_row.get("Reservation_id")
@@ -910,3 +938,27 @@ def _normalize_phone(value: Optional[str]) -> Optional[str]:
     if len(digits) == 10:
         digits = f"1{digits}"
     return digits
+
+
+def _normalize_time_value(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    stripped = value.strip()
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(stripped, fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+    return None
+
+
+def _normalize_time_input(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    stripped = value.strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(stripped, fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+    return None
