@@ -56,3 +56,9 @@ class CheckpointRun(Base):
         onupdate=func.now(),
         server_onupdate=text("now()"),
     )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        index=True,
+    )
