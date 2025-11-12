@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from utils.log import logger
-from utils.secret import get_server_secret
+from utils.secret import get_server_secret_with_fallback
 
 DEFAULT_TIMEOUT = 10
 TINYURL_API_URL = "https://api.tinyurl.com/create"
@@ -23,7 +23,7 @@ def shorten_url(long_url: str) -> str:
         Shortened URL, or the original URL if shortening fails
     """
 
-    api_token = get_server_secret("TINYURL_API_KEY")
+    api_token = get_server_secret_with_fallback("TINYURL_API_KEY")
 
     if not api_token:
         logger.debug("[ShortenUrl] No API token available for URL shortening")

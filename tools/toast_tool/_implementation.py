@@ -1155,16 +1155,6 @@ class ToastTool(Toolkit):
         if order.externalId is None:
             raise ValueError("Order externalId is None after submission")
 
-        # Sanity check for iframe bearer token
-        toast_hosted_payment_iframe_bearer_token = (
-            self._toast_hosted_payment_iframe_bearer_token
-        )
-        if not toast_hosted_payment_iframe_bearer_token:
-            logger.error(
-                "[ToastTool._begin_hosted_checkout_flow] No hosted checkout payment bearer token available"
-            )
-            return "Failed to authenticate payment tool. Please contact the store to complete your order."
-
         # Extract order items from the submitted order
         order_items = self._extract_order_items(order)
         logger.debug(
@@ -1259,6 +1249,10 @@ class ToastTool(Toolkit):
             token_name="TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
             credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
         )
+        if not iframe_bearer_token:
+            raise ValueError(
+                "[ToastTool._build_hosted_payment_payload] Failed to retrieve iframe bearer token."
+            )
 
         payload: dict[str, Any] = {
             "email": customer.email,
@@ -1334,6 +1328,7 @@ class ToastTool(Toolkit):
             logger.error(
                 f"[ToastTool._generate_iframe_payment_link] Error generating iframe payment link: {e}"
             )
+            traceback.print_exc()
             return "Failed to generate payment link. Please try again."
 
     def _extract_order_items(self, order: Order) -> list[dict[str, Any]]:

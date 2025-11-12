@@ -511,7 +511,7 @@ def create_payment_intent(
         ValueError: If payment intent creation fails
     """
     # Use payments endpoint if not provided
-    endpoint = payments_api_endpoint or "payments.sandbox.eng.toasttab.com"
+    endpoint = payments_api_endpoint or "payments.toasttab.com"
 
     logger.debug(
         f"[ToastAPI.create_payment_intent] Creating payment intent for store {store_id}"
