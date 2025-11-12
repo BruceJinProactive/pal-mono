@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import os
 import uuid
@@ -652,19 +651,30 @@ async def compare_checkpoint(
             image_url=image_url,
         )
 
-        # Step 5: Start background task to run OpenAI comparison
-        asyncio.create_task(
-            checkpoint_service.compare_and_update_checkpoint_background(
-                checkpoint_result_id=checkpoint_run.id,
-                checkpoint=checkpoint,
-                uploaded_image_base64=uploaded_image_base64,
-            )
+        # Step 5: Run OpenAI comparison synchronously and wait for result
+        comparison_result = await checkpoint_service.compare_checkpoint_images_async(
+            checkpoint=checkpoint,
+            uploaded_image_base64=uploaded_image_base64,
         )
 
+        # Step 6: Update checkpoint run with the comparison result
+        checkpoint_service.update_checkpoint_result(
+            session=session,
+            result_id=checkpoint_run.id,
+            result={
+                "status": "done",
+                "image_url": image_url,
+                **comparison_result,
+            },
+            status=CheckStatus.active,
+        )
+
+        # Step 7: Return the complete result immediately
         return {
             "checkpoint_result_id": str(checkpoint_run.id),
             "submission_id": str(submission_uuid),
-            "status": "processing",
+            "status": "done",
+            "result": comparison_result,
         }
 
     except HTTPException:
