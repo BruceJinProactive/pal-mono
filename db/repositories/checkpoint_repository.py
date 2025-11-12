@@ -398,13 +398,21 @@ def update_checkpoint_result(
         if not checkpoint_result:
             raise ValueError(f"CheckpointRun {result_id} not found")
 
-        # Preserve existing metadata (image_url, timestamp) and merge with new result
+        # Preserve existing metadata (image_url, timestamp, status) and merge with new result
         # This ensures initial metadata from compare-camera endpoint is not lost
+        # IMPORTANT: Preserved fields are set AFTER spreading result to ensure they always override
         existing_result = checkpoint_result.result or {}
         merged_result = {
-            **result,  # New OpenAI comparison data
-            "image_url": existing_result.get("image_url"),  # Preserve initial S3 key
-            "timestamp": existing_result.get("timestamp"),  # Preserve initial timestamp
+            **result,  # New OpenAI comparison data spread first
+            "status": existing_result.get(
+                "status"
+            ),  # Then preserve (overrides any same-named key)
+            "image_url": existing_result.get(
+                "image_url"
+            ),  # Then preserve (overrides any same-named key)
+            "timestamp": existing_result.get(
+                "timestamp"
+            ),  # Then preserve (overrides any same-named key)
         }
         checkpoint_result.result = merged_result
         checkpoint_result.status = status
