@@ -1700,3 +1700,99 @@ def update_stripe_customer_for_account(
             },
         )
         raise
+
+
+def get_subscription_details(session: Session, account: db.Account) -> dict:
+    """
+    Get comprehensive subscription and billing details for an account.
+
+    Fetches:
+    - Current subscription info
+    - Usage metrics (calls used, overage)
+    - Recent invoices
+    - Payment method info
+    - Billing cycle details
+    - Upgrade/downgrade options
+
+    Args:
+        session: Database session
+        account: Account to fetch details for
+
+    Returns:
+        Dictionary with all billing and subscription details
+    """
+    from services.subscription_service._billing_details import (
+        TIER_ORDER,
+        get_billing_cycle_info,
+        get_payment_method_info,
+        get_recent_invoices,
+        get_upgrade_options,
+        get_usage_metrics,
+    )
+
+    # Get current subscription
+    subscription = get_current_subscription(session, account)
+
+    # Determine current plan
+    plan_name = None
+    current_plan_id = None
+    current_tier = None
+    current_plan_tier_value = 0
+    plan_features = []
+
+    if subscription and subscription.subscription_plan:
+        plan_name = subscription.subscription_plan.name
+        current_plan_id = str(subscription.subscription_plan.id)
+        current_tier = subscription.subscription_plan.tier
+        current_plan_tier_value = TIER_ORDER.get(current_tier, 0)
+        # Use features_included from the subscription plan
+        plan_features = subscription.subscription_plan.features_included or []
+
+    # Get Stripe data
+    stripe_customer_id = account.stripe_customer_id
+    stripe_subscription_id = (
+        subscription.stripe_subscription_id if subscription else None
+    )
+
+    # Fetch usage metrics
+    usage = get_usage_metrics(session, account, subscription, stripe_customer_id)
+
+    # Fetch invoices
+    invoices = get_recent_invoices(stripe_customer_id, limit=10)
+
+    # Get payment method info
+    payment_status, last4, brand = get_payment_method_info(stripe_customer_id)
+
+    # Get billing cycle info
+    billing_cycle, next_billing_date, current_period_start, current_period_end = (
+        get_billing_cycle_info(stripe_subscription_id)
+    )
+
+    # Get upgrade options from database
+    upgrade_options = get_upgrade_options(session, current_plan_id, current_tier)
+
+    logger.info(
+        f"Fetched comprehensive subscription details for account {account.name}",
+        extra={
+            "account_id": str(account.id),
+            "plan_name": plan_name,
+            "has_invoices": len(invoices) > 0,
+        },
+    )
+
+    return {
+        "subscription": subscription,
+        "plan_name": plan_name,
+        "plan_features": plan_features,
+        "billing_cycle": billing_cycle,
+        "next_billing_date": next_billing_date,
+        "current_period_start": current_period_start,
+        "current_period_end": current_period_end,
+        "usage": usage,
+        "payment_status": payment_status,
+        "payment_method_last4": last4,
+        "payment_method_brand": brand,
+        "recent_invoices": invoices,
+        "upgrade_options": upgrade_options,
+        "current_plan_tier": current_plan_tier_value,
+    }

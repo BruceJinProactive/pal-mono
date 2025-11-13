@@ -2298,6 +2298,26 @@ def get_current_account_subscription(
     return _subscription.get_current_subscription(context, session, account_name)
 
 
+@admin_router.get("/accounts/{account_name}/subscriptions/details")
+def get_subscription_details(
+    account_name: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+):
+    """
+    Get comprehensive subscription and billing details for the frontend.
+
+    Returns detailed information including:
+    - Current subscription and plan features
+    - Usage metrics (calls used, overage)
+    - Billing cycle and next billing date
+    - Recent invoices with download links
+    - Payment method information
+    - Upgrade/downgrade options with 3 randomly selected featured benefits
+    """
+    return _subscription.get_subscription_details(context, session, account_name)
+
+
 @admin_router.patch("/accounts/{account_name}/subscriptions/{external_id}")
 def update_account_subscription(
     account_name: str,

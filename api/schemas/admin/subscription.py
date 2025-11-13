@@ -155,8 +155,76 @@ class ListAccountSubscriptionsResponse(BaseModel):
     scheduled: List[Subscription] = []
 
 
+class UsageMetrics(BaseModel):
+    """Usage metrics for the current billing period."""
+
+    calls_used: int = 0
+    calls_included: int = 0
+    calls_overage: int = 0
+    overage_cost: float = 0.0  # Cost of overage in dollars
+
+
+class Invoice(BaseModel):
+    """Invoice details."""
+
+    id: str
+    invoice_number: str | None = None
+    amount_due: int  # in cents
+    amount_paid: int  # in cents
+    currency: str = "usd"
+    status: str  # paid, open, void, uncollectible
+    created: datetime
+    due_date: datetime | None = None
+    invoice_pdf: str | None = None  # PDF download URL
+    hosted_invoice_url: str | None = None  # Stripe hosted invoice URL
+
+
+class UpgradeOption(BaseModel):
+    """Information about upgrade/downgrade options."""
+
+    plan_name: str
+    plan_id: str | None = None
+    price_monthly: float | None = None
+    price_annual: float | None = None
+    featured_benefits: List[str] = (
+        []
+    )  # 3 randomly selected features from features_included
+
+
 class GetCurrentSubscriptionResponse(BaseModel):
     subscription: Optional[Subscription] = None
+
+
+class GetCurrentSubscriptionDetailsResponse(BaseModel):
+    """Comprehensive subscription and billing details for the frontend."""
+
+    # Current subscription info
+    subscription: Optional[Subscription] = None
+    plan_name: str | None = None
+    plan_features: List[str] = []  # features_included from subscription_plan
+
+    # Billing cycle info
+    billing_cycle: str | None = None  # "monthly" or "annual"
+    next_billing_date: datetime | None = None
+    current_period_start: datetime | None = None
+    current_period_end: datetime | None = None
+
+    # Usage metrics
+    usage: UsageMetrics = UsageMetrics()
+
+    # Payment info
+    payment_status: str | None = None  # "active", "past_due", "canceled", etc.
+    payment_method_last4: str | None = None  # Last 4 digits of card
+    payment_method_brand: str | None = None  # visa, mastercard, etc.
+
+    # Invoices
+    recent_invoices: List[Invoice] = []
+
+    # Upgrade options
+    upgrade_options: List[UpgradeOption] = []
+    current_plan_tier: int = (
+        0  # Numeric tier value: 0=none, 1=t1, 2=t2, 3=t3, 4=enterprise
+    )
 
 
 class ListSubscriptionsRequest(BaseModel):

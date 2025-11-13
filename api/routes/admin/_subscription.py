@@ -21,6 +21,7 @@ from api.schemas.admin.subscription import (
     CreateSubscriptionRequest,
     CreditGrant,
     GetAccountCreditResponse,
+    GetCurrentSubscriptionDetailsResponse,
     GetCurrentSubscriptionResponse,
     GrantAccountCreditRequest,
     ListAccountCreditGrantsResponse,
@@ -230,6 +231,51 @@ def get_current_subscription(
     subscription = subscription_service.get_current_subscription(session, account)
     return GetCurrentSubscriptionResponse(
         subscription=build_subscription(subscription) if subscription else None
+    )
+
+
+def get_subscription_details(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+):
+    """
+    Get comprehensive subscription and billing details.
+
+    Returns detailed information including:
+    - Current subscription and plan features
+    - Usage metrics (calls used, overage)
+    - Billing cycle and next billing date
+    - Recent invoices with download links
+    - Payment method information
+    - Upgrade/downgrade options with featured benefits
+    """
+    authorize_user_account(context, account_name)
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} does not exist")
+
+    details = subscription_service.get_subscription_details(session, account)
+
+    return GetCurrentSubscriptionDetailsResponse(
+        subscription=(
+            build_subscription(details["subscription"])
+            if details["subscription"]
+            else None
+        ),
+        plan_name=details["plan_name"],
+        plan_features=details["plan_features"],
+        billing_cycle=details["billing_cycle"],
+        next_billing_date=details["next_billing_date"],
+        current_period_start=details["current_period_start"],
+        current_period_end=details["current_period_end"],
+        usage=details["usage"],
+        payment_status=details["payment_status"],
+        payment_method_last4=details["payment_method_last4"],
+        payment_method_brand=details["payment_method_brand"],
+        recent_invoices=details["recent_invoices"],
+        upgrade_options=details["upgrade_options"],
+        current_plan_tier=details["current_plan_tier"],
     )
 
 
