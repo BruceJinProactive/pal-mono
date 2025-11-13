@@ -40,8 +40,50 @@ from services.team_service.schema import (
 )
 from utils.log import logger
 
-# Postmark template ID for team invitation emails
-TEAM_INVITATION_TEMPLATE_ID = 42139611
+# Postmark template IDs for team invitation emails
+TEAM_INVITATION_NEW_USER_TEMPLATE_ID = 42139611  # For new users (with password)
+TEAM_INVITATION_EXISTING_USER_TEMPLATE_ID = 42173053  # For existing confirmed users
+TEAM_INVITATION_PENDING_USER_TEMPLATE_ID = 42173054  # For users who never logged in
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+
+def get_cognito_user_status(
+    email: str, user_pool_id: str, aws_region: str
+) -> tuple[bool, str | None]:
+    """
+    Check if a user exists in Cognito and return their status.
+
+    Args:
+        email: User's email address
+        user_pool_id: Cognito User Pool ID
+        aws_region: AWS region
+
+    Returns:
+        tuple[bool, str | None]: (user_exists, user_status)
+        - user_exists: True if user exists in Cognito
+        - user_status: Cognito user status (FORCE_CHANGE_PASSWORD, CONFIRMED, etc.) or None
+    """
+    try:
+        cognito_client = boto3.client("cognito-idp", region_name=aws_region)
+        response = cognito_client.admin_get_user(
+            UserPoolId=user_pool_id,
+            Username=email,
+        )
+        user_status = response.get("UserStatus")
+        logger.info(f"Found existing Cognito user: {email} with status: {user_status}")
+        return True, user_status
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "UserNotFoundException":
+            logger.info(f"Cognito user not found: {email}")
+            return False, None
+        else:
+            logger.error(f"Error checking Cognito user status: {e}")
+            raise  # Re-raise to surface AWS issues to caller
+
 
 # ============================================================================
 # TEAM MANAGEMENT - SYNC
@@ -93,7 +135,7 @@ def create_invitation(
     invitation_token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
 
-    # 4. Create Cognito user with temporary password
+    # 4. Check Cognito user status and create if needed
     user_name = params.email.split("@")[0].replace(".", " ").title()
     password = generate_password()
 
@@ -101,33 +143,48 @@ def create_invitation(
     aws_region = os.environ.get("AWS_REGION", "us-east-1")
     user_pool_id = os.environ.get("AWS_ADMIN_CONSOLE_USER_POOL_ID")
 
+    # Check if user exists and get their status
+    user_exists = False
+    user_status = None
     cognito_user_created = False
+
     if user_pool_id:
-        try:
-            cognito_client = boto3.client("cognito-idp", region_name=aws_region)
-            cognito_client.admin_create_user(
-                UserPoolId=user_pool_id,
-                Username=params.email,
-                TemporaryPassword=password,
-                MessageAction="SUPPRESS",
-                UserAttributes=[
-                    {"Name": "email", "Value": params.email},
-                    {"Name": "email_verified", "Value": "true"},
-                    {"Name": "name", "Value": user_name},
-                    {"Name": "custom:account_name", "Value": account.name},
-                ],
-            )
-            cognito_user_created = True
-            logger.info(f"Created Cognito user for invitation: {params.email}")
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code == "UsernameExistsException":
-                # User already exists in Cognito, that's okay
-                cognito_user_created = False
-                logger.info(f"Cognito user already exists: {params.email}")
-            else:
-                logger.error(f"Failed to create Cognito user for invitation: {e}")
-                # Continue with invitation creation even if Cognito user creation fails
+        user_exists, user_status = get_cognito_user_status(
+            params.email, user_pool_id, aws_region
+        )
+
+        # If user doesn't exist, create them
+        if not user_exists:
+            try:
+                cognito_client = boto3.client("cognito-idp", region_name=aws_region)
+                cognito_client.admin_create_user(
+                    UserPoolId=user_pool_id,
+                    Username=params.email,
+                    TemporaryPassword=password,
+                    MessageAction="SUPPRESS",
+                    UserAttributes=[
+                        {"Name": "email", "Value": params.email},
+                        {"Name": "email_verified", "Value": "true"},
+                        {"Name": "name", "Value": user_name},
+                        {"Name": "custom:account_name", "Value": account.name},
+                    ],
+                )
+                cognito_user_created = True
+                user_status = "FORCE_CHANGE_PASSWORD"
+                logger.info(f"Created Cognito user for invitation: {params.email}")
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code == "UsernameExistsException":
+                    # Race condition: user was created between check and create
+                    logger.warning(
+                        f"Cognito user already exists (race condition): {params.email}"
+                    )
+                    user_exists, user_status = get_cognito_user_status(
+                        params.email, user_pool_id, aws_region
+                    )
+                else:
+                    logger.error(f"Failed to create Cognito user for invitation: {e}")
+                    raise ValueError(f"Failed to create Cognito user: {error_code}")
 
     # 5. Create invitation record
     try:
@@ -142,12 +199,13 @@ def create_invitation(
     except Exception as e:
         raise ValueError(f"Failed to create invitation: {str(e)}")
 
-    # 6. Send invitation email
+    # 6. Send invitation email based on user status
     try:
         # Get inviter name for personalization
         inviter_name = context.display_name or "A team member"
         account_display_name = account.display_name or account.name
 
+        # Base template model for all email types
         template_model = {
             "name": user_name,
             "inviter_name": inviter_name,
@@ -167,15 +225,38 @@ def create_invitation(
             f"{base_url}/accept-invitation?token={invitation_token}"
         )
 
-        # Include password if Cognito user was created
+        # Determine which email template to use based on user status
         if cognito_user_created:
+            # Case 1: Brand new user - send template with password
+            template_id = TEAM_INVITATION_NEW_USER_TEMPLATE_ID
             template_model["password"] = password
             template_model["email"] = params.email
             template_model["login_url"] = f"{base_url}/signin?email={params.email}"
+            logger.info(
+                f"Sending new user invitation email to {params.email} with temporary password"
+            )
+        elif user_status == "FORCE_CHANGE_PASSWORD":
+            # Case 2: User created but never logged in - resend password reset instructions
+            template_id = TEAM_INVITATION_PENDING_USER_TEMPLATE_ID
+            template_model["email"] = params.email
+            template_model["login_url"] = f"{base_url}/signin?email={params.email}"
+            template_model["reset_password_url"] = (
+                f"{base_url}/forgot-password?email={params.email}"
+            )
+            logger.info(
+                f"Sending pending user invitation email to {params.email} (never logged in)"
+            )
+        else:
+            # Case 3: Existing confirmed user - send simpler invitation without credentials
+            template_id = TEAM_INVITATION_EXISTING_USER_TEMPLATE_ID
+            template_model["login_url"] = f"{base_url}/signin"
+            logger.info(
+                f"Sending existing user invitation email to {params.email} (already confirmed)"
+            )
 
         email_service.send_email_with_template(
             to_email=params.email,
-            template_id=TEAM_INVITATION_TEMPLATE_ID,
+            template_id=template_id,
             template_model=template_model,
         )
         logger.info(
@@ -641,8 +722,9 @@ def resend_invitation(
     Steps:
     1. Get invitation
     2. Validate invitation is pending
-    3. Resend email (TODO)
-    4. Return invitation
+    3. Check Cognito user status
+    4. Resend email with appropriate template
+    5. Return invitation
 
     Args:
         session: Database session
@@ -666,12 +748,119 @@ def resend_invitation(
             f"Cannot resend invitation with status {invitation.status.value}"
         )
 
-    # 3. Resend email (TODO)
-    # try:
-    #     send_invitation_email(...)
-    # except Exception as e:
-    #     logger.error(f"Failed to resend invitation email: {e}")
-    #     raise ValueError("Failed to send email")
+    # 3. Get account details
+    account_repo = AccountRepository(session)
+    account = account_repo.get_account_by_id(invitation.account_id)
+    if not account:
+        raise ValueError("Account not found")
+
+    # 4. Check Cognito user status
+    user_name = invitation.email.split("@")[0].replace(".", " ").title()
+    aws_region = os.environ.get("AWS_REGION", "us-east-1")
+    user_pool_id = os.environ.get("AWS_ADMIN_CONSOLE_USER_POOL_ID")
+
+    user_exists = False
+    user_status = None
+    if user_pool_id:
+        user_exists, user_status = get_cognito_user_status(
+            invitation.email, user_pool_id, aws_region
+        )
+
+    # 5. Resend email with appropriate template
+    try:
+        # Get inviter details
+        account_user_repo = AccountUserRepository(session)
+        inviter = account_user_repo.get_by_user_and_account(
+            invitation.invited_by, invitation.account_id
+        )
+        inviter_name = inviter.name if inviter else "A team member"
+        account_display_name = account.display_name or account.name
+
+        # Base template model
+        template_model = {
+            "name": user_name,
+            "inviter_name": inviter_name,
+            "account_name": account_display_name,
+            "role": invitation.account_role,
+            "product_name": "Palona AI",
+            "sender_name": "Support Team",
+        }
+
+        # Construct base URL
+        base_url = (
+            "https://console.palona.ai"
+            if os.getenv("RUNTIME_ENV", "prd") == "prd"
+            else f"https://{os.getenv('RUNTIME_ENV', 'lat')}-console.palona.ai"
+        )
+        template_model["invitation_url"] = (
+            f"{base_url}/accept-invitation?token={invitation.invitation_token}"
+        )
+
+        # Determine which email template to use based on user status
+        if not user_exists:
+            # User doesn't exist - recreate them
+            if not user_pool_id:
+                raise ValueError(
+                    "AWS_ADMIN_CONSOLE_USER_POOL_ID is not configured; "
+                    "cannot recreate Cognito user during invitation resend"
+                )
+
+            password = generate_password()
+            try:
+                cognito_client = boto3.client("cognito-idp", region_name=aws_region)
+                cognito_client.admin_create_user(
+                    UserPoolId=user_pool_id,
+                    Username=invitation.email,
+                    TemporaryPassword=password,
+                    MessageAction="SUPPRESS",
+                    UserAttributes=[
+                        {"Name": "email", "Value": invitation.email},
+                        {"Name": "email_verified", "Value": "true"},
+                        {"Name": "name", "Value": user_name},
+                        {"Name": "custom:account_name", "Value": account.name},
+                    ],
+                )
+                logger.info(f"Recreated Cognito user for resend: {invitation.email}")
+            except ClientError as e:
+                logger.error(f"Failed to recreate Cognito user: {e}")
+                raise ValueError(f"Failed to recreate Cognito user: {e}") from e
+
+            template_id = TEAM_INVITATION_NEW_USER_TEMPLATE_ID
+            template_model["password"] = password
+            template_model["email"] = invitation.email
+            template_model["login_url"] = f"{base_url}/signin?email={invitation.email}"
+        elif user_status == "FORCE_CHANGE_PASSWORD":
+            # User created but never logged in
+            template_id = TEAM_INVITATION_PENDING_USER_TEMPLATE_ID
+            template_model["email"] = invitation.email
+            template_model["login_url"] = f"{base_url}/signin?email={invitation.email}"
+            template_model["reset_password_url"] = (
+                f"{base_url}/forgot-password?email={invitation.email}"
+            )
+            logger.info(
+                f"Resending pending user invitation to {invitation.email} (never logged in)"
+            )
+        else:
+            # Existing confirmed user
+            template_id = TEAM_INVITATION_EXISTING_USER_TEMPLATE_ID
+            template_model["login_url"] = f"{base_url}/signin"
+            logger.info(
+                f"Resending existing user invitation to {invitation.email} (already confirmed)"
+            )
+
+        email_service.send_email_with_template(
+            to_email=invitation.email,
+            template_id=template_id,
+            template_model=template_model,
+        )
+        logger.info(
+            f"Invitation email resent to {invitation.email} for account {account.name}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to resend invitation email to {invitation.email}: {e}")
+        raise ValueError(
+            f"Failed to send invitation email to {invitation.email}"
+        ) from e
 
     return invitation
 
