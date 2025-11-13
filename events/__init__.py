@@ -24,8 +24,8 @@ async def publish_event(event: BaseEvent) -> bool:
     All events are published with source='pal-mono'. The DetailType is embedded
     in the event class and included in the detail payload.
 
-    The EventBridge bus name is read from the MAIN_EVENT_BUS_NAME environment
-    variable, with a fallback to 'pal-main-event-bus'.
+    The EventBridge bus name is read from the EVENT_BUS_NAME environment
+    variable (required - will raise ValueError if not set).
 
     Args:
         event (BaseEvent): The event to publish

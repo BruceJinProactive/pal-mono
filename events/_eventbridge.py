@@ -7,8 +7,11 @@ from botocore.exceptions import ClientError
 
 from utils.log import logger
 
-# Default EventBridge bus name from environment variable
-DEFAULT_EVENT_BUS_NAME = os.getenv("MAIN_EVENT_BUS_NAME", "pal-main-event-bus")
+# EventBridge bus name from environment variable (required)
+_event_bus_name = os.getenv("EVENT_BUS_NAME")
+if not _event_bus_name:
+    raise ValueError("EVENT_BUS_NAME environment variable is required")
+DEFAULT_EVENT_BUS_NAME = _event_bus_name
 
 # Reusable EventBridge client (boto3 clients are thread-safe)
 # Initialized lazily to avoid breaking tests and non-production environments
