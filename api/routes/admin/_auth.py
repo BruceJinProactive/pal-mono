@@ -1,13 +1,17 @@
 import os
 from typing import Any
+from uuid import UUID
 
 import jwt
 import requests
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 import db
 from api.schemas.admin.user import User
+from db.repositories.account_repository import AccountRepository
+from db.repositories.account_user_repository import AccountUserRepository
+from db.tables.account_user import AccountUserStatus
 from services.account_service import get_account
 from services.auth_types import UserContext, UserRole
 from utils.log import logger
@@ -277,7 +281,9 @@ def get_account_from_id_token(request: Request, session: Session) -> db.Account:
     return account
 
 
-def authenticate_user(request: Request) -> UserContext:
+def authenticate_user(
+    request: Request, session: Session = Depends(db.get_db)
+) -> UserContext:
     """
     Authenticates the user from the request. Returns a user context object
     that contains useful information about the user if they are authenticated.
@@ -285,6 +291,7 @@ def authenticate_user(request: Request) -> UserContext:
 
     Args:
         request: incoming HTTP request
+        session: SQLAlchemy database session for querying user account memberships
 
     Returns:
         UserContext: An object that contains various useful information about the user.
@@ -302,6 +309,7 @@ def authenticate_user(request: Request) -> UserContext:
     # Combine both custom:account_name and custom:account_names
     account_names = []
 
+    # Extract account names from JWT custom attributes (fallback/legacy)
     account_name = token.get("custom:account_name", "")
     if account_name:
         account_names.extend(account_name.split(","))
@@ -310,6 +318,33 @@ def authenticate_user(request: Request) -> UserContext:
     if account_names_str:
         account_names.extend(account_names_str.split(","))
 
+    # Query database for accounts user has access to via AccountUser table
+    try:
+        user_id = UUID(token.get("cognito:username", ""))
+        account_user_repo = AccountUserRepository(session, auto_commit=False)
+        account_repo = AccountRepository(session, auto_commit=False)
+
+        # Get all active account memberships for this user
+        account_memberships = account_user_repo.get_accounts_for_user(
+            user_id, status=AccountUserStatus.active
+        )
+
+        # Resolve account IDs to account names
+        for membership in account_memberships:
+            account = account_repo.get_account_by_id(membership.account_id)
+            if account and account.name:
+                account_names.append(account.name)
+
+        logger.info(
+            f"Fetched {len(account_memberships)} accounts from database for user {user_id}"
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to fetch accounts from database for user authentication: {e}. "
+            "Falling back to JWT custom attributes only."
+        )
+
+    # Deduplicate account names (combine JWT + database sources)
     seen = set()
     unique_account_names = []
     for name in account_names:
