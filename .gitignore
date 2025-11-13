@@ -155,4 +155,4 @@ cython_debug/
 **/.claude/settings.local.json
 
 # mem0 configuration
-mem0/config.json
+.mem0/config.json
