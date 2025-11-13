@@ -65,11 +65,19 @@ class TeamMemberResponse(BaseModel):
     resource_roles: List[dict] = []  # Empty for V1, future project/agent roles
 
 
+class TeamInvitationResponse(BaseModel):
+    """Pending invitation details for team list."""
+
+    email: str
+    account_role: UserRole
+    status: str  # pending
+
+
 class TeamMembersListResponse(BaseModel):
-    """List of team members."""
+    """List of team members and pending invitations."""
 
     members: List[TeamMemberResponse]
-    total: int
+    invitations: List[TeamInvitationResponse]
 
 
 class UpdateTeamMemberRequest(BaseModel):

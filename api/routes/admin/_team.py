@@ -28,6 +28,7 @@ from api.schemas.admin.team import (
     ResendInvitationResponse,
     SwitchAccountRequest,
     SwitchAccountResponse,
+    TeamInvitationResponse,
     TeamMemberResponse,
     TeamMembersListResponse,
     UpdateTeamMemberRequest,
@@ -115,22 +116,24 @@ async def list_team_members(
     search: str | None = None,
 ) -> TeamMembersListResponse:
     """
-    List all team members for an account.
+    List all team members and pending invitations for an account.
 
     Route handler that:
     1. Authorizes user has access to account
-    2. Calls team service to list members
+    2. Calls team service to list members and invitations
     3. Converts DB models to API response
     """
     # 1. Authorize - any authenticated user with account access
     authorize_user_account(context, account_name)
 
-    # 2. Call service to list team members
+    # 2. Call service to list team members and invitations
     try:
-        account_users, roles, emails, names = team_service.list_team_members(
-            session=session,
-            account_name=account_name,
-            filters=TeamMemberFilters(role=role, status=status, search=search),
+        account_users, roles, emails, names, pending_invitations = (
+            team_service.list_team_members(
+                session=session,
+                account_name=account_name,
+                filters=TeamMemberFilters(role=role, status=status, search=search),
+            )
         )
     except ValueError as e:
         raise HTTPException(
@@ -162,9 +165,20 @@ async def list_team_members(
             )
         )
 
+    # 4. Convert pending invitations to API response
+    invitations = []
+    for invitation in pending_invitations:
+        invitations.append(
+            TeamInvitationResponse(
+                email=invitation.email,
+                account_role=UserRole(invitation.account_role),
+                status=invitation.status.value,
+            )
+        )
+
     return TeamMembersListResponse(
         members=members,
-        total=len(members),
+        invitations=invitations,
     )
 
 

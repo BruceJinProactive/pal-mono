@@ -193,16 +193,23 @@ def list_team_members(
     session: Session,
     account_name: str,
     filters: TeamMemberFilters,
-) -> tuple[list[db.AccountUser], list[str | None], list[str], list[str]]:
+) -> tuple[
+    list[db.AccountUser],
+    list[str | None],
+    list[str],
+    list[str],
+    list[db.UserInvitation],
+]:
     """
-    List all team members for an account with their roles.
+    List all team members for an account with their roles and pending invitations.
 
     Steps:
     1. Get account by name
     2. Get all account users (with optional status filter)
     3. For each user, get their role
     4. Apply filters (role, search)
-    5. Return account users and their metadata
+    5. Get pending invitations for the account
+    6. Return account users, their metadata, and pending invitations
 
     Args:
         session: Database session
@@ -215,6 +222,7 @@ def list_team_members(
         - list[str | None]: Account roles for each user
         - list[str]: Emails for each user (mock data)
         - list[str]: Display names for each user (mock data)
+        - list[db.UserInvitation]: Pending invitations
 
     Raises:
         ValueError: If account not found
@@ -269,7 +277,11 @@ def list_team_members(
         emails.append(member_email)
         names.append(member_name)
 
-    return filtered_users, roles, emails, names
+    # 5. Get pending invitations for the account
+    invitation_repo = UserInvitationRepository(session)
+    pending_invitations = invitation_repo.get_pending_for_account(account.id)
+
+    return filtered_users, roles, emails, names, pending_invitations
 
 
 def update_member_role(

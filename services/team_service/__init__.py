@@ -76,12 +76,18 @@ def list_team_members(
     session: Session,
     account_name: str,
     filters: TeamMemberFilters,
-) -> tuple[list[db.AccountUser], list[str | None], list[str], list[str]]:
+) -> tuple[
+    list[db.AccountUser],
+    list[str | None],
+    list[str],
+    list[str],
+    list[db.UserInvitation],
+]:
     """
     List all team members for an account with their roles and metadata.
 
     Retrieves all account users and their assigned roles, with optional filtering
-    by role, status, and search term.
+    by role, status, and search term. Also returns pending invitations.
 
     Args:
         session: Database session for the query.
@@ -92,14 +98,15 @@ def list_team_members(
         Tuple containing:
         - list[db.AccountUser]: Account user records
         - list[str | None]: Account roles for each user
-        - list[str]: Email addresses (mock data until schema updated)
-        - list[str]: Display names (mock data until schema updated)
+        - list[str]: Email addresses from account_users table
+        - list[str]: Display names from account_users table
+        - list[db.UserInvitation]: Pending invitations for the account
 
     Raises:
         ValueError: If account not found.
 
     Example:
-        >>> users, roles, emails, names = list_team_members(
+        >>> users, roles, emails, names, invitations = list_team_members(
         ...     session, "acme-corp",
         ...     TeamMemberFilters(role="owner", status="active")
         ... )
